@@ -27,6 +27,7 @@ import { registerCorrelationTools } from './mcp/correlation-tools.ts'
 import { registerDebugTools } from './mcp/debug-tools.ts'
 import { registerDeductionRuleTools } from './mcp/deduction-rule-tools.ts'
 import { registerFoodItemTools } from './mcp/food-item-tools.ts'
+import { registerImportTools } from './mcp/import-tools.ts'
 import { registerLocationTools } from './mcp/location-tools.ts'
 import { registerMealTools } from './mcp/meal-tools.ts'
 import { registerMetricTools } from './mcp/metric-tools.ts'
@@ -78,6 +79,7 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
   registerNoteTools(server, user)
   registerMealTools(server, user)
   registerFoodItemTools(server, user)
+  registerImportTools(server, user)
   registerReportTools(server, user)
   registerScreentimeCategoryTools(server, user)
   registerDebugTools(server, user)

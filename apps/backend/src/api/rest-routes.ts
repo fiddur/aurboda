@@ -30,6 +30,7 @@ import { createDashboardRouter } from '../routes/dashboard-router.ts'
 import { createDeductionRulesRouter } from '../routes/deduction-rules-router.ts'
 import { createFoodItemsRouter } from '../routes/food-items-router.ts'
 import { createIconsRouter } from '../routes/icons-router.ts'
+import { createImportsRouter } from '../routes/imports-router.ts'
 import { createLocationsRouter } from '../routes/locations-router.ts'
 import { createMealsRouter } from '../routes/meals-router.ts'
 import { createMetricsRouter } from '../routes/metrics-router.ts'
@@ -86,6 +87,7 @@ export const mountRestRouters = ({
   httpd.use('/notes', createNotesRouter(authMiddleware))
   httpd.use('/meals', createMealsRouter(authMiddleware))
   httpd.use('/food-items', createFoodItemsRouter(authMiddleware))
+  httpd.use('/imports', createImportsRouter(authMiddleware))
   httpd.use('/reports', createReportsRouter(authMiddleware))
   httpd.use(
     createActivitiesRouter(

@@ -98,6 +98,7 @@ export const cleanTestDb = async (): Promise<void> => {
     'lastfm_tag_rules',
     'outbound_sync_queue',
     'screentime_categories',
+    'import_jobs',
   ]
 
   for (const table of tables) {

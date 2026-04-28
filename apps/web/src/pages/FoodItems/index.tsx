@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'preact/hooks'
 
 import { ConfirmButton } from '../../components/ConfirmButton'
+import { ImportPanel } from '../../components/ImportPanel'
 import { searchFoodItemsApi } from '../../state/api'
 import { auth } from '../../state/auth'
 import './style.css'
@@ -54,6 +55,8 @@ export function FoodItems() {
   return (
     <div class="food-items-page">
       <h1>Food Items</h1>
+
+      <ImportPanel />
 
       <div class="fi-search">
         <input

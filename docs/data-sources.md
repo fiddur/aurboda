@@ -16,6 +16,7 @@ Aurboda aggregates health, productivity, and location data from multiple sources
 | [Calendars](./calendars.md)           | Calendar events (stored as tags)                                            | Pull (ICS fetch)                        | None                         | ICS URL(s)                                               |
 | [OwnTracks](./owntracks.md)           | GPS location, geofences                                                     | Push (HTTP)                             | None                         | OwnTracks app config                                     |
 | Cronometer                            | Meals with full per-item macros and ~50 micronutrients                      | CSV import script                       | None                         | Export CSV from Cronometer                               |
+| [Livsmedelsverket](./livsmedelsverket.md) | Canonical food library: 2,500+ Swedish foods with macros + micros (per 100 g) | One-shot bulk import (UI button)       | None                         | Click "Import from Livsmedelsverket" on `/food-items`   |
 
 ## Sync Behavior
 
