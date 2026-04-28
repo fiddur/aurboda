@@ -119,6 +119,20 @@ export const mealsTables: Record<string, string> = {
     CREATE INDEX IF NOT EXISTS idx_food_items_name_lower ON food_items (name_lower)
   `,
 
+  // Fuzzy/accent-insensitive search support: pg_trgm + unaccent extensions,
+  // an IMMUTABLE wrapper around unaccent so it can index, and a GIN trigram
+  // index over the unaccented name. Both extensions are "trusted" in PG13+,
+  // so the database owner can install them.
+  food_items_search_setup: `
+    CREATE EXTENSION IF NOT EXISTS pg_trgm;
+    CREATE EXTENSION IF NOT EXISTS unaccent;
+    CREATE OR REPLACE FUNCTION immutable_unaccent(text) RETURNS text AS $$
+      SELECT public.unaccent('public.unaccent', $1)
+    $$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
+    CREATE INDEX IF NOT EXISTS idx_food_items_name_unaccent_trgm
+      ON food_items USING gin (immutable_unaccent(name_lower) gin_trgm_ops)
+  `,
+
   // Junction: meals <-> food items (snapshot of nutrients at insertion time)
   meal_food_items: `
     CREATE TABLE IF NOT EXISTS meal_food_items (

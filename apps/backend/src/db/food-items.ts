@@ -55,14 +55,38 @@ export interface InsertFoodItemInput {
 
 // ── CRUD ─────────────────────────────────────────────────────────────────────
 
+const TRIGRAM_SIMILARITY_THRESHOLD = 0.2
+const TRIGRAM_MIN_QUERY_LENGTH = 3
+
+// Escape user-provided LIKE wildcards so a search for "50%" doesn't match
+// anything-starting-with-50. The ESCAPE clause in the SQL pairs with this.
+const escapeLikeWildcards = (s: string): string => s.replaceAll(/[\\%_]/g, '\\$&')
+
 /**
- * Search food items by name prefix (case-insensitive).
+ * Search food items by name. Substring + accent-folded match wins; a trigram
+ * similarity pass on top picks up typos like "hushalsost" → "Hushållsost"
+ * once the query is at least TRIGRAM_MIN_QUERY_LENGTH chars. Substring hits
+ * always rank above fuzzy-only hits, then earliest match position, then
+ * similarity score.
  */
 export const searchFoodItems = async (user: string, q: string, limit = 20): Promise<FoodItemEntity[]> => {
+  const trimmed = q.trim()
+  if (!trimmed) return []
+  const enableTrigram = trimmed.length >= TRIGRAM_MIN_QUERY_LENGTH
+  const likePattern = `%${escapeLikeWildcards(trimmed)}%`
   const result = await query(
     user,
-    `SELECT ${FOOD_ITEM_COLUMNS} FROM food_items WHERE name_lower LIKE $1 ORDER BY name_lower LIMIT $2`,
-    [`${q.toLowerCase().trim()}%`, limit],
+    `SELECT ${FOOD_ITEM_COLUMNS}
+     FROM food_items
+     WHERE immutable_unaccent(name_lower) ILIKE immutable_unaccent($1) ESCAPE '\\'
+        OR ($4 AND similarity(immutable_unaccent(name_lower), immutable_unaccent($2)) > $5)
+     ORDER BY
+       CASE WHEN immutable_unaccent(name_lower) ILIKE immutable_unaccent($1) ESCAPE '\\' THEN 0 ELSE 1 END,
+       POSITION(immutable_unaccent($2) IN immutable_unaccent(name_lower)),
+       similarity(immutable_unaccent(name_lower), immutable_unaccent($2)) DESC,
+       name_lower
+     LIMIT $3`,
+    [likePattern, trimmed, limit, enableTrigram, TRIGRAM_SIMILARITY_THRESHOLD],
   )
   return result.rows.map(mapFoodItemRow)
 }
