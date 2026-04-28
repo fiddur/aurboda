@@ -569,6 +569,7 @@ suspend fun processOutboundSync(
   httpClient: HttpClient,
   healthConnectClient: HealthConnectClient,
   grantedPermissions: Set<String>,
+  reporter: SyncProgressReporter = NoOpSyncProgressReporter,
 ): OutboundSyncResult {
   var totalFetched = 0
   var totalWritten = 0
@@ -580,6 +581,10 @@ suspend fun processOutboundSync(
   var pagesProcessed = 0
   var rateLimited = false
 
+  reporter.updateStage(SyncStage.Outbound) {
+    it.copy(status = SyncStageStatus.Active, message = "Checking pending write-back…")
+  }
+
   for (page in 1..MAX_OUTBOUND_SYNC_PAGES) {
     val fetchResult = fetchOutboundSyncEntries(apiUrl, authToken, httpClient)
     val entries = fetchResult.entries
@@ -587,7 +592,17 @@ suspend fun processOutboundSync(
 
     pagesProcessed++
     totalFetched += entries.size
+    val pageSizeNonZero = entries.size.coerceAtLeast(1)
+    val totalPagesEstimate = (fetchResult.totalPending + pageSizeNonZero - 1) / pageSizeNonZero
     Log.d(TAG, "🔄 Processing page $page: ${entries.size} entries (${fetchResult.totalPending} total pending)")
+    reporter.updateStage(SyncStage.Outbound) {
+      it.copy(
+        currentPage = page,
+        totalPages = totalPagesEstimate.coerceAtLeast(page),
+        message = "Page $page of ~${totalPagesEstimate.coerceAtLeast(page)} (${fetchResult.totalPending} pending)",
+      )
+    }
+    entries.oldestCreatedAt()?.let(reporter::reportDataInstant)
 
     val ackItems = mutableListOf<OutboundSyncAckItemApi>()
     val failItems = mutableListOf<OutboundSyncFailItemApi>()
@@ -635,6 +650,12 @@ suspend fun processOutboundSync(
     totalWritten += ackItems.size - pageSkipped
     totalSkipped += pageSkipped
     totalTransientFailures += pageTransientFailures
+    reporter.updateStage(SyncStage.Outbound) {
+      it.copy(
+        sentRecords = totalWritten,
+        message = "Page $page: $totalWritten written, $totalSkipped skipped, $totalTransientFailures transient",
+      )
+    }
 
     if (ackItems.isNotEmpty()) {
       val ackSuccess = acknowledgeOutboundSync(ackItems, apiUrl, authToken, httpClient)
@@ -666,6 +687,16 @@ suspend fun processOutboundSync(
 
   if (pagesProcessed > 0) {
     Log.d(TAG, "✅ Outbound sync finished: $totalWritten written, $totalSkipped skipped, $totalTransientFailures transient failures across $pagesProcessed pages")
+    reporter.updateStage(SyncStage.Outbound) {
+      it.copy(
+        status = if (allAcknowledged && !rateLimited) SyncStageStatus.Done else SyncStageStatus.Failed,
+        message = "$totalWritten written, $totalSkipped skipped, $totalTransientFailures transient ($pagesProcessed pages)",
+      )
+    }
+  } else {
+    reporter.updateStage(SyncStage.Outbound) {
+      it.copy(status = SyncStageStatus.Done, message = "Nothing to write back")
+    }
   }
 
   return OutboundSyncResult(
@@ -734,3 +765,9 @@ private fun JsonObject.getInstant(key: String): Instant? =
       null
     }
   }
+
+/** Earliest created_at across a list of pending entries; null when none parses. */
+internal fun List<OutboundSyncEntryApi>.oldestCreatedAt(): Instant? =
+  mapNotNull {
+    runCatching { Instant.parse(it.created_at) }.getOrNull()
+  }.minOrNull()

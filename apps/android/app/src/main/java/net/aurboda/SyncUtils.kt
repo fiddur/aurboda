@@ -10,10 +10,22 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
+import kotlinx.coroutines.delay
 
 const val SYNC_UTILS_TAG = "SyncUtils"
 
-/** Result of a POST operation with error details for display */
+/** Maximum retries per chunk on transient errors (network drop, 5xx, 408, 429). */
+@PublishedApi
+internal const val MAX_CHUNK_ATTEMPTS: Int = 4
+
+/**
+ * HeartRateRecord is a SeriesRecord — each record holds many samples, so the JSON payload can
+ * blow past the backend's 10MB limit if we send too many in one go. Backend body limit is 10mb;
+ * 50 records ≈ a few hundred KB in practice. Tunable from one place.
+ */
+private const val HEART_RATE_CHUNK_SIZE = 50
+
+/** Result of a POST operation with error details for display. */
 sealed class PostResult {
   data object Success : PostResult()
 
@@ -28,6 +40,15 @@ sealed class PostResult {
 
   val isSuccess: Boolean
     get() = this is Success
+
+  /** Errors that may succeed on retry (network failures and server-side hiccups). */
+  val isTransient: Boolean
+    get() =
+      when (this) {
+        is Success -> false
+        is NetworkError -> true
+        is HttpError -> statusCode >= 500 || statusCode == 408 || statusCode == 429
+      }
 
   fun errorMessage(): String? =
     when (this) {
@@ -70,17 +91,37 @@ suspend inline fun <reified T : Any> postChunk(
   }
 
 /**
+ * Post a chunk with bounded exponential-backoff retry on transient failures.
+ * 4xx (other than 408/429) bypass retry — they will not succeed on retry.
+ */
+suspend inline fun <reified T : Any> postChunkWithRetry(
+  data: PostWrapper<T>,
+  apiUrl: String,
+  authToken: String,
+  httpClient: HttpClient,
+  logTag: String = SYNC_UTILS_TAG,
+): PostResult {
+  var lastResult: PostResult = PostResult.NetworkError("not attempted")
+  for (attempt in 1..MAX_CHUNK_ATTEMPTS) {
+    val result = postChunk(data, apiUrl, authToken, httpClient, logTag)
+    if (result.isSuccess) return result
+    lastResult = result
+    if (!result.isTransient || attempt == MAX_CHUNK_ATTEMPTS) return result
+    val backoffMs = 500L * (1L shl (attempt - 1))
+    Log.w(logTag, "Transient error on attempt $attempt: ${result.errorMessage()}; retrying in ${backoffMs}ms")
+    delay(backoffMs)
+  }
+  return lastResult
+}
+
+/**
  * Post data in chunks to avoid 413 Request Entity Too Large errors.
  * HeartRateRecord can be very large (thousands of samples per record).
  *
  * @param dataList The list of records to post
- * @param apiUrl The URL to post to
- * @param authToken The auth token for the request
- * @param httpClient The HTTP client to use
- * @param chunkSize Maximum number of records per chunk (default 10)
- * @param recordTypeName Name of the record type for logging
- * @param logTag Tag for log messages
- * @return PostResult.Success if all chunks succeed, or the first error encountered
+ * @param chunkSize Maximum number of records per chunk
+ * @param recordTypeName Name of the record type for logging and progress reporting
+ * @param reporter Sync progress reporter for per-chunk UI updates
  *
  * Note: Must be inline with reified T to preserve type information for serialization.
  */
@@ -89,8 +130,9 @@ suspend inline fun <reified T : Any> postDataChunked(
   apiUrl: String,
   authToken: String,
   httpClient: HttpClient,
-  chunkSize: Int = 10,
-  recordTypeName: String = "data",
+  chunkSize: Int,
+  recordTypeName: String,
+  reporter: SyncProgressReporter = NoOpSyncProgressReporter,
   logTag: String = SYNC_UTILS_TAG,
 ): PostResult {
   if (dataList.isEmpty()) {
@@ -99,14 +141,21 @@ suspend inline fun <reified T : Any> postDataChunked(
   }
 
   val chunks = dataList.chunked(chunkSize)
-  Log.d(logTag, "Sending $recordTypeName in ${chunks.size} chunks of up to $chunkSize records each")
+  val total = chunks.size
+  Log.d(logTag, "Sending $recordTypeName in $total chunks of up to $chunkSize records each")
 
+  reporter.updateRecordType(recordTypeName) {
+    it.copy(status = SyncStageStatus.Active, totalChunks = total, currentChunk = 0)
+  }
+
+  var sent = 0
   for ((index, chunk) in chunks.withIndex()) {
     val chunkNum = index + 1
-    Log.d(logTag, "Sending $recordTypeName chunk $chunkNum/${chunks.size} with ${chunk.size} records")
+    Log.d(logTag, "Sending $recordTypeName chunk $chunkNum/$total with ${chunk.size} records")
+    reporter.updateRecordType(recordTypeName) { it.copy(currentChunk = chunkNum) }
 
     val result =
-      postChunk(
+      postChunkWithRetry(
         data = PostWrapper(chunk),
         apiUrl = apiUrl,
         authToken = authToken,
@@ -115,14 +164,23 @@ suspend inline fun <reified T : Any> postDataChunked(
       )
 
     if (!result.isSuccess) {
-      Log.e(logTag, "$recordTypeName chunk $chunkNum failed: ${result.errorMessage()}")
+      val msg = "$recordTypeName chunk $chunkNum/$total failed: ${result.errorMessage()}"
+      Log.e(logTag, msg)
+      reporter.updateRecordType(recordTypeName) {
+        it.copy(status = SyncStageStatus.Failed, errorMessage = result.errorMessage())
+      }
       return result
     }
 
+    sent += chunk.size
+    reporter.updateRecordType(recordTypeName) { it.copy(sentRecords = sent) }
     Log.d(logTag, "$recordTypeName chunk $chunkNum succeeded")
   }
 
-  Log.d(logTag, "All ${chunks.size} chunks of $recordTypeName sent successfully")
+  reporter.updateRecordType(recordTypeName) {
+    it.copy(status = SyncStageStatus.Done, currentChunk = total, sentRecords = sent)
+  }
+  Log.d(logTag, "All $total chunks of $recordTypeName sent successfully")
   return PostResult.Success
 }
 
@@ -139,9 +197,7 @@ fun List<Record>.filterNotOwnOrigin(): List<Record> =
     !(isOwnOrigin || isOutboundSync)
   }
 
-/**
- * Send deletion IDs to the backend. Shared by SyncWorker and MainActivity.
- */
+/** Send deletion IDs to the backend. Shared by SyncWorker and MainActivity. */
 suspend fun sendDeletions(
   deletionIds: List<String>,
   serverUrl: String,
@@ -151,24 +207,49 @@ suspend fun sendDeletions(
 ): PostResult {
   if (deletionIds.isEmpty()) return PostResult.Success
 
-  return try {
-    val response =
-      httpClient.post("$serverUrl/sync/deletions") {
-        contentType(ContentType.Application.Json)
-        headers { append(HttpHeaders.Authorization, "Bearer $authToken") }
-        setBody(PostWrapper(deletionIds))
-      }
-    if (response.status == HttpStatusCode.OK || response.status == HttpStatusCode.Created) {
+  return postChunkWithRetry(
+    data = PostWrapper(deletionIds),
+    apiUrl = "$serverUrl/sync/deletions",
+    authToken = authToken,
+    httpClient = httpClient,
+    logTag = logTag,
+  ).also { result ->
+    if (result.isSuccess) {
       Log.d(logTag, "Sent ${deletionIds.size} deletions successfully")
-      PostResult.Success
     } else {
-      Log.e(logTag, "Deletions failed: HTTP ${response.status.value} ${response.status.description}")
-      PostResult.HttpError(response.status.value, response.status.description)
+      Log.e(logTag, "Deletions failed: ${result.errorMessage()}")
     }
-  } catch (e: Exception) {
-    Log.e(logTag, "Error posting deletions", e)
-    PostResult.NetworkError(e.message ?: "Unknown error")
   }
+}
+
+/**
+ * Send a non-chunked record group as one POST. Reports per-record-type progress.
+ */
+private suspend inline fun <reified S : Any> sendSingleType(
+  serializables: List<S>,
+  syncUrl: String,
+  authToken: String,
+  httpClient: HttpClient,
+  recordTypeName: String,
+  reporter: SyncProgressReporter,
+  logTag: String,
+): PostResult {
+  reporter.updateRecordType(recordTypeName) {
+    it.copy(status = SyncStageStatus.Active, totalChunks = 1, currentChunk = 1)
+  }
+  val result = postChunkWithRetry(PostWrapper(serializables), syncUrl, authToken, httpClient, logTag)
+  reporter.updateRecordType(recordTypeName) {
+    when {
+      result.isSuccess ->
+        it.copy(
+          status = SyncStageStatus.Done,
+          sentRecords = serializables.size,
+          currentChunk = 1,
+        )
+      else -> it.copy(status = SyncStageStatus.Failed, errorMessage = result.errorMessage())
+    }
+  }
+  return result
 }
 
 /**
@@ -181,6 +262,7 @@ suspend fun sendRecords(
   serverUrl: String,
   authToken: String,
   httpClient: HttpClient,
+  reporter: SyncProgressReporter = NoOpSyncProgressReporter,
   logTag: String = SYNC_UTILS_TAG,
 ): PostResult {
   if (records.isEmpty()) return PostResult.Success
@@ -192,70 +274,77 @@ suspend fun sendRecords(
     val typeName = recordClass.simpleName ?: "UnknownRecordType"
     val syncUrl = "$serverUrl/sync/$typeName"
 
+    classRecords.oldestEventInstant()?.let(reporter::reportDataInstant)
+
     val result =
       when (recordClass) {
         ActiveCaloriesBurnedRecord::class ->
-          postChunk(
-            PostWrapper(ActiveCaloriesBurnedRecordSerializable.fromRecordsList(classRecords)),
-            syncUrl,
-            authToken,
-            httpClient,
-            logTag,
+          sendSingleType(
+            ActiveCaloriesBurnedRecordSerializable.fromRecordsList(classRecords),
+            syncUrl, authToken, httpClient, typeName, reporter, logTag,
           )
         BodyFatRecord::class ->
-          postChunk(PostWrapper(BodyFatRecordSerializable.fromRecordsList(classRecords)), syncUrl, authToken, httpClient, logTag)
+          sendSingleType(BodyFatRecordSerializable.fromRecordsList(classRecords), syncUrl, authToken, httpClient, typeName, reporter, logTag)
         BodyWaterMassRecord::class ->
-          postChunk(PostWrapper(BodyWaterMassRecordSerializable.fromRecordsList(classRecords)), syncUrl, authToken, httpClient, logTag)
+          sendSingleType(BodyWaterMassRecordSerializable.fromRecordsList(classRecords), syncUrl, authToken, httpClient, typeName, reporter, logTag)
         BoneMassRecord::class ->
-          postChunk(PostWrapper(BoneMassRecordSerializable.fromRecordsList(classRecords)), syncUrl, authToken, httpClient, logTag)
+          sendSingleType(BoneMassRecordSerializable.fromRecordsList(classRecords), syncUrl, authToken, httpClient, typeName, reporter, logTag)
         DistanceRecord::class ->
-          postChunk(PostWrapper(DistanceRecordSerializable.fromRecordsList(classRecords)), syncUrl, authToken, httpClient, logTag)
+          sendSingleType(DistanceRecordSerializable.fromRecordsList(classRecords), syncUrl, authToken, httpClient, typeName, reporter, logTag)
         ExerciseSessionRecord::class ->
-          postChunk(PostWrapper(ExerciseSessionRecordSerializable.fromRecordsList(classRecords)), syncUrl, authToken, httpClient, logTag)
+          sendSingleType(
+            ExerciseSessionRecordSerializable.fromRecordsList(classRecords),
+            syncUrl, authToken, httpClient, typeName, reporter, logTag,
+          )
         FloorsClimbedRecord::class ->
-          postChunk(PostWrapper(FloorsClimbedRecordSerializable.fromRecordsList(classRecords)), syncUrl, authToken, httpClient, logTag)
+          sendSingleType(
+            FloorsClimbedRecordSerializable.fromRecordsList(classRecords),
+            syncUrl, authToken, httpClient, typeName, reporter, logTag,
+          )
         HeartRateRecord::class ->
           postDataChunked(
             HeartRateRecordSerializable.fromRecordsList(classRecords),
             syncUrl,
             authToken,
             httpClient,
-            chunkSize = 10,
+            chunkSize = HEART_RATE_CHUNK_SIZE,
             recordTypeName = typeName,
+            reporter = reporter,
             logTag = logTag,
           )
         HeartRateVariabilityRmssdRecord::class ->
-          postChunk(PostWrapper(HrvRecordSerializable.fromRecordsList(classRecords)), syncUrl, authToken, httpClient, logTag)
+          sendSingleType(HrvRecordSerializable.fromRecordsList(classRecords), syncUrl, authToken, httpClient, typeName, reporter, logTag)
         HeightRecord::class ->
-          postChunk(PostWrapper(HeightRecordSerializable.fromRecordsList(classRecords)), syncUrl, authToken, httpClient, logTag)
+          sendSingleType(HeightRecordSerializable.fromRecordsList(classRecords), syncUrl, authToken, httpClient, typeName, reporter, logTag)
         LeanBodyMassRecord::class ->
-          postChunk(PostWrapper(LeanBodyMassRecordSerializable.fromRecordsList(classRecords)), syncUrl, authToken, httpClient, logTag)
+          sendSingleType(LeanBodyMassRecordSerializable.fromRecordsList(classRecords), syncUrl, authToken, httpClient, typeName, reporter, logTag)
         NutritionRecord::class ->
-          postChunk(PostWrapper(NutritionRecordSerializable.fromRecordsList(classRecords)), syncUrl, authToken, httpClient, logTag)
+          sendSingleType(NutritionRecordSerializable.fromRecordsList(classRecords), syncUrl, authToken, httpClient, typeName, reporter, logTag)
         PowerRecord::class ->
-          postChunk(PostWrapper(PowerRecordSerializable.fromRecordsList(classRecords)), syncUrl, authToken, httpClient, logTag)
+          sendSingleType(PowerRecordSerializable.fromRecordsList(classRecords), syncUrl, authToken, httpClient, typeName, reporter, logTag)
         RestingHeartRateRecord::class ->
-          postChunk(PostWrapper(RestingHeartRateRecordSerializable.fromRecordsList(classRecords)), syncUrl, authToken, httpClient, logTag)
+          sendSingleType(
+            RestingHeartRateRecordSerializable.fromRecordsList(classRecords),
+            syncUrl, authToken, httpClient, typeName, reporter, logTag,
+          )
         SleepSessionRecord::class ->
-          postChunk(PostWrapper(SleepSessionRecordSerializable.fromRecordsList(classRecords)), syncUrl, authToken, httpClient, logTag)
+          sendSingleType(SleepSessionRecordSerializable.fromRecordsList(classRecords), syncUrl, authToken, httpClient, typeName, reporter, logTag)
         SpeedRecord::class ->
-          postChunk(PostWrapper(SpeedRecordSerializable.fromRecordsList(classRecords)), syncUrl, authToken, httpClient, logTag)
+          sendSingleType(SpeedRecordSerializable.fromRecordsList(classRecords), syncUrl, authToken, httpClient, typeName, reporter, logTag)
         StepsRecord::class ->
-          postChunk(PostWrapper(StepsRecordSerializable.fromRecordsList(classRecords)), syncUrl, authToken, httpClient, logTag)
+          sendSingleType(StepsRecordSerializable.fromRecordsList(classRecords), syncUrl, authToken, httpClient, typeName, reporter, logTag)
         TotalCaloriesBurnedRecord::class ->
-          postChunk(
-            PostWrapper(TotalCaloriesBurnedRecordSerializable.fromRecordsList(classRecords)),
-            syncUrl,
-            authToken,
-            httpClient,
-            logTag,
+          sendSingleType(
+            TotalCaloriesBurnedRecordSerializable.fromRecordsList(classRecords),
+            syncUrl, authToken, httpClient, typeName, reporter, logTag,
           )
         Vo2MaxRecord::class ->
-          postChunk(PostWrapper(Vo2MaxRecordSerializable.fromRecordsList(classRecords)), syncUrl, authToken, httpClient, logTag)
+          sendSingleType(Vo2MaxRecordSerializable.fromRecordsList(classRecords), syncUrl, authToken, httpClient, typeName, reporter, logTag)
         WeightRecord::class ->
-          postChunk(PostWrapper(WeightRecordSerializable.fromRecordsList(classRecords)), syncUrl, authToken, httpClient, logTag)
+          sendSingleType(WeightRecordSerializable.fromRecordsList(classRecords), syncUrl, authToken, httpClient, typeName, reporter, logTag)
         else -> {
           Log.w(logTag, "No serializer for $typeName, skipping ${classRecords.size} records")
+          reporter.updateRecordType(typeName) { it.copy(status = SyncStageStatus.Skipped, errorMessage = "no serializer") }
           PostResult.Success
         }
       }
@@ -280,12 +369,10 @@ suspend fun sendPage(
   serverUrl: String,
   authToken: String,
   httpClient: HttpClient,
+  reporter: SyncProgressReporter = NoOpSyncProgressReporter,
   logTag: String = SYNC_UTILS_TAG,
 ): PostResult {
-  // Send deletions first
   val deletionResult = sendDeletions(deletionIds, serverUrl, authToken, httpClient, logTag)
   if (!deletionResult.isSuccess) return deletionResult
-
-  // Then send records
-  return sendRecords(records, serverUrl, authToken, httpClient, logTag)
+  return sendRecords(records, serverUrl, authToken, httpClient, reporter, logTag)
 }

@@ -40,6 +40,7 @@ class SyncWorker(
 
   override suspend fun doWork(): Result {
     Log.d(TAG, "Starting background sync")
+    val reporter = applicationContext.syncProgressReporter()
 
     val credentials = CredentialsManager.getCredentials(applicationContext)
     if (credentials == null) {
@@ -59,25 +60,32 @@ class SyncWorker(
     // Invalidate token if granted types changed since last sync
     invalidateTokenIfGrantedTypesChanged(grantedTypes)
 
+    reporter.begin()
     return try {
       // Step 0: Process pending local data entries (Add Data offline queue)
-      processPendingData(credentials.apiUrl, credentials.authToken)
+      processPendingData(credentials.apiUrl, credentials.authToken, reporter)
 
       // Step 1: Fetch and send daily aggregates for cumulative metrics (deduplicated)
       val aggregates = fetchDailyAggregates(healthConnectClient, grantedTypes.toSet(), days = 7)
       if (aggregates.isNotEmpty()) {
-        val aggregateSuccess = sendDailyAggregates(aggregates, credentials.apiUrl, credentials.authToken, httpClient)
+        val aggregateSuccess = sendDailyAggregates(aggregates, credentials.apiUrl, credentials.authToken, httpClient, reporter)
         if (!aggregateSuccess) {
           Log.w(TAG, "Failed to send daily aggregates, will retry")
+          reporter.end("Daily aggregates failed")
           return Result.retry()
         }
         Log.d(TAG, "Sent ${aggregates.size} daily aggregates")
+      } else {
+        reporter.updateStage(SyncStage.DailyAggregates) {
+          it.copy(status = SyncStageStatus.Done, message = "Nothing to send")
+        }
       }
 
       // Step 2: Fetch and send raw records incrementally (page by page)
-      val syncSuccess = fetchAndSyncHealthData(credentials.apiUrl, credentials.authToken)
+      val syncSuccess = fetchAndSyncHealthData(credentials.apiUrl, credentials.authToken, reporter)
       if (!syncSuccess) {
         Log.w(TAG, "Incremental sync failed, will retry")
+        reporter.end("Health Connect sync failed")
         return Result.retry()
       }
 
@@ -90,9 +98,13 @@ class SyncWorker(
           httpClient = httpClient,
           healthConnectClient = healthConnectClient,
           grantedPermissions = grantedPermissions,
+          reporter = reporter,
         )
       } catch (e: Exception) {
         Log.w(TAG, "Outbound sync failed: ${e.message}")
+        reporter.updateStage(SyncStage.Outbound) {
+          it.copy(status = SyncStageStatus.Failed, errorMessage = e.message)
+        }
       }
 
       // Step 4: ActivityWatch sync (if enabled).
@@ -111,9 +123,11 @@ class SyncWorker(
       }
 
       HrZoneWidgetProvider.triggerUpdate(applicationContext)
+      reporter.end()
       Result.success()
     } catch (e: Exception) {
       Log.e(TAG, "Background sync failed", e)
+      reporter.end(e.message)
       Result.retry()
     }
   }
@@ -122,10 +136,24 @@ class SyncWorker(
    * Process pending local data entries (activities and metrics queued offline).
    * Successfully sent entries are removed; failures are left for the next sync cycle.
    */
-  private suspend fun processPendingData(serverUrl: String, authToken: String) {
+  private suspend fun processPendingData(serverUrl: String, authToken: String, reporter: SyncProgressReporter) {
     val entries = getPendingEntries(applicationContext)
-    if (entries.isEmpty()) return
+    if (entries.isEmpty()) {
+      reporter.updateStage(SyncStage.PendingData) {
+        it.copy(status = SyncStageStatus.Done, message = "No queued entries")
+      }
+      return
+    }
     Log.d(TAG, "Processing ${entries.size} pending data entries")
+    reporter.updateStage(SyncStage.PendingData) {
+      it.copy(
+        status = SyncStageStatus.Active,
+        message = "Uploading ${entries.size} queued ${if (entries.size == 1) "entry" else "entries"}",
+        sentRecords = 0,
+      )
+    }
+    var sent = 0
+    var failed = 0
 
     for (entry in entries) {
       val result = when (val data = entry.data) {
@@ -153,12 +181,21 @@ class SyncWorker(
         is DataResult.Success<*> -> {
           removePendingEntry(applicationContext, entry.id)
           Log.d(TAG, "Pending entry ${entry.id} synced successfully")
+          sent++
+          reporter.updateStage(SyncStage.PendingData) { it.copy(sentRecords = sent) }
         }
         is DataResult.Error -> {
           markPendingEntryFailed(applicationContext, entry.id, result.message)
           Log.w(TAG, "Pending entry ${entry.id} failed: ${result.message}")
+          failed++
         }
       }
+    }
+    reporter.updateStage(SyncStage.PendingData) {
+      it.copy(
+        status = if (failed == 0) SyncStageStatus.Done else SyncStageStatus.Failed,
+        message = "$sent uploaded, $failed failed",
+      )
     }
   }
 
@@ -172,11 +209,19 @@ class SyncWorker(
   private suspend fun fetchAndSyncHealthData(
     serverUrl: String,
     authToken: String,
+    reporter: SyncProgressReporter,
   ): Boolean {
     val lastToken = loadChangesToken()
     if (lastToken == null) {
       Log.d(TAG, "No token found, skipping background fetch (initial fetch should be done in foreground)")
+      reporter.updateStage(SyncStage.HealthConnect) {
+        it.copy(status = SyncStageStatus.Skipped, message = "Initial fetch must run in foreground")
+      }
       return true
+    }
+
+    reporter.updateStage(SyncStage.HealthConnect) {
+      it.copy(status = SyncStageStatus.Active, message = "Fetching incremental changes…", sentRecords = 0, sentDeletions = 0)
     }
 
     var currentToken: String = lastToken
@@ -201,13 +246,26 @@ class SyncWorker(
 
       if (upsertions.isNotEmpty() || deletionIds.isNotEmpty()) {
         Log.d(TAG, "Page $pageNum: ${upsertions.size} records, ${deletionIds.size} deletions")
-        val result = sendPage(upsertions, deletionIds, serverUrl, authToken, httpClient, TAG)
+        upsertions.oldestEventInstant()?.let(reporter::reportDataInstant)
+        reporter.updateStage(SyncStage.HealthConnect) {
+          it.copy(
+            currentPage = pageNum,
+            message = "Page $pageNum (${upsertions.size} records, ${deletionIds.size} deletions)",
+          )
+        }
+        val result = sendPage(upsertions, deletionIds, serverUrl, authToken, httpClient, reporter, TAG)
         if (!result.isSuccess) {
           Log.w(TAG, "Page $pageNum failed: ${result.errorMessage()}, will retry from saved token")
+          reporter.updateStage(SyncStage.HealthConnect) {
+            it.copy(status = SyncStageStatus.Failed, errorMessage = result.errorMessage())
+          }
           return false
         }
         totalRecords += upsertions.size
         totalDeletions += deletionIds.size
+        reporter.updateStage(SyncStage.HealthConnect) {
+          it.copy(sentRecords = totalRecords, sentDeletions = totalDeletions)
+        }
       }
 
       // Save intermediate token -- this page is permanently done
@@ -218,8 +276,18 @@ class SyncWorker(
 
     if (totalRecords > 0 || totalDeletions > 0) {
       Log.d(TAG, "Incremental sync complete: $totalRecords records, $totalDeletions deletions across $pageNum pages")
+      reporter.updateStage(SyncStage.HealthConnect) {
+        it.copy(
+          status = SyncStageStatus.Done,
+          totalPages = pageNum,
+          message = "$totalRecords records, $totalDeletions deletions ($pageNum pages)",
+        )
+      }
     } else {
       Log.d(TAG, "No new inbound data to sync")
+      reporter.updateStage(SyncStage.HealthConnect) {
+        it.copy(status = SyncStageStatus.Done, message = "Up to date")
+      }
     }
     return true
   }
