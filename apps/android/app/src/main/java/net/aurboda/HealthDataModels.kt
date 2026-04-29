@@ -708,6 +708,366 @@ data class Vo2MaxRecordSerializable(
   }
 }
 
+// --- Basal Body Temperature Record ---
+@Serializable
+data class BasalBodyTemperatureRecordSerializable(
+  val time: String,
+  val temperatureInCelsius: Double,
+  val measurementLocation: Int,
+  val metadata: HealthConnectRecordMetadata,
+) {
+  companion object {
+    fun fromRecordsList(classRecords: List<Record>): List<BasalBodyTemperatureRecordSerializable> =
+      classRecords.filterIsInstance<BasalBodyTemperatureRecord>().map { record ->
+        BasalBodyTemperatureRecordSerializable(
+          time = record.time.toIsoString(),
+          temperatureInCelsius = record.temperature.inCelsius,
+          measurementLocation = record.measurementLocation,
+          metadata = record.metadata.toSerializable(),
+        )
+      }
+  }
+}
+
+// --- Basal Metabolic Rate Record ---
+@Serializable
+data class BasalMetabolicRateRecordSerializable(
+  val time: String,
+  val basalMetabolicRateInKcalPerDay: Double,
+  val metadata: HealthConnectRecordMetadata,
+) {
+  companion object {
+    fun fromRecordsList(classRecords: List<Record>): List<BasalMetabolicRateRecordSerializable> =
+      classRecords.filterIsInstance<BasalMetabolicRateRecord>().map { record ->
+        BasalMetabolicRateRecordSerializable(
+          time = record.time.toIsoString(),
+          basalMetabolicRateInKcalPerDay = record.basalMetabolicRate.inKilocaloriesPerDay,
+          metadata = record.metadata.toSerializable(),
+        )
+      }
+  }
+}
+
+// --- Blood Glucose Record ---
+@Serializable
+data class BloodGlucoseRecordSerializable(
+  val time: String,
+  val levelInMmolPerL: Double,
+  val specimenSource: Int,
+  val mealType: Int,
+  val relationToMeal: Int,
+  val metadata: HealthConnectRecordMetadata,
+) {
+  companion object {
+    fun fromRecordsList(classRecords: List<Record>): List<BloodGlucoseRecordSerializable> =
+      classRecords.filterIsInstance<BloodGlucoseRecord>().map { record ->
+        BloodGlucoseRecordSerializable(
+          time = record.time.toIsoString(),
+          levelInMmolPerL = record.level.inMillimolesPerLiter,
+          specimenSource = record.specimenSource,
+          mealType = record.mealType,
+          relationToMeal = record.relationToMeal,
+          metadata = record.metadata.toSerializable(),
+        )
+      }
+  }
+}
+
+// --- Blood Pressure Record ---
+@Serializable
+data class BloodPressureRecordSerializable(
+  val time: String,
+  val systolicInMmHg: Double,
+  val diastolicInMmHg: Double,
+  val bodyPosition: Int,
+  val measurementLocation: Int,
+  val metadata: HealthConnectRecordMetadata,
+) {
+  companion object {
+    fun fromRecordsList(classRecords: List<Record>): List<BloodPressureRecordSerializable> =
+      classRecords.filterIsInstance<BloodPressureRecord>().map { record ->
+        BloodPressureRecordSerializable(
+          time = record.time.toIsoString(),
+          systolicInMmHg = record.systolic.inMillimetersOfMercury,
+          diastolicInMmHg = record.diastolic.inMillimetersOfMercury,
+          bodyPosition = record.bodyPosition,
+          measurementLocation = record.measurementLocation,
+          metadata = record.metadata.toSerializable(),
+        )
+      }
+  }
+}
+
+// --- Body Temperature Record ---
+@Serializable
+data class BodyTemperatureRecordSerializable(
+  val time: String,
+  val temperatureInCelsius: Double,
+  val measurementLocation: Int,
+  val metadata: HealthConnectRecordMetadata,
+) {
+  companion object {
+    fun fromRecordsList(classRecords: List<Record>): List<BodyTemperatureRecordSerializable> =
+      classRecords.filterIsInstance<BodyTemperatureRecord>().map { record ->
+        BodyTemperatureRecordSerializable(
+          time = record.time.toIsoString(),
+          temperatureInCelsius = record.temperature.inCelsius,
+          measurementLocation = record.measurementLocation,
+          metadata = record.metadata.toSerializable(),
+        )
+      }
+  }
+}
+
+// --- Cervical Mucus Record ---
+@Serializable
+data class CervicalMucusRecordSerializable(
+  val time: String,
+  val appearance: Int,
+  val sensation: Int,
+  val metadata: HealthConnectRecordMetadata,
+) {
+  companion object {
+    fun fromRecordsList(classRecords: List<Record>): List<CervicalMucusRecordSerializable> =
+      classRecords.filterIsInstance<CervicalMucusRecord>().map { record ->
+        CervicalMucusRecordSerializable(
+          time = record.time.toIsoString(),
+          appearance = record.appearance,
+          sensation = record.sensation,
+          metadata = record.metadata.toSerializable(),
+        )
+      }
+  }
+}
+
+// --- Cycling Pedaling Cadence Record Helpers ---
+@Serializable
+data class CyclingCadenceSampleSerializable(
+  val time: String,
+  val revolutionsPerMinute: Double,
+)
+
+// --- Cycling Pedaling Cadence Record ---
+@Serializable
+data class CyclingPedalingCadenceRecordSerializable(
+  val startTime: String,
+  val endTime: String,
+  val samples: List<CyclingCadenceSampleSerializable>,
+  val metadata: HealthConnectRecordMetadata,
+) {
+  companion object {
+    fun fromRecordsList(classRecords: List<Record>): List<CyclingPedalingCadenceRecordSerializable> =
+      classRecords.filterIsInstance<CyclingPedalingCadenceRecord>().map { record ->
+        CyclingPedalingCadenceRecordSerializable(
+          startTime = record.startTime.toIsoString(),
+          endTime = record.endTime.toIsoString(),
+          samples =
+            record.samples.map {
+              CyclingCadenceSampleSerializable(
+                time = it.time.toIsoString(),
+                revolutionsPerMinute = it.revolutionsPerMinute,
+              )
+            },
+          metadata = record.metadata.toSerializable(),
+        )
+      }
+  }
+}
+
+// --- Elevation Gained Record ---
+@Serializable
+data class ElevationGainedRecordSerializable(
+  val startTime: String,
+  val endTime: String,
+  val elevationInMeters: Double,
+  val metadata: HealthConnectRecordMetadata,
+) {
+  companion object {
+    fun fromRecordsList(classRecords: List<Record>): List<ElevationGainedRecordSerializable> =
+      classRecords.filterIsInstance<ElevationGainedRecord>().map { record ->
+        ElevationGainedRecordSerializable(
+          startTime = record.startTime.toIsoString(),
+          endTime = record.endTime.toIsoString(),
+          elevationInMeters = record.elevation.inMeters,
+          metadata = record.metadata.toSerializable(),
+        )
+      }
+  }
+}
+
+// --- Hydration Record ---
+@Serializable
+data class HydrationRecordSerializable(
+  val startTime: String,
+  val endTime: String,
+  val volumeInLiters: Double,
+  val metadata: HealthConnectRecordMetadata,
+) {
+  companion object {
+    fun fromRecordsList(classRecords: List<Record>): List<HydrationRecordSerializable> =
+      classRecords.filterIsInstance<HydrationRecord>().map { record ->
+        HydrationRecordSerializable(
+          startTime = record.startTime.toIsoString(),
+          endTime = record.endTime.toIsoString(),
+          volumeInLiters = record.volume.inLiters,
+          metadata = record.metadata.toSerializable(),
+        )
+      }
+  }
+}
+
+// --- Intermenstrual Bleeding Record ---
+@Serializable
+data class IntermenstrualBleedingRecordSerializable(
+  val time: String,
+  val metadata: HealthConnectRecordMetadata,
+) {
+  companion object {
+    fun fromRecordsList(classRecords: List<Record>): List<IntermenstrualBleedingRecordSerializable> =
+      classRecords.filterIsInstance<IntermenstrualBleedingRecord>().map { record ->
+        IntermenstrualBleedingRecordSerializable(
+          time = record.time.toIsoString(),
+          metadata = record.metadata.toSerializable(),
+        )
+      }
+  }
+}
+
+// --- Menstruation Flow Record ---
+@Serializable
+data class MenstruationFlowRecordSerializable(
+  val time: String,
+  val flow: Int,
+  val metadata: HealthConnectRecordMetadata,
+) {
+  companion object {
+    fun fromRecordsList(classRecords: List<Record>): List<MenstruationFlowRecordSerializable> =
+      classRecords.filterIsInstance<MenstruationFlowRecord>().map { record ->
+        MenstruationFlowRecordSerializable(
+          time = record.time.toIsoString(),
+          flow = record.flow,
+          metadata = record.metadata.toSerializable(),
+        )
+      }
+  }
+}
+
+// --- Menstruation Period Record ---
+@Serializable
+data class MenstruationPeriodRecordSerializable(
+  val startTime: String,
+  val endTime: String,
+  val metadata: HealthConnectRecordMetadata,
+) {
+  companion object {
+    fun fromRecordsList(classRecords: List<Record>): List<MenstruationPeriodRecordSerializable> =
+      classRecords.filterIsInstance<MenstruationPeriodRecord>().map { record ->
+        MenstruationPeriodRecordSerializable(
+          startTime = record.startTime.toIsoString(),
+          endTime = record.endTime.toIsoString(),
+          metadata = record.metadata.toSerializable(),
+        )
+      }
+  }
+}
+
+// --- Ovulation Test Record ---
+@Serializable
+data class OvulationTestRecordSerializable(
+  val time: String,
+  val result: Int,
+  val metadata: HealthConnectRecordMetadata,
+) {
+  companion object {
+    fun fromRecordsList(classRecords: List<Record>): List<OvulationTestRecordSerializable> =
+      classRecords.filterIsInstance<OvulationTestRecord>().map { record ->
+        OvulationTestRecordSerializable(
+          time = record.time.toIsoString(),
+          result = record.result,
+          metadata = record.metadata.toSerializable(),
+        )
+      }
+  }
+}
+
+// --- Oxygen Saturation Record ---
+@Serializable
+data class OxygenSaturationRecordSerializable(
+  val time: String,
+  val percentage: Double,
+  val metadata: HealthConnectRecordMetadata,
+) {
+  companion object {
+    fun fromRecordsList(classRecords: List<Record>): List<OxygenSaturationRecordSerializable> =
+      classRecords.filterIsInstance<OxygenSaturationRecord>().map { record ->
+        OxygenSaturationRecordSerializable(
+          time = record.time.toIsoString(),
+          percentage = record.percentage.value,
+          metadata = record.metadata.toSerializable(),
+        )
+      }
+  }
+}
+
+// --- Respiratory Rate Record ---
+@Serializable
+data class RespiratoryRateRecordSerializable(
+  val time: String,
+  val rate: Double,
+  val metadata: HealthConnectRecordMetadata,
+) {
+  companion object {
+    fun fromRecordsList(classRecords: List<Record>): List<RespiratoryRateRecordSerializable> =
+      classRecords.filterIsInstance<RespiratoryRateRecord>().map { record ->
+        RespiratoryRateRecordSerializable(
+          time = record.time.toIsoString(),
+          rate = record.rate,
+          metadata = record.metadata.toSerializable(),
+        )
+      }
+  }
+}
+
+// --- Sexual Activity Record ---
+@Serializable
+data class SexualActivityRecordSerializable(
+  val time: String,
+  val protectionUsed: Int,
+  val metadata: HealthConnectRecordMetadata,
+) {
+  companion object {
+    fun fromRecordsList(classRecords: List<Record>): List<SexualActivityRecordSerializable> =
+      classRecords.filterIsInstance<SexualActivityRecord>().map { record ->
+        SexualActivityRecordSerializable(
+          time = record.time.toIsoString(),
+          protectionUsed = record.protectionUsed,
+          metadata = record.metadata.toSerializable(),
+        )
+      }
+  }
+}
+
+// --- Wheelchair Pushes Record ---
+@Serializable
+data class WheelchairPushesRecordSerializable(
+  val startTime: String,
+  val endTime: String,
+  val count: Long,
+  val metadata: HealthConnectRecordMetadata,
+) {
+  companion object {
+    fun fromRecordsList(classRecords: List<Record>): List<WheelchairPushesRecordSerializable> =
+      classRecords.filterIsInstance<WheelchairPushesRecord>().map { record ->
+        WheelchairPushesRecordSerializable(
+          startTime = record.startTime.toIsoString(),
+          endTime = record.endTime.toIsoString(),
+          count = record.count,
+          metadata = record.metadata.toSerializable(),
+        )
+      }
+  }
+}
+
 // Helper to format Instant to ISO 8601 String
 fun Instant.toIsoString(): String = this.atOffset(ZoneOffset.UTC).format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
 

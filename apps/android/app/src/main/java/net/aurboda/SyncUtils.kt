@@ -9,8 +9,10 @@ import io.ktor.client.request.setBody
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
-import io.ktor.http.contentType
+import io.ktor.http.content.TextContent
 import kotlinx.coroutines.delay
+import kotlinx.serialization.KSerializer
+import kotlinx.serialization.builtins.serializer
 
 const val SYNC_UTILS_TAG = "SyncUtils"
 
@@ -59,13 +61,11 @@ sealed class PostResult {
 }
 
 /**
- * Post a single chunk of data to the server.
- * This is the core posting logic used by both regular and chunked posting.
- *
- * Note: Must be inline with reified T to preserve type information for serialization.
+ * Post a single pre-serialized JSON body to the server.
+ * Non-inline to keep dispatch sites compact (avoids JVM "method too large" with many record types).
  */
-suspend inline fun <reified T : Any> postChunk(
-  data: PostWrapper<T>,
+suspend fun postChunkRaw(
+  jsonBody: String,
   apiUrl: String,
   authToken: String,
   httpClient: HttpClient,
@@ -74,9 +74,10 @@ suspend inline fun <reified T : Any> postChunk(
   try {
     val response =
       httpClient.post(apiUrl) {
-        contentType(ContentType.Application.Json)
         headers { append(HttpHeaders.Authorization, "Bearer $authToken") }
-        setBody(data)
+        // Bypass Ktor ContentNegotiation: we already serialized — TextContent is sent as-is,
+        // avoiding the JSON converter wrapping the String into "..." again.
+        setBody(TextContent(jsonBody, ContentType.Application.Json))
       }
     if (response.status == HttpStatusCode.OK || response.status == HttpStatusCode.Created) {
       Log.d(logTag, "POST successful: ${response.status}")
@@ -91,19 +92,36 @@ suspend inline fun <reified T : Any> postChunk(
   }
 
 /**
- * Post a chunk with bounded exponential-backoff retry on transient failures.
- * 4xx (other than 408/429) bypass retry — they will not succeed on retry.
+ * Encode a PostWrapper<T> using the supplied item serializer and POST it.
  */
-suspend inline fun <reified T : Any> postChunkWithRetry(
+suspend fun <T : Any> postChunk(
   data: PostWrapper<T>,
+  itemSerializer: KSerializer<T>,
   apiUrl: String,
   authToken: String,
   httpClient: HttpClient,
   logTag: String = SYNC_UTILS_TAG,
 ): PostResult {
+  val jsonBody = appJson.encodeToString(PostWrapper.serializer(itemSerializer), data)
+  return postChunkRaw(jsonBody, apiUrl, authToken, httpClient, logTag)
+}
+
+/**
+ * Post a chunk with bounded exponential-backoff retry on transient failures.
+ * 4xx (other than 408/429) bypass retry — they will not succeed on retry.
+ */
+suspend fun <T : Any> postChunkWithRetry(
+  data: PostWrapper<T>,
+  itemSerializer: KSerializer<T>,
+  apiUrl: String,
+  authToken: String,
+  httpClient: HttpClient,
+  logTag: String = SYNC_UTILS_TAG,
+): PostResult {
+  val jsonBody = appJson.encodeToString(PostWrapper.serializer(itemSerializer), data)
   var lastResult: PostResult = PostResult.NetworkError("not attempted")
   for (attempt in 1..MAX_CHUNK_ATTEMPTS) {
-    val result = postChunk(data, apiUrl, authToken, httpClient, logTag)
+    val result = postChunkRaw(jsonBody, apiUrl, authToken, httpClient, logTag)
     if (result.isSuccess) return result
     lastResult = result
     if (!result.isTransient || attempt == MAX_CHUNK_ATTEMPTS) return result
@@ -119,14 +137,14 @@ suspend inline fun <reified T : Any> postChunkWithRetry(
  * HeartRateRecord can be very large (thousands of samples per record).
  *
  * @param dataList The list of records to post
+ * @param itemSerializer kotlinx.serialization serializer for the item type
  * @param chunkSize Maximum number of records per chunk
  * @param recordTypeName Name of the record type for logging and progress reporting
  * @param reporter Sync progress reporter for per-chunk UI updates
- *
- * Note: Must be inline with reified T to preserve type information for serialization.
  */
-suspend inline fun <reified T : Any> postDataChunked(
+suspend fun <T : Any> postDataChunked(
   dataList: List<T>,
+  itemSerializer: KSerializer<T>,
   apiUrl: String,
   authToken: String,
   httpClient: HttpClient,
@@ -157,6 +175,7 @@ suspend inline fun <reified T : Any> postDataChunked(
     val result =
       postChunkWithRetry(
         data = PostWrapper(chunk),
+        itemSerializer = itemSerializer,
         apiUrl = apiUrl,
         authToken = authToken,
         httpClient = httpClient,
@@ -209,6 +228,7 @@ suspend fun sendDeletions(
 
   return postChunkWithRetry(
     data = PostWrapper(deletionIds),
+    itemSerializer = String.serializer(),
     apiUrl = "$serverUrl/sync/deletions",
     authToken = authToken,
     httpClient = httpClient,
@@ -225,8 +245,9 @@ suspend fun sendDeletions(
 /**
  * Send a non-chunked record group as one POST. Reports per-record-type progress.
  */
-private suspend inline fun <reified S : Any> sendSingleType(
+private suspend fun <S : Any> sendSingleType(
   serializables: List<S>,
+  itemSerializer: KSerializer<S>,
   syncUrl: String,
   authToken: String,
   httpClient: HttpClient,
@@ -237,7 +258,8 @@ private suspend inline fun <reified S : Any> sendSingleType(
   reporter.updateRecordType(recordTypeName) {
     it.copy(status = SyncStageStatus.Active, totalChunks = 1, currentChunk = 1)
   }
-  val result = postChunkWithRetry(PostWrapper(serializables), syncUrl, authToken, httpClient, logTag)
+  val result =
+    postChunkWithRetry(PostWrapper(serializables), itemSerializer, syncUrl, authToken, httpClient, logTag)
   reporter.updateRecordType(recordTypeName) {
     when {
       result.isSuccess ->
@@ -281,29 +303,97 @@ suspend fun sendRecords(
         ActiveCaloriesBurnedRecord::class ->
           sendSingleType(
             ActiveCaloriesBurnedRecordSerializable.fromRecordsList(classRecords),
+            ActiveCaloriesBurnedRecordSerializable.serializer(),
+            syncUrl, authToken, httpClient, typeName, reporter, logTag,
+          )
+        BasalBodyTemperatureRecord::class ->
+          sendSingleType(
+            BasalBodyTemperatureRecordSerializable.fromRecordsList(classRecords),
+            BasalBodyTemperatureRecordSerializable.serializer(),
+            syncUrl, authToken, httpClient, typeName, reporter, logTag,
+          )
+        BasalMetabolicRateRecord::class ->
+          sendSingleType(
+            BasalMetabolicRateRecordSerializable.fromRecordsList(classRecords),
+            BasalMetabolicRateRecordSerializable.serializer(),
+            syncUrl, authToken, httpClient, typeName, reporter, logTag,
+          )
+        BloodGlucoseRecord::class ->
+          sendSingleType(
+            BloodGlucoseRecordSerializable.fromRecordsList(classRecords),
+            BloodGlucoseRecordSerializable.serializer(),
+            syncUrl, authToken, httpClient, typeName, reporter, logTag,
+          )
+        BloodPressureRecord::class ->
+          sendSingleType(
+            BloodPressureRecordSerializable.fromRecordsList(classRecords),
+            BloodPressureRecordSerializable.serializer(),
             syncUrl, authToken, httpClient, typeName, reporter, logTag,
           )
         BodyFatRecord::class ->
-          sendSingleType(BodyFatRecordSerializable.fromRecordsList(classRecords), syncUrl, authToken, httpClient, typeName, reporter, logTag)
+          sendSingleType(
+            BodyFatRecordSerializable.fromRecordsList(classRecords),
+            BodyFatRecordSerializable.serializer(),
+            syncUrl, authToken, httpClient, typeName, reporter, logTag,
+          )
+        BodyTemperatureRecord::class ->
+          sendSingleType(
+            BodyTemperatureRecordSerializable.fromRecordsList(classRecords),
+            BodyTemperatureRecordSerializable.serializer(),
+            syncUrl, authToken, httpClient, typeName, reporter, logTag,
+          )
         BodyWaterMassRecord::class ->
-          sendSingleType(BodyWaterMassRecordSerializable.fromRecordsList(classRecords), syncUrl, authToken, httpClient, typeName, reporter, logTag)
+          sendSingleType(
+            BodyWaterMassRecordSerializable.fromRecordsList(classRecords),
+            BodyWaterMassRecordSerializable.serializer(),
+            syncUrl, authToken, httpClient, typeName, reporter, logTag,
+          )
         BoneMassRecord::class ->
-          sendSingleType(BoneMassRecordSerializable.fromRecordsList(classRecords), syncUrl, authToken, httpClient, typeName, reporter, logTag)
+          sendSingleType(
+            BoneMassRecordSerializable.fromRecordsList(classRecords),
+            BoneMassRecordSerializable.serializer(),
+            syncUrl, authToken, httpClient, typeName, reporter, logTag,
+          )
+        CervicalMucusRecord::class ->
+          sendSingleType(
+            CervicalMucusRecordSerializable.fromRecordsList(classRecords),
+            CervicalMucusRecordSerializable.serializer(),
+            syncUrl, authToken, httpClient, typeName, reporter, logTag,
+          )
+        CyclingPedalingCadenceRecord::class ->
+          sendSingleType(
+            CyclingPedalingCadenceRecordSerializable.fromRecordsList(classRecords),
+            CyclingPedalingCadenceRecordSerializable.serializer(),
+            syncUrl, authToken, httpClient, typeName, reporter, logTag,
+          )
         DistanceRecord::class ->
-          sendSingleType(DistanceRecordSerializable.fromRecordsList(classRecords), syncUrl, authToken, httpClient, typeName, reporter, logTag)
+          sendSingleType(
+            DistanceRecordSerializable.fromRecordsList(classRecords),
+            DistanceRecordSerializable.serializer(),
+            syncUrl, authToken, httpClient, typeName, reporter, logTag,
+          )
+        ElevationGainedRecord::class ->
+          sendSingleType(
+            ElevationGainedRecordSerializable.fromRecordsList(classRecords),
+            ElevationGainedRecordSerializable.serializer(),
+            syncUrl, authToken, httpClient, typeName, reporter, logTag,
+          )
         ExerciseSessionRecord::class ->
           sendSingleType(
             ExerciseSessionRecordSerializable.fromRecordsList(classRecords),
+            ExerciseSessionRecordSerializable.serializer(),
             syncUrl, authToken, httpClient, typeName, reporter, logTag,
           )
         FloorsClimbedRecord::class ->
           sendSingleType(
             FloorsClimbedRecordSerializable.fromRecordsList(classRecords),
+            FloorsClimbedRecordSerializable.serializer(),
             syncUrl, authToken, httpClient, typeName, reporter, logTag,
           )
         HeartRateRecord::class ->
           postDataChunked(
             HeartRateRecordSerializable.fromRecordsList(classRecords),
+            HeartRateRecordSerializable.serializer(),
             syncUrl,
             authToken,
             httpClient,
@@ -313,35 +403,131 @@ suspend fun sendRecords(
             logTag = logTag,
           )
         HeartRateVariabilityRmssdRecord::class ->
-          sendSingleType(HrvRecordSerializable.fromRecordsList(classRecords), syncUrl, authToken, httpClient, typeName, reporter, logTag)
+          sendSingleType(
+            HrvRecordSerializable.fromRecordsList(classRecords),
+            HrvRecordSerializable.serializer(),
+            syncUrl, authToken, httpClient, typeName, reporter, logTag,
+          )
         HeightRecord::class ->
-          sendSingleType(HeightRecordSerializable.fromRecordsList(classRecords), syncUrl, authToken, httpClient, typeName, reporter, logTag)
+          sendSingleType(
+            HeightRecordSerializable.fromRecordsList(classRecords),
+            HeightRecordSerializable.serializer(),
+            syncUrl, authToken, httpClient, typeName, reporter, logTag,
+          )
+        HydrationRecord::class ->
+          sendSingleType(
+            HydrationRecordSerializable.fromRecordsList(classRecords),
+            HydrationRecordSerializable.serializer(),
+            syncUrl, authToken, httpClient, typeName, reporter, logTag,
+          )
+        IntermenstrualBleedingRecord::class ->
+          sendSingleType(
+            IntermenstrualBleedingRecordSerializable.fromRecordsList(classRecords),
+            IntermenstrualBleedingRecordSerializable.serializer(),
+            syncUrl, authToken, httpClient, typeName, reporter, logTag,
+          )
         LeanBodyMassRecord::class ->
-          sendSingleType(LeanBodyMassRecordSerializable.fromRecordsList(classRecords), syncUrl, authToken, httpClient, typeName, reporter, logTag)
+          sendSingleType(
+            LeanBodyMassRecordSerializable.fromRecordsList(classRecords),
+            LeanBodyMassRecordSerializable.serializer(),
+            syncUrl, authToken, httpClient, typeName, reporter, logTag,
+          )
+        MenstruationFlowRecord::class ->
+          sendSingleType(
+            MenstruationFlowRecordSerializable.fromRecordsList(classRecords),
+            MenstruationFlowRecordSerializable.serializer(),
+            syncUrl, authToken, httpClient, typeName, reporter, logTag,
+          )
+        MenstruationPeriodRecord::class ->
+          sendSingleType(
+            MenstruationPeriodRecordSerializable.fromRecordsList(classRecords),
+            MenstruationPeriodRecordSerializable.serializer(),
+            syncUrl, authToken, httpClient, typeName, reporter, logTag,
+          )
         NutritionRecord::class ->
-          sendSingleType(NutritionRecordSerializable.fromRecordsList(classRecords), syncUrl, authToken, httpClient, typeName, reporter, logTag)
+          sendSingleType(
+            NutritionRecordSerializable.fromRecordsList(classRecords),
+            NutritionRecordSerializable.serializer(),
+            syncUrl, authToken, httpClient, typeName, reporter, logTag,
+          )
+        OvulationTestRecord::class ->
+          sendSingleType(
+            OvulationTestRecordSerializable.fromRecordsList(classRecords),
+            OvulationTestRecordSerializable.serializer(),
+            syncUrl, authToken, httpClient, typeName, reporter, logTag,
+          )
+        OxygenSaturationRecord::class ->
+          sendSingleType(
+            OxygenSaturationRecordSerializable.fromRecordsList(classRecords),
+            OxygenSaturationRecordSerializable.serializer(),
+            syncUrl, authToken, httpClient, typeName, reporter, logTag,
+          )
         PowerRecord::class ->
-          sendSingleType(PowerRecordSerializable.fromRecordsList(classRecords), syncUrl, authToken, httpClient, typeName, reporter, logTag)
+          sendSingleType(
+            PowerRecordSerializable.fromRecordsList(classRecords),
+            PowerRecordSerializable.serializer(),
+            syncUrl, authToken, httpClient, typeName, reporter, logTag,
+          )
+        RespiratoryRateRecord::class ->
+          sendSingleType(
+            RespiratoryRateRecordSerializable.fromRecordsList(classRecords),
+            RespiratoryRateRecordSerializable.serializer(),
+            syncUrl, authToken, httpClient, typeName, reporter, logTag,
+          )
         RestingHeartRateRecord::class ->
           sendSingleType(
             RestingHeartRateRecordSerializable.fromRecordsList(classRecords),
+            RestingHeartRateRecordSerializable.serializer(),
+            syncUrl, authToken, httpClient, typeName, reporter, logTag,
+          )
+        SexualActivityRecord::class ->
+          sendSingleType(
+            SexualActivityRecordSerializable.fromRecordsList(classRecords),
+            SexualActivityRecordSerializable.serializer(),
             syncUrl, authToken, httpClient, typeName, reporter, logTag,
           )
         SleepSessionRecord::class ->
-          sendSingleType(SleepSessionRecordSerializable.fromRecordsList(classRecords), syncUrl, authToken, httpClient, typeName, reporter, logTag)
+          sendSingleType(
+            SleepSessionRecordSerializable.fromRecordsList(classRecords),
+            SleepSessionRecordSerializable.serializer(),
+            syncUrl, authToken, httpClient, typeName, reporter, logTag,
+          )
         SpeedRecord::class ->
-          sendSingleType(SpeedRecordSerializable.fromRecordsList(classRecords), syncUrl, authToken, httpClient, typeName, reporter, logTag)
+          sendSingleType(
+            SpeedRecordSerializable.fromRecordsList(classRecords),
+            SpeedRecordSerializable.serializer(),
+            syncUrl, authToken, httpClient, typeName, reporter, logTag,
+          )
         StepsRecord::class ->
-          sendSingleType(StepsRecordSerializable.fromRecordsList(classRecords), syncUrl, authToken, httpClient, typeName, reporter, logTag)
+          sendSingleType(
+            StepsRecordSerializable.fromRecordsList(classRecords),
+            StepsRecordSerializable.serializer(),
+            syncUrl, authToken, httpClient, typeName, reporter, logTag,
+          )
         TotalCaloriesBurnedRecord::class ->
           sendSingleType(
             TotalCaloriesBurnedRecordSerializable.fromRecordsList(classRecords),
+            TotalCaloriesBurnedRecordSerializable.serializer(),
             syncUrl, authToken, httpClient, typeName, reporter, logTag,
           )
         Vo2MaxRecord::class ->
-          sendSingleType(Vo2MaxRecordSerializable.fromRecordsList(classRecords), syncUrl, authToken, httpClient, typeName, reporter, logTag)
+          sendSingleType(
+            Vo2MaxRecordSerializable.fromRecordsList(classRecords),
+            Vo2MaxRecordSerializable.serializer(),
+            syncUrl, authToken, httpClient, typeName, reporter, logTag,
+          )
         WeightRecord::class ->
-          sendSingleType(WeightRecordSerializable.fromRecordsList(classRecords), syncUrl, authToken, httpClient, typeName, reporter, logTag)
+          sendSingleType(
+            WeightRecordSerializable.fromRecordsList(classRecords),
+            WeightRecordSerializable.serializer(),
+            syncUrl, authToken, httpClient, typeName, reporter, logTag,
+          )
+        WheelchairPushesRecord::class ->
+          sendSingleType(
+            WheelchairPushesRecordSerializable.fromRecordsList(classRecords),
+            WheelchairPushesRecordSerializable.serializer(),
+            syncUrl, authToken, httpClient, typeName, reporter, logTag,
+          )
         else -> {
           Log.w(logTag, "No serializer for $typeName, skipping ${classRecords.size} records")
           reporter.updateRecordType(typeName) { it.copy(status = SyncStageStatus.Skipped, errorMessage = "no serializer") }
