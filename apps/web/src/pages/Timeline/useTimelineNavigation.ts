@@ -41,6 +41,10 @@ export interface TimelineNavigation {
   viewLabel: string
   bucketSize: string
   barBucketSize: '1h' | '1d' | '1w'
+  /** Gap (ms) below which adjacent same-key activities merge in the timeline. */
+  mergeGapMs: number
+  /** Whether sibling sub-types should collapse to their parent_type for merging. */
+  shouldCollapseHierarchy: boolean
 }
 
 export const useTimelineNavigation = (): TimelineNavigation => {
@@ -64,6 +68,26 @@ export const useTimelineNavigation = (): TimelineNavigation => {
     if (days > 50) return '1w'
     if (days > 2) return '1d'
     return '1h'
+  }, [effectiveViewStart, effectiveViewEnd])
+
+  // Zoom-graded merge gap: as the user zooms out we bridge larger gaps so that
+  // a long string of small same-type activities reads as one bar. At the most
+  // zoomed-in tier we still merge the very small gaps (10 min) so back-to-back
+  // screentime spans don't show as a comb of identical slivers, but we keep the
+  // gap small enough that genuinely separate sessions stay separate.
+  const mergeGapMs = useMemo(() => {
+    const days = differenceInCalendarDays(effectiveViewEnd, effectiveViewStart)
+    if (days > 50) return 4 * 60 * 60 * 1000
+    if (days > 2) return 60 * 60 * 1000
+    return 10 * 60 * 1000
+  }, [effectiveViewStart, effectiveViewEnd])
+
+  // Hierarchy collapse only kicks in when zoomed out: at max zoom the user
+  // wants to see (and click to edit) sibling sub-types like warmup_run vs
+  // strength_training distinctly, so we leave them as-is.
+  const shouldCollapseHierarchy = useMemo(() => {
+    const days = differenceInCalendarDays(effectiveViewEnd, effectiveViewStart)
+    return days > 3
   }, [effectiveViewStart, effectiveViewEnd])
 
   const handleZoom = useCallback((zoomStart: Date, zoomEnd: Date) => {
@@ -130,6 +154,8 @@ export const useTimelineNavigation = (): TimelineNavigation => {
     handleJumpDays,
     handleResetToToday,
     handleZoom,
+    mergeGapMs,
+    shouldCollapseHierarchy,
     toDate,
     viewEnd,
     viewLabel,
