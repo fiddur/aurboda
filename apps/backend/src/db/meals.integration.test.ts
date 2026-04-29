@@ -460,6 +460,39 @@ describe('Meals Integration Tests', () => {
       const rows = await getFrequentFoodItems(user, { limit: 3, since_days: 30 })
       expect(rows).toHaveLength(3)
     })
+
+    test('scopes to meal_type when provided so per-slot strips show different "usuals"', async () => {
+      const user = getTestUser()
+      const oats = '11111111-1111-1111-1111-aaaaaaaaaaaa'
+      const soup = '22222222-2222-2222-2222-bbbbbbbbbbbb'
+
+      const breakfast = await insertMeal(user, { meal_type: 'breakfast', time: new Date() })
+      await setMealFoodItems(user, breakfast.id, [
+        { food_item_id: oats, food_item_name: 'Oats', quantity: 50, sort_order: 0, unit: 'g' },
+      ])
+      const lunch = await insertMeal(user, { meal_type: 'lunch', time: new Date() })
+      await setMealFoodItems(user, lunch.id, [
+        { food_item_id: soup, food_item_name: 'Soup', quantity: 1, sort_order: 0, unit: 'bowl' },
+      ])
+
+      const breakfastRows = await getFrequentFoodItems(user, {
+        limit: 10,
+        meal_type: 'breakfast',
+        since_days: 30,
+      })
+      expect(breakfastRows.map((r) => r.food_item_id)).toEqual([oats])
+
+      const lunchRows = await getFrequentFoodItems(user, {
+        limit: 10,
+        meal_type: 'lunch',
+        since_days: 30,
+      })
+      expect(lunchRows.map((r) => r.food_item_id)).toEqual([soup])
+
+      // Without the filter both items are returned.
+      const all = await getFrequentFoodItems(user, { limit: 10, since_days: 30 })
+      expect(all.map((r) => r.food_item_id).sort()).toEqual([oats, soup].sort())
+    })
   })
 
   describe('JSONB storage', () => {

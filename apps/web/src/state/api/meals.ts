@@ -1,6 +1,8 @@
 import type {
   AddMealBody,
   Meal as ApiMeal,
+  FrequentFoodItem,
+  FrequentFoodItemsResponse,
   FrequentMeal,
   FrequentMealsResponse,
   MealResponse,
@@ -111,6 +113,17 @@ export const fetchFrequentMealsApi = async (
   const response = await axios.get<FrequentMealsResponse>(`${API_URL}/meals/frequent`, {
     headers: { Authorization: `Bearer ${token}` },
     params: { meal_type, limit, since_days },
+  })
+  return response.data.data ?? []
+}
+
+export const fetchFrequentFoodItemsApi = async (
+  opts: { meal_type?: string; limit?: number; since_days?: number } = {},
+): Promise<FrequentFoodItem[]> => {
+  const { token } = auth.value
+  const response = await axios.get<FrequentFoodItemsResponse>(`${API_URL}/meals/frequent-food-items`, {
+    headers: { Authorization: `Bearer ${token}` },
+    params: opts,
   })
   return response.data.data ?? []
 }

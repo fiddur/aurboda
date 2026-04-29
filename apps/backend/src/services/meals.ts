@@ -471,10 +471,11 @@ export async function queryFrequentMeals(
  */
 export async function queryFrequentFoodItems(
   user: string,
-  filters: { limit?: number; since_days?: number },
+  filters: { limit?: number; since_days?: number; meal_type?: string },
 ): Promise<{ success: true; data: FrequentFoodItem[] }> {
   const rows = await dbGetFrequentFoodItems(user, {
     limit: filters.limit ?? 10,
+    meal_type: filters.meal_type,
     since_days: filters.since_days ?? 90,
   })
   return {

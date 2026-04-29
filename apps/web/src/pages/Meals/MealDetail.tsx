@@ -402,7 +402,10 @@ export function MealDetail() {
     [],
   )
 
-  // Sync local fields whenever a fresh meal arrives.
+  // Re-seed local fields only when navigating to a different meal — depending
+  // on `[meal]` would re-run on every post-save refetch and clobber any
+  // in-progress autocomplete draft (e.g. typing a new food item name when
+  // a debounced save round-trips). Same fix as on FoodItemDetail.
   useEffect(() => {
     if (!meal) return
     setName(meal.name ?? '')
@@ -418,7 +421,7 @@ export function MealDetail() {
       fat: meal.fat,
       fiber: meal.fiber,
     })
-  }, [meal])
+  }, [meal?.id])
 
   const updateMutation = useMutation({
     mutationFn: (body: UpdateMealBody) => updateMealApi(id, body),
