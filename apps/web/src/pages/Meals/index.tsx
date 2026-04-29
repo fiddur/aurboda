@@ -437,13 +437,30 @@ function MealSlotRow({
         </div>
       )}
 
-      {slotMeals.map((meal) => (
+      {primaryMeal && (
         <MealDetails
+          meal={primaryMeal}
+          foodSensitivityMap={foodSensitivityMap}
+          sensitivityAreas={sensitivityAreas}
+          onToggleFoodMapping={onToggleFoodMapping}
+        />
+      )}
+
+      {/*
+       * If the slot has more than one meal (intentional split — two snacks
+       * at different times — or the rare double-tap on the quick-log strip),
+       * render each additional meal as its own row with time + edit + delete
+       * so the duplicates are obvious and individually manageable.
+       */}
+      {slotMeals.slice(1).map((meal) => (
+        <DuplicateMealRow
           key={meal.id}
           meal={meal}
           foodSensitivityMap={foodSensitivityMap}
           sensitivityAreas={sensitivityAreas}
           onToggleFoodMapping={onToggleFoodMapping}
+          onDelete={onDelete}
+          isDeletePending={isDeletePending}
         />
       ))}
     </div>
@@ -508,6 +525,59 @@ function DayNutrientSummary({ meals }: { meals: Meal[] }) {
           })}
         </>
       )}
+    </div>
+  )
+}
+
+/**
+ * A second-or-later meal in the same slot. Rendered below the primary meal
+ * with its own time, edit, and delete affordances so users can manage each
+ * one individually (intentional split, or the rare double-click duplicate).
+ */
+function DuplicateMealRow({
+  meal,
+  foodSensitivityMap,
+  sensitivityAreas,
+  onToggleFoodMapping,
+  onDelete,
+  isDeletePending,
+}: {
+  meal: Meal
+  foodSensitivityMap: Record<string, string[]>
+  sensitivityAreas: string[]
+  onToggleFoodMapping: (foodItem: string, area: string, checked: boolean) => void
+  onDelete: (id: string) => void
+  isDeletePending: boolean
+}) {
+  return (
+    <div class="duplicate-meal-row">
+      <div class="duplicate-meal-top">
+        <span class="duplicate-meal-time">{format(meal.time, 'HH:mm')}</span>
+        <div class="slot-actions">
+          <a
+            href={`/meals/${meal.id}`}
+            class="meal-edit-link"
+            title="Edit meal details"
+            aria-label="Edit meal"
+          >
+            ✎
+          </a>
+          <ConfirmButton
+            label="Delete"
+            confirmMessage="Delete this meal?"
+            onConfirm={() => onDelete(meal.id!)}
+            isPending={isDeletePending}
+            pendingLabel="Deleting..."
+            buttonClass="btn-danger-small"
+          />
+        </div>
+      </div>
+      <MealDetails
+        meal={meal}
+        foodSensitivityMap={foodSensitivityMap}
+        sensitivityAreas={sensitivityAreas}
+        onToggleFoodMapping={onToggleFoodMapping}
+      />
     </div>
   )
 }
@@ -697,6 +767,8 @@ function useMealMutations(mealsQueryKey: string[], meals: Meal[] | undefined) {
     savingSlots,
     handleToggleSensitivity,
     handleChangeTime,
+    optimisticUpdate,
+    markSlotSaving,
     upsertMutation,
     updateMutation,
     deleteMutation,
@@ -737,6 +809,8 @@ function MealsContent({ dayKey }: { dayKey: string }) {
     savingSlots,
     handleToggleSensitivity,
     handleChangeTime,
+    optimisticUpdate,
+    markSlotSaving,
     upsertMutation,
     updateMutation,
     deleteMutation,
@@ -762,6 +836,8 @@ function MealsContent({ dayKey }: { dayKey: string }) {
     const id = crypto.randomUUID()
     const mealTime = new Date(dayKey)
     mealTime.setHours(hour, minute, 0, 0)
+    optimisticUpdate((old) => [...old, { id, meal_type: slotName, source: 'manual', time: mealTime }])
+    markSlotSaving(slotName, true)
     upsertMutation.mutate({
       id,
       meal_type: slotName,
@@ -775,20 +851,32 @@ function MealsContent({ dayKey }: { dayKey: string }) {
     const id = crypto.randomUUID()
     const mealTime = new Date(dayKey)
     mealTime.setHours(hour, minute, 0, 0)
+    const foodItemPayload = {
+      food_item_id: foodItem.food_item_id,
+      icon: foodItem.icon ?? undefined,
+      name: foodItem.name,
+      quantity: foodItem.last_quantity ?? undefined,
+      unit: foodItem.last_unit ?? undefined,
+    }
+    // Optimistically inject the meal into the cache so the UI flips from
+    // "show quick-log strip" to "show the new meal" immediately. Without
+    // this the user has no feedback during the network round-trip and may
+    // double-click and create duplicate meals.
+    const placeholder: Meal = {
+      food_items: [foodItemPayload],
+      id,
+      meal_type: slotName,
+      source: 'manual',
+      time: mealTime,
+    }
+    optimisticUpdate((old) => [...old, placeholder])
+    markSlotSaving(slotName, true)
     upsertMutation.mutate({
       id,
       meal_type: slotName,
       // No meal name — quick-log creates a meal containing just this one
       // food item; the user can edit/expand from the detail page.
-      food_items: [
-        {
-          food_item_id: foodItem.food_item_id,
-          icon: foodItem.icon ?? undefined,
-          name: foodItem.name,
-          quantity: foodItem.last_quantity ?? undefined,
-          unit: foodItem.last_unit ?? undefined,
-        },
-      ],
+      food_items: [foodItemPayload],
       source: 'manual',
       time: mealTime.toISOString(),
     })
@@ -799,8 +887,11 @@ function MealsContent({ dayKey }: { dayKey: string }) {
     const mealTime = new Date()
     const dayDate = new Date(dayKey)
     mealTime.setFullYear(dayDate.getFullYear(), dayDate.getMonth(), dayDate.getDate())
+    // Default to a custom "other" meal_type so the editor shows custom mode
+    // instead of silently defaulting to lunch. The user can rename freely.
     await addMealApi({
       id,
+      meal_type: 'other',
       source: 'manual',
       time: mealTime.toISOString(),
     })

@@ -781,3 +781,35 @@ a.meal-name:hover {
     color: #d1d5db;
   }
 }
+
+/* Duplicate meal in the same slot — two breakfasts, etc. */
+.duplicate-meal-row {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px dashed #e5e7eb;
+}
+
+.duplicate-meal-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.25rem;
+}
+
+.duplicate-meal-time {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #6b7280;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-color-scheme: dark) {
+  .duplicate-meal-row {
+    border-top-color: #374151;
+  }
+
+  .duplicate-meal-time {
+    color: #9ca3af;
+  }
+}
