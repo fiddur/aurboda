@@ -110,6 +110,7 @@ export const mealsTables: Record<string, string> = {
       salt            DOUBLE PRECISION,
       icon            TEXT,
       source_id       VARCHAR(100),
+      is_composite    BOOLEAN NOT NULL DEFAULT FALSE,
       created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       CONSTRAINT unique_food_item_name UNIQUE (name_lower)
@@ -120,6 +121,31 @@ export const mealsTables: Record<string, string> = {
     CREATE INDEX IF NOT EXISTS idx_food_items_name_lower ON food_items (name_lower);
     CREATE UNIQUE INDEX IF NOT EXISTS idx_food_items_source_id
       ON food_items (source, source_id) WHERE source_id IS NOT NULL
+  `,
+
+  // Composite/recipe food items: a parent food item is "made of" several
+  // ingredients, each pointing at another food (per-user OR central — the FK
+  // is user-only; cross-database refs are soft pointers like meal_food_items).
+  // Quantities are scaled against the ingredient's own default_quantity to
+  // derive the parent's nutrient totals at read time.
+  food_item_ingredients: `
+    CREATE TABLE IF NOT EXISTS food_item_ingredients (
+      id                       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      parent_food_item_id      UUID NOT NULL REFERENCES food_items(id) ON DELETE CASCADE,
+      ingredient_food_item_id  UUID NOT NULL,
+      quantity                 DOUBLE PRECISION NOT NULL,
+      unit                     VARCHAR(100),
+      sort_order               INTEGER NOT NULL DEFAULT 0,
+      created_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CONSTRAINT no_self_ingredient CHECK (parent_food_item_id <> ingredient_food_item_id)
+    )
+  `,
+  food_item_ingredients_indexes: `
+    CREATE INDEX IF NOT EXISTS idx_food_item_ingredients_parent
+      ON food_item_ingredients (parent_food_item_id);
+    CREATE INDEX IF NOT EXISTS idx_food_item_ingredients_ingredient
+      ON food_item_ingredients (ingredient_food_item_id)
   `,
 
   // Fuzzy/accent-insensitive search support: pg_trgm + unaccent extensions,

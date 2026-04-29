@@ -82,6 +82,8 @@ export const tableCreationOrder = [
   'food_items',
   'food_items_indexes',
   'food_items_search_setup',
+  'food_item_ingredients',
+  'food_item_ingredients_indexes',
   'meal_food_items',
   'meal_food_items_indexes',
   'locations',
