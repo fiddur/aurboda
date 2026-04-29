@@ -300,3 +300,67 @@ describe('wouldCreateCycle', () => {
     expect(await service.wouldCreateCycle('user', 'A', ['B', 'C'])).toBe(false)
   })
 })
+
+describe('aggregateNutrientsFromIngredients — scaling edge cases', () => {
+  const buildRow = (qty: number, unit: string | undefined) => ({
+    created_at: new Date(),
+    id: 'r',
+    ingredient_food_item_id: 'x',
+    parent_food_item_id: 'p',
+    quantity: qty,
+    sort_order: 0,
+    unit,
+    updated_at: new Date(),
+  })
+
+  test('converts dimensionally-compatible units (dl ↔ ml) instead of falling back', () => {
+    const coffee = userItem('coffee', 'Coffee')
+    coffee.default_quantity = 100
+    coffee.default_unit = 'ml'
+    coffee.calories = 2
+
+    // 5 dl = 500 ml → 5 × (2 kcal / 100 ml) × 100 ml = 10 kcal
+    const { values, nutrient_data_incomplete } = aggregateNutrientsFromIngredients([
+      { food: coffee, row: buildRow(5, 'dl') },
+    ])
+    expect(values.calories).toBe(10)
+    expect(nutrient_data_incomplete).toBe(false)
+  })
+
+  test('flags incomplete when ingredient unit is dimensionally incompatible with default_unit', () => {
+    const oil = userItem('oil', 'Oil')
+    oil.default_quantity = 100
+    oil.default_unit = 'g'
+    oil.calories = 900
+
+    // "1 ml" against "100 g default" — different dimensions, no conversion possible.
+    const { nutrient_data_incomplete } = aggregateNutrientsFromIngredients([
+      { food: oil, row: buildRow(1, 'ml') },
+    ])
+    expect(nutrient_data_incomplete).toBe(true)
+  })
+
+  test('flags incomplete when default_quantity is missing or zero', () => {
+    const food = userItem('x', 'X')
+    food.default_unit = 'g'
+    food.calories = 100
+    // default_quantity left undefined
+
+    const { nutrient_data_incomplete } = aggregateNutrientsFromIngredients([{ food, row: buildRow(50, 'g') }])
+    expect(nutrient_data_incomplete).toBe(true)
+  })
+
+  test('mass conversion (kg → g)', () => {
+    const flour = userItem('flour', 'Flour')
+    flour.default_quantity = 100
+    flour.default_unit = 'g'
+    flour.calories = 360
+
+    // 0.5 kg = 500 g → 5 × 360 = 1800 kcal
+    const { values, nutrient_data_incomplete } = aggregateNutrientsFromIngredients([
+      { food: flour, row: buildRow(0.5, 'kg') },
+    ])
+    expect(values.calories).toBe(1800)
+    expect(nutrient_data_incomplete).toBe(false)
+  })
+})

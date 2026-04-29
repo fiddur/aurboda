@@ -84,27 +84,60 @@ export interface FoodItemsService {
 const round2 = (n: number): number => Math.round(n * 100) / 100
 
 /**
+ * Convert a quantity from one unit to another for a small set of standard
+ * mass and volume scales. Returns undefined when the units are different
+ * dimensions (e.g. "g" → "ml") or unknown — callers should treat that as
+ * "can't scale, flag as incomplete".
+ */
+const convertUnit = (qty: number, from: string, to: string): number | undefined => {
+  if (from === to) return qty
+  const mass: Record<string, number> = { g: 1, kg: 1000, mg: 0.001, µg: 0.000_001 }
+  const volume: Record<string, number> = { ml: 1, dl: 100, cl: 10, l: 1000 }
+  const f = from.toLowerCase().trim()
+  const t = to.toLowerCase().trim()
+  if (f in mass && t in mass) return (qty * mass[f]) / mass[t]
+  if (f in volume && t in volume) return (qty * volume[f]) / volume[t]
+  return undefined
+}
+
+interface ScaleResult {
+  scale: number
+  /** True if scaling could not be done reliably — caller flips incomplete flag. */
+  incomplete: boolean
+}
+
+/**
  * Compute the scale factor between an ingredient's quantity and its
- * canonical default_quantity. Same-unit assumption — if units differ we
- * fall back to scale = 1 and the caller should treat values as raw.
+ * canonical default_quantity. Same units → straight ratio. Different but
+ * dimensionally-compatible units (e.g. dl ↔ ml) → convert. Anything else
+ * (mismatched dimension, missing default_quantity) → scale = 1 + incomplete
+ * flag so the user knows totals can't be trusted.
  */
 const computeIngredientScale = (
   ingredientQuantity: number,
   ingredientUnit: string | undefined,
   food: MergedFoodItem,
-): number => {
+): ScaleResult => {
   const defaultQty = food.default_quantity as number | undefined
-  if (defaultQty === undefined || defaultQty === null || defaultQty === 0) return 1
+  if (defaultQty === undefined || defaultQty === null || defaultQty === 0) {
+    return { incomplete: true, scale: 1 }
+  }
   const defaultUnit = food.default_unit as string | undefined
-  if (ingredientUnit && defaultUnit && ingredientUnit !== defaultUnit) return 1
-  return ingredientQuantity / defaultQty
+  if (ingredientUnit && defaultUnit && ingredientUnit !== defaultUnit) {
+    const converted = convertUnit(ingredientQuantity, ingredientUnit, defaultUnit)
+    if (converted === undefined) return { incomplete: true, scale: 1 }
+    return { incomplete: false, scale: converted / defaultQty }
+  }
+  return { incomplete: false, scale: ingredientQuantity / defaultQty }
 }
 
 /**
  * Sum each nutrient column across the resolved ingredients × per-ingredient
- * scale. Ingredients we couldn't resolve (cross-DB pointer to a deleted
- * row) and ingredients without a calorie reading both flip the
- * `nutrient_data_incomplete` flag so callers know the totals are partial.
+ * scale. Ingredients we couldn't resolve, ingredients without a calorie
+ * reading, and ingredients we couldn't scale reliably (missing default_qty
+ * or incompatible units) all flip `nutrient_data_incomplete` so callers
+ * know the totals are partial. Rounding is applied once at the end so
+ * accumulated error doesn't compound.
  */
 export const aggregateNutrientsFromIngredients = (ingredients: ResolvedIngredient[]): DerivedNutrients => {
   const values: Record<string, number> = {}
@@ -115,14 +148,16 @@ export const aggregateNutrientsFromIngredients = (ingredients: ResolvedIngredien
       continue
     }
     if (typeof food.calories !== 'number') incomplete = true
-    const scale = computeIngredientScale(row.quantity, row.unit, food)
+    const { scale, incomplete: scaleIncomplete } = computeIngredientScale(row.quantity, row.unit, food)
+    if (scaleIncomplete) incomplete = true
     for (const field of NUTRIENT_FIELD_NAMES) {
       const v = food[field]
       if (typeof v === 'number') {
-        values[field] = round2((values[field] ?? 0) + v * scale)
+        values[field] = (values[field] ?? 0) + v * scale
       }
     }
   }
+  for (const field of Object.keys(values)) values[field] = round2(values[field])
   return { nutrient_data_incomplete: incomplete, values }
 }
 
@@ -163,12 +198,10 @@ export const createFoodItemsService = (centralDb: CentralDb): FoodItemsService =
   getDetail: async (user, id) => {
     const fromUser = await getUserFoodItemById(user, id)
     if (fromUser) {
-      // Per-user item — may be composite. Always look up ingredients (cheap
-      // index seek; absent if not composite).
+      // Skip the junction lookup for atomic items — most reads.
+      if (!fromUser.is_composite) return { item: fromUser }
       const rows = await dbGetIngredients(user, id)
-      if (rows.length === 0) {
-        return { item: fromUser }
-      }
+      if (rows.length === 0) return { item: fromUser }
       const resolved: ResolvedIngredient[] = await Promise.all(
         rows.map(async (row) => {
           const food =

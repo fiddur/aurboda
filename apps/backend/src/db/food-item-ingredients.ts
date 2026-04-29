@@ -64,42 +64,65 @@ export const getIngredients = async (
 }
 
 /**
- * Replace all ingredients for a composite parent (delete + bulk insert).
- * Marks the parent food_items row as composite.
+ * Replace all ingredients for a composite parent (delete + bulk insert)
+ * inside a single transaction. Marks the parent food_items row as composite.
+ *
+ * Atomicity matters: a partial failure (FK violation, SQL CHECK firing on
+ * a self-ref mid-batch, transient connection error) would otherwise leave
+ * the parent with half the new ingredient list and is_composite in an
+ * indeterminate state.
  *
  * The caller is responsible for cycle-checking before invoking this — see
  * wouldCreateCycle in services/food-items.ts. We rely on a service-layer
  * check rather than a SQL trigger because ingredient pointers can cross
  * databases (per-user → central) and SQL recursion can't see central rows.
+ * Note that the cycle check is best-effort: two concurrent setIngredients
+ * calls on related composites could each pass the check independently and
+ * still produce a cycle. Per-user dbs make this rare.
  */
 export const setIngredients = async (
   user: string,
   parentFoodItemId: string,
   items: FoodItemIngredientInput[],
 ): Promise<void> => {
-  await query(user, `DELETE FROM food_item_ingredients WHERE parent_food_item_id = $1`, [parentFoodItemId])
+  try {
+    await query(user, 'BEGIN')
+    await query(user, `DELETE FROM food_item_ingredients WHERE parent_food_item_id = $1`, [parentFoodItemId])
 
-  for (let i = 0; i < items.length; i++) {
-    const item = items[i]
-    await query(
-      user,
-      `INSERT INTO food_item_ingredients
-         (parent_food_item_id, ingredient_food_item_id, quantity, unit, sort_order)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [
-        parentFoodItemId,
-        item.ingredient_food_item_id,
-        item.quantity,
-        item.unit ?? null,
-        item.sort_order ?? i,
-      ],
-    )
+    if (items.length > 0) {
+      // Single multi-row INSERT — 5 columns per row, parameterised.
+      const params: unknown[] = []
+      const valuesSql = items
+        .map((item, i) => {
+          const base = i * 5
+          params.push(
+            parentFoodItemId,
+            item.ingredient_food_item_id,
+            item.quantity,
+            item.unit ?? null,
+            item.sort_order ?? i,
+          )
+          return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5})`
+        })
+        .join(', ')
+      await query(
+        user,
+        `INSERT INTO food_item_ingredients
+           (parent_food_item_id, ingredient_food_item_id, quantity, unit, sort_order)
+         VALUES ${valuesSql}`,
+        params,
+      )
+    }
+
+    await query(user, `UPDATE food_items SET is_composite = $2, updated_at = NOW() WHERE id = $1`, [
+      parentFoodItemId,
+      items.length > 0,
+    ])
+    await query(user, 'COMMIT')
+  } catch (err) {
+    await query(user, 'ROLLBACK').catch(() => {})
+    throw err
   }
-
-  await query(user, `UPDATE food_items SET is_composite = $2, updated_at = NOW() WHERE id = $1`, [
-    parentFoodItemId,
-    items.length > 0,
-  ])
 }
 
 /**

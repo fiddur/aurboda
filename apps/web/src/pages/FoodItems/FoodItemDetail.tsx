@@ -226,6 +226,9 @@ export function FoodItemDetail() {
     onSuccess: (updated) => {
       queryClient.setQueryData(['foodItem', id], updated)
       setSaveError(null)
+      setSavedFlash(true)
+      if (flashTimer.current) clearTimeout(flashTimer.current)
+      flashTimer.current = setTimeout(() => setSavedFlash(false), 1200)
     },
   })
 

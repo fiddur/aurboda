@@ -356,9 +356,12 @@ export interface FoodItemEntity {
   is_composite?: boolean
   default_quantity?: number
   default_unit?: string
-  // All ~65 nutrient fields are optional numbers.
-  // Using Record for the nutrient fields to avoid 65 lines of boilerplate.
-  // At runtime these are individual columns, but in TypeScript we use an index signature.
+  // ~65 nutrient fields are optional numbers, accessed dynamically via
+  // NUTRIENT_FIELD_NAMES from api-spec. The index signature has to cover
+  // every named field above too, hence the broad union — it loosens type
+  // safety on nutrient destructuring as a trade-off for not boilerplating
+  // 65 explicit columns. A dedicated cleanup PR could replace this with
+  // `extends Partial<NutrientFields>` and drop the index signature.
   [nutrient: string]: string | number | boolean | Date | undefined
   created_at: Date
   updated_at: Date

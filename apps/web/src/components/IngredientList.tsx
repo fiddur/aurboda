@@ -3,16 +3,16 @@
  *
  * Each row is one ingredient pointing at another food item — picked via
  * FoodItemAutocomplete (which already merges user + central library), with
- * inline quantity and unit. Edits commit on blur; the parent page persists
- * the full list via PUT /food-items/:id/ingredients.
+ * inline quantity and unit. Edits commit on **blur** (or remove); the
+ * parent page persists the full list via PUT /food-items/:id/ingredients.
  */
 
-import { useState } from 'preact/hooks'
+import { useEffect, useState } from 'preact/hooks'
 
 import type { FoodItemEntity } from '../state/api'
 
-import './IngredientList.css'
 import { FoodItemAutocomplete } from './FoodItemAutocomplete'
+import './IngredientList.css'
 
 export interface IngredientRow {
   ingredient_food_item_id: string
@@ -30,18 +30,90 @@ interface Props {
   onChange: (ingredients: IngredientRow[]) => void
 }
 
+/**
+ * One ingredient row with local qty/unit state that commits to the parent
+ * on blur. Without this, every keystroke would fire a PUT — wasteful and,
+ * with non-atomic writes, race-prone.
+ */
+function IngredientRowEditor({
+  ingredient,
+  onCommit,
+  onRemove,
+}: {
+  ingredient: IngredientRow
+  onCommit: (patch: Partial<IngredientRow>) => void
+  onRemove: () => void
+}) {
+  const [qtyInput, setQtyInput] = useState<string>(String(ingredient.quantity))
+  const [unitInput, setUnitInput] = useState<string>(ingredient.unit ?? '')
+
+  // Re-sync local state if the server-side row changes (e.g. revert/refresh).
+  useEffect(() => {
+    setQtyInput(String(ingredient.quantity))
+  }, [ingredient.quantity])
+  useEffect(() => {
+    setUnitInput(ingredient.unit ?? '')
+  }, [ingredient.unit])
+
+  const commitQty = () => {
+    const trimmed = qtyInput.trim()
+    if (trimmed === '') {
+      // Empty input → revert; clearing the field shouldn't silently set to 0.
+      setQtyInput(String(ingredient.quantity))
+      return
+    }
+    const parsed = parseFloat(trimmed)
+    if (Number.isNaN(parsed)) {
+      setQtyInput(String(ingredient.quantity))
+      return
+    }
+    if (parsed !== ingredient.quantity) onCommit({ quantity: parsed })
+  }
+
+  const commitUnit = () => {
+    const next = unitInput.trim() || undefined
+    if (next !== ingredient.unit) onCommit({ unit: next })
+  }
+
+  return (
+    <div class="ingredient-row">
+      <span class="ingredient-name">
+        {ingredient.icon && <span class="ingredient-icon">{ingredient.icon}</span>}
+        {ingredient.name ?? <em class="ingredient-missing">(unresolved)</em>}
+      </span>
+      <input
+        type="number"
+        step="0.1"
+        value={qtyInput}
+        class="ingredient-qty"
+        onInput={(e) => setQtyInput((e.target as HTMLInputElement).value)}
+        onBlur={commitQty}
+      />
+      <input
+        type="text"
+        value={unitInput}
+        placeholder="unit"
+        class="ingredient-unit"
+        onInput={(e) => setUnitInput((e.target as HTMLInputElement).value)}
+        onBlur={commitUnit}
+      />
+      <button type="button" class="btn-danger-small" onClick={onRemove} title="Remove ingredient">
+        &times;
+      </button>
+    </div>
+  )
+}
+
 export function IngredientList({ ingredients, onChange }: Props) {
-  // Mirror of incoming list with one trailing blank row for adding.
+  // Autocomplete input string — independent of the persisted ingredient list.
   const [draft, setDraft] = useState('')
 
   const updateAt = (index: number, patch: Partial<IngredientRow>) => {
-    const next = ingredients.map((ing, i) => (i === index ? { ...ing, ...patch } : ing))
-    onChange(next)
+    onChange(ingredients.map((ing, i) => (i === index ? { ...ing, ...patch } : ing)))
   }
 
   const removeAt = (index: number) => {
-    const next = ingredients.filter((_, i) => i !== index).map((ing, i) => ({ ...ing, sort_order: i }))
-    onChange(next)
+    onChange(ingredients.filter((_, i) => i !== index).map((ing, i) => ({ ...ing, sort_order: i })))
   }
 
   const handleAdd = (item: FoodItemEntity) => {
@@ -61,37 +133,12 @@ export function IngredientList({ ingredients, onChange }: Props) {
     <div class="ingredient-list">
       {ingredients.length === 0 && <p class="ingredient-empty">No ingredients yet.</p>}
       {ingredients.map((ing, i) => (
-        <div key={ing.ingredient_food_item_id || i} class="ingredient-row">
-          <span class="ingredient-name">
-            {ing.icon && <span class="ingredient-icon">{ing.icon}</span>}
-            {ing.name ?? <em class="ingredient-missing">(unresolved)</em>}
-          </span>
-          <input
-            type="number"
-            step="0.1"
-            value={ing.quantity}
-            class="ingredient-qty"
-            onInput={(e) => {
-              const v = parseFloat((e.target as HTMLInputElement).value)
-              if (!Number.isNaN(v)) updateAt(i, { quantity: v })
-            }}
-          />
-          <input
-            type="text"
-            value={ing.unit ?? ''}
-            placeholder="unit"
-            class="ingredient-unit"
-            onInput={(e) => updateAt(i, { unit: (e.target as HTMLInputElement).value || undefined })}
-          />
-          <button
-            type="button"
-            class="btn-danger-small"
-            onClick={() => removeAt(i)}
-            title="Remove ingredient"
-          >
-            &times;
-          </button>
-        </div>
+        <IngredientRowEditor
+          key={ing.ingredient_food_item_id || i}
+          ingredient={ing}
+          onCommit={(patch) => updateAt(i, patch)}
+          onRemove={() => removeAt(i)}
+        />
       ))}
       <div class="ingredient-add-row">
         <FoodItemAutocomplete
