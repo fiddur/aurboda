@@ -53,6 +53,8 @@ export const Timeline = () => {
     viewLabel,
     bucketSize,
     barBucketSize,
+    mergeGapMs,
+    shouldCollapseHierarchy,
   } = nav
 
   // ── Orientation state ──────────────────────────────────────────────────────
@@ -104,6 +106,8 @@ export const Timeline = () => {
     fetchStart,
     fromDateKey: fromDate.value,
     hiddenCategories,
+    mergeGapMs,
+    shouldCollapseHierarchy,
     toDateKey: toDate.value,
   })
   const {
@@ -741,8 +745,8 @@ export const Timeline = () => {
         }
 
         if (showMusicTrack) {
-          const mergeGapMs = getMergeGapMs(pixelsPerHour)
-          const allSessions = mergeScrobblesIntoSessions(scrobbles, mergeGapMs)
+          const musicMergeGapMs = getMergeGapMs(pixelsPerHour)
+          const allSessions = mergeScrobblesIntoSessions(scrobbles, musicMergeGapMs)
           const sessions = allSessions.filter(isInViewport)
           drawMusicSessions(
             chartGroup,

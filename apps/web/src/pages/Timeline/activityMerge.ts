@@ -261,7 +261,9 @@ const getActivityIconKey = (a: Activity, getExerciseTypeName: (a: Activity) => s
 }
 
 // ============================================================================
-// Hierarchy collapse: merge sibling subtypes into parent when zoomed out.
+// Zoom-aware merging: bridge small gaps between same-key activities, and
+// optionally collapse sibling sub-types into their parent_type when zoomed
+// out far enough that sub-type detail is noise.
 // ============================================================================
 
 /** Default gap below which two adjacent same-parent activities merge. */
@@ -285,47 +287,32 @@ export const resolveCollapseTarget = (
 }
 
 /**
- * Collapse adjacent activities that share a common parent_type into a single
- * activity retyped as that parent. Non-hierarchical activities (no parent)
- * pass through unchanged.
+ * Merge adjacent activities sharing a key (computed by `keyFn`) when their
+ * start-to-previous-end gap is ≤ `mergeGapMs`. Different keys never merge,
+ * so we can never collapse two distinct activity types into one bar — the
+ * user can still click each to edit.
  *
- * The collapse happens in two steps:
- *   1. Re-type each activity to its parent_type (if one exists).
- *   2. Merge adjacent activities of the same effective type whose start-to-
- *      previous-end gap is within mergeGapMs.
- *
- * Pure function — does not mutate the input array. The returned activities
- * keep the first member's id and title; end_time is the max across merged
- * siblings.
+ * Pure: does not mutate inputs. The first member's id/title win; end_time
+ * is extended to the max across merged members so an overlapping span from
+ * a second source folds in cleanly.
  */
-export const collapseToParentType = (
+export const mergeAdjacentByKey = (
   activities: Activity[],
-  typeDefsByName: ReadonlyMap<string, { parent_type?: string }>,
-  mergeGapMs: number = COLLAPSE_MERGE_GAP_MS,
+  keyFn: (a: Activity) => string,
+  mergeGapMs: number,
 ): Activity[] => {
-  if (activities.length === 0) return activities
-
-  // Step 1: decide each activity's "collapsed" type.
-  const retyped = activities.map((a) => {
-    const parent = resolveCollapseTarget(a.activity_type, typeDefsByName)
-    if (!parent) return a
-    return { ...a, activity_type: parent }
-  })
-
-  // Step 2: merge adjacents with the same collapsed type.
-  const sorted = [...retyped].sort((a, b) => a.start_time.getTime() - b.start_time.getTime())
+  if (activities.length === 0) return [...activities]
+  const sorted = [...activities].sort((a, b) => a.start_time.getTime() - b.start_time.getTime())
   const merged: Activity[] = []
   for (const current of sorted) {
     const prev = merged[merged.length - 1]
     if (
       prev &&
-      prev.activity_type === current.activity_type &&
+      keyFn(prev) === keyFn(current) &&
       prev.end_time &&
       current.end_time &&
       current.start_time.getTime() - prev.end_time.getTime() <= mergeGapMs
     ) {
-      // Extend prev's end if current reaches further. The first member's id
-      // and title win; downstream rendering treats this as a single bar.
       if (current.end_time > prev.end_time) prev.end_time = current.end_time
       continue
     }
@@ -333,6 +320,55 @@ export const collapseToParentType = (
   }
   return merged
 }
+
+/**
+ * Collapse adjacent activities of the same (optionally parent-resolved) type
+ * into a single bar.
+ *
+ *   1. If `collapseToParent` is true, re-type each activity to its parent_type
+ *      where one exists. This is what lets a warmup_run + strength_training
+ *      pair render as a single "exercise" block when zoomed out.
+ *   2. Merge adjacent activities with the same effective type whose gap is
+ *      within `mergeGapMs`.
+ *
+ * At max zoom the caller passes `collapseToParent=false` so sibling sub-types
+ * stay distinct (and individually clickable).
+ */
+export const collapseToParentType = (
+  activities: Activity[],
+  typeDefsByName: ReadonlyMap<string, { parent_type?: string }>,
+  mergeGapMs: number = COLLAPSE_MERGE_GAP_MS,
+  collapseToParent = true,
+): Activity[] => {
+  if (activities.length === 0) return activities
+
+  const retyped = collapseToParent
+    ? activities.map((a) => {
+        const parent = resolveCollapseTarget(a.activity_type, typeDefsByName)
+        return parent ? { ...a, activity_type: parent } : a
+      })
+    : activities
+
+  return mergeAdjacentByKey(retyped, (a) => a.activity_type, mergeGapMs)
+}
+
+/**
+ * Merge adjacent screentime activities that share the same category_path.
+ * `screentime` activities all share `activity_type='screentime'`, so the
+ * discriminator must come from `data.category_path` — otherwise Communication
+ * and Coding would get folded together. Source is intentionally NOT part of
+ * the key: when both rescuetime and activitywatch report the same category
+ * for an overlapping window we want one visual bar, not two.
+ */
+export const mergeScreentimeActivities = (activities: Activity[], mergeGapMs: number): Activity[] =>
+  mergeAdjacentByKey(
+    activities,
+    (a) => {
+      const path = typeof a.data?.category_path === 'string' ? a.data.category_path : ''
+      return `screentime:${path}`
+    },
+    mergeGapMs,
+  )
 
 export const buildActivityColumnItems = (
   activities: Activity[],

@@ -25,6 +25,7 @@ import {
   EXCLUDED_ACTIVITY_PREFIXES,
   EXCLUDED_ACTIVITY_SOURCES,
   EXCLUDED_ACTIVITY_TYPES,
+  mergeScreentimeActivities,
 } from './activityMerge'
 import {
   categorizeLocations,
@@ -83,6 +84,10 @@ export interface UseTimelineDataOptions {
   hiddenCategories: Set<LegendCategory>
   bucketSize: string
   barBucketSize: '1h' | '1d' | '1w'
+  /** Gap (ms) below which adjacent same-key activities merge in the timeline. */
+  mergeGapMs: number
+  /** Whether sibling sub-types should collapse to their parent_type for merging. */
+  shouldCollapseHierarchy: boolean
 }
 
 // eslint-disable-next-line complexity -- data hook aggregating multiple queries
@@ -94,6 +99,8 @@ export const useTimelineData = ({
   hiddenCategories,
   bucketSize,
   barBucketSize,
+  mergeGapMs,
+  shouldCollapseHierarchy,
 }: UseTimelineDataOptions): TimelineData => {
   // ── Data queries ───────────────────────────────────────────────────────────
 
@@ -190,18 +197,6 @@ export const useTimelineData = ({
     [activityTypeDefs],
   )
 
-  /**
-   * Hierarchy collapse threshold: when the fetched range spans more than 3
-   * days the timeline is zoomed out enough that child-subtype detail is
-   * noise — adjacent siblings of the same parent_type collapse into a
-   * single bar labelled as the parent (e.g. running+strength_training →
-   * exercise for a gym session view).
-   */
-  const shouldCollapseHierarchy = useMemo(() => {
-    const COLLAPSE_THRESHOLD_DAYS = 3
-    const spanDays = (fetchEnd.getTime() - fetchStart.getTime()) / (24 * 60 * 60 * 1000)
-    return spanDays > COLLAPSE_THRESHOLD_DAYS
-  }, [fetchStart, fetchEnd])
   const hiddenTypes = useMemo(
     () => new Set(activityTypeDefs.filter((t) => !t.show_on_timeline).map((t) => t.name)),
     [activityTypeDefs],
@@ -215,12 +210,17 @@ export const useTimelineData = ({
     () => (activitiesQuery.data ?? []).filter((a) => !hiddenTypes.has(a.activity_type ?? '')),
     [activitiesQuery.data, hiddenTypes],
   )
+  // Merge same-type adjacent activities within the zoom-graded gap. When zoomed
+  // in the caller passes shouldCollapseHierarchy=false so warmup_run and
+  // strength_training stay distinct (each individually clickable); when zoomed
+  // out we collapse sub-types into their parent_type so a gym session reads as
+  // one "exercise" bar rather than a comb of sub-type slivers.
   const activities = useMemo(() => {
     const filtered = allActivities.filter((a) =>
       ACTIVITY_CATEGORIES.has(categoryByType.get(a.activity_type) ?? 'other'),
     )
-    return shouldCollapseHierarchy ? collapseToParentType(filtered, typeDefsMap) : filtered
-  }, [allActivities, categoryByType, shouldCollapseHierarchy, typeDefsMap])
+    return collapseToParentType(filtered, typeDefsMap, mergeGapMs, shouldCollapseHierarchy)
+  }, [allActivities, categoryByType, shouldCollapseHierarchy, typeDefsMap, mergeGapMs])
   const secondaryActivities = useMemo(
     () =>
       allActivities.filter((a) => !ACTIVITY_CATEGORIES.has(categoryByType.get(a.activity_type) ?? 'other')),
@@ -239,15 +239,16 @@ export const useTimelineData = ({
       }),
     [activitiesQuery.data],
   )
-  // Screentime spans are derived from `screentime` activities. The backend
-  // pre-merges adjacent records into spans at sync/backfill time (2-min gap),
-  // so the per-app names that the old /productivity endpoint enriched the
-  // tooltip with are not available — the lane still shows category, range,
-  // and duration.
-  const screentimeActivities = useMemo<Activity[]>(
-    () => (activitiesQuery.data ?? []).filter((a) => a.activity_type === 'screentime'),
-    [activitiesQuery.data],
-  )
+  // Screentime spans come from `screentime` activities. The backend pre-merges
+  // adjacent records at sync time keyed by (source, category_path) with a fixed
+  // 2-min gap — that doesn't bridge across sources or batch boundaries, so we
+  // do a second, zoom-graded merge here keyed only by category_path. Same
+  // category from rescuetime and activitywatch fold into one visual bar; gap
+  // grows with zoom so a long stretch reads as one block when zoomed out.
+  const screentimeActivities = useMemo<Activity[]>(() => {
+    const raw = (activitiesQuery.data ?? []).filter((a) => a.activity_type === 'screentime')
+    return mergeScreentimeActivities(raw, mergeGapMs)
+  }, [activitiesQuery.data, mergeGapMs])
   // Music scrobbles are derived from `music_scrobble` activities — they live
   // in the activities table and are already returned by the activities fetch,
   // so no separate /lastfm/scrobbles network call is needed.
