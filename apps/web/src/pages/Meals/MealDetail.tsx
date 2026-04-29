@@ -15,8 +15,10 @@ import {
   type FoodItemEntity,
   updateMealApi,
 } from '../../state/api'
+import { createDebouncedFlusher } from '../../utils/debouncedFlusher'
 import { LocationInfo, MEAL_LOCATION_WINDOW_MS } from '../EntityDetail/LocationInfo'
 import './MealDetail.css'
+import { DEFAULT_CUSTOM_TYPE, MEAL_TYPES, resolveMealTypeChange } from './mealTypes'
 
 // ── Sub-components ───────────────────────────────────────────────────────────
 
@@ -58,17 +60,27 @@ const scaleNutrient = (
   return Math.round(((baseValue * currentQuantity) / ref.quantity) * 10) / 10
 }
 
-const MEAL_TYPES = ['breakfast', 'lunch', 'dinner', 'snack', 'drink']
-
-function MealTypeEditor({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const isCustom = !MEAL_TYPES.includes(value)
+function MealTypeEditor({
+  value,
+  onChange,
+  onCustomCommit,
+}: {
+  value: string
+  onChange: (v: string) => void
+  /**
+   * Called on blur of the custom-type text input — gives the parent a
+   * chance to debounce keystroke saves and only persist the final value.
+   */
+  onCustomCommit?: (v: string) => void
+}) {
+  const isCustom = !(MEAL_TYPES as readonly string[]).includes(value)
   return (
     <div class="type-editor">
       <select
         value={isCustom ? '__custom' : value}
         onChange={(e) => {
-          const v = (e.target as HTMLSelectElement).value
-          if (v !== '__custom') onChange(v)
+          const next = resolveMealTypeChange(value, (e.target as HTMLSelectElement).value)
+          if (next !== null) onChange(next)
         }}
       >
         {MEAL_TYPES.map((t) => (
@@ -84,6 +96,7 @@ function MealTypeEditor({ value, onChange }: { value: string; onChange: (v: stri
           value={value}
           placeholder="Custom type"
           onInput={(e) => onChange((e.target as HTMLInputElement).value)}
+          onBlur={(e) => onCustomCommit?.((e.target as HTMLInputElement).value)}
         />
       )}
     </div>
@@ -388,16 +401,32 @@ export function MealDetail() {
   const [savedFlash, setSavedFlash] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const itemsDebounce = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Invalidate the meals list when leaving this page so the day overview refreshes
-  useEffect(() => () => void queryClient.invalidateQueries({ queryKey: ['meals'] }), [queryClient])
+  // Stable ref to the latest save callback so the debounced flushers always
+  // invoke the most recent closure rather than one captured at first render.
+  const saveRef = useRef<(body: UpdateMealBody) => void>(() => {})
+  // Two flushers — food-items edits debounce 600 ms (mostly autocomplete +
+  // qty/unit typing), meal_type custom edits debounce 600 ms too. Both
+  // flush synchronously on unmount so navigating away mid-debounce doesn't
+  // drop the user's last edit (the bug behind "Back doesn't show new item").
+  const itemsFlusherRef = useRef(
+    createDebouncedFlusher<UpdateMealBody>(FOOD_ITEM_DEBOUNCE_MS, (body) => saveRef.current(body)),
+  )
+  const mealTypeFlusherRef = useRef(
+    createDebouncedFlusher<string>(FOOD_ITEM_DEBOUNCE_MS, (v) => saveRef.current({ meal_type: v })),
+  )
 
-  // Clear pending timers on unmount so callbacks don't fire against an unmounted component.
+  // The previous unmount-time invalidate of ['meals'] was redundant — every
+  // save mutation already invalidates the list. It also caused a flicker when
+  // a flushed save and the manual invalidate raced. Removed.
+
+  // Clear pending flash timer + flush both debouncers on unmount so any
+  // mid-debounce edit is persisted before the route changes.
   useEffect(
     () => () => {
       if (flashTimer.current) clearTimeout(flashTimer.current)
-      if (itemsDebounce.current) clearTimeout(itemsDebounce.current)
+      itemsFlusherRef.current.flush()
+      mealTypeFlusherRef.current.flush()
     },
     [],
   )
@@ -411,7 +440,10 @@ export function MealDetail() {
     setName(meal.name ?? '')
     setTimeStr(format(meal.time, "yyyy-MM-dd'T'HH:mm"))
     setNotes(meal.notes ?? '')
-    setMealType(meal.meal_type ?? 'lunch')
+    // No meal_type means this was created via the ad-hoc flow — the user
+    // explicitly opted out of a slot, so treat it as a custom "other" rather
+    // than silently defaulting to lunch.
+    setMealType(meal.meal_type ?? DEFAULT_CUSTOM_TYPE)
     setItems(mealItemsToEdit(meal.food_items))
     setFlags(meal.sensitivities ?? [])
     setMacros({
@@ -449,6 +481,8 @@ export function MealDetail() {
     setSaveError(null)
     updateMutation.mutate(body)
   }
+  // Keep the debouncers' save callback up to date with the latest closure.
+  saveRef.current = save
 
   if (isLoading) {
     return (
@@ -469,10 +503,7 @@ export function MealDetail() {
 
   const commitItems = (next: FoodItemEdit[]) => {
     setItems(next)
-    if (itemsDebounce.current) clearTimeout(itemsDebounce.current)
-    itemsDebounce.current = setTimeout(() => {
-      save({ food_items: editItemsToBody(next) })
-    }, FOOD_ITEM_DEBOUNCE_MS)
+    itemsFlusherRef.current.schedule({ food_items: editItemsToBody(next) })
   }
 
   const commitName = () => {
@@ -519,7 +550,24 @@ export function MealDetail() {
               value={mealType}
               onChange={(v) => {
                 setMealType(v)
-                if (v !== (meal.meal_type ?? '')) save({ meal_type: v })
+                if (v === (meal.meal_type ?? '')) return
+                if ((MEAL_TYPES as readonly string[]).includes(v)) {
+                  // Dropdown selection — commit immediately, the debounce is
+                  // only meaningful for free-text custom-type keystrokes.
+                  mealTypeFlusherRef.current.cancel()
+                  save({ meal_type: v })
+                } else {
+                  mealTypeFlusherRef.current.schedule(v)
+                }
+              }}
+              onCustomCommit={(v) => {
+                // Blur of the custom input — flush any pending debounced save
+                // so the final value is persisted without waiting out the
+                // debounce window.
+                if (v !== (meal.meal_type ?? '')) {
+                  mealTypeFlusherRef.current.cancel()
+                  save({ meal_type: v })
+                }
               }}
             />
           </div>
