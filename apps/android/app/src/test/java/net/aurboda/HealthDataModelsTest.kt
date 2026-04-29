@@ -184,6 +184,107 @@ class HealthDataModelsTest {
   }
 
   @Test
+  fun `BloodPressureRecordSerializable holds systolic and diastolic`() {
+    val metadata =
+      HealthConnectRecordMetadata(
+        id = "bp-1",
+        dataOrigin = "com.example",
+        lastModifiedTime = "2024-01-15T10:30:00Z",
+        clientRecordId = null,
+        clientRecordVersion = 0L,
+        device = null,
+        recordingMethod = 1,
+      )
+    val record =
+      BloodPressureRecordSerializable(
+        time = "2024-01-15T10:30:00Z",
+        systolicInMmHg = 120.0,
+        diastolicInMmHg = 80.0,
+        bodyPosition = 1,
+        measurementLocation = 1,
+        metadata = metadata,
+      )
+    val json = appJson.encodeToString(BloodPressureRecordSerializable.serializer(), record)
+    assertTrue(json.contains("\"systolicInMmHg\""))
+    assertTrue(json.contains("\"diastolicInMmHg\""))
+    assertTrue(json.contains("120"))
+  }
+
+  @Test
+  fun `ElevationGainedRecordSerializable round-trips through JSON`() {
+    val metadata =
+      HealthConnectRecordMetadata(
+        id = "elev-1",
+        dataOrigin = "com.example",
+        lastModifiedTime = "2024-01-15T10:30:00Z",
+        clientRecordId = null,
+        clientRecordVersion = 0L,
+        device = null,
+        recordingMethod = 1,
+      )
+    val record =
+      ElevationGainedRecordSerializable(
+        startTime = "2024-01-15T08:00:00Z",
+        endTime = "2024-01-15T09:00:00Z",
+        elevationInMeters = 42.5,
+        metadata = metadata,
+      )
+    val json = appJson.encodeToString(ElevationGainedRecordSerializable.serializer(), record)
+    val decoded = appJson.decodeFromString<ElevationGainedRecordSerializable>(json)
+    assertEquals(42.5, decoded.elevationInMeters, 0.0)
+    assertEquals("2024-01-15T08:00:00Z", decoded.startTime)
+  }
+
+  @Test
+  fun `every readable record type in allRecordTypes is dispatched in sendRecords`() {
+    // Source-of-truth test: keep this in sync with the when-block in SyncUtils.sendRecords.
+    // If you add a record class to allRecordTypes, you must also add a serializer + dispatch case.
+    val coveredByDispatch =
+      setOf(
+        "ActiveCaloriesBurnedRecord",
+        "BasalBodyTemperatureRecord",
+        "BasalMetabolicRateRecord",
+        "BloodGlucoseRecord",
+        "BloodPressureRecord",
+        "BodyFatRecord",
+        "BodyTemperatureRecord",
+        "BodyWaterMassRecord",
+        "BoneMassRecord",
+        "CervicalMucusRecord",
+        "CyclingPedalingCadenceRecord",
+        "DistanceRecord",
+        "ElevationGainedRecord",
+        "ExerciseSessionRecord",
+        "FloorsClimbedRecord",
+        "HeartRateRecord",
+        "HeartRateVariabilityRmssdRecord",
+        "HeightRecord",
+        "HydrationRecord",
+        "IntermenstrualBleedingRecord",
+        "LeanBodyMassRecord",
+        "MenstruationFlowRecord",
+        "MenstruationPeriodRecord",
+        "NutritionRecord",
+        "OvulationTestRecord",
+        "OxygenSaturationRecord",
+        "PowerRecord",
+        "RespiratoryRateRecord",
+        "RestingHeartRateRecord",
+        "SexualActivityRecord",
+        "SleepSessionRecord",
+        "SpeedRecord",
+        "StepsRecord",
+        "TotalCaloriesBurnedRecord",
+        "Vo2MaxRecord",
+        "WeightRecord",
+        "WheelchairPushesRecord",
+      )
+    val readable = allRecordTypes.map { it.simpleName }.toSet()
+    val missing = readable - coveredByDispatch
+    assertTrue("Record types without sendRecords dispatch: $missing", missing.isEmpty())
+  }
+
+  @Test
   fun `writableRecordTypes matches outbound sync record types`() {
     // These are the record types handled in OutboundSync.kt writeUpsertRecord()
     val expectedTypes =
