@@ -236,6 +236,37 @@ class HealthDataModelsTest {
   }
 
   @Test
+  fun `CyclingPedalingCadenceRecordSerializable round-trips nested samples`() {
+    val metadata =
+      HealthConnectRecordMetadata(
+        id = "cad-1",
+        dataOrigin = "com.example",
+        lastModifiedTime = "2024-01-15T10:30:00Z",
+        clientRecordId = null,
+        clientRecordVersion = 0L,
+        device = null,
+        recordingMethod = 1,
+      )
+    val record =
+      CyclingPedalingCadenceRecordSerializable(
+        startTime = "2024-01-15T08:00:00Z",
+        endTime = "2024-01-15T08:05:00Z",
+        samples =
+          listOf(
+            CyclingCadenceSampleSerializable(time = "2024-01-15T08:00:30Z", revolutionsPerMinute = 85.0),
+            CyclingCadenceSampleSerializable(time = "2024-01-15T08:01:30Z", revolutionsPerMinute = 92.5),
+          ),
+        metadata = metadata,
+      )
+    val json = appJson.encodeToString(CyclingPedalingCadenceRecordSerializable.serializer(), record)
+    val decoded = appJson.decodeFromString<CyclingPedalingCadenceRecordSerializable>(json)
+    assertEquals(2, decoded.samples.size)
+    assertEquals(85.0, decoded.samples[0].revolutionsPerMinute, 0.0)
+    assertEquals("2024-01-15T08:01:30Z", decoded.samples[1].time)
+    assertEquals(92.5, decoded.samples[1].revolutionsPerMinute, 0.0)
+  }
+
+  @Test
   fun `every readable record type in allRecordTypes is dispatched in sendRecords`() {
     // Source-of-truth test: keep this in sync with the when-block in SyncUtils.sendRecords.
     // If you add a record class to allRecordTypes, you must also add a serializer + dispatch case.

@@ -9,7 +9,7 @@ import io.ktor.client.request.setBody
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
-import io.ktor.http.contentType
+import io.ktor.http.content.TextContent
 import kotlinx.coroutines.delay
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.builtins.serializer
@@ -74,9 +74,10 @@ suspend fun postChunkRaw(
   try {
     val response =
       httpClient.post(apiUrl) {
-        contentType(ContentType.Application.Json)
         headers { append(HttpHeaders.Authorization, "Bearer $authToken") }
-        setBody(jsonBody)
+        // Bypass Ktor ContentNegotiation: we already serialized — TextContent is sent as-is,
+        // avoiding the JSON converter wrapping the String into "..." again.
+        setBody(TextContent(jsonBody, ContentType.Application.Json))
       }
     if (response.status == HttpStatusCode.OK || response.status == HttpStatusCode.Created) {
       Log.d(logTag, "POST successful: ${response.status}")
