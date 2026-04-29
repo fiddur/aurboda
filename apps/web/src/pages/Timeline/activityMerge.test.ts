@@ -444,14 +444,22 @@ describe('mergeAdjacentByKey', () => {
     expect(mergeAdjacentByKey(activities, byType, 0)).toHaveLength(1)
   })
 
-  it('does not mutate the input array', () => {
+  it('does not mutate the input array or its members', () => {
+    // Deep-snapshot end_time so a regression that does
+    // `prev.end_time = current.end_time` directly on the input would be caught
+    // — a shallow [...activities] copy shares element references and would
+    // observe the mutation symmetrically.
     const activities: Activity[] = [
       { activity_type: 'screentime', end_time: d(15, 5), id: 'a', start_time: d(14, 50) },
       { activity_type: 'screentime', end_time: d(15, 10), id: 'b', start_time: d(15, 5) },
     ]
-    const original = [...activities]
+    const snapshot = activities.map((a) => ({
+      ...a,
+      end_time: a.end_time ? new Date(a.end_time) : undefined,
+      start_time: new Date(a.start_time),
+    }))
     mergeAdjacentByKey(activities, byType, 5 * 60 * 1000)
-    expect(activities).toEqual(original)
+    expect(activities).toEqual(snapshot)
   })
 
   it('returns empty array for empty input', () => {
