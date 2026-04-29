@@ -4,7 +4,7 @@ import type { FoodItemEntity } from '../db/types.ts'
 import type { CentralDb } from './central-db.ts'
 import type { SharedFoodItemEntity } from './central-food-items.ts'
 
-import { createFoodItemsService } from './food-items.ts'
+import { aggregateNutrientsFromIngredients, createFoodItemsService } from './food-items.ts'
 
 vi.mock('../db/food-items.ts', () => ({
   findOrCreateFoodItem: vi.fn(),
@@ -13,7 +13,12 @@ vi.mock('../db/food-items.ts', () => ({
   searchFoodItems: vi.fn(),
 }))
 
+vi.mock('../db/food-item-ingredients.ts', () => ({
+  getIngredients: vi.fn().mockResolvedValue([]),
+}))
+
 const dbModule = await import('../db/food-items.ts')
+const ingredientsModule = await import('../db/food-item-ingredients.ts')
 
 const userItem = (id: string, name: string): FoodItemEntity =>
   ({
@@ -160,5 +165,202 @@ describe('createFoodItemsService.getByName', () => {
 
     const result = await service.getByName('user', 'Hushållsost')
     expect(result?.id).toBe('c1')
+  })
+})
+
+describe('aggregateNutrientsFromIngredients', () => {
+  test('sums each nutrient field across ingredients × per-ingredient scale', () => {
+    const coffee = userItem('coffee', 'Coffee')
+    const oil = userItem('oil', 'Coconut oil')
+    // Coffee: 100 ml default, 2 kcal/100ml
+    coffee.default_quantity = 100
+    coffee.default_unit = 'ml'
+    coffee.calories = 2
+    // Oil: 100 g default, 900 kcal/100 g
+    oil.default_quantity = 100
+    oil.default_unit = 'g'
+    oil.calories = 900
+    oil.fat = 100
+
+    const { values, nutrient_data_incomplete } = aggregateNutrientsFromIngredients([
+      {
+        food: coffee,
+        row: {
+          created_at: new Date(),
+          id: 'r1',
+          ingredient_food_item_id: 'coffee',
+          parent_food_item_id: 'p',
+          quantity: 500,
+          sort_order: 0,
+          unit: 'ml',
+          updated_at: new Date(),
+        },
+      },
+      {
+        food: oil,
+        row: {
+          created_at: new Date(),
+          id: 'r2',
+          ingredient_food_item_id: 'oil',
+          parent_food_item_id: 'p',
+          quantity: 15,
+          sort_order: 1,
+          unit: 'g',
+          updated_at: new Date(),
+        },
+      },
+    ])
+
+    // 500ml × 2 kcal/100ml + 15 g × 900 kcal/100 g = 10 + 135 = 145 kcal
+    expect(values.calories).toBe(145)
+    // 15 g × 100 g fat / 100 g = 15 g fat
+    expect(values.fat).toBe(15)
+    expect(nutrient_data_incomplete).toBe(false)
+  })
+
+  test('flags nutrient_data_incomplete when an ingredient lacks calories', () => {
+    const incomplete = userItem('x', 'X')
+    incomplete.default_quantity = 1
+    incomplete.default_unit = 'g'
+    // no calories field set
+
+    const { nutrient_data_incomplete } = aggregateNutrientsFromIngredients([
+      {
+        food: incomplete,
+        row: {
+          created_at: new Date(),
+          id: 'r1',
+          ingredient_food_item_id: 'x',
+          parent_food_item_id: 'p',
+          quantity: 1,
+          sort_order: 0,
+          unit: 'g',
+          updated_at: new Date(),
+        },
+      },
+    ])
+    expect(nutrient_data_incomplete).toBe(true)
+  })
+
+  test('flags incomplete when an ingredient could not be resolved', () => {
+    const { nutrient_data_incomplete, values } = aggregateNutrientsFromIngredients([
+      {
+        food: null,
+        row: {
+          created_at: new Date(),
+          id: 'r1',
+          ingredient_food_item_id: 'missing',
+          parent_food_item_id: 'p',
+          quantity: 1,
+          sort_order: 0,
+          unit: 'g',
+          updated_at: new Date(),
+        },
+      },
+    ])
+    expect(nutrient_data_incomplete).toBe(true)
+    expect(values).toEqual({})
+  })
+})
+
+describe('wouldCreateCycle', () => {
+  test('rejects direct self-reference', async () => {
+    const central = fakeCentral()
+    const service = createFoodItemsService(central)
+    expect(await service.wouldCreateCycle('user', 'A', ['A', 'B'])).toBe(true)
+  })
+
+  test('rejects transitive cycle A → B → A', async () => {
+    // B has A as one of its ingredients; trying to add B as ingredient of A.
+    vi.mocked(ingredientsModule.getIngredients).mockImplementation(async (_user, parent) => {
+      if (parent === 'B') {
+        return [
+          {
+            created_at: new Date(),
+            id: 'i1',
+            ingredient_food_item_id: 'A',
+            parent_food_item_id: 'B',
+            quantity: 1,
+            sort_order: 0,
+            unit: undefined,
+            updated_at: new Date(),
+          },
+        ]
+      }
+      return []
+    })
+
+    const service = createFoodItemsService(fakeCentral())
+    expect(await service.wouldCreateCycle('user', 'A', ['B'])).toBe(true)
+  })
+
+  test('passes for an acyclic graph', async () => {
+    vi.mocked(ingredientsModule.getIngredients).mockResolvedValue([])
+    const service = createFoodItemsService(fakeCentral())
+    expect(await service.wouldCreateCycle('user', 'A', ['B', 'C'])).toBe(false)
+  })
+})
+
+describe('aggregateNutrientsFromIngredients — scaling edge cases', () => {
+  const buildRow = (qty: number, unit: string | undefined) => ({
+    created_at: new Date(),
+    id: 'r',
+    ingredient_food_item_id: 'x',
+    parent_food_item_id: 'p',
+    quantity: qty,
+    sort_order: 0,
+    unit,
+    updated_at: new Date(),
+  })
+
+  test('converts dimensionally-compatible units (dl ↔ ml) instead of falling back', () => {
+    const coffee = userItem('coffee', 'Coffee')
+    coffee.default_quantity = 100
+    coffee.default_unit = 'ml'
+    coffee.calories = 2
+
+    // 5 dl = 500 ml → 5 × (2 kcal / 100 ml) × 100 ml = 10 kcal
+    const { values, nutrient_data_incomplete } = aggregateNutrientsFromIngredients([
+      { food: coffee, row: buildRow(5, 'dl') },
+    ])
+    expect(values.calories).toBe(10)
+    expect(nutrient_data_incomplete).toBe(false)
+  })
+
+  test('flags incomplete when ingredient unit is dimensionally incompatible with default_unit', () => {
+    const oil = userItem('oil', 'Oil')
+    oil.default_quantity = 100
+    oil.default_unit = 'g'
+    oil.calories = 900
+
+    // "1 ml" against "100 g default" — different dimensions, no conversion possible.
+    const { nutrient_data_incomplete } = aggregateNutrientsFromIngredients([
+      { food: oil, row: buildRow(1, 'ml') },
+    ])
+    expect(nutrient_data_incomplete).toBe(true)
+  })
+
+  test('flags incomplete when default_quantity is missing or zero', () => {
+    const food = userItem('x', 'X')
+    food.default_unit = 'g'
+    food.calories = 100
+    // default_quantity left undefined
+
+    const { nutrient_data_incomplete } = aggregateNutrientsFromIngredients([{ food, row: buildRow(50, 'g') }])
+    expect(nutrient_data_incomplete).toBe(true)
+  })
+
+  test('mass conversion (kg → g)', () => {
+    const flour = userItem('flour', 'Flour')
+    flour.default_quantity = 100
+    flour.default_unit = 'g'
+    flour.calories = 360
+
+    // 0.5 kg = 500 g → 5 × 360 = 1800 kcal
+    const { values, nutrient_data_incomplete } = aggregateNutrientsFromIngredients([
+      { food: flour, row: buildRow(0.5, 'kg') },
+    ])
+    expect(values.calories).toBe(1800)
+    expect(nutrient_data_incomplete).toBe(false)
   })
 })

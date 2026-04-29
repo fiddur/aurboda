@@ -20,6 +20,7 @@ const FOOD_ITEM_COLUMNS = [
   'default_unit',
   ...NUTRIENT_FIELD_NAMES,
   'icon',
+  'is_composite',
   'created_at',
   'updated_at',
 ].join(', ')
@@ -34,6 +35,7 @@ const mapFoodItemRow = (row: Record<string, unknown>): FoodItemEntity => {
     default_quantity: row.default_quantity ?? undefined,
     default_unit: row.default_unit ?? undefined,
     icon: row.icon ?? undefined,
+    is_composite: row.is_composite === true,
     created_at: new Date(row.created_at as string),
     updated_at: new Date(row.updated_at as string),
   }
