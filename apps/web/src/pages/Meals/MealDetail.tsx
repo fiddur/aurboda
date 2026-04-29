@@ -60,7 +60,15 @@ const scaleNutrient = (
 
 const MEAL_TYPES = ['breakfast', 'lunch', 'dinner', 'snack', 'drink']
 
+const DEFAULT_CUSTOM_TYPE = 'other'
+
 function MealTypeEditor({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  // The dropdown shows "Other..." for any value not in MEAL_TYPES (including
+  // empty / unknown). Selecting "Other..." was previously a no-op because we
+  // tried to filter the synthetic "__custom" sentinel out of the onChange —
+  // but that left the user stranded if they actually wanted custom mode.
+  // Now picking "Other..." commits a sensible default ("other") which both
+  // saves immediately and reveals the free-text input below.
   const isCustom = !MEAL_TYPES.includes(value)
   return (
     <div class="type-editor">
@@ -68,7 +76,12 @@ function MealTypeEditor({ value, onChange }: { value: string; onChange: (v: stri
         value={isCustom ? '__custom' : value}
         onChange={(e) => {
           const v = (e.target as HTMLSelectElement).value
-          if (v !== '__custom') onChange(v)
+          if (v === '__custom') {
+            // Don't overwrite a custom value the user already had.
+            if (!isCustom) onChange(DEFAULT_CUSTOM_TYPE)
+          } else {
+            onChange(v)
+          }
         }}
       >
         {MEAL_TYPES.map((t) => (
@@ -389,15 +402,26 @@ export function MealDetail() {
   const [saveError, setSaveError] = useState<string | null>(null)
   const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const itemsDebounce = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Holds the pending food-items body so the unmount cleanup can flush it
+  // synchronously — without this, clicking Back within FOOD_ITEM_DEBOUNCE_MS
+  // of the last edit would silently drop the change.
+  const pendingItemsRef = useRef<UpdateMealBody | null>(null)
 
   // Invalidate the meals list when leaving this page so the day overview refreshes
   useEffect(() => () => void queryClient.invalidateQueries({ queryKey: ['meals'] }), [queryClient])
 
-  // Clear pending timers on unmount so callbacks don't fire against an unmounted component.
+  // Clear pending timers on unmount; flush a pending food-items save first so
+  // navigating away mid-debounce doesn't drop the user's edit.
   useEffect(
     () => () => {
       if (flashTimer.current) clearTimeout(flashTimer.current)
-      if (itemsDebounce.current) clearTimeout(itemsDebounce.current)
+      if (itemsDebounce.current) {
+        clearTimeout(itemsDebounce.current)
+        if (pendingItemsRef.current) {
+          updateMutation.mutate(pendingItemsRef.current)
+          pendingItemsRef.current = null
+        }
+      }
     },
     [],
   )
@@ -411,7 +435,10 @@ export function MealDetail() {
     setName(meal.name ?? '')
     setTimeStr(format(meal.time, "yyyy-MM-dd'T'HH:mm"))
     setNotes(meal.notes ?? '')
-    setMealType(meal.meal_type ?? 'lunch')
+    // No meal_type means this was created via the ad-hoc flow — the user
+    // explicitly opted out of a slot, so treat it as a custom "other" rather
+    // than silently defaulting to lunch.
+    setMealType(meal.meal_type ?? DEFAULT_CUSTOM_TYPE)
     setItems(mealItemsToEdit(meal.food_items))
     setFlags(meal.sensitivities ?? [])
     setMacros({
@@ -469,9 +496,12 @@ export function MealDetail() {
 
   const commitItems = (next: FoodItemEdit[]) => {
     setItems(next)
+    const body: UpdateMealBody = { food_items: editItemsToBody(next) }
+    pendingItemsRef.current = body
     if (itemsDebounce.current) clearTimeout(itemsDebounce.current)
     itemsDebounce.current = setTimeout(() => {
-      save({ food_items: editItemsToBody(next) })
+      pendingItemsRef.current = null
+      save(body)
     }, FOOD_ITEM_DEBOUNCE_MS)
   }
 
