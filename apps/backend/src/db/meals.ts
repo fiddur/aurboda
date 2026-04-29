@@ -258,18 +258,30 @@ export interface FrequentFoodItemRow {
 interface FrequentFoodItemsFilter {
   limit: number
   since_days: number
+  /** Optional: scope to a single meal_type (e.g. "breakfast"). */
+  meal_type?: string
 }
 
 /**
  * Aggregate `meal_food_items` to surface the food items the user logs most
  * often. Useful for an MCP agent to suggest "your usual" without re-running
- * fuzzy search every time. Snapshotted name/icon are read directly off the
- * junction — no JOIN to food_items, so central-library items work too.
+ * fuzzy search every time, and as the data behind the per-slot quick-log
+ * chips on the meals overview. Snapshotted name/icon are read directly off
+ * the junction — no JOIN to food_items, so central-library items work too.
+ *
+ * When `meal_type` is provided, only meal_food_items linked to meals of
+ * that type are counted.
  */
 export const getFrequentFoodItems = async (
   user: string,
   filter: FrequentFoodItemsFilter,
 ): Promise<FrequentFoodItemRow[]> => {
+  const params: unknown[] = [filter.since_days, filter.limit]
+  let mealTypeClause = ''
+  if (filter.meal_type) {
+    params.push(filter.meal_type)
+    mealTypeClause = `AND m.meal_type = $${params.length}`
+  }
   const sql = `
     WITH ranked AS (
       SELECT mfi.food_item_id, mfi.food_item_name, mfi.food_item_icon,
@@ -280,6 +292,7 @@ export const getFrequentFoodItems = async (
       JOIN meals m ON m.id = mfi.meal_id
       WHERE m.time > NOW() - ($1::int || ' days')::interval
         AND mfi.food_item_id IS NOT NULL
+        ${mealTypeClause}
     )
     SELECT food_item_id, food_item_name, food_item_icon, quantity, unit,
            time AS last_used, use_count AS count
@@ -288,7 +301,7 @@ export const getFrequentFoodItems = async (
     ORDER BY use_count DESC, time DESC
     LIMIT $2
   `
-  const result = await query(user, sql, [filter.since_days, filter.limit])
+  const result = await query(user, sql, params)
   return result.rows.map((row) => ({
     count: Number(row.count),
     food_item_id: row.food_item_id as string,

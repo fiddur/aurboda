@@ -371,7 +371,8 @@ export type FrequentMealsResponse = z.infer<typeof frequentMealsResponseSchema>
 
 /**
  * Query parameters for surfacing the food items a user logs most often. Helps
- * an MCP agent suggest "your usual" without re-searching every time.
+ * an MCP agent suggest "your usual" without re-searching every time, and
+ * backs the per-slot quick-log chips on the meals overview.
  */
 export const frequentFoodItemsQuerySchema = z
   .object({
@@ -389,6 +390,10 @@ export const frequentFoodItemsQuerySchema = z
       .max(365)
       .default(90)
       .meta({ description: 'How many days back to consider when computing frequency' }),
+    meal_type: mealTypeSchema.optional().meta({
+      description:
+        'Optional: only count food items used in meals of this meal_type (e.g. "breakfast"). Lets the UI suggest different "your usuals" per slot.',
+    }),
   })
   .meta({ description: 'Query parameters for frequent-food-items', id: 'FrequentFoodItemsQuery' })
 

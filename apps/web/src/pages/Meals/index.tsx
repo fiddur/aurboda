@@ -1,4 +1,4 @@
-import type { FrequentMeal } from '@aurboda/api-spec'
+import type { FrequentFoodItem } from '@aurboda/api-spec'
 
 import { NUTRIENT_FIELDS } from '@aurboda/api-spec'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -11,7 +11,7 @@ import { DateNav } from '../../components/DateNav'
 import {
   addMealApi,
   deleteMealApi,
-  fetchFrequentMealsApi,
+  fetchFrequentFoodItemsApi,
   fetchMeals,
   fetchUserSettings,
   type Meal,
@@ -22,6 +22,7 @@ import {
   updateUserSettings,
 } from '../../state/api'
 import { auth } from '../../state/auth'
+import { isEmoji, isIconPath, isUrl } from '../../utils/emojiLookup'
 import './style.css'
 
 interface MealSlot {
@@ -155,38 +156,51 @@ function MealDetails({
 }
 
 /**
- * Group frequent meals by icon. Names without an icon become single-entry chips.
- * Names sharing an icon collapse to one chip that opens a name picker on tap.
+ * Group frequent food items by icon. Items without an icon become
+ * single-entry chips keyed by name. Items sharing an icon collapse to one
+ * chip that opens a name picker on tap.
  */
-const groupByIcon = (meals: FrequentMeal[]): Array<{ icon: string | null; meals: FrequentMeal[] }> => {
-  const byIcon = new Map<string, FrequentMeal[]>()
-  const noIcon: FrequentMeal[] = []
-  for (const meal of meals) {
-    if (!meal.icon) {
-      noIcon.push(meal)
+const groupFoodItemsByIcon = (
+  items: FrequentFoodItem[],
+): Array<{ icon: string | null; items: FrequentFoodItem[] }> => {
+  const byIcon = new Map<string, FrequentFoodItem[]>()
+  const noIcon: FrequentFoodItem[] = []
+  for (const item of items) {
+    if (!item.icon) {
+      noIcon.push(item)
       continue
     }
-    const list = byIcon.get(meal.icon) ?? []
-    list.push(meal)
-    byIcon.set(meal.icon, list)
+    const list = byIcon.get(item.icon) ?? []
+    list.push(item)
+    byIcon.set(item.icon, list)
   }
-  const groups: Array<{ icon: string | null; meals: FrequentMeal[] }> = []
-  for (const [icon, list] of byIcon) groups.push({ icon, meals: list })
-  for (const meal of noIcon) groups.push({ icon: null, meals: [meal] })
+  const groups: Array<{ icon: string | null; items: FrequentFoodItem[] }> = []
+  for (const [icon, list] of byIcon) groups.push({ icon, items: list })
+  for (const item of noIcon) groups.push({ icon: null, items: [item] })
   return groups
 }
 
-function FrequentMealsStrip({
+/** Render an icon string the right way: emoji inline, URL/icon-path as <img>. */
+function ChipIcon({ icon, size = 24 }: { icon: string; size?: number }) {
+  if (isUrl(icon) || isIconPath(icon)) {
+    return <img class="frequent-icon-img" src={icon} alt="" width={size} height={size} />
+  }
+  if (isEmoji(icon)) return <span class="frequent-icon">{icon}</span>
+  // Fallback: short text (initials, custom token).
+  return <span class="frequent-icon">{icon}</span>
+}
+
+function FrequentFoodItemsStrip({
   slotName,
   onQuickLog,
 }: {
   slotName: string
-  onQuickLog: (template: FrequentMeal) => void
+  onQuickLog: (foodItem: FrequentFoodItem) => void
 }) {
   const mealType = slotName.toLowerCase()
   const { data: frequent } = useQuery({
-    queryFn: () => fetchFrequentMealsApi(mealType, 6),
-    queryKey: ['frequentMeals', mealType],
+    queryFn: () => fetchFrequentFoodItemsApi({ limit: 8, meal_type: mealType }),
+    queryKey: ['frequentFoodItems', mealType],
     staleTime: 5 * 60_000,
   })
 
@@ -204,14 +218,14 @@ function FrequentMealsStrip({
 
   if (!frequent || frequent.length === 0) return null
 
-  const groups = groupByIcon(frequent)
+  const groups = groupFoodItemsByIcon(frequent)
 
   return (
     <div ref={wrapperRef} class="frequent-meals-strip">
       {groups.map((group) => {
-        const single = group.meals[0]
-        const ambiguous = group.meals.length > 1
-        const key = group.icon ?? `noicon:${single.name}`
+        const single = group.items[0]
+        const ambiguous = group.items.length > 1
+        const key = group.icon ?? `noicon:${single.food_item_id}`
 
         if (!ambiguous) {
           return (
@@ -222,14 +236,17 @@ function FrequentMealsStrip({
               title={`Log ${single.name}`}
               onClick={() => onQuickLog(single)}
             >
-              {group.icon && <span class="frequent-icon">{group.icon}</span>}
+              {group.icon ? <ChipIcon icon={group.icon} /> : null}
               <span class="frequent-name">{single.name}</span>
             </button>
           )
         }
 
+        // When several food items share the same icon, the chip shows just
+        // the icon and tapping it opens a picker — matches the user spec
+        // "click the icon to choose which one to log".
         const isOpen = openIcon === group.icon
-        const names = group.meals.map((m) => m.name).join(', ')
+        const names = group.items.map((i) => i.name).join(', ')
         return (
           <div key={key} class="frequent-chip-group">
             <button
@@ -241,22 +258,22 @@ function FrequentMealsStrip({
               aria-expanded={isOpen}
               onClick={() => setOpenIcon(isOpen ? null : group.icon)}
             >
-              <span class="frequent-icon">{group.icon}</span>
+              {group.icon && <ChipIcon icon={group.icon} />}
               <span class="frequent-multi-caret">▾</span>
             </button>
             {isOpen && (
               <div class="frequent-picker" onClick={(e) => e.stopPropagation()}>
-                {group.meals.map((m) => (
+                {group.items.map((item) => (
                   <button
-                    key={m.name}
+                    key={item.food_item_id}
                     type="button"
                     class="frequent-picker-item"
                     onClick={() => {
                       setOpenIcon(null)
-                      onQuickLog(m)
+                      onQuickLog(item)
                     }}
                   >
-                    {m.name}
+                    {item.name}
                   </button>
                 ))}
               </div>
@@ -278,7 +295,7 @@ interface MealSlotRowProps {
   onChangeTime: (meal: Meal, hour: number, minute?: number) => void
   onCreateAtTime: (slot: MealSlot, hour: number, minute: number) => void
   onCreateAndOpen: (slot: MealSlot) => void
-  onQuickLog: (slot: MealSlot, hour: number, minute: number, template: FrequentMeal) => void
+  onQuickLog: (slot: MealSlot, hour: number, minute: number, foodItem: FrequentFoodItem) => void
   onDelete: (id: string) => void
   isDeletePending: boolean
   isSaving: boolean
@@ -391,12 +408,12 @@ function MealSlotRow({
       </div>
 
       {!primaryMeal && (
-        <FrequentMealsStrip
+        <FrequentFoodItemsStrip
           slotName={slot.name}
-          onQuickLog={(template) => {
+          onQuickLog={(foodItem) => {
             const hour = Math.floor(sliderValue / 60)
             const minute = sliderValue % 60
-            onQuickLog(slot, hour, minute, template)
+            onQuickLog(slot, hour, minute, foodItem)
           }}
         />
       )}
@@ -517,14 +534,24 @@ function OtherMealRow({
           {formatMealType(meal.meal_type)}
         </a>
         <span class="meal-time">{format(meal.time, 'HH:mm')}</span>
-        <ConfirmButton
-          label="Delete"
-          confirmMessage="Delete this meal?"
-          onConfirm={() => onDelete(meal.id!)}
-          isPending={isDeletePending}
-          pendingLabel="Deleting..."
-          buttonClass="btn-danger-small"
-        />
+        <div class="slot-actions">
+          <a
+            href={`/meals/${meal.id}`}
+            class="meal-edit-link"
+            title="Edit meal details"
+            aria-label="Edit meal"
+          >
+            ✎
+          </a>
+          <ConfirmButton
+            label="Delete"
+            confirmMessage="Delete this meal?"
+            onConfirm={() => onDelete(meal.id!)}
+            isPending={isDeletePending}
+            pendingLabel="Deleting..."
+            buttonClass="btn-danger-small"
+          />
+        </div>
       </div>
       <MealDetails
         meal={meal}
@@ -743,7 +770,7 @@ function MealsContent({ dayKey }: { dayKey: string }) {
     })
   }
 
-  const handleQuickLog = (slot: MealSlot, hour: number, minute: number, template: FrequentMeal) => {
+  const handleQuickLog = (slot: MealSlot, hour: number, minute: number, foodItem: FrequentFoodItem) => {
     const slotName = slot.name.toLowerCase()
     const id = crypto.randomUUID()
     const mealTime = new Date(dayKey)
@@ -751,8 +778,17 @@ function MealsContent({ dayKey }: { dayKey: string }) {
     upsertMutation.mutate({
       id,
       meal_type: slotName,
-      name: template.name,
-      food_items: template.food_items ?? [],
+      // No meal name — quick-log creates a meal containing just this one
+      // food item; the user can edit/expand from the detail page.
+      food_items: [
+        {
+          food_item_id: foodItem.food_item_id,
+          icon: foodItem.icon ?? undefined,
+          name: foodItem.name,
+          quantity: foodItem.last_quantity ?? undefined,
+          unit: foodItem.last_unit ?? undefined,
+        },
+      ],
       source: 'manual',
       time: mealTime.toISOString(),
     })

@@ -396,6 +396,14 @@ a.meal-name:hover {
   line-height: 1;
 }
 
+.frequent-icon-img {
+  display: inline-block;
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+  vertical-align: middle;
+}
+
 .frequent-multi-caret {
   font-size: 0.7rem;
   color: #6b7280;
