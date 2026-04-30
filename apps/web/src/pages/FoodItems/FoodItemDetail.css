@@ -342,3 +342,134 @@
     background: #78350f;
   }
 }
+
+.fi-reference-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 1rem;
+  padding: 0.5rem 0.75rem;
+  background: #f9fafb;
+  border-radius: 4px;
+  font-size: 0.85rem;
+}
+
+.fi-reference-label {
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.fi-reference-current {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+}
+
+.fi-reference-name {
+  color: #374151;
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.fi-reference-name:hover {
+  text-decoration: underline;
+}
+
+.fi-icon-display-inline {
+  margin-right: 0.25rem;
+}
+
+.fi-reference-picker {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+  min-width: 200px;
+}
+
+.btn-link {
+  background: none;
+  border: none;
+  color: #673ab8;
+  font-size: 0.8rem;
+  cursor: pointer;
+  padding: 0.125rem 0.25rem;
+}
+
+.btn-link:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
+.btn-link:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-link-danger {
+  color: #b91c1c;
+}
+
+.fi-reference-warning {
+  width: 100%;
+  margin: 0.25rem 0 0;
+  padding: 0.375rem 0.5rem;
+  font-size: 0.8rem;
+  color: #92400e;
+  background: #fef3c7;
+  border-radius: 4px;
+}
+
+.nutrient-edit-inherited input {
+  color: #9ca3af;
+  font-style: italic;
+}
+
+.nutrient-edit-inherited input::placeholder {
+  color: #9ca3af;
+  font-style: italic;
+  opacity: 1;
+}
+
+.nutrient-origin-badge {
+  font-size: 0.6rem;
+  color: #6b7280;
+  background: #e5e7eb;
+  padding: 0.05rem 0.25rem;
+  border-radius: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+@media (prefers-color-scheme: dark) {
+  .fi-reference-row {
+    background: #1f2937;
+  }
+
+  .fi-reference-label {
+    color: #9ca3af;
+  }
+
+  .fi-reference-name {
+    color: #d1d5db;
+  }
+
+  .btn-link {
+    color: #c4b5fd;
+  }
+
+  .btn-link-danger {
+    color: #fca5a5;
+  }
+
+  .fi-reference-warning {
+    color: #fef3c7;
+    background: #78350f;
+  }
+
+  .nutrient-origin-badge {
+    color: #9ca3af;
+    background: #374151;
+  }
+}

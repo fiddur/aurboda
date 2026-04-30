@@ -111,6 +111,7 @@ export const mealsTables: Record<string, string> = {
       icon            TEXT,
       source_id       VARCHAR(100),
       is_composite    BOOLEAN NOT NULL DEFAULT FALSE,
+      reference_food_item_id UUID,
       created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       CONSTRAINT unique_food_item_name UNIQUE (name_lower)

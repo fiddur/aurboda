@@ -21,6 +21,7 @@ const FOOD_ITEM_COLUMNS = [
   ...NUTRIENT_FIELD_NAMES,
   'icon',
   'is_composite',
+  'reference_food_item_id',
   'created_at',
   'updated_at',
 ].join(', ')
@@ -36,6 +37,7 @@ const mapFoodItemRow = (row: Record<string, unknown>): FoodItemEntity => {
     default_unit: row.default_unit ?? undefined,
     icon: row.icon ?? undefined,
     is_composite: row.is_composite === true,
+    reference_food_item_id: (row.reference_food_item_id as string | null) ?? undefined,
     created_at: new Date(row.created_at as string),
     updated_at: new Date(row.updated_at as string),
   }
@@ -239,6 +241,26 @@ export const updateFoodItem = async (
 export const deleteFoodItem = async (user: string, id: string): Promise<boolean> => {
   const result = await query(user, 'DELETE FROM food_items WHERE id = $1', [id])
   return (result.rowCount ?? 0) > 0
+}
+
+/**
+ * Set or clear the reference_food_item_id soft pointer. Pass null to clear.
+ * Caller is responsible for validating the reference target exists in the
+ * merged user+central library.
+ */
+export const setFoodItemReference = async (
+  user: string,
+  id: string,
+  referenceId: string | null,
+): Promise<FoodItemEntity | null> => {
+  const result = await query(
+    user,
+    `UPDATE food_items SET reference_food_item_id = $2, updated_at = NOW()
+     WHERE id = $1
+     RETURNING ${FOOD_ITEM_COLUMNS}`,
+    [id, referenceId],
+  )
+  return result.rows.length > 0 ? mapFoodItemRow(result.rows[0]) : null
 }
 
 /**

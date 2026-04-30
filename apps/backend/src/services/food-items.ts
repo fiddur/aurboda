@@ -56,12 +56,38 @@ export interface DerivedNutrients {
   nutrient_data_incomplete: boolean
 }
 
+export interface ReferencedFood {
+  /** The reference food item resolved across user + central. */
+  food: MergedFoodItem
+  /** True when self.default_quantity / reference.default_quantity isn't possible (missing default_quantity, or units that can't convert). Inherited values are still emitted at scale=1 but flagged so the UI can warn. */
+  unit_mismatch: boolean
+}
+
+/**
+ * Per-field origin info for an atomic item with an optional reference.
+ * Each entry says where the value came from — the item itself, an inherited
+ * reference, or both (with the self winning).
+ */
+export interface FieldOrigin {
+  origin: 'self' | 'reference'
+  value: number | string
+}
+
+export interface ReferenceEnrichedFields {
+  /** Map of NUTRIENT_FIELD_NAME → { origin, value }. Only entries that have a value (self or inherited) appear. */
+  fields: Record<string, FieldOrigin>
+}
+
 export interface FoodItemDetail {
   item: MergedFoodItem
   /** Present iff the item is a per-user composite. */
   ingredients?: ResolvedIngredient[]
   /** Derived nutrient totals when composite; absent for atomic items. */
   derived_nutrients?: DerivedNutrients
+  /** Set when the atomic item has a reference_food_item_id set. Provides the resolved reference + per-field origin info. */
+  reference?: ReferencedFood
+  /** Per-field origin map — set together with `reference`. */
+  reference_enriched?: ReferenceEnrichedFields
 }
 
 export interface FoodItemsService {
@@ -135,6 +161,72 @@ const computeIngredientScale = (
 }
 
 /**
+ * Compute the scale factor between a self food item and its reference.
+ * Reference values are stored "per default_quantity"; if the self item also
+ * specifies default_quantity (and units match or convert), we scale by
+ * `self.default_quantity / ref.default_quantity`. When units don't match
+ * and don't convert, return scale=1 + unit_mismatch=true so the caller can
+ * surface a warning instead of silently producing wrong-magnitude values.
+ */
+const computeReferenceScale = (
+  self: MergedFoodItem,
+  ref: MergedFoodItem,
+): { scale: number; unit_mismatch: boolean } => {
+  const selfQty = self.default_quantity as number | undefined
+  const refQty = ref.default_quantity as number | undefined
+  if (selfQty === undefined || refQty === undefined || refQty === 0) {
+    return { scale: 1, unit_mismatch: true }
+  }
+  const selfUnit = self.default_unit as string | undefined
+  const refUnit = ref.default_unit as string | undefined
+  if (selfUnit && refUnit && selfUnit !== refUnit) {
+    const converted = convertUnit(selfQty, selfUnit, refUnit)
+    if (converted === undefined) return { scale: 1, unit_mismatch: true }
+    return { scale: converted / refQty, unit_mismatch: false }
+  }
+  return { scale: selfQty / refQty, unit_mismatch: false }
+}
+
+/**
+ * Build a `FoodItemDetail` with reference-origin nutrients merged in.
+ * Self values always win; reference values fill empty fields, scaled by
+ * `self.default_quantity / ref.default_quantity` when units match.
+ */
+const enrichWithReference = (self: MergedFoodItem, ref: MergedFoodItem): FoodItemDetail => {
+  const { scale, unit_mismatch } = computeReferenceScale(self, ref)
+  const fields: Record<string, FieldOrigin> = {}
+  for (const field of NUTRIENT_FIELD_NAMES) {
+    const selfVal = self[field]
+    if (typeof selfVal === 'number') {
+      fields[field] = { origin: 'self', value: selfVal }
+      continue
+    }
+    const refVal = ref[field]
+    if (typeof refVal === 'number') {
+      fields[field] = { origin: 'reference', value: round2(refVal * scale) }
+    }
+  }
+  // Icon and default_* are also inheritable for display purposes — the
+  // detail page can render the reference's icon when self has none.
+  for (const field of ['icon', 'default_unit'] as const) {
+    const selfVal = self[field]
+    if (typeof selfVal === 'string' && selfVal.length > 0) {
+      fields[field] = { origin: 'self', value: selfVal }
+    } else {
+      const refVal = ref[field]
+      if (typeof refVal === 'string' && refVal.length > 0) {
+        fields[field] = { origin: 'reference', value: refVal }
+      }
+    }
+  }
+  return {
+    item: self,
+    reference: { food: ref, unit_mismatch },
+    reference_enriched: { fields },
+  }
+}
+
+/**
  * Sum each nutrient column across the resolved ingredients × per-ingredient
  * scale. Ingredients we couldn't resolve, ingredients without a calorie
  * reading, and ingredients we couldn't scale reliably (missing default_qty
@@ -201,23 +293,38 @@ export const createFoodItemsService = (centralDb: CentralDb): FoodItemsService =
   getDetail: async (user, id) => {
     const fromUser = await getUserFoodItemById(user, id)
     if (fromUser) {
-      // Skip the junction lookup for atomic items — most reads.
-      if (!fromUser.is_composite) return { item: fromUser }
-      const rows = await dbGetIngredients(user, id)
-      if (rows.length === 0) return { item: fromUser }
-      const resolved: ResolvedIngredient[] = await Promise.all(
-        rows.map(async (row) => {
-          const food =
-            (await getUserFoodItemById(user, row.ingredient_food_item_id)) ??
-            (await centralDb.getSharedFoodItemById(row.ingredient_food_item_id))
-          return { food, row }
-        }),
-      )
-      return {
-        derived_nutrients: aggregateNutrientsFromIngredients(resolved),
-        ingredients: resolved,
-        item: fromUser,
+      // Composite path takes precedence over reference enrichment — a
+      // recipe's nutrients are entirely derived from its ingredients, so
+      // a reference would be ignored anyway.
+      if (fromUser.is_composite) {
+        const rows = await dbGetIngredients(user, id)
+        if (rows.length === 0) return { item: fromUser }
+        const resolved: ResolvedIngredient[] = await Promise.all(
+          rows.map(async (row) => {
+            const food =
+              (await getUserFoodItemById(user, row.ingredient_food_item_id)) ??
+              (await centralDb.getSharedFoodItemById(row.ingredient_food_item_id))
+            return { food, row }
+          }),
+        )
+        return {
+          derived_nutrients: aggregateNutrientsFromIngredients(resolved),
+          ingredients: resolved,
+          item: fromUser,
+        }
       }
+
+      // Atomic per-user item — resolve the reference (if any) and emit
+      // per-field origin info.
+      const refId = fromUser.reference_food_item_id as string | undefined
+      if (refId) {
+        const refFood =
+          (await getUserFoodItemById(user, refId)) ?? (await centralDb.getSharedFoodItemById(refId))
+        if (refFood) {
+          return enrichWithReference(fromUser, refFood)
+        }
+      }
+      return { item: fromUser }
     }
     const fromCentral = await centralDb.getSharedFoodItemById(id)
     return fromCentral ? { item: fromCentral } : null

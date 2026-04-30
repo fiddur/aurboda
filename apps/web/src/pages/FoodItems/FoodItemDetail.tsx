@@ -9,6 +9,7 @@ import { useLocation, useRoute } from 'preact-iso'
 import { useEffect, useRef, useState } from 'preact/hooks'
 
 import { ConfirmButton } from '../../components/ConfirmButton'
+import { FoodItemAutocomplete } from '../../components/FoodItemAutocomplete'
 import { IconInput } from '../../components/IconInput'
 import { type IngredientRow, IngredientList } from '../../components/IngredientList'
 import { auth } from '../../state/auth'
@@ -77,6 +78,21 @@ const clearIngredientsApi = async (id: string): Promise<ApiFoodItemDetail> => {
   return json.data
 }
 
+const setReferenceApi = async (id: string, referenceId: string | null): Promise<ApiFoodItemDetail> => {
+  const { token } = auth.value
+  const res = await fetch(`${API_URL}/food-items/${id}/reference`, {
+    body: JSON.stringify({ reference_food_item_id: referenceId }),
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    method: referenceId === null ? 'DELETE' : 'PUT',
+  })
+  if (!res.ok) {
+    const json = (await res.json().catch(() => ({}))) as { error?: string }
+    throw new Error(json.error ?? 'Failed to set reference')
+  }
+  const json = await res.json()
+  return json.data
+}
+
 const CATEGORIES: Array<{ key: NutrientFieldDef['category']; label: string }> = [
   { key: 'macro', label: 'Macros' },
   { key: 'extended_macro', label: 'Extended Macros' },
@@ -105,10 +121,13 @@ function SaveIndicator({
 function NutrientInput({
   field,
   initial,
+  inheritedValue,
   onCommit,
 }: {
   field: NutrientFieldDef
   initial: number | undefined
+  /** If set, the value comes from the reference. Shown as placeholder; user typing turns it into a self value. */
+  inheritedValue?: number
   onCommit: (value: number | null) => void
 }) {
   const [local, setLocal] = useState<string>(initial !== undefined ? String(initial) : '')
@@ -125,23 +144,31 @@ function NutrientInput({
     }
     const parsed = parseFloat(trimmed)
     if (Number.isNaN(parsed)) {
-      // Revert to last good value rather than blanking the saved nutrient.
       setLocal(initial !== undefined ? String(initial) : '')
       return
     }
     if (parsed !== initial) onCommit(parsed)
   }
 
+  const isInherited = initial === undefined && inheritedValue !== undefined
+  const placeholder = inheritedValue !== undefined ? String(inheritedValue) : undefined
+
   return (
-    <span class="nutrient-edit">
+    <span class={`nutrient-edit${isInherited ? ' nutrient-edit-inherited' : ''}`}>
       <input
         type="number"
         step="0.01"
         value={local}
+        placeholder={placeholder}
         onInput={(e) => setLocal((e.target as HTMLInputElement).value)}
         onBlur={handleBlur}
       />
       <span class="nutrient-unit">{field.unit}</span>
+      {isInherited && (
+        <span class="nutrient-origin-badge" title="Value inherited from reference food">
+          ref
+        </span>
+      )}
     </span>
   )
 }
@@ -222,6 +249,18 @@ export function FoodItemDetail() {
 
   const clearMutation = useMutation({
     mutationFn: () => clearIngredientsApi(id),
+    onError: (err: Error) => setSaveError(err.message ?? 'Save failed'),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(['foodItem', id], updated)
+      setSaveError(null)
+      setSavedFlash(true)
+      if (flashTimer.current) clearTimeout(flashTimer.current)
+      flashTimer.current = setTimeout(() => setSavedFlash(false), 1200)
+    },
+  })
+
+  const referenceMutation = useMutation({
+    mutationFn: (referenceId: string | null) => setReferenceApi(id, referenceId),
     onError: (err: Error) => setSaveError(err.message ?? 'Save failed'),
     onSuccess: (updated) => {
       queryClient.setQueryData(['foodItem', id], updated)
@@ -351,6 +390,7 @@ export function FoodItemDetail() {
         item={item}
         ingredientsMutation={ingredientsMutation}
         clearMutation={clearMutation}
+        referenceMutation={referenceMutation}
         save={save}
       />
     </div>
@@ -361,10 +401,17 @@ interface CompositeProps {
   item: ApiFoodItemDetail
   ingredientsMutation: { mutate: (ingredients: FoodItemIngredient[]) => void; isPending: boolean }
   clearMutation: { mutate: () => void; isPending: boolean }
+  referenceMutation: { mutate: (referenceId: string | null) => void; isPending: boolean }
   save: (body: Record<string, unknown>) => void
 }
 
-function CompositeOrAtomicSection({ item, ingredientsMutation, clearMutation, save }: CompositeProps) {
+function CompositeOrAtomicSection({
+  item,
+  ingredientsMutation,
+  clearMutation,
+  referenceMutation,
+  save,
+}: CompositeProps) {
   // Local state for atomic→composite intent: clicking "Convert to recipe"
   // surfaces the IngredientList immediately even before any ingredient is
   // saved. The is_composite flag flips server-side only when a non-empty
@@ -447,6 +494,8 @@ function CompositeOrAtomicSection({ item, ingredientsMutation, clearMutation, sa
     )
   }
 
+  const enrichedFields = item.reference_enriched?.fields ?? {}
+
   return (
     <>
       <div class="composite-toggle-row">
@@ -463,6 +512,8 @@ function CompositeOrAtomicSection({ item, ingredientsMutation, clearMutation, sa
         </span>
       </div>
 
+      <ReferencePicker item={item} referenceMutation={referenceMutation} />
+
       <div class="nutrient-sections">
         {CATEGORIES.map(({ key, label }) => {
           const fields = NUTRIENT_FIELDS.filter((f) => f.category === key)
@@ -473,12 +524,21 @@ function CompositeOrAtomicSection({ item, ingredientsMutation, clearMutation, sa
               <div class="nutrient-grid">
                 {fields.map((f) => {
                   const value = item[f.name as keyof ApiFoodItemDetail]
+                  const selfValue = typeof value === 'number' ? value : undefined
+                  const enriched = enrichedFields[f.name]
+                  const inheritedValue =
+                    selfValue === undefined &&
+                    enriched?.origin === 'reference' &&
+                    typeof enriched.value === 'number'
+                      ? enriched.value
+                      : undefined
                   return (
                     <div key={f.name} class="nutrient-row">
                       <span class="nutrient-label">{f.label}</span>
                       <NutrientInput
                         field={f}
-                        initial={typeof value === 'number' ? value : undefined}
+                        initial={selfValue}
+                        inheritedValue={inheritedValue}
                         onCommit={(v) => save({ [f.name]: v })}
                       />
                     </div>
@@ -490,5 +550,84 @@ function CompositeOrAtomicSection({ item, ingredientsMutation, clearMutation, sa
         })}
       </div>
     </>
+  )
+}
+
+function ReferencePicker({
+  item,
+  referenceMutation,
+}: {
+  item: ApiFoodItemDetail
+  referenceMutation: { mutate: (referenceId: string | null) => void; isPending: boolean }
+}) {
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const [draftName, setDraftName] = useState('')
+  const ref = item.reference?.food
+  const unitMismatch = item.reference?.unit_mismatch ?? false
+
+  return (
+    <div class="fi-reference-row">
+      <label class="fi-reference-label">Reference food</label>
+      {ref && !pickerOpen && (
+        <span class="fi-reference-current">
+          <a href={`/food-items/${ref.id}`} class="fi-reference-name">
+            {ref.icon && isEmoji(ref.icon) && <span class="fi-icon-display-inline">{ref.icon}</span>}
+            {ref.name}
+          </a>
+          <button
+            type="button"
+            class="btn-link"
+            onClick={() => {
+              setDraftName(ref.name)
+              setPickerOpen(true)
+            }}
+            disabled={referenceMutation.isPending}
+          >
+            Change
+          </button>
+          <button
+            type="button"
+            class="btn-link btn-link-danger"
+            onClick={() => referenceMutation.mutate(null)}
+            disabled={referenceMutation.isPending}
+          >
+            Clear
+          </button>
+        </span>
+      )}
+      {(!ref || pickerOpen) && (
+        <span class="fi-reference-picker">
+          <FoodItemAutocomplete
+            value={draftName}
+            onChange={setDraftName}
+            onSelect={(picked) => {
+              if (picked.id === item.id) return
+              referenceMutation.mutate(picked.id)
+              setPickerOpen(false)
+              setDraftName('')
+            }}
+            placeholder="Search for a reference food…"
+          />
+          {pickerOpen && (
+            <button
+              type="button"
+              class="btn-link"
+              onClick={() => {
+                setPickerOpen(false)
+                setDraftName('')
+              }}
+            >
+              Cancel
+            </button>
+          )}
+        </span>
+      )}
+      {ref && unitMismatch && (
+        <p class="fi-reference-warning">
+          ⚠ Unit mismatch — this item's default unit ({item.default_unit ?? '?'}) can't be converted to the
+          reference's ({ref.default_unit ?? '?'}). Inherited values are shown unscaled.
+        </p>
+      )}
+    </div>
   )
 }

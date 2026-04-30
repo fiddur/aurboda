@@ -7,6 +7,7 @@ import {
   getFoodItemById,
   getFoodItemByName,
   searchFoodItems,
+  setFoodItemReference,
   updateFoodItem,
   upsertFoodItem,
 } from './food-items.ts'
@@ -233,6 +234,26 @@ describe('Food Items Integration Tests', () => {
 
       const found = await getFoodItemById(user, item.id)
       expect(found).toBeNull()
+    })
+  })
+
+  describe('setFoodItemReference', () => {
+    test('sets and clears the reference_food_item_id pointer', async () => {
+      const user = getTestUser()
+      const target = await upsertFoodItem(user, { name: 'Hushållsost' })
+      const product = await upsertFoodItem(user, { name: 'Arla Hushållsost' })
+
+      const set = await setFoodItemReference(user, product.id, target.id)
+      expect(set?.reference_food_item_id).toBe(target.id)
+
+      const cleared = await setFoodItemReference(user, product.id, null)
+      expect(cleared?.reference_food_item_id).toBeUndefined()
+    })
+
+    test('returns null for missing food item', async () => {
+      const user = getTestUser()
+      const result = await setFoodItemReference(user, '00000000-0000-0000-0000-000000000000', null)
+      expect(result).toBeNull()
     })
   })
 

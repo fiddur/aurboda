@@ -36,6 +36,10 @@ export const foodItemEntitySchema = nutrientFieldsSchema
       description:
         'True if this is a composite (recipe) item — its nutrient values are derived from food_item_ingredients at read time.',
     }),
+    reference_food_item_id: z.string().uuid().optional().meta({
+      description:
+        'Optional pointer to a richer canonical food item (typically a central library row, e.g. an LSV item) used to inherit empty micronutrient fields. Per-user atomic items only.',
+    }),
     name: z.string().min(1).max(255).meta({ description: 'Food item name' }),
     source: z
       .string()
@@ -117,6 +121,41 @@ export type ResolvedFoodItemIngredient = z.infer<typeof resolvedFoodItemIngredie
  * `ingredients` and `derived_nutrients` are absent and the entity's own
  * nutrient values are authoritative.
  */
+export const fieldOriginSchema = z
+  .object({
+    origin: z.enum(['self', 'reference']).meta({
+      description:
+        '"self" if the value comes from this food item directly; "reference" if inherited from the referenced canonical item (scaled to this serving).',
+    }),
+    value: z.union([z.number(), z.string()]),
+  })
+  .meta({ description: 'Per-field origin info for a reference-enriched food item', id: 'FieldOrigin' })
+
+export type FieldOrigin = z.infer<typeof fieldOriginSchema>
+
+export const referencedFoodSchema = z
+  .object({
+    food: foodItemEntitySchema,
+    unit_mismatch: z.boolean().meta({
+      description:
+        'True when the self item and reference have units that cannot be converted (e.g. "1 slice" vs "100 g") — inherited values are emitted at scale=1 with this flag so the UI can warn.',
+    }),
+  })
+  .meta({ description: 'Resolved reference for an enriched food item', id: 'ReferencedFood' })
+
+export type ReferencedFood = z.infer<typeof referencedFoodSchema>
+
+export const referenceEnrichedFieldsSchema = z
+  .object({
+    fields: z.record(z.string(), fieldOriginSchema).meta({
+      description:
+        'Per-field origin map. Self values always win when set; reference values fill empty fields, scaled to the self serving.',
+    }),
+  })
+  .meta({ id: 'ReferenceEnrichedFields' })
+
+export type ReferenceEnrichedFields = z.infer<typeof referenceEnrichedFieldsSchema>
+
 export const foodItemDetailSchema = foodItemEntitySchema
   .extend({
     ingredients: z.array(resolvedFoodItemIngredientSchema).optional(),
@@ -131,10 +170,27 @@ export const foodItemDetailSchema = foodItemEntitySchema
       })
       .optional()
       .meta({ description: 'Nutrient totals derived from ingredients (composite items only)' }),
+    reference: referencedFoodSchema.optional().meta({
+      description: 'The referenced canonical food item (atomic items only).',
+    }),
+    reference_enriched: referenceEnrichedFieldsSchema.optional().meta({
+      description: 'Per-field origin info when a reference is set.',
+    }),
   })
   .meta({ description: 'Food item detail with optional composite ingredients', id: 'FoodItemDetail' })
 
 export type FoodItemDetail = z.infer<typeof foodItemDetailSchema>
+
+export const setFoodItemReferenceBodySchema = z
+  .object({
+    reference_food_item_id: z.string().uuid().nullable().meta({
+      description:
+        'ID of the food item to reference (per-user OR central). Pass null to clear the reference.',
+    }),
+  })
+  .meta({ description: 'Set or clear the reference_food_item_id pointer', id: 'SetFoodItemReferenceBody' })
+
+export type SetFoodItemReferenceBody = z.infer<typeof setFoodItemReferenceBodySchema>
 
 // ============================================================================
 // Request Schemas
