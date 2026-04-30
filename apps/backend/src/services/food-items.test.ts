@@ -4,7 +4,12 @@ import type { FoodItemEntity } from '../db/types.ts'
 import type { CentralDb } from './central-db.ts'
 import type { SharedFoodItemEntity } from './central-food-items.ts'
 
-import { aggregateNutrientsFromIngredients, createFoodItemsService } from './food-items.ts'
+import {
+  aggregateNutrientsFromIngredients,
+  createFoodItemsService,
+  type FoodItemDetail,
+  getEffectiveNutrients,
+} from './food-items.ts'
 
 vi.mock('../db/food-items.ts', () => ({
   findOrCreateFoodItem: vi.fn(),
@@ -490,5 +495,43 @@ describe('createFoodItemsService.getDetail — reference enrichment', () => {
     expect(detail?.reference).toBeUndefined()
     expect(detail?.reference_enriched).toBeUndefined()
     expect(detail?.item.id).toBe('u1')
+  })
+})
+
+describe('getEffectiveNutrients', () => {
+  test('composite — returns derived totals (the row columns are stale leftovers)', () => {
+    const item = userItem('p', 'Recipe')
+    item.calories = 999 // stale row column from before the conversion to composite
+    const detail: FoodItemDetail = {
+      derived_nutrients: { nutrient_data_incomplete: false, values: { calories: 320, fiber: 0, protein: 1 } },
+      ingredients: [],
+      item,
+    }
+    expect(getEffectiveNutrients(detail)).toEqual({ calories: 320, fiber: 0, protein: 1 })
+  })
+
+  test('reference-enriched — returns the per-field origin values', () => {
+    const item = userItem('p', 'Atomic')
+    const detail: FoodItemDetail = {
+      item,
+      reference: { food: item, unit_mismatch: false },
+      reference_enriched: {
+        fields: {
+          calories: { origin: 'self', value: 90 },
+          iron: { origin: 'reference', value: 0.12 },
+        },
+      },
+    }
+    expect(getEffectiveNutrients(detail)).toEqual({ calories: 90, iron: 0.12 })
+  })
+
+  test('plain atomic — reads numeric nutrient columns from the row', () => {
+    const item = userItem('p', 'Plain')
+    item.calories = 100
+    item.fiber = 3
+    const detail: FoodItemDetail = { item }
+    const eff = getEffectiveNutrients(detail)
+    expect(eff.calories).toBe(100)
+    expect(eff.fiber).toBe(3)
   })
 })

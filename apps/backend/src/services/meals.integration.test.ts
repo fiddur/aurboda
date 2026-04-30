@@ -9,11 +9,12 @@
 
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
-import { upsertFoodItem } from '../db/food-items.ts'
+import { setIngredients } from '../db/food-item-ingredients.ts'
+import { updateFoodItem, upsertFoodItem } from '../db/food-items.ts'
 import { getMealFoodItemsBatch } from '../db/meal-food-items.ts'
 import { getMealById } from '../db/meals.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
-import { addMeal, queryFrequentMeals, updateMealById } from './meals.ts'
+import { addMeal, queryFrequentMeals, resnapshotMealsForFoodItem, updateMealById } from './meals.ts'
 
 const CONTAINER_TIMEOUT = 120_000
 
@@ -138,6 +139,109 @@ describe('Meals service integration tests', () => {
 
     const meal = await getMealById(user, mealId)
     expect(meal!.calories).toBe(1000)
+  })
+
+  describe('resnapshotMealsForFoodItem', () => {
+    test('refreshes composite snapshots from current derived totals; leaves other items alone', async () => {
+      const user = getTestUser()
+      // Two simple atomic ingredients.
+      const coffee = await upsertFoodItem(user, {
+        calories: 2,
+        default_quantity: 100,
+        default_unit: 'g',
+        name: 'Coffee',
+        water: 99,
+      })
+      const oil = await upsertFoodItem(user, {
+        calories: 880,
+        default_quantity: 100,
+        default_unit: 'g',
+        fat: 100,
+        name: 'Coconut oil',
+      })
+      // A composite parent with stale row columns.
+      const recipe = await upsertFoodItem(user, {
+        calories: 999, // stale leftover
+        default_quantity: 1,
+        default_unit: 'recipe',
+        fiber: 99,
+        name: 'Fat coffee',
+      })
+      await setIngredients(user, recipe.id, [
+        { ingredient_food_item_id: coffee.id, quantity: 500, sort_order: 0, unit: 'g' },
+        { ingredient_food_item_id: oil.id, quantity: 15, sort_order: 1, unit: 'g' },
+      ])
+      // An unrelated food item (must be left untouched in the meal).
+      const banana = await upsertFoodItem(user, {
+        calories: 89,
+        default_quantity: 100,
+        default_unit: 'g',
+        name: 'Banana',
+      })
+
+      // Log a meal with the recipe + banana.
+      const created = await addMeal(user, {
+        food_items: [
+          { food_item_id: recipe.id, name: 'Fat coffee', quantity: 1, unit: 'recipe' },
+          { food_item_id: banana.id, name: 'Banana', quantity: 100, unit: 'g' },
+        ],
+        time: '2025-06-15T08:00:00Z',
+      })
+      const mealId = created.data!.id
+
+      // Sanity: snapshot already uses derived totals (because syncFoodItemsToJunction
+      // fetches detail for composites). 500 g × 0.02 + 15 g × 8.8 = 10 + 132 = 142 kcal.
+      let links = (await getMealFoodItemsBatch(user, [mealId])).get(mealId) ?? []
+      const recipeLink = links.find((l) => l.food_item_id === recipe.id)!
+      expect(recipeLink.calories).toBe(142)
+
+      // Now fiddle with the recipe directly via stale row columns to simulate
+      // a snapshot taken before the bug fix landed (older meal data). We
+      // overwrite the junction row, then verify resnapshot fixes it.
+      const bananaLinkBefore = links.find((l) => l.food_item_id === banana.id)!
+      expect(bananaLinkBefore.calories).toBe(89)
+
+      // Tweak ingredients: bump oil to 25 g → 500×0.02 + 25×8.8 = 10 + 220 = 230.
+      await setIngredients(user, recipe.id, [
+        { ingredient_food_item_id: coffee.id, quantity: 500, sort_order: 0, unit: 'g' },
+        { ingredient_food_item_id: oil.id, quantity: 25, sort_order: 1, unit: 'g' },
+      ])
+
+      const result = await resnapshotMealsForFoodItem(user, recipe.id)
+      expect(result.meals_updated).toBe(1)
+      expect(result.rows_updated).toBe(1)
+
+      links = (await getMealFoodItemsBatch(user, [mealId])).get(mealId) ?? []
+      const refreshed = links.find((l) => l.food_item_id === recipe.id)!
+      expect(refreshed.calories).toBe(230)
+      // Banana row stays untouched.
+      const bananaAfter = links.find((l) => l.food_item_id === banana.id)!
+      expect(bananaAfter.calories).toBe(89)
+
+      // Meal-level macros recomputed from the new junction rows.
+      const meal = await getMealById(user, mealId)
+      expect(meal!.calories).toBe(319) // 230 + 89
+    })
+
+    test('atomic plain item — refreshes from row columns when they change', async () => {
+      const user = getTestUser()
+      const food = await upsertFoodItem(user, {
+        calories: 200,
+        default_quantity: 100,
+        default_unit: 'g',
+        name: 'Bread',
+      })
+      const meal = await addMeal(user, {
+        food_items: [{ food_item_id: food.id, name: 'Bread', quantity: 50, unit: 'g' }],
+        time: '2025-06-15T08:00:00Z',
+      })
+      // Bump the canonical calories to 240, then re-snapshot.
+      await updateFoodItem(user, food.id, { calories: 240 })
+      const result = await resnapshotMealsForFoodItem(user, food.id)
+      expect(result.rows_updated).toBe(1)
+      const links = (await getMealFoodItemsBatch(user, [meal.data!.id])).get(meal.data!.id) ?? []
+      expect(links[0].calories).toBe(120) // 50/100 × 240
+    })
   })
 
   describe('queryFrequentMeals', () => {

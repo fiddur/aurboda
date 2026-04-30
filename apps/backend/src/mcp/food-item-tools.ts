@@ -29,6 +29,7 @@ import {
   upsertFoodItem,
 } from '../db/index.ts'
 import { createFoodItemsMergeService, createFoodItemsService } from '../services/food-items.ts'
+import { resnapshotMealsForFoodItem } from '../services/meals.ts'
 import { errorResponse, jsonResponse, type McpServer } from './helpers.ts'
 
 export const registerFoodItemTools = (server: McpServer, user: string, centralDb: CentralDb) => {
@@ -193,6 +194,23 @@ export const registerFoodItemTools = (server: McpServer, user: string, centralDb
       const detail = await foodItems.getDetail(user, id)
       if (!detail) return errorResponse('Food item not found')
       return jsonResponse({ data: detail, success: true })
+    },
+  )
+
+  server.tool(
+    'resnapshot_meals_for_food_item',
+    [
+      "Refresh every historical meal's snapshot of the given food item. For composites this picks up the latest derived nutrients (after editing ingredients); for reference-enriched items it picks up newly-inherited micros.",
+      'Other food items in the same meal are left untouched. Returns counts of meals + junction rows updated.',
+    ].join(' '),
+    { id: z.string().uuid().describe('Food item ID whose meal snapshots should be refreshed') },
+    async ({ id }) => {
+      try {
+        const result = await resnapshotMealsForFoodItem(user, id)
+        return jsonResponse({ data: result, success: true })
+      } catch (err) {
+        return errorResponse(err instanceof Error ? err.message : 'Re-snapshot failed')
+      }
     },
   )
 

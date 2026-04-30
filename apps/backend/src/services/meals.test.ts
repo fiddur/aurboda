@@ -47,8 +47,11 @@ vi.mock('./food-items.ts', () => ({
     }),
     getById: vi.fn().mockResolvedValue(null),
     getByName: vi.fn().mockResolvedValue(null),
+    getDetail: vi.fn().mockResolvedValue(null),
     search: vi.fn().mockResolvedValue([]),
   }),
+  // The real service exports getEffectiveNutrients used by syncFoodItemsToJunction.
+  getEffectiveNutrients: vi.fn().mockReturnValue({}),
 }))
 
 const mockUpsertMeal = vi.mocked(db.upsertMeal)
@@ -291,10 +294,24 @@ const canonicalFoodItem = (overrides: Record<string, unknown> = {}) =>
     ...overrides,
   }) as unknown as Parameters<typeof buildScaledJunctionItem>[1]
 
+/** Default per-default-quantity nutrient values matching canonicalFoodItem(). */
+const defaultEffective = (): Record<string, number> => ({
+  calories: 200,
+  carbs: 40,
+  fat: 2,
+  fiber: 5,
+  protein: 8,
+})
+
 describe('buildScaledJunctionItem', () => {
   test('scales nutrients linearly when quantity differs from default', () => {
     const canonical = canonicalFoodItem()
-    const item = buildScaledJunctionItem({ name: 'Rye bread', quantity: 500, unit: 'g' }, canonical, 0)
+    const item = buildScaledJunctionItem(
+      { name: 'Rye bread', quantity: 500, unit: 'g' },
+      canonical,
+      0,
+      defaultEffective(),
+    )
     expect(item.calories).toBe(1000)
     expect(item.protein).toBe(40)
     expect(item.carbs).toBe(200)
@@ -310,13 +327,14 @@ describe('buildScaledJunctionItem', () => {
       { name: 'Rye bread', quantity: 50, unit: 'g' },
       canonicalFoodItem(),
       1,
+      defaultEffective(),
     )
     expect(item.calories).toBe(100)
     expect(item.protein).toBe(4)
   })
 
   test('uses raw canonical values when quantity is missing', () => {
-    const item = buildScaledJunctionItem({ name: 'Rye bread' }, canonicalFoodItem(), 0)
+    const item = buildScaledJunctionItem({ name: 'Rye bread' }, canonicalFoodItem(), 0, defaultEffective())
     expect(item.calories).toBe(200)
   })
 
@@ -325,6 +343,7 @@ describe('buildScaledJunctionItem', () => {
       { name: 'Rye bread', quantity: 500 },
       canonicalFoodItem({ default_quantity: undefined }),
       0,
+      defaultEffective(),
     )
     expect(item.calories).toBe(200)
   })
@@ -334,6 +353,7 @@ describe('buildScaledJunctionItem', () => {
       { name: 'Rye bread', quantity: 2, unit: 'slice' },
       canonicalFoodItem(),
       0,
+      defaultEffective(),
     )
     expect(item.calories).toBe(200)
   })
@@ -343,9 +363,22 @@ describe('buildScaledJunctionItem', () => {
       { name: 'Rye bread', quantity: 33, unit: 'g' },
       canonicalFoodItem(),
       0,
+      defaultEffective(),
     )
     expect(item.calories).toBe(66)
     expect(item.protein).toBe(2.64)
+  })
+
+  test('snapshots effectiveValues, not the canonical row columns (composite case)', () => {
+    // Canonical has stale calories=200, but the recipe's live derived total is 320.
+    const item = buildScaledJunctionItem(
+      { name: 'Recipe', quantity: 100, unit: 'g' },
+      canonicalFoodItem(),
+      0,
+      { calories: 320, protein: 1 },
+    )
+    expect(item.calories).toBe(320)
+    expect(item.protein).toBe(1)
   })
 })
 
