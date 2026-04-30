@@ -17,6 +17,12 @@ import {
   type FoodItemsQuery,
   type FoodItemsResponse,
   foodItemsQuerySchema,
+  type MergeFoodItemsBody,
+  mergeFoodItemsBodySchema,
+  type MergeFoodItemsPreviewResponse,
+  type MergeFoodItemsQuery,
+  mergeFoodItemsQuerySchema,
+  type MergeFoodItemsResponse,
   type SetFoodItemIngredientsBody,
   setFoodItemIngredientsBodySchema,
   type UpdateFoodItemBody,
@@ -37,6 +43,7 @@ import {
   upsertFoodItem,
 } from '../db/index.ts'
 import {
+  createFoodItemsMergeService,
   createFoodItemsService,
   type FoodItemDetail as ServiceFoodItemDetail,
   type MergedFoodItem,
@@ -75,6 +82,7 @@ const serializeDetail = (detail: ServiceFoodItemDetail): FoodItemDetail => {
 export const createFoodItemsRouter = (authMiddleware: AnyMiddleware, centralDb: CentralDb): TypedRouter => {
   const router = typedRouter()
   const service = createFoodItemsService(centralDb)
+  const mergeService = createFoodItemsMergeService(centralDb)
 
   router.get<Record<string, never>, FoodItemsResponse, unknown, FoodItemsQuery>(
     '/',
@@ -190,6 +198,49 @@ export const createFoodItemsRouter = (authMiddleware: AnyMiddleware, centralDb: 
       const detail = await service.getDetail(user, id)
       if (!detail) return res.status(404).json({ error: 'Food item not found', success: false })
       res.json({ data: serializeDetail(detail), success: true })
+    },
+  )
+
+  // Preview a merge — counts of references that will be re-pointed, plus
+  // empty target fields the source could fill. Lets the UI render a
+  // confidence-building dialog before the user confirms.
+  router.get<{ id: string }, MergeFoodItemsPreviewResponse, unknown, MergeFoodItemsQuery>(
+    '/:id/merge-preview',
+    authMiddleware,
+    validateQuery(mergeFoodItemsQuerySchema),
+    async (req, res) => {
+      try {
+        const preview = await mergeService.preview(req.user!, req.query.source_id, req.params.id)
+        res.json({ data: preview, success: true })
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Preview failed'
+        res.status(/not found|cannot merge/i.test(message) ? 400 : 500).json({
+          error: message,
+          success: false,
+        })
+      }
+    },
+  )
+
+  // Execute the merge.
+  router.post<{ id: string }, MergeFoodItemsResponse, MergeFoodItemsBody>(
+    '/:id/merge',
+    authMiddleware,
+    validateBody(mergeFoodItemsBodySchema),
+    async (req, res) => {
+      try {
+        const result = await mergeService.merge(req.user!, req.body.source_id, req.params.id, {
+          confirmDiscardIngredients: req.body.confirm_discard_ingredients,
+          fillEmpty: req.body.fill_empty ?? false,
+        })
+        res.json({ data: result, success: true })
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Merge failed'
+        res.status(/not found|cannot merge|composite|itself/i.test(message) ? 400 : 500).json({
+          error: message,
+          success: false,
+        })
+      }
     },
   )
 

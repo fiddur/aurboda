@@ -3,6 +3,7 @@ import { useLocation } from 'preact-iso'
 import { useEffect, useState } from 'preact/hooks'
 
 import { ConfirmButton } from '../../components/ConfirmButton'
+import { MergeFoodItemDialog } from '../../components/MergeFoodItemDialog'
 import { searchFoodItemsApi } from '../../state/api'
 import { auth } from '../../state/auth'
 import './style.css'
@@ -73,6 +74,8 @@ export function FoodItems() {
     createMutation.mutate(trimmed || 'New food item')
   }
 
+  const [mergeSource, setMergeSource] = useState<{ id: string; name: string } | null>(null)
+
   if (!isLoggedIn) {
     return (
       <div class="food-items-page">
@@ -140,7 +143,15 @@ export function FoodItems() {
                 <td class="fi-num">{item.fat ?? '—'}</td>
                 <td class="fi-num">{item.fiber ?? '—'}</td>
                 <td class="fi-source">{item.source ?? '—'}</td>
-                <td>
+                <td class="fi-row-actions">
+                  <button
+                    type="button"
+                    class="btn-secondary fi-merge-btn"
+                    onClick={() => setMergeSource({ id: item.id, name: item.name })}
+                    title={`Merge ${item.name} into another food item`}
+                  >
+                    Merge…
+                  </button>
                   <ConfirmButton
                     label="Delete"
                     confirmMessage={`Delete ${item.name}?`}
@@ -153,6 +164,14 @@ export function FoodItems() {
             ))}
           </tbody>
         </table>
+      )}
+
+      {mergeSource && (
+        <MergeFoodItemDialog
+          source={mergeSource}
+          onClose={() => setMergeSource(null)}
+          onMerged={() => queryClient.invalidateQueries({ queryKey: ['foodItems'] })}
+        />
       )}
     </div>
   )

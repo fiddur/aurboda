@@ -206,3 +206,89 @@ export type FoodItemsResponse = z.infer<typeof foodItemsResponseSchema>
 export const deleteFoodItemResponseSchema = baseResponseSchema.meta({ id: 'DeleteFoodItemResponse' })
 
 export type DeleteFoodItemResponse = z.infer<typeof deleteFoodItemResponseSchema>
+
+// ============================================================================
+// Merge food items
+// ============================================================================
+
+export const mergeFoodItemsQuerySchema = z
+  .object({
+    source_id: z.string().uuid().meta({ description: 'Food item being merged away (must be per-user)' }),
+  })
+  .meta({ id: 'MergeFoodItemsQuery' })
+
+export type MergeFoodItemsQuery = z.infer<typeof mergeFoodItemsQuerySchema>
+
+export const mergeFillCandidateSchema = z
+  .object({
+    field: z.string().meta({ description: 'Nutrient column or icon/default_* field name' }),
+    source_value: z
+      .union([z.number(), z.string()])
+      .meta({ description: 'Value the source has and the target lacks' }),
+  })
+  .meta({ description: 'A field the source has and the target does not', id: 'MergeFillCandidate' })
+
+export type MergeFillCandidate = z.infer<typeof mergeFillCandidateSchema>
+
+export const mergeFoodItemsPreviewSchema = z
+  .object({
+    source_id: z.string().uuid(),
+    target_id: z.string().uuid(),
+    source_name: z.string(),
+    target_name: z.string(),
+    target_is_central: z.boolean().meta({
+      description:
+        'Target lives in the central shared library — read-only, so the fill-empty option must not be offered.',
+    }),
+    meals_repointed: z.number().int(),
+    ingredients_repointed: z.number().int(),
+    source_is_composite: z.boolean().meta({
+      description: 'Source has its own ingredients which will be discarded on merge.',
+    }),
+    fill_candidates: z.array(mergeFillCandidateSchema),
+  })
+  .meta({ description: 'What a merge would do, computed before commit.', id: 'MergeFoodItemsPreview' })
+
+export type MergeFoodItemsPreview = z.infer<typeof mergeFoodItemsPreviewSchema>
+
+export const mergeFoodItemsPreviewResponseSchema = createDataResponseSchema(mergeFoodItemsPreviewSchema).meta(
+  { id: 'MergeFoodItemsPreviewResponse' },
+)
+
+export type MergeFoodItemsPreviewResponse = z.infer<typeof mergeFoodItemsPreviewResponseSchema>
+
+export const mergeFoodItemsBodySchema = z
+  .object({
+    source_id: z.string().uuid().meta({ description: 'Food item being merged away (must be per-user)' }),
+    fill_empty: z.boolean().optional().meta({
+      description: 'When true, fill empty target fields from source values. Ignored when target is central.',
+    }),
+    confirm_discard_ingredients: z.boolean().optional().meta({
+      description:
+        "Required when source has its own ingredients (composite recipe). Acknowledges they'll be discarded.",
+    }),
+  })
+  .meta({
+    description: 'Merge a per-user food item into another (per-user or central).',
+    id: 'MergeFoodItemsBody',
+  })
+
+export type MergeFoodItemsBody = z.infer<typeof mergeFoodItemsBodySchema>
+
+export const mergeFoodItemsResultSchema = z
+  .object({
+    meals_repointed: z.number().int(),
+    ingredients_repointed: z.number().int(),
+    fills_applied: z.array(z.string()),
+    source_was_composite: z.boolean(),
+    target_is_central: z.boolean(),
+  })
+  .meta({ id: 'MergeFoodItemsResult' })
+
+export type MergeFoodItemsResult = z.infer<typeof mergeFoodItemsResultSchema>
+
+export const mergeFoodItemsResponseSchema = createDataResponseSchema(mergeFoodItemsResultSchema).meta({
+  id: 'MergeFoodItemsResponse',
+})
+
+export type MergeFoodItemsResponse = z.infer<typeof mergeFoodItemsResponseSchema>

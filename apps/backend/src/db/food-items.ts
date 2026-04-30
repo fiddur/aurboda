@@ -254,3 +254,135 @@ export const findOrCreateFoodItem = async (
   if (existing) return existing
   return upsertFoodItem(user, { name, ...defaults })
 }
+
+export interface MergeFoodItemResult {
+  meals_repointed: number
+  ingredients_repointed: number
+  fills_applied: string[]
+  source_was_composite: boolean
+}
+
+/**
+ * Merge a per-user food item (`source`) into another food item (`target`).
+ *
+ * - `meal_food_items.food_item_id` rows pointing at the source are re-pointed
+ *   to the target. The snapshotted nutrient columns on those rows are NOT
+ *   touched — past meals keep the macros/micros they were logged with.
+ * - `food_item_ingredients.ingredient_food_item_id` rows pointing at the
+ *   source are re-pointed too, so future composite-recipe derivations use
+ *   the target's nutrients.
+ * - If `fillEmptyFromSource` is true, any nutrient/icon/default_quantity/
+ *   default_unit field that's NULL on the target is filled from the source.
+ *   Pass `targetIsUserItem` to enable this — central items can't be edited
+ *   from a per-user merge, the caller has already validated.
+ * - The source's own ingredients (if it was a composite parent) are dropped
+ *   via the existing `ON DELETE CASCADE` on food_item_ingredients.
+ * - Source row is deleted at the end. All in one transaction so a partial
+ *   failure leaves nothing dangling.
+ */
+export const mergeFoodItems = async (
+  user: string,
+  sourceId: string,
+  targetId: string,
+  options: { fillEmptyFromSource?: boolean; targetIsUserItem?: boolean } = {},
+): Promise<MergeFoodItemResult> => {
+  if (sourceId === targetId) throw new Error('Cannot merge a food item into itself')
+
+  // Pre-fetch source so we can return useful counts and (optionally) fill the
+  // target's empty fields from it. Do this before BEGIN so the FROM-source
+  // closure is captured even if the source row is deleted later in the txn.
+  const source = await getFoodItemById(user, sourceId)
+  if (!source) throw new Error(`Source food item not found: ${sourceId}`)
+
+  // Whether the source had its own ingredients (composite parent) — surfaced
+  // in the result so the caller (UI) can confirm the discard-ingredients
+  // expectation matched reality.
+  const sourceIngredientsRes = await query(
+    user,
+    `SELECT 1 FROM food_item_ingredients WHERE parent_food_item_id = $1 LIMIT 1`,
+    [sourceId],
+  )
+  const sourceWasComposite = sourceIngredientsRes.rows.length > 0
+
+  try {
+    await query(user, 'BEGIN')
+
+    // Re-point past-meal references. food_item_id on meal_food_items is a
+    // soft pointer (#695 dropped the FK because central rows live in another
+    // database); the snapshot columns remain untouched here, satisfying the
+    // "old meals must not change nutritionally" requirement.
+    const mealsResult = await query(
+      user,
+      `UPDATE meal_food_items SET food_item_id = $2 WHERE food_item_id = $1`,
+      [sourceId, targetId],
+    )
+
+    // Re-point composite ingredient references. Future re-derivation of
+    // those composites will pick up the target's current nutrients.
+    const ingredientsResult = await query(
+      user,
+      `UPDATE food_item_ingredients
+         SET ingredient_food_item_id = $2, updated_at = NOW()
+       WHERE ingredient_food_item_id = $1`,
+      [sourceId, targetId],
+    )
+
+    // Optionally fill the target's empty fields from the source. We only
+    // touch the per-user `food_items` table; central targets are filtered
+    // out at the service layer.
+    let fillsApplied: string[] = []
+    if (options.fillEmptyFromSource && options.targetIsUserItem) {
+      fillsApplied = await fillTargetFromSource(user, sourceId, targetId)
+    }
+
+    // Source row goes last — its food_item_ingredients (parent rows) cascade
+    // away on delete; that's the "ingredients are discarded" semantic.
+    await query(user, `DELETE FROM food_items WHERE id = $1`, [sourceId])
+
+    await query(user, 'COMMIT')
+
+    return {
+      fills_applied: fillsApplied,
+      ingredients_repointed: ingredientsResult.rowCount ?? 0,
+      meals_repointed: mealsResult.rowCount ?? 0,
+      source_was_composite: sourceWasComposite,
+    }
+  } catch (err) {
+    await query(user, 'ROLLBACK').catch(() => {})
+    throw err
+  }
+}
+
+const FILLABLE_FIELDS = [...NUTRIENT_FIELD_NAMES, 'icon', 'default_quantity', 'default_unit'] as const
+
+/**
+ * Copy each NUTRIENT/icon/default_* field from source to target where the
+ * target is currently NULL and the source has a value. Returns the names of
+ * the fields that were actually filled — useful for the result summary.
+ */
+const fillTargetFromSource = async (user: string, sourceId: string, targetId: string): Promise<string[]> => {
+  const target = await getFoodItemById(user, targetId)
+  const source = await getFoodItemById(user, sourceId)
+  if (!target || !source) return []
+
+  const fields: string[] = []
+  const setClauses: string[] = []
+  const params: unknown[] = []
+  let idx = 1
+  for (const field of FILLABLE_FIELDS) {
+    const targetVal = target[field]
+    const sourceVal = source[field]
+    const targetEmpty = targetVal === undefined || targetVal === null
+    const sourceHas = sourceVal !== undefined && sourceVal !== null
+    if (targetEmpty && sourceHas) {
+      setClauses.push(`${field} = $${idx++}`)
+      params.push(sourceVal)
+      fields.push(field)
+    }
+  }
+  if (setClauses.length === 0) return []
+  setClauses.push('updated_at = NOW()')
+  params.push(targetId)
+  await query(user, `UPDATE food_items SET ${setClauses.join(', ')} WHERE id = $${idx}`, params)
+  return fields
+}

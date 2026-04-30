@@ -223,6 +223,8 @@ export {
   getFoodItemById,
   getFoodItemByName,
   listFoodItems,
+  type MergeFoodItemResult,
+  mergeFoodItems,
   searchFoodItems,
   updateFoodItem,
   upsertFoodItem,
