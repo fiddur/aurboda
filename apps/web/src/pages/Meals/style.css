@@ -343,6 +343,12 @@ a.meal-name:hover {
   align-items: center;
   gap: 0.5rem;
   flex-shrink: 0;
+  /* Push actions to the right of the slot row. In MealSlotRow the slider
+     wrapper already has flex:1 so this is redundant; in OtherMealRow there's
+     no flex sibling between title+time and the actions, and without this the
+     edit pen and delete button cling to the time. Auto-margin is the
+     cheapest right-align that works in both cases. */
+  margin-left: auto;
 }
 
 .meal-edit-link {
