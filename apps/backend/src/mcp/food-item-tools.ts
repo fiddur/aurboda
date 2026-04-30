@@ -183,6 +183,11 @@ export const registerFoodItemTools = (server: McpServer, user: string, centralDb
           (await getUserFoodItemById(user, reference_food_item_id)) ??
           (await centralDb.getSharedFoodItemById(reference_food_item_id))
         if (!ref) return errorResponse('Reference food item not found')
+        if (ref.is_composite) {
+          return errorResponse(
+            'Reference target cannot be a composite recipe — its nutrient columns are derived, not authoritative',
+          )
+        }
       }
       await setFoodItemReference(user, id, reference_food_item_id)
       const detail = await foodItems.getDetail(user, id)

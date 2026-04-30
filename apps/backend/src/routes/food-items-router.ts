@@ -83,14 +83,15 @@ const serializeDetail = (detail: ServiceFoodItemDetail): FoodItemDetail => {
     }
   }
   // Reference branch: emit the resolved reference + per-field origin map.
-  if (detail.reference && detail.reference_enriched) {
+  // The service guarantees these two are set together.
+  if (detail.reference) {
     return {
       ...base,
       reference: {
         food: serializeFoodItem(detail.reference.food),
         unit_mismatch: detail.reference.unit_mismatch,
       },
-      reference_enriched: detail.reference_enriched,
+      reference_enriched: detail.reference_enriched ?? { fields: {} },
     }
   }
   return base as FoodItemDetail
@@ -250,6 +251,13 @@ export const createFoodItemsRouter = (authMiddleware: AnyMiddleware, centralDb: 
         const ref = (await getUserFoodItemById(user, refId)) ?? (await centralDb.getSharedFoodItemById(refId))
         if (!ref) {
           return res.status(400).json({ error: 'Reference food item not found', success: false })
+        }
+        if (ref.is_composite) {
+          return res.status(400).json({
+            error:
+              'Reference target cannot be a composite recipe — its nutrient columns are derived, not authoritative',
+            success: false,
+          })
         }
       }
       await dbSetFoodItemReference(user, id, refId)

@@ -417,10 +417,11 @@ describe('createFoodItemsService.getDetail — reference enrichment', () => {
     expect(fields.vitamin_c).toEqual({ origin: 'reference', value: 0.45 })
   })
 
-  test('flags unit_mismatch and emits unscaled values when units differ dimensionally', async () => {
+  test('flags unit_mismatch and drops inherited values when units differ dimensionally', async () => {
     const self = userItem('u1', 'Slice')
     self.default_quantity = 1
     self.default_unit = 'slice' // not in conversion table
+    self.protein = 5 // self value should still be emitted
     const reference = sharedItem('c1', 'Bread')
     reference.default_quantity = 100
     reference.default_unit = 'g'
@@ -434,11 +435,34 @@ describe('createFoodItemsService.getDetail — reference enrichment', () => {
 
     const detail = await createFoodItemsService(central).getDetail('user', 'u1')
     expect(detail?.reference?.unit_mismatch).toBe(true)
-    // Unscaled: 250 stays 250 (× 1).
-    expect(detail?.reference_enriched?.fields.calories).toEqual({ origin: 'reference', value: 250 })
+    // Self value still surfaces.
+    expect(detail?.reference_enriched?.fields.protein).toEqual({ origin: 'self', value: 5 })
+    // Reference value dropped — emitting "250 cal per slice" with a warning is more confusing than no value.
+    expect(detail?.reference_enriched?.fields.calories).toBeUndefined()
   })
 
-  test('composite items take precedence over reference enrichment', async () => {
+  test('scales nutrient values across compatible units (kg ↔ g)', async () => {
+    const self = userItem('u1', 'Bag of flour')
+    self.default_quantity = 1
+    self.default_unit = 'kg'
+    const reference = sharedItem('c1', 'Flour')
+    reference.default_quantity = 100
+    reference.default_unit = 'g'
+    reference.calories = 360 // per 100 g
+    self.reference_food_item_id = 'c1'
+
+    vi.mocked(dbModule.getFoodItemById).mockImplementation(async (_user, id) => (id === 'u1' ? self : null))
+    const central = fakeCentral()
+    vi.mocked(central.getSharedFoodItemById).mockResolvedValue(reference)
+    vi.mocked(ingredientsModule.getIngredients).mockResolvedValue([])
+
+    const detail = await createFoodItemsService(central).getDetail('user', 'u1')
+    expect(detail?.reference?.unit_mismatch).toBe(false)
+    // 1 kg = 1000 g → 1000 / 100 × 360 = 3600 kcal per bag.
+    expect(detail?.reference_enriched?.fields.calories).toEqual({ origin: 'reference', value: 3600 })
+  })
+
+  test('composite self items take precedence over reference enrichment', async () => {
     const self = userItem('u1', 'Recipe')
     self.is_composite = true
     self.reference_food_item_id = 'c1'
@@ -448,5 +472,23 @@ describe('createFoodItemsService.getDetail — reference enrichment', () => {
     const detail = await createFoodItemsService(fakeCentral()).getDetail('user', 'u1')
     expect(detail?.reference).toBeUndefined()
     expect(detail?.reference_enriched).toBeUndefined()
+  })
+
+  test('skips enrichment when the resolved reference target is itself a composite', async () => {
+    const self = userItem('u1', 'Atomic')
+    self.reference_food_item_id = 'c1'
+    const compositeRef = sharedItem('c1', 'Recipe target')
+    ;(compositeRef as unknown as { is_composite: boolean }).is_composite = true
+    compositeRef.calories = 0 // sparse — would be misleading to inherit
+
+    vi.mocked(dbModule.getFoodItemById).mockImplementation(async (_user, id) => (id === 'u1' ? self : null))
+    const central = fakeCentral()
+    vi.mocked(central.getSharedFoodItemById).mockResolvedValue(compositeRef)
+    vi.mocked(ingredientsModule.getIngredients).mockResolvedValue([])
+
+    const detail = await createFoodItemsService(central).getDetail('user', 'u1')
+    expect(detail?.reference).toBeUndefined()
+    expect(detail?.reference_enriched).toBeUndefined()
+    expect(detail?.item.id).toBe('u1')
   })
 })

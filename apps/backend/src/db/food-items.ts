@@ -246,17 +246,21 @@ export const deleteFoodItem = async (user: string, id: string): Promise<boolean>
 /**
  * Set or clear the reference_food_item_id soft pointer. Pass null to clear.
  * Caller is responsible for validating the reference target exists in the
- * merged user+central library.
+ * merged user+central library. Refuses to set a reference on composite rows
+ * as defence-in-depth — the route + MCP layers also check.
  */
 export const setFoodItemReference = async (
   user: string,
   id: string,
   referenceId: string | null,
 ): Promise<FoodItemEntity | null> => {
+  // Allow clearing (referenceId === null) on any row; only block setting on a
+  // composite parent.
+  const whereClause = referenceId === null ? 'WHERE id = $1' : 'WHERE id = $1 AND is_composite = FALSE'
   const result = await query(
     user,
     `UPDATE food_items SET reference_food_item_id = $2, updated_at = NOW()
-     WHERE id = $1
+     ${whereClause}
      RETURNING ${FOOD_ITEM_COLUMNS}`,
     [id, referenceId],
   )

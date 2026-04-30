@@ -80,11 +80,15 @@ const clearIngredientsApi = async (id: string): Promise<ApiFoodItemDetail> => {
 
 const setReferenceApi = async (id: string, referenceId: string | null): Promise<ApiFoodItemDetail> => {
   const { token } = auth.value
-  const res = await fetch(`${API_URL}/food-items/${id}/reference`, {
-    body: JSON.stringify({ reference_food_item_id: referenceId }),
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    method: referenceId === null ? 'DELETE' : 'PUT',
-  })
+  const init: RequestInit =
+    referenceId === null
+      ? { headers: { Authorization: `Bearer ${token}` }, method: 'DELETE' }
+      : {
+          body: JSON.stringify({ reference_food_item_id: referenceId }),
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          method: 'PUT',
+        }
+  const res = await fetch(`${API_URL}/food-items/${id}/reference`, init)
   if (!res.ok) {
     const json = (await res.json().catch(() => ({}))) as { error?: string }
     throw new Error(json.error ?? 'Failed to set reference')

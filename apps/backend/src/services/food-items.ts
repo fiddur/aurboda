@@ -191,6 +191,11 @@ const computeReferenceScale = (
  * Build a `FoodItemDetail` with reference-origin nutrients merged in.
  * Self values always win; reference values fill empty fields, scaled by
  * `self.default_quantity / ref.default_quantity` when units match.
+ *
+ * When units can't be reliably converted (`unit_mismatch=true`), self values
+ * are still emitted but reference values are dropped — surfacing a
+ * wrong-magnitude number with a warning is more confusing than no value.
+ * The UI shows a banner pointing the user at the unit settings instead.
  */
 const enrichWithReference = (self: MergedFoodItem, ref: MergedFoodItem): FoodItemDetail => {
   const { scale, unit_mismatch } = computeReferenceScale(self, ref)
@@ -201,22 +206,10 @@ const enrichWithReference = (self: MergedFoodItem, ref: MergedFoodItem): FoodIte
       fields[field] = { origin: 'self', value: selfVal }
       continue
     }
+    if (unit_mismatch) continue
     const refVal = ref[field]
     if (typeof refVal === 'number') {
       fields[field] = { origin: 'reference', value: round2(refVal * scale) }
-    }
-  }
-  // Icon and default_* are also inheritable for display purposes — the
-  // detail page can render the reference's icon when self has none.
-  for (const field of ['icon', 'default_unit'] as const) {
-    const selfVal = self[field]
-    if (typeof selfVal === 'string' && selfVal.length > 0) {
-      fields[field] = { origin: 'self', value: selfVal }
-    } else {
-      const refVal = ref[field]
-      if (typeof refVal === 'string' && refVal.length > 0) {
-        fields[field] = { origin: 'reference', value: refVal }
-      }
     }
   }
   return {
@@ -315,12 +308,16 @@ export const createFoodItemsService = (centralDb: CentralDb): FoodItemsService =
       }
 
       // Atomic per-user item — resolve the reference (if any) and emit
-      // per-field origin info.
+      // per-field origin info. Defence in depth: skip enrichment when the
+      // resolved target is itself a composite. Composite columns are sparse
+      // (real values live in derived_nutrients), so reading them as
+      // inheritable nutrients would surface stale/empty numbers. The route +
+      // MCP layers also reject composite targets up-front.
       const refId = fromUser.reference_food_item_id as string | undefined
       if (refId) {
         const refFood =
           (await getUserFoodItemById(user, refId)) ?? (await centralDb.getSharedFoodItemById(refId))
-        if (refFood) {
+        if (refFood && !refFood.is_composite) {
           return enrichWithReference(fromUser, refFood)
         }
       }
