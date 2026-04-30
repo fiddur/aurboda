@@ -26,11 +26,12 @@ import {
   updateFoodItem,
   upsertFoodItem,
 } from '../db/index.ts'
-import { createFoodItemsService } from '../services/food-items.ts'
+import { createFoodItemsMergeService, createFoodItemsService } from '../services/food-items.ts'
 import { errorResponse, jsonResponse, type McpServer } from './helpers.ts'
 
 export const registerFoodItemTools = (server: McpServer, user: string, centralDb: CentralDb) => {
   const foodItems = createFoodItemsService(centralDb)
+  const merge = createFoodItemsMergeService(centralDb)
 
   server.tool(
     'search_food_items',
@@ -148,6 +149,56 @@ export const registerFoodItemTools = (server: McpServer, user: string, centralDb
       const detail = await foodItems.getDetail(user, id)
       if (!detail) return errorResponse('Food item not found')
       return jsonResponse({ data: detail, success: true })
+    },
+  )
+
+  server.tool(
+    'preview_food_item_merge',
+    [
+      'Compute what merging one food item into another would do, without committing.',
+      'Returns counts of meals/recipes that would re-point, whether the source is a composite (its ingredients would be discarded), and the empty target fields the source could fill.',
+      'Source must be a per-user item; target may be per-user OR a central library item.',
+    ].join(' '),
+    {
+      source_id: z.string().uuid().describe('Per-user food item to merge away'),
+      target_id: z.string().uuid().describe('Food item to merge INTO (per-user or central)'),
+    },
+    async ({ source_id, target_id }) => {
+      try {
+        const preview = await merge.preview(user, source_id, target_id)
+        return jsonResponse({ data: preview, success: true })
+      } catch (err) {
+        return errorResponse(err instanceof Error ? err.message : 'Preview failed')
+      }
+    },
+  )
+
+  server.tool(
+    'merge_food_items',
+    [
+      'Merge a per-user food item into another (per-user OR central). Past meal_food_items snapshots keep the nutrient values they were logged with — only the food_item_id pointer is re-pointed. Composite recipes that referenced the source are re-pointed too, so future derivations use the target.',
+      "fill_empty=true copies the source's populated fields into the target wherever the target is empty (only when target is per-user). confirm_discard_ingredients=true is required when the source itself is a composite recipe — its ingredient list is dropped on merge.",
+      'Run preview_food_item_merge first to surface the counts and fill candidates before committing.',
+    ].join(' '),
+    {
+      source_id: z.string().uuid().describe('Per-user food item to merge away'),
+      target_id: z.string().uuid().describe('Food item to merge INTO (per-user or central)'),
+      fill_empty: z.boolean().optional().describe('Copy source values into empty target fields'),
+      confirm_discard_ingredients: z
+        .boolean()
+        .optional()
+        .describe('Required when the source is a composite recipe whose ingredients will be discarded'),
+    },
+    async ({ source_id, target_id, fill_empty, confirm_discard_ingredients }) => {
+      try {
+        const result = await merge.merge(user, source_id, target_id, {
+          confirmDiscardIngredients: confirm_discard_ingredients,
+          fillEmpty: fill_empty ?? false,
+        })
+        return jsonResponse({ data: result, success: true })
+      } catch (err) {
+        return errorResponse(err instanceof Error ? err.message : 'Merge failed')
+      }
     },
   )
 }

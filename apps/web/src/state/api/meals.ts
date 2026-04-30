@@ -8,6 +8,11 @@ import type {
   MealResponse,
   MealsQuery,
   MealsResponse,
+  MergeFoodItemsBody,
+  MergeFoodItemsPreview,
+  MergeFoodItemsPreviewResponse,
+  MergeFoodItemsResponse,
+  MergeFoodItemsResult,
   UpdateMealBody,
 } from '@aurboda/api-spec'
 
@@ -135,4 +140,34 @@ export const searchFoodItemsApi = async (q: string, limit = 10): Promise<FoodIte
     params: { q, limit },
   })
   return response.data.data ?? []
+}
+
+export type { MergeFoodItemsPreview, MergeFoodItemsResult }
+
+export const previewMergeFoodItemsApi = async (
+  targetId: string,
+  sourceId: string,
+): Promise<MergeFoodItemsPreview> => {
+  const { token } = auth.value
+  const response = await axios.get<MergeFoodItemsPreviewResponse>(
+    `${API_URL}/food-items/${targetId}/merge-preview`,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+      params: { source_id: sourceId },
+    },
+  )
+  if (!response.data.data) throw new Error(response.data.error ?? 'Preview failed')
+  return response.data.data
+}
+
+export const mergeFoodItemsApi = async (
+  targetId: string,
+  body: MergeFoodItemsBody,
+): Promise<MergeFoodItemsResult> => {
+  const { token } = auth.value
+  const response = await axios.post<MergeFoodItemsResponse>(`${API_URL}/food-items/${targetId}/merge`, body, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!response.data.data) throw new Error(response.data.error ?? 'Merge failed')
+  return response.data.data
 }

@@ -156,3 +156,38 @@
   opacity: 0.6;
   cursor: not-allowed;
 }
+
+.fi-row-actions {
+  display: flex;
+  gap: 0.375rem;
+  justify-content: flex-end;
+}
+
+.fi-merge-btn {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+  border: 1px solid #d1d5db;
+  background: #fff;
+  color: #374151;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.fi-merge-btn:hover {
+  border-color: #673ab8;
+  color: #673ab8;
+}
+
+.btn-secondary {
+  padding: 0.375rem 0.75rem;
+  font-size: 0.85rem;
+  border: 1px solid #d1d5db;
+  background: #fff;
+  color: #374151;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.btn-secondary:hover {
+  background: #f3f4f6;
+}
