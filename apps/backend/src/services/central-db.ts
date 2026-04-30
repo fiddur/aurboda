@@ -6,6 +6,7 @@
  * - Admin user list
  */
 
+import { NUTRIENT_FIELD_NAMES } from '@aurboda/api-spec'
 import pg from 'pg'
 
 import {
@@ -425,6 +426,13 @@ export const createCentralDb = (deps: CentralDbDeps): CentralDb => {
       await client.query(CREATE_OAUTH_TOKENS_TABLE)
       await client.query(CREATE_WEBAUTHN_USER_HANDLES_TABLE)
       await client.query(CREATE_SHARED_FOOD_ITEMS_TABLE)
+      // Idempotently bring shared_food_items in line with the current
+      // NUTRIENT_FIELD_NAMES — `CREATE TABLE IF NOT EXISTS` doesn't add new
+      // columns to an existing table, so each new nutrient field needs an
+      // explicit ADD COLUMN here.
+      for (const field of NUTRIENT_FIELD_NAMES) {
+        await client.query(`ALTER TABLE shared_food_items ADD COLUMN IF NOT EXISTS ${field} DOUBLE PRECISION`)
+      }
       for (const stmt of CREATE_SHARED_FOOD_ITEMS_INDEXES) await client.query(stmt)
       await client.query(CREATE_IMPORT_JOBS_TABLE)
       for (const stmt of CREATE_IMPORT_JOBS_INDEXES) await client.query(stmt)

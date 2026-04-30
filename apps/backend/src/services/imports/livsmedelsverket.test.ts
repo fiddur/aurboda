@@ -73,6 +73,44 @@ describe('mapLsvNutrientsToColumns', () => {
     // U+03BC and U+00B5 are equivalent — same unit, not a mismatch.
     expect(unitMismatches).toHaveLength(0)
   })
+
+  test('maps thiamine via the actual LSV code THIACLHCL (regression: previously dropped)', () => {
+    const { columns } = mapLsvNutrientsToColumns([nutrient('THIACLHCL', 0.04, 'mg')])
+    expect(columns.b1_thiamine).toBe(0.04)
+  })
+
+  test('maps total folate via FOL (regression: we used FOLFD which LSV does not ship)', () => {
+    const { columns } = mapLsvNutrientsToColumns([nutrient('FOL', 17, 'µg')])
+    expect(columns.folate).toBe(17)
+  })
+
+  test('maps niacin equivalents (NIAEQ) and individual fatty acids', () => {
+    const { columns } = mapLsvNutrientsToColumns([
+      nutrient('NIAEQ', 1.5, 'mg'),
+      nutrient('F12:0', 0.3, 'g'),
+      nutrient('F16:0', 7.4, 'g'),
+      nutrient('F18:1', 9.1, 'g'),
+    ])
+    expect(columns.niacin_equivalents).toBe(1.5)
+    expect(columns.lauric_acid).toBe(0.3)
+    expect(columns.palmitic_acid).toBe(7.4)
+    expect(columns.oleic_acid).toBe(9.1)
+  })
+
+  test('maps the additional sugar / whole-grain breakdown', () => {
+    const { columns } = mapLsvNutrientsToColumns([
+      nutrient('SUCS', 0.5, 'g'),
+      nutrient('SUGFR', 0.2, 'g'),
+      nutrient('MNSAC', 0, 'g'),
+      nutrient('DISAC', 0.5, 'g'),
+      nutrient('WHOLET', 0, 'g'),
+    ])
+    expect(columns.sucrose).toBe(0.5)
+    expect(columns.free_sugars).toBe(0.2)
+    expect(columns.monosaccharides).toBe(0)
+    expect(columns.disaccharides).toBe(0.5)
+    expect(columns.whole_grain).toBe(0)
+  })
 })
 
 describe('LSV HTTP client (mocked fetch)', () => {

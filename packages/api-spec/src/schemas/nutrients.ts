@@ -40,6 +40,11 @@ export const NUTRIENT_FIELDS = [
   { category: 'extended_macro', label: 'Starch', name: 'starch', unit: 'g' },
   { category: 'extended_macro', label: 'Sugars', name: 'sugars', unit: 'g' },
   { category: 'extended_macro', label: 'Added Sugars', name: 'added_sugars', unit: 'g' },
+  { category: 'extended_macro', label: 'Free Sugars', name: 'free_sugars', unit: 'g' },
+  { category: 'extended_macro', label: 'Sucrose', name: 'sucrose', unit: 'g' },
+  { category: 'extended_macro', label: 'Monosaccharides', name: 'monosaccharides', unit: 'g' },
+  { category: 'extended_macro', label: 'Disaccharides', name: 'disaccharides', unit: 'g' },
+  { category: 'extended_macro', label: 'Whole Grain', name: 'whole_grain', unit: 'g' },
   { category: 'extended_macro', label: 'Cholesterol', name: 'cholesterol', unit: 'mg' },
 
   // Fat breakdown
@@ -55,6 +60,20 @@ export const NUTRIENT_FIELDS = [
   { category: 'fat_breakdown', label: 'DPA', name: 'dpa', unit: 'g' },
   { category: 'fat_breakdown', label: 'AA', name: 'aa', unit: 'g' },
   { category: 'fat_breakdown', label: 'LA', name: 'la', unit: 'g' },
+  // Individual fatty acids (LSV)
+  {
+    category: 'fat_breakdown',
+    label: 'Short-chain Fatty Acids (4-10:0)',
+    name: 'short_chain_fatty_acids',
+    unit: 'g',
+  },
+  { category: 'fat_breakdown', label: 'Lauric Acid (12:0)', name: 'lauric_acid', unit: 'g' },
+  { category: 'fat_breakdown', label: 'Myristic Acid (14:0)', name: 'myristic_acid', unit: 'g' },
+  { category: 'fat_breakdown', label: 'Palmitic Acid (16:0)', name: 'palmitic_acid', unit: 'g' },
+  { category: 'fat_breakdown', label: 'Palmitoleic Acid (16:1)', name: 'palmitoleic_acid', unit: 'g' },
+  { category: 'fat_breakdown', label: 'Stearic Acid (18:0)', name: 'stearic_acid', unit: 'g' },
+  { category: 'fat_breakdown', label: 'Oleic Acid (18:1)', name: 'oleic_acid', unit: 'g' },
+  { category: 'fat_breakdown', label: 'Arachidic Acid (20:0)', name: 'arachidic_acid', unit: 'g' },
 
   // Vitamins
   { category: 'vitamin', label: 'Vitamin A', name: 'vitamin_a', unit: 'µg' },
@@ -62,11 +81,13 @@ export const NUTRIENT_FIELDS = [
   { category: 'vitamin', label: 'Beta-Carotene', name: 'beta_carotene', unit: 'µg' },
   { category: 'vitamin', label: 'Vitamin C', name: 'vitamin_c', unit: 'mg' },
   { category: 'vitamin', label: 'Vitamin D', name: 'vitamin_d', unit: 'µg' },
+  { category: 'vitamin', label: 'Vitamin D incl 25-OH-D3', name: 'vitamin_d_25oh', unit: 'µg' },
   { category: 'vitamin', label: 'Vitamin E', name: 'vitamin_e', unit: 'mg' },
   { category: 'vitamin', label: 'Vitamin K', name: 'vitamin_k', unit: 'µg' },
   { category: 'vitamin', label: 'B1 (Thiamine)', name: 'b1_thiamine', unit: 'mg' },
   { category: 'vitamin', label: 'B2 (Riboflavin)', name: 'b2_riboflavin', unit: 'mg' },
   { category: 'vitamin', label: 'B3 (Niacin)', name: 'b3_niacin', unit: 'mg' },
+  { category: 'vitamin', label: 'Niacin Equivalents', name: 'niacin_equivalents', unit: 'mg' },
   { category: 'vitamin', label: 'B5 (Pantothenic Acid)', name: 'b5_pantothenic_acid', unit: 'mg' },
   { category: 'vitamin', label: 'B6 (Pyridoxine)', name: 'b6_pyridoxine', unit: 'mg' },
   { category: 'vitamin', label: 'B12 (Cobalamin)', name: 'b12_cobalamin', unit: 'µg' },
@@ -74,6 +95,7 @@ export const NUTRIENT_FIELDS = [
 
   // Minerals
   { category: 'mineral', label: 'Calcium', name: 'calcium', unit: 'mg' },
+  { category: 'mineral', label: 'Chromium', name: 'chromium', unit: 'µg' },
   { category: 'mineral', label: 'Copper', name: 'copper', unit: 'mg' },
   { category: 'mineral', label: 'Iron', name: 'iron', unit: 'mg' },
   { category: 'mineral', label: 'Magnesium', name: 'magnesium', unit: 'mg' },
