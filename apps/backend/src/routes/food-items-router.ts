@@ -23,6 +23,7 @@ import {
   type MergeFoodItemsQuery,
   mergeFoodItemsQuerySchema,
   type MergeFoodItemsResponse,
+  type ResnapshotMealsResponse,
   type SetFoodItemIngredientsBody,
   setFoodItemIngredientsBodySchema,
   type SetFoodItemReferenceBody,
@@ -51,6 +52,7 @@ import {
   type FoodItemDetail as ServiceFoodItemDetail,
   type MergedFoodItem,
 } from '../services/food-items.ts'
+import { resnapshotMealsForFoodItem } from '../services/meals.ts'
 import { type AnyMiddleware, type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody, validateQuery } from '../validation.ts'
 
@@ -306,6 +308,24 @@ export const createFoodItemsRouter = (authMiddleware: AnyMiddleware, centralDb: 
           error: message,
           success: false,
         })
+      }
+    },
+  )
+
+  // Re-snapshot every meal that contains this food item with the item's
+  // current effective nutrient values. Useful after editing a composite recipe
+  // or attaching/changing a reference — historical meals stay in sync only
+  // when explicitly asked.
+  router.post<{ id: string }, ResnapshotMealsResponse>(
+    '/:id/resnapshot-meals',
+    authMiddleware,
+    async (req, res) => {
+      try {
+        const result = await resnapshotMealsForFoodItem(req.user!, req.params.id)
+        res.json({ data: result, success: true })
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Re-snapshot failed'
+        res.status(/not found/i.test(message) ? 404 : 500).json({ error: message, success: false })
       }
     },
   )

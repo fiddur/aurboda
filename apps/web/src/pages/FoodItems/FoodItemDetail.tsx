@@ -78,6 +78,20 @@ const clearIngredientsApi = async (id: string): Promise<ApiFoodItemDetail> => {
   return json.data
 }
 
+const resnapshotMealsApi = async (id: string): Promise<{ meals_updated: number; rows_updated: number }> => {
+  const { token } = auth.value
+  const res = await fetch(`${API_URL}/food-items/${id}/resnapshot-meals`, {
+    headers: { Authorization: `Bearer ${token}` },
+    method: 'POST',
+  })
+  if (!res.ok) {
+    const json = (await res.json().catch(() => ({}))) as { error?: string }
+    throw new Error(json.error ?? 'Re-snapshot failed')
+  }
+  const json = await res.json()
+  return json.data
+}
+
 const setReferenceApi = async (id: string, referenceId: string | null): Promise<ApiFoodItemDetail> => {
   const { token } = auth.value
   const init: RequestInit =
@@ -239,6 +253,23 @@ export function FoodItemDetail() {
     },
   })
 
+  const [resnapshotResult, setResnapshotResult] = useState<{
+    meals_updated: number
+    rows_updated: number
+  } | null>(null)
+  const resnapshotMutation = useMutation({
+    mutationFn: () => resnapshotMealsApi(id),
+    onError: (err: Error) => setSaveError(err.message ?? 'Re-snapshot failed'),
+    onSuccess: (result) => {
+      setResnapshotResult(result)
+      setSaveError(null)
+      // Stale meals queries: a meal page open in another tab would still show
+      // old totals — invalidate so any open meal/timeline view refreshes.
+      queryClient.invalidateQueries({ queryKey: ['meals'] })
+      queryClient.invalidateQueries({ queryKey: ['meal'] })
+    },
+  })
+
   const ingredientsMutation = useMutation({
     mutationFn: (ingredients: FoodItemIngredient[]) => setIngredientsApi(id, ingredients),
     onError: (err: Error) => setSaveError(err.message ?? 'Save failed'),
@@ -341,6 +372,13 @@ export function FoodItemDetail() {
         <div class="fi-detail-actions">
           <SaveIndicator isPending={updateMutation.isPending} showSaved={savedFlash} error={saveError} />
           <ConfirmButton
+            label={resnapshotMutation.isPending ? 'Re-snapshotting…' : 'Re-snapshot meals'}
+            confirmMessage={`Refresh every past meal containing "${item.name}" with the current nutrient values? Other items in those meals are not changed.`}
+            onConfirm={() => resnapshotMutation.mutate()}
+            isPending={resnapshotMutation.isPending}
+            buttonClass="btn-secondary"
+          />
+          <ConfirmButton
             label="Delete"
             confirmMessage={`Delete ${item.name}?`}
             onConfirm={() => deleteMutation.mutate()}
@@ -348,6 +386,17 @@ export function FoodItemDetail() {
           />
         </div>
       </div>
+
+      {resnapshotResult && (
+        <div class="fi-resnapshot-banner" role="status">
+          Refreshed {resnapshotResult.rows_updated} row
+          {resnapshotResult.rows_updated === 1 ? '' : 's'} across {resnapshotResult.meals_updated} meal
+          {resnapshotResult.meals_updated === 1 ? '' : 's'}.
+          <button type="button" class="btn-link" onClick={() => setResnapshotResult(null)}>
+            Dismiss
+          </button>
+        </div>
+      )}
 
       <h1 class="fi-name-heading">
         {item.icon && isEmoji(item.icon) && <span class="fi-icon-display">{item.icon}</span>}

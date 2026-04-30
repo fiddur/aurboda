@@ -35,6 +35,10 @@ vi.mock('../db/food-items.ts', () => ({
   searchFoodItems: vi.fn(),
 }))
 
+vi.mock('../services/meals.ts', () => ({
+  resnapshotMealsForFoodItem: vi.fn(),
+}))
+
 const dbBarrel = await import('../db/index.ts')
 const dbFoodItems = await import('../db/food-items.ts')
 
@@ -223,5 +227,43 @@ describe('DELETE /food-items/:id/reference', () => {
     const res = await supertest(buildApp(fakeCentral())).delete(`/food-items/${id}/reference`)
     expect(res.status).toBe(200)
     expect(dbBarrel.setFoodItemReference).toHaveBeenCalledWith('tester', id, null)
+  })
+})
+
+describe('POST /food-items/:id/resnapshot-meals', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  test('200 returns the meals/rows updated counts', async () => {
+    const id = '11111111-1111-4111-8111-111111111111'
+    const meals = await import('../services/meals.ts')
+    vi.mocked(meals.resnapshotMealsForFoodItem).mockResolvedValue({ meals_updated: 3, rows_updated: 5 })
+
+    const res = await supertest(buildApp(fakeCentral())).post(`/food-items/${id}/resnapshot-meals`)
+    expect(res.status).toBe(200)
+    expect(res.body.data).toEqual({ meals_updated: 3, rows_updated: 5 })
+    expect(meals.resnapshotMealsForFoodItem).toHaveBeenCalledWith('tester', id)
+  })
+
+  test('404 when the service throws "Food item not found"', async () => {
+    const meals = await import('../services/meals.ts')
+    vi.mocked(meals.resnapshotMealsForFoodItem).mockRejectedValue(new Error('Food item not found'))
+
+    const res = await supertest(buildApp(fakeCentral())).post(
+      '/food-items/11111111-1111-4111-8111-111111111111/resnapshot-meals',
+    )
+    expect(res.status).toBe(404)
+    expect(res.body.error).toMatch(/not found/i)
+  })
+
+  test('500 on unexpected service errors', async () => {
+    const meals = await import('../services/meals.ts')
+    vi.mocked(meals.resnapshotMealsForFoodItem).mockRejectedValue(new Error('boom'))
+
+    const res = await supertest(buildApp(fakeCentral())).post(
+      '/food-items/11111111-1111-4111-8111-111111111111/resnapshot-meals',
+    )
+    expect(res.status).toBe(500)
   })
 })

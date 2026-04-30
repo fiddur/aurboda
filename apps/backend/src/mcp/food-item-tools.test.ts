@@ -30,6 +30,10 @@ vi.mock('../db/food-item-ingredients.ts', () => ({
   getIngredients: vi.fn().mockResolvedValue([]),
 }))
 
+vi.mock('../services/meals.ts', () => ({
+  resnapshotMealsForFoodItem: vi.fn(),
+}))
+
 const dbBarrel = await import('../db/index.ts')
 const dbFoodItems = await import('../db/food-items.ts')
 
@@ -212,5 +216,39 @@ describe('MCP set_food_item_reference', () => {
     const json = JSON.parse(text) as { success: boolean }
     expect(json.success).toBe(true)
     expect(dbBarrel.setFoodItemReference).toHaveBeenCalledWith('tester', id, null)
+  })
+})
+
+describe('MCP resnapshot_meals_for_food_item', () => {
+  const id = '11111111-1111-4111-8111-111111111111'
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  test('returns the counts on success', async () => {
+    const meals = await import('../services/meals.ts')
+    vi.mocked(meals.resnapshotMealsForFoodItem).mockResolvedValue({ meals_updated: 2, rows_updated: 4 })
+
+    const { server, tools } = buildFakeServer()
+    registerFoodItemTools(server, 'tester', fakeCentral())
+    const text = await callTool(tools.get('resnapshot_meals_for_food_item')!, { id })
+    const json = JSON.parse(text) as {
+      success: boolean
+      data: { meals_updated: number; rows_updated: number }
+    }
+    expect(json.success).toBe(true)
+    expect(json.data).toEqual({ meals_updated: 2, rows_updated: 4 })
+    expect(meals.resnapshotMealsForFoodItem).toHaveBeenCalledWith('tester', id)
+  })
+
+  test('surfaces "Food item not found" as an error response', async () => {
+    const meals = await import('../services/meals.ts')
+    vi.mocked(meals.resnapshotMealsForFoodItem).mockRejectedValue(new Error('Food item not found'))
+
+    const { server, tools } = buildFakeServer()
+    registerFoodItemTools(server, 'tester', fakeCentral())
+    const text = await callTool(tools.get('resnapshot_meals_for_food_item')!, { id })
+    expect(text).toMatch(/not found/i)
   })
 })

@@ -114,6 +114,20 @@ export const setMealFoodItems = async (
 }
 
 /**
+ * Find every distinct meal_id that has at least one junction row pointing at
+ * the given food_item_id. Used by the re-snapshot flow to know which meals
+ * to recompute when a food item's effective nutrients change.
+ */
+export const findMealsContainingFoodItem = async (user: string, foodItemId: string): Promise<string[]> => {
+  const result = await query(
+    user,
+    'SELECT DISTINCT meal_id FROM meal_food_items WHERE food_item_id = $1 ORDER BY meal_id',
+    [foodItemId],
+  )
+  return result.rows.map((row) => row.meal_id as string)
+}
+
+/**
  * Get food items for multiple meals at once (batch query).
  * Returns a map of meal_id → MealFoodItemLink[].
  */

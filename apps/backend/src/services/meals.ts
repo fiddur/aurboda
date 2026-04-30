@@ -9,9 +9,11 @@ import { type FrequentFoodItem, type FrequentMeal, NUTRIENT_FIELD_NAMES } from '
 
 import {
   deleteMeal as dbDeleteMeal,
+  findMealsContainingFoodItem,
   getFrequentFoodItems as dbGetFrequentFoodItems,
   getFrequentMeals as dbGetFrequentMeals,
   getMealById as dbGetMealById,
+  getMealFoodItems,
   getMealFoodItemsBatch,
   getMeals as dbGetMeals,
   setMealFoodItems,
@@ -23,7 +25,7 @@ import {
   type Micros,
 } from '../db/index.ts'
 import { getCentralDb } from './central-db.ts'
-import { createFoodItemsService, type MergedFoodItem } from './food-items.ts'
+import { createFoodItemsService, getEffectiveNutrients, type MergedFoodItem } from './food-items.ts'
 
 // ============================================================================
 // Types
@@ -222,11 +224,17 @@ const round2 = (n: number): number => Math.round(n * 100) / 100
  * values scaled by quantity, plus the food item's name and icon. With the
  * name/icon snapshotted, meal reads no longer JOIN food_items — important
  * because the canonical row may live in the central DB.
+ *
+ * `effectiveValues` carries the per-default-quantity nutrients to snapshot.
+ * Callers should compute it via `getEffectiveNutrients(detail)` so composite
+ * recipes use derived totals (not the stale row columns) and reference-
+ * enriched atomic items inherit micronutrients.
  */
 export const buildScaledJunctionItem = (
   fi: FoodItemInput,
   canonical: MergedFoodItem,
   sortOrder: number,
+  effectiveValues: Record<string, number>,
 ): Record<string, unknown> => {
   const scale = computeScale(fi, canonical)
   const junctionItem: Record<string, unknown> = {
@@ -238,9 +246,9 @@ export const buildScaledJunctionItem = (
     unit: fi.unit,
   }
   for (const field of NUTRIENT_FIELD_NAMES) {
-    const canonicalVal = canonical[field]
-    if (typeof canonicalVal === 'number') {
-      junctionItem[field] = round2(canonicalVal * scale)
+    const v = effectiveValues[field]
+    if (typeof v === 'number') {
+      junctionItem[field] = round2(v * scale)
     }
   }
   return junctionItem
@@ -279,12 +287,17 @@ const syncFoodItemsToJunction = async (
   foodItems: FoodItemInput[],
   source = 'manual',
 ): Promise<void> => {
+  const service = createFoodItemsService(getCentralDb())
   const junctionItems = []
   for (let i = 0; i < foodItems.length; i++) {
     const fi = foodItems[i]
     const canonical = await resolveCanonical(user, fi, source)
     if (!canonical) continue
-    junctionItems.push(buildScaledJunctionItem(fi, canonical, i))
+    // Fetch detail to pick up derived (composite) or enriched (reference)
+    // nutrients. Falls back to the canonical row when no detail is available.
+    const detail = await service.getDetail(user, canonical.id)
+    const effective = detail ? getEffectiveNutrients(detail) : {}
+    junctionItems.push(buildScaledJunctionItem(fi, canonical, i, effective))
   }
 
   await setMealFoodItems(user, mealId, junctionItems as Parameters<typeof setMealFoodItems>[2])
@@ -379,6 +392,69 @@ export async function updateMealById(user: string, id: string, input: UpdateMeal
   }
 
   return { data: formatMeal(meal), success: true }
+}
+
+/**
+ * Re-snapshot every meal that includes the given food item. For each junction
+ * row pointing at `foodItemId`, replace its nutrient columns with the food
+ * item's *current* effective values × the row's existing scale (quantity ÷
+ * canonical default_quantity), then recompute the meal-level macros. Other
+ * food items in the same meal are left untouched.
+ *
+ * This intentionally mutates frozen meal snapshots — it's the user's "refresh
+ * historical meals after I edited the recipe" action. Other paths still treat
+ * snapshots as immutable.
+ */
+export interface ResnapshotMealsResult {
+  meals_updated: number
+  rows_updated: number
+}
+
+export async function resnapshotMealsForFoodItem(
+  user: string,
+  foodItemId: string,
+): Promise<ResnapshotMealsResult> {
+  const service = createFoodItemsService(getCentralDb())
+  const detail = await service.getDetail(user, foodItemId)
+  if (!detail) throw new Error('Food item not found')
+  const canonical = detail.item
+  const effective = getEffectiveNutrients(detail)
+
+  const mealIds = await findMealsContainingFoodItem(user, foodItemId)
+  let rowsUpdated = 0
+  for (const mealId of mealIds) {
+    const links = await getMealFoodItems(user, mealId)
+    const updated = links.map((link) => {
+      if (link.food_item_id !== foodItemId) {
+        // Preserve other items' snapshots verbatim — this action only refreshes
+        // rows that point at the food item being re-snapshotted.
+        const passThrough: Record<string, unknown> = {
+          food_item_icon: link.food_item_icon,
+          food_item_id: link.food_item_id,
+          food_item_name: link.food_item_name,
+          quantity: link.quantity,
+          sort_order: link.sort_order,
+          unit: link.unit,
+        }
+        for (const field of NUTRIENT_FIELD_NAMES) {
+          const v = link[field]
+          if (typeof v === 'number') passThrough[field] = v
+        }
+        return passThrough
+      }
+      rowsUpdated++
+      const fi: FoodItemInput = {
+        food_item_id: foodItemId,
+        name: link.food_item_name ?? canonical.name,
+        quantity: link.quantity as number | undefined,
+        unit: link.unit as string | undefined,
+      }
+      return buildScaledJunctionItem(fi, canonical, link.sort_order, effective)
+    })
+    await setMealFoodItems(user, mealId, updated as Parameters<typeof setMealFoodItems>[2])
+    await recomputeMealMacros(user, mealId)
+  }
+  return { meals_updated: mealIds.length, rows_updated: rowsUpdated }
 }
 
 /**

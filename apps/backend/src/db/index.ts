@@ -230,7 +230,12 @@ export {
   updateFoodItem,
   upsertFoodItem,
 } from './food-items.ts'
-export { getMealFoodItems, getMealFoodItemsBatch, setMealFoodItems } from './meal-food-items.ts'
+export {
+  findMealsContainingFoodItem,
+  getMealFoodItems,
+  getMealFoodItemsBatch,
+  setMealFoodItems,
+} from './meal-food-items.ts'
 
 // Food item ingredients (composite/recipe support)
 export {

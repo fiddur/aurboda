@@ -343,6 +343,25 @@
   }
 }
 
+.fi-resnapshot-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 1rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.85rem;
+  color: #166534;
+  background: #dcfce7;
+  border-radius: 4px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .fi-resnapshot-banner {
+    color: #bbf7d0;
+    background: #14532d;
+  }
+}
+
 .fi-reference-row {
   display: flex;
   flex-wrap: wrap;

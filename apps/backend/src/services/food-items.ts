@@ -90,6 +90,36 @@ export interface FoodItemDetail {
   reference_enriched?: ReferenceEnrichedFields
 }
 
+/**
+ * Resolve the effective per-default-quantity nutrient values for a food item:
+ * - composite → live derived totals from ingredients (the row columns may be
+ *   stale leftover values from before the conversion to composite)
+ * - reference-enriched atomic → self values + reference values for empty fields
+ * - plain atomic → the row's own nutrient columns
+ *
+ * Used at meal-snapshot time so meals reflect the current recipe / reference.
+ */
+export const getEffectiveNutrients = (detail: FoodItemDetail): Record<string, number> => {
+  const result: Record<string, number> = {}
+  if (detail.derived_nutrients) {
+    for (const [k, v] of Object.entries(detail.derived_nutrients.values)) {
+      if (typeof v === 'number') result[k] = v
+    }
+    return result
+  }
+  if (detail.reference_enriched) {
+    for (const [k, info] of Object.entries(detail.reference_enriched.fields)) {
+      if (typeof info.value === 'number') result[k] = info.value
+    }
+    return result
+  }
+  for (const field of NUTRIENT_FIELD_NAMES) {
+    const v = detail.item[field]
+    if (typeof v === 'number') result[field] = v
+  }
+  return result
+}
+
 export interface FoodItemsService {
   search: (user: string, q: string, limit?: number) => Promise<MergedFoodItem[]>
   getById: (user: string, id: string) => Promise<MergedFoodItem | null>

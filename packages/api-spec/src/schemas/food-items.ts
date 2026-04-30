@@ -264,6 +264,29 @@ export const deleteFoodItemResponseSchema = baseResponseSchema.meta({ id: 'Delet
 export type DeleteFoodItemResponse = z.infer<typeof deleteFoodItemResponseSchema>
 
 // ============================================================================
+// Re-snapshot meals
+// ============================================================================
+
+export const resnapshotMealsResultSchema = z
+  .object({
+    meals_updated: z.number().int().min(0).meta({
+      description: 'Number of distinct meals that had at least one row re-snapshotted',
+    }),
+    rows_updated: z.number().int().min(0).meta({
+      description: 'Number of meal_food_items junction rows whose nutrient values were refreshed',
+    }),
+  })
+  .meta({ description: 'Outcome of re-snapshotting historical meals', id: 'ResnapshotMealsResult' })
+
+export type ResnapshotMealsResult = z.infer<typeof resnapshotMealsResultSchema>
+
+export const resnapshotMealsResponseSchema = createDataResponseSchema(resnapshotMealsResultSchema).meta({
+  id: 'ResnapshotMealsResponse',
+})
+
+export type ResnapshotMealsResponse = z.infer<typeof resnapshotMealsResponseSchema>
+
+// ============================================================================
 // Merge food items
 // ============================================================================
 
