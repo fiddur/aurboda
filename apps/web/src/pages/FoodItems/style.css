@@ -128,3 +128,31 @@
     padding: 0.375rem 0.25rem;
   }
 }
+
+.fi-create {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+/* btn-primary mirrored here so the "+ New" button is styled even when the
+   user lands on /food-items without first visiting a detail page (whose
+   stylesheet otherwise contributes the rules). */
+.btn-primary {
+  padding: 0.375rem 0.75rem;
+  font-size: 0.85rem;
+  background: #673ab8;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.btn-primary:hover {
+  background: #5e35b1;
+}
+
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
