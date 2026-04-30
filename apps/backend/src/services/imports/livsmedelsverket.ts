@@ -52,6 +52,11 @@ const EUROFIR_TO_COLUMN: Record<string, string> = {
   NACL: 'salt',
   SUGAR: 'sugars',
   SUGAD: 'added_sugars',
+  SUGFR: 'free_sugars',
+  SUCS: 'sucrose',
+  MNSAC: 'monosaccharides',
+  DISAC: 'disaccharides',
+  WHOLET: 'whole_grain',
 
   // Fat breakdown
   FASAT: 'saturated_fat',
@@ -64,6 +69,15 @@ const EUROFIR_TO_COLUMN: Record<string, string> = {
   'F22:5': 'dpa',
   'F20:5': 'epa',
   'F20:4': 'aa',
+  // Individual fatty acids (LSV ships these per food)
+  'F4-10:0': 'short_chain_fatty_acids',
+  'F12:0': 'lauric_acid',
+  'F14:0': 'myristic_acid',
+  'F16:0': 'palmitic_acid',
+  'F16:1': 'palmitoleic_acid',
+  'F18:0': 'stearic_acid',
+  'F18:1': 'oleic_acid',
+  'F20:0': 'arachidic_acid',
 
   // Vitamins
   VITA: 'vitamin_a',
@@ -71,15 +85,22 @@ const EUROFIR_TO_COLUMN: Record<string, string> = {
   CARTBTOT: 'beta_carotene',
   VITC: 'vitamin_c',
   VITD: 'vitamin_d',
+  VITD_x: 'vitamin_d_25oh',
   VITE: 'vitamin_e',
   VITK: 'vitamin_k',
-  THIA: 'b1_thiamine',
+  // LSV ships thiamine under `THIACLHCL` (HCl form). The bare `THIA` code
+  // appears in EuroFIR docs but not in LSV's payload — we kept the wrong key
+  // for too long, dropping all B1 from imports until this PR.
+  THIACLHCL: 'b1_thiamine',
   RIBF: 'b2_riboflavin',
   NIA: 'b3_niacin',
+  NIAEQ: 'niacin_equivalents',
   PANTAC: 'b5_pantothenic_acid',
   VITB6: 'b6_pyridoxine',
   VITB12: 'b12_cobalamin',
-  FOLFD: 'folate',
+  // Same story as thiamine: LSV ships total folate under `FOL`, not `FOLFD`,
+  // so all imported foods were missing folate before this fix.
+  FOL: 'folate',
 
   // Minerals
   CA: 'calcium',
@@ -93,6 +114,8 @@ const EUROFIR_TO_COLUMN: Record<string, string> = {
   NA: 'sodium',
   ZN: 'zinc',
   ID: 'iodine',
+  // LSV doesn't ship chromium; included here so a future source (e.g. USDA)
+  // would feed straight into the same column.
 }
 
 /** Unit conversions to whatever unit our column expects. */
@@ -108,6 +131,11 @@ const COLUMN_UNITS: Record<string, 'g' | 'mg' | 'µg' | 'kcal'> = {
   salt: 'g',
   sugars: 'g',
   added_sugars: 'g',
+  free_sugars: 'g',
+  sucrose: 'g',
+  monosaccharides: 'g',
+  disaccharides: 'g',
+  whole_grain: 'g',
   saturated_fat: 'g',
   monounsaturated_fat: 'g',
   polyunsaturated_fat: 'g',
@@ -117,22 +145,33 @@ const COLUMN_UNITS: Record<string, 'g' | 'mg' | 'µg' | 'kcal'> = {
   dpa: 'g',
   epa: 'g',
   aa: 'g',
+  short_chain_fatty_acids: 'g',
+  lauric_acid: 'g',
+  myristic_acid: 'g',
+  palmitic_acid: 'g',
+  palmitoleic_acid: 'g',
+  stearic_acid: 'g',
+  oleic_acid: 'g',
+  arachidic_acid: 'g',
   cholesterol: 'mg',
   vitamin_a: 'µg',
   retinol: 'µg',
   beta_carotene: 'µg',
   vitamin_c: 'mg',
   vitamin_d: 'µg',
+  vitamin_d_25oh: 'µg',
   vitamin_e: 'mg',
   vitamin_k: 'µg',
   b1_thiamine: 'mg',
   b2_riboflavin: 'mg',
   b3_niacin: 'mg',
+  niacin_equivalents: 'mg',
   b5_pantothenic_acid: 'mg',
   b6_pyridoxine: 'mg',
   b12_cobalamin: 'µg',
   folate: 'µg',
   calcium: 'mg',
+  chromium: 'µg',
   copper: 'mg',
   iron: 'mg',
   magnesium: 'mg',

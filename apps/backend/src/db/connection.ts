@@ -1,6 +1,7 @@
 /**
  * Database connection management and schema initialization.
  */
+import { NUTRIENT_FIELD_NAMES } from '@aurboda/api-spec'
 import { Client, type QueryResultRow } from 'pg'
 import format from 'pg-format'
 
@@ -825,6 +826,12 @@ export const migrateSchema = async (user: string) => {
     // keeping its own label-derived macros. Soft pointer (no FK — target
     // may live in central DB).
     await query(db, `ALTER TABLE food_items ADD COLUMN IF NOT EXISTS reference_food_item_id UUID`)
+    // Idempotently add every nutrient column NUTRIENT_FIELD_NAMES knows about.
+    // Existing columns are no-ops; new ones (added when api-spec grows) get
+    // applied here without bespoke migrations.
+    for (const field of NUTRIENT_FIELD_NAMES) {
+      await query(db, `ALTER TABLE food_items ADD COLUMN IF NOT EXISTS ${field} DOUBLE PRECISION`)
+    }
   }
 
   // meal_food_items: snapshot food_item_name + food_item_icon at insertion
@@ -847,6 +854,10 @@ export const migrateSchema = async (user: string) => {
     )
     // Drop the FK if it still exists.
     await query(db, `ALTER TABLE meal_food_items DROP CONSTRAINT IF EXISTS meal_food_items_food_item_id_fkey`)
+    // Mirror the nutrient columns onto the snapshot table.
+    for (const field of NUTRIENT_FIELD_NAMES) {
+      await query(db, `ALTER TABLE meal_food_items ADD COLUMN IF NOT EXISTS ${field} DOUBLE PRECISION`)
+    }
   }
 
   // import_jobs and shared_food_items moved to the central database. If a
