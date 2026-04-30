@@ -52,6 +52,9 @@ vi.mock('./food-items.ts', () => ({
   }),
   // The real service exports getEffectiveNutrients used by syncFoodItemsToJunction.
   getEffectiveNutrients: vi.fn().mockReturnValue({}),
+  // No-op for unit tests — the resnapshot path calls this; the mock just
+  // returns void to satisfy the awaiter.
+  cacheCompositeNutrients: vi.fn().mockResolvedValue(undefined),
 }))
 
 const mockUpsertMeal = vi.mocked(db.upsertMeal)

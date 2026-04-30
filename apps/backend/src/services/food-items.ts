@@ -19,6 +19,7 @@ import type { SharedFoodItemEntity } from './central-food-items.ts'
 
 import { query } from '../db/connection.ts'
 import {
+  findCompositeParentsOfIngredient,
   type FoodItemIngredientRow,
   getIngredients as dbGetIngredients,
 } from '../db/food-item-ingredients.ts'
@@ -30,6 +31,7 @@ import {
   type MergeFoodItemResult,
   mergeFoodItems as dbMergeFoodItems,
   searchFoodItems as searchUserFoodItems,
+  updateFoodItem as dbUpdateFoodItem,
 } from '../db/food-items.ts'
 
 /**
@@ -380,6 +382,81 @@ export const createFoodItemsService = (centralDb: CentralDb): FoodItemsService =
     return false
   },
 })
+
+// ============================================================================
+// Composite nutrient cache
+// ============================================================================
+
+/**
+ * Recompute a composite item's derived nutrient totals and write them onto
+ * its `food_items` row columns, then walk up to every parent recipe that
+ * uses this item and re-cache them too.
+ *
+ * Why cache: read paths (search dropdown, frequent-meal queries, parent
+ * recipes summing ingredient values) all read `food_items.<nutrient>`
+ * directly from the row. Without the cache, composite rows have stale or
+ * null values from before the conversion to composite, so search shows
+ * dashes and parents-of-composites silently miss their child's contribution.
+ *
+ * Why propagate: editing recipe A invalidates the cache on every recipe B
+ * that contains A. Without propagation a parent stays at the previous totals
+ * until manually re-saved. The recursion terminates because the cycle check
+ * in `wouldCreateCycle` rejects ingredient cycles, but `visited` is a
+ * defence-in-depth guard.
+ *
+ * Atomic items aren't touched — their nutrients are user-authoritative.
+ */
+export const cacheCompositeNutrients = async (
+  user: string,
+  centralDb: CentralDb,
+  foodItemId: string,
+  visited: Set<string> = new Set(),
+): Promise<void> => {
+  if (visited.has(foodItemId)) return
+  visited.add(foodItemId)
+
+  const item = await getUserFoodItemById(user, foodItemId)
+  if (!item?.is_composite) return
+
+  const service = createFoodItemsService(centralDb)
+  const detail = await service.getDetail(user, foodItemId)
+  const values = detail?.derived_nutrients?.values ?? {}
+
+  const update: Record<string, number | null> = {}
+  for (const field of NUTRIENT_FIELD_NAMES) {
+    const v = values[field]
+    update[field] = typeof v === 'number' ? v : null
+  }
+  await dbUpdateFoodItem(user, foodItemId, update)
+
+  const parents = await findCompositeParentsOfIngredient(user, foodItemId)
+  for (const parentId of parents) {
+    await cacheCompositeNutrients(user, centralDb, parentId, visited)
+  }
+}
+
+/**
+ * Mirror of `cacheCompositeNutrients` for the clear-ingredients path: null
+ * out the cached nutrient columns (the item is no longer composite, so its
+ * row should not carry stale derived totals), then refresh parents.
+ */
+export const clearCompositeNutrientCache = async (
+  user: string,
+  centralDb: CentralDb,
+  foodItemId: string,
+): Promise<void> => {
+  const update: Record<string, null> = {}
+  for (const field of NUTRIENT_FIELD_NAMES) update[field] = null
+  await dbUpdateFoodItem(user, foodItemId, update)
+
+  // Don't recurse through this id: the parents need refreshing, but we
+  // already updated this row, and the item itself is no longer composite.
+  const parents = await findCompositeParentsOfIngredient(user, foodItemId)
+  const visited = new Set([foodItemId])
+  for (const parentId of parents) {
+    await cacheCompositeNutrients(user, centralDb, parentId, visited)
+  }
+}
 
 // ============================================================================
 // Merge two food items

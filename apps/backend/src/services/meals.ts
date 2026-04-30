@@ -25,7 +25,12 @@ import {
   type Micros,
 } from '../db/index.ts'
 import { getCentralDb } from './central-db.ts'
-import { createFoodItemsService, getEffectiveNutrients, type MergedFoodItem } from './food-items.ts'
+import {
+  cacheCompositeNutrients,
+  createFoodItemsService,
+  getEffectiveNutrients,
+  type MergedFoodItem,
+} from './food-items.ts'
 
 // ============================================================================
 // Types
@@ -414,7 +419,13 @@ export async function resnapshotMealsForFoodItem(
   user: string,
   foodItemId: string,
 ): Promise<ResnapshotMealsResult> {
-  const service = createFoodItemsService(getCentralDb())
+  const centralDb = getCentralDb()
+  // Refresh the row-level derived cache first so the search dropdown,
+  // frequent-meal queries, and parent recipes pick up the same values that
+  // the meal snapshots are about to be rebuilt from. No-op for atomic items.
+  await cacheCompositeNutrients(user, centralDb, foodItemId)
+
+  const service = createFoodItemsService(centralDb)
   const detail = await service.getDetail(user, foodItemId)
   if (!detail) throw new Error('Food item not found')
   const canonical = detail.item
