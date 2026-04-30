@@ -82,7 +82,12 @@ export const registerFoodItemTools = (server: McpServer, user: string, centralDb
       }
       const item = await updateFoodItem(user, id, params)
       if (!item) return errorResponse('Food item not found')
-      return jsonResponse({ data: item, success: true })
+      // Mirror the REST PATCH: return the full detail so callers see the
+      // current ingredients / derived nutrients / reference enrichment, not
+      // just the row columns.
+      const detail = await foodItems.getDetail(user, id)
+      if (!detail) return errorResponse('Food item not found')
+      return jsonResponse({ data: detail, success: true })
     },
   )
 
