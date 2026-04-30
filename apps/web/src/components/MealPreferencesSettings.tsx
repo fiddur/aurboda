@@ -1,7 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'preact/hooks'
 
-import { fetchUserSettings, updateUserSettings } from '../state/api'
+import {
+  createSensitivityFlag,
+  deleteSensitivityFlag,
+  fetchSensitivityFlags,
+  fetchUserSettings,
+  updateUserSettings,
+} from '../state/api'
 import { auth } from '../state/auth'
 import { type SaveStatus, SaveStatusIndicator } from './SaveStatusIndicator'
 import { SettingsSection } from './SettingsSection'
@@ -16,11 +22,18 @@ export function MealPreferencesSettings() {
   const isLoggedIn = auth.value.token
   const queryClient = useQueryClient()
 
-  const { data: settings, isLoading } = useQuery({
+  const { data: settings, isLoading: settingsLoading } = useQuery({
     enabled: !!isLoggedIn,
     queryFn: fetchUserSettings,
     queryKey: ['userSettings'],
   })
+
+  const { data: flags = [], isLoading: flagsLoading } = useQuery({
+    enabled: !!isLoggedIn,
+    queryFn: fetchSensitivityFlags,
+    queryKey: ['sensitivityFlags'],
+  })
+  const isLoading = settingsLoading || flagsLoading
 
   const [newArea, setNewArea] = useState('')
   const [newSlotName, setNewSlotName] = useState('')
@@ -28,9 +41,10 @@ export function MealPreferencesSettings() {
   const [saveStatus, setSaveStatus] = useState<SaveStatus>({ status: 'idle' })
 
   const currentSlots: MealSlot[] = settings?.meal_slots ?? []
-  const currentAreas: string[] = settings?.sensitivity_areas ?? []
+  const currentAreas: string[] = flags.map((f) => f.name)
 
-  // Save immediately on any change
+  // Save immediately on any change (settings — meal slots only now; flags
+  // are managed via the dedicated /sensitivity-flags endpoint).
   const saveMutation = useMutation({
     mutationFn: updateUserSettings,
     onSuccess: (result) => {
@@ -45,26 +59,49 @@ export function MealPreferencesSettings() {
     },
   })
 
-  const saveAreas = (areas: string[]) => {
-    setSaveStatus({ status: 'saving' })
-    saveMutation.mutate({ sensitivity_areas: areas })
+  const flagSaveSettled = (err?: unknown) => {
+    if (err) {
+      setSaveStatus({
+        error: err instanceof Error ? err.message : 'Failed to save',
+        status: 'error',
+      })
+    } else {
+      setSaveStatus({ status: 'saved', time: new Date() })
+    }
+    queryClient.invalidateQueries({ queryKey: ['sensitivityFlags'] })
   }
+
+  const addFlagMutation = useMutation({
+    mutationFn: (name: string) => createSensitivityFlag({ name, sort_order: flags.length }),
+    onError: (err) => flagSaveSettled(err),
+    onSuccess: () => flagSaveSettled(),
+  })
+
+  const deleteFlagMutation = useMutation({
+    mutationFn: deleteSensitivityFlag,
+    onError: (err) => flagSaveSettled(err),
+    onSuccess: () => flagSaveSettled(),
+  })
 
   const saveSlots = (slots: MealSlot[]) => {
     setSaveStatus({ status: 'saving' })
     saveMutation.mutate({ meal_slots: slots })
   }
 
-  // Sensitivity areas — save on each action
+  // Sensitivity flags — write through the dedicated endpoint
   const addArea = () => {
     const trimmed = newArea.trim()
     if (!trimmed || currentAreas.includes(trimmed)) return
-    saveAreas([...currentAreas, trimmed])
+    setSaveStatus({ status: 'saving' })
+    addFlagMutation.mutate(trimmed)
     setNewArea('')
   }
 
   const removeArea = (area: string) => {
-    saveAreas(currentAreas.filter((a) => a !== area))
+    const flag = flags.find((f) => f.name === area)
+    if (!flag) return
+    setSaveStatus({ status: 'saving' })
+    deleteFlagMutation.mutate(flag.id)
   }
 
   // Meal slots — save on each action

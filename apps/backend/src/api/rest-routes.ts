@@ -39,6 +39,7 @@ import { createProductivityRouter } from '../routes/productivity-router.ts'
 import { createRawRecordsRouter } from '../routes/raw-records-router.ts'
 import { createReportsRouter } from '../routes/reports-router.ts'
 import { createScreentimeCategoriesRouter } from '../routes/screentime-categories-router.ts'
+import { createSensitivityFlagsRouter } from '../routes/sensitivity-flags-router.ts'
 import { createSettingsRouter } from '../routes/settings-router.ts'
 import { createTrainingLoadRouter } from '../routes/training-load-router.ts'
 import { createTrendsRouter } from '../routes/trends-router.ts'
@@ -87,6 +88,7 @@ export const mountRestRouters = ({
   httpd.use('/notes', createNotesRouter(authMiddleware))
   httpd.use('/meals', createMealsRouter(authMiddleware))
   httpd.use('/food-items', createFoodItemsRouter(authMiddleware, centralDb))
+  httpd.use('/sensitivity-flags', createSensitivityFlagsRouter(authMiddleware))
   httpd.use('/admin/imports', createImportsRouter(authMiddleware, adminMiddleware, centralDb))
   httpd.use('/reports', createReportsRouter(authMiddleware))
   httpd.use(

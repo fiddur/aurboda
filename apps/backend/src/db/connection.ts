@@ -364,6 +364,97 @@ const migrateTagDefinitionFk = async (db: Client) => {
 }
 
 /**
+ * Migrate the legacy `user_settings.sensitivity_areas: string[]` and
+ * `user_settings.food_sensitivity_map: { name: string[] }` into the new
+ * `sensitivity_flags` + `food_item_sensitivities` tables.
+ *
+ * Idempotent: skips when sensitivity_flags already has rows.
+ *
+ * Best-effort: food name → food_item_id resolution is exact (case-insensitive)
+ * against the per-user food_items table only. Central-library entries can't
+ * be resolved here (different DB); the user re-applies those flags via the
+ * new MCP tool. The legacy settings keys stay in the JSONB blob for now —
+ * dropping them is a follow-up once we're confident migration ran cleanly.
+ */
+const readLegacySensitivitySettings = async (
+  db: Client,
+): Promise<{ areas: string[]; map: Record<string, string[]> } | null> => {
+  const settingsResult = await query(
+    db,
+    `SELECT settings FROM user_settings ORDER BY updated_at DESC NULLS LAST LIMIT 1`,
+  ).catch(() => ({ rows: [] as Array<Record<string, unknown>> }))
+  if (settingsResult.rows.length === 0) return null
+  const settings = settingsResult.rows[0]?.settings as Record<string, unknown> | undefined
+  if (!settings) return null
+  const areas = Array.isArray(settings.sensitivity_areas) ? (settings.sensitivity_areas as string[]) : []
+  const map =
+    typeof settings.food_sensitivity_map === 'object' && settings.food_sensitivity_map !== null
+      ? (settings.food_sensitivity_map as Record<string, string[]>)
+      : {}
+  return { areas, map }
+}
+
+const ensureFlagsInTable = async (db: Client, names: Iterable<string>): Promise<Map<string, string>> => {
+  const flagIdByName = new Map<string, string>()
+  let sortOrder = 0
+  for (const name of names) {
+    const inserted = await query(
+      db,
+      `INSERT INTO sensitivity_flags (name, sort_order) VALUES ($1, $2)
+       ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name
+       RETURNING id, name`,
+      [name, sortOrder++],
+    )
+    flagIdByName.set(name, inserted.rows[0].id as string)
+  }
+  return flagIdByName
+}
+
+const backfillFoodItemSensitivities = async (
+  db: Client,
+  map: Record<string, string[]>,
+  flagIdByName: Map<string, string>,
+): Promise<void> => {
+  for (const [foodName, flagNames] of Object.entries(map)) {
+    if (!Array.isArray(flagNames) || flagNames.length === 0) continue
+    const foodLookup = await query(db, `SELECT id FROM food_items WHERE name_lower = $1 LIMIT 1`, [
+      foodName.toLowerCase(),
+    ])
+    if (foodLookup.rows.length === 0) continue // likely a central-library item — user re-flags via MCP
+    const foodId = foodLookup.rows[0].id as string
+    for (const flagName of flagNames) {
+      const flagId = flagIdByName.get(flagName)
+      if (!flagId) continue
+      await query(
+        db,
+        `INSERT INTO food_item_sensitivities (food_item_id, sensitivity_flag_id)
+         VALUES ($1, $2)
+         ON CONFLICT (food_item_id, sensitivity_flag_id) DO NOTHING`,
+        [foodId, flagId],
+      )
+    }
+  }
+}
+
+const backfillSensitivityFlags = async (db: Client) => {
+  // Skip if there's already data — don't clobber the user's later edits.
+  const existing = await query(db, 'SELECT COUNT(*)::int AS c FROM sensitivity_flags')
+  if (existing.rows[0]?.c > 0) return
+
+  const legacy = await readLegacySensitivitySettings(db)
+  if (!legacy) return
+
+  // Union of all flag names referenced anywhere in legacy data — even ones
+  // only mentioned in the food map but never in the area list.
+  const allNames = new Set<string>(legacy.areas)
+  for (const flags of Object.values(legacy.map)) for (const flag of flags) allNames.add(flag)
+  if (allNames.size === 0) return
+
+  const flagIdByName = await ensureFlagsInTable(db, allNames)
+  await backfillFoodItemSensitivities(db, legacy.map, flagIdByName)
+}
+
+/**
  * Convert a display string to snake_case identifier.
  * "Coffee" → "coffee", "Hot Bath" → "hot_bath", "[Work] Meeting" → "work_meeting"
  */
@@ -858,6 +949,9 @@ export const migrateSchema = async (user: string) => {
     for (const field of NUTRIENT_FIELD_NAMES) {
       await query(db, `ALTER TABLE meal_food_items ADD COLUMN IF NOT EXISTS ${field} DOUBLE PRECISION`)
     }
+    // Snapshot a food item's sensitivity flag names at meal-add time so
+    // meal totals carry the inheritance even after the food's flags change.
+    await query(db, `ALTER TABLE meal_food_items ADD COLUMN IF NOT EXISTS sensitivities TEXT[]`)
   }
 
   // import_jobs and shared_food_items moved to the central database. If a
@@ -881,6 +975,12 @@ export const migrateSchema = async (user: string) => {
 
   // Add FK constraint for tag_definition_id (after tag_definitions table is created)
   await migrateTagDefinitionFk(db)
+
+  // Backfill sensitivity_flags from the legacy `user_settings.sensitivity_areas`
+  // string array, plus food_item_sensitivities from `food_sensitivity_map`
+  // (best-effort name → food_item_id resolution; central-library matches need
+  // to be redone manually via the MCP tool because central isn't queried here).
+  await backfillSensitivityFlags(db)
 
   // Backfill tag_key for existing Oura tags
   if (existingTableNames.has('tags')) {

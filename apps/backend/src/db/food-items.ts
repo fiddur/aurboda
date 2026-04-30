@@ -237,10 +237,50 @@ export const updateFoodItem = async (
 
 /**
  * Delete a food item by ID.
+ *
+ * Cascade behaviour for soft-pointer relationships (no FK from the source
+ * tables, so we manage cascade in code):
+ *
+ * - `food_item_ingredients.ingredient_food_item_id` — refuse the delete when
+ *   the item is used in any recipe. Silently dangling ingredient pointers
+ *   would lose data; force the user to detach or merge first.
+ * - `food_items.reference_food_item_id` — NULL out every row pointing at this
+ *   id so reference enrichment doesn't break with a ghost target.
+ * - `food_item_sensitivities.food_item_id` — drop the assignments. They're
+ *   live, not historical, so no reason to keep them around.
+ * - `meal_food_items.food_item_id` — left alone. Meal snapshots are frozen
+ *   by design; the dangling pointer is acceptable because every nutrient
+ *   value the meal needs is already snapshotted onto the junction row.
  */
 export const deleteFoodItem = async (user: string, id: string): Promise<boolean> => {
-  const result = await query(user, 'DELETE FROM food_items WHERE id = $1', [id])
-  return (result.rowCount ?? 0) > 0
+  const usedAsIngredient = await query(
+    user,
+    'SELECT 1 FROM food_item_ingredients WHERE ingredient_food_item_id = $1 LIMIT 1',
+    [id],
+  )
+  if (usedAsIngredient.rows.length > 0) {
+    throw new Error(
+      'Cannot delete: this food item is used as an ingredient in one or more recipes. Remove it from those recipes (or merge into a replacement) first.',
+    )
+  }
+
+  try {
+    await query(user, 'BEGIN')
+    // Reference dangling: NULL out every pointer to this id.
+    await query(
+      user,
+      'UPDATE food_items SET reference_food_item_id = NULL, updated_at = NOW() WHERE reference_food_item_id = $1',
+      [id],
+    )
+    // Sensitivity assignments — live state; drop.
+    await query(user, 'DELETE FROM food_item_sensitivities WHERE food_item_id = $1', [id])
+    const result = await query(user, 'DELETE FROM food_items WHERE id = $1', [id])
+    await query(user, 'COMMIT')
+    return (result.rowCount ?? 0) > 0
+  } catch (err) {
+    await query(user, 'ROLLBACK').catch(() => {})
+    throw err
+  }
 }
 
 /**
@@ -352,6 +392,29 @@ export const mergeFoodItems = async (
        WHERE ingredient_food_item_id = $1`,
       [sourceId, targetId],
     )
+
+    // Re-point reference pointers: any food item that referenced the source
+    // for inherited micronutrients should point at the target instead.
+    await query(
+      user,
+      `UPDATE food_items
+         SET reference_food_item_id = $2, updated_at = NOW()
+       WHERE reference_food_item_id = $1`,
+      [sourceId, targetId],
+    )
+
+    // Union sensitivity assignments source→target. UPSERT semantics handle
+    // overlap (a flag both rows had collapses to one), then drop source rows.
+    await query(
+      user,
+      `INSERT INTO food_item_sensitivities (food_item_id, sensitivity_flag_id)
+       SELECT $2, sensitivity_flag_id
+         FROM food_item_sensitivities
+        WHERE food_item_id = $1
+       ON CONFLICT (food_item_id, sensitivity_flag_id) DO NOTHING`,
+      [sourceId, targetId],
+    )
+    await query(user, `DELETE FROM food_item_sensitivities WHERE food_item_id = $1`, [sourceId])
 
     // Optionally fill the target's empty fields from the source. We only
     // touch the per-user `food_items` table; central targets are filtered

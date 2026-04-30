@@ -10,6 +10,7 @@ import { type FrequentFoodItem, type FrequentMeal, NUTRIENT_FIELD_NAMES } from '
 import {
   deleteMeal as dbDeleteMeal,
   findMealsContainingFoodItem,
+  getFoodItemSensitivityNamesBatch,
   getFrequentFoodItems as dbGetFrequentFoodItems,
   getFrequentMeals as dbGetFrequentMeals,
   getMealById as dbGetMealById,
@@ -147,6 +148,7 @@ const linksToFoodItems = (links: MealFoodItemLink[]): MealFoodItem[] =>
     carbs: link.carbs as number | undefined,
     fat: link.fat as number | undefined,
     fiber: link.fiber as number | undefined,
+    sensitivities: (link as { sensitivities?: string[] }).sensitivities,
   }))
 
 /** Aggregate all nutrient columns from junction links into a flat record. */
@@ -240,6 +242,7 @@ export const buildScaledJunctionItem = (
   canonical: MergedFoodItem,
   sortOrder: number,
   effectiveValues: Record<string, number>,
+  sensitivities: string[] = [],
 ): Record<string, unknown> => {
   const scale = computeScale(fi, canonical)
   const junctionItem: Record<string, unknown> = {
@@ -247,6 +250,7 @@ export const buildScaledJunctionItem = (
     food_item_icon: (canonical.icon as string | undefined) ?? null,
     food_item_name: canonical.name,
     quantity: fi.quantity,
+    sensitivities: sensitivities.length > 0 ? sensitivities : null,
     sort_order: sortOrder,
     unit: fi.unit,
   }
@@ -293,16 +297,26 @@ const syncFoodItemsToJunction = async (
   source = 'manual',
 ): Promise<void> => {
   const service = createFoodItemsService(getCentralDb())
-  const junctionItems = []
-  for (let i = 0; i < foodItems.length; i++) {
-    const fi = foodItems[i]
+  // Resolve canonicals first so we can batch-load sensitivities for them all.
+  const resolved: Array<{ fi: FoodItemInput; canonical: MergedFoodItem }> = []
+  for (const fi of foodItems) {
     const canonical = await resolveCanonical(user, fi, source)
-    if (!canonical) continue
+    if (canonical) resolved.push({ canonical, fi })
+  }
+  const sensitivityMap = await getFoodItemSensitivityNamesBatch(
+    user,
+    resolved.map(({ canonical }) => canonical.id),
+  )
+
+  const junctionItems = []
+  for (let i = 0; i < resolved.length; i++) {
+    const { canonical, fi } = resolved[i]
     // Fetch detail to pick up derived (composite) or enriched (reference)
     // nutrients. Falls back to the canonical row when no detail is available.
     const detail = await service.getDetail(user, canonical.id)
     const effective = detail ? getEffectiveNutrients(detail) : {}
-    junctionItems.push(buildScaledJunctionItem(fi, canonical, i, effective))
+    const sensitivities = sensitivityMap.get(canonical.id) ?? []
+    junctionItems.push(buildScaledJunctionItem(fi, canonical, i, effective, sensitivities))
   }
 
   await setMealFoodItems(user, mealId, junctionItems as Parameters<typeof setMealFoodItems>[2])
@@ -319,15 +333,27 @@ const recomputeMealMacros = async (
   user: string,
   mealId: string,
   explicit: Partial<Record<'calories' | 'protein' | 'carbs' | 'fat' | 'fiber', number | null>> = {},
+  explicitSensitivities = false,
 ): Promise<Meal | null> => {
   const map = await getMealFoodItemsBatch(user, [mealId])
   const links = map.get(mealId) ?? []
   const totals = aggregateNutrients(links)
   const macroKeys = ['calories', 'protein', 'carbs', 'fat', 'fiber'] as const
-  const update: Record<string, number | null> = {}
+  const update: Record<string, number | null | string[]> = {}
   for (const key of macroKeys) {
     if (key in explicit) continue
     update[key] = links.length === 0 ? null : (totals[key] ?? 0)
+  }
+  if (!explicitSensitivities) {
+    // Roll up the union of every food item's snapshotted sensitivities into
+    // meal.sensitivities. Snapshot semantics: copies what the food items had
+    // at meal-add time, not whatever's current on the food rows.
+    const aggregated = new Set<string>()
+    for (const link of links) {
+      const arr = (link as { sensitivities?: string[] }).sensitivities
+      if (Array.isArray(arr)) for (const s of arr) aggregated.add(s)
+    }
+    update.sensitivities = aggregated.size > 0 ? [...aggregated] : null
   }
   if (Object.keys(update).length === 0) return null
   return dbUpdateMeal(user, mealId, update)
@@ -363,7 +389,12 @@ export async function addMeal(user: string, input: AddMealInput): Promise<MealRe
   let meal = initialMeal
   if (input.food_items && input.food_items.length > 0) {
     await syncFoodItemsToJunction(user, meal.id, input.food_items, input.source)
-    const recomputed = await recomputeMealMacros(user, meal.id, pickExplicitMacros(input))
+    const recomputed = await recomputeMealMacros(
+      user,
+      meal.id,
+      pickExplicitMacros(input),
+      input.sensitivities !== undefined,
+    )
     if (recomputed) meal = recomputed
   }
 
@@ -392,7 +423,12 @@ export async function updateMealById(user: string, id: string, input: UpdateMeal
     } else {
       await syncFoodItemsToJunction(user, id, input.food_items, meal.source)
     }
-    const recomputed = await recomputeMealMacros(user, id, pickExplicitMacros(input))
+    const recomputed = await recomputeMealMacros(
+      user,
+      id,
+      pickExplicitMacros(input),
+      input.sensitivities !== undefined,
+    )
     if (recomputed) meal = recomputed
   }
 
@@ -430,6 +466,10 @@ export async function resnapshotMealsForFoodItem(
   if (!detail) throw new Error('Food item not found')
   const canonical = detail.item
   const effective = getEffectiveNutrients(detail)
+  // Pull current sensitivity flag names so the snapshot reflects the latest
+  // state of the food-item ↔ flag junction.
+  const sensitivityMap = await getFoodItemSensitivityNamesBatch(user, [foodItemId])
+  const sensitivities = sensitivityMap.get(foodItemId) ?? []
 
   const mealIds = await findMealsContainingFoodItem(user, foodItemId)
   let rowsUpdated = 0
@@ -444,6 +484,7 @@ export async function resnapshotMealsForFoodItem(
           food_item_id: link.food_item_id,
           food_item_name: link.food_item_name,
           quantity: link.quantity,
+          sensitivities: link.sensitivities ?? null,
           sort_order: link.sort_order,
           unit: link.unit,
         }
@@ -460,7 +501,7 @@ export async function resnapshotMealsForFoodItem(
         quantity: link.quantity as number | undefined,
         unit: link.unit as string | undefined,
       }
-      return buildScaledJunctionItem(fi, canonical, link.sort_order, effective)
+      return buildScaledJunctionItem(fi, canonical, link.sort_order, effective, sensitivities)
     })
     await setMealFoodItems(user, mealId, updated as Parameters<typeof setMealFoodItems>[2])
     await recomputeMealMacros(user, mealId)

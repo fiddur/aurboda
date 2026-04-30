@@ -237,6 +237,24 @@ export {
   setMealFoodItems,
 } from './meal-food-items.ts'
 
+// Sensitivity flags + food-item junction
+export {
+  deleteFoodItemSensitivities,
+  deleteSensitivityFlag,
+  type FoodItemSensitivityRow,
+  getFoodItemSensitivities,
+  getFoodItemSensitivityFlagIds,
+  getFoodItemSensitivityNamesBatch,
+  getSensitivityFlagByName,
+  insertSensitivityFlag,
+  listSensitivityFlags,
+  mergeFoodItemSensitivities,
+  type SensitivityFlag,
+  type SensitivityFlagInput,
+  setFoodItemSensitivities,
+  updateSensitivityFlag,
+} from './sensitivities.ts'
+
 // Food item ingredients (composite/recipe support)
 export {
   clearIngredients,

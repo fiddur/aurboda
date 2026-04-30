@@ -15,16 +15,27 @@ import { createFoodItemsRouter } from './food-items-router.ts'
 vi.mock('../db/index.ts', () => ({
   clearIngredients: vi.fn(),
   deleteFoodItem: vi.fn(),
+  findCompositeParentsOfIngredient: vi.fn().mockResolvedValue([]),
   getFoodItemById: vi.fn(),
+  getFoodItemSensitivities: vi.fn().mockResolvedValue([]),
+  getFoodItemSensitivityNamesBatch: vi.fn().mockResolvedValue(new Map()),
   listFoodItems: vi.fn(),
   setFoodItemReference: vi.fn(),
+  setFoodItemSensitivities: vi.fn(),
   setIngredients: vi.fn(),
   updateFoodItem: vi.fn(),
   upsertFoodItem: vi.fn(),
 }))
 
 vi.mock('../db/food-item-ingredients.ts', () => ({
+  findCompositeParentsOfIngredient: vi.fn().mockResolvedValue([]),
   getIngredients: vi.fn().mockResolvedValue([]),
+}))
+
+vi.mock('../db/sensitivities.ts', () => ({
+  getFoodItemSensitivities: vi.fn().mockResolvedValue([]),
+  getFoodItemSensitivityNamesBatch: vi.fn().mockResolvedValue(new Map()),
+  setFoodItemSensitivities: vi.fn(),
 }))
 
 vi.mock('../db/food-items.ts', () => ({

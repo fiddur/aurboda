@@ -273,7 +273,8 @@ export const mealsTables: Record<string, string> = {
       oxalate         DOUBLE PRECISION,
       phytate         DOUBLE PRECISION,
       ash             DOUBLE PRECISION,
-      salt            DOUBLE PRECISION
+      salt            DOUBLE PRECISION,
+      sensitivities   TEXT[]
     )
   `,
 
@@ -286,5 +287,47 @@ export const mealsTables: Record<string, string> = {
     CREATE INDEX IF NOT EXISTS idx_meals_time ON meals (time DESC);
     CREATE INDEX IF NOT EXISTS idx_meals_type_time ON meals (meal_type, time DESC);
     CREATE INDEX IF NOT EXISTS idx_meals_source ON meals (source, time DESC)
+  `,
+
+  // User-defined sensitivity flags (dairy, gluten, alcohol, …). Per-user —
+  // each user picks the labels they care about. Replaces the previous flat
+  // `user_settings.sensitivity_areas: string[]` with a normalised table so
+  // the `food_item_sensitivities` junction can carry FK integrity for the
+  // flag side. (The food_item side is a soft pointer because targets may
+  // live in the central shared library — same pattern as meal_food_items.)
+  sensitivity_flags: `
+    CREATE TABLE IF NOT EXISTS sensitivity_flags (
+      id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      name        VARCHAR(100) NOT NULL,
+      color       VARCHAR(20),
+      icon        TEXT,
+      sort_order  INTEGER NOT NULL DEFAULT 0,
+      created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CONSTRAINT unique_sensitivity_flag_name UNIQUE (name)
+    )
+  `,
+  sensitivity_flags_indexes: `
+    CREATE INDEX IF NOT EXISTS idx_sensitivity_flags_sort ON sensitivity_flags (sort_order, name)
+  `,
+
+  // Junction: food item ↔ sensitivity flag. food_item_id is a soft pointer
+  // (no FK) so users can attach flags to central shared library items too.
+  // Cascades on the food_item side are handled in the application layer
+  // (deleteFoodItem / mergeFoodItems); the flag side has a real FK with
+  // ON DELETE CASCADE.
+  food_item_sensitivities: `
+    CREATE TABLE IF NOT EXISTS food_item_sensitivities (
+      food_item_id          UUID NOT NULL,
+      sensitivity_flag_id   UUID NOT NULL REFERENCES sensitivity_flags(id) ON DELETE CASCADE,
+      created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (food_item_id, sensitivity_flag_id)
+    )
+  `,
+  food_item_sensitivities_indexes: `
+    CREATE INDEX IF NOT EXISTS idx_food_item_sensitivities_food
+      ON food_item_sensitivities (food_item_id);
+    CREATE INDEX IF NOT EXISTS idx_food_item_sensitivities_flag
+      ON food_item_sensitivities (sensitivity_flag_id)
   `,
 }
