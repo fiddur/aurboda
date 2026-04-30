@@ -21,16 +21,23 @@ export function FoodItemAutocomplete({
   const [suggestions, setSuggestions] = useState<FoodItemEntity[]>([])
   const [open, setOpen] = useState(false)
   const [activeIndex, setActiveIndex] = useState(-1)
+  // Whether the input is currently focused. Without this gate, every
+  // FoodItemAutocomplete on a freshly-loaded meal would auto-fire a search
+  // for its pre-filled value and pop its dropdown — N food items in a meal
+  // = N dropdowns opening simultaneously on page load.
+  const [hasFocus, setHasFocus] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout>>()
 
-  // Debounced search
+  // Debounced search — only when the input is focused. Re-runs when
+  // hasFocus flips true so re-focusing a populated field also re-fetches.
   useEffect(() => {
     if (value.length < 2) {
       setSuggestions([])
       setOpen(false)
       return
     }
+    if (!hasFocus) return
 
     clearTimeout(debounceRef.current)
     debounceRef.current = setTimeout(async () => {
@@ -41,7 +48,7 @@ export function FoodItemAutocomplete({
     }, 300)
 
     return () => clearTimeout(debounceRef.current)
-  }, [value])
+  }, [value, hasFocus])
 
   // Close on click outside
   useEffect(() => {
@@ -85,7 +92,17 @@ export function FoodItemAutocomplete({
         onInput={(e) => onChange((e.target as HTMLInputElement).value)}
         onKeyDown={handleKeyDown}
         onFocus={() => {
+          setHasFocus(true)
+          // Re-show pre-cached suggestions immediately. The effect will
+          // re-fire to refresh them in the background.
           if (suggestions.length > 0) setOpen(true)
+        }}
+        onBlur={() => {
+          // Don't close on blur — clicking a suggestion blurs the input
+          // before its onClick fires, and the existing click-outside
+          // handler already closes the dropdown when the user actually
+          // clicks away. Just stop firing fresh searches.
+          setHasFocus(false)
         }}
       />
       {open && (

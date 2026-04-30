@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useLocation } from 'preact-iso'
 import { useEffect, useState } from 'preact/hooks'
 
 import { ConfirmButton } from '../../components/ConfirmButton'
@@ -17,9 +18,22 @@ const deleteFoodItemApi = async (id: string): Promise<void> => {
   if (!res.ok) throw new Error('Delete failed')
 }
 
+const createFoodItemApi = async (name: string): Promise<{ id: string }> => {
+  const { token } = auth.value
+  const res = await fetch(`${API_URL}/food-items`, {
+    body: JSON.stringify({ name }),
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    method: 'POST',
+  })
+  if (!res.ok) throw new Error('Failed to create food item')
+  const json = (await res.json()) as { data: { id: string } }
+  return json.data
+}
+
 export function FoodItems() {
   const isLoggedIn = auth.value.token
   const queryClient = useQueryClient()
+  const { route } = useLocation()
   const [search, setSearch] = useState('')
   const trimmed = search.trim()
   const hasQuery = trimmed.length > 0
@@ -43,6 +57,22 @@ export function FoodItems() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['foodItems'] }),
   })
 
+  const createMutation = useMutation({
+    mutationFn: createFoodItemApi,
+    onSuccess: ({ id }) => {
+      queryClient.invalidateQueries({ queryKey: ['foodItems'] })
+      // Land on the detail page so the user can rename, set an icon, click
+      // "Convert to recipe" — the easiest path to creating a composite item.
+      route(`/food-items/${id}`)
+    },
+  })
+
+  const handleCreate = () => {
+    // Seed with the current search text when present so the user doesn't
+    // have to retype what they were looking for.
+    createMutation.mutate(trimmed || 'New food item')
+  }
+
   if (!isLoggedIn) {
     return (
       <div class="food-items-page">
@@ -63,6 +93,19 @@ export function FoodItems() {
           onInput={(e) => setSearch((e.target as HTMLInputElement).value)}
         />
         {hasQuery && <span class="fi-count">{items?.length ?? 0} items</span>}
+        <button
+          type="button"
+          class="btn-primary fi-create"
+          onClick={handleCreate}
+          disabled={createMutation.isPending}
+          title={
+            trimmed
+              ? `Create "${trimmed}" as a new food item`
+              : 'Create a new food item — useful as the parent of a composite recipe'
+          }
+        >
+          {createMutation.isPending ? 'Creating…' : '+ New'}
+        </button>
       </div>
 
       {!hasQuery ? (
