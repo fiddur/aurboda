@@ -267,3 +267,43 @@ describe('POST /food-items/:id/resnapshot-meals', () => {
     expect(res.status).toBe(500)
   })
 })
+
+describe('PATCH /food-items/:id', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  test('returns the full detail (not just the entity) so the UI cache keeps ingredients on rename', async () => {
+    const id = '11111111-1111-4111-8111-111111111111'
+    const updated = userItem(id, { is_composite: true, name: 'Renamed Recipe' })
+    setUserFoodItem(async (_u, fid) => (fid === id ? updated : null))
+    vi.mocked(dbBarrel.updateFoodItem).mockResolvedValue(updated)
+    // The composite branch of getDetail loads ingredients via getIngredients,
+    // which we mock to return one row.
+    const ingredientsModule = await import('../db/food-item-ingredients.ts')
+    vi.mocked(ingredientsModule.getIngredients).mockResolvedValue([
+      {
+        created_at: new Date(),
+        id: 'i1',
+        ingredient_food_item_id: '22222222-2222-4222-8222-222222222222',
+        parent_food_item_id: id,
+        quantity: 50,
+        sort_order: 0,
+        unit: 'g',
+        updated_at: new Date(),
+      },
+    ])
+
+    const res = await supertest(buildApp(fakeCentral()))
+      .patch(`/food-items/${id}`)
+      .send({ name: 'Renamed Recipe' })
+
+    expect(res.status).toBe(200)
+    expect(res.body.data.name).toBe('Renamed Recipe')
+    // Crucially: ingredients + derived_nutrients are present so the frontend
+    // cache update doesn't strip them.
+    expect(Array.isArray(res.body.data.ingredients)).toBe(true)
+    expect(res.body.data.ingredients).toHaveLength(1)
+    expect(res.body.data.derived_nutrients).toBeDefined()
+  })
+})

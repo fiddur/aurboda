@@ -136,7 +136,7 @@ export const createFoodItemsRouter = (authMiddleware: AnyMiddleware, centralDb: 
     },
   )
 
-  router.patch<{ id: string }, FoodItemResponse, UpdateFoodItemBody>(
+  router.patch<{ id: string }, FoodItemDetailResponse, UpdateFoodItemBody>(
     '/:id',
     authMiddleware,
     validateBody(updateFoodItemBodySchema),
@@ -151,9 +151,13 @@ export const createFoodItemsRouter = (authMiddleware: AnyMiddleware, centralDb: 
           success: false,
         })
       }
-      const item = await updateFoodItem(req.user!, req.params.id, req.body)
-      if (!item) return res.status(404).json({ error: 'Food item not found', success: false })
-      res.json({ data: serializeFoodItem(item), success: true })
+      const updated = await updateFoodItem(req.user!, req.params.id, req.body)
+      if (!updated) return res.status(404).json({ error: 'Food item not found', success: false })
+      // Return the full detail (ingredients + derived + reference) so the UI
+      // doesn't replace its cached detail with a stripped entity on rename.
+      const detail = await service.getDetail(req.user!, req.params.id)
+      if (!detail) return res.status(404).json({ error: 'Food item not found', success: false })
+      res.json({ data: serializeDetail(detail), success: true })
     },
   )
 
