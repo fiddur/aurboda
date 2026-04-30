@@ -354,6 +354,8 @@ export interface FoodItemEntity {
   source: string
   source_id?: string
   is_composite?: boolean
+  /** Soft pointer to a richer canonical food item (per-user OR central) used to inherit empty micronutrient fields. */
+  reference_food_item_id?: string
   default_quantity?: number
   default_unit?: string
   // ~65 nutrient fields are optional numbers, accessed dynamically via

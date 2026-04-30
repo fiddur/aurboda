@@ -513,6 +513,15 @@ a.meal-name:hover {
   white-space: nowrap;
 }
 
+.popover-title-link {
+  color: #673ab8;
+  text-decoration: none;
+}
+
+.popover-title-link:hover {
+  text-decoration: underline;
+}
+
 .popover-option {
   display: flex;
   align-items: center;

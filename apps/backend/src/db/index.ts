@@ -226,6 +226,7 @@ export {
   type MergeFoodItemResult,
   mergeFoodItems,
   searchFoodItems,
+  setFoodItemReference,
   updateFoodItem,
   upsertFoodItem,
 } from './food-items.ts'

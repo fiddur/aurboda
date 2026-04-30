@@ -55,11 +55,13 @@ const findMealsForSlot = (meals: Meal[], slotName: string): Meal[] =>
 /** A clickable food item chip with popover for sensitivity mapping. */
 function FoodItemChip({
   name,
+  foodItemId,
   mappedSensitivities,
   sensitivityAreas,
   onToggle,
 }: {
   name: string
+  foodItemId?: string
   mappedSensitivities: string[]
   sensitivityAreas: string[]
   onToggle: (foodItem: string, area: string, checked: boolean) => void
@@ -85,7 +87,16 @@ function FoodItemChip({
       {hasMappings && <span class="mapping-dot" />}
       {open && sensitivityAreas.length > 0 && (
         <div class="food-map-popover" onClick={(e) => e.stopPropagation()}>
-          <div class="popover-title">Flags for "{name}"</div>
+          <div class="popover-title">
+            Flags for{' '}
+            {foodItemId ? (
+              <a href={`/food-items/${foodItemId}`} class="popover-title-link">
+                "{name}"
+              </a>
+            ) : (
+              `"${name}"`
+            )}
+          </div>
           {sensitivityAreas.map((area) => (
             <label key={area} class="popover-option">
               <input
@@ -132,6 +143,7 @@ function MealDetails({
             <FoodItemChip
               key={i}
               name={item.name}
+              foodItemId={item.food_item_id}
               mappedSensitivities={foodSensitivityMap[item.name] ?? []}
               sensitivityAreas={sensitivityAreas}
               onToggle={onToggleFoodMapping}

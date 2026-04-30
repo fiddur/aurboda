@@ -820,6 +820,11 @@ export const migrateSchema = async (user: string) => {
       db,
       `ALTER TABLE food_items ADD COLUMN IF NOT EXISTS is_composite BOOLEAN NOT NULL DEFAULT FALSE`,
     )
+    // Reference enrichment: a per-user item can point at a richer canonical
+    // food (typically a central LSV row) to inherit micronutrients while
+    // keeping its own label-derived macros. Soft pointer (no FK — target
+    // may live in central DB).
+    await query(db, `ALTER TABLE food_items ADD COLUMN IF NOT EXISTS reference_food_item_id UUID`)
   }
 
   // meal_food_items: snapshot food_item_name + food_item_icon at insertion

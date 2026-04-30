@@ -364,3 +364,131 @@ describe('aggregateNutrientsFromIngredients — scaling edge cases', () => {
     expect(nutrient_data_incomplete).toBe(false)
   })
 })
+
+describe('createFoodItemsService.getDetail — reference enrichment', () => {
+  test('returns plain detail when no reference is set', async () => {
+    const item = userItem('u1', 'Plain')
+    item.calories = 50
+    vi.mocked(dbModule.getFoodItemById).mockResolvedValue(item)
+    vi.mocked(ingredientsModule.getIngredients).mockResolvedValue([])
+    const service = createFoodItemsService(fakeCentral())
+
+    const detail = await service.getDetail('user', 'u1')
+    expect(detail?.item.id).toBe('u1')
+    expect(detail?.reference).toBeUndefined()
+    expect(detail?.reference_enriched).toBeUndefined()
+  })
+
+  test('emits per-field origin info: self wins, reference fills empty (scaled by serving)', async () => {
+    // Self: 30 g serving, has its own calories + protein, missing iron + vitamin_c.
+    const self = userItem('u1', 'Arla Hushållsost')
+    self.default_quantity = 30
+    self.default_unit = 'g'
+    self.calories = 90
+    self.protein = 8
+    // Reference (LSV): 100 g serving, full micros.
+    const reference = sharedItem('c1', 'Hushållsost')
+    reference.default_quantity = 100
+    reference.default_unit = 'g'
+    reference.calories = 350
+    reference.iron = 0.4 // mg/100 g
+    reference.vitamin_c = 1.5
+    self.reference_food_item_id = 'c1'
+
+    vi.mocked(dbModule.getFoodItemById).mockImplementation(async (_user, id) => {
+      if (id === 'u1') return self
+      return null
+    })
+    const central = fakeCentral()
+    vi.mocked(central.getSharedFoodItemById).mockImplementation(async (id) => {
+      return id === 'c1' ? reference : null
+    })
+    vi.mocked(ingredientsModule.getIngredients).mockResolvedValue([])
+
+    const detail = await createFoodItemsService(central).getDetail('user', 'u1')
+    expect(detail?.reference?.food.id).toBe('c1')
+    expect(detail?.reference?.unit_mismatch).toBe(false)
+    const fields = detail?.reference_enriched?.fields ?? {}
+    // Self values stay self.
+    expect(fields.calories).toEqual({ origin: 'self', value: 90 })
+    expect(fields.protein).toEqual({ origin: 'self', value: 8 })
+    // Empty self fields filled from reference, scaled by 30/100 = 0.3.
+    expect(fields.iron).toEqual({ origin: 'reference', value: 0.12 })
+    expect(fields.vitamin_c).toEqual({ origin: 'reference', value: 0.45 })
+  })
+
+  test('flags unit_mismatch and drops inherited values when units differ dimensionally', async () => {
+    const self = userItem('u1', 'Slice')
+    self.default_quantity = 1
+    self.default_unit = 'slice' // not in conversion table
+    self.protein = 5 // self value should still be emitted
+    const reference = sharedItem('c1', 'Bread')
+    reference.default_quantity = 100
+    reference.default_unit = 'g'
+    reference.calories = 250
+    self.reference_food_item_id = 'c1'
+
+    vi.mocked(dbModule.getFoodItemById).mockImplementation(async (_user, id) => (id === 'u1' ? self : null))
+    const central = fakeCentral()
+    vi.mocked(central.getSharedFoodItemById).mockResolvedValue(reference)
+    vi.mocked(ingredientsModule.getIngredients).mockResolvedValue([])
+
+    const detail = await createFoodItemsService(central).getDetail('user', 'u1')
+    expect(detail?.reference?.unit_mismatch).toBe(true)
+    // Self value still surfaces.
+    expect(detail?.reference_enriched?.fields.protein).toEqual({ origin: 'self', value: 5 })
+    // Reference value dropped — emitting "250 cal per slice" with a warning is more confusing than no value.
+    expect(detail?.reference_enriched?.fields.calories).toBeUndefined()
+  })
+
+  test('scales nutrient values across compatible units (kg ↔ g)', async () => {
+    const self = userItem('u1', 'Bag of flour')
+    self.default_quantity = 1
+    self.default_unit = 'kg'
+    const reference = sharedItem('c1', 'Flour')
+    reference.default_quantity = 100
+    reference.default_unit = 'g'
+    reference.calories = 360 // per 100 g
+    self.reference_food_item_id = 'c1'
+
+    vi.mocked(dbModule.getFoodItemById).mockImplementation(async (_user, id) => (id === 'u1' ? self : null))
+    const central = fakeCentral()
+    vi.mocked(central.getSharedFoodItemById).mockResolvedValue(reference)
+    vi.mocked(ingredientsModule.getIngredients).mockResolvedValue([])
+
+    const detail = await createFoodItemsService(central).getDetail('user', 'u1')
+    expect(detail?.reference?.unit_mismatch).toBe(false)
+    // 1 kg = 1000 g → 1000 / 100 × 360 = 3600 kcal per bag.
+    expect(detail?.reference_enriched?.fields.calories).toEqual({ origin: 'reference', value: 3600 })
+  })
+
+  test('composite self items take precedence over reference enrichment', async () => {
+    const self = userItem('u1', 'Recipe')
+    self.is_composite = true
+    self.reference_food_item_id = 'c1'
+    vi.mocked(dbModule.getFoodItemById).mockResolvedValue(self)
+    vi.mocked(ingredientsModule.getIngredients).mockResolvedValue([])
+
+    const detail = await createFoodItemsService(fakeCentral()).getDetail('user', 'u1')
+    expect(detail?.reference).toBeUndefined()
+    expect(detail?.reference_enriched).toBeUndefined()
+  })
+
+  test('skips enrichment when the resolved reference target is itself a composite', async () => {
+    const self = userItem('u1', 'Atomic')
+    self.reference_food_item_id = 'c1'
+    const compositeRef = sharedItem('c1', 'Recipe target')
+    ;(compositeRef as unknown as { is_composite: boolean }).is_composite = true
+    compositeRef.calories = 0 // sparse — would be misleading to inherit
+
+    vi.mocked(dbModule.getFoodItemById).mockImplementation(async (_user, id) => (id === 'u1' ? self : null))
+    const central = fakeCentral()
+    vi.mocked(central.getSharedFoodItemById).mockResolvedValue(compositeRef)
+    vi.mocked(ingredientsModule.getIngredients).mockResolvedValue([])
+
+    const detail = await createFoodItemsService(central).getDetail('user', 'u1')
+    expect(detail?.reference).toBeUndefined()
+    expect(detail?.reference_enriched).toBeUndefined()
+    expect(detail?.item.id).toBe('u1')
+  })
+})

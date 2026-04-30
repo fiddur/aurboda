@@ -25,6 +25,8 @@ import {
   type MergeFoodItemsResponse,
   type SetFoodItemIngredientsBody,
   setFoodItemIngredientsBodySchema,
+  type SetFoodItemReferenceBody,
+  setFoodItemReferenceBodySchema,
   type UpdateFoodItemBody,
   updateFoodItemBodySchema,
 } from '@aurboda/api-spec'
@@ -38,6 +40,7 @@ import {
   type FoodItemEntity as DbFoodItemEntity,
   getFoodItemById as getUserFoodItemById,
   listFoodItems,
+  setFoodItemReference as dbSetFoodItemReference,
   setIngredients as dbSetIngredients,
   updateFoodItem,
   upsertFoodItem,
@@ -64,19 +67,34 @@ const serializeFoodItem = (
 
 const serializeDetail = (detail: ServiceFoodItemDetail): FoodItemDetail => {
   const base = serializeFoodItem(detail.item)
-  if (!detail.ingredients) return base as FoodItemDetail
-  return {
-    ...base,
-    derived_nutrients: detail.derived_nutrients ?? { nutrient_data_incomplete: false, values: {} },
-    ingredients: detail.ingredients.map((ing) => ({
-      icon: (ing.food?.icon as string | undefined) ?? null,
-      ingredient_food_item_id: ing.row.ingredient_food_item_id,
-      name: ing.food ? (ing.food.name as string) : null,
-      quantity: ing.row.quantity,
-      sort_order: ing.row.sort_order,
-      unit: ing.row.unit,
-    })),
+  // Composite branch: ingredient list + derived totals.
+  if (detail.ingredients) {
+    return {
+      ...base,
+      derived_nutrients: detail.derived_nutrients ?? { nutrient_data_incomplete: false, values: {} },
+      ingredients: detail.ingredients.map((ing) => ({
+        icon: (ing.food?.icon as string | undefined) ?? null,
+        ingredient_food_item_id: ing.row.ingredient_food_item_id,
+        name: ing.food ? (ing.food.name as string) : null,
+        quantity: ing.row.quantity,
+        sort_order: ing.row.sort_order,
+        unit: ing.row.unit,
+      })),
+    }
   }
+  // Reference branch: emit the resolved reference + per-field origin map.
+  // The service guarantees these two are set together.
+  if (detail.reference) {
+    return {
+      ...base,
+      reference: {
+        food: serializeFoodItem(detail.reference.food),
+        unit_mismatch: detail.reference.unit_mismatch,
+      },
+      reference_enriched: detail.reference_enriched ?? { fields: {} },
+    }
+  }
+  return base as FoodItemDetail
 }
 
 export const createFoodItemsRouter = (authMiddleware: AnyMiddleware, centralDb: CentralDb): TypedRouter => {
@@ -195,6 +213,76 @@ export const createFoodItemsRouter = (authMiddleware: AnyMiddleware, centralDb: 
         })
       }
       await dbClearIngredients(user, id)
+      const detail = await service.getDetail(user, id)
+      if (!detail) return res.status(404).json({ error: 'Food item not found', success: false })
+      res.json({ data: serializeDetail(detail), success: true })
+    },
+  )
+
+  // Set the reference_food_item_id pointer on a per-user atomic item. The
+  // target may be per-user or central. Composite items can't have a reference
+  // (their nutrients are derived from ingredients).
+  router.put<{ id: string }, FoodItemDetailResponse, SetFoodItemReferenceBody>(
+    '/:id/reference',
+    authMiddleware,
+    validateBody(setFoodItemReferenceBodySchema),
+    async (req, res) => {
+      const user = req.user!
+      const id = req.params.id
+      const refId = req.body.reference_food_item_id
+      const userItem = await getUserFoodItemById(user, id)
+      if (!userItem) {
+        const fromCentral = await centralDb.getSharedFoodItemById(id)
+        return res.status(fromCentral ? 403 : 404).json({
+          error: fromCentral ? 'Cannot set reference on shared library item' : 'Food item not found',
+          success: false,
+        })
+      }
+      if (refId !== null) {
+        if (refId === id) {
+          return res.status(400).json({ error: 'A food item cannot reference itself', success: false })
+        }
+        if (userItem.is_composite) {
+          return res.status(400).json({
+            error: 'Composite items cannot have a reference — nutrients are derived from ingredients',
+            success: false,
+          })
+        }
+        const ref = (await getUserFoodItemById(user, refId)) ?? (await centralDb.getSharedFoodItemById(refId))
+        if (!ref) {
+          return res.status(400).json({ error: 'Reference food item not found', success: false })
+        }
+        if (ref.is_composite) {
+          return res.status(400).json({
+            error:
+              'Reference target cannot be a composite recipe — its nutrient columns are derived, not authoritative',
+            success: false,
+          })
+        }
+      }
+      await dbSetFoodItemReference(user, id, refId)
+      const detail = await service.getDetail(user, id)
+      if (!detail) return res.status(404).json({ error: 'Food item not found', success: false })
+      res.json({ data: serializeDetail(detail), success: true })
+    },
+  )
+
+  // Clear the reference pointer.
+  router.delete<{ id: string }, FoodItemDetailResponse>(
+    '/:id/reference',
+    authMiddleware,
+    async (req, res) => {
+      const user = req.user!
+      const id = req.params.id
+      const userItem = await getUserFoodItemById(user, id)
+      if (!userItem) {
+        const fromCentral = await centralDb.getSharedFoodItemById(id)
+        return res.status(fromCentral ? 403 : 404).json({
+          error: fromCentral ? 'Cannot clear reference on shared library item' : 'Food item not found',
+          success: false,
+        })
+      }
+      await dbSetFoodItemReference(user, id, null)
       const detail = await service.getDetail(user, id)
       if (!detail) return res.status(404).json({ error: 'Food item not found', success: false })
       res.json({ data: serializeDetail(detail), success: true })

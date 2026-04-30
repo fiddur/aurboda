@@ -11,6 +11,7 @@ import {
   addFoodItemBodySchema,
   foodItemsQuerySchema,
   setFoodItemIngredientsBodySchema,
+  setFoodItemReferenceBodySchema,
   updateFoodItemBodySchema,
 } from '@aurboda/api-spec'
 import { z } from 'zod'
@@ -22,6 +23,7 @@ import {
   deleteFoodItem,
   getFoodItemById as getUserFoodItemById,
   listFoodItems,
+  setFoodItemReference,
   setIngredients,
   updateFoodItem,
   upsertFoodItem,
@@ -146,6 +148,48 @@ export const registerFoodItemTools = (server: McpServer, user: string, centralDb
         )
       }
       await clearIngredients(user, id)
+      const detail = await foodItems.getDetail(user, id)
+      if (!detail) return errorResponse('Food item not found')
+      return jsonResponse({ data: detail, success: true })
+    },
+  )
+
+  server.tool(
+    'set_food_item_reference',
+    [
+      "Point a per-user atomic food item at a reference food (per-user or central). The target inherits the reference's micronutrients on read, scaled by `self.default_quantity / reference.default_quantity` when units match. Self-set values always win; the reference only fills empty fields.",
+      'Pass `reference_food_item_id: null` to clear the pointer. Composite items cannot have a reference (their nutrients are derived from ingredients).',
+    ].join(' '),
+    {
+      id: z.string().uuid().describe('Food item ID (must be per-user)'),
+      ...setFoodItemReferenceBodySchema.shape,
+    },
+    async ({ id, reference_food_item_id }) => {
+      const userItem = await getUserFoodItemById(user, id)
+      if (!userItem) {
+        const fromCentral = await centralDb.getSharedFoodItemById(id)
+        return errorResponse(
+          fromCentral ? 'Cannot set reference on shared library item' : 'Food item not found',
+        )
+      }
+      if (reference_food_item_id !== null) {
+        if (reference_food_item_id === id) return errorResponse('A food item cannot reference itself')
+        if (userItem.is_composite) {
+          return errorResponse(
+            'Composite items cannot have a reference — nutrients are derived from ingredients',
+          )
+        }
+        const ref =
+          (await getUserFoodItemById(user, reference_food_item_id)) ??
+          (await centralDb.getSharedFoodItemById(reference_food_item_id))
+        if (!ref) return errorResponse('Reference food item not found')
+        if (ref.is_composite) {
+          return errorResponse(
+            'Reference target cannot be a composite recipe — its nutrient columns are derived, not authoritative',
+          )
+        }
+      }
+      await setFoodItemReference(user, id, reference_food_item_id)
       const detail = await foodItems.getDetail(user, id)
       if (!detail) return errorResponse('Food item not found')
       return jsonResponse({ data: detail, success: true })
