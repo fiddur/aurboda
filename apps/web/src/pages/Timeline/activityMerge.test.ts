@@ -9,6 +9,8 @@ import {
   EXCLUDED_ACTIVITY_PREFIXES,
   EXCLUDED_ACTIVITY_SOURCES,
   isDurationActivityLike,
+  mergeAdjacentByKey,
+  mergeScreentimeActivities,
   overlapMinutes,
   resolveCollapseTarget,
   tryMergeActivityIntoItem,
@@ -371,5 +373,159 @@ describe('collapseToParentType', () => {
     expect(collapseToParentType(activities, typeDefs)).toHaveLength(1)
     // 10-min gap: should not merge.
     expect(collapseToParentType(activities, typeDefs, 10 * 60 * 1000)).toHaveLength(2)
+  })
+
+  it('keeps sibling sub-types distinct when collapseToParent=false', () => {
+    // Max-zoom case: warmup_run + strength_training should stay clickable as
+    // separate items even when adjacent.
+    const activities: Activity[] = [
+      { activity_type: 'running', end_time: d(10, 30), id: 'a', start_time: d(10) },
+      { activity_type: 'strength_training', end_time: d(11), id: 'b', start_time: d(10, 35) },
+    ]
+    const result = collapseToParentType(activities, typeDefs, 30 * 60 * 1000, false)
+    expect(result).toHaveLength(2)
+    expect(result.map((a) => a.activity_type)).toEqual(['running', 'strength_training'])
+  })
+
+  it('still merges identical sub-types when collapseToParent=false', () => {
+    // Two adjacent running spans should still fold into one even at max zoom —
+    // the user reported a comb of identical slivers and wants those merged.
+    const activities: Activity[] = [
+      { activity_type: 'running', end_time: d(10, 30), id: 'a', start_time: d(10) },
+      { activity_type: 'running', end_time: d(11), id: 'b', start_time: d(10, 35) },
+    ]
+    const result = collapseToParentType(activities, typeDefs, 30 * 60 * 1000, false)
+    expect(result).toHaveLength(1)
+    expect(result[0].activity_type).toBe('running')
+  })
+})
+
+// -- mergeAdjacentByKey --------------------------------------------------------
+
+describe('mergeAdjacentByKey', () => {
+  const d = (h: number, m = 0) => new Date(Date.UTC(2026, 0, 1, h, m, 0))
+  const byType = (a: Activity) => a.activity_type
+
+  it('merges adjacent activities with the same key within mergeGapMs', () => {
+    const activities: Activity[] = [
+      { activity_type: 'screentime', end_time: d(15, 5), id: 'a', start_time: d(14, 50) },
+      { activity_type: 'screentime', end_time: d(15, 10), id: 'b', start_time: d(15, 5) },
+    ]
+    const result = mergeAdjacentByKey(activities, byType, 5 * 60 * 1000)
+    expect(result).toHaveLength(1)
+    expect(result[0].start_time).toEqual(d(14, 50))
+    expect(result[0].end_time).toEqual(d(15, 10))
+  })
+
+  it('does not merge across different keys', () => {
+    const activities: Activity[] = [
+      { activity_type: 'a', end_time: d(15, 5), id: '1', start_time: d(14, 50) },
+      { activity_type: 'b', end_time: d(15, 10), id: '2', start_time: d(15, 5) },
+    ]
+    expect(mergeAdjacentByKey(activities, byType, 60 * 60 * 1000)).toHaveLength(2)
+  })
+
+  it('handles overlapping spans by extending end_time to the max', () => {
+    const activities: Activity[] = [
+      { activity_type: 'screentime', end_time: d(16, 5), id: 'a', start_time: d(15, 50) },
+      // overlaps the first by 10 min and ends later
+      { activity_type: 'screentime', end_time: d(16, 20), id: 'b', start_time: d(15, 55) },
+    ]
+    const result = mergeAdjacentByKey(activities, byType, 0)
+    expect(result).toHaveLength(1)
+    expect(result[0].end_time).toEqual(d(16, 20))
+  })
+
+  it('with mergeGapMs=0 still merges touching spans (gap === 0)', () => {
+    const activities: Activity[] = [
+      { activity_type: 'screentime', end_time: d(15, 5), id: 'a', start_time: d(14, 50) },
+      { activity_type: 'screentime', end_time: d(15, 10), id: 'b', start_time: d(15, 5) },
+    ]
+    expect(mergeAdjacentByKey(activities, byType, 0)).toHaveLength(1)
+  })
+
+  it('does not mutate the input array or its members', () => {
+    // Deep-snapshot end_time so a regression that does
+    // `prev.end_time = current.end_time` directly on the input would be caught
+    // — a shallow [...activities] copy shares element references and would
+    // observe the mutation symmetrically.
+    const activities: Activity[] = [
+      { activity_type: 'screentime', end_time: d(15, 5), id: 'a', start_time: d(14, 50) },
+      { activity_type: 'screentime', end_time: d(15, 10), id: 'b', start_time: d(15, 5) },
+    ]
+    const snapshot = activities.map((a) => ({
+      ...a,
+      end_time: a.end_time ? new Date(a.end_time) : undefined,
+      start_time: new Date(a.start_time),
+    }))
+    mergeAdjacentByKey(activities, byType, 5 * 60 * 1000)
+    expect(activities).toEqual(snapshot)
+  })
+
+  it('returns empty array for empty input', () => {
+    expect(mergeAdjacentByKey([], byType, 60 * 1000)).toEqual([])
+  })
+})
+
+// -- mergeScreentimeActivities -------------------------------------------------
+
+describe('mergeScreentimeActivities', () => {
+  const d = (h: number, m = 0) => new Date(Date.UTC(2026, 0, 1, h, m, 0))
+
+  const screentime = (
+    start: Date,
+    end: Date,
+    categoryPath: string,
+    id: string,
+    source = 'rescuetime',
+  ): Activity =>
+    ({
+      activity_type: 'screentime',
+      data: { category_path: categoryPath },
+      end_time: end,
+      id,
+      source,
+      start_time: start,
+    }) as Activity
+
+  it('merges two adjacent same-category screentime spans (the reported bug)', () => {
+    // Communication 15:50-16:05 and another Communication 16:05-16:10.
+    const activities: Activity[] = [
+      screentime(d(15, 50), d(16, 5), 'Communication', 'a'),
+      screentime(d(16, 5), d(16, 10), 'Communication', 'b'),
+    ]
+    const result = mergeScreentimeActivities(activities, 10 * 60 * 1000)
+    expect(result).toHaveLength(1)
+    expect(result[0].start_time).toEqual(d(15, 50))
+    expect(result[0].end_time).toEqual(d(16, 10))
+  })
+
+  it('merges same-category spans across different sources', () => {
+    // rescuetime + activitywatch both reporting Communication for overlapping
+    // windows should fold to one bar — we key only on category_path.
+    const activities: Activity[] = [
+      screentime(d(15, 50), d(16, 5), 'Communication', 'a', 'rescuetime'),
+      screentime(d(16, 0), d(16, 10), 'Communication', 'b', 'activitywatch'),
+    ]
+    const result = mergeScreentimeActivities(activities, 5 * 60 * 1000)
+    expect(result).toHaveLength(1)
+    expect(result[0].end_time).toEqual(d(16, 10))
+  })
+
+  it('does not merge different categories', () => {
+    const activities: Activity[] = [
+      screentime(d(15, 50), d(16, 5), 'Communication', 'a'),
+      screentime(d(16, 5), d(16, 10), 'Coding', 'b'),
+    ]
+    expect(mergeScreentimeActivities(activities, 60 * 60 * 1000)).toHaveLength(2)
+  })
+
+  it('does not merge same category across a long gap', () => {
+    const activities: Activity[] = [
+      screentime(d(10), d(10, 30), 'Communication', 'a'),
+      // 30-min gap — exceeds 10-min merge gap
+      screentime(d(11), d(11, 30), 'Communication', 'b'),
+    ]
+    expect(mergeScreentimeActivities(activities, 10 * 60 * 1000)).toHaveLength(2)
   })
 })
