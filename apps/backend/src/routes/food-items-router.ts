@@ -47,6 +47,8 @@ import {
   upsertFoodItem,
 } from '../db/index.ts'
 import {
+  cacheCompositeNutrients,
+  clearCompositeNutrientCache,
   createFoodItemsMergeService,
   createFoodItemsService,
   type FoodItemDetail as ServiceFoodItemDetail,
@@ -193,6 +195,10 @@ export const createFoodItemsRouter = (authMiddleware: AnyMiddleware, centralDb: 
         })
       }
       await dbSetIngredients(user, id, ingredients)
+      // Refresh the cached derived nutrients on this row + every parent
+      // recipe that uses this item — keeps search results, frequent-meal
+      // cards, and outer-recipe totals in sync without lazy recomputation.
+      await cacheCompositeNutrients(user, centralDb, id)
       const detail = await service.getDetail(user, id)
       if (!detail) return res.status(404).json({ error: 'Food item not found', success: false })
       res.json({ data: serializeDetail(detail), success: true })
@@ -215,6 +221,7 @@ export const createFoodItemsRouter = (authMiddleware: AnyMiddleware, centralDb: 
         })
       }
       await dbClearIngredients(user, id)
+      await clearCompositeNutrientCache(user, centralDb, id)
       const detail = await service.getDetail(user, id)
       if (!detail) return res.status(404).json({ error: 'Food item not found', success: false })
       res.json({ data: serializeDetail(detail), success: true })

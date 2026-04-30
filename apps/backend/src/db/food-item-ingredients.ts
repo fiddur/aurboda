@@ -136,6 +136,23 @@ export const clearIngredients = async (user: string, parentFoodItemId: string): 
 }
 
 /**
+ * Find every composite parent that uses the given food item as one of its
+ * ingredients. Used by the cache-propagation flow: when an item's effective
+ * nutrient values change, every parent recipe needs its row cache refreshed.
+ */
+export const findCompositeParentsOfIngredient = async (
+  user: string,
+  ingredientFoodItemId: string,
+): Promise<string[]> => {
+  const result = await query(
+    user,
+    'SELECT DISTINCT parent_food_item_id FROM food_item_ingredients WHERE ingredient_food_item_id = $1',
+    [ingredientFoodItemId],
+  )
+  return result.rows.map((row) => row.parent_food_item_id as string)
+}
+
+/**
  * Batch fetch ingredients for several parents at once. Returns a map keyed
  * by parent_food_item_id; absent keys = no ingredients.
  */

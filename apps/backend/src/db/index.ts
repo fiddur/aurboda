@@ -240,6 +240,7 @@ export {
 // Food item ingredients (composite/recipe support)
 export {
   clearIngredients,
+  findCompositeParentsOfIngredient,
   type FoodItemIngredientInput,
   type FoodItemIngredientRow,
   getIngredients,

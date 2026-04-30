@@ -28,7 +28,12 @@ import {
   updateFoodItem,
   upsertFoodItem,
 } from '../db/index.ts'
-import { createFoodItemsMergeService, createFoodItemsService } from '../services/food-items.ts'
+import {
+  cacheCompositeNutrients,
+  clearCompositeNutrientCache,
+  createFoodItemsMergeService,
+  createFoodItemsService,
+} from '../services/food-items.ts'
 import { resnapshotMealsForFoodItem } from '../services/meals.ts'
 import { errorResponse, jsonResponse, type McpServer } from './helpers.ts'
 
@@ -130,6 +135,7 @@ export const registerFoodItemTools = (server: McpServer, user: string, centralDb
         return errorResponse('Setting these ingredients would create a cycle in the recipe graph')
       }
       await setIngredients(user, id, ingredients)
+      await cacheCompositeNutrients(user, centralDb, id)
       const detail = await foodItems.getDetail(user, id)
       if (!detail) return errorResponse('Food item not found')
       return jsonResponse({ data: detail, success: true })
@@ -149,6 +155,7 @@ export const registerFoodItemTools = (server: McpServer, user: string, centralDb
         )
       }
       await clearIngredients(user, id)
+      await clearCompositeNutrientCache(user, centralDb, id)
       const detail = await foodItems.getDetail(user, id)
       if (!detail) return errorResponse('Food item not found')
       return jsonResponse({ data: detail, success: true })
