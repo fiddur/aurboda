@@ -28,6 +28,8 @@ import {
   setFoodItemIngredientsBodySchema,
   type SetFoodItemReferenceBody,
   setFoodItemReferenceBodySchema,
+  type SetFoodItemSensitivitiesBody,
+  setFoodItemSensitivitiesBodySchema,
   type UpdateFoodItemBody,
   updateFoodItemBodySchema,
 } from '@aurboda/api-spec'
@@ -42,6 +44,7 @@ import {
   getFoodItemById as getUserFoodItemById,
   listFoodItems,
   setFoodItemReference as dbSetFoodItemReference,
+  setFoodItemSensitivities as dbSetFoodItemSensitivities,
   setIngredients as dbSetIngredients,
   updateFoodItem,
   upsertFoodItem,
@@ -71,6 +74,7 @@ const serializeFoodItem = (
 
 const serializeDetail = (detail: ServiceFoodItemDetail): FoodItemDetail => {
   const base = serializeFoodItem(detail.item)
+  const sensitivities = detail.sensitivities ?? []
   // Composite branch: ingredient list + derived totals.
   if (detail.ingredients) {
     return {
@@ -84,6 +88,7 @@ const serializeDetail = (detail: ServiceFoodItemDetail): FoodItemDetail => {
         sort_order: ing.row.sort_order,
         unit: ing.row.unit,
       })),
+      sensitivities,
     }
   }
   // Reference branch: emit the resolved reference + per-field origin map.
@@ -96,9 +101,10 @@ const serializeDetail = (detail: ServiceFoodItemDetail): FoodItemDetail => {
         unit_mismatch: detail.reference.unit_mismatch,
       },
       reference_enriched: detail.reference_enriched ?? { fields: {} },
+      sensitivities,
     }
   }
-  return base as FoodItemDetail
+  return { ...base, sensitivities } as FoodItemDetail
 }
 
 export const createFoodItemsRouter = (authMiddleware: AnyMiddleware, centralDb: CentralDb): TypedRouter => {
@@ -320,6 +326,39 @@ export const createFoodItemsRouter = (authMiddleware: AnyMiddleware, centralDb: 
           success: false,
         })
       }
+    },
+  )
+
+  // Replace the sensitivity flags assigned to this food item. Works for
+  // central library items too — the junction's food_item_id is a soft
+  // pointer, so a user can flag a per-user OR a central row. The only
+  // requirement is that the food item exists somewhere in the merged
+  // library; otherwise we'd silently allow attaching flags to ghost ids.
+  router.put<{ id: string }, FoodItemDetailResponse, SetFoodItemSensitivitiesBody>(
+    '/:id/sensitivities',
+    authMiddleware,
+    validateBody(setFoodItemSensitivitiesBodySchema),
+    async (req, res) => {
+      const user = req.user!
+      const id = req.params.id
+      const exists =
+        (await getUserFoodItemById(user, id)) !== null || (await centralDb.getSharedFoodItemById(id)) !== null
+      if (!exists) {
+        return res.status(404).json({ error: 'Food item not found', success: false })
+      }
+      try {
+        await dbSetFoodItemSensitivities(user, id, req.body.sensitivity_flag_ids)
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Failed to set sensitivities'
+        // PG 23503 = foreign_key_violation — surfaces when a flag id doesn't
+        // exist. Match on the structured code rather than the (unstable)
+        // English message text.
+        const code = err instanceof Error ? (err as Error & { code?: string }).code : undefined
+        return res.status(code === '23503' ? 400 : 500).json({ error: message, success: false })
+      }
+      const detail = await service.getDetail(user, id)
+      if (!detail) return res.status(404).json({ error: 'Food item not found', success: false })
+      res.json({ data: serializeDetail(detail), success: true })
     },
   )
 

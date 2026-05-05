@@ -11,7 +11,7 @@ import { FoodItemAutocomplete } from '../../components/FoodItemAutocomplete'
 import {
   deleteMealApi,
   fetchMeal,
-  fetchUserSettings,
+  fetchSensitivityFlags,
   type FoodItemEntity,
   updateMealApi,
 } from '../../state/api'
@@ -384,9 +384,9 @@ export function MealDetail() {
     queryKey: ['meal', id],
   })
 
-  const { data: settings } = useQuery({
-    queryFn: fetchUserSettings,
-    queryKey: ['userSettings'],
+  const { data: sensitivityFlags = [] } = useQuery({
+    queryFn: fetchSensitivityFlags,
+    queryKey: ['sensitivityFlags'],
   })
 
   // Local input state — synced from `meal` on load and after each save.
@@ -499,7 +499,7 @@ export function MealDetail() {
     )
   }
 
-  const flagAreas: string[] = settings?.sensitivity_areas ?? []
+  const flagAreas: string[] = sensitivityFlags.map((f) => f.name)
 
   const commitItems = (next: FoodItemEdit[]) => {
     setItems(next)

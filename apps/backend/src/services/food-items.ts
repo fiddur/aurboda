@@ -33,6 +33,7 @@ import {
   searchFoodItems as searchUserFoodItems,
   updateFoodItem as dbUpdateFoodItem,
 } from '../db/food-items.ts'
+import { getFoodItemSensitivities } from '../db/sensitivities.ts'
 
 /**
  * `MergedFoodItem` is intentionally the union of user and central entity
@@ -90,6 +91,8 @@ export interface FoodItemDetail {
   reference?: ReferencedFood
   /** Per-field origin map — set together with `reference`. */
   reference_enriched?: ReferenceEnrichedFields
+  /** Sensitivity flags assigned to this food item via the food_item_sensitivities junction. Always populated (empty when no flags). */
+  sensitivities?: Array<{ id: string; name: string; color?: string | null }>
 }
 
 /**
@@ -316,6 +319,12 @@ export const createFoodItemsService = (centralDb: CentralDb): FoodItemsService =
   },
 
   getDetail: async (user, id) => {
+    // Sensitivity flags work for both per-user and central items — the
+    // junction's food_item_id is a soft pointer, so a user can flag a
+    // central LSV item just as easily as one of their own.
+    const sensitivityFlags = await getFoodItemSensitivities(user, id)
+    const sensitivities = sensitivityFlags.map((f) => ({ id: f.id, name: f.name, color: f.color ?? null }))
+
     const fromUser = await getUserFoodItemById(user, id)
     if (fromUser) {
       // Composite path takes precedence over reference enrichment — a
@@ -323,7 +332,7 @@ export const createFoodItemsService = (centralDb: CentralDb): FoodItemsService =
       // a reference would be ignored anyway.
       if (fromUser.is_composite) {
         const rows = await dbGetIngredients(user, id)
-        if (rows.length === 0) return { item: fromUser }
+        if (rows.length === 0) return { item: fromUser, sensitivities }
         const resolved: ResolvedIngredient[] = await Promise.all(
           rows.map(async (row) => {
             const food =
@@ -336,6 +345,7 @@ export const createFoodItemsService = (centralDb: CentralDb): FoodItemsService =
           derived_nutrients: aggregateNutrientsFromIngredients(resolved),
           ingredients: resolved,
           item: fromUser,
+          sensitivities,
         }
       }
 
@@ -350,13 +360,13 @@ export const createFoodItemsService = (centralDb: CentralDb): FoodItemsService =
         const refFood =
           (await getUserFoodItemById(user, refId)) ?? (await centralDb.getSharedFoodItemById(refId))
         if (refFood && !refFood.is_composite) {
-          return enrichWithReference(fromUser, refFood)
+          return { ...enrichWithReference(fromUser, refFood), sensitivities }
         }
       }
-      return { item: fromUser }
+      return { item: fromUser, sensitivities }
     }
     const fromCentral = await centralDb.getSharedFoodItemById(id)
-    return fromCentral ? { item: fromCentral } : null
+    return fromCentral ? { item: fromCentral, sensitivities } : null
   },
 
   wouldCreateCycle: async (user, parentId, ingredientIds) => {

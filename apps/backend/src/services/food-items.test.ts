@@ -19,7 +19,12 @@ vi.mock('../db/food-items.ts', () => ({
 }))
 
 vi.mock('../db/food-item-ingredients.ts', () => ({
+  findCompositeParentsOfIngredient: vi.fn().mockResolvedValue([]),
   getIngredients: vi.fn().mockResolvedValue([]),
+}))
+
+vi.mock('../db/sensitivities.ts', () => ({
+  getFoodItemSensitivities: vi.fn().mockResolvedValue([]),
 }))
 
 const dbModule = await import('../db/food-items.ts')

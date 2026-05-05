@@ -16,6 +16,8 @@ import {
 // Mock the db module
 vi.mock('../db', () => ({
   deleteMeal: vi.fn(),
+  findMealsContainingFoodItem: vi.fn().mockResolvedValue([]),
+  getFoodItemSensitivityNamesBatch: vi.fn().mockResolvedValue(new Map()),
   getMealById: vi.fn(),
   getMealFoodItems: vi.fn().mockResolvedValue([]),
   getMealFoodItemsBatch: vi.fn().mockResolvedValue(new Map()),

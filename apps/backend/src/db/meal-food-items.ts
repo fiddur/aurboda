@@ -22,6 +22,7 @@ const JUNCTION_COLUMNS = [
   'quantity',
   'unit',
   'sort_order',
+  'sensitivities',
   ...NUTRIENT_FIELD_NAMES,
 ].join(', ')
 
@@ -35,6 +36,7 @@ const mapJunctionRow = (row: Record<string, unknown>): MealFoodItemLink => {
     quantity: row.quantity ?? undefined,
     unit: row.unit ?? undefined,
     sort_order: row.sort_order ?? 0,
+    sensitivities: Array.isArray(row.sensitivities) ? (row.sensitivities as string[]) : undefined,
   }
   for (const field of NUTRIENT_FIELD_NAMES) {
     const val = row[field]
@@ -52,7 +54,8 @@ export interface MealFoodItemInput {
   quantity?: number
   unit?: string
   sort_order?: number
-  [nutrient: string]: string | number | undefined
+  sensitivities?: string[]
+  [nutrient: string]: string | number | string[] | undefined
 }
 
 // ── Operations ───────────────────────────────────────────────────────────────
@@ -92,6 +95,7 @@ export const setMealFoodItems = async (
       'quantity',
       'unit',
       'sort_order',
+      'sensitivities',
     ]
     const values: unknown[] = [
       mealId,
@@ -101,6 +105,7 @@ export const setMealFoodItems = async (
       item.quantity ?? null,
       item.unit ?? null,
       item.sort_order ?? i,
+      item.sensitivities ?? null,
     ]
 
     for (const field of NUTRIENT_FIELD_NAMES) {

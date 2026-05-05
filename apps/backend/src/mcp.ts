@@ -35,6 +35,7 @@ import { registerNoteTools } from './mcp/note-tools.ts'
 import { registerQueryTools } from './mcp/query-tools.ts'
 import { registerReportTools } from './mcp/report-tools.ts'
 import { registerScreentimeCategoryTools } from './mcp/screentime-category-tools.ts'
+import { registerSensitivityTools } from './mcp/sensitivity-tools.ts'
 import { registerSettingsTools } from './mcp/settings-tools.ts'
 import { registerSyncTools } from './mcp/sync-tools.ts'
 // tag-tools removed: tags are now activities
@@ -80,6 +81,7 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
   registerMealTools(server, user)
   if (deps.centralDb) {
     registerFoodItemTools(server, user, deps.centralDb)
+    registerSensitivityTools(server, user, deps.centralDb)
     registerImportTools(server, user, deps.centralDb)
   }
   registerReportTools(server, user)

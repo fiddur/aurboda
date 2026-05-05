@@ -13,13 +13,14 @@ import {
   deleteMealApi,
   fetchFrequentFoodItemsApi,
   fetchMeals,
+  fetchSensitivityFlags,
   fetchUserSettings,
   type Meal,
   type MealsResult,
+  setFoodItemSensitivities,
   setMealLogCompletedApi,
   unsetMealLogCompletedApi,
   updateMealApi,
-  updateUserSettings,
 } from '../../state/api'
 import { auth } from '../../state/auth'
 import { isEmoji, isIconPath, isUrl } from '../../utils/emojiLookup'
@@ -52,24 +53,47 @@ const formatMealType = (type?: string): string =>
 const findMealsForSlot = (meals: Meal[], slotName: string): Meal[] =>
   meals.filter((m) => m.meal_type === slotName.toLowerCase())
 
-/** A clickable food item chip with popover for sensitivity mapping. */
+/**
+ * A clickable food item chip with a popover for managing sensitivity flags.
+ * The chip toggles the food item's flag assignments via the food-item ↔ flag
+ * junction (PUT /food-items/:id/sensitivities), so a flag attached here
+ * applies wherever this food item shows up — past meal snapshots stay frozen,
+ * future meals inherit the new tag at log time.
+ */
 function FoodItemChip({
   name,
   foodItemId,
-  mappedSensitivities,
-  sensitivityAreas,
-  onToggle,
+  initialFlagNames,
+  flags,
 }: {
   name: string
   foodItemId?: string
-  mappedSensitivities: string[]
-  sensitivityAreas: string[]
-  onToggle: (foodItem: string, area: string, checked: boolean) => void
+  /** Flag names snapshotted on the meal-junction row — used as the initial popover state. */
+  initialFlagNames: string[]
+  /** Full flag list from /sensitivity-flags. */
+  flags: Array<{ id: string; name: string }>
 }) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLSpanElement>(null)
+  const queryClient = useQueryClient()
+  // Local optimistic state of which flag IDs are currently assigned. Seeded
+  // from the meal snapshot — the chip doesn't fetch live state to avoid an
+  // extra round trip per chip on page load. The seed is re-synced via
+  // useEffect below whenever the meal-junction snapshot or the flag list
+  // changes, so a refetch from another tab isn't masked by stale state.
+  const [localFlagIds, setLocalFlagIds] = useState<Set<string>>(new Set())
+  const initialKey = `${initialFlagNames.join('|')}::${flags.map((f) => f.id).join('|')}`
+  useEffect(() => {
+    const next = new Set<string>()
+    for (const flag of flags) {
+      if (initialFlagNames.includes(flag.name)) next.add(flag.id)
+    }
+    setLocalFlagIds(next)
+    // initialKey is a stable hash of the inputs — using it as the dep keeps
+    // the comparison shallow without rebuilding the set on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialKey])
 
-  // Close on click outside
   useEffect(() => {
     if (!open) return
     const handler = (e: MouseEvent) => {
@@ -79,13 +103,37 @@ function FoodItemChip({
     return () => document.removeEventListener('click', handler, true)
   }, [open])
 
-  const hasMappings = mappedSensitivities.length > 0
+  const setFlagsMutation = useMutation({
+    mutationFn: (flagIds: string[]) => {
+      if (!foodItemId) return Promise.resolve()
+      return setFoodItemSensitivities(foodItemId, flagIds)
+    },
+    // The flag change applies to FUTURE meals immediately. Historical meal
+    // snapshots stay frozen until the user hits "re-snapshot" on the
+    // food-item page — invalidate the meals query so the re-fetch shows
+    // any newly-snapshotted state, but the chip dot for past meals stays
+    // until those snapshots are refreshed.
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['foodItem', foodItemId] })
+      queryClient.invalidateQueries({ queryKey: ['meals'] })
+    },
+  })
+
+  const toggleFlag = (flagId: string, checked: boolean) => {
+    const next = new Set(localFlagIds)
+    if (checked) next.add(flagId)
+    else next.delete(flagId)
+    setLocalFlagIds(next)
+    setFlagsMutation.mutate([...next])
+  }
+
+  const hasMappings = localFlagIds.size > 0
 
   return (
     <span ref={ref} class={`food-item-chip ${hasMappings ? 'mapped' : ''}`} onClick={() => setOpen(!open)}>
       {name}
       {hasMappings && <span class="mapping-dot" />}
-      {open && sensitivityAreas.length > 0 && (
+      {open && flags.length > 0 && (
         <div class="food-map-popover" onClick={(e) => e.stopPropagation()}>
           <div class="popover-title">
             Flags for{' '}
@@ -97,14 +145,16 @@ function FoodItemChip({
               `"${name}"`
             )}
           </div>
-          {sensitivityAreas.map((area) => (
-            <label key={area} class="popover-option">
+          {!foodItemId && <p class="popover-note">No food-item id — flags can't be saved.</p>}
+          {flags.map((flag) => (
+            <label key={flag.id} class="popover-option">
               <input
                 type="checkbox"
-                checked={mappedSensitivities.includes(area)}
-                onChange={(e) => onToggle(name, area, (e.target as HTMLInputElement).checked)}
+                checked={localFlagIds.has(flag.id)}
+                disabled={!foodItemId}
+                onChange={(e) => toggleFlag(flag.id, (e.target as HTMLInputElement).checked)}
               />
-              {area}
+              {flag.name}
             </label>
           ))}
         </div>
@@ -113,17 +163,7 @@ function FoodItemChip({
   )
 }
 
-function MealDetails({
-  meal,
-  foodSensitivityMap,
-  sensitivityAreas,
-  onToggleFoodMapping,
-}: {
-  meal: Meal
-  foodSensitivityMap: Record<string, string[]>
-  sensitivityAreas: string[]
-  onToggleFoodMapping: (foodItem: string, area: string, checked: boolean) => void
-}) {
+function MealDetails({ meal, flags }: { meal: Meal; flags: Array<{ id: string; name: string }> }) {
   const hasFoodItems = meal.food_items && meal.food_items.length > 0
   const hasCalories = meal.calories !== undefined
   const hasContent = meal.name || hasFoodItems || meal.notes || hasCalories
@@ -144,9 +184,8 @@ function MealDetails({
               key={i}
               name={item.name}
               foodItemId={item.food_item_id}
-              mappedSensitivities={foodSensitivityMap[item.name] ?? []}
-              sensitivityAreas={sensitivityAreas}
-              onToggle={onToggleFoodMapping}
+              initialFlagNames={item.sensitivities ?? []}
+              flags={flags}
             />
           ))}
         </div>
@@ -301,9 +340,8 @@ interface MealSlotRowProps {
   slot: MealSlot
   meals: Meal[]
   sensitivityAreas: string[]
-  foodSensitivityMap: Record<string, string[]>
+  flags: Array<{ id: string; name: string }>
   onToggleSensitivity: (slot: MealSlot, area: string, existingMeal?: Meal) => void
-  onToggleFoodMapping: (foodItem: string, area: string, checked: boolean) => void
   onChangeTime: (meal: Meal, hour: number, minute?: number) => void
   onCreateAtTime: (slot: MealSlot, hour: number, minute: number) => void
   onCreateAndOpen: (slot: MealSlot) => void
@@ -317,9 +355,8 @@ function MealSlotRow({
   slot,
   meals: slotMeals,
   sensitivityAreas,
-  foodSensitivityMap,
+  flags,
   onToggleSensitivity,
-  onToggleFoodMapping,
   onChangeTime,
   onCreateAtTime,
   onCreateAndOpen,
@@ -330,7 +367,7 @@ function MealSlotRow({
 }: MealSlotRowProps) {
   const primaryMeal = slotMeals[0]
   const explicit = primaryMeal?.sensitivities ?? []
-  const derived = derivedSensitivities(primaryMeal, foodSensitivityMap)
+  const derived = derivedSensitivities(primaryMeal)
   // Union of explicit + derived — checkbox shows checked if either
   const effectiveSensitivities = new Set([...explicit, ...derived])
   const mealH = primaryMeal ? primaryMeal.time.getHours() : slot.default_hour
@@ -449,14 +486,7 @@ function MealSlotRow({
         </div>
       )}
 
-      {primaryMeal && (
-        <MealDetails
-          meal={primaryMeal}
-          foodSensitivityMap={foodSensitivityMap}
-          sensitivityAreas={sensitivityAreas}
-          onToggleFoodMapping={onToggleFoodMapping}
-        />
-      )}
+      {primaryMeal && <MealDetails meal={primaryMeal} flags={flags} />}
 
       {/*
        * If the slot has more than one meal (intentional split — two snacks
@@ -468,9 +498,7 @@ function MealSlotRow({
         <DuplicateMealRow
           key={meal.id}
           meal={meal}
-          foodSensitivityMap={foodSensitivityMap}
-          sensitivityAreas={sensitivityAreas}
-          onToggleFoodMapping={onToggleFoodMapping}
+          flags={flags}
           onDelete={onDelete}
           isDeletePending={isDeletePending}
         />
@@ -548,16 +576,12 @@ function DayNutrientSummary({ meals }: { meals: Meal[] }) {
  */
 function DuplicateMealRow({
   meal,
-  foodSensitivityMap,
-  sensitivityAreas,
-  onToggleFoodMapping,
+  flags,
   onDelete,
   isDeletePending,
 }: {
   meal: Meal
-  foodSensitivityMap: Record<string, string[]>
-  sensitivityAreas: string[]
-  onToggleFoodMapping: (foodItem: string, area: string, checked: boolean) => void
+  flags: Array<{ id: string; name: string }>
   onDelete: (id: string) => void
   isDeletePending: boolean
 }) {
@@ -584,12 +608,7 @@ function DuplicateMealRow({
           />
         </div>
       </div>
-      <MealDetails
-        meal={meal}
-        foodSensitivityMap={foodSensitivityMap}
-        sensitivityAreas={sensitivityAreas}
-        onToggleFoodMapping={onToggleFoodMapping}
-      />
+      <MealDetails meal={meal} flags={flags} />
     </div>
   )
 }
@@ -598,16 +617,12 @@ function OtherMealRow({
   meal,
   onDelete,
   isDeletePending,
-  foodSensitivityMap,
-  sensitivityAreas,
-  onToggleFoodMapping,
+  flags,
 }: {
   meal: Meal
   onDelete: (id: string) => void
   isDeletePending: boolean
-  foodSensitivityMap: Record<string, string[]>
-  sensitivityAreas: string[]
-  onToggleFoodMapping: (foodItem: string, area: string, checked: boolean) => void
+  flags: Array<{ id: string; name: string }>
 }) {
   return (
     <div class="meal-slot-row has-meal">
@@ -635,23 +650,23 @@ function OtherMealRow({
           />
         </div>
       </div>
-      <MealDetails
-        meal={meal}
-        foodSensitivityMap={foodSensitivityMap}
-        sensitivityAreas={sensitivityAreas}
-        onToggleFoodMapping={onToggleFoodMapping}
-      />
+      <MealDetails meal={meal} flags={flags} />
     </div>
   )
 }
 
 const todayISO = () => formatISO(new Date(), { representation: 'date' })
 
-/** Compute sensitivities derived from food items via the food-to-sensitivity mapping. */
-const derivedSensitivities = (meal: Meal | undefined, foodMap: Record<string, string[]>): Set<string> => {
+/**
+ * Compute sensitivities derived from food items. Reads each food_item's
+ * snapshotted `sensitivities[]` (set at meal-add time from the food item's
+ * current flag assignments — see services/meals.ts). No name-keyed map
+ * lookup any more — the food_item ↔ flag junction is the source of truth.
+ */
+const derivedSensitivities = (meal: Meal | undefined): Set<string> => {
   const derived = new Set<string>()
   for (const item of meal?.food_items ?? []) {
-    for (const area of foodMap[item.name] ?? []) derived.add(area)
+    for (const flag of item.sensitivities ?? []) derived.add(flag)
   }
   return derived
 }
@@ -792,6 +807,7 @@ function useMealMutations(mealsQueryKey: string[], meals: Meal[] | undefined) {
 function MealsContent({ dayKey }: { dayKey: string }) {
   const isLoggedIn = auth.value.token
   const { route } = useLocation()
+  const queryClient = useQueryClient()
 
   const { data: settings } = useQuery({
     enabled: !!isLoggedIn,
@@ -800,7 +816,14 @@ function MealsContent({ dayKey }: { dayKey: string }) {
   })
 
   const mealSlots = settings?.meal_slots?.length ? settings.meal_slots : DEFAULT_MEAL_SLOTS
-  const sensitivityAreas = settings?.sensitivity_areas ?? []
+
+  const { data: flagsData = [] } = useQuery({
+    enabled: !!isLoggedIn,
+    queryFn: fetchSensitivityFlags,
+    queryKey: ['sensitivityFlags'],
+  })
+  const flags = flagsData.map((f) => ({ id: f.id, name: f.name }))
+  const sensitivityAreas = flags.map((f) => f.name)
 
   const selectedDate = new Date(dayKey)
   const dayStart = startOfDay(selectedDate)
@@ -911,28 +934,6 @@ function MealsContent({ dayKey }: { dayKey: string }) {
     route(`/meals/${id}`)
   }
 
-  const foodSensitivityMap: Record<string, string[]> = settings?.food_sensitivity_map ?? {}
-  const queryClient = useQueryClient()
-
-  const foodMapMutation = useMutation({
-    mutationFn: (newMap: Record<string, string[]>) => updateUserSettings({ food_sensitivity_map: newMap }),
-    onSuccess: (result) => queryClient.setQueryData(['userSettings'], result),
-    onError: () => queryClient.invalidateQueries({ queryKey: ['userSettings'] }),
-  })
-
-  const handleToggleFoodMapping = (foodItem: string, area: string, checked: boolean) => {
-    const current = foodSensitivityMap[foodItem] ?? []
-    const next = checked ? [...current, area] : current.filter((s) => s !== area)
-    const cleaned = Object.fromEntries(
-      Object.entries({ ...foodSensitivityMap, [foodItem]: next }).filter(([, v]) => v.length > 0),
-    ) as Record<string, string[]>
-    // Optimistic update — reflect immediately in UI
-    queryClient.setQueryData(['userSettings'], (old: Record<string, unknown> | undefined) =>
-      old ? { ...old, food_sensitivity_map: cleaned } : old,
-    )
-    foodMapMutation.mutate(cleaned)
-  }
-
   if (!isLoggedIn) return <p>Please log in to use meal tracking.</p>
   if (isLoading) return <p class="loading">Loading...</p>
 
@@ -955,9 +956,8 @@ function MealsContent({ dayKey }: { dayKey: string }) {
                 slot={entry.slot}
                 meals={findMealsForSlot(meals ?? [], entry.slot.name)}
                 sensitivityAreas={sensitivityAreas}
-                foodSensitivityMap={foodSensitivityMap}
+                flags={flags}
                 onToggleSensitivity={handleToggleSensitivity}
-                onToggleFoodMapping={handleToggleFoodMapping}
                 onChangeTime={handleChangeTime}
                 onCreateAtTime={handleCreateAtTime}
                 onCreateAndOpen={handleCreateAndOpen}
@@ -972,9 +972,7 @@ function MealsContent({ dayKey }: { dayKey: string }) {
                 meal={entry.meal}
                 onDelete={(id) => deleteMutation.mutate(id)}
                 isDeletePending={deleteMutation.isPending}
-                foodSensitivityMap={foodSensitivityMap}
-                sensitivityAreas={sensitivityAreas}
-                onToggleFoodMapping={handleToggleFoodMapping}
+                flags={flags}
               />
             ),
           )}

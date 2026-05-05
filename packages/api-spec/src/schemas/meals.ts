@@ -90,6 +90,10 @@ export const foodItemSchema = z
     name: z.string().min(1).max(255).meta({ description: 'Food item name' }),
     protein: z.number().optional().meta({ description: 'Protein in grams' }),
     quantity: z.number().optional().meta({ description: 'Quantity consumed' }),
+    sensitivities: z.array(z.string()).optional().meta({
+      description:
+        "Sensitivity flag names attached to this food item, snapshotted at meal-add time from the food item's current flag assignments.",
+    }),
     unit: z
       .string()
       .max(100)

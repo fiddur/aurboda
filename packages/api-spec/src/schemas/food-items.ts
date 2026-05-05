@@ -176,6 +176,13 @@ export const foodItemDetailSchema = foodItemEntitySchema
     reference_enriched: referenceEnrichedFieldsSchema.optional().meta({
       description: 'Per-field origin info when a reference is set.',
     }),
+    sensitivities: z
+      .array(z.object({ id: z.string().uuid(), name: z.string(), color: z.string().nullable().optional() }))
+      .optional()
+      .meta({
+        description:
+          'Sensitivity flags assigned to this food item (e.g. dairy, gluten). Resolved from food_item_sensitivities; supports user + central items.',
+      }),
   })
   .meta({ description: 'Food item detail with optional composite ingredients', id: 'FoodItemDetail' })
 
