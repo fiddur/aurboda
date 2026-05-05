@@ -50,6 +50,8 @@ import { stravaClient } from './integrations/strava/client.ts'
 import { createMcpRouter } from './mcp.ts'
 import { createOAuthRouter } from './routes/oauth-router.ts'
 import { auditError } from './services/audit-log.ts'
+import { triggerCalorieComputation } from './services/calorie-computation.ts'
+import { createCalorieQueue, type CalorieQueue } from './services/calorie-queue.ts'
 import { getCentralDb, initializeCentralDb } from './services/central-db.ts'
 import { createDefaultEngineDeps } from './services/deduction-deps.ts'
 import { buildFullWindow, evaluateAllRules } from './services/deduction-engine.ts'
@@ -219,6 +221,21 @@ const main = async () => {
     console.warn('⚠️ Deduction auto-evaluation disabled - rules will only run on manual trigger')
   }
 
+  // Initialize calorie computation queue (uses shared boss).
+  // Without this, HR ingestion falls back to fire-and-forget which still
+  // returns the response fast but loses the cross-instance batching.
+  let calorieQueue: CalorieQueue | null = null
+  if (boss) {
+    try {
+      calorieQueue = await createCalorieQueue(boss, { triggerCalorieComputation })
+    } catch (error) {
+      console.error('Failed to initialize calorie queue:', error)
+    }
+  }
+  if (!calorieQueue) {
+    console.warn('⚠️ Calorie queue disabled - HR ingestion will fire-and-forget computation')
+  }
+
   // Initialize Strava queue (uses shared boss + strava client)
   let stravaQueue: StravaQueue | null = null
   if (boss) {
@@ -305,6 +322,7 @@ const main = async () => {
     oura,
     garmin,
     stravaQueue,
+    calorieQueue,
     activityNotifier,
   })
 

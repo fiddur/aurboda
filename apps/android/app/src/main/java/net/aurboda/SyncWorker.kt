@@ -57,6 +57,15 @@ class SyncWorker(
     }
     Log.d(TAG, "Granted ${grantedTypes.size}/${allRecordTypes.size} record types")
 
+    // Without the background read permission, every Health Connect read here
+    // throws SecurityException/HealthConnectException. Skip HC reads cleanly
+    // (the foreground app will sync when it next opens). Outbound sync, the
+    // pending-data flush and ActivityWatch don't need HC reads, so still run.
+    val hasBackgroundRead = HC_BACKGROUND_READ_PERMISSION in grantedPermissions
+    if (!hasBackgroundRead) {
+      Log.w(TAG, "Background HC read permission not granted; skipping HC fetch")
+    }
+
     // Invalidate token if granted types changed since last sync
     invalidateTokenIfGrantedTypesChanged(grantedTypes)
 
@@ -81,12 +90,22 @@ class SyncWorker(
         }
       }
 
-      // Step 2: Fetch and send raw records incrementally (page by page)
-      val syncSuccess = fetchAndSyncHealthData(credentials.apiUrl, credentials.authToken, reporter)
-      if (!syncSuccess) {
-        Log.w(TAG, "Incremental sync failed, will retry")
-        reporter.end("Health Connect sync failed")
-        return Result.retry()
+      // Step 2: Fetch and send raw records incrementally (page by page).
+      // Skip if the background read permission isn't granted -- foreground will catch up.
+      if (hasBackgroundRead) {
+        val syncSuccess = fetchAndSyncHealthData(credentials.apiUrl, credentials.authToken, reporter)
+        if (!syncSuccess) {
+          Log.w(TAG, "Incremental sync failed, will retry")
+          reporter.end("Health Connect sync failed")
+          return Result.retry()
+        }
+      } else {
+        reporter.updateStage(SyncStage.HealthConnect) {
+          it.copy(
+            status = SyncStageStatus.Skipped,
+            message = "Background read permission required",
+          )
+        }
       }
 
       // Step 3: Process outbound sync (backend -> Health Connect).

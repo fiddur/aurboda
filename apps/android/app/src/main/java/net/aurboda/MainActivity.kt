@@ -394,8 +394,11 @@ fun HealthConnectScreen(
     remember(allRecordTypes) {
       val readPerms = allRecordTypes.map { HealthPermission.getReadPermission(it) }
       val writePerms = writableRecordTypes.map { HealthPermission.getWritePermission(it) }
-      (readPerms + writePerms).toSet()
+      (readPerms + writePerms + HC_BACKGROUND_READ_PERMISSION).toSet()
     }
+  val hasBackgroundReadPermission by remember(grantedPermissions) {
+    derivedStateOf { HC_BACKGROUND_READ_PERMISSION in grantedPermissions }
+  }
   val ktorHttpClient = remember { HttpClient(Android) { install(ContentNegotiation) { json(appJson) } } }
 
   /**
@@ -820,6 +823,44 @@ fun HealthConnectScreen(
                 }
               },
             )
+          }
+
+          // Background read permission is granted separately from foreground reads:
+          // Health Connect requires the user to grant at least one foreground read first,
+          // then offers a separate "all the time" / "while in use" prompt for this one.
+          if (hasAnyPermissions && !hasBackgroundReadPermission) {
+            androidx.compose.material3.Surface(
+              shape = MaterialTheme.shapes.small,
+              color = MaterialTheme.colorScheme.surfaceVariant,
+              modifier = Modifier.fillMaxWidth(),
+            ) {
+              Column(modifier = Modifier.padding(12.dp)) {
+                Text(
+                  "Background access not granted",
+                  style = MaterialTheme.typography.bodyMedium,
+                  fontWeight = FontWeight.Bold,
+                )
+                androidx.compose.foundation.layout
+                  .Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                  "Periodic background sync needs Health Connect to allow reads " +
+                    "while Aurboda is closed. Without it, the every-15-minute job " +
+                    "fails until you open the app.",
+                  style = MaterialTheme.typography.bodySmall,
+                  color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                androidx.compose.foundation.layout
+                  .Spacer(modifier = Modifier.height(8.dp))
+                androidx.compose.material3.OutlinedButton(
+                  onClick = {
+                    requestPermissionLauncher.launch(arrayOf(HC_BACKGROUND_READ_PERMISSION))
+                  },
+                  modifier = Modifier.fillMaxWidth(),
+                ) {
+                  Text("Allow Background Access")
+                }
+              }
+            }
           }
 
           Button(
