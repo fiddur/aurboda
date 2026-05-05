@@ -770,12 +770,17 @@ export const createSyncRouter = (deps: SyncRouterDeps, authMiddleware: RequestHa
       // formula, per-point outbound-sync enqueue, gap-fill) inline here
       // turns each chunk into a multi-second request.
       if (recordType === 'HeartRateRecord' && records.length > 0) {
-        const timestamps = records.flatMap((r) => {
-          const samples = r.samples as Array<{ time: string }> | undefined
-          if (samples) return samples.map((s) => new Date(s.time).getTime())
-          const t = r.startTime || r.time
-          return t ? [new Date(t as string).getTime()] : []
-        })
+        // Drop NaN here — a malformed timestamp string would propagate to
+        // Math.min/max and then to new Date(NaN).toISOString(), throwing
+        // RangeError out of the request handler.
+        const timestamps = records
+          .flatMap((r) => {
+            const samples = r.samples as Array<{ time: string }> | undefined
+            if (samples) return samples.map((s) => new Date(s.time).getTime())
+            const t = r.startTime || r.time
+            return t ? [new Date(t as string).getTime()] : []
+          })
+          .filter((t) => !Number.isNaN(t))
         if (timestamps.length > 0) {
           const start = new Date(Math.min(...timestamps))
           const end = new Date(Math.max(...timestamps))

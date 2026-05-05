@@ -1,12 +1,15 @@
 import { describe, expect, test } from 'vitest'
 
+import type { CalorieJobData } from './calorie-queue.ts'
+import type { Job } from './pg-boss.ts'
+
 import { groupCalorieJobs } from './calorie-queue.ts'
 
 describe('groupCalorieJobs', () => {
-  const makeJob = (user: string, start: string, end: string) =>
+  const makeJob = (user: string, start: string, end: string): Job<CalorieJobData> =>
     ({
       data: { end, start, user },
-    }) as never
+    }) as Job<CalorieJobData>
 
   test('groups jobs by user and merges windows', () => {
     const jobs = [

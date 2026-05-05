@@ -10,8 +10,8 @@ import kotlin.reflect.KClass
  * least one foreground read permission. Without it, [SyncWorker]'s periodic
  * job throws HealthConnectException when reading.
  */
-const val HC_BACKGROUND_READ_PERMISSION: String =
-    "android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND"
+val HC_BACKGROUND_READ_PERMISSION: String =
+    HealthPermission.PERMISSION_READ_HEALTH_DATA_IN_BACKGROUND
 
 /**
  * A user-friendly grouping of Health Connect record types into categories.

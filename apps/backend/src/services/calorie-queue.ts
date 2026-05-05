@@ -106,7 +106,13 @@ export const createCalorieQueue = async (boss: PgBoss, deps: CalorieQueueDeps): 
           { retryLimit: 2 },
         )
       } catch (err) {
-        auditError(user, 'data', 'Failed to enqueue calorie computation', { error: String(err) })
+        // pg-boss send failed (transient pg connectivity, etc.). Fall back
+        // to fire-and-forget so the computation isn't silently dropped.
+        // Mirrors the no-queue fallback in sync-router.ts.
+        auditError(user, 'data', 'Failed to enqueue calorie computation; firing inline', {
+          error: String(err),
+        })
+        void deps.triggerCalorieComputation(user, start, end)
       }
     },
   }
