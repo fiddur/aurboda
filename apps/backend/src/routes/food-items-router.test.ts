@@ -27,6 +27,9 @@ vi.mock('../db/index.ts', () => ({
   upsertFoodItem: vi.fn(),
 }))
 
+const FOOD_ID = '11111111-1111-4111-8111-111111111111'
+const FLAG_ID = '33333333-3333-4333-8333-333333333333'
+
 vi.mock('../db/food-item-ingredients.ts', () => ({
   findCompositeParentsOfIngredient: vi.fn().mockResolvedValue([]),
   getIngredients: vi.fn().mockResolvedValue([]),
@@ -316,5 +319,59 @@ describe('PATCH /food-items/:id', () => {
     expect(Array.isArray(res.body.data.ingredients)).toBe(true)
     expect(res.body.data.ingredients).toHaveLength(1)
     expect(res.body.data.derived_nutrients).toBeDefined()
+  })
+})
+
+describe('PUT /food-items/:id/sensitivities', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  test('per-user food item — calls setFoodItemSensitivities and returns enriched detail', async () => {
+    setUserFoodItem(async (_u, id) => (id === FOOD_ID ? userItem(FOOD_ID) : null))
+    const res = await supertest(buildApp(fakeCentral()))
+      .put(`/food-items/${FOOD_ID}/sensitivities`)
+      .send({ sensitivity_flag_ids: [FLAG_ID] })
+    expect(res.status).toBe(200)
+    expect(dbBarrel.setFoodItemSensitivities).toHaveBeenCalledWith('tester', FOOD_ID, [FLAG_ID])
+  })
+
+  test('central library item — also accepted (soft pointer)', async () => {
+    setUserFoodItem(async () => null)
+    const central = fakeCentral()
+    vi.mocked(central.getSharedFoodItemById).mockResolvedValue(sharedItem('shared'))
+    const res = await supertest(buildApp(central))
+      .put(`/food-items/${FOOD_ID}/sensitivities`)
+      .send({ sensitivity_flag_ids: [FLAG_ID] })
+    expect(res.status).toBe(200)
+    expect(dbBarrel.setFoodItemSensitivities).toHaveBeenCalledWith('tester', FOOD_ID, [FLAG_ID])
+  })
+
+  test('404 when food item exists in neither user nor central', async () => {
+    setUserFoodItem(async () => null)
+    const central = fakeCentral()
+    vi.mocked(central.getSharedFoodItemById).mockResolvedValue(null)
+    const res = await supertest(buildApp(central))
+      .put(`/food-items/${FOOD_ID}/sensitivities`)
+      .send({ sensitivity_flag_ids: [FLAG_ID] })
+    expect(res.status).toBe(404)
+  })
+
+  test('400 on PG foreign_key_violation (code 23503), not 500', async () => {
+    setUserFoodItem(async (_u, id) => (id === FOOD_ID ? userItem(FOOD_ID) : null))
+    vi.mocked(dbBarrel.setFoodItemSensitivities).mockRejectedValue(
+      Object.assign(new Error('insert or update on table … violates foreign key'), { code: '23503' }),
+    )
+    const res = await supertest(buildApp(fakeCentral()))
+      .put(`/food-items/${FOOD_ID}/sensitivities`)
+      .send({ sensitivity_flag_ids: [FLAG_ID] })
+    expect(res.status).toBe(400)
+  })
+
+  test('500 on unrelated db errors', async () => {
+    setUserFoodItem(async (_u, id) => (id === FOOD_ID ? userItem(FOOD_ID) : null))
+    vi.mocked(dbBarrel.setFoodItemSensitivities).mockRejectedValue(new Error('connection lost'))
+    const res = await supertest(buildApp(fakeCentral()))
+      .put(`/food-items/${FOOD_ID}/sensitivities`)
+      .send({ sensitivity_flag_ids: [FLAG_ID] })
+    expect(res.status).toBe(500)
   })
 })

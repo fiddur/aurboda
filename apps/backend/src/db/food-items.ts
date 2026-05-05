@@ -253,19 +253,23 @@ export const updateFoodItem = async (
  *   value the meal needs is already snapshotted onto the junction row.
  */
 export const deleteFoodItem = async (user: string, id: string): Promise<boolean> => {
-  const usedAsIngredient = await query(
-    user,
-    'SELECT 1 FROM food_item_ingredients WHERE ingredient_food_item_id = $1 LIMIT 1',
-    [id],
-  )
-  if (usedAsIngredient.rows.length > 0) {
-    throw new Error(
-      'Cannot delete: this food item is used as an ingredient in one or more recipes. Remove it from those recipes (or merge into a replacement) first.',
-    )
-  }
-
   try {
     await query(user, 'BEGIN')
+    // Re-check inside the txn with FOR SHARE so a concurrent INSERT into
+    // food_item_ingredients blocks until our transaction completes — without
+    // this, the gap between the SELECT and DELETE is a TOCTOU window where a
+    // recipe could silently lose an ingredient pointer.
+    const usedAsIngredient = await query(
+      user,
+      'SELECT 1 FROM food_item_ingredients WHERE ingredient_food_item_id = $1 LIMIT 1 FOR SHARE',
+      [id],
+    )
+    if (usedAsIngredient.rows.length > 0) {
+      await query(user, 'ROLLBACK').catch(() => {})
+      throw new Error(
+        'Cannot delete: this food item is used as an ingredient in one or more recipes. Remove it from those recipes (or merge into a replacement) first.',
+      )
+    }
     // Reference dangling: NULL out every pointer to this id.
     await query(
       user,

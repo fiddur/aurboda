@@ -78,14 +78,21 @@ function FoodItemChip({
   const queryClient = useQueryClient()
   // Local optimistic state of which flag IDs are currently assigned. Seeded
   // from the meal snapshot — the chip doesn't fetch live state to avoid an
-  // extra round trip per chip on page load.
-  const [localFlagIds, setLocalFlagIds] = useState<Set<string>>(() => {
-    const initialIds = new Set<string>()
+  // extra round trip per chip on page load. The seed is re-synced via
+  // useEffect below whenever the meal-junction snapshot or the flag list
+  // changes, so a refetch from another tab isn't masked by stale state.
+  const [localFlagIds, setLocalFlagIds] = useState<Set<string>>(new Set())
+  const initialKey = `${initialFlagNames.join('|')}::${flags.map((f) => f.id).join('|')}`
+  useEffect(() => {
+    const next = new Set<string>()
     for (const flag of flags) {
-      if (initialFlagNames.includes(flag.name)) initialIds.add(flag.id)
+      if (initialFlagNames.includes(flag.name)) next.add(flag.id)
     }
-    return initialIds
-  })
+    setLocalFlagIds(next)
+    // initialKey is a stable hash of the inputs — using it as the dep keeps
+    // the comparison shallow without rebuilding the set on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialKey])
 
   useEffect(() => {
     if (!open) return
@@ -101,10 +108,15 @@ function FoodItemChip({
       if (!foodItemId) return Promise.resolve()
       return setFoodItemSensitivities(foodItemId, flagIds)
     },
-    // Re-snapshotting historical meals isn't automatic — they keep their
-    // frozen flag list until the user hits the food-item page's
-    // re-snapshot button. New meals from this point on pick up the change.
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['foodItem', foodItemId] }),
+    // The flag change applies to FUTURE meals immediately. Historical meal
+    // snapshots stay frozen until the user hits "re-snapshot" on the
+    // food-item page — invalidate the meals query so the re-fetch shows
+    // any newly-snapshotted state, but the chip dot for past meals stays
+    // until those snapshots are refreshed.
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['foodItem', foodItemId] })
+      queryClient.invalidateQueries({ queryKey: ['meals'] })
+    },
   })
 
   const toggleFlag = (flagId: string, checked: boolean) => {

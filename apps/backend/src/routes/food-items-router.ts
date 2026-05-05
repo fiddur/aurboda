@@ -350,11 +350,11 @@ export const createFoodItemsRouter = (authMiddleware: AnyMiddleware, centralDb: 
         await dbSetFoodItemSensitivities(user, id, req.body.sensitivity_flag_ids)
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Failed to set sensitivities'
-        // FK violation when a flag id doesn't exist surfaces as a 400.
-        return res.status(/foreign key|violates/i.test(message) ? 400 : 500).json({
-          error: message,
-          success: false,
-        })
+        // PG 23503 = foreign_key_violation — surfaces when a flag id doesn't
+        // exist. Match on the structured code rather than the (unstable)
+        // English message text.
+        const code = err instanceof Error ? (err as Error & { code?: string }).code : undefined
+        return res.status(code === '23503' ? 400 : 500).json({ error: message, success: false })
       }
       const detail = await service.getDetail(user, id)
       if (!detail) return res.status(404).json({ error: 'Food item not found', success: false })

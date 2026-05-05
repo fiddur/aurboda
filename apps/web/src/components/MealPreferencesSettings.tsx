@@ -35,13 +35,13 @@ export function MealPreferencesSettings() {
   })
   const isLoading = settingsLoading || flagsLoading
 
-  const [newArea, setNewArea] = useState('')
+  const [newFlagName, setNewFlagName] = useState('')
   const [newSlotName, setNewSlotName] = useState('')
   const [newSlotHour, setNewSlotHour] = useState('12')
   const [saveStatus, setSaveStatus] = useState<SaveStatus>({ status: 'idle' })
 
   const currentSlots: MealSlot[] = settings?.meal_slots ?? []
-  const currentAreas: string[] = flags.map((f) => f.name)
+  const currentFlagNames: string[] = flags.map((f) => f.name)
 
   // Save immediately on any change (settings — meal slots only now; flags
   // are managed via the dedicated /sensitivity-flags endpoint).
@@ -89,16 +89,16 @@ export function MealPreferencesSettings() {
   }
 
   // Sensitivity flags — write through the dedicated endpoint
-  const addArea = () => {
-    const trimmed = newArea.trim()
-    if (!trimmed || currentAreas.includes(trimmed)) return
+  const addFlag = () => {
+    const trimmed = newFlagName.trim()
+    if (!trimmed || currentFlagNames.includes(trimmed)) return
     setSaveStatus({ status: 'saving' })
     addFlagMutation.mutate(trimmed)
-    setNewArea('')
+    setNewFlagName('')
   }
 
-  const removeArea = (area: string) => {
-    const flag = flags.find((f) => f.name === area)
+  const removeFlag = (name: string) => {
+    const flag = flags.find((f) => f.name === name)
     if (!flag) return
     setSaveStatus({ status: 'saving' })
     deleteFlagMutation.mutate(flag.id)
@@ -141,14 +141,14 @@ export function MealPreferencesSettings() {
         <p class="subsection-desc">Flags for categorizing meals (e.g., gluten, dairy, keto, cheat day).</p>
 
         <div class="area-list">
-          {currentAreas.map((area) => (
-            <div key={area} class="area-chip">
-              <span>{area}</span>
+          {currentFlagNames.map((flagName) => (
+            <div key={flagName} class="area-chip">
+              <span>{flagName}</span>
               <button
                 type="button"
                 class="chip-remove"
-                onClick={() => removeArea(area)}
-                aria-label={`Remove ${area}`}
+                onClick={() => removeFlag(flagName)}
+                aria-label={`Remove ${flagName}`}
               >
                 &times;
               </button>
@@ -160,11 +160,11 @@ export function MealPreferencesSettings() {
           <input
             type="text"
             placeholder="Add meal flag..."
-            value={newArea}
-            onInput={(e) => setNewArea((e.target as HTMLInputElement).value)}
-            onKeyDown={(e) => e.key === 'Enter' && addArea()}
+            value={newFlagName}
+            onInput={(e) => setNewFlagName((e.target as HTMLInputElement).value)}
+            onKeyDown={(e) => e.key === 'Enter' && addFlag()}
           />
-          <button type="button" class="btn-secondary" onClick={addArea}>
+          <button type="button" class="btn-secondary" onClick={addFlag}>
             Add
           </button>
         </div>

@@ -398,14 +398,24 @@ const ensureFlagsInTable = async (db: Client, names: Iterable<string>): Promise<
   const flagIdByName = new Map<string, string>()
   let sortOrder = 0
   for (const name of names) {
+    // INSERT … ON CONFLICT DO NOTHING returns no row when the conflict path
+    // is taken, so look up the existing id with a fallback SELECT. The
+    // earlier "DO UPDATE SET name = EXCLUDED.name" trick worked but was a
+    // no-op write that confused readers and silently swallowed `sort_order`
+    // on re-runs after a partial failure.
     const inserted = await query(
       db,
       `INSERT INTO sensitivity_flags (name, sort_order) VALUES ($1, $2)
-       ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name
-       RETURNING id, name`,
+       ON CONFLICT (name) DO NOTHING
+       RETURNING id`,
       [name, sortOrder++],
     )
-    flagIdByName.set(name, inserted.rows[0].id as string)
+    let id = inserted.rows[0]?.id as string | undefined
+    if (!id) {
+      const existing = await query(db, `SELECT id FROM sensitivity_flags WHERE name = $1`, [name])
+      id = existing.rows[0]?.id as string | undefined
+    }
+    if (id) flagIdByName.set(name, id)
   }
   return flagIdByName
 }
@@ -435,6 +445,9 @@ const backfillFoodItemSensitivities = async (
     }
   }
 }
+
+/** @internal Exported for testing — see db/sensitivities-migration.test.ts. */
+export const _backfillSensitivityFlags = async (db: Client) => backfillSensitivityFlags(db)
 
 const backfillSensitivityFlags = async (db: Client) => {
   // Skip if there's already data — don't clobber the user's later edits.

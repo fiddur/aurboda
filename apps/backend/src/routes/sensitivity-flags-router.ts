@@ -23,6 +23,10 @@ import {
 import { type AnyMiddleware, type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody } from '../validation.ts'
 
+/** PG error code 23505 = unique_violation. The DB driver surfaces it on `err.code`. */
+const isUniqueViolation = (err: unknown): boolean =>
+  err instanceof Error && (err as Error & { code?: string }).code === '23505'
+
 const serializeFlag = (f: SensitivityFlag) => ({
   id: f.id,
   name: f.name,
@@ -48,11 +52,10 @@ export const createSensitivityFlagsRouter = (authMiddleware: AnyMiddleware): Typ
     async (req, res) => {
       try {
         const flag = await insertSensitivityFlag(req.user!, req.body)
-        res.json({ data: serializeFlag(flag), success: true })
+        res.status(201).json({ data: serializeFlag(flag), success: true })
       } catch (err) {
-        // Unique-name violation surfaces here.
         const message = err instanceof Error ? err.message : 'Insert failed'
-        res.status(/duplicate|unique/i.test(message) ? 409 : 500).json({ error: message, success: false })
+        res.status(isUniqueViolation(err) ? 409 : 500).json({ error: message, success: false })
       }
     },
   )
@@ -68,7 +71,7 @@ export const createSensitivityFlagsRouter = (authMiddleware: AnyMiddleware): Typ
         res.json({ data: serializeFlag(flag), success: true })
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Update failed'
-        res.status(/duplicate|unique/i.test(message) ? 409 : 500).json({ error: message, success: false })
+        res.status(isUniqueViolation(err) ? 409 : 500).json({ error: message, success: false })
       }
     },
   )
