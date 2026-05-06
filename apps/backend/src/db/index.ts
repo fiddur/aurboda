@@ -332,6 +332,16 @@ export {
 // Uploaded icons
 export { deleteIcon, getIcon, insertIcon } from './icons.ts'
 
+// Shared food-item overrides (per-user customizations layered onto central rows)
+export {
+  clearSharedFoodItemOverride,
+  getSharedFoodItemOverride,
+  getSharedFoodItemOverridesByIds,
+  setSharedFoodItemOverride,
+  type SharedFoodItemOverride,
+  type SharedFoodItemOverrideInput,
+} from './shared-food-item-overrides.ts'
+
 // Settings
 export { getUserSettings, upsertUserSettings } from './settings.ts'
 

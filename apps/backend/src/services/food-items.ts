@@ -34,6 +34,7 @@ import {
   updateFoodItem as dbUpdateFoodItem,
 } from '../db/food-items.ts'
 import { getFoodItemSensitivities } from '../db/sensitivities.ts'
+import { getSharedFoodItemOverridesByIds } from '../db/shared-food-item-overrides.ts'
 
 /**
  * `MergedFoodItem` is intentionally the union of user and central entity
@@ -284,12 +285,49 @@ export const aggregateNutrientsFromIngredients = (ingredients: ResolvedIngredien
   return { nutrient_data_incomplete: incomplete, values }
 }
 
+/**
+ * Merge per-user overrides onto a list of central items. Central rows are
+ * read-only (one canonical LSV entry serves every user), so user-specific
+ * customizations live in `shared_food_item_overrides` and are layered in at
+ * read time.
+ *
+ * `override.icon` semantics: a string sets the icon, `null` explicitly hides
+ * the central icon (user picked "no icon"), and a missing override row falls
+ * through to the central value untouched.
+ */
+const applySharedOverrides = async (
+  user: string,
+  items: SharedFoodItemEntity[],
+): Promise<SharedFoodItemEntity[]> => {
+  if (items.length === 0) return items
+  const overrides = await getSharedFoodItemOverridesByIds(
+    user,
+    items.map((i) => i.id),
+  )
+  if (overrides.size === 0) return items
+  return items.map((item) => {
+    const override = overrides.get(item.id)
+    if (!override) return item
+    return { ...item, icon: override.icon ?? undefined }
+  })
+}
+
+const applySharedOverride = async (
+  user: string,
+  item: SharedFoodItemEntity | null,
+): Promise<SharedFoodItemEntity | null> => {
+  if (!item) return item
+  const [decorated] = await applySharedOverrides(user, [item])
+  return decorated
+}
+
 export const createFoodItemsService = (centralDb: CentralDb): FoodItemsService => ({
   search: async (user, q, limit = 20) => {
-    const [userItems, sharedItems] = await Promise.all([
+    const [userItems, rawSharedItems] = await Promise.all([
       searchUserFoodItems(user, q, limit),
       centralDb.searchSharedFoodItems(q, limit),
     ])
+    const sharedItems = await applySharedOverrides(user, rawSharedItems)
     // Merge by quality tier so high-quality central LSV entries surface
     // above kcal-only oura imports. User items come first in the spread,
     // and Array.prototype.sort is stable since ES2019 — so within a tier,
@@ -305,20 +343,20 @@ export const createFoodItemsService = (centralDb: CentralDb): FoodItemsService =
   getById: async (user, id) => {
     const fromUser = await getUserFoodItemById(user, id)
     if (fromUser) return fromUser
-    return centralDb.getSharedFoodItemById(id)
+    return applySharedOverride(user, await centralDb.getSharedFoodItemById(id))
   },
 
   getByName: async (user, name) => {
     const fromUser = await getUserFoodItemByName(user, name)
     if (fromUser) return fromUser
-    return centralDb.getSharedFoodItemByName(name)
+    return applySharedOverride(user, await centralDb.getSharedFoodItemByName(name))
   },
 
   findOrCreate: async (user, name, defaults) => {
     // Prefer the central canonical entry over creating a per-user duplicate.
     // Exact name match only — fuzzy resolution would silently bind a meal to
     // the wrong food item.
-    const central = await centralDb.getSharedFoodItemByName(name)
+    const central = await applySharedOverride(user, await centralDb.getSharedFoodItemByName(name))
     if (central) return central
     const fromUser = await getUserFoodItemByName(user, name)
     if (fromUser) return fromUser
@@ -342,9 +380,13 @@ export const createFoodItemsService = (centralDb: CentralDb): FoodItemsService =
         if (rows.length === 0) return { item: fromUser, sensitivities }
         const resolved: ResolvedIngredient[] = await Promise.all(
           rows.map(async (row) => {
+            const fromUserIng = await getUserFoodItemById(user, row.ingredient_food_item_id)
             const food =
-              (await getUserFoodItemById(user, row.ingredient_food_item_id)) ??
-              (await centralDb.getSharedFoodItemById(row.ingredient_food_item_id))
+              fromUserIng ??
+              (await applySharedOverride(
+                user,
+                await centralDb.getSharedFoodItemById(row.ingredient_food_item_id),
+              ))
             return { food, row }
           }),
         )
@@ -365,14 +407,15 @@ export const createFoodItemsService = (centralDb: CentralDb): FoodItemsService =
       const refId = fromUser.reference_food_item_id as string | undefined
       if (refId) {
         const refFood =
-          (await getUserFoodItemById(user, refId)) ?? (await centralDb.getSharedFoodItemById(refId))
+          (await getUserFoodItemById(user, refId)) ??
+          (await applySharedOverride(user, await centralDb.getSharedFoodItemById(refId)))
         if (refFood && !refFood.is_composite) {
           return { ...enrichWithReference(fromUser, refFood), sensitivities }
         }
       }
       return { item: fromUser, sensitivities }
     }
-    const fromCentral = await centralDb.getSharedFoodItemById(id)
+    const fromCentral = await applySharedOverride(user, await centralDb.getSharedFoodItemById(id))
     return fromCentral ? { item: fromCentral, sensitivities } : null
   },
 

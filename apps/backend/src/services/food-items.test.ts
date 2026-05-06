@@ -28,8 +28,13 @@ vi.mock('../db/sensitivities.ts', () => ({
   getFoodItemSensitivities: vi.fn().mockResolvedValue([]),
 }))
 
+vi.mock('../db/shared-food-item-overrides.ts', () => ({
+  getSharedFoodItemOverridesByIds: vi.fn().mockResolvedValue(new Map()),
+}))
+
 const dbModule = await import('../db/food-items.ts')
 const ingredientsModule = await import('../db/food-item-ingredients.ts')
+const overridesModule = await import('../db/shared-food-item-overrides.ts')
 
 const userItem = (id: string, name: string): FoodItemEntity =>
   ({
@@ -619,5 +624,96 @@ describe('getEffectiveNutrients', () => {
     const eff = getEffectiveNutrients(detail)
     expect(eff.calories).toBe(100)
     expect(eff.fiber).toBe(3)
+  })
+})
+
+describe('createFoodItemsService — shared item overrides', () => {
+  test('search applies icon override to central items only', async () => {
+    const lsv = sharedItem('c1', 'Banan')
+    lsv.icon = '🍌' // central icon
+    vi.mocked(dbModule.searchFoodItems).mockResolvedValue([])
+    const central = fakeCentral()
+    vi.mocked(central.searchSharedFoodItems).mockResolvedValue([lsv])
+    vi.mocked(overridesModule.getSharedFoodItemOverridesByIds).mockResolvedValue(
+      new Map([
+        [
+          'c1',
+          {
+            shared_food_item_id: 'c1',
+            icon: '🥕',
+            created_at: new Date(),
+            updated_at: new Date(),
+          },
+        ],
+      ]),
+    )
+    const service = createFoodItemsService(central)
+
+    const results = await service.search('user', 'banan')
+    expect(results.map((r) => r.icon)).toEqual(['🥕'])
+  })
+
+  test('null override icon hides the central icon', async () => {
+    const lsv = sharedItem('c1', 'Banan')
+    lsv.icon = '🍌'
+    const central = fakeCentral()
+    vi.mocked(central.getSharedFoodItemById).mockResolvedValue(lsv)
+    vi.mocked(dbModule.getFoodItemById).mockResolvedValue(null)
+    vi.mocked(overridesModule.getSharedFoodItemOverridesByIds).mockResolvedValue(
+      new Map([
+        [
+          'c1',
+          {
+            shared_food_item_id: 'c1',
+            icon: null,
+            created_at: new Date(),
+            updated_at: new Date(),
+          },
+        ],
+      ]),
+    )
+    const service = createFoodItemsService(central)
+
+    const result = await service.getById('user', 'c1')
+    expect(result?.icon).toBeUndefined()
+  })
+
+  test('missing override row leaves central item unchanged', async () => {
+    const lsv = sharedItem('c1', 'Banan')
+    lsv.icon = '🍌'
+    const central = fakeCentral()
+    vi.mocked(central.getSharedFoodItemByName).mockResolvedValue(lsv)
+    vi.mocked(dbModule.getFoodItemByName).mockResolvedValue(null)
+    vi.mocked(overridesModule.getSharedFoodItemOverridesByIds).mockResolvedValue(new Map())
+    const service = createFoodItemsService(central)
+
+    const result = await service.getByName('user', 'Banan')
+    expect(result?.icon).toBe('🍌')
+  })
+
+  test('overrides do not touch per-user items', async () => {
+    const u1 = userItem('u1', 'Banan')
+    u1.icon = '🍌'
+    vi.mocked(dbModule.getFoodItemById).mockResolvedValue(u1)
+    const central = fakeCentral()
+    // Even if a stray override row existed at the same id, per-user items
+    // resolve before central — the override path is never consulted.
+    vi.mocked(overridesModule.getSharedFoodItemOverridesByIds).mockResolvedValue(
+      new Map([
+        [
+          'u1',
+          {
+            shared_food_item_id: 'u1',
+            icon: '🚫',
+            created_at: new Date(),
+            updated_at: new Date(),
+          },
+        ],
+      ]),
+    )
+    const service = createFoodItemsService(central)
+
+    const result = await service.getById('user', 'u1')
+    expect(result?.icon).toBe('🍌')
   })
 })

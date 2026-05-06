@@ -330,4 +330,22 @@ export const mealsTables: Record<string, string> = {
     CREATE INDEX IF NOT EXISTS idx_food_item_sensitivities_flag
       ON food_item_sensitivities (sensitivity_flag_id)
   `,
+
+  // Per-user customizations layered onto central shared_food_items rows. The
+  // shared library is read-only from a user's perspective (a single LSV row
+  // is the same for everyone), so when a user wants their own icon (or, in
+  // the future, default_quantity / display name / etc.) we keep the central
+  // row pristine and stash the overrides here. Each NULL column means "no
+  // override applied" — the central value passes through. Designed to grow:
+  // adding columns is an idempotent ALTER in connection.ts.
+  //
+  // Soft pointer on shared_food_item_id (no FK; central lives in another DB).
+  shared_food_item_overrides: `
+    CREATE TABLE IF NOT EXISTS shared_food_item_overrides (
+      shared_food_item_id  UUID PRIMARY KEY,
+      icon                 TEXT,
+      created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `,
 }

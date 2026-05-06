@@ -12,6 +12,7 @@ import {
   foodItemsQuerySchema,
   setFoodItemIngredientsBodySchema,
   setFoodItemReferenceBodySchema,
+  setSharedFoodItemOverrideBodySchema,
   updateFoodItemBodySchema,
 } from '@aurboda/api-spec'
 import { z } from 'zod'
@@ -28,6 +29,11 @@ import {
   updateFoodItem,
   upsertFoodItem,
 } from '../db/index.ts'
+import {
+  clearSharedFoodItemOverride,
+  getSharedFoodItemOverride,
+  setSharedFoodItemOverride,
+} from '../db/shared-food-item-overrides.ts'
 import {
   cacheCompositeNutrients,
   clearCompositeNutrientCache,
@@ -244,6 +250,52 @@ export const registerFoodItemTools = (server: McpServer, user: string, centralDb
       } catch (err) {
         return errorResponse(err instanceof Error ? err.message : 'Preview failed')
       }
+    },
+  )
+
+  server.tool(
+    'set_shared_food_item_override',
+    [
+      'Layer a per-user override onto a central shared food item (e.g. set your own icon on a Livsmedelsverket entry without forking it).',
+      'The id must resolve to a central item — per-user items have no override layer; edit them directly with update_food_item.',
+      'Pass `icon: null` to explicitly hide the central icon, or omit the field to leave it unchanged. To revert to the central value entirely, use clear_shared_food_item_override.',
+    ].join(' '),
+    {
+      id: z.string().uuid().describe('Central shared food item ID to override'),
+      ...setSharedFoodItemOverrideBodySchema.shape,
+    },
+    async ({ id, ...input }) => {
+      const central = await centralDb.getSharedFoodItemById(id)
+      if (!central) {
+        const userItem = await getUserFoodItemById(user, id)
+        return errorResponse(
+          userItem
+            ? 'Per-user items have no override layer — edit them directly via update_food_item'
+            : 'Food item not found',
+        )
+      }
+      const override = await setSharedFoodItemOverride(user, id, input)
+      return jsonResponse({ data: override, success: true })
+    },
+  )
+
+  server.tool(
+    'clear_shared_food_item_override',
+    "Remove the user's override layer on a central shared food item, reverting to the central row's values.",
+    { id: z.string().uuid().describe('Central shared food item ID whose override should be cleared') },
+    async ({ id }) => {
+      const central = await centralDb.getSharedFoodItemById(id)
+      if (!central) {
+        const userItem = await getUserFoodItemById(user, id)
+        return errorResponse(
+          userItem
+            ? 'Per-user items have no override layer — edit them directly via update_food_item'
+            : 'Food item not found',
+        )
+      }
+      await clearSharedFoodItemOverride(user, id)
+      const override = await getSharedFoodItemOverride(user, id)
+      return jsonResponse({ data: { cleared: !override, shared_food_item_id: id }, success: true })
     },
   )
 
