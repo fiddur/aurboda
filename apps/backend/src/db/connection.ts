@@ -865,6 +865,15 @@ export const migrateSchema = async (user: string) => {
       db,
       `ALTER TABLE screentime_categories ADD COLUMN IF NOT EXISTS exclude_from_screentime BOOLEAN DEFAULT FALSE`,
     )
+    await query(
+      db,
+      `ALTER TABLE screentime_categories ADD COLUMN IF NOT EXISTS activity_type_name VARCHAR(100)`,
+    )
+    await query(
+      db,
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_screentime_categories_activity_type_name
+         ON screentime_categories (activity_type_name) WHERE activity_type_name IS NOT NULL`,
+    )
   }
 
   if (existingTableNames.has('outbound_sync_queue')) {

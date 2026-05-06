@@ -221,6 +221,8 @@ export interface ScreentimeCategory {
   score?: number
   exclude_from_screentime?: boolean
   sort_order: number
+  /** Slug pointing at the linked `activity_type_definitions` row. Set on first sync; never auto-changed. */
+  activity_type_name?: string
   created_at: Date
   updated_at: Date
 }

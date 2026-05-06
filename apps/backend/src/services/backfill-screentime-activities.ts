@@ -20,6 +20,7 @@ import type { ProductivityRecord } from '../db/types.ts'
 import { query } from '../db/connection.ts'
 import { getScreentimeCategories, getSyncState, insertActivities, upsertSyncState } from '../db/index.ts'
 import { buildScreentimeActivitySpans, spansToActivities } from './screentime-activities.ts'
+import { ensureAllCategoriesHaveTypes } from './screentime-category-sync.ts'
 
 export interface BackfillResult {
   /** How many screentime activities were upserted. */
@@ -78,6 +79,11 @@ export const backfillScreentimeActivities = async (user: string): Promise<Backfi
     })
     return { created: 0, reason: 'no_records', skipped: true }
   }
+
+  // Ensure derived activity types exist for every category before producing
+  // spans — otherwise spansToActivities falls back to the umbrella `screentime`
+  // type and we'd lose the per-category hierarchy.
+  await ensureAllCategoriesHaveTypes(user, categories)
 
   const spans = buildScreentimeActivitySpans(records, categories)
   const activities = spansToActivities(spans)

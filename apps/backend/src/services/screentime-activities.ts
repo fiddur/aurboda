@@ -1,10 +1,12 @@
 /**
- * Convert categorized productivity records into `screentime` activities.
+ * Convert categorized productivity records into screentime activities.
  *
  * We mirror the frontend `productivityMerge.ts` contract: adjacent records of
  * the same resolved category within MERGE_GAP_MS collapse into a single span.
- * Each span becomes an activity with activity_type='screentime' and
- * data.category_path set to the full category path joined by ' > '.
+ * Each span becomes an activity whose `activity_type` is the category's
+ * derived type slug (one type per category, mirroring the category hierarchy
+ * via `parent_type`). Categories that haven't been linked yet — legacy data
+ * before the link migration ran — fall back to the umbrella `screentime` type.
  *
  * Uncategorized records and records under categories flagged
  * exclude_from_screentime are skipped — they remain in the productivity table
@@ -41,13 +43,24 @@ export const isCategoryExcluded = (categoryPath: string[], excludedPaths: string
       categoryPath.length >= excluded.length && excluded.every((seg, idx) => seg === categoryPath[idx]),
   )
 
+/** Fallback activity type when a category isn't linked yet (pre-migration data). */
+const UMBRELLA_TYPE = 'screentime'
+
 interface Span {
   category_path: string[]
+  /** Derived activity type slug for this span's category. Falls back to `screentime` for unlinked legacy categories. */
+  activity_type: string
   source: string
   start_time: Date
   end_time: Date
   score?: number
 }
+
+const findCategoryByPath = (
+  path: string[],
+  categories: ScreentimeCategory[],
+): ScreentimeCategory | undefined =>
+  categories.find((c) => c.name.length === path.length && c.name.every((seg, i) => seg === path[i]))
 
 /**
  * Group records by (source, resolved_category) and merge adjacent same-group
@@ -78,7 +91,10 @@ export const buildScreentimeActivitySpans = (
     const sorted = [...group].sort((a, b) => a.start_time.getTime() - b.start_time.getTime())
     const first = sorted[0]
     const score = getScoreForCategory(first.resolved_category!, categories)
+    const matchingCategory = findCategoryByPath(first.resolved_category!, categories)
+    const activityType = matchingCategory?.activity_type_name ?? UMBRELLA_TYPE
     const makeSpan = (r: ProductivityRecord): Span => ({
+      activity_type: activityType,
       category_path: r.resolved_category!,
       end_time: r.end_time,
       source: r.source!,
@@ -108,21 +124,25 @@ export const buildScreentimeActivitySpans = (
 /**
  * Convert spans to Activity records for bulk insert.
  *
- * external_id is deterministic: `${source}_${startEpoch}_${categoryPath}`.
- * Re-running sync or regenerating after category changes upserts cleanly
- * thanks to the (source, external_id) unique index.
+ * external_id is deterministic: `${source}_${startEpoch}_${activity_type}`.
+ * The activity_type slug replaced the joined category path in the v2 format
+ * because slugs are stable across category renames (a renamed category keeps
+ * its slug, so re-syncs upsert onto the same row). v1 activities written with
+ * `${source}_${startEpoch}_${categoryPath}` and `activity_type='screentime'`
+ * remain queryable but won't collide with v2 inserts — they sit in their own
+ * keyspace until #652 backfills them under the new types.
  */
 export const spansToActivities = (spans: Span[]): Activity[] =>
   spans.map((span) => {
     const categoryPath = categoryPathToString(span.category_path)
     return {
-      activity_type: 'screentime',
+      activity_type: span.activity_type,
       data: {
         category_path: categoryPath,
         ...(span.score !== undefined ? { score: span.score } : {}),
       },
       end_time: span.end_time,
-      external_id: `${span.source}_${span.start_time.getTime()}_${categoryPath}`,
+      external_id: `${span.source}_${span.start_time.getTime()}_${span.activity_type}`,
       source: span.source as Activity['source'],
       start_time: span.start_time,
     }

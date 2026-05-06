@@ -25,6 +25,10 @@ export const screentimeRuleTypeSchema = z.enum(['regex', 'none']).meta({
  */
 export const screentimeCategorySchema = z
   .object({
+    activity_type_name: z.string().optional().meta({
+      description:
+        'Slug of the linked `activity_type_definitions` row — set on first sync and stable across category renames. Read-only.',
+    }),
     color: z
       .string()
       .optional()

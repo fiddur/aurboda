@@ -27,6 +27,11 @@ import {
   upsertScreentimeCategory,
 } from '../db/index.ts'
 import { auditError } from './audit-log.ts'
+import {
+  ensureAllCategoriesHaveTypes,
+  ensureCategoryHasType,
+  recomputeCategoryParentType,
+} from './screentime-category-sync.ts'
 
 // ============================================================================
 // Category Resolution
@@ -181,6 +186,17 @@ export const listCategories = async (user: string) => getScreentimeCategories(us
 export const createCategory = async (user: string, input: ScreentimeCategoryInput) => {
   const result = await insertScreentimeCategory(user, input)
 
+  // Mirror into activity_type_definitions so screentime activities for this
+  // category will use a derived type (one type per category) instead of the
+  // generic `screentime` umbrella.
+  try {
+    const all = await getScreentimeCategories(user)
+    const slug = await ensureCategoryHasType(user, result, all)
+    result.activity_type_name = slug
+  } catch (err) {
+    auditError(user, 'data', 'Failed to mirror category to activity type', { error: String(err) })
+  }
+
   // Fire-and-forget recategorization (only if the new category has a rule)
   if (input.rule_type === 'regex' && input.rule_regex) {
     recategorizeAll(user).catch((err) => {
@@ -226,6 +242,15 @@ export const getCategoryById = async (user: string, id: string) => getScreentime
 export const upsertCategory = async (user: string, id: string, input: ScreentimeCategoryInput) => {
   const result = await upsertScreentimeCategory(user, id, input)
 
+  // Mirror into activity_type_definitions (idempotent — no-op if already linked).
+  try {
+    const all = await getScreentimeCategories(user)
+    const slug = await ensureCategoryHasType(user, result, all)
+    result.activity_type_name = slug
+  } catch (err) {
+    auditError(user, 'data', 'Failed to mirror category to activity type', { error: String(err) })
+  }
+
   // Recategorize if the category has a rule
   if (input.rule_type === 'regex' && input.rule_regex) {
     recategorizeAll(user).catch((err) => {
@@ -245,6 +270,28 @@ export const moveCategoryToParent = async (user: string, id: string, newParentId
   const result = await moveScreentimeCategory(user, id, newParentName)
 
   if (result.updated > 0) {
+    // Recompute parent_type for the moved category and any descendants whose
+    // path prefix changed. Slugs themselves are stable; only `parent_type`
+    // walks to mirror the new hierarchy.
+    try {
+      const all = await getScreentimeCategories(user)
+      const moved = all.find((c) => c.id === id)
+      if (moved) {
+        await recomputeCategoryParentType(user, moved, all)
+        const descendants = all.filter(
+          (c) =>
+            c.id !== id &&
+            c.name.length > moved.name.length &&
+            moved.name.every((seg, i) => c.name[i] === seg),
+        )
+        for (const desc of descendants) await recomputeCategoryParentType(user, desc, all)
+      }
+    } catch (err) {
+      auditError(user, 'data', 'Failed to recompute activity-type parent after move', {
+        error: String(err),
+      })
+    }
+
     recategorizeAll(user).catch((err) => {
       auditError(user, 'data', 'Recategorization after move failed', { error: String(err) })
     })
@@ -302,6 +349,15 @@ export const importFromActivityWatch = async (
       sort_order: c.sort_order,
     })),
   )
+
+  // Mirror all freshly-inserted categories into activity types in depth order.
+  try {
+    await ensureAllCategoriesHaveTypes(user, result)
+  } catch (err) {
+    auditError(user, 'data', 'Failed to mirror imported categories to activity types', {
+      error: String(err),
+    })
+  }
 
   // Fire-and-forget recategorization
   recategorizeAll(user).catch((err) => {

@@ -18,6 +18,7 @@ import {
 } from '../../db/index.ts'
 import { buildScreentimeActivitySpans, spansToActivities } from '../../services/screentime-activities.ts'
 import { categorizeRecords, compileRules } from '../../services/screentime-categories.ts'
+import { ensureAllCategoriesHaveTypes } from '../../services/screentime-category-sync.ts'
 
 /**
  * Process a batch of ActivityWatch events from a push agent.
@@ -65,6 +66,10 @@ export const processActivityWatchEvents = async (
     // Also create merged-span activities so screentime participates in the
     // unified activity pipeline (charts, queries, deduction rules).
     if (categories.length > 0) {
+      // Ensure each category has its derived activity_type linked. Lazy
+      // backfill: pre-link migration users hit this path on their first
+      // sync after deploy and get their types created in depth order.
+      await ensureAllCategoriesHaveTypes(user, categories)
       const spans = buildScreentimeActivitySpans(records, categories)
       if (spans.length > 0) await insertActivities(user, spansToActivities(spans))
     }

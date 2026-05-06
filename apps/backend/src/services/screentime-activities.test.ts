@@ -173,10 +173,11 @@ describe('buildScreentimeActivitySpans', () => {
 })
 
 describe('spansToActivities', () => {
-  test('maps spans to Activity records with stable external_id', () => {
+  test('uses span.activity_type and slug-keyed external_id', () => {
     const startTime = new Date('2026-04-19T10:00:00Z')
     const spans = [
       {
+        activity_type: 'work_programming',
         category_path: ['Work', 'Programming'],
         end_time: new Date('2026-04-19T10:15:00Z'),
         source: 'rescuetime',
@@ -187,10 +188,10 @@ describe('spansToActivities', () => {
     const activities = spansToActivities(spans)
     expect(activities).toEqual([
       {
-        activity_type: 'screentime',
+        activity_type: 'work_programming',
         data: { category_path: 'Work > Programming', score: 2 },
         end_time: new Date('2026-04-19T10:15:00Z'),
-        external_id: `rescuetime_${startTime.getTime()}_Work > Programming`,
+        external_id: `rescuetime_${startTime.getTime()}_work_programming`,
         source: 'rescuetime',
         start_time: startTime,
       },
@@ -200,6 +201,7 @@ describe('spansToActivities', () => {
   test('omits score when not present', () => {
     const spans = [
       {
+        activity_type: 'screentime',
         category_path: ['Work'],
         end_time: new Date('2026-04-19T10:05:00Z'),
         source: 'activitywatch',
@@ -208,5 +210,33 @@ describe('spansToActivities', () => {
     ]
     const activities = spansToActivities(spans)
     expect(activities[0].data).toEqual({ category_path: 'Work' })
+  })
+})
+
+describe('buildScreentimeActivitySpans → derived activity_type', () => {
+  test('uses category.activity_type_name when present', () => {
+    const categories = [cat({ name: ['Work', 'TV'], activity_type_name: 'tv' })]
+    const records = [
+      rec({
+        resolved_category: ['Work', 'TV'],
+        start_time: new Date('2026-04-19T10:00:00Z'),
+        end_time: new Date('2026-04-19T10:05:00Z'),
+      }),
+    ]
+    const spans = buildScreentimeActivitySpans(records, categories)
+    expect(spans[0].activity_type).toBe('tv')
+  })
+
+  test('falls back to umbrella `screentime` when category has no slug yet', () => {
+    const categories = [cat({ name: ['Work'] })]
+    const records = [
+      rec({
+        resolved_category: ['Work'],
+        start_time: new Date('2026-04-19T10:00:00Z'),
+        end_time: new Date('2026-04-19T10:05:00Z'),
+      }),
+    ]
+    const spans = buildScreentimeActivitySpans(records, categories)
+    expect(spans[0].activity_type).toBe('screentime')
   })
 })
