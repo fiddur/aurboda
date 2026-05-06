@@ -4,7 +4,7 @@
  * Canonical food item library — each unique food is a first-class entity.
  */
 
-import { NUTRIENT_FIELD_NAMES } from '@aurboda/api-spec'
+import { foodItemQualityTierSql, NUTRIENT_FIELD_NAMES } from '@aurboda/api-spec'
 
 import type { FoodItemEntity } from './types.ts'
 
@@ -79,8 +79,9 @@ const escapeLikeWildcards = (s: string): string => s.replaceAll(/[\\%_]/g, '\\$&
  * Search food items by name. Substring + accent-folded match wins; a trigram
  * similarity pass on top picks up typos like "hushalsost" → "Hushållsost"
  * once the query is at least TRIGRAM_MIN_QUERY_LENGTH chars. Substring hits
- * always rank above fuzzy-only hits, then earliest match position, then
- * similarity score.
+ * always rank above fuzzy-only hits, then nutrition-data quality tier
+ * (rich-micronutrient items above kcal-only imports), then earliest match
+ * position, then similarity score.
  */
 export const searchFoodItems = async (user: string, q: string, limit = 20): Promise<FoodItemEntity[]> => {
   const trimmed = q.trim()
@@ -95,6 +96,7 @@ export const searchFoodItems = async (user: string, q: string, limit = 20): Prom
         OR ($4 AND similarity(immutable_unaccent(name_lower), immutable_unaccent($2)) > $5)
      ORDER BY
        CASE WHEN immutable_unaccent(name_lower) ILIKE immutable_unaccent($1) ESCAPE '\\' THEN 0 ELSE 1 END,
+       ${foodItemQualityTierSql()},
        POSITION(immutable_unaccent($2) IN immutable_unaccent(name_lower)),
        similarity(immutable_unaccent(name_lower), immutable_unaccent($2)) DESC,
        name_lower

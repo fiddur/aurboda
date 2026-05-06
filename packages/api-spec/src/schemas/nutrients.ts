@@ -130,6 +130,57 @@ export const NUTRIENT_FIELDS = [
 /** All nutrient field names. */
 export const NUTRIENT_FIELD_NAMES = NUTRIENT_FIELDS.map((f) => f.name)
 
+/** Macro field names ('calories' plus the four core macros). */
+export const MACRO_FIELD_NAMES = NUTRIENT_FIELDS.filter((f) => f.category === 'macro').map((f) => f.name)
+
+/** Macro field names excluding 'calories' — used to detect "more than just kcal". */
+export const NON_CALORIE_MACRO_FIELD_NAMES = MACRO_FIELD_NAMES.filter((n) => n !== 'calories')
+
+/**
+ * Micronutrient field names — every nutrient field that is *not* in the
+ * 'macro' category. Used by search ranking to prioritize food items with
+ * richer nutrition data over bare kcal-only entries.
+ */
+export const MICRO_FIELD_NAMES = NUTRIENT_FIELDS.filter((f) => f.category !== 'macro').map((f) => f.name)
+
+/**
+ * Quality tier for ranking food items by how complete their nutrition data
+ * is. Lower tier = better data. Used by food-item search to surface the
+ * Livsmedelsverket reference data above bare kcal-only imports.
+ *
+ *   0 — has at least one micronutrient (vitamin/mineral/amino acid/...)
+ *   1 — has at least one non-calorie macro (protein/carbs/fat/fiber)
+ *   2 — has only calories
+ *   3 — empty (no nutrient data at all)
+ */
+export const getFoodItemQualityTier = (item: Readonly<Record<string, unknown>>): 0 | 1 | 2 | 3 => {
+  const hasValue = (n: string): boolean => {
+    const v = item[n]
+    return typeof v === 'number' && !Number.isNaN(v)
+  }
+  if (MICRO_FIELD_NAMES.some(hasValue)) return 0
+  if (NON_CALORIE_MACRO_FIELD_NAMES.some(hasValue)) return 1
+  if (hasValue('calories')) return 2
+  return 3
+}
+
+/**
+ * SQL fragment that resolves to a 0–3 integer quality tier for a row in
+ * `food_items` or `shared_food_items`. Mirrors `getFoodItemQualityTier`
+ * exactly so the JS-side merge in `FoodItemsService.search` can re-rank
+ * results from both stores against the same tier scale.
+ */
+export const foodItemQualityTierSql = (): string => {
+  const microExpr = MICRO_FIELD_NAMES.map((n) => `${n} IS NOT NULL`).join(' OR ')
+  const macroExpr = NON_CALORIE_MACRO_FIELD_NAMES.map((n) => `${n} IS NOT NULL`).join(' OR ')
+  return `CASE
+    WHEN ${microExpr} THEN 0
+    WHEN ${macroExpr} THEN 1
+    WHEN calories IS NOT NULL THEN 2
+    ELSE 3
+  END`
+}
+
 /** Generate SQL column definitions for all nutrient fields. */
 export const nutrientColumnsDDL = (): string =>
   NUTRIENT_FIELDS.map((f) => `      ${f.name.padEnd(24)} DOUBLE PRECISION`).join(',\n')

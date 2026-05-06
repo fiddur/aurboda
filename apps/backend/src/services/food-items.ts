@@ -11,7 +11,7 @@
  * collide; we don't need a namespace prefix on IDs.
  */
 
-import { NUTRIENT_FIELD_NAMES } from '@aurboda/api-spec'
+import { getFoodItemQualityTier, NUTRIENT_FIELD_NAMES } from '@aurboda/api-spec'
 
 import type { FoodItemEntity } from '../db/types.ts'
 import type { CentralDb } from './central-db.ts'
@@ -290,9 +290,25 @@ export const createFoodItemsService = (centralDb: CentralDb): FoodItemsService =
       searchUserFoodItems(user, q, limit),
       centralDb.searchSharedFoodItems(q, limit),
     ])
-    // User items rank first — their own custom names + the LSV reference set
-    // is the natural ordering. Limit applies to the combined list.
-    return [...userItems, ...sharedItems].slice(0, limit)
+    // Merge by quality tier so high-quality central LSV entries surface
+    // above kcal-only oura imports. User items still win ties so the user's
+    // own well-tagged items remain on top.
+    const merged: { item: MergedFoodItem; tier: 0 | 1 | 2 | 3; userOrigin: 0 | 1; index: number }[] = [
+      ...userItems.map((item, index) => ({
+        item: item as MergedFoodItem,
+        tier: getFoodItemQualityTier(item),
+        userOrigin: 0 as const,
+        index,
+      })),
+      ...sharedItems.map((item, index) => ({
+        item: item as MergedFoodItem,
+        tier: getFoodItemQualityTier(item),
+        userOrigin: 1 as const,
+        index,
+      })),
+    ]
+    merged.sort((a, b) => a.tier - b.tier || a.userOrigin - b.userOrigin || a.index - b.index)
+    return merged.slice(0, limit).map((m) => m.item)
   },
 
   getById: async (user, id) => {

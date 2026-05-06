@@ -132,6 +132,29 @@ describe('Food Items Integration Tests', () => {
       expect(results[0].name).toBe('Arla, Hushållsost')
     })
 
+    test('within substring matches, items with richer nutrition rank higher', async () => {
+      const user = getTestUser()
+
+      // Three items all match "banan" by substring; differ only in nutrition data.
+      await upsertFoodItem(user, { name: 'Banan empty' })
+      await upsertFoodItem(user, { calories: 90, name: 'Banan kcal-only' })
+      await upsertFoodItem(user, { calories: 90, name: 'Banan with macros', protein: 1.1 })
+      await upsertFoodItem(user, {
+        calories: 92,
+        name: 'Banan with micros',
+        potassium: 360,
+        protein: 1.1,
+      })
+
+      const results = await searchFoodItems(user, 'banan', 10)
+      expect(results.map((r) => r.name)).toEqual([
+        'Banan with micros',
+        'Banan with macros',
+        'Banan kcal-only',
+        'Banan empty',
+      ])
+    })
+
     test('returns empty array for empty query', async () => {
       const user = getTestUser()
       await upsertFoodItem(user, { name: 'Banana' })
