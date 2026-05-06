@@ -200,6 +200,71 @@ export const setFoodItemReferenceBodySchema = z
 export type SetFoodItemReferenceBody = z.infer<typeof setFoodItemReferenceBodySchema>
 
 // ============================================================================
+// Shared (central) food-item overrides
+// ============================================================================
+
+/**
+ * Per-user customization layered onto a central shared food-item row. The
+ * central library is read-only from a user's perspective, so any per-user
+ * tweaks (icon today, more fields later) live in this side-table. Each
+ * absent field on the response means "no override applied — central value
+ * passes through"; an explicit `null` (e.g. `icon: null`) means the user
+ * wants no value, hiding the central one.
+ */
+export const sharedFoodItemOverrideSchema = z
+  .object({
+    shared_food_item_id: z
+      .string()
+      .uuid()
+      .meta({ description: 'ID of the central shared food item this override applies to' }),
+    icon: z.string().max(2048).nullable().meta({
+      description: 'User-set icon for the central item; null means "no icon" (explicit override to empty).',
+    }),
+    created_at: z.string().meta({ description: 'Override creation timestamp' }),
+    updated_at: z.string().meta({ description: 'Override last-update timestamp' }),
+  })
+  .meta({
+    description: 'Per-user override of fields on a central shared food item',
+    id: 'SharedFoodItemOverride',
+  })
+
+export type SharedFoodItemOverride = z.infer<typeof sharedFoodItemOverrideSchema>
+
+/**
+ * Body for upserting an override. Fields are independently optional —
+ * omitting a field leaves it untouched on an existing row; passing `null`
+ * writes "no value" semantics for that field.
+ *
+ * At least one override field must be supplied. An empty body is rejected
+ * because it would otherwise create a row with every column NULL, which
+ * the read path cannot distinguish from "user explicitly chose no value"
+ * — silently hiding the central icon. To revert to central, call
+ * DELETE /:id/override (or `clear_shared_food_item_override` over MCP).
+ */
+export const setSharedFoodItemOverrideBodySchema = z
+  .object({
+    icon: z.string().max(2048).nullable().optional().meta({
+      description:
+        'Override icon for the central item. String sets the icon, null hides the central icon, omitted leaves the column unchanged.',
+    }),
+  })
+  .refine((body) => body.icon !== undefined, {
+    message: 'At least one override field must be supplied; clear via DELETE to revert to central',
+  })
+  .meta({
+    description: 'Upsert per-user override columns for a central shared food item',
+    id: 'SetSharedFoodItemOverrideBody',
+  })
+
+export type SetSharedFoodItemOverrideBody = z.infer<typeof setSharedFoodItemOverrideBodySchema>
+
+export const sharedFoodItemOverrideResponseSchema = createDataResponseSchema(
+  sharedFoodItemOverrideSchema,
+).meta({ id: 'SharedFoodItemOverrideResponse' })
+
+export type SharedFoodItemOverrideResponse = z.infer<typeof sharedFoodItemOverrideResponseSchema>
+
+// ============================================================================
 // Request Schemas
 // ============================================================================
 

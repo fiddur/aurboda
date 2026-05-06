@@ -8,6 +8,12 @@ The shared library is a single table — `shared_food_items` — in the **centra
 
 A meal item that points at a shared row stores `food_item_id` as a soft pointer (no FK, since the row lives in a different database). Display name, icon, and nutrient values are snapshotted onto `meal_food_items` at insertion time — meal reads never have to JOIN across databases.
 
+### Per-user overrides
+
+The shared library is read-only from a user's perspective — one canonical LSV row serves every user. To let users customize a shared row without forking it (e.g. their own icon for a generic "Banan" entry), per-user customizations live in `shared_food_item_overrides` (per-user DB), keyed by `shared_food_item_id` as a soft pointer to central. Each override column is layered onto the central row at read time in the food-items service: `string` sets the value, `null` hides the central value, missing row falls through. Today the table holds `icon` only; the design accommodates new fields (default_quantity, display name, …) via idempotent `ALTER TABLE ADD COLUMN IF NOT EXISTS`.
+
+REST endpoints (per shared item id): `GET /api/food-items/:id/override`, `PUT /api/food-items/:id/override`, `DELETE /api/food-items/:id/override`. MCP equivalents: `set_shared_food_item_override`, `clear_shared_food_item_override`. All reject ids that resolve to a per-user item — those are editable directly via the standard food-item routes.
+
 ## What's synced
 
 For each LSV food item we upsert a row into `shared_food_items` with:

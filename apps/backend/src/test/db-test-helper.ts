@@ -85,6 +85,7 @@ export const cleanTestDb = async (): Promise<void> => {
   const tables = [
     'food_item_sensitivities',
     'sensitivity_flags',
+    'shared_food_item_overrides',
     'meal_food_items',
     'food_items',
     'report_entries',
