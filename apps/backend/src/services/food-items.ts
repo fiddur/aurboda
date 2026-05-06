@@ -84,6 +84,8 @@ export interface ReferenceEnrichedFields {
 
 export interface FoodItemDetail {
   item: MergedFoodItem
+  /** True when the item came from the central shared library — read-only, customizable only via the override endpoints. */
+  is_shared: boolean
   /** Present iff the item is a per-user composite. */
   ingredients?: ResolvedIngredient[]
   /** Derived nutrient totals when composite; absent for atomic items. */
@@ -248,8 +250,11 @@ const enrichWithReference = (self: MergedFoodItem, ref: MergedFoodItem): FoodIte
       fields[field] = { origin: 'reference', value: round2(refVal * scale) }
     }
   }
+  // Only per-user atomic items reach reference enrichment — central rows
+  // never carry a reference_food_item_id, so is_shared is always false here.
   return {
     item: self,
+    is_shared: false,
     reference: { food: ref, unit_mismatch },
     reference_enriched: { fields },
   }
@@ -377,7 +382,7 @@ export const createFoodItemsService = (centralDb: CentralDb): FoodItemsService =
       // a reference would be ignored anyway.
       if (fromUser.is_composite) {
         const rows = await dbGetIngredients(user, id)
-        if (rows.length === 0) return { item: fromUser, sensitivities }
+        if (rows.length === 0) return { item: fromUser, is_shared: false, sensitivities }
         // Resolve each ingredient: prefer the per-user row, fall back to the
         // central library. Once we know which ingredients came from central,
         // batch the override lookup so a 10-ingredient recipe makes one
@@ -402,6 +407,7 @@ export const createFoodItemsService = (centralDb: CentralDb): FoodItemsService =
         return {
           derived_nutrients: aggregateNutrientsFromIngredients(resolved),
           ingredients: resolved,
+          is_shared: false,
           item: fromUser,
           sensitivities,
         }
@@ -422,10 +428,10 @@ export const createFoodItemsService = (centralDb: CentralDb): FoodItemsService =
           return { ...enrichWithReference(fromUser, refFood), sensitivities }
         }
       }
-      return { item: fromUser, sensitivities }
+      return { item: fromUser, is_shared: false, sensitivities }
     }
     const fromCentral = await applySharedOverride(user, await centralDb.getSharedFoodItemById(id))
-    return fromCentral ? { item: fromCentral, sensitivities } : null
+    return fromCentral ? { item: fromCentral, is_shared: true, sensitivities } : null
   },
 
   wouldCreateCycle: async (user, parentId, ingredientIds) => {

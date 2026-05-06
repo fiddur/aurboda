@@ -471,8 +471,22 @@ describe('createFoodItemsService.getDetail — reference enrichment', () => {
 
     const detail = await service.getDetail('user', 'u1')
     expect(detail?.item.id).toBe('u1')
+    expect(detail?.is_shared).toBe(false)
     expect(detail?.reference).toBeUndefined()
     expect(detail?.reference_enriched).toBeUndefined()
+  })
+
+  test('flags is_shared on details that fall through to the central library', async () => {
+    // Per-user lookup misses; central does match. UI uses this flag to switch
+    // the icon save from PATCH to the override endpoint.
+    vi.mocked(dbModule.getFoodItemById).mockResolvedValue(null)
+    const central = fakeCentral()
+    vi.mocked(central.getSharedFoodItemById).mockResolvedValue(sharedItem('c1', 'Banana'))
+    vi.mocked(ingredientsModule.getIngredients).mockResolvedValue([])
+
+    const detail = await createFoodItemsService(central).getDetail('user', 'c1')
+    expect(detail?.item.id).toBe('c1')
+    expect(detail?.is_shared).toBe(true)
   })
 
   test('emits per-field origin info: self wins, reference fills empty (scaled by serving)', async () => {
@@ -596,6 +610,7 @@ describe('getEffectiveNutrients', () => {
     const detail: FoodItemDetail = {
       derived_nutrients: { nutrient_data_incomplete: false, values: { calories: 320, fiber: 0, protein: 1 } },
       ingredients: [],
+      is_shared: false,
       item,
     }
     expect(getEffectiveNutrients(detail)).toEqual({ calories: 320, fiber: 0, protein: 1 })
@@ -604,6 +619,7 @@ describe('getEffectiveNutrients', () => {
   test('reference-enriched — returns the per-field origin values', () => {
     const item = userItem('p', 'Atomic')
     const detail: FoodItemDetail = {
+      is_shared: false,
       item,
       reference: { food: item, unit_mismatch: false },
       reference_enriched: {
@@ -620,7 +636,7 @@ describe('getEffectiveNutrients', () => {
     const item = userItem('p', 'Plain')
     item.calories = 100
     item.fiber = 3
-    const detail: FoodItemDetail = { item }
+    const detail: FoodItemDetail = { is_shared: false, item }
     const eff = getEffectiveNutrients(detail)
     expect(eff.calories).toBe(100)
     expect(eff.fiber).toBe(3)
