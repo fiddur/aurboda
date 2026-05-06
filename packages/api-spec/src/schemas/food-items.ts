@@ -158,6 +158,10 @@ export type ReferenceEnrichedFields = z.infer<typeof referenceEnrichedFieldsSche
 
 export const foodItemDetailSchema = foodItemEntitySchema
   .extend({
+    is_shared: z.boolean().optional().meta({
+      description:
+        'True when this row lives in the central shared library (e.g. Livsmedelsverket). Such rows are read-only — clients must use the `/food-items/:id/override` endpoints (or `set_shared_food_item_override` MCP tool) to customize fields like icon, and PATCH/DELETE on the row itself will 403.',
+    }),
     ingredients: z.array(resolvedFoodItemIngredientSchema).optional(),
     derived_nutrients: z
       .object({

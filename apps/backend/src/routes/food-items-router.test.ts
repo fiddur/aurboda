@@ -289,6 +289,30 @@ describe('POST /food-items/:id/resnapshot-meals', () => {
   })
 })
 
+describe('GET /food-items/:id — is_shared flag', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  test('per-user item → is_shared: false', async () => {
+    const id = '11111111-1111-4111-8111-111111111111'
+    setUserFoodItem(async (_u, fid) => (fid === id ? userItem(id) : null))
+    const res = await supertest(buildApp(fakeCentral())).get(`/food-items/${id}`)
+    expect(res.status).toBe(200)
+    expect(res.body.data.is_shared).toBe(false)
+  })
+
+  test('central library item → is_shared: true (so the UI knows to use the override endpoint)', async () => {
+    const id = '11111111-1111-4111-8111-111111111111'
+    setUserFoodItem(async () => null)
+    const central = fakeCentral()
+    vi.mocked(central.getSharedFoodItemById).mockResolvedValue(sharedItem(id))
+    const res = await supertest(buildApp(central)).get(`/food-items/${id}`)
+    expect(res.status).toBe(200)
+    expect(res.body.data.is_shared).toBe(true)
+  })
+})
+
 describe('PATCH /food-items/:id', () => {
   beforeEach(() => {
     vi.clearAllMocks()

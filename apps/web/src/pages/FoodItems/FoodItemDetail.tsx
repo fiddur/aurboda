@@ -92,6 +92,26 @@ const resnapshotMealsApi = async (id: string): Promise<{ meals_updated: number; 
   return json.data
 }
 
+const setSharedIconOverrideApi = async (id: string, icon: string | null): Promise<void> => {
+  const { token } = auth.value
+  // Clearing the icon → DELETE the whole override row (matches the
+  // "revert to central" semantic the user expects from blanking the field).
+  // Setting an icon → PUT with `{ icon }`. We never call PATCH on a shared row.
+  const init: RequestInit =
+    icon === null
+      ? { headers: { Authorization: `Bearer ${token}` }, method: 'DELETE' }
+      : {
+          body: JSON.stringify({ icon }),
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          method: 'PUT',
+        }
+  const res = await fetch(`${API_URL}/food-items/${id}/override`, init)
+  if (!res.ok) {
+    const json = (await res.json().catch(() => ({}))) as { error?: string }
+    throw new Error(json.error ?? 'Failed to update icon override')
+  }
+}
+
 const setReferenceApi = async (id: string, referenceId: string | null): Promise<ApiFoodItemDetail> => {
   const { token } = auth.value
   const init: RequestInit =
@@ -245,6 +265,22 @@ export function FoodItemDetail() {
     },
   })
 
+  const sharedIconMutation = useMutation({
+    mutationFn: (next: string | null) => setSharedIconOverrideApi(id, next),
+    onError: (err: Error) => setSaveError(err.message ?? 'Save failed'),
+    onSuccess: () => {
+      // The override endpoints don't echo back the merged detail, so refetch
+      // to pick up the new effective icon (and any other override fields
+      // surfaced later).
+      queryClient.invalidateQueries({ queryKey: ['foodItem', id] })
+      queryClient.invalidateQueries({ queryKey: ['foodItems'] })
+      setSaveError(null)
+      setSavedFlash(true)
+      if (flashTimer.current) clearTimeout(flashTimer.current)
+      flashTimer.current = setTimeout(() => setSavedFlash(false), 1200)
+    },
+  })
+
   const deleteMutation = useMutation({
     mutationFn: () => deleteFoodItemApi(id),
     onSuccess: () => {
@@ -360,8 +396,18 @@ export function FoodItemDetail() {
     const next = icon.trim() || null
     const current = item.icon ?? null
     if (next === current) return
+    // Central library rows can't be PATCHed — icon edits go through the
+    // per-user override layer. Other fields (name, default_*, nutrients) are
+    // hidden in the UI for shared rows since they have no override slot yet.
+    if (item.is_shared) {
+      sharedIconMutation.mutate(next)
+      return
+    }
     save({ icon: next })
   }
+
+  const isShared = !!item.is_shared
+  const savePending = updateMutation.isPending || sharedIconMutation.isPending
 
   return (
     <div class="food-item-detail-page">
@@ -370,7 +416,7 @@ export function FoodItemDetail() {
           &larr; Food Items
         </a>
         <div class="fi-detail-actions">
-          <SaveIndicator isPending={updateMutation.isPending} showSaved={savedFlash} error={saveError} />
+          <SaveIndicator isPending={savePending} showSaved={savedFlash} error={saveError} />
           <ConfirmButton
             label={resnapshotMutation.isPending ? 'Re-snapshotting…' : 'Re-snapshot meals'}
             confirmMessage={`Refresh every past meal containing "${item.name}" with the current nutrient values? Other items in those meals are not changed.`}
@@ -378,12 +424,14 @@ export function FoodItemDetail() {
             isPending={resnapshotMutation.isPending}
             buttonClass="btn-secondary"
           />
-          <ConfirmButton
-            label="Delete"
-            confirmMessage={`Delete ${item.name}?`}
-            onConfirm={() => deleteMutation.mutate()}
-            isPending={deleteMutation.isPending}
-          />
+          {!isShared && (
+            <ConfirmButton
+              label="Delete"
+              confirmMessage={`Delete ${item.name}?`}
+              onConfirm={() => deleteMutation.mutate()}
+              isPending={deleteMutation.isPending}
+            />
+          )}
         </div>
       </div>
 
@@ -398,49 +446,33 @@ export function FoodItemDetail() {
         </div>
       )}
 
-      <h1 class="fi-name-heading">
-        {item.icon && isEmoji(item.icon) && <span class="fi-icon-display">{item.icon}</span>}
-        {item.icon && (isUrl(item.icon) || isIconPath(item.icon)) && (
-          <img src={item.icon} alt="" width={24} height={24} class="fi-icon-display-img" />
-        )}
-        <input
-          type="text"
-          class="fi-name-input"
-          value={name}
-          onInput={(e) => setName((e.target as HTMLInputElement).value)}
-          onBlur={commitName}
-        />
-      </h1>
+      {isShared && (
+        <p class="fi-shared-banner" role="note">
+          Shared library item — only the icon can be customized for your account. Other fields are read-only.
+        </p>
+      )}
+
+      <NameHeading item={item} isShared={isShared} name={name} setName={setName} commitName={commitName} />
 
       <div class="fi-icon-row">
         <label class="fi-icon-label">Icon</label>
         <IconInput value={icon} onChange={setIcon} onBlur={commitIcon} />
       </div>
 
-      <div class="fi-meta">
-        {item.source && <span class="fi-source">Source: {item.source}</span>}
-        <span class="fi-default-edit">
-          Default:
-          <input
-            type="number"
-            step="0.1"
-            value={defaultQuantity}
-            placeholder="Qty"
-            onInput={(e) => setDefaultQuantity((e.target as HTMLInputElement).value)}
-            onBlur={commitDefaultQuantity}
-          />
-          <input
-            type="text"
-            value={defaultUnit}
-            placeholder="Unit"
-            onInput={(e) => setDefaultUnit((e.target as HTMLInputElement).value)}
-            onBlur={commitDefaultUnit}
-          />
-        </span>
-      </div>
+      <DefaultMetaRow
+        item={item}
+        isShared={isShared}
+        defaultQuantity={defaultQuantity}
+        defaultUnit={defaultUnit}
+        setDefaultQuantity={setDefaultQuantity}
+        setDefaultUnit={setDefaultUnit}
+        commitDefaultQuantity={commitDefaultQuantity}
+        commitDefaultUnit={commitDefaultUnit}
+      />
 
       <CompositeOrAtomicSection
         item={item}
+        isShared={isShared}
         ingredientsMutation={ingredientsMutation}
         clearMutation={clearMutation}
         referenceMutation={referenceMutation}
@@ -450,8 +482,95 @@ export function FoodItemDetail() {
   )
 }
 
+function NameHeading({
+  item,
+  isShared,
+  name,
+  setName,
+  commitName,
+}: {
+  item: ApiFoodItemDetail
+  isShared: boolean
+  name: string
+  setName: (v: string) => void
+  commitName: () => void
+}) {
+  return (
+    <h1 class="fi-name-heading">
+      {item.icon && isEmoji(item.icon) && <span class="fi-icon-display">{item.icon}</span>}
+      {item.icon && (isUrl(item.icon) || isIconPath(item.icon)) && (
+        <img src={item.icon} alt="" width={24} height={24} class="fi-icon-display-img" />
+      )}
+      {isShared ? (
+        <span class="fi-name-readonly">{item.name}</span>
+      ) : (
+        <input
+          type="text"
+          class="fi-name-input"
+          value={name}
+          onInput={(e) => setName((e.target as HTMLInputElement).value)}
+          onBlur={commitName}
+        />
+      )}
+    </h1>
+  )
+}
+
+function DefaultMetaRow({
+  item,
+  isShared,
+  defaultQuantity,
+  defaultUnit,
+  setDefaultQuantity,
+  setDefaultUnit,
+  commitDefaultQuantity,
+  commitDefaultUnit,
+}: {
+  item: ApiFoodItemDetail
+  isShared: boolean
+  defaultQuantity: string
+  defaultUnit: string
+  setDefaultQuantity: (v: string) => void
+  setDefaultUnit: (v: string) => void
+  commitDefaultQuantity: () => void
+  commitDefaultUnit: () => void
+}) {
+  return (
+    <div class="fi-meta">
+      {item.source && <span class="fi-source">Source: {item.source}</span>}
+      <span class="fi-default-edit">
+        Default:
+        {isShared ? (
+          <span class="fi-default-readonly">
+            {item.default_quantity ?? '—'} {item.default_unit ?? ''}
+          </span>
+        ) : (
+          <>
+            <input
+              type="number"
+              step="0.1"
+              value={defaultQuantity}
+              placeholder="Qty"
+              onInput={(e) => setDefaultQuantity((e.target as HTMLInputElement).value)}
+              onBlur={commitDefaultQuantity}
+            />
+            <input
+              type="text"
+              value={defaultUnit}
+              placeholder="Unit"
+              onInput={(e) => setDefaultUnit((e.target as HTMLInputElement).value)}
+              onBlur={commitDefaultUnit}
+            />
+          </>
+        )}
+      </span>
+    </div>
+  )
+}
+
 interface CompositeProps {
   item: ApiFoodItemDetail
+  isShared: boolean
   ingredientsMutation: { mutate: (ingredients: FoodItemIngredient[]) => void; isPending: boolean }
   clearMutation: { mutate: () => void; isPending: boolean }
   referenceMutation: { mutate: (referenceId: string | null) => void; isPending: boolean }
@@ -460,6 +579,7 @@ interface CompositeProps {
 
 function CompositeOrAtomicSection({
   item,
+  isShared,
   ingredientsMutation,
   clearMutation,
   referenceMutation,
@@ -551,26 +671,54 @@ function CompositeOrAtomicSection({
 
   return (
     <>
-      <div class="composite-toggle-row">
-        <button
-          type="button"
-          class="btn-secondary"
-          onClick={() => setShowAsComposite(true)}
-          disabled={ingredientsMutation.isPending}
-        >
-          Convert to recipe
-        </button>
-        <span class="composite-toggle-hint">
-          Build this item from other foods — its nutrients will be summed from the ingredients.
-        </span>
-      </div>
+      {!isShared && (
+        <>
+          <div class="composite-toggle-row">
+            <button
+              type="button"
+              class="btn-secondary"
+              onClick={() => setShowAsComposite(true)}
+              disabled={ingredientsMutation.isPending}
+            >
+              Convert to recipe
+            </button>
+            <span class="composite-toggle-hint">
+              Build this item from other foods — its nutrients will be summed from the ingredients.
+            </span>
+          </div>
 
-      <ReferencePicker item={item} referenceMutation={referenceMutation} />
+          <ReferencePicker item={item} referenceMutation={referenceMutation} />
+        </>
+      )}
 
       <div class="nutrient-sections">
         {CATEGORIES.map(({ key, label }) => {
           const fields = NUTRIENT_FIELDS.filter((f) => f.category === key)
           if (fields.length === 0) return null
+          // For shared rows, only show categories that have at least one
+          // populated value — central LSV entries have most fields blank,
+          // and rendering empty grids is just noise.
+          if (isShared) {
+            const populated = fields.filter(
+              (f) => typeof item[f.name as keyof ApiFoodItemDetail] === 'number',
+            )
+            if (populated.length === 0) return null
+            return (
+              <div key={key} class="nutrient-section">
+                <h3>{label}</h3>
+                <div class="nutrient-grid">
+                  {populated.map((f) => (
+                    <div key={f.name} class="nutrient-row">
+                      <span class="nutrient-label">{f.label}</span>
+                      <span class="nutrient-value">
+                        {(item[f.name as keyof ApiFoodItemDetail] as number).toFixed(2)} {f.unit}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )
+          }
           return (
             <div key={key} class="nutrient-section">
               <h3>{label}</h3>
