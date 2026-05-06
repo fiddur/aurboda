@@ -373,6 +373,11 @@ fun HealthConnectScreen(
   var permissionStatusMessage by remember { mutableStateOf("Checking permissions...") }
   var backgroundSyncEnabled by remember { mutableStateOf(isBackgroundSyncEnabled(context)) }
   var showBatteryOptimizationDialog by remember { mutableStateOf(false) }
+  val bgSyncStatusFlow = remember(context) {
+    (context.applicationContext as? AurbodaApplication)?.backgroundSyncStatus
+      ?: kotlinx.coroutines.flow.MutableStateFlow(BackgroundSyncStatus())
+  }
+  val bgSyncStatus by bgSyncStatusFlow.collectAsState()
 
   // -- ActivityWatch state --
   var awSyncEnabled by remember { mutableStateOf(isActivityWatchSyncEnabled(context)) }
@@ -431,7 +436,6 @@ fun HealthConnectScreen(
         val sevenDaysAgo = ZonedDateTime.now().minusDays(7).toInstant()
         val now = Instant.now()
         var totalSent = 0
-        reporter.reportDataInstant(sevenDaysAgo)
 
         for (recordType: KClass<out Record> in typesToFetch) {
           try {
@@ -451,7 +455,7 @@ fun HealthConnectScreen(
 
             if (recordsOfType.isNotEmpty()) {
               Log.d("SyncData", "Fetched ${recordsOfType.size} ${recordType.simpleName} records, sending...")
-              recordsOfType.oldestEventInstant()?.let(reporter::reportDataInstant)
+              recordsOfType.oldestModifiedTime()?.let(reporter::reportDataInstant)
               val result = sendRecords(recordsOfType, apiUrl, authToken, ktorHttpClient, reporter, "SyncData")
               if (!result.isSuccess) {
                 reporter.updateStage(SyncStage.HealthConnect) {
@@ -515,7 +519,7 @@ fun HealthConnectScreen(
 
           if (upsertions.isNotEmpty() || deletionIds.isNotEmpty()) {
             Log.d("SyncData", "Page $pageNum: ${upsertions.size} records, ${deletionIds.size} deletions")
-            upsertions.oldestEventInstant()?.let(reporter::reportDataInstant)
+            upsertions.oldestModifiedTime()?.let(reporter::reportDataInstant)
             reporter.updateStage(SyncStage.HealthConnect) {
               it.copy(
                 currentPage = pageNum,
@@ -823,6 +827,10 @@ fun HealthConnectScreen(
                 }
               },
             )
+          }
+
+          if (backgroundSyncEnabled) {
+            BackgroundSyncStatusRow(bgSyncStatus)
           }
 
           // Background read permission is granted separately from foreground reads:

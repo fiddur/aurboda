@@ -1,45 +1,7 @@
 package net.aurboda
 
 import android.content.Context
-import androidx.health.connect.client.records.ActiveCaloriesBurnedRecord
-import androidx.health.connect.client.records.BasalBodyTemperatureRecord
-import androidx.health.connect.client.records.BasalMetabolicRateRecord
-import androidx.health.connect.client.records.BloodGlucoseRecord
-import androidx.health.connect.client.records.BloodPressureRecord
-import androidx.health.connect.client.records.BodyFatRecord
-import androidx.health.connect.client.records.BodyTemperatureRecord
-import androidx.health.connect.client.records.BodyWaterMassRecord
-import androidx.health.connect.client.records.BoneMassRecord
-import androidx.health.connect.client.records.CervicalMucusRecord
-import androidx.health.connect.client.records.CyclingPedalingCadenceRecord
-import androidx.health.connect.client.records.DistanceRecord
-import androidx.health.connect.client.records.ElevationGainedRecord
-import androidx.health.connect.client.records.ExerciseSessionRecord
-import androidx.health.connect.client.records.FloorsClimbedRecord
-import androidx.health.connect.client.records.HeartRateRecord
-import androidx.health.connect.client.records.HeartRateVariabilityRmssdRecord
-import androidx.health.connect.client.records.HeightRecord
-import androidx.health.connect.client.records.HydrationRecord
-import androidx.health.connect.client.records.IntermenstrualBleedingRecord
-import androidx.health.connect.client.records.LeanBodyMassRecord
-import androidx.health.connect.client.records.MenstruationFlowRecord
-import androidx.health.connect.client.records.MenstruationPeriodRecord
-import androidx.health.connect.client.records.NutritionRecord
-import androidx.health.connect.client.records.OvulationTestRecord
-import androidx.health.connect.client.records.OxygenSaturationRecord
-import androidx.health.connect.client.records.PowerRecord
 import androidx.health.connect.client.records.Record
-import androidx.health.connect.client.records.RespiratoryRateRecord
-import androidx.health.connect.client.records.RestingHeartRateRecord
-import androidx.health.connect.client.records.SexualActivityRecord
-import androidx.health.connect.client.records.SleepSessionRecord
-import androidx.health.connect.client.records.SpeedRecord
-import androidx.health.connect.client.records.StepsCadenceRecord
-import androidx.health.connect.client.records.StepsRecord
-import androidx.health.connect.client.records.TotalCaloriesBurnedRecord
-import androidx.health.connect.client.records.Vo2MaxRecord
-import androidx.health.connect.client.records.WeightRecord
-import androidx.health.connect.client.records.WheelchairPushesRecord
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -86,7 +48,10 @@ data class SyncProgressState(
   val finishedAt: Instant? = null,
   val stages: Map<SyncStage, SyncStageInfo> = emptyMap(),
   val recordTypes: Map<String, SyncRecordTypeInfo> = emptyMap(),
-  /** Timestamp of the data currently in flight; powers the "Syncing data from N days ago" hint. */
+  /**
+   * Oldest `lastModifiedTime` among records currently in flight; powers the
+   * "Syncing data updated N ago" hint, i.e. how stale this batch is.
+   */
   val currentDataInstant: Instant? = null,
   val lastError: String? = null,
 )
@@ -112,7 +77,7 @@ interface SyncProgressReporter {
     transform: (SyncRecordTypeInfo) -> SyncRecordTypeInfo,
   )
 
-  /** Report the timestamp of the data currently being processed (drives "from N days ago"). */
+  /** Report the oldest `lastModifiedTime` of records being processed (drives "updated N ago"). */
   fun reportDataInstant(time: Instant?)
 }
 
@@ -191,52 +156,10 @@ fun Context.syncProgressReporter(): SyncProgressReporter =
   (applicationContext as? AurbodaApplication)?.syncProgress ?: NoOpSyncProgressReporter
 
 /**
- * Extract a representative timestamp from a Health Connect record.
- * The HC base interfaces (IntervalRecord/InstantaneousRecord) are internal in 1.2.0-alpha01,
- * so we dispatch on the concrete classes we actually serialize.
+ * Earliest Health Connect `lastModifiedTime` across a record list. Drives the
+ * "Syncing data updated N ago" hint — i.e. how stale the freshest record we're
+ * about to upload looks against wall-clock now. Using lastModifiedTime instead
+ * of the record's event time means a sleep session that started 8h ago but was
+ * just written by the source app shows as "minutes ago", not "hours ago".
  */
-fun Record.eventInstant(): Instant? =
-  when (this) {
-    is ActiveCaloriesBurnedRecord -> startTime
-    is BasalBodyTemperatureRecord -> time
-    is BasalMetabolicRateRecord -> time
-    is BloodGlucoseRecord -> time
-    is BloodPressureRecord -> time
-    is BodyFatRecord -> time
-    is BodyTemperatureRecord -> time
-    is BodyWaterMassRecord -> time
-    is BoneMassRecord -> time
-    is CervicalMucusRecord -> time
-    is CyclingPedalingCadenceRecord -> startTime
-    is DistanceRecord -> startTime
-    is ElevationGainedRecord -> startTime
-    is ExerciseSessionRecord -> startTime
-    is FloorsClimbedRecord -> startTime
-    is HeartRateRecord -> startTime
-    is HeartRateVariabilityRmssdRecord -> time
-    is HeightRecord -> time
-    is HydrationRecord -> startTime
-    is IntermenstrualBleedingRecord -> time
-    is LeanBodyMassRecord -> time
-    is MenstruationFlowRecord -> time
-    is MenstruationPeriodRecord -> startTime
-    is NutritionRecord -> startTime
-    is OvulationTestRecord -> time
-    is OxygenSaturationRecord -> time
-    is PowerRecord -> startTime
-    is RespiratoryRateRecord -> time
-    is RestingHeartRateRecord -> time
-    is SexualActivityRecord -> time
-    is SleepSessionRecord -> startTime
-    is SpeedRecord -> startTime
-    is StepsCadenceRecord -> startTime
-    is StepsRecord -> startTime
-    is TotalCaloriesBurnedRecord -> startTime
-    is Vo2MaxRecord -> time
-    is WeightRecord -> time
-    is WheelchairPushesRecord -> startTime
-    else -> null
-  }
-
-/** Earliest [eventInstant] across a record list, or null when no record exposes one. */
-fun List<Record>.oldestEventInstant(): Instant? = mapNotNull { it.eventInstant() }.minOrNull()
+fun List<Record>.oldestModifiedTime(): Instant? = minOfOrNull { it.metadata.lastModifiedTime }
