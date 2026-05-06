@@ -18,6 +18,7 @@ import io.ktor.client.engine.android.Android
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.serialization.kotlinx.json.json
 import net.aurboda.widget.HrZoneWidgetProvider
+import java.time.Instant
 import java.util.concurrent.TimeUnit
 import kotlin.reflect.KClass
 
@@ -40,12 +41,14 @@ class SyncWorker(
 
   override suspend fun doWork(): Result {
     Log.d(TAG, "Starting background sync")
+    val attemptAt = Instant.now()
+    recordBackgroundSyncAttempt(applicationContext, attemptAt)
     val reporter = applicationContext.syncProgressReporter()
 
     val credentials = CredentialsManager.getCredentials(applicationContext)
     if (credentials == null) {
       Log.w(TAG, "No credentials found, skipping sync")
-      return Result.success()
+      return finishAttempt(attemptAt, BackgroundSyncResult.Skipped, error = "No credentials")
     }
 
     // Check permissions -- proceed with whatever is granted (partial permissions support)
@@ -53,7 +56,7 @@ class SyncWorker(
     val grantedTypes = getGrantedRecordTypes(grantedPermissions)
     if (grantedTypes.isEmpty()) {
       Log.w(TAG, "No permissions granted, skipping sync")
-      return Result.success()
+      return finishAttempt(attemptAt, BackgroundSyncResult.Skipped, error = "No HC permissions granted")
     }
     Log.d(TAG, "Granted ${grantedTypes.size}/${allRecordTypes.size} record types")
 
@@ -88,7 +91,7 @@ class SyncWorker(
           if (!aggregateSuccess) {
             Log.w(TAG, "Failed to send daily aggregates, will retry")
             reporter.end("Daily aggregates failed")
-            return Result.retry()
+            return finishAttempt(attemptAt, BackgroundSyncResult.Retry, error = "Daily aggregates failed")
           }
           Log.d(TAG, "Sent ${aggregates.size} daily aggregates")
         } else {
@@ -102,7 +105,7 @@ class SyncWorker(
         if (!syncSuccess) {
           Log.w(TAG, "Incremental sync failed, will retry")
           reporter.end("Health Connect sync failed")
-          return Result.retry()
+          return finishAttempt(attemptAt, BackgroundSyncResult.Retry, error = "Health Connect sync failed")
         }
       } else {
         reporter.updateStage(SyncStage.DailyAggregates) {
@@ -148,11 +151,30 @@ class SyncWorker(
 
       HrZoneWidgetProvider.triggerUpdate(applicationContext)
       reporter.end()
-      Result.success()
+      finishAttempt(attemptAt, BackgroundSyncResult.Success)
     } catch (e: Exception) {
       Log.e(TAG, "Background sync failed", e)
       reporter.end(e.message)
-      Result.retry()
+      finishAttempt(attemptAt, BackgroundSyncResult.Retry, error = e.message)
+    }
+  }
+
+  private fun finishAttempt(
+    attemptAt: Instant,
+    outcome: BackgroundSyncResult,
+    error: String? = null,
+  ): Result {
+    val finishedAt = Instant.now()
+    recordBackgroundSyncResult(
+      applicationContext,
+      outcome,
+      finishedAt,
+      finishedAt.toEpochMilli() - attemptAt.toEpochMilli(),
+      error,
+    )
+    return when (outcome) {
+      BackgroundSyncResult.Success, BackgroundSyncResult.Skipped -> Result.success()
+      BackgroundSyncResult.Retry -> Result.retry()
     }
   }
 
@@ -270,7 +292,7 @@ class SyncWorker(
 
       if (upsertions.isNotEmpty() || deletionIds.isNotEmpty()) {
         Log.d(TAG, "Page $pageNum: ${upsertions.size} records, ${deletionIds.size} deletions")
-        upsertions.oldestEventInstant()?.let(reporter::reportDataInstant)
+        upsertions.oldestModifiedTime()?.let(reporter::reportDataInstant)
         reporter.updateStage(SyncStage.HealthConnect) {
           it.copy(
             currentPage = pageNum,
