@@ -30,6 +30,10 @@ import {
   setFoodItemReferenceBodySchema,
   type SetFoodItemSensitivitiesBody,
   setFoodItemSensitivitiesBodySchema,
+  type SetSharedFoodItemOverrideBody,
+  setSharedFoodItemOverrideBodySchema,
+  type SharedFoodItemOverride as ApiSharedFoodItemOverride,
+  type SharedFoodItemOverrideResponse,
   type UpdateFoodItemBody,
   updateFoodItemBodySchema,
 } from '@aurboda/api-spec'
@@ -49,6 +53,12 @@ import {
   updateFoodItem,
   upsertFoodItem,
 } from '../db/index.ts'
+import {
+  clearSharedFoodItemOverride,
+  getSharedFoodItemOverride,
+  setSharedFoodItemOverride,
+  type SharedFoodItemOverride as DbSharedFoodItemOverride,
+} from '../db/shared-food-item-overrides.ts'
 import {
   cacheCompositeNutrients,
   clearCompositeNutrientCache,
@@ -106,6 +116,13 @@ const serializeDetail = (detail: ServiceFoodItemDetail): FoodItemDetail => {
   }
   return { ...base, sensitivities } as FoodItemDetail
 }
+
+const serializeOverride = (override: DbSharedFoodItemOverride): ApiSharedFoodItemOverride => ({
+  shared_food_item_id: override.shared_food_item_id,
+  icon: override.icon,
+  created_at: override.created_at.toISOString(),
+  updated_at: override.updated_at.toISOString(),
+})
 
 export const createFoodItemsRouter = (authMiddleware: AnyMiddleware, centralDb: CentralDb): TypedRouter => {
   const router = typedRouter()
@@ -377,6 +394,85 @@ export const createFoodItemsRouter = (authMiddleware: AnyMiddleware, centralDb: 
         const message = err instanceof Error ? err.message : 'Re-snapshot failed'
         res.status(/not found/i.test(message) ? 404 : 500).json({ error: message, success: false })
       }
+    },
+  )
+
+  // Per-user override on a central shared item — the only way a user can
+  // customize an LSV (or other central) row without forking it. The id MUST
+  // resolve to a central item; per-user items are editable directly via
+  // PATCH /:id and have no need for an override layer.
+  //
+  // Response shape: `data` carries the override row when one exists; when
+  // none exists the field is absent (`success: true`, no `data`). That keeps
+  // "no override" distinct from "override with null icon" — an explicit
+  // `data: { icon: null, ... }` means the user picked "hide the central
+  // icon", which the UI must render differently from "central icon shows".
+  router.get<{ id: string }, SharedFoodItemOverrideResponse>(
+    '/:id/override',
+    authMiddleware,
+    async (req, res) => {
+      const user = req.user!
+      const id = req.params.id
+      const central = await centralDb.getSharedFoodItemById(id)
+      if (!central) {
+        const userItem = await getUserFoodItemById(user, id)
+        return res.status(userItem ? 400 : 404).json({
+          error: userItem
+            ? 'Per-user items have no override layer — edit them directly via PATCH /:id'
+            : 'Food item not found',
+          success: false,
+        })
+      }
+      const override = await getSharedFoodItemOverride(user, id)
+      if (!override) return res.json({ success: true })
+      res.json({ data: serializeOverride(override), success: true })
+    },
+  )
+
+  router.put<{ id: string }, SharedFoodItemOverrideResponse, SetSharedFoodItemOverrideBody>(
+    '/:id/override',
+    authMiddleware,
+    validateBody(setSharedFoodItemOverrideBodySchema),
+    async (req, res) => {
+      const user = req.user!
+      const id = req.params.id
+      const central = await centralDb.getSharedFoodItemById(id)
+      if (!central) {
+        const userItem = await getUserFoodItemById(user, id)
+        return res.status(userItem ? 400 : 404).json({
+          error: userItem
+            ? 'Per-user items have no override layer — edit them directly via PATCH /:id'
+            : 'Food item not found',
+          success: false,
+        })
+      }
+      const override = await setSharedFoodItemOverride(user, id, req.body)
+      res.json({ data: serializeOverride(override), success: true })
+    },
+  )
+
+  router.delete<{ id: string }, SharedFoodItemOverrideResponse>(
+    '/:id/override',
+    authMiddleware,
+    async (req, res) => {
+      const user = req.user!
+      const id = req.params.id
+      // Validate the target is central — we don't 404 on a no-op clear of an
+      // already-empty override, but we do reject ids that aren't shared items
+      // so the caller learns about the mistake.
+      const central = await centralDb.getSharedFoodItemById(id)
+      if (!central) {
+        const userItem = await getUserFoodItemById(user, id)
+        return res.status(userItem ? 400 : 404).json({
+          error: userItem
+            ? 'Per-user items have no override layer — edit them directly via PATCH /:id'
+            : 'Food item not found',
+          success: false,
+        })
+      }
+      await clearSharedFoodItemOverride(user, id)
+      // No `data` after clear — same shape as GET when no override exists.
+      res.json({ success: true })
     },
   )
 
