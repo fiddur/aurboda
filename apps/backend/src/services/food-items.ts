@@ -291,24 +291,15 @@ export const createFoodItemsService = (centralDb: CentralDb): FoodItemsService =
       centralDb.searchSharedFoodItems(q, limit),
     ])
     // Merge by quality tier so high-quality central LSV entries surface
-    // above kcal-only oura imports. User items still win ties so the user's
-    // own well-tagged items remain on top.
-    const merged: { item: MergedFoodItem; tier: 0 | 1 | 2 | 3; userOrigin: 0 | 1; index: number }[] = [
-      ...userItems.map((item, index) => ({
-        item: item as MergedFoodItem,
-        tier: getFoodItemQualityTier(item),
-        userOrigin: 0 as const,
-        index,
-      })),
-      ...sharedItems.map((item, index) => ({
-        item: item as MergedFoodItem,
-        tier: getFoodItemQualityTier(item),
-        userOrigin: 1 as const,
-        index,
-      })),
-    ]
-    merged.sort((a, b) => a.tier - b.tier || a.userOrigin - b.userOrigin || a.index - b.index)
-    return merged.slice(0, limit).map((m) => m.item)
+    // above kcal-only oura imports. User items come first in the spread,
+    // and Array.prototype.sort is stable since ES2019 — so within a tier,
+    // user-origin items keep their lead over central ones.
+    const tiered = [...userItems, ...sharedItems].map((item) => ({
+      item,
+      tier: getFoodItemQualityTier(item),
+    }))
+    tiered.sort((a, b) => a.tier - b.tier)
+    return tiered.slice(0, limit).map((t) => t.item)
   },
 
   getById: async (user, id) => {

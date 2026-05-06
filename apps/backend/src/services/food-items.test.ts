@@ -163,6 +163,10 @@ describe('getFoodItemQualityTier', () => {
   test('NaN treated as missing', () => {
     expect(getFoodItemQualityTier({ calories: Number.NaN })).toBe(3)
   })
+  test('non-number values treated as missing (defends against null/string slipping through)', () => {
+    expect(getFoodItemQualityTier({ calories: null, protein: '5' })).toBe(3)
+    expect(getFoodItemQualityTier({ calories: 90, iron: null })).toBe(2)
+  })
 })
 
 describe('createFoodItemsService.getById', () => {

@@ -4,7 +4,7 @@
  * Canonical food item library — each unique food is a first-class entity.
  */
 
-import { foodItemQualityTierSql, NUTRIENT_FIELD_NAMES } from '@aurboda/api-spec'
+import { FOOD_ITEM_QUALITY_TIER_SQL, NUTRIENT_FIELD_NAMES } from '@aurboda/api-spec'
 
 import type { FoodItemEntity } from './types.ts'
 
@@ -96,7 +96,7 @@ export const searchFoodItems = async (user: string, q: string, limit = 20): Prom
         OR ($4 AND similarity(immutable_unaccent(name_lower), immutable_unaccent($2)) > $5)
      ORDER BY
        CASE WHEN immutable_unaccent(name_lower) ILIKE immutable_unaccent($1) ESCAPE '\\' THEN 0 ELSE 1 END,
-       ${foodItemQualityTierSql()},
+       ${FOOD_ITEM_QUALITY_TIER_SQL},
        POSITION(immutable_unaccent($2) IN immutable_unaccent(name_lower)),
        similarity(immutable_unaccent(name_lower), immutable_unaccent($2)) DESC,
        name_lower
