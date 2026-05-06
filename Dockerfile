@@ -2,7 +2,7 @@
 # Uses nginx to serve static files and proxy /api to the Node.js backend
 
 # Build stage - builds api-spec and web frontend
-FROM node:25-alpine AS builder
+FROM node:26-alpine AS builder
 RUN npm install -g pnpm@10
 WORKDIR /app
 
@@ -24,7 +24,7 @@ RUN pnpm --filter @aurboda/api-spec build && pnpm --filter aurboda-web build
 RUN pnpm --filter @aurboda/api-spec generate:openapi && pnpm --filter @aurboda/api-spec generate:html
 
 # Production stage
-FROM node:25-alpine
+FROM node:26-alpine
 
 # Install nginx
 RUN apk add --no-cache nginx
@@ -43,7 +43,7 @@ RUN pnpm install --frozen-lockfile
 # Copy built api-spec from builder
 COPY --from=builder /app/packages/api-spec/dist ./packages/api-spec/dist
 
-# Copy backend source (Node 25 runs TypeScript directly via built-in type stripping)
+# Copy backend source (Node 26 runs TypeScript directly via built-in type stripping)
 COPY tsconfig.json ./
 COPY apps/backend/src ./apps/backend/src
 
