@@ -401,6 +401,12 @@ export const createFoodItemsRouter = (authMiddleware: AnyMiddleware, centralDb: 
   // customize an LSV (or other central) row without forking it. The id MUST
   // resolve to a central item; per-user items are editable directly via
   // PATCH /:id and have no need for an override layer.
+  //
+  // Response shape: `data` carries the override row when one exists; when
+  // none exists the field is absent (`success: true`, no `data`). That keeps
+  // "no override" distinct from "override with null icon" — an explicit
+  // `data: { icon: null, ... }` means the user picked "hide the central
+  // icon", which the UI must render differently from "central icon shows".
   router.get<{ id: string }, SharedFoodItemOverrideResponse>(
     '/:id/override',
     authMiddleware,
@@ -418,17 +424,8 @@ export const createFoodItemsRouter = (authMiddleware: AnyMiddleware, centralDb: 
         })
       }
       const override = await getSharedFoodItemOverride(user, id)
-      // Empty placeholder when no override exists yet — gives the UI a
-      // consistent shape and lets it know the central value is in effect.
-      const data: ApiSharedFoodItemOverride = override
-        ? serializeOverride(override)
-        : {
-            shared_food_item_id: id,
-            icon: null,
-            created_at: new Date(0).toISOString(),
-            updated_at: new Date(0).toISOString(),
-          }
-      res.json({ data, success: true })
+      if (!override) return res.json({ success: true })
+      res.json({ data: serializeOverride(override), success: true })
     },
   )
 
@@ -474,15 +471,8 @@ export const createFoodItemsRouter = (authMiddleware: AnyMiddleware, centralDb: 
         })
       }
       await clearSharedFoodItemOverride(user, id)
-      res.json({
-        data: {
-          shared_food_item_id: id,
-          icon: null,
-          created_at: new Date(0).toISOString(),
-          updated_at: new Date(0).toISOString(),
-        },
-        success: true,
-      })
+      // No `data` after clear — same shape as GET when no override exists.
+      res.json({ success: true })
     },
   )
 

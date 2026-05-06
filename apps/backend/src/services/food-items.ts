@@ -378,18 +378,27 @@ export const createFoodItemsService = (centralDb: CentralDb): FoodItemsService =
       if (fromUser.is_composite) {
         const rows = await dbGetIngredients(user, id)
         if (rows.length === 0) return { item: fromUser, sensitivities }
-        const resolved: ResolvedIngredient[] = await Promise.all(
+        // Resolve each ingredient: prefer the per-user row, fall back to the
+        // central library. Once we know which ingredients came from central,
+        // batch the override lookup so a 10-ingredient recipe makes one
+        // override query instead of ten.
+        const resolutions = await Promise.all(
           rows.map(async (row) => {
             const fromUserIng = await getUserFoodItemById(user, row.ingredient_food_item_id)
-            const food =
-              fromUserIng ??
-              (await applySharedOverride(
-                user,
-                await centralDb.getSharedFoodItemById(row.ingredient_food_item_id),
-              ))
-            return { food, row }
+            if (fromUserIng) return { row, userFood: fromUserIng, centralFood: null }
+            const fromCentralIng = await centralDb.getSharedFoodItemById(row.ingredient_food_item_id)
+            return { row, userFood: null, centralFood: fromCentralIng }
           }),
         )
+        const centralFoods = resolutions
+          .map((r) => r.centralFood)
+          .filter((f): f is SharedFoodItemEntity => f !== null)
+        const decoratedCentral = await applySharedOverrides(user, centralFoods)
+        const decoratedById = new Map(decoratedCentral.map((f) => [f.id, f]))
+        const resolved: ResolvedIngredient[] = resolutions.map(({ row, userFood, centralFood }) => ({
+          food: userFood ?? (centralFood ? (decoratedById.get(centralFood.id) ?? null) : null),
+          row,
+        }))
         return {
           derived_nutrients: aggregateNutrientsFromIngredients(resolved),
           ingredients: resolved,

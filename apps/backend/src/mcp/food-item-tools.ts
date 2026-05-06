@@ -29,11 +29,7 @@ import {
   updateFoodItem,
   upsertFoodItem,
 } from '../db/index.ts'
-import {
-  clearSharedFoodItemOverride,
-  getSharedFoodItemOverride,
-  setSharedFoodItemOverride,
-} from '../db/shared-food-item-overrides.ts'
+import { clearSharedFoodItemOverride, setSharedFoodItemOverride } from '../db/shared-food-item-overrides.ts'
 import {
   cacheCompositeNutrients,
   clearCompositeNutrientCache,
@@ -258,13 +254,20 @@ export const registerFoodItemTools = (server: McpServer, user: string, centralDb
     [
       'Layer a per-user override onto a central shared food item (e.g. set your own icon on a Livsmedelsverket entry without forking it).',
       'The id must resolve to a central item — per-user items have no override layer; edit them directly with update_food_item.',
-      'Pass `icon: null` to explicitly hide the central icon, or omit the field to leave it unchanged. To revert to the central value entirely, use clear_shared_food_item_override.',
+      'Pass `icon: null` to explicitly hide the central icon. At least one override field must be supplied — to revert to the central value entirely, use clear_shared_food_item_override.',
     ].join(' '),
     {
       id: z.string().uuid().describe('Central shared food item ID to override'),
       ...setSharedFoodItemOverrideBodySchema.shape,
     },
     async ({ id, ...input }) => {
+      // The .refine on the body schema doesn't survive .shape destructuring,
+      // so re-check the at-least-one-field invariant here.
+      if (input.icon === undefined) {
+        return errorResponse(
+          'At least one override field must be supplied; use clear_shared_food_item_override to revert',
+        )
+      }
       const central = await centralDb.getSharedFoodItemById(id)
       if (!central) {
         const userItem = await getUserFoodItemById(user, id)
@@ -293,9 +296,8 @@ export const registerFoodItemTools = (server: McpServer, user: string, centralDb
             : 'Food item not found',
         )
       }
-      await clearSharedFoodItemOverride(user, id)
-      const override = await getSharedFoodItemOverride(user, id)
-      return jsonResponse({ data: { cleared: !override, shared_food_item_id: id }, success: true })
+      const cleared = await clearSharedFoodItemOverride(user, id)
+      return jsonResponse({ data: { cleared, shared_food_item_id: id }, success: true })
     },
   )
 

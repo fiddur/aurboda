@@ -42,6 +42,13 @@ vi.mock('../services/meals.ts', () => ({
   resnapshotMealsForFoodItem: vi.fn(),
 }))
 
+vi.mock('../db/shared-food-item-overrides.ts', () => ({
+  clearSharedFoodItemOverride: vi.fn().mockResolvedValue(true),
+  getSharedFoodItemOverride: vi.fn().mockResolvedValue(null),
+  getSharedFoodItemOverridesByIds: vi.fn().mockResolvedValue(new Map()),
+  setSharedFoodItemOverride: vi.fn(),
+}))
+
 const dbBarrel = await import('../db/index.ts')
 const dbFoodItems = await import('../db/food-items.ts')
 

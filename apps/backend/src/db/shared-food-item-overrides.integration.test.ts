@@ -99,11 +99,20 @@ describe('shared_food_item_overrides integration', () => {
     expect(map.size).toBe(0)
   })
 
-  test('omitted icon on set leaves existing icon intact', async () => {
+  test('rejects empty input — would otherwise silently hide central icon', async () => {
+    const user = getTestUser()
+    // Fresh row case: an empty set used to insert (icon=NULL, shared_food_item_id=...),
+    // and the read path read that as "user picked no icon", erasing the central
+    // icon. Reject the call instead — clear() is the explicit revert.
+    await expect(setSharedFoodItemOverride(user, sharedId1, {})).rejects.toThrow(/at least one/i)
+    expect(await getSharedFoodItemOverride(user, sharedId1)).toBeNull()
+  })
+
+  test('rejects empty input even when a row already exists', async () => {
     const user = getTestUser()
     await setSharedFoodItemOverride(user, sharedId1, { icon: '🥩' })
-    // Simulate a future field-add: an empty input shouldn't wipe the icon.
-    await setSharedFoodItemOverride(user, sharedId1, {})
+    await expect(setSharedFoodItemOverride(user, sharedId1, {})).rejects.toThrow(/at least one/i)
+    // The pre-existing row is left untouched.
     const got = await getSharedFoodItemOverride(user, sharedId1)
     expect(got?.icon).toBe('🥩')
   })

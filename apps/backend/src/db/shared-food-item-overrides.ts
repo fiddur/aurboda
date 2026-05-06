@@ -2,15 +2,26 @@
  * Per-user overrides for central `shared_food_items` rows.
  *
  * The central library is read-only from a user's perspective, so any
- * customization (icon today, more fields later) goes here. NULL on an
- * override column means "no override applied" — the central value passes
- * through unchanged. A row with every override column NULL is equivalent to
- * having no row, so callers should `clear` rather than `set` everything to
- * null when they want to revert.
+ * customization (icon today, more fields later) goes here. The semantics
+ * for each override column are:
+ *
+ *   - `string` value → user-set override (the value the user picked)
+ *   - `null`         → "use no value" (explicit revert to empty — e.g. user
+ *                      hides the central icon)
+ *   - row absent     → no override at all; the central value passes through
+ *
+ * Because of those three states, an empty input on `setSharedFoodItemOverride`
+ * (no override fields supplied) is treated as caller error — without it we'd
+ * silently insert a row whose every column is NULL and then the read path
+ * couldn't tell that apart from "user explicitly chose no value", erasing the
+ * central icon by accident. Use `clearSharedFoodItemOverride` to revert.
  *
  * `shared_food_item_id` is a soft pointer (no FK — central lives in a
  * separate database), same pattern as `meal_food_items.food_item_id` and
- * `food_item_sensitivities.food_item_id`.
+ * `food_item_sensitivities.food_item_id`. If a central row is removed the
+ * orphan override row is harmless: lookups by id won't find anything to
+ * apply it to, and the row carries no data on its own. We don't currently
+ * sweep them.
  */
 
 import { query } from './connection.ts'
@@ -36,10 +47,12 @@ const COLUMNS = 'shared_food_item_id, icon, created_at, updated_at'
 
 const mapRow = (row: Record<string, unknown>): SharedFoodItemOverride => ({
   shared_food_item_id: row.shared_food_item_id as string,
-  icon: (row.icon as string | null) ?? null,
+  icon: row.icon as string | null,
   created_at: row.created_at as Date,
   updated_at: row.updated_at as Date,
 })
+
+const OVERRIDE_FIELDS = ['icon'] as const
 
 export const getSharedFoodItemOverride = async (
   user: string,
@@ -78,9 +91,15 @@ export const getSharedFoodItemOverridesByIds = async (
 }
 
 /**
- * Upsert override columns for a central food item. Only fields explicitly
- * present in `input` are written — passing `{}` is a no-op set that just
- * touches `updated_at` on an existing row (or creates an empty row).
+ * Upsert override columns for a central food item. At least one override
+ * field must be supplied — passing `{}` is rejected, since it would
+ * otherwise insert a row with every override NULL and the read path can't
+ * tell that apart from "user explicitly chose no value", silently erasing
+ * the central icon. Callers wanting to revert should use
+ * `clearSharedFoodItemOverride` instead.
+ *
+ * For an existing row, only the explicitly-provided columns are updated;
+ * omitted fields keep their current value.
  */
 export const setSharedFoodItemOverride = async (
   user: string,
@@ -91,14 +110,23 @@ export const setSharedFoodItemOverride = async (
   const insertValues: unknown[] = [sharedFoodItemId]
   const updateAssignments: string[] = []
 
-  if (input.icon !== undefined) {
-    insertFields.push('icon')
-    insertValues.push(input.icon)
-    updateAssignments.push('icon = EXCLUDED.icon')
+  for (const field of OVERRIDE_FIELDS) {
+    const value = input[field]
+    if (value !== undefined) {
+      insertFields.push(field)
+      insertValues.push(value)
+      updateAssignments.push(`${field} = EXCLUDED.${field}`)
+    }
+  }
+
+  if (updateAssignments.length === 0) {
+    throw new Error(
+      'setSharedFoodItemOverride requires at least one override field; use clearSharedFoodItemOverride to revert',
+    )
   }
 
   // Always bump updated_at on conflict so the row reflects the most recent
-  // user action even when a no-op set is replayed.
+  // user action.
   updateAssignments.push('updated_at = NOW()')
 
   const placeholders = insertValues.map((_, i) => `$${i + 1}`).join(', ')

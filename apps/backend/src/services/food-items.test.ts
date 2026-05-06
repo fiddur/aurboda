@@ -716,4 +716,67 @@ describe('createFoodItemsService — shared item overrides', () => {
     const result = await service.getById('user', 'u1')
     expect(result?.icon).toBe('🍌')
   })
+
+  test('composite recipe with N central ingredients triggers a single override lookup (no N+1)', async () => {
+    // Per-user composite parent with three central LSV ingredients.
+    const parent = userItem('p1', 'Frukostskål')
+    parent.is_composite = true
+    vi.mocked(dbModule.getFoodItemById).mockImplementation(async (_user, fid) =>
+      fid === 'p1' ? parent : null,
+    )
+
+    const ingredientRows = [
+      {
+        id: 'r1',
+        parent_food_item_id: 'p1',
+        ingredient_food_item_id: 'c1',
+        quantity: 100,
+        unit: 'g',
+        sort_order: 0,
+        created_at: new Date(),
+        updated_at: new Date(),
+      },
+      {
+        id: 'r2',
+        parent_food_item_id: 'p1',
+        ingredient_food_item_id: 'c2',
+        quantity: 50,
+        unit: 'g',
+        sort_order: 1,
+        created_at: new Date(),
+        updated_at: new Date(),
+      },
+      {
+        id: 'r3',
+        parent_food_item_id: 'p1',
+        ingredient_food_item_id: 'c3',
+        quantity: 25,
+        unit: 'g',
+        sort_order: 2,
+        created_at: new Date(),
+        updated_at: new Date(),
+      },
+    ]
+    vi.mocked(ingredientsModule.getIngredients).mockResolvedValue(
+      ingredientRows as unknown as Awaited<ReturnType<typeof ingredientsModule.getIngredients>>,
+    )
+
+    const central = fakeCentral()
+    vi.mocked(central.getSharedFoodItemById).mockImplementation(async (cid) => {
+      const food = sharedItem(cid, `central-${cid}`)
+      food.calories = 100
+      return food
+    })
+
+    vi.mocked(overridesModule.getSharedFoodItemOverridesByIds).mockClear()
+    vi.mocked(overridesModule.getSharedFoodItemOverridesByIds).mockResolvedValue(new Map())
+
+    await createFoodItemsService(central).getDetail('user', 'p1')
+
+    expect(overridesModule.getSharedFoodItemOverridesByIds).toHaveBeenCalledTimes(1)
+    expect(overridesModule.getSharedFoodItemOverridesByIds).toHaveBeenCalledWith(
+      'user',
+      expect.arrayContaining(['c1', 'c2', 'c3']),
+    )
+  })
 })
