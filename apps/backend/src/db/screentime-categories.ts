@@ -6,7 +6,6 @@ import type { ScreentimeCategory, ScreentimeCategoryInput } from './types.ts'
 import { query } from './connection.ts'
 
 const mapRow = (row: Record<string, unknown>): ScreentimeCategory => ({
-  ...(row.activity_type_name ? { activity_type_name: row.activity_type_name as string } : {}),
   color: (row.color as string) || undefined,
   created_at: new Date(row.created_at as string),
   exclude_from_screentime: (row.exclude_from_screentime as boolean) || undefined,
@@ -18,12 +17,16 @@ const mapRow = (row: Record<string, unknown>): ScreentimeCategory => ({
   score: row.score != null ? (row.score as number) : undefined,
   sort_order: row.sort_order as number,
   updated_at: new Date(row.updated_at as string),
+  ...(row.activity_type_name ? { activity_type_name: row.activity_type_name as string } : {}),
+  ...(row.category_owns_type !== undefined && row.category_owns_type !== null
+    ? { category_owns_type: row.category_owns_type as boolean }
+    : {}),
 })
 
 export const getScreentimeCategories = async (user: string): Promise<ScreentimeCategory[]> => {
   const result = await query(
     user,
-    `SELECT id, name, rule_type, rule_regex, ignore_case, color, score, exclude_from_screentime, sort_order, activity_type_name, created_at, updated_at
+    `SELECT id, name, rule_type, rule_regex, ignore_case, color, score, exclude_from_screentime, sort_order, activity_type_name, category_owns_type, created_at, updated_at
      FROM screentime_categories
      ORDER BY sort_order, name`,
   )
@@ -37,7 +40,7 @@ export const getScreentimeCategoryById = async (
 ): Promise<ScreentimeCategory | null> => {
   const result = await query(
     user,
-    `SELECT id, name, rule_type, rule_regex, ignore_case, color, score, exclude_from_screentime, sort_order, activity_type_name, created_at, updated_at
+    `SELECT id, name, rule_type, rule_regex, ignore_case, color, score, exclude_from_screentime, sort_order, activity_type_name, category_owns_type, created_at, updated_at
      FROM screentime_categories
      WHERE id = $1`,
     [id],
@@ -54,7 +57,7 @@ export const insertScreentimeCategory = async (
     user,
     `INSERT INTO screentime_categories (name, rule_type, rule_regex, ignore_case, color, score, exclude_from_screentime, sort_order)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-     RETURNING id, name, rule_type, rule_regex, ignore_case, color, score, exclude_from_screentime, sort_order, activity_type_name, created_at, updated_at`,
+     RETURNING id, name, rule_type, rule_regex, ignore_case, color, score, exclude_from_screentime, sort_order, activity_type_name, category_owns_type, created_at, updated_at`,
     [
       input.name,
       input.rule_type,
@@ -93,7 +96,7 @@ export const upsertScreentimeCategory = async (
        exclude_from_screentime = EXCLUDED.exclude_from_screentime,
        sort_order = EXCLUDED.sort_order,
        updated_at = NOW()
-     RETURNING id, name, rule_type, rule_regex, ignore_case, color, score, exclude_from_screentime, sort_order, activity_type_name, created_at, updated_at`,
+     RETURNING id, name, rule_type, rule_regex, ignore_case, color, score, exclude_from_screentime, sort_order, activity_type_name, category_owns_type, created_at, updated_at`,
     [
       id,
       input.name,
@@ -198,7 +201,7 @@ export const updateScreentimeCategory = async (
     `UPDATE screentime_categories
      SET ${fields.join(', ')}
      WHERE id = $${paramIndex}
-     RETURNING id, name, rule_type, rule_regex, ignore_case, color, score, exclude_from_screentime, sort_order, activity_type_name, created_at, updated_at`,
+     RETURNING id, name, rule_type, rule_regex, ignore_case, color, score, exclude_from_screentime, sort_order, activity_type_name, category_owns_type, created_at, updated_at`,
     values,
   )
 
@@ -268,7 +271,7 @@ export const bulkInsertScreentimeCategories = async (
     user,
     `INSERT INTO screentime_categories (name, rule_type, rule_regex, ignore_case, color, score, exclude_from_screentime, sort_order)
      VALUES ${valueClauses.join(', ')}
-     RETURNING id, name, rule_type, rule_regex, ignore_case, color, score, exclude_from_screentime, sort_order, activity_type_name, created_at, updated_at`,
+     RETURNING id, name, rule_type, rule_regex, ignore_case, color, score, exclude_from_screentime, sort_order, activity_type_name, category_owns_type, created_at, updated_at`,
     params,
   )
 

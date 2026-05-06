@@ -194,6 +194,8 @@ export const createCategory = async (user: string, input: ScreentimeCategoryInpu
     const slug = await ensureCategoryHasType(user, result, all)
     result.activity_type_name = slug
   } catch (err) {
+    // Log to stderr too — auditError alone hides this from runtime dashboards.
+    console.error(`⚠️ Failed to mirror screentime category ${result.id} to activity type:`, err)
     auditError(user, 'data', 'Failed to mirror category to activity type', { error: String(err) })
   }
 
@@ -248,6 +250,7 @@ export const upsertCategory = async (user: string, id: string, input: Screentime
     const slug = await ensureCategoryHasType(user, result, all)
     result.activity_type_name = slug
   } catch (err) {
+    console.error(`⚠️ Failed to mirror screentime category ${result.id} to activity type:`, err)
     auditError(user, 'data', 'Failed to mirror category to activity type', { error: String(err) })
   }
 
@@ -287,6 +290,7 @@ export const moveCategoryToParent = async (user: string, id: string, newParentId
         for (const desc of descendants) await recomputeCategoryParentType(user, desc, all)
       }
     } catch (err) {
+      console.error('⚠️ Failed to recompute activity-type parent after move:', err)
       auditError(user, 'data', 'Failed to recompute activity-type parent after move', {
         error: String(err),
       })
@@ -354,6 +358,7 @@ export const importFromActivityWatch = async (
   try {
     await ensureAllCategoriesHaveTypes(user, result)
   } catch (err) {
+    console.error('⚠️ Failed to mirror imported categories to activity types:', err)
     auditError(user, 'data', 'Failed to mirror imported categories to activity types', {
       error: String(err),
     })

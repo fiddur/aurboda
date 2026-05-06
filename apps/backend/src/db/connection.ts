@@ -871,7 +871,15 @@ export const migrateSchema = async (user: string) => {
     )
     await query(
       db,
-      `CREATE UNIQUE INDEX IF NOT EXISTS idx_screentime_categories_activity_type_name
+      `ALTER TABLE screentime_categories ADD COLUMN IF NOT EXISTS category_owns_type BOOLEAN NOT NULL DEFAULT FALSE`,
+    )
+    // Plain (non-unique) index — multiple categories may legitimately share
+    // a slug via convergence. Drop any older unique form left from earlier
+    // dev installs so the index can be recreated as non-unique.
+    await query(db, `DROP INDEX IF EXISTS idx_screentime_categories_activity_type_name`)
+    await query(
+      db,
+      `CREATE INDEX IF NOT EXISTS idx_screentime_categories_activity_type_name
          ON screentime_categories (activity_type_name) WHERE activity_type_name IS NOT NULL`,
     )
   }

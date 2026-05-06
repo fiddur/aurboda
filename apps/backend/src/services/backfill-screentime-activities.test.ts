@@ -11,6 +11,12 @@ vi.mock('../db/connection', () => ({
   query: vi.fn(),
 }))
 
+vi.mock('./audit-log.ts', () => ({
+  auditError: vi.fn(),
+  auditInfo: vi.fn(),
+  auditWarn: vi.fn(),
+}))
+
 import { query } from '../db/connection.ts'
 import { getScreentimeCategories, getSyncState, insertActivities, upsertSyncState } from '../db/index.ts'
 import { backfillScreentimeActivities } from './backfill-screentime-activities.ts'
@@ -21,7 +27,8 @@ const mockedQuery = vi.mocked(query)
 const mockedInsertActivities = vi.mocked(insertActivities)
 const mockedUpsertSyncState = vi.mocked(upsertSyncState)
 
-const cat = (name: string[]) => ({
+const cat = (name: string[], activityTypeName?: string) => ({
+  ...(activityTypeName ? { activity_type_name: activityTypeName } : {}),
   created_at: new Date(),
   id: `cat-${name.join('-')}`,
   ignore_case: true,
@@ -35,7 +42,11 @@ describe('backfillScreentimeActivities', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockedGetSyncState.mockResolvedValue(null)
-    mockedGetScreentimeCategories.mockResolvedValue([cat(['Work'])])
+    // Categories enter the backfill already linked (slug set). The lazy
+    // ensure inside backfill is then a no-op — keeps the mock minimal.
+    mockedGetScreentimeCategories.mockResolvedValue([cat(['Work'], 'work')])
+    // Default: any unspecified query returns an empty result set.
+    mockedQuery.mockResolvedValue({ rows: [] } as never)
   })
 
   test('short-circuits when sync_state marks backfill as completed', async () => {
@@ -106,7 +117,7 @@ describe('backfillScreentimeActivities', () => {
       'user',
       expect.arrayContaining([
         expect.objectContaining({
-          activity_type: 'screentime',
+          activity_type: 'work',
           source: 'rescuetime',
           data: expect.objectContaining({ category_path: 'Work' }),
         }),

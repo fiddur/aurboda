@@ -56,12 +56,6 @@ interface Span {
   score?: number
 }
 
-const findCategoryByPath = (
-  path: string[],
-  categories: ScreentimeCategory[],
-): ScreentimeCategory | undefined =>
-  categories.find((c) => c.name.length === path.length && c.name.every((seg, i) => seg === path[i]))
-
 /**
  * Group records by (source, resolved_category) and merge adjacent same-group
  * records within MERGE_GAP_MS. Records are grouped by source so rescuetime and
@@ -73,6 +67,9 @@ export const buildScreentimeActivitySpans = (
   categories: ScreentimeCategory[],
 ): Span[] => {
   const excludedPaths = categories.filter((c) => c.exclude_from_screentime).map((c) => c.name)
+  // Index categories by joined path for O(1) lookup inside the merge loop.
+  const categoryByPath = new Map<string, ScreentimeCategory>()
+  for (const c of categories) categoryByPath.set(categoryPathToString(c.name), c)
 
   const groups = new Map<string, ProductivityRecord[]>()
   for (const record of records) {
@@ -91,7 +88,7 @@ export const buildScreentimeActivitySpans = (
     const sorted = [...group].sort((a, b) => a.start_time.getTime() - b.start_time.getTime())
     const first = sorted[0]
     const score = getScoreForCategory(first.resolved_category!, categories)
-    const matchingCategory = findCategoryByPath(first.resolved_category!, categories)
+    const matchingCategory = categoryByPath.get(categoryPathToString(first.resolved_category!))
     const activityType = matchingCategory?.activity_type_name ?? UMBRELLA_TYPE
     const makeSpan = (r: ProductivityRecord): Span => ({
       activity_type: activityType,
