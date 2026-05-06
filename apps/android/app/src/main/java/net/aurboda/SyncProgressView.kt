@@ -25,7 +25,7 @@ import java.time.Instant
 import java.time.temporal.ChronoUnit
 
 /**
- * Renders the structured sync progress: a "Syncing data from N ago" hint, a stage list with
+ * Renders the structured sync progress: a "Syncing data updated N ago" hint, a stage list with
  * inline status icons, and per-record-type chunk progress nested under the Health Connect stage.
  */
 @Composable
@@ -40,7 +40,7 @@ fun SyncProgressView(
     }
 
   Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-    // "Syncing data from 20 days ago" — only while running and only when we know how far behind we are.
+    // "Syncing data updated 5 min ago" — only while running and only when we know the freshness of the in-flight batch.
     if (state.isRunning && state.currentDataInstant != null) {
       RelativeAgoText(state.currentDataInstant)
     } else if (!state.isRunning && state.lastError != null) {
@@ -141,7 +141,7 @@ private fun RelativeAgoText(target: Instant) {
     }
   }
   Text(
-    "Syncing data from ${formatRelative(target, now)}",
+    "Syncing data updated ${formatRelative(target, now)}",
     style = MaterialTheme.typography.bodyMedium,
     fontWeight = FontWeight.Medium,
     color = MaterialTheme.colorScheme.primary,
@@ -157,6 +157,74 @@ private fun formatRelative(target: Instant, now: Instant): String {
     seconds < 86_400 -> "${seconds / 3600}h ago"
     seconds < 86_400 * 2 -> "yesterday"
     else -> "${seconds / 86_400} days ago"
+  }
+}
+
+@Composable
+fun BackgroundSyncStatusRow(status: BackgroundSyncStatus) {
+  // 30s tick keeps "ago" labels fresh.
+  var now by remember { mutableStateOf(Instant.now()) }
+  LaunchedEffect(status.lastAttempt, status.lastSuccess) {
+    while (true) {
+      now = Instant.now()
+      delay(30_000)
+    }
+  }
+
+  val attempt = status.lastAttempt
+  if (attempt == null) {
+    Text(
+      "Background sync: not yet run",
+      style = MaterialTheme.typography.bodySmall,
+      color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    return
+  }
+
+  val durationLabel = status.lastDurationMs?.let { ms ->
+    when {
+      ms < 1000 -> "${ms}ms"
+      ms < 60_000 -> "${ms / 1000}s"
+      else -> "${ms / 60_000}m ${(ms % 60_000) / 1000}s"
+    }
+  }
+
+  val outcomeLabel = when (status.lastResult) {
+    BackgroundSyncResult.Success -> "success"
+    BackgroundSyncResult.Retry -> "retry pending"
+    BackgroundSyncResult.Skipped -> "skipped"
+    null -> "running…"
+  }
+
+  val color = when (status.lastResult) {
+    BackgroundSyncResult.Retry -> MaterialTheme.colorScheme.error
+    else -> MaterialTheme.colorScheme.onSurfaceVariant
+  }
+
+  val attemptText = "Background sync: ${formatRelative(attempt, now)} ($outcomeLabel${if (durationLabel != null) ", $durationLabel" else ""})"
+
+  Column {
+    Text(
+      attemptText,
+      style = MaterialTheme.typography.bodySmall,
+      color = color,
+    )
+    val success = status.lastSuccess
+    if (success != null && status.lastResult != BackgroundSyncResult.Success) {
+      Text(
+        "Last successful run: ${formatRelative(success, now)}",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+      )
+    }
+    val error = status.lastError
+    if (error != null && status.lastResult != BackgroundSyncResult.Success) {
+      Text(
+        "Last error: $error",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.error,
+      )
+    }
   }
 }
 

@@ -296,7 +296,7 @@ suspend fun sendRecords(
     val typeName = recordClass.simpleName ?: "UnknownRecordType"
     val syncUrl = "$serverUrl/sync/$typeName"
 
-    classRecords.oldestEventInstant()?.let(reporter::reportDataInstant)
+    classRecords.oldestModifiedTime()?.let(reporter::reportDataInstant)
 
     val result =
       when (recordClass) {

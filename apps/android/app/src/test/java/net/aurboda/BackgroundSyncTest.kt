@@ -217,4 +217,78 @@ class BackgroundSyncTest {
     assertEquals("AurbodaAppPrefs", prefsName)
     assertEquals("backgroundSyncEnabled", backgroundSyncEnabledKey)
   }
+
+  @Test
+  fun `loadBackgroundSyncStatus returns empty status when no run has happened`() {
+    val status = loadBackgroundSyncStatus(context)
+    assertNull(status.lastAttempt)
+    assertNull(status.lastSuccess)
+    assertNull(status.lastResult)
+    assertNull(status.lastError)
+    assertNull(status.lastDurationMs)
+  }
+
+  @Test
+  fun `recordBackgroundSyncAttempt persists attempt timestamp`() {
+    val now = java.time.Instant.parse("2026-05-06T12:00:00Z")
+    recordBackgroundSyncAttempt(context, now)
+
+    val status = loadBackgroundSyncStatus(context)
+    assertEquals(now, status.lastAttempt)
+    assertNull(status.lastSuccess)
+    assertNull(status.lastResult)
+  }
+
+  @Test
+  fun `recordBackgroundSyncResult success records success time and clears prior error`() {
+    // Previous failed run leaves an error
+    recordBackgroundSyncResult(
+      context,
+      BackgroundSyncResult.Retry,
+      java.time.Instant.parse("2026-05-06T12:00:00Z"),
+      durationMs = 1500,
+      error = "boom",
+    )
+    assertEquals("boom", loadBackgroundSyncStatus(context).lastError)
+
+    // Now a success
+    val finishedAt = java.time.Instant.parse("2026-05-06T12:15:00Z")
+    recordBackgroundSyncResult(
+      context,
+      BackgroundSyncResult.Success,
+      finishedAt,
+      durationMs = 8500,
+    )
+
+    val status = loadBackgroundSyncStatus(context)
+    assertEquals(BackgroundSyncResult.Success, status.lastResult)
+    assertEquals(finishedAt, status.lastSuccess)
+    assertEquals(8500L, status.lastDurationMs)
+    assertNull("Success clears the prior error", status.lastError)
+  }
+
+  @Test
+  fun `recordBackgroundSyncResult retry stores error but does not advance lastSuccess`() {
+    // Seed a prior success
+    recordBackgroundSyncResult(
+      context,
+      BackgroundSyncResult.Success,
+      java.time.Instant.parse("2026-05-06T11:00:00Z"),
+      durationMs = 3000,
+    )
+    val priorSuccess = loadBackgroundSyncStatus(context).lastSuccess
+
+    // A subsequent retry doesn't bump lastSuccess and stores the error
+    recordBackgroundSyncResult(
+      context,
+      BackgroundSyncResult.Retry,
+      java.time.Instant.parse("2026-05-06T11:15:00Z"),
+      durationMs = 4000,
+      error = "network",
+    )
+    val status = loadBackgroundSyncStatus(context)
+    assertEquals(BackgroundSyncResult.Retry, status.lastResult)
+    assertEquals("network", status.lastError)
+    assertEquals(priorSuccess, status.lastSuccess)
+  }
 }
