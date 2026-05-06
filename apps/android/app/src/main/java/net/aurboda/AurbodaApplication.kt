@@ -3,6 +3,7 @@ package net.aurboda
 import android.app.Application
 import android.content.Context
 import android.util.Log
+import kotlinx.coroutines.flow.MutableStateFlow
 
 private const val TAG = "AurbodaApplication"
 private const val PREFS_NAME = "AurbodaAppPrefs"
@@ -10,9 +11,12 @@ private const val BACKGROUND_SYNC_ENABLED_KEY = "backgroundSyncEnabled"
 
 class AurbodaApplication : Application() {
   val syncProgress: SyncProgressReporter = DefaultSyncProgressReporter()
+  val backgroundSyncStatus: MutableStateFlow<BackgroundSyncStatus> = MutableStateFlow(BackgroundSyncStatus())
 
   override fun onCreate() {
     super.onCreate()
+
+    backgroundSyncStatus.value = loadBackgroundSyncStatus(this)
 
     // Schedule background sync if it was previously enabled
     // This ensures sync continues after app restarts, device reboots, etc.
