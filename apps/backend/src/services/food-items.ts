@@ -11,7 +11,7 @@
  * collide; we don't need a namespace prefix on IDs.
  */
 
-import { NUTRIENT_FIELD_NAMES } from '@aurboda/api-spec'
+import { getFoodItemQualityTier, NUTRIENT_FIELD_NAMES } from '@aurboda/api-spec'
 
 import type { FoodItemEntity } from '../db/types.ts'
 import type { CentralDb } from './central-db.ts'
@@ -290,9 +290,16 @@ export const createFoodItemsService = (centralDb: CentralDb): FoodItemsService =
       searchUserFoodItems(user, q, limit),
       centralDb.searchSharedFoodItems(q, limit),
     ])
-    // User items rank first — their own custom names + the LSV reference set
-    // is the natural ordering. Limit applies to the combined list.
-    return [...userItems, ...sharedItems].slice(0, limit)
+    // Merge by quality tier so high-quality central LSV entries surface
+    // above kcal-only oura imports. User items come first in the spread,
+    // and Array.prototype.sort is stable since ES2019 — so within a tier,
+    // user-origin items keep their lead over central ones.
+    const tiered = [...userItems, ...sharedItems].map((item) => ({
+      item,
+      tier: getFoodItemQualityTier(item),
+    }))
+    tiered.sort((a, b) => a.tier - b.tier)
+    return tiered.slice(0, limit).map((t) => t.item)
   },
 
   getById: async (user, id) => {

@@ -1,3 +1,4 @@
+import { getFoodItemQualityTier } from '@aurboda/api-spec'
 import { describe, expect, test, vi } from 'vitest'
 
 import type { FoodItemEntity } from '../db/types.ts'
@@ -85,6 +86,86 @@ describe('createFoodItemsService.search', () => {
 
     const results = await service.search('user', 'banana')
     expect(results.map((r) => r.id)).toEqual(['c1'])
+  })
+
+  test('high-quality central LSV item beats kcal-only user matches when limit would slice it off', async () => {
+    // 8 user "banan" rows with only calories — exactly what oura imports
+    // produce. The frontend asks for 8 results; without quality re-ranking
+    // the LSV entry (rich micros) gets sliced away.
+    const userBanans = Array.from({ length: 8 }, (_, i) => {
+      const item = userItem(`u${i}`, `Banan ${i}`)
+      item.calories = 90
+      return item
+    })
+    vi.mocked(dbModule.searchFoodItems).mockResolvedValue(userBanans)
+    const lsvBanan = sharedItem('lsv', 'Banan')
+    lsvBanan.calories = 92
+    lsvBanan.protein = 1.1
+    lsvBanan.potassium = 360 // micronutrient → tier 0
+    const central = fakeCentral()
+    vi.mocked(central.searchSharedFoodItems).mockResolvedValue([lsvBanan])
+    const service = createFoodItemsService(central)
+
+    const results = await service.search('user', 'banan', 8)
+    expect(results.map((r) => r.id)[0]).toBe('lsv')
+    expect(results).toHaveLength(8)
+  })
+
+  test('within the same quality tier, user items still come before central', async () => {
+    const userMicro = userItem('u1', 'Banan')
+    userMicro.calories = 90
+    userMicro.iron = 0.3 // tier 0
+    const lsvMicro = sharedItem('c1', 'Banan, LSV')
+    lsvMicro.calories = 92
+    lsvMicro.iron = 0.26 // tier 0
+    vi.mocked(dbModule.searchFoodItems).mockResolvedValue([userMicro])
+    const central = fakeCentral()
+    vi.mocked(central.searchSharedFoodItems).mockResolvedValue([lsvMicro])
+    const service = createFoodItemsService(central)
+
+    const results = await service.search('user', 'banan', 5)
+    expect(results.map((r) => r.id)).toEqual(['u1', 'c1'])
+  })
+
+  test('empty-data items sink to the bottom', async () => {
+    const empty = userItem('u-empty', 'Banan import')
+    const macroOnly = userItem('u-macro', 'Banan recipe')
+    macroOnly.calories = 90
+    macroOnly.protein = 1
+    const richCentral = sharedItem('c1', 'Banan')
+    richCentral.calories = 92
+    richCentral.potassium = 360 // tier 0
+    vi.mocked(dbModule.searchFoodItems).mockResolvedValue([empty, macroOnly])
+    const central = fakeCentral()
+    vi.mocked(central.searchSharedFoodItems).mockResolvedValue([richCentral])
+    const service = createFoodItemsService(central)
+
+    const results = await service.search('user', 'banan', 5)
+    expect(results.map((r) => r.id)).toEqual(['c1', 'u-macro', 'u-empty'])
+  })
+})
+
+describe('getFoodItemQualityTier', () => {
+  test('tier 0 — any micronutrient', () => {
+    expect(getFoodItemQualityTier({ calories: 90, iron: 0.3 })).toBe(0)
+    expect(getFoodItemQualityTier({ vitamin_c: 60 })).toBe(0)
+  })
+  test('tier 1 — macros without micros', () => {
+    expect(getFoodItemQualityTier({ calories: 90, protein: 5, fat: 1 })).toBe(1)
+    expect(getFoodItemQualityTier({ fiber: 2 })).toBe(1)
+  })
+  test('tier 2 — only calories', () => {
+    expect(getFoodItemQualityTier({ calories: 90 })).toBe(2)
+  })
+  test('tier 3 — empty', () => {
+    expect(getFoodItemQualityTier({})).toBe(3)
+  })
+  test('NaN treated as missing', () => {
+    expect(getFoodItemQualityTier({ calories: Number.NaN })).toBe(3)
+  })
+  test('non-number values treated as missing (defends against null/string slipping through)', () => {
+    expect(getFoodItemQualityTier({ calories: null, protein: '5' })).toBe(3)
+    expect(getFoodItemQualityTier({ calories: 90, iron: null })).toBe(2)
   })
 })
 

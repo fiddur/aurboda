@@ -130,6 +130,79 @@ export const NUTRIENT_FIELDS = [
 /** All nutrient field names. */
 export const NUTRIENT_FIELD_NAMES = NUTRIENT_FIELDS.map((f) => f.name)
 
+/** Macro field names ('calories' plus the four core macros). */
+export const MACRO_FIELD_NAMES = NUTRIENT_FIELDS.filter((f) => f.category === 'macro').map((f) => f.name)
+
+/** Macro field names excluding 'calories' — used to detect "more than just kcal". */
+export const NON_CALORIE_MACRO_FIELD_NAMES = MACRO_FIELD_NAMES.filter((n) => n !== 'calories')
+
+/**
+ * Every nutrient field that is *not* in the 'macro' category — i.e. the
+ * full set of richer-than-macro fields: extended_macro (sugars, alcohol,
+ * caffeine, water, cholesterol, …), fat_breakdown (saturated/poly/mono,
+ * omegas, individual fatty acids), vitamin, mineral, amino_acid, and
+ * other (oxalate, phytate, salt, ash). Used by search ranking to surface
+ * food items with richer nutrition data over bare kcal-only entries.
+ *
+ * Note: this is intentionally broader than just true micronutrients —
+ * the goal is to detect "this row has data beyond the basic macros",
+ * which is what distinguishes an LSV reference entry from an oura
+ * import.
+ */
+export const NON_MACRO_NUTRIENT_FIELD_NAMES = NUTRIENT_FIELDS.filter((f) => f.category !== 'macro').map(
+  (f) => f.name,
+)
+
+/**
+ * Quality tier for ranking food items by how complete their nutrition data
+ * is. Lower tier = better data. Used by food-item search to surface the
+ * Livsmedelsverket reference data above bare kcal-only imports.
+ *
+ * | tier | meaning                                                                |
+ * | ---- | ---------------------------------------------------------------------- |
+ * | 0    | has any non-macro nutrient (extended_macro, fat_breakdown, vitamin,    |
+ * |      | mineral, amino_acid, other)                                            |
+ * | 1    | has at least one non-calorie macro (protein/carbs/fat/fiber), no       |
+ * |      | non-macro nutrient                                                     |
+ * | 2    | only calories                                                          |
+ * | 3    | empty                                                                  |
+ */
+export const getFoodItemQualityTier = (item: Readonly<Record<string, unknown>>): 0 | 1 | 2 | 3 => {
+  const hasValue = (n: string): boolean => {
+    const v = item[n]
+    return typeof v === 'number' && !Number.isNaN(v)
+  }
+  if (NON_MACRO_NUTRIENT_FIELD_NAMES.some(hasValue)) return 0
+  if (NON_CALORIE_MACRO_FIELD_NAMES.some(hasValue)) return 1
+  if (hasValue('calories')) return 2
+  return 3
+}
+
+/**
+ * SQL fragment that resolves to a 0–3 integer quality tier for a row in
+ * `food_items` or `shared_food_items`. Mirrors `getFoodItemQualityTier`
+ * exactly so the JS-side merge in `FoodItemsService.search` can re-rank
+ * results from both stores against the same tier scale.
+ *
+ * Computed once at module load — the field lists never change at runtime.
+ */
+const buildFoodItemQualityTierSql = (): string => {
+  // FALSE keeps the SQL valid if either category becomes empty in the
+  // future (e.g. someone restructures NUTRIENT_FIELDS) — without it,
+  // `.join(' OR ')` produces an empty fragment and the CASE becomes a
+  // syntax error.
+  const orElseFalse = (names: readonly string[]): string =>
+    names.length === 0 ? 'FALSE' : names.map((n) => `${n} IS NOT NULL`).join(' OR ')
+  return `CASE
+    WHEN ${orElseFalse(NON_MACRO_NUTRIENT_FIELD_NAMES)} THEN 0
+    WHEN ${orElseFalse(NON_CALORIE_MACRO_FIELD_NAMES)} THEN 1
+    WHEN calories IS NOT NULL THEN 2
+    ELSE 3
+  END`
+}
+
+export const FOOD_ITEM_QUALITY_TIER_SQL = buildFoodItemQualityTierSql()
+
 /** Generate SQL column definitions for all nutrient fields. */
 export const nutrientColumnsDDL = (): string =>
   NUTRIENT_FIELDS.map((f) => `      ${f.name.padEnd(24)} DOUBLE PRECISION`).join(',\n')
