@@ -72,6 +72,7 @@ declare module '@flow-js/garmin-connect/dist/garmin/types/sleep' {
         overall?: { value: number }
         [key: string]: unknown
       }
+      dailyNapDTOS?: GarminNapDTO[] | null
       [key: string]: unknown
     }
     restingHeartRate: number
@@ -97,7 +98,6 @@ declare module '@flow-js/garmin-connect/dist/garmin/types/sleep' {
       startTimeGMT: number
       respirationValue: number
     }>
-    dailyNapDTOS?: GarminNapDTO[] | null
     [key: string]: unknown
   }
 }
