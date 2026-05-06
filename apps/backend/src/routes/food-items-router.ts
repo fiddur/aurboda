@@ -85,6 +85,7 @@ const serializeFoodItem = (
 const serializeDetail = (detail: ServiceFoodItemDetail): FoodItemDetail => {
   const base = serializeFoodItem(detail.item)
   const sensitivities = detail.sensitivities ?? []
+  const is_shared = detail.is_shared
   // Composite branch: ingredient list + derived totals.
   if (detail.ingredients) {
     return {
@@ -98,6 +99,7 @@ const serializeDetail = (detail: ServiceFoodItemDetail): FoodItemDetail => {
         sort_order: ing.row.sort_order,
         unit: ing.row.unit,
       })),
+      is_shared,
       sensitivities,
     }
   }
@@ -106,6 +108,7 @@ const serializeDetail = (detail: ServiceFoodItemDetail): FoodItemDetail => {
   if (detail.reference) {
     return {
       ...base,
+      is_shared,
       reference: {
         food: serializeFoodItem(detail.reference.food),
         unit_mismatch: detail.reference.unit_mismatch,
@@ -114,7 +117,7 @@ const serializeDetail = (detail: ServiceFoodItemDetail): FoodItemDetail => {
       sensitivities,
     }
   }
-  return { ...base, sensitivities } as FoodItemDetail
+  return { ...base, is_shared, sensitivities } as FoodItemDetail
 }
 
 const serializeOverride = (override: DbSharedFoodItemOverride): ApiSharedFoodItemOverride => ({
