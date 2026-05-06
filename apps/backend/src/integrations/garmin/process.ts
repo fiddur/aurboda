@@ -267,11 +267,14 @@ const buildSleepActivity = (dto: SleepData['dailySleepDTO']): Activity | null =>
   }
 }
 
-// Garmin's nap timestamps come as "YYYY-MM-DDTHH:mm:ss" without a timezone
-// suffix. The field name says GMT, so treat them as UTC by appending "Z".
+// Garmin's nap timestamp field is named "...GMT" but in practice the API
+// returns ISO strings with an explicit zone suffix (e.g. "+02:00") for the
+// data we've observed. Parse as-is when a Z/offset suffix is present, and
+// fall back to treating bare strings as UTC.
 const parseNapGmt = (ts: string | null | undefined): Date | null => {
   if (!ts) return null
-  const d = new Date(`${ts}Z`)
+  const hasZone = /(?:Z|[+-]\d{2}:?\d{2})$/.test(ts)
+  const d = new Date(hasZone ? ts : `${ts}Z`)
   return Number.isNaN(d.getTime()) ? null : d
 }
 
@@ -348,7 +351,7 @@ const processSleep = async (user: string, data: SleepData, deps: GarminProcessDe
   const activity = buildSleepActivity(dto)
   if (activity) await deps.insertActivity(user, activity)
 
-  for (const nap of data.dailyNapDTOS ?? []) {
+  for (const nap of dto.dailyNapDTOS ?? []) {
     const napActivity = buildNapActivity(nap)
     if (napActivity) await deps.insertActivity(user, napActivity)
   }
