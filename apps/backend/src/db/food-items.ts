@@ -137,6 +137,30 @@ export const getFoodItemByName = async (user: string, name: string): Promise<Foo
 }
 
 /**
+ * Batch lookup of per-user food items by id. Ids that don't resolve here
+ * (e.g. central library rows) simply don't appear in the returned map —
+ * callers are expected to fall through to the central DB for those.
+ */
+export const getFoodItemsByIds = async (
+  user: string,
+  ids: string[],
+): Promise<Map<string, FoodItemEntity>> => {
+  const map = new Map<string, FoodItemEntity>()
+  if (ids.length === 0) return map
+  const placeholders = ids.map((_, i) => `$${i + 1}`).join(', ')
+  const result = await query(
+    user,
+    `SELECT ${FOOD_ITEM_COLUMNS} FROM food_items WHERE id IN (${placeholders})`,
+    ids,
+  )
+  for (const row of result.rows) {
+    const item = mapFoodItemRow(row)
+    map.set(item.id, item)
+  }
+  return map
+}
+
+/**
  * Upsert a food item.
  *
  * Conflict resolution depends on what's provided:

@@ -222,6 +222,7 @@ export {
   findOrCreateFoodItem,
   getFoodItemById,
   getFoodItemByName,
+  getFoodItemsByIds,
   listFoodItems,
   type MergeFoodItemResult,
   mergeFoodItems,

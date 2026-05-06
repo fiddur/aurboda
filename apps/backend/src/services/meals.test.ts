@@ -57,6 +57,9 @@ vi.mock('./food-items.ts', () => ({
   // No-op for unit tests — the resnapshot path calls this; the mock just
   // returns void to satisfy the awaiter.
   cacheCompositeNutrients: vi.fn().mockResolvedValue(undefined),
+  // Live name/icon resolver. Defaults to an empty map; individual tests can
+  // override via vi.mocked when they need to assert specific display values.
+  resolveFoodItemDisplay: vi.fn().mockResolvedValue(new Map()),
 }))
 
 const mockUpsertMeal = vi.mocked(db.upsertMeal)
@@ -394,7 +397,6 @@ const makeLink = (overrides: Partial<MealFoodItemLink> = {}): MealFoodItemLink =
     id: 'link-1',
     meal_id: 'meal-1',
     food_item_id: 'fi-1',
-    food_item_name: 'Test food',
     sort_order: 0,
     calories: 200,
     protein: 10,
@@ -438,15 +440,7 @@ describe('getMeal nutrient_data_incomplete', () => {
       time: new Date('2025-06-15T12:00:00Z'),
     })
     mockGetMealFoodItemsBatch.mockResolvedValue(
-      new Map([
-        [
-          'meal-1',
-          [
-            makeLink({ calories: 200, food_item_name: 'Apple' }),
-            makeLink({ id: 'link-2', calories: undefined, food_item_name: 'Mystery item' }),
-          ],
-        ],
-      ]),
+      new Map([['meal-1', [makeLink({ calories: 200 }), makeLink({ id: 'link-2', calories: undefined })]]]),
     )
 
     const result = await getMeal('testuser', 'meal-1')
@@ -464,12 +458,7 @@ describe('getMeal nutrient_data_incomplete', () => {
       time: new Date('2025-06-15T12:00:00Z'),
     })
     mockGetMealFoodItemsBatch.mockResolvedValue(
-      new Map([
-        [
-          'meal-1',
-          [makeLink({ calories: 200, food_item_name: 'Apple' }), makeLink({ id: 'link-2', calories: 150 })],
-        ],
-      ]),
+      new Map([['meal-1', [makeLink({ calories: 200 }), makeLink({ id: 'link-2', calories: 150 })]]]),
     )
 
     const result = await getMeal('testuser', 'meal-1')

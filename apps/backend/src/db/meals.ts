@@ -247,8 +247,6 @@ export const getFrequentMeals = async (
 
 export interface FrequentFoodItemRow {
   food_item_id: string
-  name: string
-  icon: string | null
   count: number
   last_used: Date
   last_quantity: number | null
@@ -266,8 +264,12 @@ interface FrequentFoodItemsFilter {
  * Aggregate `meal_food_items` to surface the food items the user logs most
  * often. Useful for an MCP agent to suggest "your usual" without re-running
  * fuzzy search every time, and as the data behind the per-slot quick-log
- * chips on the meals overview. Snapshotted name/icon are read directly off
- * the junction — no JOIN to food_items, so central-library items work too.
+ * chips on the meals overview.
+ *
+ * Returns only the food_item_id + usage stats — current name/icon are
+ * resolved live by the service layer against the canonical food_item, since
+ * those are presentation values that should reflect the latest edits, not
+ * a frozen snapshot.
  *
  * When `meal_type` is provided, only meal_food_items linked to meals of
  * that type are counted.
@@ -284,8 +286,7 @@ export const getFrequentFoodItems = async (
   }
   const sql = `
     WITH ranked AS (
-      SELECT mfi.food_item_id, mfi.food_item_name, mfi.food_item_icon,
-             mfi.quantity, mfi.unit, m.time,
+      SELECT mfi.food_item_id, mfi.quantity, mfi.unit, m.time,
              COUNT(*) OVER (PARTITION BY mfi.food_item_id) AS use_count,
              ROW_NUMBER() OVER (PARTITION BY mfi.food_item_id ORDER BY m.time DESC) AS rn
       FROM meal_food_items mfi
@@ -294,7 +295,7 @@ export const getFrequentFoodItems = async (
         AND mfi.food_item_id IS NOT NULL
         ${mealTypeClause}
     )
-    SELECT food_item_id, food_item_name, food_item_icon, quantity, unit,
+    SELECT food_item_id, quantity, unit,
            time AS last_used, use_count AS count
     FROM ranked
     WHERE rn = 1
@@ -305,11 +306,9 @@ export const getFrequentFoodItems = async (
   return result.rows.map((row) => ({
     count: Number(row.count),
     food_item_id: row.food_item_id as string,
-    icon: (row.food_item_icon as string | null) ?? null,
     last_quantity: row.quantity === null ? null : Number(row.quantity),
     last_unit: (row.unit as string | null) ?? null,
     last_used: row.last_used as Date,
-    name: (row.food_item_name as string | null) ?? '',
   }))
 }
 
