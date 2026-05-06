@@ -272,6 +272,93 @@ describe('sync router', () => {
     })
   })
 
+  describe('HR ingestion calorie computation', () => {
+    test('uses enqueueCalorieComputation when provided (off request path)', async () => {
+      const enqueue = vi.fn().mockResolvedValue(undefined)
+      const trigger = vi.fn().mockResolvedValue(undefined)
+      const app = express()
+      app.use(express.json())
+      app.use(
+        '/sync',
+        createSyncRouter(
+          { ...mockDeps, enqueueCalorieComputation: enqueue, triggerCalorieComputation: trigger },
+          testAuthMiddleware,
+        ),
+      )
+
+      const response = await request(app)
+        .post('/sync/HeartRateRecord')
+        .send({
+          data: [
+            {
+              metadata: { id: 'hr-1' },
+              samples: [
+                { beatsPerMinute: 70, time: '2024-01-15T10:00:00Z' },
+                { beatsPerMinute: 72, time: '2024-01-15T10:05:00Z' },
+              ],
+            },
+          ],
+        })
+
+      expect(response.status).toBe(200)
+      expect(enqueue).toHaveBeenCalledWith(
+        'testuser',
+        new Date('2024-01-15T10:00:00Z'),
+        new Date('2024-01-15T10:05:00Z'),
+      )
+      expect(trigger).not.toHaveBeenCalled()
+    })
+
+    test('falls back to triggerCalorieComputation (fire-and-forget) when no queue configured', async () => {
+      // Slow trigger to assert the request doesn't await it.
+      let triggerResolve: () => void = () => {}
+      const trigger = vi.fn(
+        () =>
+          new Promise<void>((resolve) => {
+            triggerResolve = resolve
+          }),
+      )
+      const app = express()
+      app.use(express.json())
+      app.use(
+        '/sync',
+        createSyncRouter({ ...mockDeps, triggerCalorieComputation: trigger }, testAuthMiddleware),
+      )
+
+      const response = await request(app)
+        .post('/sync/HeartRateRecord')
+        .send({
+          data: [{ metadata: { id: 'hr-2' }, startTime: '2024-01-15T10:00:00Z' }],
+        })
+
+      // Response returns even though trigger hasn't resolved
+      expect(response.status).toBe(200)
+      expect(trigger).toHaveBeenCalledTimes(1)
+      triggerResolve()
+    })
+
+    test('does not enqueue or trigger for non-HR record types', async () => {
+      const enqueue = vi.fn().mockResolvedValue(undefined)
+      const trigger = vi.fn().mockResolvedValue(undefined)
+      const app = express()
+      app.use(express.json())
+      app.use(
+        '/sync',
+        createSyncRouter(
+          { ...mockDeps, enqueueCalorieComputation: enqueue, triggerCalorieComputation: trigger },
+          testAuthMiddleware,
+        ),
+      )
+
+      await request(app)
+        .post('/sync/WeightRecord')
+        .send({ data: [{ metadata: { id: 'w' }, time: '2024-01-15T08:00:00Z' }] })
+
+      expect(enqueue).not.toHaveBeenCalled()
+      expect(trigger).not.toHaveBeenCalled()
+    })
+  })
+
   describe('activitywatch endpoint', () => {
     test('POST /sync/activitywatch passes events and device_name', async () => {
       const app = createTestApp()

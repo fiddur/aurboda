@@ -57,6 +57,15 @@ class SyncWorker(
     }
     Log.d(TAG, "Granted ${grantedTypes.size}/${allRecordTypes.size} record types")
 
+    // Without the background read permission, every Health Connect read here
+    // throws SecurityException/HealthConnectException. Skip HC reads cleanly
+    // (the foreground app will sync when it next opens). Outbound sync, the
+    // pending-data flush and ActivityWatch don't need HC reads, so still run.
+    val hasBackgroundRead = HC_BACKGROUND_READ_PERMISSION in grantedPermissions
+    if (!hasBackgroundRead) {
+      Log.w(TAG, "Background HC read permission not granted; skipping HC fetch")
+    }
+
     // Invalidate token if granted types changed since last sync
     invalidateTokenIfGrantedTypesChanged(grantedTypes)
 
@@ -65,28 +74,43 @@ class SyncWorker(
       // Step 0: Process pending local data entries (Add Data offline queue)
       processPendingData(credentials.apiUrl, credentials.authToken, reporter)
 
-      // Step 1: Fetch and send daily aggregates for cumulative metrics (deduplicated)
-      val aggregates = fetchDailyAggregates(healthConnectClient, grantedTypes.toSet(), days = 7)
-      if (aggregates.isNotEmpty()) {
-        val aggregateSuccess = sendDailyAggregates(aggregates, credentials.apiUrl, credentials.authToken, httpClient, reporter)
-        if (!aggregateSuccess) {
-          Log.w(TAG, "Failed to send daily aggregates, will retry")
-          reporter.end("Daily aggregates failed")
+      // Steps 1 & 2 both read from Health Connect (aggregate / getChanges) and
+      // both fail with HealthConnectException without the background read
+      // permission. Skip both as a unit; the foreground app will catch up on
+      // the next open. Outbound sync (Step 3) only writes to HC, so it runs
+      // either way.
+      if (hasBackgroundRead) {
+        // Step 1: Fetch and send daily aggregates for cumulative metrics (deduplicated)
+        val aggregates = fetchDailyAggregates(healthConnectClient, grantedTypes.toSet(), days = 7)
+        if (aggregates.isNotEmpty()) {
+          val aggregateSuccess =
+            sendDailyAggregates(aggregates, credentials.apiUrl, credentials.authToken, httpClient, reporter)
+          if (!aggregateSuccess) {
+            Log.w(TAG, "Failed to send daily aggregates, will retry")
+            reporter.end("Daily aggregates failed")
+            return Result.retry()
+          }
+          Log.d(TAG, "Sent ${aggregates.size} daily aggregates")
+        } else {
+          reporter.updateStage(SyncStage.DailyAggregates) {
+            it.copy(status = SyncStageStatus.Done, message = "Nothing to send")
+          }
+        }
+
+        // Step 2: Fetch and send raw records incrementally (page by page).
+        val syncSuccess = fetchAndSyncHealthData(credentials.apiUrl, credentials.authToken, reporter)
+        if (!syncSuccess) {
+          Log.w(TAG, "Incremental sync failed, will retry")
+          reporter.end("Health Connect sync failed")
           return Result.retry()
         }
-        Log.d(TAG, "Sent ${aggregates.size} daily aggregates")
       } else {
         reporter.updateStage(SyncStage.DailyAggregates) {
-          it.copy(status = SyncStageStatus.Done, message = "Nothing to send")
+          it.copy(status = SyncStageStatus.Skipped, message = "Background read permission required")
         }
-      }
-
-      // Step 2: Fetch and send raw records incrementally (page by page)
-      val syncSuccess = fetchAndSyncHealthData(credentials.apiUrl, credentials.authToken, reporter)
-      if (!syncSuccess) {
-        Log.w(TAG, "Incremental sync failed, will retry")
-        reporter.end("Health Connect sync failed")
-        return Result.retry()
+        reporter.updateStage(SyncStage.HealthConnect) {
+          it.copy(status = SyncStageStatus.Skipped, message = "Background read permission required")
+        }
       }
 
       // Step 3: Process outbound sync (backend -> Health Connect).

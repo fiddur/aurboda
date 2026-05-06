@@ -8,6 +8,7 @@ import type { Express } from 'express'
 
 import type { GarminClient } from '../integrations/garmin/client.ts'
 import type { ouraClient } from '../integrations/oura/client.ts'
+import type { CalorieQueue } from '../services/calorie-queue.ts'
 import type { CentralDb } from '../services/central-db.ts'
 import type { ActivityNotifier } from '../services/deduction-queue.ts'
 import type { StravaQueue } from '../services/strava-queue.ts'
@@ -47,6 +48,7 @@ interface SyncSetupDeps {
   oura: OuraClient
   garmin: GarminClient
   stravaQueue: StravaQueue | null
+  calorieQueue: CalorieQueue | null
   activityNotifier: ActivityNotifier
 }
 
@@ -57,6 +59,7 @@ export const mountSyncRouter = ({
   oura,
   garmin,
   stravaQueue,
+  calorieQueue,
   activityNotifier,
 }: SyncSetupDeps): void => {
   // Transform SyncState to ProviderSyncStatus format (undefined -> null)
@@ -150,6 +153,7 @@ export const mountSyncRouter = ({
         syncRescueTime: transformRescueTimeSyncResult,
         triggerCalorieComputation: (user: string, start: Date, end: Date) =>
           triggerCalorieComputation(user, start, end),
+        enqueueCalorieComputation: calorieQueue?.enqueueComputation,
         upsertUserSettings: (user: string, settings: Record<string, unknown>) =>
           upsertUserSettings(user, settings),
         onActivitySynced: activityNotifier,

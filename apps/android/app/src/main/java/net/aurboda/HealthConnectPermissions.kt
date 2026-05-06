@@ -5,6 +5,15 @@ import androidx.health.connect.client.records.*
 import kotlin.reflect.KClass
 
 /**
+ * Permission required to read Health Connect data while Aurboda is not in the
+ * foreground. Health Connect only grants this after the user has granted at
+ * least one foreground read permission. Without it, [SyncWorker]'s periodic
+ * job throws HealthConnectException when reading.
+ */
+val HC_BACKGROUND_READ_PERMISSION: String =
+    HealthPermission.PERMISSION_READ_HEALTH_DATA_IN_BACKGROUND
+
+/**
  * A user-friendly grouping of Health Connect record types into categories.
  */
 data class HealthDataCategory(

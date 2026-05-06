@@ -101,6 +101,14 @@ export interface SyncRouterDeps {
   ) => Promise<void>
   processHealthConnectData: (user: string, recordType: string, data: HealthConnectRecord) => Promise<void>
   triggerCalorieComputation: (user: string, start: Date, end: Date) => Promise<void>
+  /**
+   * Optional pg-boss-backed enqueue. When present, HR ingestion enqueues a
+   * job and returns immediately. When absent (boss failed to init), falls
+   * back to fire-and-forget `triggerCalorieComputation` so dev/test still
+   * get the side effect. Either way, the response is not blocked on the
+   * full HR-fetch + per-minute compute + per-point outbound-sync loop.
+   */
+  enqueueCalorieComputation?: (user: string, start: Date, end: Date) => Promise<void>
   syncOura: (user: string, options: { fullResync?: boolean; startDate?: Date }) => Promise<OuraSyncResult[]>
   getOuraSyncStates: (user: string) => Promise<ProviderSyncStatus[]>
   resetOuraSyncState: (user: string, dataType?: string) => Promise<void>
@@ -756,18 +764,33 @@ export const createSyncRouter = (deps: SyncRouterDeps, authMiddleware: RequestHa
       // Notify deduction queue
       deps.onActivitySynced?.(user, '*', new Date(Date.now() - 86400000), new Date())
 
-      // Trigger calorie computation when HR data is ingested
+      // HR ingestion: defer calorie computation off the request path.
+      // Initial Android sync uploads weeks of HR data in 50-sample chunks;
+      // running the full compute (HR fetch, weight/VO2 lookup, per-minute
+      // formula, per-point outbound-sync enqueue, gap-fill) inline here
+      // turns each chunk into a multi-second request.
       if (recordType === 'HeartRateRecord' && records.length > 0) {
-        const timestamps = records.flatMap((r) => {
-          const samples = r.samples as Array<{ time: string }> | undefined
-          if (samples) return samples.map((s) => new Date(s.time).getTime())
-          const t = r.startTime || r.time
-          return t ? [new Date(t as string).getTime()] : []
-        })
+        // Drop NaN here — a malformed timestamp string would propagate to
+        // Math.min/max and then to new Date(NaN).toISOString(), throwing
+        // RangeError out of the request handler.
+        const timestamps = records
+          .flatMap((r) => {
+            const samples = r.samples as Array<{ time: string }> | undefined
+            if (samples) return samples.map((s) => new Date(s.time).getTime())
+            const t = r.startTime || r.time
+            return t ? [new Date(t as string).getTime()] : []
+          })
+          .filter((t) => !Number.isNaN(t))
         if (timestamps.length > 0) {
           const start = new Date(Math.min(...timestamps))
           const end = new Date(Math.max(...timestamps))
-          await deps.triggerCalorieComputation(user, start, end)
+          if (deps.enqueueCalorieComputation) {
+            await deps.enqueueCalorieComputation(user, start, end)
+          } else {
+            // No queue (e.g., pg-boss disabled in dev/test). Fire-and-forget
+            // so the response isn't blocked. triggerCalorieComputation never throws.
+            void deps.triggerCalorieComputation(user, start, end)
+          }
         }
       }
 
