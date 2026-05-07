@@ -3,6 +3,9 @@ package net.aurboda
 import android.util.Log
 import androidx.health.connect.client.records.*
 import io.ktor.client.HttpClient
+import io.ktor.client.engine.android.Android
+import io.ktor.client.plugins.HttpTimeout
+import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.request.headers
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
@@ -10,6 +13,7 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.content.TextContent
+import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.delay
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.builtins.serializer
@@ -19,6 +23,22 @@ const val SYNC_UTILS_TAG = "SyncUtils"
 /** Maximum retries per chunk on transient errors (network drop, 5xx, 408, 429). */
 @PublishedApi
 internal const val MAX_CHUNK_ATTEMPTS: Int = 4
+
+/**
+ * Build the HttpClient used for all sync uploads. Without HttpTimeout the Android engine waits
+ * indefinitely on stalled connections — an HR chunk POST that black-holes will hang the whole
+ * sync until WorkManager kills the worker at its 10-minute limit. The retry path in
+ * postChunkWithRetry only fires on actual errors, so timeouts are what surface a stall as one.
+ */
+fun syncHttpClient(): HttpClient =
+  HttpClient(Android) {
+    install(ContentNegotiation) { json(appJson) }
+    install(HttpTimeout) {
+      connectTimeoutMillis = 30_000
+      socketTimeoutMillis = 60_000
+      requestTimeoutMillis = 120_000
+    }
+  }
 
 /**
  * HeartRateRecord is a SeriesRecord — each record holds many samples, so the JSON payload can
