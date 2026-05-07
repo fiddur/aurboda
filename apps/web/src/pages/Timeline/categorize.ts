@@ -132,6 +132,19 @@ const matchCategoryByPath = (
 }
 
 /**
+ * Match a derived activity's `activity_type` to the screentime category whose
+ * `activity_type_name` slug it links to. Crucial after hierarchy collapse: a
+ * `programming` + `software_dev` pair retyped to `work_dev` should display as
+ * the "Work & Dev" category, not as the *first child's* category (which is
+ * what path-based matching would return — `data.category_path` carries the
+ * first member's path even after retype).
+ */
+const matchCategoryByActivityType = (
+  activityType: string,
+  categories: ScreentimeCategory[],
+): ScreentimeCategory | undefined => categories.find((c) => c.activity_type_name === activityType)
+
+/**
  * Categorize screentime activities into Screen Time lane items. Two paths:
  *
  *  • Legacy umbrella `activity_type='screentime'` activities carry the path
@@ -157,27 +170,39 @@ export const categorizeScreentimeActivities = (
   activities
     .filter((a): a is Activity & { end_time: Date } => Boolean(a.end_time))
     .filter((a) => a.activity_type === 'screentime' || screentimeDerivedTypes.has(a.activity_type))
-    // eslint-disable-next-line complexity -- one fall-through pass over five label/color/icon sources
+    // eslint-disable-next-line complexity -- one fall-through pass over multiple label/color/icon sources
     .map((a) => {
       const categoryPathStr = typeof a.data?.category_path === 'string' ? a.data.category_path : ''
       const path = categoryPathStr ? categoryPathStr.split(' > ') : []
       const score = typeof a.data?.score === 'number' ? a.data.score : undefined
 
-      const matched = matchCategoryByPath(path, categories)
+      // The "linked category" is the screentime_category whose
+      // `activity_type_name` matches the activity's current type. After a
+      // hierarchy collapse retyped this activity to its parent, this lookup
+      // returns the parent category — exactly what we want for the bar's
+      // identity. Falls back to walking the path for v1 umbrella activities
+      // (activity_type='screentime' has no linked category).
+      const matchedByType =
+        a.activity_type !== 'screentime'
+          ? matchCategoryByActivityType(a.activity_type, categories)
+          : undefined
+      const matchedByPath = matchCategoryByPath(path, categories)
+      const linkedCategory = matchedByType ?? matchedByPath
       const def = a.activity_type !== 'screentime' ? typeDefsMap.get(a.activity_type) : undefined
 
-      // Label preference:
-      //   1. The matched category's leaf (path-based, used by both paths)
-      //   2. The type def's display_name (derived types when the path is missing)
-      //   3. Generic "Screen time" fallback
-      const label = path.at(-1) ?? def?.display_name ?? 'Screen time'
-      // Color preference: matched category > type def > productivity score gradient.
-      const color = matched?.color ?? def?.color ?? getProductivityColor(score)
-      const href = matched ? `/screentime-categories/${matched.id}` : undefined
+      // Label / color / href / icon all key off the linked category — so a
+      // collapsed bar renders as the parent it was retyped to, not as
+      // whichever child happened to come first in `data.category_path`.
+      const label = linkedCategory?.name.at(-1) ?? def?.display_name ?? path.at(-1) ?? 'Screen time'
+      const color = linkedCategory?.color ?? def?.color ?? getProductivityColor(score)
+      const href = linkedCategory ? `/screentime-categories/${linkedCategory.id}` : undefined
+      const iconPath = linkedCategory?.name ?? path
+      const icon = resolveCategoryIcon(iconPath, itemIcons) ?? def?.icon
 
       const mergedLine = formatCollapsedTypesLine(a.collapsed_types)
+      const tooltipPath = linkedCategory?.name.join(' > ') ?? categoryPathStr ?? def?.display_name ?? ''
       const details = [
-        categoryPathStr || def?.display_name || '',
+        tooltipPath,
         formatDuration(a.start_time, a.end_time),
         ...(mergedLine ? [mergedLine] : []),
       ].filter(Boolean)
@@ -186,10 +211,10 @@ export const categorizeScreentimeActivities = (
         color,
         column: 'Screen Time' as Column,
         end: a.end_time,
-        entity_id: matched ? undefined : a.id,
+        entity_id: linkedCategory ? undefined : a.id,
         entity_type: 'activity' as const,
         href,
-        icon: resolveCategoryIcon(path, itemIcons) ?? def?.icon,
+        icon,
         isPoint: false,
         label,
         start: a.start_time,

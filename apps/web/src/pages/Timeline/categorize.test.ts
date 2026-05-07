@@ -278,4 +278,83 @@ describe('categorizeScreentimeActivities', () => {
     const items = categorizeScreentimeActivities([makeActivity({ data: {} })], [], {}, new Set(), new Map())
     expect(items[0]!.label).toBe('Screen time')
   })
+
+  // Hierarchy collapse retypes a derived activity to its parent slug while
+  // leaving `data.category_path` set to the first child's path. The bar's
+  // identity (label / color / href / icon) must come from the linked
+  // category — the one whose `activity_type_name` matches the activity's
+  // current type — not from the stale path.
+  describe('after hierarchy collapse (retyped activity)', () => {
+    const workCategory = {
+      activity_type_name: 'work_dev',
+      color: '#9333ea',
+      id: 'cat-work-dev',
+      name: ['Work & Dev'],
+    } as unknown as ScreentimeCategory
+    const commsCategory = {
+      activity_type_name: 'communications',
+      color: '#0ea5e9',
+      id: 'cat-comms',
+      name: ['Work & Dev', 'Communications'],
+    } as unknown as ScreentimeCategory
+
+    const collapsedToWorkDev = makeActivity({
+      activity_type: 'work_dev',
+      collapsed_types: [
+        { count: 1, type: 'communications' },
+        { count: 1, type: 'software_dev' },
+      ],
+      data: { category_path: 'Work & Dev > Communications' }, // first member's path
+    })
+
+    it('labels the bar with the linked category leaf, not the stale path leaf', () => {
+      const items = categorizeScreentimeActivities(
+        [collapsedToWorkDev],
+        [workCategory, commsCategory],
+        {},
+        new Set(['work_dev', 'communications']),
+        new Map([
+          ['work_dev', { color: '#9333ea', display_name: 'Work & Dev' }],
+          ['communications', { color: '#0ea5e9', display_name: 'Communications' }],
+        ]),
+      )
+      expect(items[0]!.label).toBe('Work & Dev')
+    })
+
+    it('uses the linked parent category color, not the first child', () => {
+      const items = categorizeScreentimeActivities(
+        [collapsedToWorkDev],
+        [workCategory, commsCategory],
+        {},
+        new Set(['work_dev', 'communications']),
+        new Map(),
+      )
+      expect(items[0]!.color).toBe('#9333ea')
+    })
+
+    it('hrefs to the parent category, not to the first child', () => {
+      const items = categorizeScreentimeActivities(
+        [collapsedToWorkDev],
+        [workCategory, commsCategory],
+        {},
+        new Set(['work_dev', 'communications']),
+        new Map(),
+      )
+      expect(items[0]!.href).toBe('/screentime-categories/cat-work-dev')
+    })
+
+    it('falls back to def when no linked category exists for the retyped slug', () => {
+      // Edge case: the parent category was deleted between sync and render.
+      const items = categorizeScreentimeActivities(
+        [collapsedToWorkDev],
+        [commsCategory],
+        {},
+        new Set(['work_dev', 'communications']),
+        new Map([['work_dev', { color: '#9333ea', display_name: 'Work & Dev' }]]),
+      )
+      // commsCategory matched by path, so linkedCategory falls through to it.
+      // Acceptable v1: parent disappeared, fall back to deepest path match.
+      expect(items[0]!.label).toBe('Communications')
+    })
+  })
 })
