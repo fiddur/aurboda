@@ -94,8 +94,6 @@ export interface UseTimelineDataOptions {
   barBucketSize: '1h' | '1d' | '1w'
   /** Gap (ms) below which adjacent same-key activities merge in the timeline. */
   mergeGapMs: number
-  /** Whether sibling sub-types should collapse to their parent_type for merging. */
-  shouldCollapseHierarchy: boolean
   /** Hierarchy walk depth: 0=no walk, 1=one hop, Infinity=walk to root. */
   collapseDepth: number
 }
@@ -110,7 +108,6 @@ export const useTimelineData = ({
   bucketSize,
   barBucketSize,
   mergeGapMs,
-  shouldCollapseHierarchy,
   collapseDepth,
 }: UseTimelineDataOptions): TimelineData => {
   // ── Data queries ───────────────────────────────────────────────────────────
@@ -256,8 +253,8 @@ export const useTimelineData = ({
     const filtered = allActivities.filter((a) =>
       ACTIVITY_CATEGORIES.has(categoryByType.get(a.activity_type) ?? 'other'),
     )
-    return collapseToParentType(filtered, typeDefsMap, mergeGapMs, shouldCollapseHierarchy, collapseDepth)
-  }, [allActivities, categoryByType, shouldCollapseHierarchy, collapseDepth, typeDefsMap, mergeGapMs])
+    return collapseToParentType(filtered, typeDefsMap, mergeGapMs, collapseDepth)
+  }, [allActivities, categoryByType, collapseDepth, typeDefsMap, mergeGapMs])
   // Anything that's neither a primary Activity-lane type, nor a screentime
   // type (legacy umbrella `screentime` + per-category derived types), nor a
   // music_scrobble / location_visit (own columns) goes here. Excluding
@@ -296,27 +293,15 @@ export const useTimelineData = ({
   // category, so without that discriminator they'd collapse into one bar).
   // Derived types feed through `collapseToParentType` so the same hierarchy
   // collapse used for exercise sub-types applies to screen time too.
+  // Both branches consume `allActivities` (post-`hiddenTypes` filter) so a
+  // type with `show_on_timeline=false` stays hidden uniformly.
   const screentimeActivities = useMemo<Activity[]>(() => {
-    const all = activitiesQuery.data ?? []
-    const legacyRaw = all.filter((a) => a.activity_type === 'screentime')
-    const derivedRaw = all.filter((a) => screentimeDerivedTypes.has(a.activity_type))
+    const legacyRaw = allActivities.filter((a) => a.activity_type === 'screentime')
+    const derivedRaw = allActivities.filter((a) => screentimeDerivedTypes.has(a.activity_type))
     const legacyMerged = mergeScreentimeActivities(legacyRaw, mergeGapMs)
-    const derivedMerged = collapseToParentType(
-      derivedRaw,
-      typeDefsMap,
-      mergeGapMs,
-      shouldCollapseHierarchy,
-      collapseDepth,
-    )
+    const derivedMerged = collapseToParentType(derivedRaw, typeDefsMap, mergeGapMs, collapseDepth)
     return [...legacyMerged, ...derivedMerged].sort((a, b) => a.start_time.getTime() - b.start_time.getTime())
-  }, [
-    activitiesQuery.data,
-    mergeGapMs,
-    screentimeDerivedTypes,
-    typeDefsMap,
-    shouldCollapseHierarchy,
-    collapseDepth,
-  ])
+  }, [allActivities, mergeGapMs, screentimeDerivedTypes, typeDefsMap, collapseDepth])
   // Music scrobbles are derived from `music_scrobble` activities — they live
   // in the activities table and are already returned by the activities fetch,
   // so no separate /lastfm/scrobbles network call is needed.

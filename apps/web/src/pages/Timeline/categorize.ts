@@ -7,6 +7,7 @@ import type { ChartItem, Column } from './types'
 
 import { toDisplayName } from '../../utils/displayName'
 import { resolveItemIcon } from '../../utils/emojiLookup'
+import { formatCollapsedTypesLine } from './activityMerge'
 import { getActivityColor, getPlaceColor, getProductivityColor, resolveCategoryIcon } from './colors'
 import { formatDuration, formatTime } from './formatting'
 
@@ -143,23 +144,9 @@ const matchCategoryByPath = (
  *    treatment.
  *
  *  • A `collapsed_types` provenance attached by `collapseToParentType` is
- *    surfaced as a "Merged: X, Y" tooltip line so the user can tell what
- *    sub-types the bar represents.
+ *    surfaced as a "Merged: X, Y" tooltip line via the shared
+ *    `formatCollapsedTypesLine` helper.
  */
-const formatCollapsedTypesLine = (
-  collapsedTypes: { type: string; count: number }[] | undefined,
-): string | undefined => {
-  if (!collapsedTypes || collapsedTypes.length < 1) return undefined
-  // A single-entry provenance is still informative ("Merged: Programming"
-  // tells the user the parent bar is one sub-type only). Two-or-more entries
-  // is the headline #657 use case.
-  const labels = collapsedTypes.map((e) => {
-    const display = toDisplayName(e.type)
-    return e.count > 1 ? `${display} ×${e.count}` : display
-  })
-  return `Merged: ${labels.join(', ')}`
-}
-
 export const categorizeScreentimeActivities = (
   activities: Activity[],
   categories: ScreentimeCategory[],

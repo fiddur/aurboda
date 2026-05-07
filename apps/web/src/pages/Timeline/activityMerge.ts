@@ -240,13 +240,8 @@ const buildActivityDetails = (
 
   // Hierarchy-collapsed bars (#657): surface the constituent sub-types so
   // a single "exercise" bar reveals it was actually running + strength + yoga.
-  if (a.collapsed_types && a.collapsed_types.length > 0) {
-    const labels = a.collapsed_types.map((e) => {
-      const display = toDisplayName(e.type)
-      return e.count > 1 ? `${display} ×${e.count}` : display
-    })
-    details.push(`Merged: ${labels.join(', ')}`)
-  }
+  const mergedLine = formatCollapsedTypesLine(a.collapsed_types)
+  if (mergedLine) details.push(mergedLine)
 
   return details
 }
@@ -278,6 +273,24 @@ const getActivityIconKey = (a: Activity, getExerciseTypeName: (a: Activity) => s
 
 /** Default gap below which two adjacent same-parent activities merge. */
 export const COLLAPSE_MERGE_GAP_MS = 30 * 60 * 1000 // 30 minutes
+
+/**
+ * Format a `collapsed_types` provenance list as a tooltip line. Used by both
+ * the Activity-lane (`buildActivityDetails`) and Screen-Time-lane
+ * (`categorizeScreentimeActivities`) tooltip builders. Returns undefined when
+ * there's nothing to show — a single-entry provenance is still informative
+ * (the parent bar is one sub-type only) so we keep that case.
+ */
+export const formatCollapsedTypesLine = (
+  collapsedTypes: { type: string; count: number }[] | undefined,
+): string | undefined => {
+  if (!collapsedTypes || collapsedTypes.length < 1) return undefined
+  const labels = collapsedTypes.map((e) => {
+    const display = toDisplayName(e.type)
+    return e.count > 1 ? `${display} ×${e.count}` : display
+  })
+  return `Merged: ${labels.join(', ')}`
+}
 
 /**
  * Look up the immediate parent_type of a type — the "collapse target" we
@@ -367,8 +380,11 @@ export const mergeAdjacentByKey = (
 
 /**
  * Walk the ancestor chain capped at `depth` hops. depth=1 returns the
- * immediate parent (current behaviour); depth=Infinity walks to the root.
+ * immediate parent (the common case); depth=Infinity walks to the root.
  * Returns the input type when no walk can happen.
+ *
+ * The depth=1 fast path uses `resolveCollapseTarget` directly to avoid
+ * building a full ancestor chain we'd immediately discard.
  */
 const collapseTargetAtDepth = (
   typeName: string,
@@ -376,48 +392,49 @@ const collapseTargetAtDepth = (
   depth: number,
 ): string => {
   if (depth <= 0) return typeName
+  if (depth === 1) return resolveCollapseTarget(typeName, typeDefsByName) ?? typeName
   const chain = ancestorChain(typeName, typeDefsByName)
   // chain[0] is typeName itself; ancestors at indices 1..chain.length-1.
   const targetIndex = Math.min(depth, chain.length - 1)
   return chain[targetIndex]
 }
 
+/**
+ * Pure: returns a new list with `type` accounted for. Either bumps the
+ * existing entry's count or appends a fresh `{ type, count: 1 }`. Never
+ * mutates the input — important because `Activity.collapsed_types` may end
+ * up shared across memoized references in a future iteration.
+ */
 const recordCollapsedType = (
   list: { type: string; count: number }[],
   type: string,
 ): { type: string; count: number }[] => {
-  const existing = list.find((e) => e.type === type)
-  if (existing) {
-    existing.count += 1
-    return list
-  }
-  return [...list, { type, count: 1 }]
+  const idx = list.findIndex((e) => e.type === type)
+  if (idx === -1) return [...list, { type, count: 1 }]
+  return list.map((e, i) => (i === idx ? { ...e, count: e.count + 1 } : e))
 }
 
 /**
  * Collapse adjacent activities up to `depth` levels of parent_type into a
  * single bar.
  *
- *   1. If `collapseToParent` is true, re-type each activity to its ancestor at
- *      the requested depth. depth=1 collapses one hop (warmup_run →
- *      exercise); depth=Infinity walks to the root (yoga → exercise → root).
+ *   1. Re-type each activity to its ancestor at the requested depth.
+ *      depth=0: no walk (max-zoom; sibling sub-types stay distinct and
+ *      individually clickable). depth=1: one hop (warmup_run → exercise).
+ *      depth=Infinity: walk to root.
  *   2. Merge adjacent activities with the same effective type whose gap is
- *      within `mergeGapMs`.
+ *      within `mergeGapMs`. Identical sub-types still merge at depth=0 (a
+ *      comb of consecutive `running` slivers folds to one).
  *
  * The synthetic survivor of a multi-child collapse carries `collapsed_types`
  * with the original child types and counts (deduped, ordered by first
  * appearance) — used by the tooltip enrichment in #657.
- *
- * At max zoom the caller passes `collapseToParent=false` so sibling sub-types
- * stay distinct (and individually clickable). Identical sub-types still merge
- * across small gaps (a comb of consecutive `running` slivers folds to one).
  */
 // eslint-disable-next-line complexity -- single-pass merge with provenance accumulation; splitting hurts readability
 export const collapseToParentType = (
   activities: Activity[],
   typeDefsByName: ReadonlyMap<string, { parent_type?: string }>,
   mergeGapMs: number = COLLAPSE_MERGE_GAP_MS,
-  collapseToParent = true,
   depth = 1,
 ): Activity[] => {
   if (activities.length === 0) return activities
@@ -425,9 +442,8 @@ export const collapseToParentType = (
   // Retype each activity to its target effective type, remembering the
   // original sub-type for provenance.
   const retyped = activities.map((a) => {
-    const effective = collapseToParent
-      ? collapseTargetAtDepth(a.activity_type, typeDefsByName, depth)
-      : a.activity_type
+    const effective =
+      depth > 0 ? collapseTargetAtDepth(a.activity_type, typeDefsByName, depth) : a.activity_type
     if (effective === a.activity_type) {
       return { ...a }
     }

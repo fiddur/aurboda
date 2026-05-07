@@ -87,11 +87,18 @@ const STATIC_CATEGORY_MATCHERS: Record<
 }
 
 /**
- * Top-level screentime categories visible in the legend, ordered as they
- * should appear. Built from the activity_type_definitions tree intersected
- * with the slugs that appear on at least one screentime_categories row, then
- * filtered to those whose `parent_type` is unset (the roots of each
- * category subtree).
+ * Top-level screentime categories visible in the legend, ordered alphabetically
+ * by label. Built from the activity_type_definitions tree intersected with the
+ * slugs that appear on at least one screentime_categories row, then filtered
+ * to those whose `parent_type` is unset (the roots of each category subtree).
+ *
+ * Assumption: every top-level screentime grouping the user wants in the legend
+ * has its own `screentime_categories` row whose `activity_type_name` resolves
+ * to a top-level (`parent_type=null`) type def. If a user only configured
+ * leaf-level categories (e.g. a `Programming` category but no parent `Work`),
+ * no per-top-level sub-toggles will appear — the umbrella `screentime` toggle
+ * still works as a single hide-everything switch. Restructure follow-up if
+ * this assumption gets in the way (#721 makes it moot anyway).
  */
 export interface ScreentimeSubEntry {
   /** The top-level activity_type slug (e.g. "work"). */
@@ -115,6 +122,14 @@ export const buildScreentimeSubEntries = (
     }))
     .sort((a, b) => a.label.localeCompare(b.label))
 
+/** Map of LegendCategory → matcher. Static keys are exhaustive; dynamic keys are present only when their corresponding sub-entry exists. */
+export type CategoryMatchers = Record<
+  Exclude<LegendCategory, `screentime:${string}`>,
+  (item: ChartItem) => boolean
+> & {
+  [K in `screentime:${string}`]?: (item: ChartItem) => boolean
+}
+
 /**
  * Build the matcher set including dynamic screentime sub-toggle entries.
  * Each `screentime:<top-level>` entry matches a Screen Time-column item whose
@@ -123,8 +138,8 @@ export const buildScreentimeSubEntries = (
 export const buildCategoryMatchers = (
   typeDefsMap: ReadonlyMap<string, { parent_type?: string }>,
   screentimeSubEntries: ScreentimeSubEntry[],
-): Record<string, (item: ChartItem) => boolean> => {
-  const matchers: Record<string, (item: ChartItem) => boolean> = { ...STATIC_CATEGORY_MATCHERS }
+): CategoryMatchers => {
+  const matchers = { ...STATIC_CATEGORY_MATCHERS } as CategoryMatchers
   for (const entry of screentimeSubEntries) {
     const topLevel = entry.type
     matchers[entry.legendKey] = (item) =>

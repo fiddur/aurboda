@@ -439,26 +439,24 @@ describe('collapseToParentType', () => {
     expect(collapseToParentType(activities, typeDefs, 10 * 60 * 1000)).toHaveLength(2)
   })
 
-  it('keeps sibling sub-types distinct when collapseToParent=false', () => {
-    // Max-zoom case: warmup_run + strength_training should stay clickable as
-    // separate items even when adjacent.
+  it('keeps sibling sub-types distinct at depth=0 (max zoom)', () => {
+    // warmup_run + strength_training stay clickable as separate items.
     const activities: Activity[] = [
       { activity_type: 'running', end_time: d(10, 30), id: 'a', start_time: d(10) },
       { activity_type: 'strength_training', end_time: d(11), id: 'b', start_time: d(10, 35) },
     ]
-    const result = collapseToParentType(activities, typeDefs, 30 * 60 * 1000, false)
+    const result = collapseToParentType(activities, typeDefs, 30 * 60 * 1000, 0)
     expect(result).toHaveLength(2)
     expect(result.map((a) => a.activity_type)).toEqual(['running', 'strength_training'])
   })
 
-  it('still merges identical sub-types when collapseToParent=false', () => {
-    // Two adjacent running spans should still fold into one even at max zoom —
-    // the user reported a comb of identical slivers and wants those merged.
+  it('still merges identical sub-types at depth=0', () => {
+    // A comb of consecutive running slivers folds to one even at max zoom.
     const activities: Activity[] = [
       { activity_type: 'running', end_time: d(10, 30), id: 'a', start_time: d(10) },
       { activity_type: 'running', end_time: d(11), id: 'b', start_time: d(10, 35) },
     ]
-    const result = collapseToParentType(activities, typeDefs, 30 * 60 * 1000, false)
+    const result = collapseToParentType(activities, typeDefs, 30 * 60 * 1000, 0)
     expect(result).toHaveLength(1)
     expect(result[0].activity_type).toBe('running')
   })
@@ -505,7 +503,7 @@ describe('collapseToParentType', () => {
     expect(collapsed[0].collapsed_types).toEqual([{ type: 'running', count: 2 }])
   })
 
-  it('drops trivial provenance when no retype happens (collapseToParent=false)', () => {
+  it('drops trivial provenance when no retype happens (depth=0)', () => {
     // Identical sub-types merge but stay typed as themselves; the survivor's
     // provenance would be [{ running, 2 }] which is the same as activity_type
     // — drop so tooltip doesn't render a redundant "Merged: Running" line.
@@ -513,7 +511,7 @@ describe('collapseToParentType', () => {
       { activity_type: 'running', end_time: d(10, 30), id: 'a', start_time: d(10) },
       { activity_type: 'running', end_time: d(11), id: 'b', start_time: d(10, 35) },
     ]
-    const collapsed = collapseToParentType(activities, typeDefs, undefined, false)
+    const collapsed = collapseToParentType(activities, typeDefs, undefined, 0)
     expect(collapsed[0].activity_type).toBe('running')
     expect(collapsed[0].collapsed_types).toBeUndefined()
   })
@@ -527,7 +525,7 @@ describe('collapseToParentType', () => {
     const activities: Activity[] = [
       { activity_type: 'running', end_time: d(10, 30), id: 'a', start_time: d(10) },
     ]
-    const result = collapseToParentType(activities, deepDefs, undefined, true, 1)
+    const result = collapseToParentType(activities, deepDefs, undefined, 1)
     expect(result[0].activity_type).toBe('exercise')
   })
 
@@ -540,7 +538,7 @@ describe('collapseToParentType', () => {
     const activities: Activity[] = [
       { activity_type: 'running', end_time: d(10, 30), id: 'a', start_time: d(10) },
     ]
-    const result = collapseToParentType(activities, deepDefs, undefined, true, 2)
+    const result = collapseToParentType(activities, deepDefs, undefined, 2)
     expect(result[0].activity_type).toBe('fitness')
   })
 
@@ -553,7 +551,7 @@ describe('collapseToParentType', () => {
     const activities: Activity[] = [
       { activity_type: 'running', end_time: d(10, 30), id: 'a', start_time: d(10) },
     ]
-    const result = collapseToParentType(activities, deepDefs, undefined, true, Number.POSITIVE_INFINITY)
+    const result = collapseToParentType(activities, deepDefs, undefined, Number.POSITIVE_INFINITY)
     expect(result[0].activity_type).toBe('fitness')
   })
 
@@ -565,7 +563,7 @@ describe('collapseToParentType', () => {
     const activities: Activity[] = [
       { activity_type: 'running', end_time: d(10, 30), id: 'a', start_time: d(10) },
     ]
-    const result = collapseToParentType(activities, deepDefs, undefined, true, 99)
+    const result = collapseToParentType(activities, deepDefs, undefined, 99)
     expect(result[0].activity_type).toBe('exercise')
   })
 })

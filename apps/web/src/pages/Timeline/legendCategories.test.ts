@@ -146,7 +146,9 @@ describe('dynamic screentime sub-toggle matchers (#718)', () => {
     const m = matchers(typeDefs, new Set(['work', 'programming']))
     // A `programming` item in the Screen Time column should match the
     // `screentime:work` toggle (its root-walked ancestor is `work`).
-    expect(m['screentime:work'](makeItem({ activity_type: 'programming', column: 'Screen Time' }))).toBe(true)
+    expect(m['screentime:work']!(makeItem({ activity_type: 'programming', column: 'Screen Time' }))).toBe(
+      true,
+    )
     // The same item should NOT match a different top-level toggle.
     expect(
       m['screentime:media']?.(makeItem({ activity_type: 'programming', column: 'Screen Time' })),
@@ -156,7 +158,7 @@ describe('dynamic screentime sub-toggle matchers (#718)', () => {
   it('does not match items outside the Screen Time column', () => {
     const typeDefs = [def({ name: 'work', display_name: 'Work' })]
     const m = matchers(typeDefs, new Set(['work']))
-    expect(m['screentime:work'](makeItem({ activity_type: 'work', column: 'Activity' }))).toBe(false)
+    expect(m['screentime:work']!(makeItem({ activity_type: 'work', column: 'Activity' }))).toBe(false)
   })
 })
 
