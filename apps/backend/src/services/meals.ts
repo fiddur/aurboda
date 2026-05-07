@@ -29,8 +29,10 @@ import { getCentralDb } from './central-db.ts'
 import {
   cacheCompositeNutrients,
   createFoodItemsService,
+  type FoodItemDisplay,
   getEffectiveNutrients,
   type MergedFoodItem,
+  resolveFoodItemDisplay,
 } from './food-items.ts'
 
 // ============================================================================
@@ -135,21 +137,34 @@ const formatMeal = (meal: EnrichedMeal): MealResponse => ({
   time: meal.time.toISOString(),
 })
 
-/** Convert junction links to the MealFoodItem format for API responses. */
-const linksToFoodItems = (links: MealFoodItemLink[]): MealFoodItem[] =>
-  links.map((link) => ({
-    food_item_id: link.food_item_id,
-    name: link.food_item_name ?? '',
-    icon: link.food_item_icon,
-    quantity: link.quantity as number | undefined,
-    unit: link.unit as string | undefined,
-    calories: link.calories as number | undefined,
-    protein: link.protein as number | undefined,
-    carbs: link.carbs as number | undefined,
-    fat: link.fat as number | undefined,
-    fiber: link.fiber as number | undefined,
-    sensitivities: (link as { sensitivities?: string[] }).sensitivities,
-  }))
+/**
+ * Convert junction links to the MealFoodItem format for API responses.
+ * Name and icon are resolved live from the canonical food item via
+ * `displayMap`. When the canonical can't be resolved (e.g. the food item
+ * was hard-deleted without a merge re-pointer) we fall back to the
+ * row's legacy snapshot columns so historical meals still render their
+ * last-known label instead of blanking out.
+ */
+const linksToFoodItems = (
+  links: MealFoodItemLink[],
+  displayMap: Map<string, FoodItemDisplay>,
+): MealFoodItem[] =>
+  links.map((link) => {
+    const display = displayMap.get(link.food_item_id)
+    return {
+      food_item_id: link.food_item_id,
+      name: display?.name ?? link.legacy_food_item_name ?? '',
+      icon: display?.icon ?? link.legacy_food_item_icon,
+      quantity: link.quantity as number | undefined,
+      unit: link.unit as string | undefined,
+      calories: link.calories as number | undefined,
+      protein: link.protein as number | undefined,
+      carbs: link.carbs as number | undefined,
+      fat: link.fat as number | undefined,
+      fiber: link.fiber as number | undefined,
+      sensitivities: (link as { sensitivities?: string[] }).sensitivities,
+    }
+  })
 
 /** Aggregate all nutrient columns from junction links into a flat record. */
 const aggregateNutrients = (links: MealFoodItemLink[]): Record<string, number> => {
@@ -192,6 +207,15 @@ const attachFoodItems = async (user: string, meals: Meal[]): Promise<EnrichedMea
   const mealIds = meals.map((m) => m.id)
   const junctionMap = await getMealFoodItemsBatch(user, mealIds)
 
+  // Collect every food_item_id referenced across all meals so name/icon are
+  // resolved against the live canonical rows in a single batch — junction
+  // rows don't snapshot name/icon any more.
+  const foodItemIds: string[] = []
+  for (const links of junctionMap.values()) {
+    for (const link of links) foodItemIds.push(link.food_item_id)
+  }
+  const displayMap = await resolveFoodItemDisplay(user, getCentralDb(), foodItemIds)
+
   return meals.map((meal) => {
     const links = junctionMap.get(meal.id)
     if (links && links.length > 0) {
@@ -199,7 +223,7 @@ const attachFoodItems = async (user: string, meals: Meal[]): Promise<EnrichedMea
       const incomplete = hasIncompleteNutrients(links)
       return {
         ...meal,
-        food_items: linksToFoodItems(links),
+        food_items: linksToFoodItems(links, displayMap),
         nutrients,
         ...(incomplete ? { nutrient_data_incomplete: true } : {}),
       }
@@ -228,9 +252,8 @@ const round2 = (n: number): number => Math.round(n * 100) / 100
 
 /**
  * Build a junction row by snapshotting the canonical food item's nutrient
- * values scaled by quantity, plus the food item's name and icon. With the
- * name/icon snapshotted, meal reads no longer JOIN food_items — important
- * because the canonical row may live in the central DB.
+ * values scaled by quantity. Name and icon are NOT snapshotted — they're
+ * resolved at read time so user edits propagate to past meals.
  *
  * `effectiveValues` carries the per-default-quantity nutrients to snapshot.
  * Callers should compute it via `getEffectiveNutrients(detail)` so composite
@@ -247,8 +270,6 @@ export const buildScaledJunctionItem = (
   const scale = computeScale(fi, canonical)
   const junctionItem: Record<string, unknown> = {
     food_item_id: canonical.id,
-    food_item_icon: (canonical.icon as string | undefined) ?? null,
-    food_item_name: canonical.name,
     quantity: fi.quantity,
     sensitivities: sensitivities.length > 0 ? sensitivities : null,
     sort_order: sortOrder,
@@ -480,9 +501,7 @@ export async function resnapshotMealsForFoodItem(
         // Preserve other items' snapshots verbatim — this action only refreshes
         // rows that point at the food item being re-snapshotted.
         const passThrough: Record<string, unknown> = {
-          food_item_icon: link.food_item_icon,
           food_item_id: link.food_item_id,
-          food_item_name: link.food_item_name,
           quantity: link.quantity,
           sensitivities: link.sensitivities ?? null,
           sort_order: link.sort_order,
@@ -497,7 +516,7 @@ export async function resnapshotMealsForFoodItem(
       rowsUpdated++
       const fi: FoodItemInput = {
         food_item_id: foodItemId,
-        name: link.food_item_name ?? canonical.name,
+        name: canonical.name,
         quantity: link.quantity as number | undefined,
         unit: link.unit as string | undefined,
       }
@@ -545,8 +564,8 @@ export async function queryMeals(
  * Frequently-logged meal templates, grouped by name within a meal_type.
  *
  * Enriches each entry with the food items from the most recent occurrence so
- * the UI can re-log them with one tap. Icon is taken from the first food
- * item's `food_items.icon` (joined via the junction table).
+ * the UI can re-log them with one tap. Names and icons are resolved live
+ * from the canonical food item — the junction stores nutrients only.
  */
 export async function queryFrequentMeals(
   user: string,
@@ -565,18 +584,31 @@ export async function queryFrequentMeals(
     rows.map((r) => r.last_meal_id),
   )
 
+  const foodItemIds: string[] = []
+  for (const links of junctionMap.values()) {
+    for (const link of links) foodItemIds.push(link.food_item_id)
+  }
+  const displayMap = await resolveFoodItemDisplay(user, getCentralDb(), foodItemIds)
+
   const data: FrequentMeal[] = rows.map((row) => {
     const links = junctionMap.get(row.last_meal_id) ?? []
-    // Schema requires non-empty name on each food item — drop links missing one.
-    const food_items = links
-      .filter((link): link is typeof link & { food_item_name: string } => !!link.food_item_name)
-      .map((link) => ({
-        food_item_id: link.food_item_id,
-        name: link.food_item_name,
-        quantity: typeof link.quantity === 'number' ? link.quantity : undefined,
-        unit: typeof link.unit === 'string' ? link.unit : undefined,
-        icon: link.food_item_icon,
-      }))
+    // Schema requires non-empty name on each food item — when the canonical
+    // doesn't resolve (deleted food item) fall back to the row's legacy
+    // snapshot, then drop entries that have neither.
+    const food_items = links.flatMap((link) => {
+      const display = displayMap.get(link.food_item_id)
+      const name = display?.name ?? link.legacy_food_item_name
+      if (!name) return []
+      return [
+        {
+          food_item_id: link.food_item_id,
+          name,
+          quantity: typeof link.quantity === 'number' ? link.quantity : undefined,
+          unit: typeof link.unit === 'string' ? link.unit : undefined,
+          icon: display?.icon ?? link.legacy_food_item_icon,
+        },
+      ]
+    })
     const icon = food_items[0]?.icon ?? null
     return {
       name: row.name,
@@ -593,9 +625,9 @@ export async function queryFrequentMeals(
 
 /**
  * Top-N food items by usage in the user's meal log over the last
- * `since_days`. Returns the snapshotted name/icon and the most recent
- * quantity/unit, so an MCP agent can suggest "your usual" without re-running
- * fuzzy search every time.
+ * `since_days`. Names and icons are resolved live from the canonical food
+ * items so renames and icon edits show up immediately, without needing to
+ * resnapshot historical meal rows.
  */
 export async function queryFrequentFoodItems(
   user: string,
@@ -606,16 +638,24 @@ export async function queryFrequentFoodItems(
     meal_type: filters.meal_type,
     since_days: filters.since_days ?? 90,
   })
+  const displayMap = await resolveFoodItemDisplay(
+    user,
+    getCentralDb(),
+    rows.map((r) => r.food_item_id),
+  )
   return {
-    data: rows.map((row) => ({
-      count: row.count,
-      food_item_id: row.food_item_id,
-      icon: row.icon,
-      last_quantity: row.last_quantity,
-      last_unit: row.last_unit,
-      last_used: row.last_used.toISOString(),
-      name: row.name,
-    })),
+    data: rows.map((row) => {
+      const display = displayMap.get(row.food_item_id)
+      return {
+        count: row.count,
+        food_item_id: row.food_item_id,
+        icon: display?.icon ?? row.legacy_icon ?? null,
+        last_quantity: row.last_quantity,
+        last_unit: row.last_unit,
+        last_used: row.last_used.toISOString(),
+        name: display?.name ?? row.legacy_name ?? '',
+      }
+    }),
     success: true,
   }
 }

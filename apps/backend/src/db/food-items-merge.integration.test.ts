@@ -32,9 +32,7 @@ describe('mergeFoodItems', () => {
     await setMealFoodItems(user, meal.id, [
       {
         calories: 50, // user manually entered at meal time
-        food_item_icon: undefined,
         food_item_id: source.id,
-        food_item_name: 'Ghee',
         quantity: 5,
         sort_order: 0,
         unit: 'g',
@@ -163,7 +161,6 @@ describe('mergeFoodItems', () => {
     await setMealFoodItems(user, meal.id, [
       {
         food_item_id: source.id,
-        food_item_name: 'Source',
         quantity: 1,
         sort_order: 0,
       },

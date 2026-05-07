@@ -291,9 +291,7 @@ describe('Food Items Integration Tests', () => {
       await setMealFoodItems(user, meal.id, [
         {
           calories: 400,
-          food_item_icon: undefined,
           food_item_id: food1.id,
-          food_item_name: 'Bread',
           quantity: 2,
           sort_order: 0,
           unit: 'slice',
@@ -301,9 +299,7 @@ describe('Food Items Integration Tests', () => {
         {
           calories: 100,
           fat: 11,
-          food_item_icon: undefined,
           food_item_id: food2.id,
-          food_item_name: 'Butter',
           quantity: 1,
           sort_order: 1,
           unit: 'tbsp',
@@ -312,9 +308,9 @@ describe('Food Items Integration Tests', () => {
 
       const links = await getMealFoodItems(user, meal.id)
       expect(links).toHaveLength(2)
-      expect(links[0].food_item_name).toBe('Bread')
+      expect(links[0].food_item_id).toBe(food1.id)
       expect(links[0].calories).toBe(400)
-      expect(links[1].food_item_name).toBe('Butter')
+      expect(links[1].food_item_id).toBe(food2.id)
       expect(links[1].fat).toBe(11)
     })
 
@@ -325,17 +321,17 @@ describe('Food Items Integration Tests', () => {
       const meal = await insertMeal(user, { time: new Date('2025-06-15T12:00:00Z') })
 
       await setMealFoodItems(user, meal.id, [
-        { food_item_id: food.id, food_item_name: 'Rice', quantity: 1, sort_order: 0, unit: 'cup' },
+        { food_item_id: food.id, quantity: 1, sort_order: 0, unit: 'cup' },
       ])
 
       const food2 = await upsertFoodItem(user, { name: 'Chicken' })
       await setMealFoodItems(user, meal.id, [
-        { food_item_id: food2.id, food_item_name: 'Chicken', quantity: 150, sort_order: 0, unit: 'g' },
+        { food_item_id: food2.id, quantity: 150, sort_order: 0, unit: 'g' },
       ])
 
       const links = await getMealFoodItems(user, meal.id)
       expect(links).toHaveLength(1)
-      expect(links[0].food_item_name).toBe('Chicken')
+      expect(links[0].food_item_id).toBe(food2.id)
     })
 
     test('cascade deletes junction rows when meal is deleted', async () => {
@@ -344,9 +340,7 @@ describe('Food Items Integration Tests', () => {
       const food = await upsertFoodItem(user, { name: 'Egg' })
       const meal = await insertMeal(user, { time: new Date('2025-06-15T07:00:00Z') })
 
-      await setMealFoodItems(user, meal.id, [
-        { food_item_id: food.id, food_item_name: 'Egg', quantity: 2, sort_order: 0 },
-      ])
+      await setMealFoodItems(user, meal.id, [{ food_item_id: food.id, quantity: 2, sort_order: 0 }])
 
       const { deleteMeal } = await import('./meals.ts')
       await deleteMeal(user, meal.id)
