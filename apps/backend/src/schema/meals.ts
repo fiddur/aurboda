@@ -179,10 +179,12 @@ export const mealsTables: Record<string, string> = {
       ON food_items USING gin (immutable_unaccent(name_lower) gin_trgm_ops)
   `,
 
-  // Junction: meals <-> food items (snapshot of name/icon/nutrients at
-  // insertion time). food_item_id is a soft pointer — the row may be in the
-  // per-user food_items table or in the central shared_food_items table, so
-  // there's no FK; everything needed for display is snapshotted here.
+  // Junction: meals <-> food items (snapshot of nutrients at insertion
+  // time). food_item_id is a soft pointer — the row may be in the per-user
+  // food_items table or in the central shared_food_items table, so there's
+  // no FK. Name and icon are NOT snapshotted; they're resolved live so
+  // user edits propagate to past meals. The food_item_name + food_item_icon
+  // columns are kept around for legacy data and are unused by current code.
   meal_food_items: `
     CREATE TABLE IF NOT EXISTS meal_food_items (
       id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),

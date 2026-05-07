@@ -1,10 +1,18 @@
 /**
  * Meal ↔ Food Item junction table operations.
  *
- * Each junction row snapshots the canonical food item's name, icon, and
- * nutrient values at insertion time. food_item_id is a soft pointer — it
- * may resolve to a row in this user's `food_items` or to a row in the
- * central `shared_food_items` table — so we never JOIN food_items here.
+ * Each junction row snapshots the canonical food item's nutrient values at
+ * insertion time so historical totals stay frozen. Name and icon are NOT
+ * snapshotted on new writes — they're presentation data and are resolved
+ * live against the canonical food item (per-user `food_items` or central
+ * `shared_food_items`, with per-user overrides) at meal read time.
+ *
+ * The `food_item_name` + `food_item_icon` legacy columns are still read,
+ * though, so meals whose food item was hard-deleted (no merge re-pointer)
+ * still render their last-known label on the timeline / detail view
+ * instead of blanking out. Live resolution always wins; the snapshot is a
+ * last-resort fallback. food_item_id is a soft pointer across user and
+ * central DBs, so we never JOIN food_items here.
  */
 
 import { NUTRIENT_FIELD_NAMES } from '@aurboda/api-spec'
@@ -31,8 +39,8 @@ const mapJunctionRow = (row: Record<string, unknown>): MealFoodItemLink => {
     id: row.id,
     meal_id: row.meal_id,
     food_item_id: row.food_item_id,
-    food_item_name: row.food_item_name ?? undefined,
-    food_item_icon: row.food_item_icon ?? undefined,
+    legacy_food_item_name: row.food_item_name ?? undefined,
+    legacy_food_item_icon: row.food_item_icon ?? undefined,
     quantity: row.quantity ?? undefined,
     unit: row.unit ?? undefined,
     sort_order: row.sort_order ?? 0,
@@ -49,8 +57,6 @@ const mapJunctionRow = (row: Record<string, unknown>): MealFoodItemLink => {
 
 export interface MealFoodItemInput {
   food_item_id: string
-  food_item_name?: string
-  food_item_icon?: string
   quantity?: number
   unit?: string
   sort_order?: number
@@ -87,21 +93,10 @@ export const setMealFoodItems = async (
 
   for (let i = 0; i < items.length; i++) {
     const item = items[i]
-    const fields = [
-      'meal_id',
-      'food_item_id',
-      'food_item_name',
-      'food_item_icon',
-      'quantity',
-      'unit',
-      'sort_order',
-      'sensitivities',
-    ]
+    const fields = ['meal_id', 'food_item_id', 'quantity', 'unit', 'sort_order', 'sensitivities']
     const values: unknown[] = [
       mealId,
       item.food_item_id,
-      item.food_item_name ?? null,
-      item.food_item_icon ?? null,
       item.quantity ?? null,
       item.unit ?? null,
       item.sort_order ?? i,

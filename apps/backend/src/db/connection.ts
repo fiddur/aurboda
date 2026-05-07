@@ -955,24 +955,16 @@ export const migrateSchema = async (user: string) => {
     }
   }
 
-  // meal_food_items: snapshot food_item_name + food_item_icon at insertion
-  // time and drop the FK on food_item_id, since the canonical row may now
-  // live in the central shared_food_items table (different database).
+  // meal_food_items: drop the FK on food_item_id since the canonical row
+  // may now live in the central shared_food_items table (different
+  // database). The food_item_name + food_item_icon columns existed in
+  // earlier deploys for snapshotting display data but are no longer read or
+  // written — the service layer resolves current name/icon live against the
+  // canonical row instead. The columns stay in place to avoid a destructive
+  // migration on a hot table; they can be dropped in a follow-up.
   if (existingTableNames.has('meal_food_items')) {
     await query(db, `ALTER TABLE meal_food_items ADD COLUMN IF NOT EXISTS food_item_name VARCHAR(255)`)
     await query(db, `ALTER TABLE meal_food_items ADD COLUMN IF NOT EXISTS food_item_icon TEXT`)
-    // Backfill name/icon from the per-user food_items table for rows where
-    // it wasn't snapshotted yet. Rows that already pointed at central items
-    // (impossible before this PR) just stay null.
-    await query(
-      db,
-      `UPDATE meal_food_items mfi
-         SET food_item_name = fi.name,
-             food_item_icon = fi.icon
-       FROM food_items fi
-       WHERE fi.id = mfi.food_item_id
-         AND mfi.food_item_name IS NULL`,
-    )
     // Drop the FK if it still exists.
     await query(db, `ALTER TABLE meal_food_items DROP CONSTRAINT IF EXISTS meal_food_items_food_item_id_fkey`)
     // Mirror the nutrient columns onto the snapshot table.

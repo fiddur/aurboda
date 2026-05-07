@@ -391,9 +391,7 @@ describe('Meals Integration Tests', () => {
       for (let i = 0; i < breadMeals.length; i++) {
         await setMealFoodItems(user, breadMeals[i].id, [
           {
-            food_item_icon: '🍞',
             food_item_id: breadId,
-            food_item_name: 'Rye bread',
             quantity: i === breadMeals.length - 1 ? 80 : 100,
             sort_order: 0,
             unit: 'g',
@@ -406,9 +404,7 @@ describe('Meals Integration Tests', () => {
         const meal = await insertMeal(user, { meal_type: 'breakfast', time: days(day) })
         await setMealFoodItems(user, meal.id, [
           {
-            food_item_icon: '🥣',
             food_item_id: oatsId,
-            food_item_name: 'Oats',
             quantity: 50,
             sort_order: 0,
             unit: 'g',
@@ -420,9 +416,7 @@ describe('Meals Integration Tests', () => {
       const oldTeaMeal = await insertMeal(user, { meal_type: 'breakfast', time: days(120) })
       await setMealFoodItems(user, oldTeaMeal.id, [
         {
-          food_item_icon: undefined,
           food_item_id: teaId,
-          food_item_name: 'Tea',
           quantity: 1,
           sort_order: 0,
           unit: 'cup',
@@ -435,12 +429,10 @@ describe('Meals Integration Tests', () => {
       expect(rows[0]).toMatchObject({
         count: 3,
         food_item_id: breadId,
-        icon: '🍞',
         last_quantity: 80,
         last_unit: 'g',
-        name: 'Rye bread',
       })
-      expect(rows[1]).toMatchObject({ count: 2, food_item_id: oatsId, name: 'Oats' })
+      expect(rows[1]).toMatchObject({ count: 2, food_item_id: oatsId })
     })
 
     test('respects limit', async () => {
@@ -450,7 +442,6 @@ describe('Meals Integration Tests', () => {
         await setMealFoodItems(user, meal.id, [
           {
             food_item_id: `00000000-0000-0000-0000-00000000000${i}`,
-            food_item_name: `Food ${i}`,
             quantity: 1,
             sort_order: 0,
             unit: 'g',
@@ -468,11 +459,11 @@ describe('Meals Integration Tests', () => {
 
       const breakfast = await insertMeal(user, { meal_type: 'breakfast', time: new Date() })
       await setMealFoodItems(user, breakfast.id, [
-        { food_item_id: oats, food_item_name: 'Oats', quantity: 50, sort_order: 0, unit: 'g' },
+        { food_item_id: oats, quantity: 50, sort_order: 0, unit: 'g' },
       ])
       const lunch = await insertMeal(user, { meal_type: 'lunch', time: new Date() })
       await setMealFoodItems(user, lunch.id, [
-        { food_item_id: soup, food_item_name: 'Soup', quantity: 1, sort_order: 0, unit: 'bowl' },
+        { food_item_id: soup, quantity: 1, sort_order: 0, unit: 'bowl' },
       ])
 
       const breakfastRows = await getFrequentFoodItems(user, {

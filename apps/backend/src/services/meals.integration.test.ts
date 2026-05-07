@@ -9,12 +9,18 @@
 
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
-import { setIngredients } from '../db/food-item-ingredients.ts'
 import { updateFoodItem, upsertFoodItem } from '../db/food-items.ts'
+import { setIngredients } from '../db/food-item-ingredients.ts'
 import { getMealFoodItemsBatch } from '../db/meal-food-items.ts'
 import { getMealById } from '../db/meals.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
-import { addMeal, queryFrequentMeals, resnapshotMealsForFoodItem, updateMealById } from './meals.ts'
+import {
+  addMeal,
+  getMeal,
+  queryFrequentMeals,
+  resnapshotMealsForFoodItem,
+  updateMealById,
+} from './meals.ts'
 
 const CONTAINER_TIMEOUT = 120_000
 
@@ -305,5 +311,59 @@ describe('Meals service integration tests', () => {
       expect(result.data[0].icon).toBeNull()
       expect(result.data[0].food_items).toBeUndefined()
     })
+  })
+
+  describe('food item display is resolved live', () => {
+    test('editing a food item icon updates the icon on past meals (the timeline-stack bug)', async () => {
+      const user = getTestUser()
+      const bread = await upsertFoodItem(user, {
+        calories: 200,
+        default_quantity: 100,
+        default_unit: 'g',
+        name: 'Vitlöksbaguette',
+      })
+
+      const meal = await addMeal(user, {
+        food_items: [{ food_item_id: bread.id, name: 'Vitlöksbaguette', quantity: 100, unit: 'g' }],
+        meal_type: 'lunch',
+        time: '2026-04-26T12:00:00Z',
+      })
+      const mealId = meal.data!.id
+
+      // No icon at meal-creation time → meal renders without one.
+      const before = await getMeal(user, mealId)
+      expect(before.data!.food_items?.[0].icon).toBeUndefined()
+
+      // User decorates the food item *after* logging the meal — the timeline
+      // should pick this up immediately, no resnapshot needed.
+      await updateFoodItem(user, bread.id, { icon: '🥖' })
+
+      const after = await getMeal(user, mealId)
+      expect(after.data!.food_items?.[0].icon).toBe('🥖')
+      expect(after.data!.food_items?.[0].name).toBe('Vitlöksbaguette')
+    })
+
+    test('renaming a food item updates the name on past meals', async () => {
+      const user = getTestUser()
+      const item = await upsertFoodItem(user, {
+        calories: 90,
+        default_quantity: 1,
+        default_unit: 'piece',
+        icon: '🍌',
+        name: 'Banana',
+      })
+
+      const meal = await addMeal(user, {
+        food_items: [{ food_item_id: item.id, name: 'Banana', quantity: 1 }],
+        meal_type: 'snack',
+        time: '2026-04-26T15:00:00Z',
+      })
+
+      await updateFoodItem(user, item.id, { name: 'Banan' })
+
+      const refreshed = await getMeal(user, meal.data!.id)
+      expect(refreshed.data!.food_items?.[0].name).toBe('Banan')
+    })
+
   })
 })

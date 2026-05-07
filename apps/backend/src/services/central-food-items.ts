@@ -112,6 +112,7 @@ const escapeLike = (s: string): string => s.replaceAll(/[\\%_]/g, '\\$&')
 export interface SharedFoodItemsApi {
   searchSharedFoodItems: (q: string, limit?: number) => Promise<SharedFoodItemEntity[]>
   getSharedFoodItemById: (id: string) => Promise<SharedFoodItemEntity | null>
+  getSharedFoodItemsByIds: (ids: string[]) => Promise<Map<string, SharedFoodItemEntity>>
   getSharedFoodItemByName: (name: string) => Promise<SharedFoodItemEntity | null>
   upsertSharedFoodItem: (input: InsertSharedFoodItemInput) => Promise<SharedFoodItemEntity>
   listSharedFoodItems: (limit?: number) => Promise<SharedFoodItemEntity[]>
@@ -145,6 +146,22 @@ export const createSharedFoodItemsApi = (getClient: () => Promise<pg.Client>): S
     const client = await getClient()
     const result = await client.query(`SELECT ${COLUMNS} FROM shared_food_items WHERE id = $1`, [id])
     return result.rows.length > 0 ? mapRow(result.rows[0]) : null
+  },
+
+  getSharedFoodItemsByIds: async (ids) => {
+    const map = new Map<string, SharedFoodItemEntity>()
+    if (ids.length === 0) return map
+    const placeholders = ids.map((_, i) => `$${i + 1}`).join(', ')
+    const client = await getClient()
+    const result = await client.query(
+      `SELECT ${COLUMNS} FROM shared_food_items WHERE id IN (${placeholders})`,
+      ids,
+    )
+    for (const row of result.rows) {
+      const item = mapRow(row)
+      map.set(item.id, item)
+    }
+    return map
   },
 
   getSharedFoodItemByName: async (name) => {
