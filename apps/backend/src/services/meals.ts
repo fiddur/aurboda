@@ -140,8 +140,10 @@ const formatMeal = (meal: EnrichedMeal): MealResponse => ({
 /**
  * Convert junction links to the MealFoodItem format for API responses.
  * Name and icon are resolved live from the canonical food item via
- * `displayMap` — links without a current canonical fall back to an empty
- * name (the schema requires the field to be present even if blank).
+ * `displayMap`. When the canonical can't be resolved (e.g. the food item
+ * was hard-deleted without a merge re-pointer) we fall back to the
+ * row's legacy snapshot columns so historical meals still render their
+ * last-known label instead of blanking out.
  */
 const linksToFoodItems = (
   links: MealFoodItemLink[],
@@ -151,8 +153,8 @@ const linksToFoodItems = (
     const display = displayMap.get(link.food_item_id)
     return {
       food_item_id: link.food_item_id,
-      name: display?.name ?? '',
-      icon: display?.icon,
+      name: display?.name ?? link.legacy_food_item_name ?? '',
+      icon: display?.icon ?? link.legacy_food_item_icon,
       quantity: link.quantity as number | undefined,
       unit: link.unit as string | undefined,
       calories: link.calories as number | undefined,
@@ -590,18 +592,20 @@ export async function queryFrequentMeals(
 
   const data: FrequentMeal[] = rows.map((row) => {
     const links = junctionMap.get(row.last_meal_id) ?? []
-    // Schema requires non-empty name on each food item — drop links whose
-    // canonical no longer resolves (deleted food item, broken pointer).
+    // Schema requires non-empty name on each food item — when the canonical
+    // doesn't resolve (deleted food item) fall back to the row's legacy
+    // snapshot, then drop entries that have neither.
     const food_items = links.flatMap((link) => {
       const display = displayMap.get(link.food_item_id)
-      if (!display?.name) return []
+      const name = display?.name ?? link.legacy_food_item_name
+      if (!name) return []
       return [
         {
           food_item_id: link.food_item_id,
-          name: display.name,
+          name,
           quantity: typeof link.quantity === 'number' ? link.quantity : undefined,
           unit: typeof link.unit === 'string' ? link.unit : undefined,
-          icon: display.icon,
+          icon: display?.icon ?? link.legacy_food_item_icon,
         },
       ]
     })
@@ -645,11 +649,11 @@ export async function queryFrequentFoodItems(
       return {
         count: row.count,
         food_item_id: row.food_item_id,
-        icon: display?.icon ?? null,
+        icon: display?.icon ?? row.legacy_icon ?? null,
         last_quantity: row.last_quantity,
         last_unit: row.last_unit,
         last_used: row.last_used.toISOString(),
-        name: display?.name ?? '',
+        name: display?.name ?? row.legacy_name ?? '',
       }
     }),
     success: true,

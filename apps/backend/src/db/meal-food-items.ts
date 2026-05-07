@@ -3,10 +3,16 @@
  *
  * Each junction row snapshots the canonical food item's nutrient values at
  * insertion time so historical totals stay frozen. Name and icon are NOT
- * snapshotted — they're presentation data and are resolved live against the
- * canonical food item (per-user `food_items` or central `shared_food_items`,
- * with per-user overrides) at meal read time. food_item_id is a soft pointer
- * across either DB, so we never JOIN food_items here.
+ * snapshotted on new writes — they're presentation data and are resolved
+ * live against the canonical food item (per-user `food_items` or central
+ * `shared_food_items`, with per-user overrides) at meal read time.
+ *
+ * The `food_item_name` + `food_item_icon` legacy columns are still read,
+ * though, so meals whose food item was hard-deleted (no merge re-pointer)
+ * still render their last-known label on the timeline / detail view
+ * instead of blanking out. Live resolution always wins; the snapshot is a
+ * last-resort fallback. food_item_id is a soft pointer across user and
+ * central DBs, so we never JOIN food_items here.
  */
 
 import { NUTRIENT_FIELD_NAMES } from '@aurboda/api-spec'
@@ -19,6 +25,8 @@ const JUNCTION_COLUMNS = [
   'id',
   'meal_id',
   'food_item_id',
+  'food_item_name',
+  'food_item_icon',
   'quantity',
   'unit',
   'sort_order',
@@ -31,6 +39,8 @@ const mapJunctionRow = (row: Record<string, unknown>): MealFoodItemLink => {
     id: row.id,
     meal_id: row.meal_id,
     food_item_id: row.food_item_id,
+    legacy_food_item_name: row.food_item_name ?? undefined,
+    legacy_food_item_icon: row.food_item_icon ?? undefined,
     quantity: row.quantity ?? undefined,
     unit: row.unit ?? undefined,
     sort_order: row.sort_order ?? 0,

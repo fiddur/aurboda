@@ -10,12 +10,14 @@ import {
   createFoodItemsService,
   type FoodItemDetail,
   getEffectiveNutrients,
+  resolveFoodItemDisplay,
 } from './food-items.ts'
 
 vi.mock('../db/food-items.ts', () => ({
   findOrCreateFoodItem: vi.fn(),
   getFoodItemById: vi.fn(),
   getFoodItemByName: vi.fn(),
+  getFoodItemsByIds: vi.fn().mockResolvedValue(new Map()),
   searchFoodItems: vi.fn(),
 }))
 
@@ -61,6 +63,7 @@ const fakeCentral = (): CentralDb =>
   ({
     getSharedFoodItemById: vi.fn().mockResolvedValue(null),
     getSharedFoodItemByName: vi.fn().mockResolvedValue(null),
+    getSharedFoodItemsByIds: vi.fn().mockResolvedValue(new Map()),
     listSharedFoodItems: vi.fn().mockResolvedValue([]),
     searchSharedFoodItems: vi.fn().mockResolvedValue([]),
     upsertSharedFoodItem: vi.fn(),
@@ -794,5 +797,108 @@ describe('createFoodItemsService — shared item overrides', () => {
       'user',
       expect.arrayContaining(['c1', 'c2', 'c3']),
     )
+  })
+})
+
+describe('resolveFoodItemDisplay', () => {
+  test('per-user item wins over central — user library is the source of truth for ids in it', async () => {
+    const userMine = userItem('u1', 'My Banana')
+    userMine.icon = '🍌'
+    vi.mocked(dbModule.getFoodItemsByIds).mockResolvedValue(new Map([['u1', userMine]]))
+
+    const central = fakeCentral()
+    // Even if a central row somehow shared the id, it must not be consulted.
+    vi.mocked(central.getSharedFoodItemsByIds).mockResolvedValue(new Map())
+    vi.mocked(overridesModule.getSharedFoodItemOverridesByIds).mockResolvedValue(new Map())
+
+    const map = await resolveFoodItemDisplay('user', central, ['u1'])
+    expect(map.get('u1')).toEqual({ icon: '🍌', name: 'My Banana' })
+    expect(central.getSharedFoodItemsByIds).not.toHaveBeenCalled()
+  })
+
+  test('central item with no override passes the canonical icon through', async () => {
+    vi.mocked(dbModule.getFoodItemsByIds).mockResolvedValue(new Map())
+
+    const central = fakeCentral()
+    const lsv = sharedItem('c1', 'Banan')
+    lsv.icon = '🍌'
+    vi.mocked(central.getSharedFoodItemsByIds).mockResolvedValue(new Map([['c1', lsv]]))
+    vi.mocked(overridesModule.getSharedFoodItemOverridesByIds).mockResolvedValue(new Map())
+
+    const map = await resolveFoodItemDisplay('user', central, ['c1'])
+    expect(map.get('c1')).toEqual({ icon: '🍌', name: 'Banan' })
+  })
+
+  test('central item with a string override icon — user customization wins', async () => {
+    vi.mocked(dbModule.getFoodItemsByIds).mockResolvedValue(new Map())
+
+    const central = fakeCentral()
+    const lsv = sharedItem('c1', 'Banan')
+    lsv.icon = '🍌'
+    vi.mocked(central.getSharedFoodItemsByIds).mockResolvedValue(new Map([['c1', lsv]]))
+    vi.mocked(overridesModule.getSharedFoodItemOverridesByIds).mockResolvedValue(
+      new Map([
+        [
+          'c1',
+          {
+            created_at: new Date(),
+            icon: '🍯',
+            shared_food_item_id: 'c1',
+            updated_at: new Date(),
+          },
+        ],
+      ]),
+    )
+
+    const map = await resolveFoodItemDisplay('user', central, ['c1'])
+    expect(map.get('c1')).toEqual({ icon: '🍯', name: 'Banan' })
+  })
+
+  test('central item with explicit-null override icon — central icon is hidden, not inherited', async () => {
+    vi.mocked(dbModule.getFoodItemsByIds).mockResolvedValue(new Map())
+
+    const central = fakeCentral()
+    const lsv = sharedItem('c1', 'Banan')
+    lsv.icon = '🍌'
+    vi.mocked(central.getSharedFoodItemsByIds).mockResolvedValue(new Map([['c1', lsv]]))
+    vi.mocked(overridesModule.getSharedFoodItemOverridesByIds).mockResolvedValue(
+      new Map([
+        [
+          'c1',
+          {
+            created_at: new Date(),
+            icon: null,
+            shared_food_item_id: 'c1',
+            updated_at: new Date(),
+          },
+        ],
+      ]),
+    )
+
+    const map = await resolveFoodItemDisplay('user', central, ['c1'])
+    expect(map.get('c1')).toEqual({ icon: undefined, name: 'Banan' })
+  })
+
+  test('unresolved ids are absent from the map — caller falls through to a fallback', async () => {
+    vi.mocked(dbModule.getFoodItemsByIds).mockResolvedValue(new Map())
+    const central = fakeCentral()
+    vi.mocked(central.getSharedFoodItemsByIds).mockResolvedValue(new Map())
+    vi.mocked(overridesModule.getSharedFoodItemOverridesByIds).mockResolvedValue(new Map())
+
+    const map = await resolveFoodItemDisplay('user', central, ['ghost'])
+    expect(map.has('ghost')).toBe(false)
+  })
+
+  test('skips both central and override calls when every id resolves in the user DB', async () => {
+    const userMine = userItem('u1', 'My Banana')
+    vi.mocked(dbModule.getFoodItemsByIds).mockResolvedValue(new Map([['u1', userMine]]))
+
+    const central = fakeCentral()
+    vi.mocked(overridesModule.getSharedFoodItemOverridesByIds).mockClear()
+
+    await resolveFoodItemDisplay('user', central, ['u1'])
+
+    expect(central.getSharedFoodItemsByIds).not.toHaveBeenCalled()
+    expect(overridesModule.getSharedFoodItemOverridesByIds).not.toHaveBeenCalled()
   })
 })

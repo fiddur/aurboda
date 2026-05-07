@@ -355,20 +355,26 @@ export const resolveFoodItemDisplay = async (
 
   const userItems = await getUserFoodItemsByIds(user, unique)
   for (const [id, item] of userItems) {
+    // FoodItemEntity widens unknown columns via its nutrient index signature;
+    // the icon column is a plain optional string, so narrow it explicitly.
     map.set(id, { icon: item.icon as string | undefined, name: item.name })
   }
 
   const missing = unique.filter((id) => !map.has(id))
   if (missing.length === 0) return map
 
-  const centralItems = await centralDb.getSharedFoodItemsByIds(missing)
-  if (centralItems.size === 0) return map
-
-  const overrides = await getSharedFoodItemOverridesByIds(user, Array.from(centralItems.keys()))
+  // Fetch central items and overrides in parallel — overrides for ids that
+  // don't resolve in central are simply absent from the returned map, so
+  // widening the override scope to `missing` is harmless and saves a round
+  // trip on cold timeline reads.
+  const [centralItems, overrides] = await Promise.all([
+    centralDb.getSharedFoodItemsByIds(missing),
+    getSharedFoodItemOverridesByIds(user, missing),
+  ])
   for (const [id, item] of centralItems) {
     const override = overrides.get(id)
     // override.icon === null means "explicit no icon" — pass through as undefined.
-    const icon = override ? (override.icon ?? undefined) : (item.icon as string | undefined)
+    const icon = override ? (override.icon ?? undefined) : item.icon
     map.set(id, { icon, name: item.name })
   }
   return map

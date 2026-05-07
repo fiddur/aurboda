@@ -251,6 +251,10 @@ export interface FrequentFoodItemRow {
   last_used: Date
   last_quantity: number | null
   last_unit: string | null
+  /** Last-known name from the most recent row's legacy snapshot column. Read-only fallback for hard-deleted food items; current name is resolved live by the service layer. */
+  legacy_name: string | null
+  /** Last-known icon. See `legacy_name`. */
+  legacy_icon: string | null
 }
 
 interface FrequentFoodItemsFilter {
@@ -287,6 +291,7 @@ export const getFrequentFoodItems = async (
   const sql = `
     WITH ranked AS (
       SELECT mfi.food_item_id, mfi.quantity, mfi.unit, m.time,
+             mfi.food_item_name AS legacy_name, mfi.food_item_icon AS legacy_icon,
              COUNT(*) OVER (PARTITION BY mfi.food_item_id) AS use_count,
              ROW_NUMBER() OVER (PARTITION BY mfi.food_item_id ORDER BY m.time DESC) AS rn
       FROM meal_food_items mfi
@@ -295,7 +300,7 @@ export const getFrequentFoodItems = async (
         AND mfi.food_item_id IS NOT NULL
         ${mealTypeClause}
     )
-    SELECT food_item_id, quantity, unit,
+    SELECT food_item_id, quantity, unit, legacy_name, legacy_icon,
            time AS last_used, use_count AS count
     FROM ranked
     WHERE rn = 1
@@ -309,6 +314,8 @@ export const getFrequentFoodItems = async (
     last_quantity: row.quantity === null ? null : Number(row.quantity),
     last_unit: (row.unit as string | null) ?? null,
     last_used: row.last_used as Date,
+    legacy_icon: (row.legacy_icon as string | null) ?? null,
+    legacy_name: (row.legacy_name as string | null) ?? null,
   }))
 }
 
