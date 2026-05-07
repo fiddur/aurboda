@@ -51,10 +51,6 @@ import androidx.health.connect.client.request.ReadRecordsRequest
 import androidx.health.connect.client.time.TimeRangeFilter
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import io.ktor.client.HttpClient
-import io.ktor.client.engine.android.Android
-import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
-import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -177,7 +173,7 @@ fun AurbodaApp(initialTab: MainTab? = null) {
   val appState = rememberAppState(initialTab = initialTab)
   val context = LocalContext.current
   val scope = rememberCoroutineScope()
-  val ktorHttpClient = remember { HttpClient(Android) { install(ContentNegotiation) { json(appJson) } } }
+  val ktorHttpClient = remember { syncHttpClient() }
 
   // Update check state
   var updateAvailable by remember { mutableStateOf<VersionInfo?>(null) }
@@ -404,7 +400,7 @@ fun HealthConnectScreen(
   val hasBackgroundReadPermission by remember(grantedPermissions) {
     derivedStateOf { HC_BACKGROUND_READ_PERMISSION in grantedPermissions }
   }
-  val ktorHttpClient = remember { HttpClient(Android) { install(ContentNegotiation) { json(appJson) } } }
+  val ktorHttpClient = remember { syncHttpClient() }
 
   /**
    * Sync Health Connect data incrementally: fetch and send page by page.
