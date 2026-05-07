@@ -13,7 +13,7 @@ import {
   insertScreentimeCategory,
 } from '../db/index.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
-import { createCategory, moveCategoryToParent } from './screentime-categories.ts'
+import { createCategory, modifyCategory, moveCategoryToParent } from './screentime-categories.ts'
 import { ensureAllCategoriesHaveTypes, ensureCategoryHasType } from './screentime-category-sync.ts'
 
 const CONTAINER_TIMEOUT = 120_000
@@ -239,5 +239,125 @@ describe('screentime category → activity type sync', () => {
     expect(s1).toBe('race')
     expect(s2).toBe('race')
     expect(await getActivityTypeDefinition(user, 'race')).not.toBeNull()
+  })
+
+  // ─── #652 regenerate-on-change ────────────────────────────────────────────
+
+  describe('rename / move propagation to activities (#652)', () => {
+    const insertActivity = async (
+      user: string,
+      activityType: string,
+      categoryPath: string,
+      startEpochMs: number,
+    ) =>
+      query(
+        user,
+        `INSERT INTO activities (source, external_id, activity_type, start_time, end_time, data)
+         VALUES ('rescuetime', $1, $2, to_timestamp($3 / 1000.0), to_timestamp(($3 + 600000) / 1000.0), $4::jsonb)
+         RETURNING id`,
+        [
+          `rescuetime_${startEpochMs}_${categoryPath}`,
+          activityType,
+          startEpochMs,
+          JSON.stringify({ category_path: categoryPath, score: 2 }),
+        ],
+      )
+
+    const getActivityCategoryPath = async (user: string, activityType: string): Promise<string[]> => {
+      const result = await query<{ category_path: string }>(
+        user,
+        `SELECT data->>'category_path' AS category_path
+           FROM activities
+          WHERE activity_type = $1 AND deleted_at IS NULL
+          ORDER BY start_time`,
+        [activityType],
+      )
+      return result.rows.map((r) => r.category_path)
+    }
+
+    test('rename updates category_path on existing activities', async () => {
+      const user = getTestUser()
+      // Mimic the post-sync state: a category with its derived type, plus
+      // an activity whose data.category_path points at the old name.
+      await createCategory(user, { name: ['Work'], rule_type: 'none' })
+      const programming = await createCategory(user, {
+        name: ['Work', 'Programming'],
+        rule_type: 'none',
+      })
+      await insertActivity(user, programming.activity_type_name!, 'Work > Programming', 1_700_000_000_000)
+
+      await modifyCategory(user, programming.id, { name: ['Work', 'Coding'] })
+
+      const paths = await getActivityCategoryPath(user, programming.activity_type_name!)
+      expect(paths).toEqual(['Work > Coding'])
+      // The slug stays stable.
+      const refreshed = await getScreentimeCategoryById(user, programming.id)
+      expect(refreshed!.activity_type_name).toBe(programming.activity_type_name)
+      // For sole-owned types, the type def's display_name follows the rename.
+      const def = await getActivityTypeDefinition(user, programming.activity_type_name!)
+      expect(def!.display_name).toBe('Coding')
+    })
+
+    test('rename does NOT update type-def metadata when the type is shared', async () => {
+      const user = getTestUser()
+      // Pre-existing user type — convergence target.
+      await insertActivityTypeDefinition(user, {
+        color: '#000000',
+        display_category: 'other',
+        display_name: 'TV',
+        name: 'tv',
+      })
+      const tvCat = await createCategory(user, { name: ['Media', 'TV'], rule_type: 'none' })
+      expect(tvCat.activity_type_name).toBe('tv')
+      // No category_owns_type for converged categories.
+      await modifyCategory(user, tvCat.id, { name: ['Media', 'Tube'] })
+      // Type def display_name unchanged — another consumer (the deduction-rule
+      // type or whatever pre-existed) still reads it.
+      const def = await getActivityTypeDefinition(user, 'tv')
+      expect(def!.display_name).toBe('TV')
+    })
+
+    test('move updates category_path on the moved category and its descendants', async () => {
+      const user = getTestUser()
+      await createCategory(user, { name: ['Sport'], rule_type: 'none' })
+      const hobby = await createCategory(user, { name: ['Hobby'], rule_type: 'none' })
+      const cycling = await createCategory(user, { name: ['Sport', 'Cycling'], rule_type: 'none' })
+      const roadCycling = await createCategory(user, {
+        name: ['Sport', 'Cycling', 'Road'],
+        rule_type: 'none',
+      })
+
+      await insertActivity(user, cycling.activity_type_name!, 'Sport > Cycling', 1_700_000_000_000)
+      await insertActivity(user, roadCycling.activity_type_name!, 'Sport > Cycling > Road', 1_700_000_001_000)
+
+      await moveCategoryToParent(user, cycling.id, hobby.id)
+
+      expect(await getActivityCategoryPath(user, cycling.activity_type_name!)).toEqual(['Hobby > Cycling'])
+      expect(await getActivityCategoryPath(user, roadCycling.activity_type_name!)).toEqual([
+        'Hobby > Cycling > Road',
+      ])
+    })
+
+    test('rename only touches activities whose category_path matches the old path', async () => {
+      const user = getTestUser()
+      // Two categories converge to the same slug (same leaf, different paths).
+      await createCategory(user, { name: ['Quiet'], rule_type: 'none' })
+      await createCategory(user, { name: ['Loud'], rule_type: 'none' })
+      const quietReading = await createCategory(user, { name: ['Quiet', 'Reading'], rule_type: 'none' })
+      const loudReading = await createCategory(user, { name: ['Loud', 'Reading'], rule_type: 'none' })
+      // Both link to the same slug.
+      expect(quietReading.activity_type_name).toBe('reading')
+      expect(loudReading.activity_type_name).toBe('reading')
+
+      await insertActivity(user, 'reading', 'Quiet > Reading', 1_700_000_000_000)
+      await insertActivity(user, 'reading', 'Loud > Reading', 1_700_000_001_000)
+
+      // Rename Quiet > Reading → Quiet > Studying. Only the activity whose
+      // path matches "Quiet > Reading" should change.
+      await modifyCategory(user, quietReading.id, { name: ['Quiet', 'Studying'] })
+
+      const paths = await getActivityCategoryPath(user, 'reading')
+      expect(paths.sort()).toEqual(['Loud > Reading', 'Quiet > Studying'].sort())
+    })
   })
 })

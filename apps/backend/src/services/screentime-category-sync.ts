@@ -189,7 +189,10 @@ export const ensureAllCategoriesHaveTypes = async (
  * the same slug, and no deduction rule outputs it. Activities of that type
  * are by extension also "ours" because nothing else could have produced them.
  */
-const isTypeSolelyOwnedByCategory = async (user: string, category: ScreentimeCategory): Promise<boolean> => {
+export const isTypeSolelyOwnedByCategory = async (
+  user: string,
+  category: ScreentimeCategory,
+): Promise<boolean> => {
   if (!category.activity_type_name) return false
   if (!category.category_owns_type) return false // converged onto a pre-existing type
   const result = await query<{ cat_count: string; has_rule: boolean }>(
@@ -241,4 +244,41 @@ export const recomputeCategoryParentType = async (
     `UPDATE activity_type_definitions SET parent_type = $1, updated_at = NOW() WHERE name = $2`,
     [newParentSlug, category.activity_type_name],
   )
+}
+
+/**
+ * Mirror the category's display metadata onto its linked activity_type_definitions
+ * row when this category solely owns the type. Used on rename / color change so
+ * the type def's `display_name` and `color` track the category — important for
+ * the orphan-category fallback in the timeline frontend (when matchedByType
+ * fails, def carries the right name to display).
+ *
+ * Shared types are intentionally NOT touched: another category or a deduction
+ * rule depends on the existing display_name, and one consumer's rename
+ * shouldn't unilaterally rewrite their data.
+ */
+export const syncTypeDefMetadataIfOwned = async (
+  user: string,
+  category: ScreentimeCategory,
+): Promise<boolean> => {
+  if (!category.activity_type_name) return false
+  const owned = await isTypeSolelyOwnedByCategory(user, category)
+  if (!owned) {
+    auditInfo(user, 'data', 'Skipped type-def metadata sync on shared activity type', {
+      category_id: category.id,
+      slug: category.activity_type_name,
+    })
+    return false
+  }
+  const leaf = category.name[category.name.length - 1]
+  await query(
+    user,
+    `UPDATE activity_type_definitions
+       SET display_name = $1,
+           color = COALESCE($2, color),
+           updated_at = NOW()
+     WHERE name = $3`,
+    [leaf, category.color ?? null, category.activity_type_name],
+  )
+  return true
 }
