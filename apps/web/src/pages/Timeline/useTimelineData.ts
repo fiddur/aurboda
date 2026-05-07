@@ -299,7 +299,14 @@ export const useTimelineData = ({
     const legacyRaw = allActivities.filter((a) => a.activity_type === 'screentime')
     const derivedRaw = allActivities.filter((a) => screentimeDerivedTypes.has(a.activity_type))
     const legacyMerged = mergeScreentimeActivities(legacyRaw, mergeGapMs)
-    const derivedMerged = collapseToParentType(derivedRaw, typeDefsMap, mergeGapMs, collapseDepth)
+    // Screentime always collapses at least one hop. Unlike the Activity lane —
+    // where day-view keeps sibling sub-types distinct so the user can click
+    // each individual session — screentime sub-types come from regex-driven
+    // categorization and aren't directly editable, so the visual cleanness of
+    // collapsed parents wins. Deeper zoom-out still walks all the way to root
+    // via the navigation-supplied depth tier.
+    const screentimeDepth = Math.max(1, collapseDepth)
+    const derivedMerged = collapseToParentType(derivedRaw, typeDefsMap, mergeGapMs, screentimeDepth)
     return [...legacyMerged, ...derivedMerged].sort((a, b) => a.start_time.getTime() - b.start_time.getTime())
   }, [allActivities, mergeGapMs, screentimeDerivedTypes, typeDefsMap, collapseDepth])
   // Music scrobbles are derived from `music_scrobble` activities — they live

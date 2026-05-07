@@ -132,6 +132,19 @@ const matchCategoryByPath = (
 }
 
 /**
+ * Match a derived activity's `activity_type` to the screentime category whose
+ * `activity_type_name` slug it links to. Crucial after hierarchy collapse: a
+ * `programming` + `software_dev` pair retyped to `work_dev` should display as
+ * the "Work & Dev" category, not as the *first child's* category (which is
+ * what path-based matching would return — `data.category_path` carries the
+ * first member's path even after retype).
+ */
+const matchCategoryByActivityType = (
+  activityType: string,
+  categories: ScreentimeCategory[],
+): ScreentimeCategory | undefined => categories.find((c) => c.activity_type_name === activityType)
+
+/**
  * Categorize screentime activities into Screen Time lane items. Two paths:
  *
  *  • Legacy umbrella `activity_type='screentime'` activities carry the path
@@ -157,27 +170,51 @@ export const categorizeScreentimeActivities = (
   activities
     .filter((a): a is Activity & { end_time: Date } => Boolean(a.end_time))
     .filter((a) => a.activity_type === 'screentime' || screentimeDerivedTypes.has(a.activity_type))
-    // eslint-disable-next-line complexity -- one fall-through pass over five label/color/icon sources
+    // eslint-disable-next-line complexity -- two paths (legacy umbrella vs derived) with several identity sources each
     .map((a) => {
       const categoryPathStr = typeof a.data?.category_path === 'string' ? a.data.category_path : ''
       const path = categoryPathStr ? categoryPathStr.split(' > ') : []
       const score = typeof a.data?.score === 'number' ? a.data.score : undefined
+      const isDerived = a.activity_type !== 'screentime'
 
-      const matched = matchCategoryByPath(path, categories)
-      const def = a.activity_type !== 'screentime' ? typeDefsMap.get(a.activity_type) : undefined
+      // Two distinct identity-resolution paths:
+      //
+      //  • Derived types (post-#651): the screentime_category whose
+      //    `activity_type_name` matches the activity's *current* type is the
+      //    source of truth. After hierarchy collapse retyped this activity to
+      //    its parent, that lookup returns the parent category. Don't fall
+      //    back to path-walking because `data.category_path` carries the
+      //    *first child's* path after retype — linking there would be
+      //    actively misleading. If the linked category was deleted, the type
+      //    def still has the right display metadata; we just don't link.
+      //
+      //  • Legacy umbrella (activity_type='screentime'): preserve v1
+      //    behaviour. Label is the actual leaf of the stored path; color and
+      //    href come from the deepest category that matches the path.
+      const matchedByType = isDerived ? matchCategoryByActivityType(a.activity_type, categories) : undefined
+      const matchedByPath = !isDerived ? matchCategoryByPath(path, categories) : undefined
+      const def = isDerived ? typeDefsMap.get(a.activity_type) : undefined
 
-      // Label preference:
-      //   1. The matched category's leaf (path-based, used by both paths)
-      //   2. The type def's display_name (derived types when the path is missing)
-      //   3. Generic "Screen time" fallback
-      const label = path.at(-1) ?? def?.display_name ?? 'Screen time'
-      // Color preference: matched category > type def > productivity score gradient.
-      const color = matched?.color ?? def?.color ?? getProductivityColor(score)
-      const href = matched ? `/screentime-categories/${matched.id}` : undefined
+      const label = isDerived
+        ? (matchedByType?.name.at(-1) ?? def?.display_name ?? path.at(-1) ?? 'Screen time')
+        : (path.at(-1) ?? 'Screen time')
+
+      const color = isDerived
+        ? (matchedByType?.color ?? def?.color ?? getProductivityColor(score))
+        : (matchedByPath?.color ?? getProductivityColor(score))
+
+      const linkedCategory = matchedByType ?? matchedByPath
+      const href = linkedCategory ? `/screentime-categories/${linkedCategory.id}` : undefined
+
+      const iconPath = matchedByType?.name ?? path
+      const icon = resolveCategoryIcon(iconPath, itemIcons) ?? def?.icon
 
       const mergedLine = formatCollapsedTypesLine(a.collapsed_types)
+      // `||` (not `??`) on the chain — categoryPathStr is always a string,
+      // so `??` would never fall through to def?.display_name.
+      const tooltipPath = matchedByType?.name.join(' > ') || categoryPathStr || def?.display_name || ''
       const details = [
-        categoryPathStr || def?.display_name || '',
+        tooltipPath,
         formatDuration(a.start_time, a.end_time),
         ...(mergedLine ? [mergedLine] : []),
       ].filter(Boolean)
@@ -186,10 +223,10 @@ export const categorizeScreentimeActivities = (
         color,
         column: 'Screen Time' as Column,
         end: a.end_time,
-        entity_id: matched ? undefined : a.id,
+        entity_id: linkedCategory ? undefined : a.id,
         entity_type: 'activity' as const,
         href,
-        icon: resolveCategoryIcon(path, itemIcons) ?? def?.icon,
+        icon,
         isPoint: false,
         label,
         start: a.start_time,
