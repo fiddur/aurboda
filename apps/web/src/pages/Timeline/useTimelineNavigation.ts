@@ -45,6 +45,12 @@ export interface TimelineNavigation {
   mergeGapMs: number
   /** Whether sibling sub-types should collapse to their parent_type for merging. */
   shouldCollapseHierarchy: boolean
+  /**
+   * How many parent_type hops to walk during hierarchy collapse. 0 = no
+   * walk (max-zoom). 1 = one hop (current default for moderate zoom-out).
+   * Number.POSITIVE_INFINITY = walk to root (deep zoom-out).
+   */
+  collapseDepth: number
 }
 
 export const useTimelineNavigation = (): TimelineNavigation => {
@@ -88,6 +94,16 @@ export const useTimelineNavigation = (): TimelineNavigation => {
   const shouldCollapseHierarchy = useMemo(() => {
     const days = differenceInCalendarDays(effectiveViewEnd, effectiveViewStart)
     return days > 3
+  }, [effectiveViewStart, effectiveViewEnd])
+
+  // Multi-tier collapse depth (#656): zoomed-in keeps sub-types; moderate
+  // zoom-out collapses one hop (warmup_run → exercise); deep zoom-out walks
+  // to the root so a 30-day view reads as fewer, broader bars.
+  const collapseDepth = useMemo(() => {
+    const days = differenceInCalendarDays(effectiveViewEnd, effectiveViewStart)
+    if (days > 14) return Number.POSITIVE_INFINITY
+    if (days > 3) return 1
+    return 0
   }, [effectiveViewStart, effectiveViewEnd])
 
   const handleZoom = useCallback((zoomStart: Date, zoomEnd: Date) => {
@@ -146,6 +162,7 @@ export const useTimelineNavigation = (): TimelineNavigation => {
   return {
     barBucketSize,
     bucketSize,
+    collapseDepth,
     effectiveViewEnd,
     effectiveViewStart,
     fetchEnd,

@@ -79,6 +79,13 @@ export interface Activity extends Omit<ApiActivity, 'start_time' | 'end_time'> {
   source_records?: SourceRecord[]
   merged_start_time?: Date
   merged_end_time?: Date
+  /**
+   * Provenance of activities that were folded into this one by
+   * `collapseToParentType`. Set only on the synthetic survivor; never on
+   * activities returned by the API. Drives the "Merged: Running, Yoga"
+   * tooltip line for hierarchy-collapsed bars.
+   */
+  collapsed_types?: { type: string; count: number }[]
 }
 
 export interface ProductivityRecord extends Omit<ApiProductivityRecord, 'start_time' | 'end_time'> {

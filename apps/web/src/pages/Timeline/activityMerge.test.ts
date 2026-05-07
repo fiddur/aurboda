@@ -4,6 +4,7 @@ import type { Activity } from '../../state/api'
 import type { ChartItem } from './types'
 
 import {
+  ancestorChain,
   buildActivityColumnItems,
   collapseToParentType,
   EXCLUDED_ACTIVITY_PREFIXES,
@@ -13,6 +14,7 @@ import {
   mergeScreentimeActivities,
   overlapMinutes,
   resolveCollapseTarget,
+  rootTypeOf,
   tryMergeActivityIntoItem,
 } from './activityMerge'
 
@@ -296,6 +298,68 @@ describe('resolveCollapseTarget', () => {
   })
 })
 
+// -- ancestorChain / rootTypeOf -----------------------------------------------
+
+describe('ancestorChain', () => {
+  const typeDefs = new Map([
+    ['running', { parent_type: 'exercise' }],
+    ['exercise', { parent_type: 'fitness' }],
+    ['fitness', {}],
+    ['solo', {}],
+  ])
+
+  it('returns child→root chain including self', () => {
+    expect(ancestorChain('running', typeDefs)).toEqual(['running', 'exercise', 'fitness'])
+  })
+
+  it('terminates on top-level type', () => {
+    expect(ancestorChain('fitness', typeDefs)).toEqual(['fitness'])
+  })
+
+  it('returns just the input for unknown type', () => {
+    expect(ancestorChain('mystery', typeDefs)).toEqual(['mystery'])
+  })
+
+  it('cycle-guards: a self-referential parent stops the walk', () => {
+    const cyclic = new Map([['loop', { parent_type: 'loop' }]])
+    expect(ancestorChain('loop', cyclic)).toEqual(['loop'])
+  })
+
+  it('cycle-guards: an A→B→A cycle stops at the first repeat', () => {
+    const cyclic = new Map([
+      ['a', { parent_type: 'b' }],
+      ['b', { parent_type: 'a' }],
+    ])
+    expect(ancestorChain('a', cyclic)).toEqual(['a', 'b'])
+  })
+
+  it('terminates when the parent reference is not in the type defs (orphan)', () => {
+    // resolveCollapseTarget returns null for missing parents, so the walk stops.
+    const orphan = new Map([['kid', { parent_type: 'ghost' }]])
+    expect(ancestorChain('kid', orphan)).toEqual(['kid'])
+  })
+})
+
+describe('rootTypeOf', () => {
+  const typeDefs = new Map([
+    ['running', { parent_type: 'exercise' }],
+    ['exercise', { parent_type: 'fitness' }],
+    ['fitness', {}],
+  ])
+
+  it('walks to the top of a multi-level chain', () => {
+    expect(rootTypeOf('running', typeDefs)).toBe('fitness')
+  })
+
+  it('returns input when already at the root', () => {
+    expect(rootTypeOf('fitness', typeDefs)).toBe('fitness')
+  })
+
+  it('returns input for unknown type', () => {
+    expect(rootTypeOf('mystery', typeDefs)).toBe('mystery')
+  })
+})
+
 // -- collapseToParentType -----------------------------------------------------
 
 describe('collapseToParentType', () => {
@@ -397,6 +461,112 @@ describe('collapseToParentType', () => {
     const result = collapseToParentType(activities, typeDefs, 30 * 60 * 1000, false)
     expect(result).toHaveLength(1)
     expect(result[0].activity_type).toBe('running')
+  })
+
+  it('records collapsed_types provenance when sub-types fold into a parent (#657)', () => {
+    const activities: Activity[] = [
+      { activity_type: 'running', end_time: d(10, 30), id: 'a', start_time: d(10) },
+      { activity_type: 'strength_training', end_time: d(11, 15), id: 'b', start_time: d(10, 35) },
+      { activity_type: 'yoga', end_time: d(11, 40), id: 'c', start_time: d(11, 20) },
+    ]
+    const collapsed = collapseToParentType(activities, typeDefs)
+    expect(collapsed).toHaveLength(1)
+    expect(collapsed[0].activity_type).toBe('exercise')
+    expect(collapsed[0].collapsed_types).toEqual([
+      { type: 'running', count: 1 },
+      { type: 'strength_training', count: 1 },
+      { type: 'yoga', count: 1 },
+    ])
+  })
+
+  it('counts repeat sub-types correctly in collapsed_types', () => {
+    const activities: Activity[] = [
+      { activity_type: 'running', end_time: d(10, 30), id: 'a', start_time: d(10) },
+      { activity_type: 'running', end_time: d(10, 50), id: 'b', start_time: d(10, 35) },
+      { activity_type: 'yoga', end_time: d(11, 10), id: 'c', start_time: d(10, 55) },
+    ]
+    const collapsed = collapseToParentType(activities, typeDefs)
+    expect(collapsed[0].collapsed_types).toEqual([
+      { type: 'running', count: 2 },
+      { type: 'yoga', count: 1 },
+    ])
+  })
+
+  it('keeps provenance even when only one sub-type was involved (after retype)', () => {
+    // The bar is "exercise" but only running fed into it — the tooltip can
+    // legitimately read "Merged: Running" so the user knows the
+    // collapsed bar isn't a mixed exercise session.
+    const activities: Activity[] = [
+      { activity_type: 'running', end_time: d(10, 30), id: 'a', start_time: d(10) },
+      { activity_type: 'running', end_time: d(11), id: 'b', start_time: d(10, 35) },
+    ]
+    const collapsed = collapseToParentType(activities, typeDefs)
+    expect(collapsed[0].activity_type).toBe('exercise')
+    expect(collapsed[0].collapsed_types).toEqual([{ type: 'running', count: 2 }])
+  })
+
+  it('drops trivial provenance when no retype happens (collapseToParent=false)', () => {
+    // Identical sub-types merge but stay typed as themselves; the survivor's
+    // provenance would be [{ running, 2 }] which is the same as activity_type
+    // — drop so tooltip doesn't render a redundant "Merged: Running" line.
+    const activities: Activity[] = [
+      { activity_type: 'running', end_time: d(10, 30), id: 'a', start_time: d(10) },
+      { activity_type: 'running', end_time: d(11), id: 'b', start_time: d(10, 35) },
+    ]
+    const collapsed = collapseToParentType(activities, typeDefs, undefined, false)
+    expect(collapsed[0].activity_type).toBe('running')
+    expect(collapsed[0].collapsed_types).toBeUndefined()
+  })
+
+  it('collapses one hop at depth=1 (parity with prior behaviour)', () => {
+    const deepDefs = new Map([
+      ['running', { parent_type: 'exercise' }],
+      ['exercise', { parent_type: 'fitness' }],
+      ['fitness', {}],
+    ])
+    const activities: Activity[] = [
+      { activity_type: 'running', end_time: d(10, 30), id: 'a', start_time: d(10) },
+    ]
+    const result = collapseToParentType(activities, deepDefs, undefined, true, 1)
+    expect(result[0].activity_type).toBe('exercise')
+  })
+
+  it('walks two hops at depth=2', () => {
+    const deepDefs = new Map([
+      ['running', { parent_type: 'exercise' }],
+      ['exercise', { parent_type: 'fitness' }],
+      ['fitness', {}],
+    ])
+    const activities: Activity[] = [
+      { activity_type: 'running', end_time: d(10, 30), id: 'a', start_time: d(10) },
+    ]
+    const result = collapseToParentType(activities, deepDefs, undefined, true, 2)
+    expect(result[0].activity_type).toBe('fitness')
+  })
+
+  it('walks to root at depth=Infinity', () => {
+    const deepDefs = new Map([
+      ['running', { parent_type: 'exercise' }],
+      ['exercise', { parent_type: 'fitness' }],
+      ['fitness', {}],
+    ])
+    const activities: Activity[] = [
+      { activity_type: 'running', end_time: d(10, 30), id: 'a', start_time: d(10) },
+    ]
+    const result = collapseToParentType(activities, deepDefs, undefined, true, Number.POSITIVE_INFINITY)
+    expect(result[0].activity_type).toBe('fitness')
+  })
+
+  it('depth larger than chain stops at the root, not undefined', () => {
+    const deepDefs = new Map([
+      ['running', { parent_type: 'exercise' }],
+      ['exercise', {}],
+    ])
+    const activities: Activity[] = [
+      { activity_type: 'running', end_time: d(10, 30), id: 'a', start_time: d(10) },
+    ]
+    const result = collapseToParentType(activities, deepDefs, undefined, true, 99)
+    expect(result[0].activity_type).toBe('exercise')
   })
 })
 

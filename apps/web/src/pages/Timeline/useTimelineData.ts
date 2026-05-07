@@ -37,7 +37,13 @@ import { categorizeMusic } from './categorizeMusic'
 import { activityColors, getExerciseColor } from './colors'
 import { parseBucketedData } from './drawActivitySparklines'
 import { getExerciseTypeName } from './formatting'
-import { BASE_COLUMNS, CATEGORY_MATCHERS, type LegendCategory } from './legendCategories'
+import {
+  BASE_COLUMNS,
+  buildCategoryMatchers,
+  buildScreentimeSubEntries,
+  type LegendCategory,
+  type ScreentimeSubEntry,
+} from './legendCategories'
 import { buildSleepDetails, type SleepMetricsByDate } from './tooltipBuilder'
 
 /** Metrics to exclude from the unified bucketed query (fetched via separate endpoints). */
@@ -74,6 +80,8 @@ export interface TimelineData {
   errorSources: string[]
   // Misc
   hasLastFm: boolean
+  /** Dynamic screentime sub-toggles to render in the legend. */
+  screentimeSubEntries: ScreentimeSubEntry[]
 }
 
 export interface UseTimelineDataOptions {
@@ -88,6 +96,8 @@ export interface UseTimelineDataOptions {
   mergeGapMs: number
   /** Whether sibling sub-types should collapse to their parent_type for merging. */
   shouldCollapseHierarchy: boolean
+  /** Hierarchy walk depth: 0=no walk, 1=one hop, Infinity=walk to root. */
+  collapseDepth: number
 }
 
 // eslint-disable-next-line complexity -- data hook aggregating multiple queries
@@ -101,6 +111,7 @@ export const useTimelineData = ({
   barBucketSize,
   mergeGapMs,
   shouldCollapseHierarchy,
+  collapseDepth,
 }: UseTimelineDataOptions): TimelineData => {
   // ── Data queries ───────────────────────────────────────────────────────────
 
@@ -206,6 +217,32 @@ export const useTimelineData = ({
     () => new Map(activityTypeDefs.map((t) => [t.name, t.display_category])),
     [activityTypeDefs],
   )
+
+  // Slugs of every screentime-category-derived activity type for this user.
+  // Built from screentime_categories.activity_type_name (set at first sync by
+  // ensureCategoryHasType in the backend). Used to route derived activities
+  // to the Screen Time column and to identify candidates for the dynamic
+  // legend sub-toggles.
+  const screentimeDerivedTypes = useMemo(
+    () =>
+      new Set(
+        (screentimeCategoriesQuery.data ?? [])
+          .map((c) => c.activity_type_name)
+          .filter((n): n is string => Boolean(n)),
+      ),
+    [screentimeCategoriesQuery.data],
+  )
+
+  const screentimeSubEntries = useMemo(
+    () => buildScreentimeSubEntries(activityTypeDefs, screentimeDerivedTypes),
+    [activityTypeDefs, screentimeDerivedTypes],
+  )
+
+  const categoryMatchers = useMemo(
+    () => buildCategoryMatchers(typeDefsMap, screentimeSubEntries),
+    [typeDefsMap, screentimeSubEntries],
+  )
+
   const allActivities = useMemo(
     () => (activitiesQuery.data ?? []).filter((a) => !hiddenTypes.has(a.activity_type ?? '')),
     [activitiesQuery.data, hiddenTypes],
@@ -219,12 +256,23 @@ export const useTimelineData = ({
     const filtered = allActivities.filter((a) =>
       ACTIVITY_CATEGORIES.has(categoryByType.get(a.activity_type) ?? 'other'),
     )
-    return collapseToParentType(filtered, typeDefsMap, mergeGapMs, shouldCollapseHierarchy)
-  }, [allActivities, categoryByType, shouldCollapseHierarchy, typeDefsMap, mergeGapMs])
+    return collapseToParentType(filtered, typeDefsMap, mergeGapMs, shouldCollapseHierarchy, collapseDepth)
+  }, [allActivities, categoryByType, shouldCollapseHierarchy, collapseDepth, typeDefsMap, mergeGapMs])
+  // Anything that's neither a primary Activity-lane type, nor a screentime
+  // type (legacy umbrella `screentime` + per-category derived types), nor a
+  // music_scrobble / location_visit (own columns) goes here. Excluding
+  // screentime-derived types prevents them from double-rendering as
+  // untoggleable bars in the Activity lane (regression introduced when #722
+  // started routing derived types as `display_category='productivity'`).
   const secondaryActivities = useMemo(
     () =>
-      allActivities.filter((a) => !ACTIVITY_CATEGORIES.has(categoryByType.get(a.activity_type) ?? 'other')),
-    [allActivities, categoryByType],
+      allActivities.filter(
+        (a) =>
+          !ACTIVITY_CATEGORIES.has(categoryByType.get(a.activity_type) ?? 'other') &&
+          a.activity_type !== 'screentime' &&
+          !screentimeDerivedTypes.has(a.activity_type),
+      ),
+    [allActivities, categoryByType, screentimeDerivedTypes],
   )
   // Locations come from `location_visit` activities materialized by the
   // backend (proactive on GPS sync; backstop on /locations browse). Only
@@ -239,16 +287,36 @@ export const useTimelineData = ({
       }),
     [activitiesQuery.data],
   )
-  // Screentime spans come from `screentime` activities. The backend pre-merges
-  // adjacent records at sync time keyed by (source, category_path) with a fixed
-  // 2-min gap — that doesn't bridge across sources or batch boundaries, so we
-  // do a second, zoom-graded merge here keyed only by category_path. Same
-  // category from rescuetime and activitywatch fold into one visual bar; gap
-  // grows with zoom so a long stretch reads as one block when zoomed out.
+  // Screentime spans come from two paths post-#651:
+  //   1. Legacy `screentime` umbrella activities (pre-derived-types data).
+  //   2. Per-category derived types (e.g. `programming`, `slack`) — present
+  //      whenever the user has screentime categories with linked types.
+  // Both render in the Screen Time column. Legacy spans merge by
+  // `category_path` (their activity_type is the same umbrella for every
+  // category, so without that discriminator they'd collapse into one bar).
+  // Derived types feed through `collapseToParentType` so the same hierarchy
+  // collapse used for exercise sub-types applies to screen time too.
   const screentimeActivities = useMemo<Activity[]>(() => {
-    const raw = (activitiesQuery.data ?? []).filter((a) => a.activity_type === 'screentime')
-    return mergeScreentimeActivities(raw, mergeGapMs)
-  }, [activitiesQuery.data, mergeGapMs])
+    const all = activitiesQuery.data ?? []
+    const legacyRaw = all.filter((a) => a.activity_type === 'screentime')
+    const derivedRaw = all.filter((a) => screentimeDerivedTypes.has(a.activity_type))
+    const legacyMerged = mergeScreentimeActivities(legacyRaw, mergeGapMs)
+    const derivedMerged = collapseToParentType(
+      derivedRaw,
+      typeDefsMap,
+      mergeGapMs,
+      shouldCollapseHierarchy,
+      collapseDepth,
+    )
+    return [...legacyMerged, ...derivedMerged].sort((a, b) => a.start_time.getTime() - b.start_time.getTime())
+  }, [
+    activitiesQuery.data,
+    mergeGapMs,
+    screentimeDerivedTypes,
+    typeDefsMap,
+    shouldCollapseHierarchy,
+    collapseDepth,
+  ])
   // Music scrobbles are derived from `music_scrobble` activities — they live
   // in the activities table and are already returned by the activities fetch,
   // so no separate /lastfm/scrobbles network call is needed.
@@ -355,16 +423,17 @@ export const useTimelineData = ({
 
   const isItemHidden = useCallback(
     (item: ChartItem): boolean => {
-      if (hiddenCategories.has('activity') && CATEGORY_MATCHERS.activity(item)) return true
-      if (hiddenCategories.has('location') && CATEGORY_MATCHERS.location(item)) return true
-      if (hiddenCategories.has('music') && CATEGORY_MATCHERS.music(item)) return true
+      if (hiddenCategories.has('activity') && categoryMatchers.activity(item)) return true
+      if (hiddenCategories.has('location') && categoryMatchers.location(item)) return true
+      if (hiddenCategories.has('music') && categoryMatchers.music(item)) return true
       for (const cat of hiddenCategories) {
         if (cat === 'activity' || cat === 'location' || cat === 'music' || cat === 'metrics') continue
-        if (CATEGORY_MATCHERS[cat](item)) return true
+        const matcher = categoryMatchers[cat]
+        if (matcher && matcher(item)) return true
       }
       return false
     },
-    [hiddenCategories],
+    [hiddenCategories, categoryMatchers],
   )
 
   const allChartItems = useMemo(
@@ -376,6 +445,8 @@ export const useTimelineData = ({
         screentimeActivities,
         screentimeCategoriesQuery.data ?? [],
         itemIcons,
+        screentimeDerivedTypes,
+        typeDefsMap,
       ),
       ...musicItems,
       ...mealItems,
@@ -389,6 +460,7 @@ export const useTimelineData = ({
       typeDefsMap,
       screentimeActivities,
       screentimeCategoriesQuery.data,
+      screentimeDerivedTypes,
       musicItems,
       mealItems,
     ],
@@ -437,6 +509,7 @@ export const useTimelineData = ({
     isInitialLoad,
     screentimeBucketedQuery,
     screentimeCategoriesQuery,
+    screentimeSubEntries,
     scrobbles,
     sparklineBuckets,
     trainingLoadQuery,

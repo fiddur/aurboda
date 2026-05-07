@@ -238,6 +238,16 @@ const buildActivityDetails = (
     if (music.length > 0) details.push(`♪ ${music.slice(0, 3).join(', ')}`)
   }
 
+  // Hierarchy-collapsed bars (#657): surface the constituent sub-types so
+  // a single "exercise" bar reveals it was actually running + strength + yoga.
+  if (a.collapsed_types && a.collapsed_types.length > 0) {
+    const labels = a.collapsed_types.map((e) => {
+      const display = toDisplayName(e.type)
+      return e.count > 1 ? `${display} ×${e.count}` : display
+    })
+    details.push(`Merged: ${labels.join(', ')}`)
+  }
+
   return details
 }
 
@@ -287,6 +297,40 @@ export const resolveCollapseTarget = (
 }
 
 /**
+ * Return the chain of ancestors for a type, ordered child→root, including the
+ * input type itself. Cycle-guarded; an unknown ancestor terminates the walk.
+ *
+ *   running → exercise → activity   ⇒  ['running', 'exercise', 'activity']
+ *   meditation                       ⇒  ['meditation']
+ *   unknown                          ⇒  ['unknown']
+ */
+export const ancestorChain = (
+  typeName: string,
+  typeDefsByName: ReadonlyMap<string, { parent_type?: string }>,
+): string[] => {
+  const chain: string[] = [typeName]
+  const visited = new Set<string>([typeName])
+  let current: string | null = typeName
+  while (current) {
+    const next = resolveCollapseTarget(current, typeDefsByName)
+    if (!next || visited.has(next)) break
+    chain.push(next)
+    visited.add(next)
+    current = next
+  }
+  return chain
+}
+
+/** Return the top-level ancestor (root of parent_type chain). Falls back to the input on cycle/missing. */
+export const rootTypeOf = (
+  typeName: string,
+  typeDefsByName: ReadonlyMap<string, { parent_type?: string }>,
+): string => {
+  const chain = ancestorChain(typeName, typeDefsByName)
+  return chain[chain.length - 1]
+}
+
+/**
  * Merge adjacent activities sharing a key (computed by `keyFn`) when their
  * start-to-previous-end gap is ≤ `mergeGapMs`. Different keys never merge,
  * so we can never collapse two distinct activity types into one bar — the
@@ -322,34 +366,111 @@ export const mergeAdjacentByKey = (
 }
 
 /**
- * Collapse adjacent activities of the same (optionally parent-resolved) type
- * into a single bar.
+ * Walk the ancestor chain capped at `depth` hops. depth=1 returns the
+ * immediate parent (current behaviour); depth=Infinity walks to the root.
+ * Returns the input type when no walk can happen.
+ */
+const collapseTargetAtDepth = (
+  typeName: string,
+  typeDefsByName: ReadonlyMap<string, { parent_type?: string }>,
+  depth: number,
+): string => {
+  if (depth <= 0) return typeName
+  const chain = ancestorChain(typeName, typeDefsByName)
+  // chain[0] is typeName itself; ancestors at indices 1..chain.length-1.
+  const targetIndex = Math.min(depth, chain.length - 1)
+  return chain[targetIndex]
+}
+
+const recordCollapsedType = (
+  list: { type: string; count: number }[],
+  type: string,
+): { type: string; count: number }[] => {
+  const existing = list.find((e) => e.type === type)
+  if (existing) {
+    existing.count += 1
+    return list
+  }
+  return [...list, { type, count: 1 }]
+}
+
+/**
+ * Collapse adjacent activities up to `depth` levels of parent_type into a
+ * single bar.
  *
- *   1. If `collapseToParent` is true, re-type each activity to its parent_type
- *      where one exists. This is what lets a warmup_run + strength_training
- *      pair render as a single "exercise" block when zoomed out.
+ *   1. If `collapseToParent` is true, re-type each activity to its ancestor at
+ *      the requested depth. depth=1 collapses one hop (warmup_run →
+ *      exercise); depth=Infinity walks to the root (yoga → exercise → root).
  *   2. Merge adjacent activities with the same effective type whose gap is
  *      within `mergeGapMs`.
  *
+ * The synthetic survivor of a multi-child collapse carries `collapsed_types`
+ * with the original child types and counts (deduped, ordered by first
+ * appearance) — used by the tooltip enrichment in #657.
+ *
  * At max zoom the caller passes `collapseToParent=false` so sibling sub-types
- * stay distinct (and individually clickable).
+ * stay distinct (and individually clickable). Identical sub-types still merge
+ * across small gaps (a comb of consecutive `running` slivers folds to one).
  */
+// eslint-disable-next-line complexity -- single-pass merge with provenance accumulation; splitting hurts readability
 export const collapseToParentType = (
   activities: Activity[],
   typeDefsByName: ReadonlyMap<string, { parent_type?: string }>,
   mergeGapMs: number = COLLAPSE_MERGE_GAP_MS,
   collapseToParent = true,
+  depth = 1,
 ): Activity[] => {
   if (activities.length === 0) return activities
 
-  const retyped = collapseToParent
-    ? activities.map((a) => {
-        const parent = resolveCollapseTarget(a.activity_type, typeDefsByName)
-        return parent ? { ...a, activity_type: parent } : a
-      })
-    : activities
+  // Retype each activity to its target effective type, remembering the
+  // original sub-type for provenance.
+  const retyped = activities.map((a) => {
+    const effective = collapseToParent
+      ? collapseTargetAtDepth(a.activity_type, typeDefsByName, depth)
+      : a.activity_type
+    if (effective === a.activity_type) {
+      return { ...a }
+    }
+    return { ...a, activity_type: effective, collapsed_types: [{ type: a.activity_type, count: 1 }] }
+  })
 
-  return mergeAdjacentByKey(retyped, (a) => a.activity_type, mergeGapMs)
+  // Merge adjacent same-effective-type spans, accumulating provenance from
+  // any participants that already carried one.
+  if (retyped.length === 0) return retyped
+  const sorted = [...retyped].sort((a, b) => a.start_time.getTime() - b.start_time.getTime())
+  const merged: Activity[] = []
+  for (const current of sorted) {
+    const prev = merged[merged.length - 1]
+    if (
+      prev &&
+      prev.activity_type === current.activity_type &&
+      prev.end_time &&
+      current.end_time &&
+      current.start_time.getTime() - prev.end_time.getTime() <= mergeGapMs
+    ) {
+      if (current.end_time > prev.end_time) prev.end_time = current.end_time
+      const incoming = current.collapsed_types ?? [{ type: current.activity_type, count: 1 }]
+      let provenance = prev.collapsed_types ?? [{ type: prev.activity_type, count: 1 }]
+      for (const entry of incoming) {
+        for (let i = 0; i < entry.count; i++) provenance = recordCollapsedType(provenance, entry.type)
+      }
+      prev.collapsed_types = provenance
+      continue
+    }
+    merged.push({ ...current })
+  }
+  // Drop trivial provenance: a survivor whose only entry matches its own
+  // type carries no useful merge signal (single sub-type wasn't mixed).
+  for (const m of merged) {
+    if (
+      m.collapsed_types &&
+      m.collapsed_types.length === 1 &&
+      m.collapsed_types[0].type === m.activity_type
+    ) {
+      delete m.collapsed_types
+    }
+  }
+  return merged
 }
 
 /**

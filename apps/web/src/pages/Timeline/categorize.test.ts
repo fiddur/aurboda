@@ -164,29 +164,83 @@ describe('categorizeScreentimeActivities', () => {
     }) as ScreentimeCategory
 
   it('returns Screen Time column items routed to the activity entity', () => {
-    const items = categorizeScreentimeActivities([makeActivity()], [], {})
+    const items = categorizeScreentimeActivities([makeActivity()], [], {}, new Set(), new Map())
     expect(items).toHaveLength(1)
     expect(items[0]!.column).toBe('Screen Time')
     expect(items[0]!.entity_type).toBe('activity')
   })
 
   it('uses last category-path segment as label', () => {
-    const items = categorizeScreentimeActivities([makeActivity()], [], {})
+    const items = categorizeScreentimeActivities([makeActivity()], [], {}, new Set(), new Map())
     expect(items[0]!.label).toBe('Programming')
   })
 
   it('skips activities without an end_time', () => {
-    const items = categorizeScreentimeActivities([makeActivity({ end_time: undefined })], [], {})
+    const items = categorizeScreentimeActivities(
+      [makeActivity({ end_time: undefined })],
+      [],
+      {},
+      new Set(),
+      new Map(),
+    )
     expect(items).toEqual([])
   })
 
   it('skips activities of other types', () => {
-    const items = categorizeScreentimeActivities([makeActivity({ activity_type: 'exercise' })], [], {})
+    // `exercise` is neither the legacy umbrella nor in screentimeDerivedTypes — skip.
+    const items = categorizeScreentimeActivities(
+      [makeActivity({ activity_type: 'exercise' })],
+      [],
+      {},
+      new Set(),
+      new Map(),
+    )
     expect(items).toEqual([])
   })
 
+  it('includes derived screentime types via screentimeDerivedTypes (#718)', () => {
+    const derived = makeActivity({
+      activity_type: 'programming',
+      data: { category_path: 'Work > Programming' },
+    })
+    const items = categorizeScreentimeActivities(
+      [derived],
+      [],
+      {},
+      new Set(['programming']),
+      new Map([['programming', { color: '#22c55e', display_name: 'Programming' }]]),
+    )
+    expect(items).toHaveLength(1)
+    expect(items[0]!.column).toBe('Screen Time')
+  })
+
+  it('includes a "Merged: ..." line when collapsed_types is present (#657)', () => {
+    const collapsed = makeActivity({
+      activity_type: 'work',
+      collapsed_types: [
+        { count: 2, type: 'programming' },
+        { count: 1, type: 'meetings' },
+      ],
+      data: { category_path: 'Work' },
+    })
+    const items = categorizeScreentimeActivities(
+      [collapsed],
+      [],
+      {},
+      new Set(['work']),
+      new Map([['work', { color: '#22c55e', display_name: 'Work' }]]),
+    )
+    expect(items[0]!.tooltip.details.some((d) => d.startsWith('Merged:'))).toBe(true)
+  })
+
   it('matches category by exact path for href and clears entity_id', () => {
-    const items = categorizeScreentimeActivities([makeActivity()], [makeCategory({ id: 'cat-prog' })], {})
+    const items = categorizeScreentimeActivities(
+      [makeActivity()],
+      [makeCategory({ id: 'cat-prog' })],
+      {},
+      new Set(),
+      new Map(),
+    )
     expect(items[0]!.href).toBe('/screentime-categories/cat-prog')
     expect(items[0]!.entity_id).toBeUndefined()
   })
@@ -196,26 +250,32 @@ describe('categorizeScreentimeActivities', () => {
       [makeActivity()],
       [makeCategory({ id: 'cat-work', name: ['Work'], color: '#abc' })],
       {},
+      new Set(),
+      new Map(),
     )
     expect(items[0]!.color).toBe('#abc')
     expect(items[0]!.href).toBe('/screentime-categories/cat-work')
   })
 
   it('keeps the activity id as entity_id when no category matches', () => {
-    const items = categorizeScreentimeActivities([makeActivity()], [], {})
+    const items = categorizeScreentimeActivities([makeActivity()], [], {}, new Set(), new Map())
     expect(items[0]!.entity_id).toBe('act-1')
     expect(items[0]!.href).toBeUndefined()
   })
 
   it('uses category icon from itemIcons', () => {
-    const items = categorizeScreentimeActivities([makeActivity()], [], {
-      'category:Work > Programming': '💻',
-    })
+    const items = categorizeScreentimeActivities(
+      [makeActivity()],
+      [],
+      { 'category:Work > Programming': '💻' },
+      new Set(),
+      new Map(),
+    )
     expect(items[0]!.icon).toBe('💻')
   })
 
   it('handles missing category_path gracefully', () => {
-    const items = categorizeScreentimeActivities([makeActivity({ data: {} })], [], {})
+    const items = categorizeScreentimeActivities([makeActivity({ data: {} })], [], {}, new Set(), new Map())
     expect(items[0]!.label).toBe('Screen time')
   })
 })
