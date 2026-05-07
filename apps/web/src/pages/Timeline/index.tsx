@@ -54,7 +54,7 @@ export const Timeline = () => {
     bucketSize,
     barBucketSize,
     mergeGapMs,
-    shouldCollapseHierarchy,
+    collapseDepth,
   } = nav
 
   // ── Orientation state ──────────────────────────────────────────────────────
@@ -102,12 +102,12 @@ export const Timeline = () => {
   const data = useTimelineData({
     barBucketSize,
     bucketSize,
+    collapseDepth,
     fetchEnd,
     fetchStart,
     fromDateKey: fromDate.value,
     hiddenCategories,
     mergeGapMs,
-    shouldCollapseHierarchy,
     toDateKey: toDate.value,
   })
   const {
@@ -122,6 +122,7 @@ export const Timeline = () => {
     trainingLoadQuery,
     screentimeBucketedQuery,
     screentimeCategoriesQuery,
+    screentimeSubEntries,
     isFetching,
     isInitialLoad,
     errorSources,
@@ -1036,6 +1037,7 @@ export const Timeline = () => {
         legendCollapsed={legendCollapsed}
         setLegendCollapsed={setLegendCollapsed}
         legendRef={legendRef}
+        screentimeSubEntries={screentimeSubEntries}
       />
 
       {/* Overlap warnings UI temporarily disabled — will be redesigned

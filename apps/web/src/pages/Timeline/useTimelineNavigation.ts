@@ -43,8 +43,12 @@ export interface TimelineNavigation {
   barBucketSize: '1h' | '1d' | '1w'
   /** Gap (ms) below which adjacent same-key activities merge in the timeline. */
   mergeGapMs: number
-  /** Whether sibling sub-types should collapse to their parent_type for merging. */
-  shouldCollapseHierarchy: boolean
+  /**
+   * How many parent_type hops to walk during hierarchy collapse. 0 = no
+   * walk (max-zoom). 1 = one hop (moderate zoom-out).
+   * Number.POSITIVE_INFINITY = walk to root (deep zoom-out).
+   */
+  collapseDepth: number
 }
 
 export const useTimelineNavigation = (): TimelineNavigation => {
@@ -82,12 +86,16 @@ export const useTimelineNavigation = (): TimelineNavigation => {
     return 10 * 60 * 1000
   }, [effectiveViewStart, effectiveViewEnd])
 
-  // Hierarchy collapse only kicks in when zoomed out: at max zoom the user
-  // wants to see (and click to edit) sibling sub-types like warmup_run vs
-  // strength_training distinctly, so we leave them as-is.
-  const shouldCollapseHierarchy = useMemo(() => {
+  // Multi-tier collapse depth (#656): at max zoom the user wants to see
+  // (and click to edit) sibling sub-types like warmup_run vs strength_training
+  // distinctly, so we leave them as-is. Moderate zoom-out collapses one hop
+  // (warmup_run → exercise); deep zoom-out walks to root so a 30-day view
+  // reads as fewer, broader bars.
+  const collapseDepth = useMemo(() => {
     const days = differenceInCalendarDays(effectiveViewEnd, effectiveViewStart)
-    return days > 3
+    if (days > 14) return Number.POSITIVE_INFINITY
+    if (days > 3) return 1
+    return 0
   }, [effectiveViewStart, effectiveViewEnd])
 
   const handleZoom = useCallback((zoomStart: Date, zoomEnd: Date) => {
@@ -146,6 +154,7 @@ export const useTimelineNavigation = (): TimelineNavigation => {
   return {
     barBucketSize,
     bucketSize,
+    collapseDepth,
     effectiveViewEnd,
     effectiveViewStart,
     fetchEnd,
@@ -155,7 +164,6 @@ export const useTimelineNavigation = (): TimelineNavigation => {
     handleResetToToday,
     handleZoom,
     mergeGapMs,
-    shouldCollapseHierarchy,
     toDate,
     viewEnd,
     viewLabel,

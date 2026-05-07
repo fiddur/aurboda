@@ -1,6 +1,6 @@
 import type { FunctionComponent, RefObject } from 'preact'
 
-import type { LegendCategory } from './legendCategories'
+import type { LegendCategory, ScreentimeSubEntry } from './legendCategories'
 import type { Orientation } from './types'
 
 import {
@@ -24,6 +24,8 @@ interface TimelineLegendProps {
   legendCollapsed: boolean
   setLegendCollapsed: (fn: (v: boolean) => boolean) => void
   legendRef: RefObject<HTMLDivElement>
+  /** Dynamic per-top-level screentime category sub-toggles (#718). */
+  screentimeSubEntries: ScreentimeSubEntry[]
 }
 
 export const TimelineLegend: FunctionComponent<TimelineLegendProps> = ({
@@ -34,6 +36,7 @@ export const TimelineLegend: FunctionComponent<TimelineLegendProps> = ({
   legendCollapsed,
   setLegendCollapsed,
   legendRef,
+  screentimeSubEntries,
 }) => {
   const hiddenCount = hiddenCategories.size
 
@@ -84,6 +87,12 @@ export const TimelineLegend: FunctionComponent<TimelineLegendProps> = ({
               { cat: 'other' as LegendCategory, color: TAG_COLOR, label: 'Other' },
               { cat: 'calendar' as LegendCategory, color: tagSourceColors.calendar!, label: 'Calendar' },
               { cat: 'screentime' as LegendCategory, color: productivityColors[1]!, label: 'Screen Time' },
+              // Dynamic per-top-level screentime category toggles (#718). One
+              // entry per top-level activity_type linked to a screentime_category
+              // (e.g. Work, Media, Comms). The umbrella `screentime` toggle
+              // above hides all of them; these let the user toggle a single
+              // top-level category and its descendants in isolation.
+              ...screentimeSubEntries.map((e) => ({ cat: e.legendKey, color: e.color, label: e.label })),
             ].map(({ cat, color, label }) => (
               <button
                 key={cat}
