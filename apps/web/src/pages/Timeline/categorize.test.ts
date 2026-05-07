@@ -285,18 +285,26 @@ describe('categorizeScreentimeActivities', () => {
   // category — the one whose `activity_type_name` matches the activity's
   // current type — not from the stale path.
   describe('after hierarchy collapse (retyped activity)', () => {
-    const workCategory = {
+    const cat = (overrides: Partial<ScreentimeCategory>): ScreentimeCategory =>
+      ({
+        ignore_case: true,
+        rule_type: 'regex',
+        sort_order: 0,
+        ...overrides,
+      }) as ScreentimeCategory
+
+    const workCategory = cat({
       activity_type_name: 'work_dev',
       color: '#9333ea',
       id: 'cat-work-dev',
       name: ['Work & Dev'],
-    } as unknown as ScreentimeCategory
-    const commsCategory = {
+    })
+    const commsCategory = cat({
       activity_type_name: 'communications',
       color: '#0ea5e9',
       id: 'cat-comms',
       name: ['Work & Dev', 'Communications'],
-    } as unknown as ScreentimeCategory
+    })
 
     const collapsedToWorkDev = makeActivity({
       activity_type: 'work_dev',
@@ -343,18 +351,81 @@ describe('categorizeScreentimeActivities', () => {
       expect(items[0]!.href).toBe('/screentime-categories/cat-work-dev')
     })
 
-    it('falls back to def when no linked category exists for the retyped slug', () => {
-      // Edge case: the parent category was deleted between sync and render.
+    it('clears entity_id when the bar is linked to the parent category', () => {
       const items = categorizeScreentimeActivities(
         [collapsedToWorkDev],
-        [commsCategory],
+        [workCategory, commsCategory],
+        {},
+        new Set(['work_dev', 'communications']),
+        new Map(),
+      )
+      expect(items[0]!.entity_id).toBeUndefined()
+    })
+
+    it('icon comes from the parent category path, not the first child', () => {
+      // itemIcons has both — the resolver should walk the parent's path.
+      const items = categorizeScreentimeActivities(
+        [collapsedToWorkDev],
+        [workCategory, commsCategory],
+        {
+          'category:Work & Dev': '🏢',
+          'category:Work & Dev > Communications': '💬',
+        },
+        new Set(['work_dev', 'communications']),
+        new Map(),
+      )
+      expect(items[0]!.icon).toBe('🏢')
+    })
+
+    it('uses def display_name + def color + no href when the parent category is deleted', () => {
+      // Edge case: the parent category was deleted between sync and render.
+      // We must NOT fall back to matching the first-child path — that would
+      // mislabel the bar and link to a fragment. def carries the right name.
+      const items = categorizeScreentimeActivities(
+        [collapsedToWorkDev],
+        [commsCategory], // workCategory deleted
         {},
         new Set(['work_dev', 'communications']),
         new Map([['work_dev', { color: '#9333ea', display_name: 'Work & Dev' }]]),
       )
-      // commsCategory matched by path, so linkedCategory falls through to it.
-      // Acceptable v1: parent disappeared, fall back to deepest path match.
-      expect(items[0]!.label).toBe('Communications')
+      expect(items[0]!.label).toBe('Work & Dev')
+      expect(items[0]!.color).toBe('#9333ea')
+      expect(items[0]!.href).toBeUndefined()
     })
+
+    it('tooltip falls through to def display_name when there is no path or category', () => {
+      // Derived activity with no `data.category_path` — exercise the
+      // tooltipPath chain end-to-end. Without || (vs ??) the chain would
+      // stop at categoryPathStr=='' and never reach def.display_name.
+      const noPathActivity = makeActivity({
+        activity_type: 'work_dev',
+        data: {},
+      })
+      const items = categorizeScreentimeActivities(
+        [noPathActivity],
+        [],
+        {},
+        new Set(['work_dev']),
+        new Map([['work_dev', { color: '#9333ea', display_name: 'Work & Dev' }]]),
+      )
+      expect(items[0]!.label).toBe('Work & Dev')
+      expect(items[0]!.tooltip.details.some((d) => d === 'Work & Dev')).toBe(true)
+    })
+  })
+
+  // Legacy v1 umbrella activities (activity_type='screentime') must keep
+  // their pre-#728 label behaviour: the label is the actual leaf of
+  // `data.category_path`, even when only an ancestor category is registered.
+  it('legacy umbrella keeps path leaf as label even when only parent matches', () => {
+    const items = categorizeScreentimeActivities(
+      [makeActivity()], // activity_type='screentime', path='Work > Programming'
+      [makeCategory({ id: 'cat-work', name: ['Work'], color: '#abc' })], // only Work registered
+      {},
+      new Set(),
+      new Map(),
+    )
+    expect(items[0]!.label).toBe('Programming') // path leaf preserved
+    expect(items[0]!.color).toBe('#abc') // color walks up to Work
+    expect(items[0]!.href).toBe('/screentime-categories/cat-work')
   })
 })

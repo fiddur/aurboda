@@ -170,37 +170,49 @@ export const categorizeScreentimeActivities = (
   activities
     .filter((a): a is Activity & { end_time: Date } => Boolean(a.end_time))
     .filter((a) => a.activity_type === 'screentime' || screentimeDerivedTypes.has(a.activity_type))
-    // eslint-disable-next-line complexity -- one fall-through pass over multiple label/color/icon sources
+    // eslint-disable-next-line complexity -- two paths (legacy umbrella vs derived) with several identity sources each
     .map((a) => {
       const categoryPathStr = typeof a.data?.category_path === 'string' ? a.data.category_path : ''
       const path = categoryPathStr ? categoryPathStr.split(' > ') : []
       const score = typeof a.data?.score === 'number' ? a.data.score : undefined
+      const isDerived = a.activity_type !== 'screentime'
 
-      // The "linked category" is the screentime_category whose
-      // `activity_type_name` matches the activity's current type. After a
-      // hierarchy collapse retyped this activity to its parent, this lookup
-      // returns the parent category — exactly what we want for the bar's
-      // identity. Falls back to walking the path for v1 umbrella activities
-      // (activity_type='screentime' has no linked category).
-      const matchedByType =
-        a.activity_type !== 'screentime'
-          ? matchCategoryByActivityType(a.activity_type, categories)
-          : undefined
-      const matchedByPath = matchCategoryByPath(path, categories)
+      // Two distinct identity-resolution paths:
+      //
+      //  • Derived types (post-#651): the screentime_category whose
+      //    `activity_type_name` matches the activity's *current* type is the
+      //    source of truth. After hierarchy collapse retyped this activity to
+      //    its parent, that lookup returns the parent category. Don't fall
+      //    back to path-walking because `data.category_path` carries the
+      //    *first child's* path after retype — linking there would be
+      //    actively misleading. If the linked category was deleted, the type
+      //    def still has the right display metadata; we just don't link.
+      //
+      //  • Legacy umbrella (activity_type='screentime'): preserve v1
+      //    behaviour. Label is the actual leaf of the stored path; color and
+      //    href come from the deepest category that matches the path.
+      const matchedByType = isDerived ? matchCategoryByActivityType(a.activity_type, categories) : undefined
+      const matchedByPath = !isDerived ? matchCategoryByPath(path, categories) : undefined
+      const def = isDerived ? typeDefsMap.get(a.activity_type) : undefined
+
+      const label = isDerived
+        ? (matchedByType?.name.at(-1) ?? def?.display_name ?? path.at(-1) ?? 'Screen time')
+        : (path.at(-1) ?? 'Screen time')
+
+      const color = isDerived
+        ? (matchedByType?.color ?? def?.color ?? getProductivityColor(score))
+        : (matchedByPath?.color ?? getProductivityColor(score))
+
       const linkedCategory = matchedByType ?? matchedByPath
-      const def = a.activity_type !== 'screentime' ? typeDefsMap.get(a.activity_type) : undefined
-
-      // Label / color / href / icon all key off the linked category — so a
-      // collapsed bar renders as the parent it was retyped to, not as
-      // whichever child happened to come first in `data.category_path`.
-      const label = linkedCategory?.name.at(-1) ?? def?.display_name ?? path.at(-1) ?? 'Screen time'
-      const color = linkedCategory?.color ?? def?.color ?? getProductivityColor(score)
       const href = linkedCategory ? `/screentime-categories/${linkedCategory.id}` : undefined
-      const iconPath = linkedCategory?.name ?? path
+
+      const iconPath = matchedByType?.name ?? path
       const icon = resolveCategoryIcon(iconPath, itemIcons) ?? def?.icon
 
       const mergedLine = formatCollapsedTypesLine(a.collapsed_types)
-      const tooltipPath = linkedCategory?.name.join(' > ') ?? categoryPathStr ?? def?.display_name ?? ''
+      // `||` (not `??`) on the chain — categoryPathStr is always a string,
+      // so `??` would never fall through to def?.display_name.
+      const tooltipPath = matchedByType?.name.join(' > ') || categoryPathStr || def?.display_name || ''
       const details = [
         tooltipPath,
         formatDuration(a.start_time, a.end_time),
