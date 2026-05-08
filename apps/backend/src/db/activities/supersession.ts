@@ -91,7 +91,7 @@ export const materializeSuperseded = async (user: string, aroundTime: Date): Pro
 
   const result = await query(
     user,
-    `SELECT id, source, external_id, activity_type, start_time, end_time, title, notes, data, deleted_at, superseded_by
+    `SELECT id, source, external_id, activity_type, start_time, end_time, title, notes, data, deleted_at, superseded_by, overrides_id
      FROM activities
      WHERE deleted_at IS NULL
        AND start_time >= $1

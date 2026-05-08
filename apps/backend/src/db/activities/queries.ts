@@ -25,7 +25,7 @@ export const getOverlappingActivities = async (user: string, activity: Activity)
 
   const result = await query(
     user,
-    `SELECT id, source, external_id, activity_type, start_time, end_time, title, notes, data, deleted_at, superseded_by
+    `SELECT id, source, external_id, activity_type, start_time, end_time, title, notes, data, deleted_at, superseded_by, overrides_id
      FROM activities
      WHERE activity_type = $1
        AND deleted_at IS NULL
@@ -49,7 +49,7 @@ export const getActivityById = async (
   const deletedClause = includeDeleted ? '' : ' AND deleted_at IS NULL'
   const result = await query(
     user,
-    `SELECT id, source, external_id, activity_type, start_time, end_time, title, notes, data, deleted_at, superseded_by
+    `SELECT id, source, external_id, activity_type, start_time, end_time, title, notes, data, deleted_at, superseded_by, overrides_id
      FROM activities
      WHERE id = $1${deletedClause}`,
     [id],
@@ -59,6 +59,24 @@ export const getActivityById = async (
     return null
   }
 
+  return mapActivityRow(result.rows[0])
+}
+
+/**
+ * Find the active aurboda override row that targets the given synced
+ * activity, if any. Used by updateActivity to update an existing override in
+ * place instead of creating duplicates.
+ */
+export const getOverrideForActivity = async (user: string, targetId: string): Promise<Activity | null> => {
+  const result = await query(
+    user,
+    `SELECT id, source, external_id, activity_type, start_time, end_time, title, notes, data, deleted_at, superseded_by, overrides_id
+     FROM activities
+     WHERE overrides_id = $1 AND deleted_at IS NULL
+     LIMIT 1`,
+    [targetId],
+  )
+  if (result.rows.length === 0) return null
   return mapActivityRow(result.rows[0])
 }
 
@@ -94,7 +112,7 @@ export const getActivities = async (
 
   const result = await query(
     user,
-    `SELECT id, source, external_id, activity_type, start_time, end_time, title, notes, data, deleted_at, superseded_by
+    `SELECT id, source, external_id, activity_type, start_time, end_time, title, notes, data, deleted_at, superseded_by, overrides_id
      FROM activities
      WHERE activity_type = ANY($1) AND start_time >= $2 AND start_time <= $3
        AND deleted_at IS NULL${filterClauses}
@@ -115,7 +133,7 @@ export const getActivities = async (
 export const getSleepSessions = async (user: string, start: Date, end: Date): Promise<MergedActivity[]> => {
   const result = await query(
     user,
-    `SELECT id, source, external_id, activity_type, start_time, end_time, title, notes, data, deleted_at, superseded_by
+    `SELECT id, source, external_id, activity_type, start_time, end_time, title, notes, data, deleted_at, superseded_by, overrides_id
      FROM activities
      WHERE activity_type = 'sleep'
        AND start_time < $2
@@ -142,7 +160,7 @@ export const getActivitiesNeedingDetail = async (
   const detailFilter = forceAll ? '' : "AND (a.data->>'detail_synced') IS NULL"
   const result = await query(
     user,
-    `SELECT a.id, a.source, a.external_id, a.activity_type, a.start_time, a.end_time, a.title, a.notes, a.data, a.deleted_at, a.superseded_by
+    `SELECT a.id, a.source, a.external_id, a.activity_type, a.start_time, a.end_time, a.title, a.notes, a.data, a.deleted_at, a.superseded_by, a.overrides_id
      FROM activities a
      JOIN activity_type_definitions atd ON a.activity_type = atd.name
      WHERE atd.display_category IN ('exercise', 'meditation')
@@ -176,7 +194,7 @@ export const getNearbyActivities = async (
 
   const result = await query(
     user,
-    `SELECT id, source, external_id, activity_type, start_time, end_time, title, notes, data, deleted_at, superseded_by
+    `SELECT id, source, external_id, activity_type, start_time, end_time, title, notes, data, deleted_at, superseded_by, overrides_id
      FROM activities
      WHERE activity_type = $1
        AND id != $2
@@ -223,7 +241,7 @@ export const getActivitiesByCategory = async (
 ): Promise<MergedActivity[]> => {
   const result = await query(
     user,
-    `SELECT a.id, a.source, a.external_id, a.activity_type, a.start_time, a.end_time, a.title, a.notes, a.data, a.deleted_at, a.superseded_by
+    `SELECT a.id, a.source, a.external_id, a.activity_type, a.start_time, a.end_time, a.title, a.notes, a.data, a.deleted_at, a.superseded_by, a.overrides_id
      FROM activities a
      JOIN activity_type_definitions atd ON a.activity_type = atd.name
      WHERE atd.display_category = $1 AND a.start_time >= $2 AND a.start_time <= $3
@@ -259,7 +277,7 @@ export const getActivitiesExcludingCategories = async (
 ): Promise<Activity[]> => {
   const result = await query(
     user,
-    `SELECT a.id, a.source, a.external_id, a.activity_type, a.start_time, a.end_time, a.title, a.notes, a.data, a.deleted_at, a.superseded_by
+    `SELECT a.id, a.source, a.external_id, a.activity_type, a.start_time, a.end_time, a.title, a.notes, a.data, a.deleted_at, a.superseded_by, a.overrides_id
      FROM activities a
      LEFT JOIN activity_type_definitions atd ON a.activity_type = atd.name
      WHERE a.deleted_at IS NULL
@@ -283,7 +301,7 @@ export const getNonSleepActivitiesMerged = async (
 ): Promise<MergedActivity[]> => {
   const result = await query(
     user,
-    `SELECT a.id, a.source, a.external_id, a.activity_type, a.start_time, a.end_time, a.title, a.notes, a.data, a.deleted_at, a.superseded_by
+    `SELECT a.id, a.source, a.external_id, a.activity_type, a.start_time, a.end_time, a.title, a.notes, a.data, a.deleted_at, a.superseded_by, a.overrides_id
      FROM activities a
      LEFT JOIN activity_type_definitions atd ON a.activity_type = atd.name
      WHERE a.deleted_at IS NULL
@@ -300,7 +318,7 @@ export const getNonSleepActivitiesMerged = async (
 export const getScreentimeActivities = async (user: string, start: Date, end: Date): Promise<Activity[]> => {
   const result = await query(
     user,
-    `SELECT id, source, external_id, activity_type, start_time, end_time, title, notes, data, deleted_at, superseded_by
+    `SELECT id, source, external_id, activity_type, start_time, end_time, title, notes, data, deleted_at, superseded_by, overrides_id
      FROM activities
      WHERE activity_type = 'screentime'
        AND deleted_at IS NULL
@@ -315,7 +333,7 @@ export const getScreentimeActivities = async (user: string, start: Date, end: Da
 export const getAllActivitiesInRange = async (user: string, start: Date, end: Date): Promise<Activity[]> => {
   const result = await query(
     user,
-    `SELECT id, source, external_id, activity_type, start_time, end_time, title, notes, data, deleted_at, superseded_by
+    `SELECT id, source, external_id, activity_type, start_time, end_time, title, notes, data, deleted_at, superseded_by, overrides_id
      FROM activities WHERE deleted_at IS NULL AND start_time >= $1 AND start_time <= $2
      ORDER BY start_time`,
     [start, end],
@@ -349,7 +367,7 @@ export const findMergeableActivity = async (
 
   const result = await query(
     user,
-    `SELECT id, source, external_id, activity_type, start_time, end_time, title, notes, data, deleted_at, superseded_by
+    `SELECT id, source, external_id, activity_type, start_time, end_time, title, notes, data, deleted_at, superseded_by, overrides_id
      FROM activities
      WHERE activity_type = $1
        AND deleted_at IS NULL

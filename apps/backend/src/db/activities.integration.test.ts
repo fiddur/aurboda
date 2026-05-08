@@ -8,8 +8,10 @@ import {
   getActivityById,
   getActivitiesNeedingDetail,
   getOverlappingActivities,
+  getOverrideForActivity,
   getSleepSessions,
   insertActivity,
+  insertOverride,
   markActivityDetailSynced,
   updateActivity,
 } from './activities/index.ts'
@@ -659,6 +661,107 @@ describe('Activities Integration Tests', () => {
       expect(updated?.title).toBe('Morning Run')
       expect(updated?.notes).toBe('Morning run in the park')
       expect(updated?.data).toEqual({ exerciseType: 56, exerciseTypeName: 'running' })
+    })
+  })
+
+  describe('insertOverride / getOverrideForActivity (issue #715)', () => {
+    test('insertOverride creates an aurboda row pointing at the synced activity', async () => {
+      const user = getTestUser()
+      const garminId = randomUUID()
+
+      await insertActivity(user, {
+        activity_type: 'meditation',
+        end_time: new Date('2026-05-05T10:30:00Z'),
+        external_id: 'garmin-12345',
+        id: garminId,
+        source: 'garmin',
+        start_time: new Date('2026-05-05T10:00:00Z'),
+        title: 'Meditation',
+      })
+
+      const override = await insertOverride(user, garminId, {
+        activity_type: 'walking',
+        end_time: new Date('2026-05-05T10:30:00Z'),
+        notes: 'pipe ceremony',
+        start_time: new Date('2026-05-05T10:00:00Z'),
+        title: 'Pipe ceremony',
+      })
+
+      expect(override).not.toBeNull()
+      expect(override?.source).toBe('aurboda')
+      expect(override?.overrides_id).toBe(garminId)
+      expect(override?.activity_type).toBe('walking')
+
+      const looked = await getOverrideForActivity(user, garminId)
+      expect(looked?.id).toBe(override?.id)
+    })
+
+    test('garmin re-sync upsert does not touch the override', async () => {
+      const user = getTestUser()
+      const garminId = randomUUID()
+
+      // Initial garmin row
+      await insertActivity(user, {
+        activity_type: 'meditation',
+        end_time: new Date('2026-05-05T10:30:00Z'),
+        external_id: 'garmin-12345',
+        id: garminId,
+        source: 'garmin',
+        start_time: new Date('2026-05-05T10:00:00Z'),
+        title: 'Meditation',
+      })
+
+      // User overrides type
+      const override = await insertOverride(user, garminId, {
+        activity_type: 'walking',
+        end_time: new Date('2026-05-05T10:30:00Z'),
+        start_time: new Date('2026-05-05T10:00:00Z'),
+        title: 'Pipe ceremony',
+      })
+
+      // Re-sync from garmin (upsert by external_id) — overwrites garmin row only
+      await insertActivity(user, {
+        activity_type: 'meditation',
+        data: { duration_secs: 1800 },
+        end_time: new Date('2026-05-05T10:30:00Z'),
+        external_id: 'garmin-12345',
+        id: garminId,
+        source: 'garmin',
+        start_time: new Date('2026-05-05T10:00:00Z'),
+        title: 'Meditation',
+      })
+
+      // Override row is unchanged
+      const stillOverride = await getOverrideForActivity(user, garminId)
+      expect(stillOverride?.id).toBe(override?.id)
+      expect(stillOverride?.activity_type).toBe('walking')
+    })
+
+    test('cascade: deleting target hard-deletes the override', async () => {
+      const user = getTestUser()
+      const garminId = randomUUID()
+
+      await insertActivity(user, {
+        activity_type: 'meditation',
+        end_time: new Date('2026-05-05T10:30:00Z'),
+        external_id: 'garmin-12345',
+        id: garminId,
+        source: 'garmin',
+        start_time: new Date('2026-05-05T10:00:00Z'),
+      })
+
+      const override = await insertOverride(user, garminId, {
+        activity_type: 'walking',
+        end_time: new Date('2026-05-05T10:30:00Z'),
+        start_time: new Date('2026-05-05T10:00:00Z'),
+      })
+
+      // Hard-delete the synced row to trigger cascade
+      const { query } = await import('./connection.ts')
+      await query(user, `DELETE FROM activities WHERE id = $1`, [garminId])
+
+      const survivor = await getActivityById(user, override!.id!, true)
+      expect(survivor).toBeNull()
     })
   })
 })

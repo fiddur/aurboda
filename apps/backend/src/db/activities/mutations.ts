@@ -22,8 +22,8 @@ import { materializeSuperseded } from './supersession.ts'
 export const insertNewActivity = async (user: string, activity: Activity): Promise<string> => {
   const result = await query(
     user,
-    `INSERT INTO activities (id, source, activity_type, start_time, end_time, title, notes, data)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    `INSERT INTO activities (id, source, activity_type, start_time, end_time, title, notes, data, overrides_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
      RETURNING id`,
     [
       activity.id,
@@ -34,10 +34,41 @@ export const insertNewActivity = async (user: string, activity: Activity): Promi
       activity.title,
       activity.notes,
       activity.data,
+      activity.overrides_id ?? null,
     ],
   )
 
   return result.rows[0].id as string
+}
+
+/**
+ * Insert an aurboda override row that supersedes a synced activity. The
+ * override row's overrides_id points at the target; cross-merge always selects
+ * it as winner regardless of activity_type. Re-materializes supersession.
+ */
+export const insertOverride = async (
+  user: string,
+  targetId: string,
+  override: Omit<Activity, 'source' | 'overrides_id'>,
+): Promise<Activity | null> => {
+  const result = await query(
+    user,
+    `INSERT INTO activities (source, activity_type, start_time, end_time, title, notes, data, overrides_id)
+     VALUES ('aurboda', $1, $2, $3, $4, $5, $6, $7)
+     RETURNING id, source, external_id, activity_type, start_time, end_time, title, notes, data, deleted_at, superseded_by, overrides_id`,
+    [
+      override.activity_type,
+      override.start_time,
+      override.end_time ?? null,
+      override.title ?? null,
+      override.notes ?? null,
+      override.data ? JSON.stringify(override.data) : null,
+      targetId,
+    ],
+  )
+  if (result.rows.length === 0) return null
+  await materializeSuperseded(user, override.start_time)
+  return mapActivityRow(result.rows[0])
 }
 
 export const insertActivity = async (user: string, activity: Activity): Promise<string> => {
@@ -241,7 +272,7 @@ export const updateActivity = async (
 
   const update = buildDynamicUpdate('activities', id, fields, {
     returning:
-      'id, source, external_id, activity_type, start_time, end_time, title, notes, data, deleted_at, superseded_by',
+      'id, source, external_id, activity_type, start_time, end_time, title, notes, data, deleted_at, superseded_by, overrides_id',
   })
   if (!update) return getActivityById(user, id)
 

@@ -829,3 +829,135 @@ describe('mergeOverlappingActivities with cross-source merge', () => {
     expect(data.exerciseType).toBe(83)
   })
 })
+
+describe('mergeOverlappingActivities with override links (issue #715)', () => {
+  const makeActivity = (overrides: Partial<Activity>): Activity => ({
+    activity_type: 'meditation',
+    source: 'garmin',
+    start_time: new Date('2024-01-15T09:00:00Z'),
+    ...overrides,
+  })
+
+  // Use 'pipeceremony' as a non-cross-mergeable category to confirm overrides
+  // bypass the category gate.
+  const categoryMap = new Map([
+    ['meditation', 'meditation'],
+    ['exercise', 'exercise'],
+    ['pipeceremony', 'ceremonial'], // not in CROSS_MERGEABLE_CATEGORIES
+    ['yoga', 'exercise'],
+  ])
+
+  test('aurboda override wins over garmin even when its category is not cross-mergeable', () => {
+    const garmin = makeActivity({
+      activity_type: 'meditation',
+      end_time: new Date('2024-01-15T09:30:00Z'),
+      id: 'garmin-1',
+      source: 'garmin',
+      start_time: new Date('2024-01-15T09:00:00Z'),
+    })
+    const override = makeActivity({
+      activity_type: 'pipeceremony',
+      end_time: new Date('2024-01-15T09:30:00Z'),
+      id: 'aurboda-override',
+      overrides_id: 'garmin-1',
+      source: 'aurboda',
+      start_time: new Date('2024-01-15T09:00:00Z'),
+    })
+    const result = mergeOverlappingActivities([garmin, override], categoryMap)
+    expect(result).toHaveLength(1)
+    expect(result[0].id).toBe('aurboda-override')
+    expect(result[0].activity_type).toBe('pipeceremony')
+    expect(result[0].source_ids).toEqual(expect.arrayContaining(['garmin-1', 'aurboda-override']))
+  })
+
+  test('override wins for same-type edits (notes-only override) where regular cross-merge skips same-type pairs', () => {
+    const garmin = makeActivity({
+      activity_type: 'meditation',
+      end_time: new Date('2024-01-15T09:30:00Z'),
+      id: 'garmin-1',
+      notes: 'auto-tagged',
+      source: 'garmin',
+    })
+    const override = makeActivity({
+      activity_type: 'meditation',
+      end_time: new Date('2024-01-15T09:30:00Z'),
+      id: 'aurboda-override',
+      notes: 'pipe ceremony — second time this week',
+      overrides_id: 'garmin-1',
+      source: 'aurboda',
+    })
+    const result = mergeOverlappingActivities([garmin, override], categoryMap)
+    expect(result).toHaveLength(1)
+    expect(result[0].id).toBe('aurboda-override')
+    expect(result[0].notes).toContain('pipe ceremony')
+  })
+
+  test('override pairs with target even when start_times have drifted past 120s threshold', () => {
+    const garmin = makeActivity({
+      activity_type: 'meditation',
+      end_time: new Date('2024-01-15T09:30:00Z'),
+      id: 'garmin-1',
+      source: 'garmin',
+      start_time: new Date('2024-01-15T09:00:00Z'),
+    })
+    const override = makeActivity({
+      activity_type: 'pipeceremony',
+      end_time: new Date('2024-01-15T09:35:00Z'),
+      id: 'aurboda-override',
+      overrides_id: 'garmin-1',
+      source: 'aurboda',
+      start_time: new Date('2024-01-15T09:05:00Z'), // 5 min later than garmin
+    })
+    const result = mergeOverlappingActivities([garmin, override], categoryMap)
+    expect(result).toHaveLength(1)
+    expect(result[0].id).toBe('aurboda-override')
+  })
+
+  test('override beats higher-priority synced source via explicit force-winner', () => {
+    // Even if (hypothetically) the synced source had higher priority, the
+    // override link must win because it's explicit user intent.
+    const garmin = makeActivity({
+      activity_type: 'yoga',
+      end_time: new Date('2024-01-15T09:30:00Z'),
+      id: 'garmin-1',
+      source: 'garmin',
+    })
+    const override = makeActivity({
+      activity_type: 'pipeceremony',
+      end_time: new Date('2024-01-15T09:30:00Z'),
+      id: 'aurboda-override',
+      overrides_id: 'garmin-1',
+      source: 'aurboda',
+    })
+    const result = mergeOverlappingActivities([garmin, override], categoryMap)
+    expect(result).toHaveLength(1)
+    expect(result[0].id).toBe('aurboda-override')
+  })
+
+  test('multi-source group: override wins, all source ids tracked', () => {
+    const garmin = makeActivity({
+      activity_type: 'meditation',
+      end_time: new Date('2024-01-15T09:30:00Z'),
+      id: 'garmin-1',
+      source: 'garmin',
+    })
+    const hc = makeActivity({
+      activity_type: 'yoga',
+      end_time: new Date('2024-01-15T09:30:00Z'),
+      id: 'hc-1',
+      source: 'health_connect',
+      start_time: new Date('2024-01-15T09:00:01Z'),
+    })
+    const override = makeActivity({
+      activity_type: 'pipeceremony',
+      end_time: new Date('2024-01-15T09:30:00Z'),
+      id: 'aurboda-override',
+      overrides_id: 'garmin-1',
+      source: 'aurboda',
+    })
+    const result = mergeOverlappingActivities([garmin, hc, override], categoryMap)
+    expect(result).toHaveLength(1)
+    expect(result[0].id).toBe('aurboda-override')
+    expect(result[0].source_ids).toEqual(expect.arrayContaining(['garmin-1', 'hc-1', 'aurboda-override']))
+  })
+})

@@ -88,6 +88,12 @@ export interface Activity {
   deleted_at?: Date
   /** If set, this activity is a cross-source duplicate of the referenced activity. */
   superseded_by?: string
+  /**
+   * If set, this is a user-edited aurboda override of the referenced synced
+   * activity. Override rows always win in the merged view and are unaffected
+   * by integration re-syncs. Cascades on target delete.
+   */
+  overrides_id?: string
 }
 
 export interface MergedActivity extends Activity {

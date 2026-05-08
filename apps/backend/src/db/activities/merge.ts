@@ -79,10 +79,19 @@ const ufUnion = (parent: number[], rank: number[], a: number, b: number) => {
   }
 }
 
+/** True when one of the two activities is an aurboda override targeting the other. */
+const isOverrideLinked = (a: Activity, b: Activity): boolean =>
+  (a.overrides_id !== undefined && a.overrides_id === b.id) ||
+  (b.overrides_id !== undefined && b.overrides_id === a.id)
+
 /** Check if two activities are eligible for cross-source merge. */
 const isCrossMergePair = (a: Activity, b: Activity, categoryMap: Map<string, string>): boolean => {
   if (!CROSS_MERGE_SOURCES.has(b.source)) return false
   if (a.source === b.source) return false
+  // Override link forces a cross-merge pair regardless of type/category — the
+  // aurboda override carries the user's chosen type, which may match (notes-
+  // only edit) or differ from the synced row.
+  if (isOverrideLinked(a, b)) return true
   if (a.activity_type === b.activity_type) return false
   const catB = categoryMap.get(b.activity_type)
   return !!catB && CROSS_MERGEABLE_CATEGORIES.has(catB)
@@ -90,10 +99,21 @@ const isCrossMergePair = (a: Activity, b: Activity, categoryMap: Map<string, str
 
 /** Merge a group of activities into one, using priority-based winner selection. */
 const mergeGroupByPriority = (members: Activity[]): MergedActivity => {
-  const sorted = [...members].sort(
-    (a, b) =>
-      getEffectivePriority(b) - getEffectivePriority(a) || a.start_time.getTime() - b.start_time.getTime(),
+  // An aurboda override row referencing any group member must win regardless
+  // of computed priority — overrides are explicit user intent.
+  const memberIds = new Set(members.map((m) => m.id).filter((id): id is string => !!id))
+  const overrideWinner = members.find(
+    (m) => m.source === 'aurboda' && m.overrides_id && memberIds.has(m.overrides_id),
   )
+  const sorted = [...members].sort((a, b) => {
+    if (overrideWinner) {
+      if (a === overrideWinner) return -1
+      if (b === overrideWinner) return 1
+    }
+    return (
+      getEffectivePriority(b) - getEffectivePriority(a) || a.start_time.getTime() - b.start_time.getTime()
+    )
+  })
 
   const winner: MergedActivity = { ...sorted[0] }
   const sourceIds: string[] = []
@@ -124,46 +144,85 @@ const mergeGroupByPriority = (members: Activity[]): MergedActivity => {
  * Winner is selected by source priority (aurboda > garmin > health_connect, etc.)
  * with a boost for _user_edited activities.
  */
-const mergeCrossSources = (activities: Activity[], categoryMap: Map<string, string>): MergedActivity[] => {
-  if (activities.length <= 1) return activities.map((a) => ({ ...a }))
-
-  const sorted = [...activities].sort((a, b) => a.start_time.getTime() - b.start_time.getTime())
-
-  // Union-find: group cross-merge candidates
-  const parent = sorted.map((_, i) => i)
-  const rank = sorted.map(() => 0)
-
+/** Index override rows by target id to enable category-bypass and cross-window pairing. */
+const indexOverrides = (sorted: Activity[]): Map<string, number> => {
+  const map = new Map<string, number>()
   for (let i = 0; i < sorted.length; i++) {
-    const a = sorted[i]
-    if (!CROSS_MERGE_SOURCES.has(a.source)) continue
-    const catA = categoryMap.get(a.activity_type)
-    if (!catA || !CROSS_MERGEABLE_CATEGORIES.has(catA)) continue
-
-    for (let j = i + 1; j < sorted.length; j++) {
-      if (sorted[j].start_time.getTime() - a.start_time.getTime() > CROSS_MERGE_THRESHOLD_MS) break
-      if (isCrossMergePair(a, sorted[j], categoryMap)) ufUnion(parent, rank, i, j)
-    }
+    const ov = sorted[i]
+    if (ov.source === 'aurboda' && ov.overrides_id) map.set(ov.overrides_id, i)
   }
+  return map
+}
 
-  // Build groups from union-find
+/** Whether row `a` is eligible to be a cross-merge anchor (outer-loop seed). */
+const eligibleAnchor = (
+  a: Activity,
+  categoryMap: Map<string, string>,
+  overrideByTargetId: Map<string, number>,
+): boolean => {
+  if (!CROSS_MERGE_SOURCES.has(a.source)) return false
+  const isOverride = a.source === 'aurboda' && !!a.overrides_id
+  const targetedByOverride = a.id !== undefined && overrideByTargetId.has(a.id)
+  if (isOverride || targetedByOverride) return true
+  const catA = categoryMap.get(a.activity_type)
+  return !!catA && CROSS_MERGEABLE_CATEGORIES.has(catA)
+}
+
+/** Pair anchor i against subsequent rows in the same time window. */
+const pairAnchor = (
+  i: number,
+  sorted: Activity[],
+  categoryMap: Map<string, string>,
+  overrideByTargetId: Map<string, number>,
+  parent: number[],
+  rank: number[],
+) => {
+  const a = sorted[i]
+  const isOverride = a.source === 'aurboda' && !!a.overrides_id
+  if (isOverride && a.overrides_id) {
+    const targetIdx = sorted.findIndex((x) => x.id === a.overrides_id)
+    if (targetIdx >= 0) ufUnion(parent, rank, i, targetIdx)
+  }
+  const skipsTimeWindow = isOverride || (a.id !== undefined && overrideByTargetId.has(a.id))
+  for (let j = i + 1; j < sorted.length; j++) {
+    if (sorted[j].start_time.getTime() - a.start_time.getTime() > CROSS_MERGE_THRESHOLD_MS) {
+      if (!skipsTimeWindow) break
+      continue
+    }
+    if (isCrossMergePair(a, sorted[j], categoryMap)) ufUnion(parent, rank, i, j)
+  }
+}
+
+const buildGroups = (parent: number[], len: number): Map<number, number[]> => {
   const groups = new Map<number, number[]>()
-  for (let i = 0; i < sorted.length; i++) {
+  for (let i = 0; i < len; i++) {
     const root = ufFind(parent, i)
     const group = groups.get(root)
     if (group) group.push(i)
     else groups.set(root, [i])
   }
+  return groups
+}
 
-  // Merge each group
-  const result: MergedActivity[] = []
-  for (const indices of groups.values()) {
-    if (indices.length === 1) {
-      result.push({ ...sorted[indices[0]] })
-    } else {
-      result.push(mergeGroupByPriority(indices.map((i) => sorted[i])))
-    }
+const mergeCrossSources = (activities: Activity[], categoryMap: Map<string, string>): MergedActivity[] => {
+  if (activities.length <= 1) return activities.map((a) => ({ ...a }))
+
+  const sorted = [...activities].sort((a, b) => a.start_time.getTime() - b.start_time.getTime())
+  const parent = sorted.map((_, i) => i)
+  const rank = sorted.map(() => 0)
+  const overrideByTargetId = indexOverrides(sorted)
+
+  for (let i = 0; i < sorted.length; i++) {
+    if (!eligibleAnchor(sorted[i], categoryMap, overrideByTargetId)) continue
+    pairAnchor(i, sorted, categoryMap, overrideByTargetId, parent, rank)
   }
 
+  const groups = buildGroups(parent, sorted.length)
+  const result: MergedActivity[] = []
+  for (const indices of groups.values()) {
+    if (indices.length === 1) result.push({ ...sorted[indices[0]] })
+    else result.push(mergeGroupByPriority(indices.map((i) => sorted[i])))
+  }
   return result
 }
 

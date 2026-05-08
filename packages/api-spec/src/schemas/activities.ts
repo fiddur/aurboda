@@ -209,6 +209,10 @@ export const activitySchema = activityComputedMetricsSchema
     external_id: z.string().optional().meta({ description: 'External ID from source system' }),
     id: z.string().uuid().optional().meta({ description: 'Activity ID' }),
     notes: z.string().optional().meta({ description: 'Activity notes' }),
+    overrides_id: z.string().uuid().optional().meta({
+      description:
+        'When set, this activity is a user override of the referenced synced activity (issue #715). Edits to synced activities create overrides that survive integration re-syncs.',
+    }),
     source: z.string().optional().meta({ description: 'Data source' }),
     start_time: iso8601DateTimeSchema,
     time_in_bed: durationMinutesSchema.optional().meta({
