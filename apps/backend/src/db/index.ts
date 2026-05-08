@@ -153,6 +153,7 @@ export {
   updateActivity,
   updateActivityEndTimeByExternalId,
   updateActivityTypeByTagKey,
+  updateScreentimeActivityCategoryPath,
 } from './activities/index.ts'
 
 // Locations

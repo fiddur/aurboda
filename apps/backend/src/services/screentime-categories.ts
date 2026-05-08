@@ -13,6 +13,7 @@ import type { AwCategory, CreateScreentimeCategoryBody } from '@aurboda/api-spec
 
 import type { ScreentimeCategory, ScreentimeCategoryInput } from '../db/types.ts'
 
+import { query } from '../db/connection.ts'
 import {
   batchUpdateResolvedCategory,
   bulkInsertScreentimeCategories,
@@ -23,15 +24,93 @@ import {
   getScreentimeCategoryById,
   insertScreentimeCategory,
   moveScreentimeCategory,
+  updateScreentimeActivityCategoryPath,
   updateScreentimeCategory,
   upsertScreentimeCategory,
 } from '../db/index.ts'
-import { auditError } from './audit-log.ts'
+import { auditError, auditInfo } from './audit-log.ts'
 import {
   ensureAllCategoriesHaveTypes,
   ensureCategoryHasType,
   recomputeCategoryParentType,
+  syncTypeDefMetadataIfOwned,
 } from './screentime-category-sync.ts'
+
+/** "Work > Programming" — the joined-string form stored in `activities.data.category_path`. */
+const joinPath = (name: string[]): string => name.join(' > ')
+
+const sameNameArray = (a: string[], b: string[]): boolean =>
+  a.length === b.length && a.every((seg, i) => seg === b[i])
+
+/**
+ * Find all categories that are descendants of `parent` (strict — excludes
+ * `parent` itself). Used to snapshot before a rename / move so the prefix
+ * shift can be propagated to descendant activities afterwards.
+ */
+const findDescendants = (parent: ScreentimeCategory, all: ScreentimeCategory[]): ScreentimeCategory[] =>
+  all.filter(
+    (c) =>
+      c.id !== parent.id &&
+      c.name.length > parent.name.length &&
+      parent.name.every((seg, i) => c.name[i] === seg),
+  )
+
+/**
+ * Cascade a rename to descendant rows: any category whose `name[]` started
+ * with `oldPrefix` gets its prefix swapped for `newPrefix`. Mirrors the
+ * descendant-handling SQL inside `moveScreentimeCategory`. No-op when the
+ * prefix didn't change.
+ */
+const cascadeNamePrefix = async (
+  user: string,
+  parentId: string,
+  oldPrefix: string[],
+  newPrefix: string[],
+): Promise<void> => {
+  if (sameNameArray(oldPrefix, newPrefix)) return
+  await query(
+    user,
+    `UPDATE screentime_categories
+       SET name = $1 || name[$2:], updated_at = NOW()
+     WHERE id != $3 AND name[1:$4] = $5`,
+    [newPrefix, oldPrefix.length + 1, parentId, oldPrefix.length, oldPrefix],
+  )
+}
+
+/** Best-effort propagation of a category rename or move to existing screentime
+ *  activities. Updates `data.category_path` from the old joined string to the
+ *  new one for activities under this category's slug. Logged on success;
+ *  failures are audit-logged so the CRUD response isn't blocked.
+ */
+const propagateCategoryPath = async (
+  user: string,
+  slug: string | undefined,
+  oldName: string[],
+  newName: string[],
+): Promise<void> => {
+  if (!slug) return
+  // Short-circuit lives in `updateScreentimeActivityCategoryPath` itself —
+  // pass through and let the helper decide whether the UPDATE runs.
+  const oldPath = joinPath(oldName)
+  const newPath = joinPath(newName)
+  try {
+    const updated = await updateScreentimeActivityCategoryPath(user, slug, oldPath, newPath)
+    if (updated > 0) {
+      auditInfo(user, 'data', 'Updated screentime activities for category rename/move', {
+        new_path: newPath,
+        old_path: oldPath,
+        slug,
+        updated,
+      })
+    }
+  } catch (err) {
+    console.error(`⚠️ Failed to propagate category path change for slug ${slug}:`, err)
+    auditError(user, 'data', 'Failed to propagate category path change', {
+      error: String(err),
+      slug,
+    })
+  }
+}
 
 // ============================================================================
 // Category Resolution
@@ -210,7 +289,42 @@ export const createCategory = async (user: string, input: ScreentimeCategoryInpu
 }
 
 export const modifyCategory = async (user: string, id: string, input: Partial<ScreentimeCategoryInput>) => {
+  // Snapshot the pre-update row AND its descendants so a name change can
+  // (a) cascade the prefix shift to descendant rows and (b) propagate path
+  // updates to activities for the renamed category AND each affected
+  // descendant. Skip if the row didn't exist; updateScreentimeCategory
+  // returns null in that case anyway.
+  const before = await getScreentimeCategoryById(user, id)
+  const descendantsBefore =
+    before && input.name !== undefined ? findDescendants(before, await getScreentimeCategories(user)) : []
+
   const result = await updateScreentimeCategory(user, id, input)
+
+  // Propagate rename / color change to existing data (#652).
+  if (before && result) {
+    if (input.name !== undefined && !sameNameArray(before.name, result.name)) {
+      // Cascade the prefix shift to descendant rows. updateScreentimeCategory
+      // only updates the row itself; without this, descendants' name arrays
+      // would be left starting with the old prefix and silently diverge.
+      await cascadeNamePrefix(user, id, before.name, result.name)
+
+      // Propagate path on the renamed category itself, then on each
+      // descendant by computing its new name from the prefix swap.
+      await propagateCategoryPath(user, result.activity_type_name, before.name, result.name)
+      for (const desc of descendantsBefore) {
+        const newDescName = [...result.name, ...desc.name.slice(before.name.length)]
+        await propagateCategoryPath(user, desc.activity_type_name, desc.name, newDescName)
+      }
+    }
+    if (input.name !== undefined || input.color !== undefined) {
+      try {
+        await syncTypeDefMetadataIfOwned(user, result)
+      } catch (err) {
+        console.error(`⚠️ Failed to sync type-def metadata for category ${id}:`, err)
+        auditError(user, 'data', 'Failed to sync type-def metadata', { error: String(err) })
+      }
+    }
+  }
 
   // Recategorize if rules or name changed (any of these affect resolution)
   if (
@@ -227,6 +341,15 @@ export const modifyCategory = async (user: string, id: string, input: Partial<Sc
   return result
 }
 
+/**
+ * Delete a screentime category (and its descendants). v1 of #652 leaves
+ * existing screentime activities and the linked `activity_type_definitions`
+ * row in place: deleting historical bars would lose data the user might
+ * still want to query, and the type def is harmless when orphaned (the
+ * post-#728 timeline frontend handles a missing linked-category gracefully
+ * via the `def`-based fallback path). Future iterations could offer
+ * soft-delete or reassignment as opt-in user actions.
+ */
 export const removeCategory = async (user: string, id: string) => {
   const count = await deleteScreentimeCategoryWithChildren(user, id)
 
@@ -242,6 +365,7 @@ export const removeCategory = async (user: string, id: string) => {
 export const getCategoryById = async (user: string, id: string) => getScreentimeCategoryById(user, id)
 
 export const upsertCategory = async (user: string, id: string, input: ScreentimeCategoryInput) => {
+  const before = await getScreentimeCategoryById(user, id)
   const result = await upsertScreentimeCategory(user, id, input)
 
   // Mirror into activity_type_definitions (idempotent — no-op if already linked).
@@ -252,6 +376,18 @@ export const upsertCategory = async (user: string, id: string, input: Screentime
   } catch (err) {
     console.error(`⚠️ Failed to mirror screentime category ${result.id} to activity type:`, err)
     auditError(user, 'data', 'Failed to mirror category to activity type', { error: String(err) })
+  }
+
+  // Propagate rename / color change to existing data (#652). `before` is null
+  // on the create branch of upsert; in that case there's nothing to propagate.
+  if (before) {
+    await propagateCategoryPath(user, result.activity_type_name, before.name, result.name)
+    try {
+      await syncTypeDefMetadataIfOwned(user, result)
+    } catch (err) {
+      console.error(`⚠️ Failed to sync type-def metadata for category ${id}:`, err)
+      auditError(user, 'data', 'Failed to sync type-def metadata', { error: String(err) })
+    }
   }
 
   // Recategorize if the category has a rule
@@ -270,24 +406,50 @@ export const moveCategoryToParent = async (user: string, id: string, newParentId
     ? ((await getScreentimeCategoryById(user, newParentId))?.name ?? null)
     : null
 
+  // Snapshot all categories *before* the move so we can compute old paths for
+  // the moved category AND its descendants (whose array prefix shifts during
+  // moveScreentimeCategory).
+  const before = await getScreentimeCategories(user)
+  const movedBefore = before.find((c) => c.id === id)
+  const descendantsBefore =
+    movedBefore !== undefined
+      ? before.filter(
+          (c) =>
+            c.id !== id &&
+            c.name.length > movedBefore.name.length &&
+            movedBefore.name.every((seg, i) => c.name[i] === seg),
+        )
+      : []
+
   const result = await moveScreentimeCategory(user, id, newParentName)
 
-  if (result.updated > 0) {
+  if (result.updated > 0 && movedBefore) {
     // Recompute parent_type for the moved category and any descendants whose
     // path prefix changed. Slugs themselves are stable; only `parent_type`
     // walks to mirror the new hierarchy.
     try {
-      const all = await getScreentimeCategories(user)
-      const moved = all.find((c) => c.id === id)
+      const after = await getScreentimeCategories(user)
+      const moved = after.find((c) => c.id === id)
       if (moved) {
-        await recomputeCategoryParentType(user, moved, all)
-        const descendants = all.filter(
+        await recomputeCategoryParentType(user, moved, after)
+        const descendants = after.filter(
           (c) =>
             c.id !== id &&
             c.name.length > moved.name.length &&
             moved.name.every((seg, i) => c.name[i] === seg),
         )
-        for (const desc of descendants) await recomputeCategoryParentType(user, desc, all)
+        for (const desc of descendants) await recomputeCategoryParentType(user, desc, after)
+
+        // Propagate path changes to existing screentime activities (#652).
+        // The moved category's path always changes; descendants' paths shift
+        // by the prefix delta. Match each old/new pair by id so we cover the
+        // descendants whose name array was rewritten in DB.
+        await propagateCategoryPath(user, moved.activity_type_name, movedBefore.name, moved.name)
+        for (const descBefore of descendantsBefore) {
+          const descAfter = after.find((c) => c.id === descBefore.id)
+          if (!descAfter) continue
+          await propagateCategoryPath(user, descAfter.activity_type_name, descBefore.name, descAfter.name)
+        }
       }
     } catch (err) {
       console.error('⚠️ Failed to recompute activity-type parent after move:', err)

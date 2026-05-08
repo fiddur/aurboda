@@ -329,6 +329,34 @@ export const updateActivityTypeByTagKey = async (
 }
 
 /**
+ * Rewrite `data.category_path` on screentime activities. Used when a screentime
+ * category is renamed or moved (#652) so historical bars and chart breakdowns
+ * stop showing the stale path. Matches by activity_type slug AND old path
+ * string — slug isolates this category's activities (multiple categories can
+ * share a slug via convergence; we only want the ones whose path string is
+ * the old value). `external_id` carries the old path too, so it stays as the
+ * historical fingerprint and is intentionally not touched here.
+ */
+export const updateScreentimeActivityCategoryPath = async (
+  user: string,
+  activityType: string,
+  oldCategoryPath: string,
+  newCategoryPath: string,
+): Promise<number> => {
+  if (oldCategoryPath === newCategoryPath) return 0
+  const result = await query(
+    user,
+    `UPDATE activities
+       SET data = jsonb_set(data, '{category_path}', to_jsonb($3::text))
+     WHERE activity_type = $1
+       AND data->>'category_path' = $2
+       AND deleted_at IS NULL`,
+    [activityType, oldCategoryPath, newCategoryPath],
+  )
+  return result.rowCount ?? 0
+}
+
+/**
  * Migrate activities with generic 'exercise' type to their specific type.
  * Handles both legacy activity_type_key and HC exerciseTypeName fields.
  * Returns the number of activities updated.

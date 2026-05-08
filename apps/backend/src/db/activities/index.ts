@@ -30,6 +30,7 @@ export {
   updateActivity,
   updateActivityEndTimeByExternalId,
   updateActivityTypeByTagKey,
+  updateScreentimeActivityCategoryPath,
 } from './mutations.ts'
 
 export {
