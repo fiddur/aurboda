@@ -36,8 +36,37 @@ import './style.css'
 
 // eslint-disable-next-line complexity -- D3 visualization component
 export const Timeline = () => {
+  // ── Orientation state ──────────────────────────────────────────────────────
+  // Declared before the navigation hook so we can derive the time-axis pixel
+  // dimension (#658 pixel-aware collapse depth) from the current orientation.
+  const [orientation, setOrientation] = useState<Orientation>(
+    () => _initialHash.orientation ?? getDefaultOrientation(),
+  )
+
+  const orientationRef = useRef(orientation)
+  orientationRef.current = orientation
+
+  // ── Container size state ──────────────────────────────────────────────────
+  // Lifted from the existing ResizeObserver below so the navigation hook can
+  // compute pixels-per-hour for hierarchy collapse (#658). Initial 0 yields
+  // depth=0 ("show everything distinct") until the first measurement lands.
+  const [containerSize, setContainerSize] = useState<{ w: number; h: number }>({ h: 0, w: 0 })
+
+  const timeAxisPixels = useMemo(() => {
+    // The time axis is the chart's long dimension along which time flows:
+    // chartHeight in vertical mode, chartWidth in horizontal. Subtract the
+    // axis-padding margins that mirror useTimelineZoom's chart sizing so we
+    // measure the actual zoomable region, not the full container.
+    if (orientation === 'horizontal') {
+      const inner = containerSize.w - HORIZONTAL_MARGIN.left - HORIZONTAL_MARGIN.right
+      return Math.max(0, inner)
+    }
+    const inner = containerSize.h - VERTICAL_MARGIN.top - VERTICAL_MARGIN.bottom
+    return Math.max(0, inner)
+  }, [orientation, containerSize])
+
   // ── Navigation hook ──────────────────────────────────────────────────────
-  const nav = useTimelineNavigation()
+  const nav = useTimelineNavigation({ timeAxisPixels })
   const {
     effectiveViewStart,
     effectiveViewEnd,
@@ -56,14 +85,6 @@ export const Timeline = () => {
     mergeGapMs,
     collapseDepth,
   } = nav
-
-  // ── Orientation state ──────────────────────────────────────────────────────
-  const [orientation, setOrientation] = useState<Orientation>(
-    () => _initialHash.orientation ?? getDefaultOrientation(),
-  )
-
-  const orientationRef = useRef(orientation)
-  orientationRef.current = orientation
 
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [legendCollapsed, setLegendCollapsed] = useState(false)
@@ -262,9 +283,19 @@ export const Timeline = () => {
       cancelAnimationFrame(resizeRaf)
       resizeRaf = requestAnimationFrame(() => {
         setResizeKey((k) => k + 1)
+        // Lifted to state so the navigation hook can derive pixels-per-hour
+        // for the #658 hierarchy collapse gate.
+        setContainerSize({ h, w })
       })
     })
-    if (containerRef.current) resizeObserver.observe(containerRef.current)
+    const el = containerRef.current
+    if (el) {
+      resizeObserver.observe(el)
+      // Seed the size synchronously on mount so the first render has a
+      // real measurement instead of falling through to depth=0.
+      const rect = el.getBoundingClientRect()
+      setContainerSize({ h: Math.round(rect.height), w: Math.round(rect.width) })
+    }
     return () => {
       cancelAnimationFrame(resizeRaf)
       resizeObserver.disconnect()

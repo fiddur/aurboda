@@ -2,6 +2,7 @@ import { signal } from '@preact/signals'
 import { addDays, differenceInCalendarDays, endOfDay, format, formatISO, startOfDay, subDays } from 'date-fns'
 import { useCallback, useMemo } from 'preact/hooks'
 
+import { collapseDepthForPixelsPerHour, computePixelsPerHour } from './collapseTier'
 import { getDefaultViewEnd, getDefaultViewStart, parseViewHash } from './viewHash'
 
 // ── Signals (module-level, persist across SPA navigations) ────────────────────
@@ -51,7 +52,19 @@ export interface TimelineNavigation {
   collapseDepth: number
 }
 
-export const useTimelineNavigation = (): TimelineNavigation => {
+export interface TimelineNavigationOptions {
+  /**
+   * Chart pixel dimension along the time axis — chartHeight in vertical
+   * orientation, chartWidth in horizontal. The caller measures the container
+   * and subtracts margins; we just need a single resolved number here.
+   * Pass 0 (or omit) before mount / before first measurement; collapseDepth
+   * will fall back to 0 (no walk) until a real value arrives.
+   */
+  timeAxisPixels?: number
+}
+
+export const useTimelineNavigation = (options: TimelineNavigationOptions = {}): TimelineNavigation => {
+  const { timeAxisPixels = 0 } = options
   const effectiveViewStart = viewStart.value ?? getDefaultViewStart()
   const effectiveViewEnd = viewEnd.value ?? getDefaultViewEnd()
 
@@ -86,17 +99,24 @@ export const useTimelineNavigation = (): TimelineNavigation => {
     return 10 * 60 * 1000
   }, [effectiveViewStart, effectiveViewEnd])
 
-  // Multi-tier collapse depth (#656): at max zoom the user wants to see
-  // (and click to edit) sibling sub-types like warmup_run vs strength_training
-  // distinctly, so we leave them as-is. Moderate zoom-out collapses one hop
-  // (warmup_run → exercise); deep zoom-out walks to root so a 30-day view
+  // Multi-tier collapse depth (#656/#658): at max zoom (high pixels-per-hour)
+  // the user wants to see (and click to edit) sibling sub-types like
+  // warmup_run vs strength_training distinctly. Moderate zoom collapses one
+  // hop (warmup_run → exercise); deep zoom walks to root so a multi-week view
   // reads as fewer, broader bars.
-  const collapseDepth = useMemo(() => {
-    const days = differenceInCalendarDays(effectiveViewEnd, effectiveViewStart)
-    if (days > 14) return Number.POSITIVE_INFINITY
-    if (days > 3) return 1
-    return 0
-  }, [effectiveViewStart, effectiveViewEnd])
+  //
+  // #658 switched from absolute days to pixels-per-hour so the threshold
+  // adapts to container width: a 7-day view on a 360px mobile collapses
+  // as if it were ~14 days at desktop width. `timeAxisPixels` ≤ 0 (pre-mount,
+  // pre-measure) yields depth 0, which keeps the existing data visible
+  // until the first measurement.
+  const collapseDepth = useMemo(
+    () =>
+      collapseDepthForPixelsPerHour(
+        computePixelsPerHour(timeAxisPixels, effectiveViewStart, effectiveViewEnd),
+      ),
+    [timeAxisPixels, effectiveViewStart, effectiveViewEnd],
+  )
 
   const handleZoom = useCallback((zoomStart: Date, zoomEnd: Date) => {
     viewStart.value = zoomStart
