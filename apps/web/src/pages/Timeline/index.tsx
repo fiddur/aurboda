@@ -290,11 +290,15 @@ export const Timeline = () => {
     })
     const el = containerRef.current
     if (el) {
-      resizeObserver.observe(el)
       // Seed the size synchronously on mount so the first render has a
-      // real measurement instead of falling through to depth=0.
+      // real measurement instead of falling through to depth=0. Prime the
+      // observer's lastW/lastH so the first ResizeObserver entry doesn't
+      // re-fire setContainerSize with the same numbers (extra render).
       const rect = el.getBoundingClientRect()
-      setContainerSize({ h: Math.round(rect.height), w: Math.round(rect.width) })
+      lastW = Math.round(rect.width)
+      lastH = Math.round(rect.height)
+      setContainerSize({ h: lastH, w: lastW })
+      resizeObserver.observe(el)
     }
     return () => {
       cancelAnimationFrame(resizeRaf)

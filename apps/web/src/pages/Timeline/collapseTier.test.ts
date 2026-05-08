@@ -34,6 +34,12 @@ describe('collapseDepthForPixelsPerHour (#658)', () => {
     expect(collapseDepthForPixelsPerHour(0)).toBe(0)
     expect(collapseDepthForPixelsPerHour(-1)).toBe(0)
     expect(collapseDepthForPixelsPerHour(NaN)).toBe(0)
+  })
+
+  it('treats Infinity as max zoom (depth 0 via the > 30 branch, not the guard)', () => {
+    // A degenerate visible range with non-zero pixels could produce
+    // Infinity. Semantically that's "infinite resolution per hour" — we
+    // want depth 0 because we're zoomed in, not because the input was bad.
     expect(collapseDepthForPixelsPerHour(Number.POSITIVE_INFINITY)).toBe(0)
   })
 
@@ -59,6 +65,8 @@ describe('computePixelsPerHour', () => {
   it('returns 0 when chart pixels are not yet measured', () => {
     expect(computePixelsPerHour(0, d(0), d(24))).toBe(0)
     expect(computePixelsPerHour(-10, d(0), d(24))).toBe(0)
+    expect(computePixelsPerHour(NaN, d(0), d(24))).toBe(0)
+    expect(computePixelsPerHour(Number.POSITIVE_INFINITY, d(0), d(24))).toBe(0)
   })
 
   it('returns 0 when the visible range is degenerate', () => {

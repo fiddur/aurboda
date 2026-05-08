@@ -14,7 +14,11 @@
  * day-based tiers (1d ≈ 42 pph, 3d ≈ 14 pph, 14d ≈ 3 pph).
  */
 export const collapseDepthForPixelsPerHour = (pixelsPerHour: number): number => {
-  if (!Number.isFinite(pixelsPerHour) || pixelsPerHour <= 0) return 0
+  // NaN / non-positive values mean "no zoom info yet" — keep everything
+  // distinct (depth 0) until a real measurement arrives. Positive Infinity
+  // is allowed through to fall into the > 30 branch (max zoom = depth 0
+  // via the correct semantic path, not the early-return guard).
+  if (Number.isNaN(pixelsPerHour) || pixelsPerHour <= 0) return 0
   if (pixelsPerHour > 30) return 0
   if (pixelsPerHour >= 5) return 1
   return Number.POSITIVE_INFINITY
@@ -31,8 +35,9 @@ export const computePixelsPerHour = (
   visibleStart: Date,
   visibleEnd: Date,
 ): number => {
+  if (!Number.isFinite(timeAxisPixels) || timeAxisPixels <= 0) return 0
   const ms = visibleEnd.getTime() - visibleStart.getTime()
-  if (timeAxisPixels <= 0 || ms <= 0) return 0
+  if (!Number.isFinite(ms) || ms <= 0) return 0
   const hours = ms / 3_600_000
   return timeAxisPixels / hours
 }
