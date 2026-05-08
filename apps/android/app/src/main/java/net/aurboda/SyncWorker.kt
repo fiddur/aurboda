@@ -13,10 +13,6 @@ import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
-import io.ktor.client.HttpClient
-import io.ktor.client.engine.android.Android
-import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
-import io.ktor.serialization.kotlinx.json.json
 import net.aurboda.widget.HrZoneWidgetProvider
 import java.time.Instant
 import java.util.concurrent.TimeUnit
@@ -33,11 +29,7 @@ class SyncWorker(
   params: WorkerParameters,
 ) : CoroutineWorker(context, params) {
   private val healthConnectClient by lazy { HealthConnectClient.getOrCreate(applicationContext) }
-  private val httpClient by lazy {
-    HttpClient(Android) {
-      install(ContentNegotiation) { json(appJson) }
-    }
-  }
+  private val httpClient by lazy { syncHttpClient() }
 
   override suspend fun doWork(): Result {
     Log.d(TAG, "Starting background sync")
