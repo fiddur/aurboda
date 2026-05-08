@@ -8,7 +8,7 @@
 import { exerciseTypeNames, getExerciseTypeName as getExerciseTypeNameFromValue } from '@aurboda/api-spec'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
-import { useRoute } from 'preact-iso'
+import { useLocation, useRoute } from 'preact-iso'
 import { useCallback, useEffect, useState } from 'preact/hooks'
 
 import type { Activity, ActivityTypeDefinition, ExerciseTypeName, SourceRecord } from '../../state/api'
@@ -456,6 +456,7 @@ const ResyncDetailButton = ({
 
 const ActivityContent = ({ entityId }: { entityId: string }) => {
   const queryClient = useQueryClient()
+  const { route } = useLocation()
   const isMerged = entityId.startsWith('merged:')
   const rawEntityId = isMerged ? entityId.slice('merged:'.length) : entityId
 
@@ -529,9 +530,9 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
     onSuccess: () => invalidate(),
   })
 
-  const saveMutation = useMutation({
-    mutationFn: () => {
-      if (!activity) return Promise.resolve()
+  const saveMutation = useMutation<{ id: string } | null, Error, void>({
+    mutationFn: async () => {
+      if (!activity) return null
       const body: {
         activity_type?: string
         start_time?: string
@@ -557,12 +558,20 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
       if (draft.data && JSON.stringify(draft.data) !== JSON.stringify(orig.data)) {
         body.data = draft.data
       }
-      if (Object.keys(body).length === 0) return Promise.resolve()
-      return updateActivity(rawEntityId, body)
+      if (Object.keys(body).length === 0) return null
+      return await updateActivity(rawEntityId, body)
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       setIsEditing(false)
       invalidate()
+      // Editing a synced activity (e.g. Garmin) for the first time creates a
+      // new aurboda override row with a different id. Re-fetching the source
+      // id would just show the unedited source — the user's edits would
+      // appear to vanish. Navigate to the override so the page reflects
+      // what they just saved.
+      if (result && result.id !== rawEntityId) {
+        route(`/detail/activity/${result.id}`)
+      }
     },
   })
 

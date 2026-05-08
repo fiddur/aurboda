@@ -71,11 +71,19 @@ export const softDeleteActivity = async (id: string): Promise<void> => {
   })
 }
 
-export const updateActivity = async (id: string, body: UpdateActivityBody): Promise<void> => {
+/**
+ * PATCH a synced (e.g. Garmin) activity creates a new aurboda override row
+ * with a different id; the response carries that new id so the caller can
+ * navigate to it. Editing an aurboda or already-overridden activity returns
+ * the same id back. Either way, the response's id is the row that ended up
+ * holding the user's edits.
+ */
+export const updateActivity = async (id: string, body: UpdateActivityBody): Promise<{ id: string }> => {
   const { token } = auth.value
-  await axios.patch(`${API_URL}/activities/${id}`, body, {
+  const response = await axios.patch<{ data: { id: string } }>(`${API_URL}/activities/${id}`, body, {
     headers: { Authorization: `Bearer ${token}` },
   })
+  return { id: response.data.data.id }
 }
 
 export const restoreActivity = async (id: string): Promise<void> => {
