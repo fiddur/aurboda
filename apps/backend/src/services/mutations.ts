@@ -19,8 +19,10 @@ import {
   findMergeableActivity,
   getActivityById as dbGetActivityById,
   getActivityTypeDefinition,
+  getOverrideForActivity,
   insertActivity as dbInsertActivity,
   insertNewActivity as dbInsertNewActivity,
+  insertOverride as dbInsertOverride,
   materializeSuperseded,
   updateActivity as dbUpdateActivity,
   enqueueOutboundSync,
@@ -476,19 +478,24 @@ export async function deleteActivity(user: string, id: string): Promise<DeleteAc
 /**
  * Update an existing activity.
  *
- * Validates that if both start_time and end_time are provided, end_time is after start_time.
- * Also validates against existing values if only one is provided.
+ * For activities owned by aurboda (source='aurboda'), the row is updated in
+ * place. For synced activities (garmin, health_connect, strava, oura, …), the
+ * edit creates or updates a separate aurboda override row that wins in the
+ * merged view and survives integration re-syncs (issue #715). Editing the
+ * synced row directly would be reverted on the next sync.
+ *
+ * Validates that if both start_time and end_time are provided, end_time is
+ * after start_time.
  */
-// eslint-disable-next-line complexity -- note-sync adds one branch above the limit
+// eslint-disable-next-line complexity -- override resolution adds branches; refactor candidate
 export async function updateActivity(
   user: string,
   id: string,
   input: UpdateActivityInput,
   onMutated?: ActivityNotifier,
 ): Promise<UpdateActivityResult> {
-  // First, get the existing activity to validate times
-  const existing = await dbGetActivityById(user, id)
-  if (!existing) {
+  const target = await dbGetActivityById(user, id)
+  if (!target) {
     return {
       error: 'Activity not found',
       id,
@@ -496,11 +503,18 @@ export async function updateActivity(
     }
   }
 
-  // Determine final start and end times
-  const finalStartTime = input.start_time ?? existing.start_time
-  const finalEndTime = input.end_time === null ? null : (input.end_time ?? existing.end_time)
+  // Resolve which row we'll actually mutate. For synced sources, prefer an
+  // existing aurboda override targeting `target`; otherwise we'll create one.
+  const isSyncedTarget = target.source !== 'aurboda'
+  const existingOverride = isSyncedTarget ? await getOverrideForActivity(user, target.id!) : null
+  const editRow = existingOverride ?? target
+  // The "before" snapshot used for time/type comparisons — what the merged
+  // view currently shows.
+  const before = editRow
 
-  // Validate that endTime is not before startTime (equal is valid for point-in-time activities)
+  const finalStartTime = input.start_time ?? before.start_time
+  const finalEndTime = input.end_time === null ? null : (input.end_time ?? before.end_time)
+
   if (finalEndTime && finalEndTime < finalStartTime) {
     return {
       error: 'end_time must not be before start_time',
@@ -509,8 +523,8 @@ export async function updateActivity(
     }
   }
 
-  // Check for unique constraint conflict when changing activity_type
-  const isTypeChanging = input.activity_type && input.activity_type !== existing.activity_type
+  const finalType = input.activity_type ?? before.activity_type
+  const isTypeChanging = input.activity_type !== undefined && input.activity_type !== before.activity_type
   if (isTypeChanging && !(await activityTypeExists(user, input.activity_type!))) {
     return {
       error: `Unknown activity type: "${input.activity_type}"`,
@@ -519,46 +533,75 @@ export async function updateActivity(
     }
   }
   if (isTypeChanging) {
+    // Conflict check is against the row we'll actually write — aurboda for
+    // overrides (existing or new), or the same synced source for in-place edits.
+    const writeSource = isSyncedTarget ? 'aurboda' : target.source
+    const excludeId = existingOverride?.id ?? target.id!
     const conflict = await checkActivityConflict(
       user,
-      existing.source,
+      writeSource,
       input.activity_type!,
       finalStartTime,
-      id,
+      excludeId,
     )
     if (conflict) {
       return {
-        error: `Cannot change activity type: a ${input.activity_type} activity from ${existing.source} already exists at that start time`,
+        error: `Cannot change activity type: a ${input.activity_type} activity from ${writeSource} already exists at that start time`,
         id,
         success: false,
       }
     }
   }
 
-  // Merge new data fields into existing data (preserving fields not being updated)
-  // When the activity type is changing, mark as user-edited so cross-source merge gives it priority
-  const baseData = input.data
-    ? { ...existing.data, ...input.data }
-    : isTypeChanging
-      ? { ...existing.data }
-      : undefined
-  const mergedData = isTypeChanging && baseData ? { ...baseData, _user_edited: true } : baseData
+  const mergedData = input.data ? { ...before.data, ...input.data } : before.data
 
-  // Validate merged data against activity type schema (if defined)
   if (mergedData) {
-    const finalType = input.activity_type ?? existing.activity_type
     const dataError = await validateDataForType(user, finalType, mergedData)
     if (dataError) return { error: dataError, id, success: false }
   }
 
-  const updated = await dbUpdateActivity(user, id, {
-    activity_type: input.activity_type,
-    data: mergedData,
-    end_time: input.end_time,
-    notes: input.notes,
-    start_time: input.start_time,
-    title: input.title,
-  })
+  let updated: Activity | null
+  if (isSyncedTarget && !existingOverride) {
+    // First user edit on a synced activity → create an aurboda override
+    // carrying the synced row's snapshot overlaid with the user's input.
+    // Mirror in-place semantics: input.notes / input.title === undefined keeps
+    // the snapshot value; explicit '' (or null) clears it.
+    try {
+      updated = await dbInsertOverride(user, target.id!, {
+        activity_type: finalType,
+        data: mergedData,
+        end_time: input.end_time === null ? undefined : (finalEndTime ?? undefined),
+        notes: input.notes !== undefined ? input.notes : target.notes,
+        start_time: finalStartTime,
+        title: input.title !== undefined ? input.title : target.title,
+      })
+    } catch (err) {
+      // Race: a concurrent edit created the override first; the partial unique
+      // index `idx_activities_one_override_per_target` rejects ours. Reload
+      // and apply the user's edits to the now-existing override instead.
+      const code = (err as { code?: string }).code
+      if (code !== '23505') throw err
+      const concurrent = await getOverrideForActivity(user, target.id!)
+      if (!concurrent) throw err
+      updated = await dbUpdateActivity(user, concurrent.id!, {
+        activity_type: input.activity_type,
+        data: input.data ? mergedData : undefined,
+        end_time: input.end_time,
+        notes: input.notes,
+        start_time: input.start_time,
+        title: input.title,
+      })
+    }
+  } else {
+    updated = await dbUpdateActivity(user, editRow.id!, {
+      activity_type: input.activity_type,
+      data: input.data ? mergedData : undefined,
+      end_time: input.end_time,
+      notes: input.notes,
+      start_time: input.start_time,
+      title: input.title,
+    })
+  }
 
   if (!updated) {
     return {
@@ -568,40 +611,49 @@ export async function updateActivity(
     }
   }
 
-  // Sync inherited times on any notes attached to this activity (best-effort)
-  syncNoteTimesForEntity(user, 'activity', id, updated.start_time, updated.end_time ?? undefined).catch(
-    (err) => auditError(user, 'data', 'Failed to sync note times for activity', { error: String(err) }),
-  )
+  // Sync inherited times on any notes attached to either the row we wrote or
+  // (for fresh overrides) the synced target — notes can be attached to either
+  // id and both should track the new times.
+  const noteEntityIds = updated.overrides_id ? [updated.id!, updated.overrides_id] : [updated.id!]
+  for (const noteEntityId of noteEntityIds) {
+    syncNoteTimesForEntity(
+      user,
+      'activity',
+      noteEntityId,
+      updated.start_time,
+      updated.end_time ?? undefined,
+    ).catch((err) =>
+      auditError(user, 'data', 'Failed to sync note times for activity', { error: String(err) }),
+    )
+  }
 
-  // Recompute supersession around the new time, and also the old time if it moved
-  // or the type changed (so the old merge group gets re-evaluated).
   await materializeSuperseded(user, updated.start_time)
-  if (isTypeChanging || existing.start_time.getTime() !== updated.start_time.getTime()) {
-    await materializeSuperseded(user, existing.start_time)
+  if (isTypeChanging || before.start_time.getTime() !== updated.start_time.getTime()) {
+    await materializeSuperseded(user, before.start_time)
   }
 
   onMutated?.(user, updated.activity_type, updated.start_time, updated.end_time ?? updated.start_time)
-  // If type changed, also notify for the old type so rules depending on it can re-evaluate
   if (isTypeChanging) {
-    onMutated?.(user, existing.activity_type, existing.start_time, existing.end_time ?? existing.start_time)
+    onMutated?.(user, before.activity_type, before.start_time, before.end_time ?? before.start_time)
   }
 
-  // Enqueue outbound sync if this is an aurboda-owned activity (best-effort)
+  // Enqueue outbound HC sync only for aurboda activities that the user owns —
+  // override rows (overrides_id set) represent data that already exists on the
+  // synced source, so pushing them to HC would create duplicates.
   try {
-    if (updated.source === 'aurboda') {
-      const oldWasSyncable = isHealthConnectSyncableActivity(existing.activity_type)
+    if (updated.source === 'aurboda' && !updated.overrides_id) {
+      const oldWasSyncable = isHealthConnectSyncableActivity(before.activity_type)
       const newIsSyncable = isHealthConnectSyncableActivity(updated.activity_type)
 
       if (isTypeChanging && oldWasSyncable) {
-        // Type changed away from an HC-syncable type — delete the old HC record
         const oldHcType =
           activityTypeToHealthConnectType[
-            existing.activity_type as keyof typeof activityTypeToHealthConnectType
+            before.activity_type as keyof typeof activityTypeToHealthConnectType
           ]
-        const hcRecordId = await findHcRecordId(user, 'activity', id)
+        const hcRecordId = await findHcRecordId(user, 'activity', updated.id!)
         if (oldHcType && hcRecordId) {
           await enqueueOutboundSync(user, {
-            entity_id: id,
+            entity_id: updated.id!,
             entity_type: 'activity',
             hc_record_type: oldHcType,
             operation: 'delete',
@@ -617,7 +669,7 @@ export async function updateActivity(
           ]
         if (hcRecordType) {
           await enqueueOutboundSync(user, {
-            entity_id: id,
+            entity_id: updated.id!,
             entity_type: 'activity',
             hc_record_type: hcRecordType,
             operation: isTypeChanging ? 'insert' : 'update',

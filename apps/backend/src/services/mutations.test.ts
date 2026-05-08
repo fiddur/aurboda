@@ -32,10 +32,12 @@ vi.mock('../db', () => ({
   getActivityById: vi.fn(),
   getCustomMetricByName: vi.fn(),
   getCustomMetricDefinitions: vi.fn().mockResolvedValue([]),
+  getOverrideForActivity: vi.fn().mockResolvedValue(null),
   getUserSettings: vi.fn(),
   insertCustomMetricDefinition: vi.fn(),
   insertActivity: vi.fn(),
   insertNewActivity: vi.fn().mockResolvedValue('new-id'),
+  insertOverride: vi.fn(),
   insertTimeSeries: vi.fn(),
   materializeSuperseded: vi.fn().mockResolvedValue(undefined),
   resolveOrCreateActivityType: vi
@@ -978,7 +980,7 @@ describe('updateActivity', () => {
     })
   })
 
-  test('updates activity_type successfully', async () => {
+  test('updates activity_type successfully (synced source → creates override per #715)', async () => {
     vi.mocked(db.getActivityById).mockResolvedValue({
       activity_type: 'exercise',
       end_time: new Date('2024-03-15T11:00:00Z'),
@@ -986,12 +988,14 @@ describe('updateActivity', () => {
       source: 'garmin',
       start_time: new Date('2024-03-15T10:00:00Z'),
     })
+    vi.mocked(db.getOverrideForActivity).mockResolvedValue(null)
     vi.mocked(db.checkActivityConflict).mockResolvedValue(false)
-    vi.mocked(db.updateActivity).mockResolvedValue({
+    vi.mocked(db.insertOverride).mockResolvedValue({
       activity_type: 'meditation',
       end_time: new Date('2024-03-15T11:00:00Z'),
-      id: 'activity-123',
-      source: 'garmin',
+      id: 'override-1',
+      overrides_id: 'activity-123',
+      source: 'aurboda',
       start_time: new Date('2024-03-15T10:00:00Z'),
     })
 
@@ -1001,14 +1005,12 @@ describe('updateActivity', () => {
 
     expect(result.success).toBe(true)
     expect(result.activity_type).toBe('meditation')
-    expect(db.updateActivity).toHaveBeenCalledWith('testuser', 'activity-123', {
-      activity_type: 'meditation',
-      data: { _user_edited: true },
-      end_time: undefined,
-      notes: undefined,
-      start_time: undefined,
-      title: undefined,
-    })
+    expect(db.insertOverride).toHaveBeenCalledWith(
+      'testuser',
+      'activity-123',
+      expect.objectContaining({ activity_type: 'meditation' }),
+    )
+    expect(db.updateActivity).not.toHaveBeenCalled()
   })
 
   test('returns error when activity_type change would violate unique constraint', async () => {
@@ -1019,6 +1021,7 @@ describe('updateActivity', () => {
       source: 'garmin',
       start_time: new Date('2024-03-15T10:00:00Z'),
     })
+    vi.mocked(db.getOverrideForActivity).mockResolvedValue(null)
     vi.mocked(db.checkActivityConflict).mockResolvedValue(true)
 
     const result = await updateActivity('testuser', 'activity-123', {
@@ -1028,6 +1031,7 @@ describe('updateActivity', () => {
     expect(result.success).toBe(false)
     expect(result.error).toContain('Cannot change activity type')
     expect(db.updateActivity).not.toHaveBeenCalled()
+    expect(db.insertOverride).not.toHaveBeenCalled()
   })
 
   test('skips conflict check when activity_type is not changing', async () => {
@@ -1185,6 +1189,98 @@ describe('updateActivity', () => {
     await updateActivity('testuser', 'nonexistent', { title: 'x' }, onMutated)
 
     expect(onMutated).not.toHaveBeenCalled()
+  })
+
+  describe('synced-source overrides (issue #715)', () => {
+    test('first edit on a synced (garmin) activity creates an aurboda override', async () => {
+      vi.mocked(db.getActivityById).mockResolvedValue({
+        activity_type: 'meditation',
+        end_time: new Date('2026-05-05T10:30:00Z'),
+        id: 'garmin-1',
+        source: 'garmin',
+        start_time: new Date('2026-05-05T10:00:00Z'),
+      })
+      vi.mocked(db.getOverrideForActivity).mockResolvedValue(null)
+      vi.mocked(db.insertOverride).mockResolvedValue({
+        activity_type: 'pipeceremony',
+        end_time: new Date('2026-05-05T10:30:00Z'),
+        id: 'override-1',
+        overrides_id: 'garmin-1',
+        source: 'aurboda',
+        start_time: new Date('2026-05-05T10:00:00Z'),
+      })
+
+      const result = await updateActivity('testuser', 'garmin-1', { activity_type: 'pipeceremony' })
+
+      expect(result.success).toBe(true)
+      expect(db.insertOverride).toHaveBeenCalledWith(
+        'testuser',
+        'garmin-1',
+        expect.objectContaining({ activity_type: 'pipeceremony' }),
+      )
+      expect(db.updateActivity).not.toHaveBeenCalled()
+      // No outbound HC sync should be enqueued for override rows.
+      expect(db.enqueueOutboundSync).not.toHaveBeenCalled()
+    })
+
+    test('second edit on a synced activity updates the existing override in place', async () => {
+      vi.mocked(db.getActivityById).mockResolvedValue({
+        activity_type: 'meditation',
+        end_time: new Date('2026-05-05T10:30:00Z'),
+        id: 'garmin-1',
+        source: 'garmin',
+        start_time: new Date('2026-05-05T10:00:00Z'),
+      })
+      vi.mocked(db.getOverrideForActivity).mockResolvedValue({
+        activity_type: 'pipeceremony',
+        end_time: new Date('2026-05-05T10:30:00Z'),
+        id: 'override-1',
+        overrides_id: 'garmin-1',
+        source: 'aurboda',
+        start_time: new Date('2026-05-05T10:00:00Z'),
+      })
+      vi.mocked(db.updateActivity).mockResolvedValue({
+        activity_type: 'pipeceremony',
+        end_time: new Date('2026-05-05T10:30:00Z'),
+        id: 'override-1',
+        notes: 'second pipe ceremony this week',
+        overrides_id: 'garmin-1',
+        source: 'aurboda',
+        start_time: new Date('2026-05-05T10:00:00Z'),
+      })
+
+      const result = await updateActivity('testuser', 'garmin-1', {
+        notes: 'second pipe ceremony this week',
+      })
+
+      expect(result.success).toBe(true)
+      expect(db.insertOverride).not.toHaveBeenCalled()
+      expect(db.updateActivity).toHaveBeenCalledWith('testuser', 'override-1', expect.any(Object))
+    })
+
+    test('aurboda-source target is updated in place (no override created)', async () => {
+      vi.mocked(db.getActivityById).mockResolvedValue({
+        activity_type: 'meditation',
+        end_time: new Date('2026-05-05T10:30:00Z'),
+        id: 'aurboda-1',
+        source: 'aurboda',
+        start_time: new Date('2026-05-05T10:00:00Z'),
+      })
+      vi.mocked(db.updateActivity).mockResolvedValue({
+        activity_type: 'pipeceremony',
+        end_time: new Date('2026-05-05T10:30:00Z'),
+        id: 'aurboda-1',
+        source: 'aurboda',
+        start_time: new Date('2026-05-05T10:00:00Z'),
+      })
+
+      const result = await updateActivity('testuser', 'aurboda-1', { activity_type: 'pipeceremony' })
+
+      expect(result.success).toBe(true)
+      expect(db.getOverrideForActivity).not.toHaveBeenCalled()
+      expect(db.insertOverride).not.toHaveBeenCalled()
+      expect(db.updateActivity).toHaveBeenCalledWith('testuser', 'aurboda-1', expect.any(Object))
+    })
   })
 })
 

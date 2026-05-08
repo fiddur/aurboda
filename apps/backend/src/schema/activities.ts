@@ -16,7 +16,10 @@ export const activitiesTables: Record<string, string> = {
       notes           TEXT,
       data            JSONB,
       deleted_at      TIMESTAMPTZ,
-      superseded_by   UUID REFERENCES activities(id) ON DELETE SET NULL
+      superseded_by   UUID REFERENCES activities(id) ON DELETE SET NULL,
+      -- When set, this row is a user override of the referenced synced activity.
+      -- Source must be 'aurboda'; cascades on target delete so the override can't outlive its synced row.
+      overrides_id    UUID REFERENCES activities(id) ON DELETE CASCADE
     )
   `,
 
@@ -25,7 +28,8 @@ export const activitiesTables: Record<string, string> = {
     CREATE UNIQUE INDEX IF NOT EXISTS idx_activities_type_time ON activities (source, activity_type, start_time) WHERE external_id IS NULL;
     CREATE INDEX IF NOT EXISTS idx_activities_time_range ON activities (start_time, end_time);
     CREATE INDEX IF NOT EXISTS idx_activities_not_deleted ON activities (activity_type, start_time DESC) WHERE deleted_at IS NULL;
-    CREATE INDEX IF NOT EXISTS idx_activities_not_superseded ON activities (activity_type, start_time DESC) WHERE deleted_at IS NULL AND superseded_by IS NULL
+    CREATE INDEX IF NOT EXISTS idx_activities_not_superseded ON activities (activity_type, start_time DESC) WHERE deleted_at IS NULL AND superseded_by IS NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_activities_one_override_per_target ON activities (overrides_id) WHERE overrides_id IS NOT NULL AND deleted_at IS NULL
   `,
 
   // Activity type definitions (built-in + custom)

@@ -93,6 +93,7 @@ function enrichActivity(
     hr_zone_secs: hrZonesForActivity(a, ctx),
     id: isMerged ? `merged:${a.id}` : a.id,
     notes: a.notes,
+    overrides_id: a.overrides_id,
     source: a.source,
     start_time: a.start_time.toISOString(),
     title: a.title,

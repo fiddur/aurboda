@@ -22,6 +22,7 @@ import {
   fetchProductivityById,
   fetchScreentimeCategories,
   resyncActivityDetail,
+  softDeleteActivity,
   updateActivity,
 } from '../../state/api'
 import { toDisplayName } from '../../utils/displayName'
@@ -172,6 +173,8 @@ const ActivityDetailContent = ({
   itemIcons,
   typeDefinitions,
   referencedRules,
+  onRevertOverride,
+  isReverting,
 }: {
   activity: Activity
   isEditing: boolean
@@ -180,6 +183,8 @@ const ActivityDetailContent = ({
   itemIcons: Record<string, string>
   typeDefinitions?: ActivityTypeDefinition[]
   referencedRules?: Record<string, string>
+  onRevertOverride?: () => void
+  isReverting?: boolean
 }) => {
   const displayStart = activity.merged_start_time ?? activity.start_time
   const realEnd = activity.merged_end_time ?? activity.end_time
@@ -253,6 +258,19 @@ const ActivityDetailContent = ({
     <>
       {hasSourceRecords && (
         <div class="merged-indicator">Merged from {activity.source_records!.length} sources</div>
+      )}
+      {activity.overrides_id && (
+        <div class="merged-indicator">
+          User override active &mdash; edits to this activity stay even when the synced source re-syncs.
+          {onRevertOverride && (
+            <>
+              {' '}
+              <button type="button" class="link-button" onClick={onRevertOverride} disabled={isReverting}>
+                Revert to source
+              </button>
+            </>
+          )}
+        </div>
       )}
 
       <div class="entity-info">
@@ -500,6 +518,17 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
     setIsEditing(true)
   }, [activity])
 
+  const revertOverrideMutation = useMutation({
+    mutationFn: () => {
+      if (!activity?.id) return Promise.resolve()
+      // Activity ids in merged-detail responses carry a `merged:` prefix; strip
+      // it so the DELETE endpoint receives a plain UUID.
+      const id = activity.id.startsWith('merged:') ? activity.id.slice('merged:'.length) : activity.id
+      return softDeleteActivity(id)
+    },
+    onSuccess: () => invalidate(),
+  })
+
   const saveMutation = useMutation({
     mutationFn: () => {
       if (!activity) return Promise.resolve()
@@ -576,6 +605,8 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
         itemIcons={itemIcons}
         typeDefinitions={typeDefinitions}
         referencedRules={referencedRules}
+        onRevertOverride={() => revertOverrideMutation.mutate()}
+        isReverting={revertOverrideMutation.isPending}
       />
       <NotesSection entityType="activity" entityId={rawEntityId} allEntityIds={allEntityIds} />
     </>

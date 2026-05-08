@@ -23,6 +23,7 @@ export {
   insertActivities,
   insertActivity,
   insertNewActivity,
+  insertOverride,
   markActivityDetailSynced,
   migrateExerciseTypes,
   restoreActivity,
@@ -46,6 +47,7 @@ export {
   getNearbyActivities,
   getNonSleepActivitiesMerged,
   getOverlappingActivities,
+  getOverrideForActivity,
   getScreentimeActivities,
   getSleepSessions,
 } from './queries.ts'

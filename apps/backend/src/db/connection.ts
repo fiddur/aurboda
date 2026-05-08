@@ -673,6 +673,66 @@ export const migrateSchema = async (user: string) => {
       db,
       `ALTER TABLE activities ADD COLUMN IF NOT EXISTS superseded_by UUID REFERENCES activities(id) ON DELETE SET NULL`,
     )
+    await query(
+      db,
+      `ALTER TABLE activities ADD COLUMN IF NOT EXISTS overrides_id UUID REFERENCES activities(id) ON DELETE CASCADE`,
+    )
+    // Hard invariant: only aurboda rows may carry an override. Use a NOT VALID
+    // CHECK so existing rows are not re-validated; new writes get the check.
+    await query(
+      db,
+      `DO $$ BEGIN
+         IF NOT EXISTS (
+           SELECT 1 FROM information_schema.table_constraints
+            WHERE table_name = 'activities' AND constraint_name = 'overrides_id_aurboda_only'
+         ) THEN
+           ALTER TABLE activities ADD CONSTRAINT overrides_id_aurboda_only
+             CHECK (overrides_id IS NULL OR source = 'aurboda') NOT VALID;
+         END IF;
+       END $$`,
+    )
+    await query(
+      db,
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_activities_one_override_per_target ON activities (overrides_id) WHERE overrides_id IS NOT NULL AND deleted_at IS NULL`,
+    )
+    // One-shot backfill: convert legacy `data._user_edited` flag (winning via
+    // merge boost but unprotected from same-source re-sync) into a real
+    // aurboda override row. Gated by a marker row in schema_migrations so we
+    // don't scan activities twice on every connection.
+    await query(
+      db,
+      `CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`,
+    )
+    const migrationApplied = await query(
+      db,
+      `SELECT 1 FROM schema_migrations WHERE name = 'backfill_user_edited_to_overrides'`,
+    )
+    if (migrationApplied.rows.length === 0) {
+      await query(
+        db,
+        `INSERT INTO activities (source, activity_type, start_time, end_time, title, notes, data, overrides_id)
+         SELECT 'aurboda', activity_type, start_time, end_time, title, notes,
+                (data - '_user_edited'), id
+           FROM activities src
+          WHERE src.deleted_at IS NULL
+            AND src.source <> 'aurboda'
+            AND src.overrides_id IS NULL
+            AND (src.data ->> '_user_edited') = 'true'
+            AND NOT EXISTS (
+              SELECT 1 FROM activities ov
+               WHERE ov.overrides_id = src.id AND ov.deleted_at IS NULL
+            )`,
+      )
+      await query(
+        db,
+        `UPDATE activities SET data = data - '_user_edited'
+          WHERE data ? '_user_edited' AND source <> 'aurboda'`,
+      )
+      await query(
+        db,
+        `INSERT INTO schema_migrations (name) VALUES ('backfill_user_edited_to_overrides') ON CONFLICT DO NOTHING`,
+      )
+    }
     // Widen activity_type from VARCHAR(50) to VARCHAR(100) for longer type names
     await query(db, `ALTER TABLE activities ALTER COLUMN activity_type TYPE VARCHAR(100)`)
     // Replace old unique constraint and non-unique index with partial unique indexes
