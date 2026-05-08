@@ -97,14 +97,26 @@ const isCrossMergePair = (a: Activity, b: Activity, categoryMap: Map<string, str
   return !!catB && CROSS_MERGEABLE_CATEGORIES.has(catB)
 }
 
+/** Pick the override row that should be forced as winner, if any. */
+const pickOverrideWinner = (members: Activity[]): Activity | undefined => {
+  const memberIds = new Set(members.map((m) => m.id).filter((id): id is string => !!id))
+  const overrides = members.filter(
+    (m) => m.source === 'aurboda' && m.overrides_id && memberIds.has(m.overrides_id),
+  )
+  if (overrides.length === 0) return undefined
+  if (overrides.length > 1) {
+    console.warn(
+      `merge: ${overrides.length} overrides in one group, picking earliest start_time. ids=${overrides.map((o) => o.id).join(',')}`,
+    )
+  }
+  return overrides.reduce((acc, o) => (o.start_time < acc.start_time ? o : acc))
+}
+
 /** Merge a group of activities into one, using priority-based winner selection. */
 const mergeGroupByPriority = (members: Activity[]): MergedActivity => {
   // An aurboda override row referencing any group member must win regardless
   // of computed priority — overrides are explicit user intent.
-  const memberIds = new Set(members.map((m) => m.id).filter((id): id is string => !!id))
-  const overrideWinner = members.find(
-    (m) => m.source === 'aurboda' && m.overrides_id && memberIds.has(m.overrides_id),
-  )
+  const overrideWinner = pickOverrideWinner(members)
   const sorted = [...members].sort((a, b) => {
     if (overrideWinner) {
       if (a === overrideWinner) return -1
@@ -168,27 +180,27 @@ const eligibleAnchor = (
   return !!catA && CROSS_MERGEABLE_CATEGORIES.has(catA)
 }
 
-/** Pair anchor i against subsequent rows in the same time window. */
+/**
+ * Pair anchor i against subsequent rows in the same time window. The
+ * override↔target union is handled explicitly (regardless of time drift); the
+ * inner loop still respects the 120 s window so an override doesn't sweep up
+ * unrelated cross-mergeable activities later in the day.
+ */
 const pairAnchor = (
   i: number,
   sorted: Activity[],
   categoryMap: Map<string, string>,
-  overrideByTargetId: Map<string, number>,
+  idToIndex: Map<string, number>,
   parent: number[],
   rank: number[],
 ) => {
   const a = sorted[i]
-  const isOverride = a.source === 'aurboda' && !!a.overrides_id
-  if (isOverride && a.overrides_id) {
-    const targetIdx = sorted.findIndex((x) => x.id === a.overrides_id)
-    if (targetIdx >= 0) ufUnion(parent, rank, i, targetIdx)
+  if (a.source === 'aurboda' && a.overrides_id) {
+    const targetIdx = idToIndex.get(a.overrides_id)
+    if (targetIdx !== undefined) ufUnion(parent, rank, i, targetIdx)
   }
-  const skipsTimeWindow = isOverride || (a.id !== undefined && overrideByTargetId.has(a.id))
   for (let j = i + 1; j < sorted.length; j++) {
-    if (sorted[j].start_time.getTime() - a.start_time.getTime() > CROSS_MERGE_THRESHOLD_MS) {
-      if (!skipsTimeWindow) break
-      continue
-    }
+    if (sorted[j].start_time.getTime() - a.start_time.getTime() > CROSS_MERGE_THRESHOLD_MS) break
     if (isCrossMergePair(a, sorted[j], categoryMap)) ufUnion(parent, rank, i, j)
   }
 }
@@ -211,10 +223,14 @@ const mergeCrossSources = (activities: Activity[], categoryMap: Map<string, stri
   const parent = sorted.map((_, i) => i)
   const rank = sorted.map(() => 0)
   const overrideByTargetId = indexOverrides(sorted)
+  const idToIndex = new Map<string, number>()
+  for (let i = 0; i < sorted.length; i++) {
+    if (sorted[i].id) idToIndex.set(sorted[i].id!, i)
+  }
 
   for (let i = 0; i < sorted.length; i++) {
     if (!eligibleAnchor(sorted[i], categoryMap, overrideByTargetId)) continue
-    pairAnchor(i, sorted, categoryMap, overrideByTargetId, parent, rank)
+    pairAnchor(i, sorted, categoryMap, idToIndex, parent, rank)
   }
 
   const groups = buildGroups(parent, sorted.length)

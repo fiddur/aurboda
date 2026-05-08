@@ -934,6 +934,43 @@ describe('mergeOverlappingActivities with override links (issue #715)', () => {
     expect(result[0].id).toBe('aurboda-override')
   })
 
+  test('override does NOT sweep up unrelated cross-mergeable activities later in the day', () => {
+    // Regression: an earlier draft removed the 120s time-window break for
+    // override anchors, which let an override at 09:00 union with any
+    // cross-mergeable activity later that day. The override↔target union
+    // must be explicit (via id lookup); the time-window must still gate
+    // every other pair.
+    const garmin = makeActivity({
+      activity_type: 'meditation',
+      end_time: new Date('2024-01-15T09:30:00Z'),
+      id: 'garmin-1',
+      source: 'garmin',
+      start_time: new Date('2024-01-15T09:00:00Z'),
+    })
+    const override = makeActivity({
+      activity_type: 'pipeceremony',
+      end_time: new Date('2024-01-15T09:30:00Z'),
+      id: 'aurboda-override',
+      overrides_id: 'garmin-1',
+      source: 'aurboda',
+      start_time: new Date('2024-01-15T09:00:00Z'),
+    })
+    const unrelatedHcWalk = makeActivity({
+      activity_type: 'walking',
+      end_time: new Date('2024-01-15T23:30:00Z'),
+      id: 'hc-walk-evening',
+      source: 'health_connect',
+      start_time: new Date('2024-01-15T23:00:00Z'),
+    })
+    const result = mergeOverlappingActivities([garmin, override, unrelatedHcWalk], categoryMap)
+    expect(result).toHaveLength(2)
+    const overrideGroup = result.find((r) => r.id === 'aurboda-override')
+    const walkGroup = result.find((r) => r.id === 'hc-walk-evening')
+    expect(overrideGroup).toBeDefined()
+    expect(walkGroup).toBeDefined()
+    expect(overrideGroup?.source_ids ?? []).not.toContain('hc-walk-evening')
+  })
+
   test('multi-source group: override wins, all source ids tracked', () => {
     const garmin = makeActivity({
       activity_type: 'meditation',

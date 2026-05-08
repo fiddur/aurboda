@@ -521,7 +521,10 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
   const revertOverrideMutation = useMutation({
     mutationFn: () => {
       if (!activity?.id) return Promise.resolve()
-      return softDeleteActivity(activity.id)
+      // Activity ids in merged-detail responses carry a `merged:` prefix; strip
+      // it so the DELETE endpoint receives a plain UUID.
+      const id = activity.id.startsWith('merged:') ? activity.id.slice('merged:'.length) : activity.id
+      return softDeleteActivity(id)
     },
     onSuccess: () => invalidate(),
   })

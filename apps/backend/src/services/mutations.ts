@@ -562,16 +562,36 @@ export async function updateActivity(
 
   let updated: Activity | null
   if (isSyncedTarget && !existingOverride) {
-    // First user edit on a synced activity → create an aurboda override carrying
-    // the synced row's snapshot overlaid with the user's input.
-    updated = await dbInsertOverride(user, target.id!, {
-      activity_type: finalType,
-      data: mergedData,
-      end_time: input.end_time === null ? undefined : (finalEndTime ?? undefined),
-      notes: input.notes ?? target.notes,
-      start_time: finalStartTime,
-      title: input.title ?? target.title,
-    })
+    // First user edit on a synced activity → create an aurboda override
+    // carrying the synced row's snapshot overlaid with the user's input.
+    // Mirror in-place semantics: input.notes / input.title === undefined keeps
+    // the snapshot value; explicit '' (or null) clears it.
+    try {
+      updated = await dbInsertOverride(user, target.id!, {
+        activity_type: finalType,
+        data: mergedData,
+        end_time: input.end_time === null ? undefined : (finalEndTime ?? undefined),
+        notes: input.notes !== undefined ? input.notes : target.notes,
+        start_time: finalStartTime,
+        title: input.title !== undefined ? input.title : target.title,
+      })
+    } catch (err) {
+      // Race: a concurrent edit created the override first; the partial unique
+      // index `idx_activities_one_override_per_target` rejects ours. Reload
+      // and apply the user's edits to the now-existing override instead.
+      const code = (err as { code?: string }).code
+      if (code !== '23505') throw err
+      const concurrent = await getOverrideForActivity(user, target.id!)
+      if (!concurrent) throw err
+      updated = await dbUpdateActivity(user, concurrent.id!, {
+        activity_type: input.activity_type,
+        data: input.data ? mergedData : undefined,
+        end_time: input.end_time,
+        notes: input.notes,
+        start_time: input.start_time,
+        title: input.title,
+      })
+    }
   } else {
     updated = await dbUpdateActivity(user, editRow.id!, {
       activity_type: input.activity_type,
@@ -591,14 +611,21 @@ export async function updateActivity(
     }
   }
 
-  // Sync inherited times on any notes attached to the row we wrote (best-effort).
-  syncNoteTimesForEntity(
-    user,
-    'activity',
-    updated.id!,
-    updated.start_time,
-    updated.end_time ?? undefined,
-  ).catch((err) => auditError(user, 'data', 'Failed to sync note times for activity', { error: String(err) }))
+  // Sync inherited times on any notes attached to either the row we wrote or
+  // (for fresh overrides) the synced target — notes can be attached to either
+  // id and both should track the new times.
+  const noteEntityIds = updated.overrides_id ? [updated.id!, updated.overrides_id] : [updated.id!]
+  for (const noteEntityId of noteEntityIds) {
+    syncNoteTimesForEntity(
+      user,
+      'activity',
+      noteEntityId,
+      updated.start_time,
+      updated.end_time ?? undefined,
+    ).catch((err) =>
+      auditError(user, 'data', 'Failed to sync note times for activity', { error: String(err) }),
+    )
+  }
 
   await materializeSuperseded(user, updated.start_time)
   if (isTypeChanging || before.start_time.getTime() !== updated.start_time.getTime()) {
