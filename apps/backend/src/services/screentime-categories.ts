@@ -13,6 +13,7 @@ import type { AwCategory, CreateScreentimeCategoryBody } from '@aurboda/api-spec
 
 import type { ScreentimeCategory, ScreentimeCategoryInput } from '../db/types.ts'
 
+import { query } from '../db/connection.ts'
 import {
   batchUpdateResolvedCategory,
   bulkInsertScreentimeCategories,
@@ -38,6 +39,44 @@ import {
 /** "Work > Programming" — the joined-string form stored in `activities.data.category_path`. */
 const joinPath = (name: string[]): string => name.join(' > ')
 
+const sameNameArray = (a: string[], b: string[]): boolean =>
+  a.length === b.length && a.every((seg, i) => seg === b[i])
+
+/**
+ * Find all categories that are descendants of `parent` (strict — excludes
+ * `parent` itself). Used to snapshot before a rename / move so the prefix
+ * shift can be propagated to descendant activities afterwards.
+ */
+const findDescendants = (parent: ScreentimeCategory, all: ScreentimeCategory[]): ScreentimeCategory[] =>
+  all.filter(
+    (c) =>
+      c.id !== parent.id &&
+      c.name.length > parent.name.length &&
+      parent.name.every((seg, i) => c.name[i] === seg),
+  )
+
+/**
+ * Cascade a rename to descendant rows: any category whose `name[]` started
+ * with `oldPrefix` gets its prefix swapped for `newPrefix`. Mirrors the
+ * descendant-handling SQL inside `moveScreentimeCategory`. No-op when the
+ * prefix didn't change.
+ */
+const cascadeNamePrefix = async (
+  user: string,
+  parentId: string,
+  oldPrefix: string[],
+  newPrefix: string[],
+): Promise<void> => {
+  if (sameNameArray(oldPrefix, newPrefix)) return
+  await query(
+    user,
+    `UPDATE screentime_categories
+       SET name = $1 || name[$2:], updated_at = NOW()
+     WHERE id != $3 AND name[1:$4] = $5`,
+    [newPrefix, oldPrefix.length + 1, parentId, oldPrefix.length, oldPrefix],
+  )
+}
+
 /** Best-effort propagation of a category rename or move to existing screentime
  *  activities. Updates `data.category_path` from the old joined string to the
  *  new one for activities under this category's slug. Logged on success;
@@ -50,9 +89,10 @@ const propagateCategoryPath = async (
   newName: string[],
 ): Promise<void> => {
   if (!slug) return
+  // Short-circuit lives in `updateScreentimeActivityCategoryPath` itself —
+  // pass through and let the helper decide whether the UPDATE runs.
   const oldPath = joinPath(oldName)
   const newPath = joinPath(newName)
-  if (oldPath === newPath) return
   try {
     const updated = await updateScreentimeActivityCategoryPath(user, slug, oldPath, newPath)
     if (updated > 0) {
@@ -249,16 +289,32 @@ export const createCategory = async (user: string, input: ScreentimeCategoryInpu
 }
 
 export const modifyCategory = async (user: string, id: string, input: Partial<ScreentimeCategoryInput>) => {
-  // Snapshot the pre-update path so we can propagate any rename to existing
-  // screentime activities (#652). Skip if the row didn't exist; updateScreentimeCategory
+  // Snapshot the pre-update row AND its descendants so a name change can
+  // (a) cascade the prefix shift to descendant rows and (b) propagate path
+  // updates to activities for the renamed category AND each affected
+  // descendant. Skip if the row didn't exist; updateScreentimeCategory
   // returns null in that case anyway.
   const before = await getScreentimeCategoryById(user, id)
+  const descendantsBefore =
+    before && input.name !== undefined ? findDescendants(before, await getScreentimeCategories(user)) : []
+
   const result = await updateScreentimeCategory(user, id, input)
 
   // Propagate rename / color change to existing data (#652).
   if (before && result) {
-    if (input.name !== undefined) {
+    if (input.name !== undefined && !sameNameArray(before.name, result.name)) {
+      // Cascade the prefix shift to descendant rows. updateScreentimeCategory
+      // only updates the row itself; without this, descendants' name arrays
+      // would be left starting with the old prefix and silently diverge.
+      await cascadeNamePrefix(user, id, before.name, result.name)
+
+      // Propagate path on the renamed category itself, then on each
+      // descendant by computing its new name from the prefix swap.
       await propagateCategoryPath(user, result.activity_type_name, before.name, result.name)
+      for (const desc of descendantsBefore) {
+        const newDescName = [...result.name, ...desc.name.slice(before.name.length)]
+        await propagateCategoryPath(user, desc.activity_type_name, desc.name, newDescName)
+      }
     }
     if (input.name !== undefined || input.color !== undefined) {
       try {

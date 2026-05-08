@@ -247,15 +247,21 @@ export const recomputeCategoryParentType = async (
 }
 
 /**
- * Mirror the category's display metadata onto its linked activity_type_definitions
- * row when this category solely owns the type. Used on rename / color change so
- * the type def's `display_name` and `color` track the category — important for
- * the orphan-category fallback in the timeline frontend (when matchedByType
- * fails, def carries the right name to display).
+ * Mirror the category's display metadata onto its linked
+ * `activity_type_definitions` row when this category is the sole owner of
+ * its slug — that is, `isTypeSolelyOwnedByCategory` returns true:
+ * `category_owns_type=true`, no other `screentime_categories` rows link the
+ * same slug, and no deduction rule outputs it.
  *
- * Shared types are intentionally NOT touched: another category or a deduction
- * rule depends on the existing display_name, and one consumer's rename
- * shouldn't unilaterally rewrite their data.
+ * Used on rename / color change so the type def's `display_name` and `color`
+ * track the category — important for the orphan-category fallback in the
+ * timeline frontend (when `matchedByType` fails, `def` carries the right
+ * name to display).
+ *
+ * Shared types are intentionally NOT touched: another consumer (a deduction
+ * rule, a sibling converged category) depends on the existing metadata, and
+ * one rename shouldn't unilaterally rewrite their state. The skip is silent
+ * — the success path is the interesting audit signal.
  */
 export const syncTypeDefMetadataIfOwned = async (
   user: string,
@@ -263,21 +269,23 @@ export const syncTypeDefMetadataIfOwned = async (
 ): Promise<boolean> => {
   if (!category.activity_type_name) return false
   const owned = await isTypeSolelyOwnedByCategory(user, category)
-  if (!owned) {
-    auditInfo(user, 'data', 'Skipped type-def metadata sync on shared activity type', {
-      category_id: category.id,
-      slug: category.activity_type_name,
-    })
-    return false
-  }
+  if (!owned) return false
   const leaf = category.name[category.name.length - 1]
+  // Only bump `updated_at` when something display-relevant actually
+  // changed; otherwise upserts that touch this category for unrelated
+  // reasons (rule_regex tweaks, sort_order shuffles) would churn the
+  // type-def timestamp.
   await query(
     user,
     `UPDATE activity_type_definitions
        SET display_name = $1,
-           color = COALESCE($2, color),
+           color = COALESCE($2::text, color),
            updated_at = NOW()
-     WHERE name = $3`,
+     WHERE name = $3
+       AND (
+         display_name IS DISTINCT FROM $1
+         OR color IS DISTINCT FROM COALESCE($2::text, color)
+       )`,
     [leaf, category.color ?? null, category.activity_type_name],
   )
   return true

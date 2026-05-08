@@ -338,6 +338,43 @@ describe('screentime category → activity type sync', () => {
       ])
     })
 
+    test('non-leaf rename cascades prefix to descendant rows AND their activities', async () => {
+      const user = getTestUser()
+      const work = await createCategory(user, { name: ['Work'], rule_type: 'none' })
+      const programming = await createCategory(user, {
+        name: ['Work', 'Programming'],
+        rule_type: 'none',
+      })
+      await insertActivity(user, work.activity_type_name!, 'Work', 1_700_000_000_000)
+      await insertActivity(user, programming.activity_type_name!, 'Work > Programming', 1_700_000_001_000)
+
+      // Rename the parent. Both the parent's path and the descendant's path
+      // (which has 'Work' as its prefix) need to update.
+      await modifyCategory(user, work.id, { name: ['Office'] })
+
+      // Descendant row's name array picks up the new prefix.
+      const refreshedDescendant = await getScreentimeCategoryById(user, programming.id)
+      expect(refreshedDescendant!.name).toEqual(['Office', 'Programming'])
+
+      // Activities on both levels reflect the new path.
+      expect(await getActivityCategoryPath(user, work.activity_type_name!)).toEqual(['Office'])
+      expect(await getActivityCategoryPath(user, programming.activity_type_name!)).toEqual([
+        'Office > Programming',
+      ])
+    })
+
+    test('color-only change updates type def color (sole-owner)', async () => {
+      const user = getTestUser()
+      const work = await createCategory(user, { color: '#aaaaaa', name: ['Work'], rule_type: 'none' })
+      // Sanity: type def picks up the original color at first sync.
+      expect((await getActivityTypeDefinition(user, work.activity_type_name!))!.color).toBe('#aaaaaa')
+
+      await modifyCategory(user, work.id, { color: '#22c55e' })
+
+      const def = await getActivityTypeDefinition(user, work.activity_type_name!)
+      expect(def!.color).toBe('#22c55e')
+    })
+
     test('rename only touches activities whose category_path matches the old path', async () => {
       const user = getTestUser()
       // Two categories converge to the same slug (same leaf, different paths).
