@@ -100,8 +100,11 @@ export const EntityActions = ({
         <button
           class="btn-edit"
           onClick={onStartEditing}
-          disabled={isMerged}
-          title={isMerged ? 'Edit individual sources' : `Edit ${entityType}`}
+          // Merged-view edit is not blocked: the parent's `onStartEditing`
+          // either routes to an existing aurboda override (if one of the
+          // sources is already aurboda) or starts an in-place edit that
+          // creates a new override on save.
+          title={isMerged ? `Edit ${entityType} (creates an aurboda override)` : `Edit ${entityType}`}
           type="button"
         >
           <PencilIcon />

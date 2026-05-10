@@ -859,7 +859,7 @@ describe('mergeOverlappingActivities with override links (issue #715)', () => {
       activity_type: 'pipeceremony',
       end_time: new Date('2024-01-15T09:30:00Z'),
       id: 'aurboda-override',
-      overrides_id: 'garmin-1',
+      override_target_ids: ['garmin-1'],
       source: 'aurboda',
       start_time: new Date('2024-01-15T09:00:00Z'),
     })
@@ -883,7 +883,7 @@ describe('mergeOverlappingActivities with override links (issue #715)', () => {
       end_time: new Date('2024-01-15T09:30:00Z'),
       id: 'aurboda-override',
       notes: 'pipe ceremony — second time this week',
-      overrides_id: 'garmin-1',
+      override_target_ids: ['garmin-1'],
       source: 'aurboda',
     })
     const result = mergeOverlappingActivities([garmin, override], categoryMap)
@@ -904,7 +904,7 @@ describe('mergeOverlappingActivities with override links (issue #715)', () => {
       activity_type: 'pipeceremony',
       end_time: new Date('2024-01-15T09:35:00Z'),
       id: 'aurboda-override',
-      overrides_id: 'garmin-1',
+      override_target_ids: ['garmin-1'],
       source: 'aurboda',
       start_time: new Date('2024-01-15T09:05:00Z'), // 5 min later than garmin
     })
@@ -926,7 +926,7 @@ describe('mergeOverlappingActivities with override links (issue #715)', () => {
       activity_type: 'pipeceremony',
       end_time: new Date('2024-01-15T09:30:00Z'),
       id: 'aurboda-override',
-      overrides_id: 'garmin-1',
+      override_target_ids: ['garmin-1'],
       source: 'aurboda',
     })
     const result = mergeOverlappingActivities([garmin, override], categoryMap)
@@ -951,7 +951,7 @@ describe('mergeOverlappingActivities with override links (issue #715)', () => {
       activity_type: 'pipeceremony',
       end_time: new Date('2024-01-15T09:30:00Z'),
       id: 'aurboda-override',
-      overrides_id: 'garmin-1',
+      override_target_ids: ['garmin-1'],
       source: 'aurboda',
       start_time: new Date('2024-01-15T09:00:00Z'),
     })
@@ -989,7 +989,7 @@ describe('mergeOverlappingActivities with override links (issue #715)', () => {
       activity_type: 'pipeceremony',
       end_time: new Date('2024-01-15T09:30:00Z'),
       id: 'aurboda-override',
-      overrides_id: 'garmin-1',
+      override_target_ids: ['garmin-1'],
       source: 'aurboda',
     })
     const result = mergeOverlappingActivities([garmin, hc, override], categoryMap)

@@ -80,9 +80,11 @@ const ufUnion = (parent: number[], rank: number[], a: number, b: number) => {
 }
 
 /** True when one of the two activities is an aurboda override targeting the other. */
-const isOverrideLinked = (a: Activity, b: Activity): boolean =>
-  (a.overrides_id !== undefined && a.overrides_id === b.id) ||
-  (b.overrides_id !== undefined && b.overrides_id === a.id)
+const isOverrideLinked = (a: Activity, b: Activity): boolean => {
+  if (a.override_target_ids && b.id && a.override_target_ids.includes(b.id)) return true
+  if (b.override_target_ids && a.id && b.override_target_ids.includes(a.id)) return true
+  return false
+}
 
 /** Check if two activities are eligible for cross-source merge. */
 const isCrossMergePair = (a: Activity, b: Activity, categoryMap: Map<string, string>): boolean => {
@@ -101,7 +103,7 @@ const isCrossMergePair = (a: Activity, b: Activity, categoryMap: Map<string, str
 const pickOverrideWinner = (members: Activity[]): Activity | undefined => {
   const memberIds = new Set(members.map((m) => m.id).filter((id): id is string => !!id))
   const overrides = members.filter(
-    (m) => m.source === 'aurboda' && m.overrides_id && memberIds.has(m.overrides_id),
+    (m) => m.source === 'aurboda' && m.override_target_ids?.some((tid) => memberIds.has(tid)),
   )
   if (overrides.length === 0) return undefined
   if (overrides.length > 1) {
@@ -167,12 +169,19 @@ const mergeGroupByPriority = (members: Activity[]): MergedActivity => {
  * Winner is selected by source priority (aurboda > garmin > health_connect, etc.)
  * with a boost for _user_edited activities.
  */
-/** Index override rows by target id to enable category-bypass and cross-window pairing. */
+/**
+ * Index override rows by target id to enable category-bypass and cross-window
+ * pairing. Each target maps to the override that claims it; the
+ * UNIQUE-on-target-id constraint in `activity_override_targets` guarantees
+ * at most one override per target.
+ */
 const indexOverrides = (sorted: Activity[]): Map<string, number> => {
   const map = new Map<string, number>()
   for (let i = 0; i < sorted.length; i++) {
     const ov = sorted[i]
-    if (ov.source === 'aurboda' && ov.overrides_id) map.set(ov.overrides_id, i)
+    if (ov.source === 'aurboda' && ov.override_target_ids) {
+      for (const targetId of ov.override_target_ids) map.set(targetId, i)
+    }
   }
   return map
 }
@@ -184,7 +193,7 @@ const eligibleAnchor = (
   overrideByTargetId: Map<string, number>,
 ): boolean => {
   if (!CROSS_MERGE_SOURCES.has(a.source)) return false
-  const isOverride = a.source === 'aurboda' && !!a.overrides_id
+  const isOverride = a.source === 'aurboda' && !!a.override_target_ids?.length
   const targetedByOverride = a.id !== undefined && overrideByTargetId.has(a.id)
   if (isOverride || targetedByOverride) return true
   const catA = categoryMap.get(a.activity_type)
@@ -206,9 +215,15 @@ const pairAnchor = (
   rank: number[],
 ) => {
   const a = sorted[i]
-  if (a.source === 'aurboda' && a.overrides_id) {
-    const targetIdx = idToIndex.get(a.overrides_id)
-    if (targetIdx !== undefined) ufUnion(parent, rank, i, targetIdx)
+  if (a.source === 'aurboda' && a.override_target_ids?.length) {
+    // Union the override with EVERY target it claims — even when the targets
+    // sit far apart in the sort (e.g. Garmin at 10:00, Strava at 10:01).
+    // The 120s inner-loop window doesn't help when one target is 10 minutes
+    // away from the override's own start_time.
+    for (const targetId of a.override_target_ids) {
+      const targetIdx = idToIndex.get(targetId)
+      if (targetIdx !== undefined) ufUnion(parent, rank, i, targetIdx)
+    }
   }
   for (let j = i + 1; j < sorted.length; j++) {
     if (sorted[j].start_time.getTime() - a.start_time.getTime() > CROSS_MERGE_THRESHOLD_MS) break

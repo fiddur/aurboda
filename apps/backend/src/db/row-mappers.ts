@@ -99,7 +99,13 @@ export const mapActivityRow = (row: QueryResultRow): Activity => ({
   external_id: row.external_id ?? undefined,
   id: row.id,
   notes: row.notes,
-  overrides_id: row.overrides_id ?? undefined,
+  // Populated by the SELECT via a subquery against activity_override_targets
+  // (when present). PostgreSQL returns NULL for an empty array_agg, which
+  // the row-mapper normalises to undefined so the Activity type stays sparse.
+  override_target_ids:
+    Array.isArray(row.override_target_ids) && row.override_target_ids.length > 0
+      ? row.override_target_ids
+      : undefined,
   source: parseDataSource(row.source),
   start_time: new Date(row.start_time),
   superseded_by: row.superseded_by ?? undefined,
