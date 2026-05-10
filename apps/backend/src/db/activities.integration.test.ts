@@ -801,6 +801,59 @@ describe('Activities Integration Tests', () => {
       expect(survivor?.override_target_ids).toEqual([stravaId])
     })
 
+    test('reuses an existing aurboda row at the same (type, start_time) instead of inserting a duplicate', async () => {
+      // Real-world case: a previous override edit created an aurboda row
+      // targeting one synced source. The user re-edits via a different
+      // synced source in the same merge group (e.g. strava instead of
+      // garmin). insertOverride should attach the new target to the
+      // existing aurboda row rather than 23505-ing on idx_activities_type_time.
+      const user = getTestUser()
+      const garminId = randomUUID()
+      const stravaId = randomUUID()
+
+      await insertActivity(user, {
+        activity_type: 'meditation',
+        end_time: new Date('2026-05-10T10:30:00Z'),
+        external_id: 'garmin-reuse',
+        id: garminId,
+        source: 'garmin',
+        start_time: new Date('2026-05-10T10:00:00Z'),
+      })
+      await insertActivity(user, {
+        activity_type: 'meditation',
+        end_time: new Date('2026-05-10T10:30:00Z'),
+        external_id: 'strava-reuse',
+        id: stravaId,
+        source: 'strava',
+        start_time: new Date('2026-05-10T10:00:00Z'),
+      })
+
+      const first = await insertOverride(user, [garminId], {
+        activity_type: 'walking',
+        end_time: new Date('2026-05-10T10:30:00Z'),
+        notes: 'first',
+        start_time: new Date('2026-05-10T10:00:00Z'),
+        title: 'first title',
+      })
+
+      const second = await insertOverride(user, [stravaId], {
+        activity_type: 'walking',
+        end_time: new Date('2026-05-10T10:25:00Z'),
+        notes: 'second',
+        start_time: new Date('2026-05-10T10:00:00Z'),
+        title: 'second title',
+      })
+
+      // Same row reused.
+      expect(second?.id).toBe(first?.id)
+      // Fields updated to the latest input.
+      expect(second?.title).toBe('second title')
+      expect(second?.notes).toBe('second')
+      expect(second?.end_time).toEqual(new Date('2026-05-10T10:25:00Z'))
+      // Both target ids now linked.
+      expect(second?.override_target_ids?.sort()).toEqual([garminId, stravaId].sort())
+    })
+
     test('multi-target cascade: deleting the last target removes the override (delete_orphan_override trigger)', async () => {
       const user = getTestUser()
       const garminId = randomUUID()
