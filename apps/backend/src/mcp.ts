@@ -32,6 +32,7 @@ import { registerLocationTools } from './mcp/location-tools.ts'
 import { registerMealTools } from './mcp/meal-tools.ts'
 import { registerMetricTools } from './mcp/metric-tools.ts'
 import { registerNoteTools } from './mcp/note-tools.ts'
+import { registerNutrientRecommendationTools } from './mcp/nutrient-recommendation-tools.ts'
 import { registerQueryTools } from './mcp/query-tools.ts'
 import { registerReportTools } from './mcp/report-tools.ts'
 import { registerScreentimeCategoryTools } from './mcp/screentime-category-tools.ts'
@@ -79,6 +80,7 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
   registerChartTools(server, user)
   registerNoteTools(server, user)
   registerMealTools(server, user)
+  registerNutrientRecommendationTools(server, user)
   if (deps.centralDb) {
     registerFoodItemTools(server, user, deps.centralDb)
     registerSensitivityTools(server, user, deps.centralDb)

@@ -21,6 +21,12 @@ import {
   CREATE_IMPORT_JOBS_TABLE,
   type CentralImportJobsApi,
 } from './central-import-jobs.ts'
+import {
+  createSharedNutrientRecommendationsApi,
+  CREATE_SHARED_NUTRIENT_RECOMMENDATIONS_TABLE,
+  seedSharedNutrientRecommendations,
+  type SharedNutrientRecommendationsApi,
+} from './central-nutrient-recommendations.ts'
 
 // ============================================================================
 // Types
@@ -98,7 +104,8 @@ export interface CentralDbDeps {
   getClient: () => Promise<pg.Client>
 }
 
-export interface CentralDb extends SharedFoodItemsApi, CentralImportJobsApi {
+export interface CentralDb
+  extends SharedFoodItemsApi, CentralImportJobsApi, SharedNutrientRecommendationsApi {
   initializeCentralDb: () => Promise<void>
   getServerSetting: <K extends keyof ServerSettings>(key: K) => Promise<ServerSettings[K] | null>
   setServerSetting: <K extends keyof ServerSettings>(key: K, value: ServerSettings[K]) => Promise<void>
@@ -437,6 +444,9 @@ export const createCentralDb = (deps: CentralDbDeps): CentralDb => {
       await client.query(CREATE_IMPORT_JOBS_TABLE)
       for (const stmt of CREATE_IMPORT_JOBS_INDEXES) await client.query(stmt)
 
+      await client.query(CREATE_SHARED_NUTRIENT_RECOMMENDATIONS_TABLE)
+      await seedSharedNutrientRecommendations(client)
+
       // Set default signup_mode if not exists
       await client.query(
         `INSERT INTO server_settings (key, value)
@@ -447,6 +457,7 @@ export const createCentralDb = (deps: CentralDbDeps): CentralDb => {
 
     ...createSharedFoodItemsApi(getClient),
     ...createCentralImportJobsApi(getClient),
+    ...createSharedNutrientRecommendationsApi(getClient),
 
     isAdmin: async (username: string): Promise<boolean> => {
       const client = await getClient()

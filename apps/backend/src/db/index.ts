@@ -346,6 +346,16 @@ export {
   type SharedFoodItemOverrideInput,
 } from './shared-food-item-overrides.ts'
 
+// Per-user nutrient recommendation overrides
+export {
+  clearUserNutrientRecommendation,
+  getUserNutrientRecommendation,
+  listUserNutrientRecommendations,
+  upsertUserNutrientRecommendation,
+  type UserNutrientRecommendationInput,
+  type UserNutrientRecommendationRow,
+} from './user-nutrient-recommendations.ts'
+
 // Settings
 export { getUserSettings, upsertUserSettings } from './settings.ts'
 
