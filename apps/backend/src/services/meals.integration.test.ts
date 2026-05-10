@@ -9,18 +9,13 @@
 
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
-import { updateFoodItem, upsertFoodItem } from '../db/food-items.ts'
 import { setIngredients } from '../db/food-item-ingredients.ts'
+import { updateFoodItem, upsertFoodItem } from '../db/food-items.ts'
 import { getMealFoodItemsBatch } from '../db/meal-food-items.ts'
 import { getMealById } from '../db/meals.ts'
+import { insertSensitivityFlag, setFoodItemSensitivities } from '../db/sensitivities.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
-import {
-  addMeal,
-  getMeal,
-  queryFrequentMeals,
-  resnapshotMealsForFoodItem,
-  updateMealById,
-} from './meals.ts'
+import { addMeal, getMeal, queryFrequentMeals, resnapshotMealsForFoodItem, updateMealById } from './meals.ts'
 
 const CONTAINER_TIMEOUT = 120_000
 
@@ -343,6 +338,96 @@ describe('Meals service integration tests', () => {
       expect(after.data!.food_items?.[0].name).toBe('Vitlöksbaguette')
     })
 
+    test('flagging a food item after meal creation reflects on past meals (no resnapshot)', async () => {
+      const user = getTestUser()
+      const bread = await upsertFoodItem(user, {
+        calories: 200,
+        default_quantity: 100,
+        default_unit: 'g',
+        name: 'Bröd',
+      })
+      const meal = await addMeal(user, {
+        food_items: [{ food_item_id: bread.id, name: 'Bröd', quantity: 100, unit: 'g' }],
+        meal_type: 'dinner',
+        time: '2026-04-26T18:00:00Z',
+      })
+      const mealId = meal.data!.id
+
+      // No flag at meal-creation time → meal renders without sensitivities.
+      const before = await getMeal(user, mealId)
+      expect(before.data!.food_items?.[0].sensitivities).toBeUndefined()
+      expect(before.data!.sensitivities).toBeUndefined()
+
+      // User flags the food item *after* logging the meal.
+      const gluten = await insertSensitivityFlag(user, { name: 'Gluten' })
+      await setFoodItemSensitivities(user, bread.id, [gluten.id])
+
+      const after = await getMeal(user, mealId)
+      expect(after.data!.food_items?.[0].sensitivities).toEqual(['Gluten'])
+      // meal-level sensitivities surface the union of direct + item-derived flags.
+      expect(after.data!.sensitivities).toEqual(['Gluten'])
+    })
+
+    test('un-flagging a food item removes the flag from past meals', async () => {
+      const user = getTestUser()
+      const dairy = await insertSensitivityFlag(user, { name: 'Dairy' })
+      const milk = await upsertFoodItem(user, {
+        calories: 50,
+        default_quantity: 100,
+        default_unit: 'ml',
+        name: 'Milk',
+      })
+      await setFoodItemSensitivities(user, milk.id, [dairy.id])
+
+      const meal = await addMeal(user, {
+        food_items: [{ food_item_id: milk.id, name: 'Milk', quantity: 200, unit: 'ml' }],
+        meal_type: 'breakfast',
+        time: '2026-04-26T08:00:00Z',
+      })
+      const mealId = meal.data!.id
+
+      const before = await getMeal(user, mealId)
+      expect(before.data!.food_items?.[0].sensitivities).toEqual(['Dairy'])
+
+      // Remove the flag — the meal should immediately reflect this.
+      await setFoodItemSensitivities(user, milk.id, [])
+
+      const after = await getMeal(user, mealId)
+      expect(after.data!.food_items?.[0].sensitivities).toBeUndefined()
+      expect(after.data!.sensitivities).toBeUndefined()
+    })
+
+    test('meal direct flags merge with item-derived flags into a deduped union', async () => {
+      const user = getTestUser()
+      const gluten = await insertSensitivityFlag(user, { name: 'Gluten' })
+      const dairy = await insertSensitivityFlag(user, { name: 'Dairy' })
+      const bread = await upsertFoodItem(user, {
+        calories: 200,
+        default_quantity: 100,
+        default_unit: 'g',
+        name: 'Bröd',
+      })
+      await setFoodItemSensitivities(user, bread.id, [gluten.id])
+
+      const meal = await addMeal(user, {
+        food_items: [{ food_item_id: bread.id, name: 'Bröd', quantity: 50, unit: 'g' }],
+        meal_type: 'breakfast',
+        // Direct flag set on the meal — overlaps with item-derived flag.
+        sensitivities: ['Gluten', 'Dairy'],
+        time: '2026-04-26T08:00:00Z',
+      })
+
+      // Sanity: stored meal row has only the directly-set flags.
+      const stored = await getMealById(user, meal.data!.id)
+      expect(new Set(stored!.sensitivities ?? [])).toEqual(new Set(['Gluten', 'Dairy']))
+      expect(dairy.id).toBeTruthy()
+
+      const fetched = await getMeal(user, meal.data!.id)
+      // API response is the union: 'Gluten' is direct AND item-derived; 'Dairy' is direct only.
+      expect(new Set(fetched.data!.sensitivities ?? [])).toEqual(new Set(['Gluten', 'Dairy']))
+      expect(fetched.data!.food_items?.[0].sensitivities).toEqual(['Gluten'])
+    })
+
     test('renaming a food item updates the name on past meals', async () => {
       const user = getTestUser()
       const item = await upsertFoodItem(user, {
@@ -364,6 +449,5 @@ describe('Meals service integration tests', () => {
       const refreshed = await getMeal(user, meal.data!.id)
       expect(refreshed.data!.food_items?.[0].name).toBe('Banan')
     })
-
   })
 })

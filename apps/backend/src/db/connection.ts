@@ -1031,9 +1031,10 @@ export const migrateSchema = async (user: string) => {
     for (const field of NUTRIENT_FIELD_NAMES) {
       await query(db, `ALTER TABLE meal_food_items ADD COLUMN IF NOT EXISTS ${field} DOUBLE PRECISION`)
     }
-    // Snapshot a food item's sensitivity flag names at meal-add time so
-    // meal totals carry the inheritance even after the food's flags change.
-    await query(db, `ALTER TABLE meal_food_items ADD COLUMN IF NOT EXISTS sensitivities TEXT[]`)
+    // Sensitivity flags used to be snapshotted here at meal-add time, but
+    // that froze stale flag state across food-item edits. They're now
+    // resolved live from food_item_sensitivities at meal read time.
+    await query(db, `ALTER TABLE meal_food_items DROP COLUMN IF EXISTS sensitivities`)
   }
 
   // import_jobs and shared_food_items moved to the central database. If a
