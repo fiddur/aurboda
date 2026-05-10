@@ -293,7 +293,7 @@ export interface ActivityResult extends ActivityComputedMetrics {
   source: string
   data?: Record<string, unknown>
   comments: CommentSummary[]
-  overrides_id?: string
+  override_target_ids?: string[]
 }
 
 /**

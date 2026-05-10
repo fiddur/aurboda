@@ -11,7 +11,7 @@ import { query } from '../connection.ts'
 import { buildDynamicUpdate, type UpdateEntry } from '../dynamic-update.ts'
 import { mapActivityRow } from '../row-mappers.ts'
 import { isSupersedable } from './merge.ts'
-import { getActivityById } from './queries.ts'
+import { activityColumns, getActivityById } from './queries.ts'
 import { materializeSuperseded } from './supersession.ts'
 
 /**
@@ -22,8 +22,8 @@ import { materializeSuperseded } from './supersession.ts'
 export const insertNewActivity = async (user: string, activity: Activity): Promise<string> => {
   const result = await query(
     user,
-    `INSERT INTO activities (id, source, activity_type, start_time, end_time, title, notes, data, overrides_id)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+    `INSERT INTO activities (id, source, activity_type, start_time, end_time, title, notes, data)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
      RETURNING id`,
     [
       activity.id,
@@ -34,7 +34,6 @@ export const insertNewActivity = async (user: string, activity: Activity): Promi
       activity.title,
       activity.notes,
       activity.data,
-      activity.overrides_id ?? null,
     ],
   )
 
@@ -42,33 +41,64 @@ export const insertNewActivity = async (user: string, activity: Activity): Promi
 }
 
 /**
- * Insert an aurboda override row that supersedes a synced activity. The
- * override row's overrides_id points at the target; cross-merge always selects
- * it as winner regardless of activity_type. Re-materializes supersession.
+ * Insert an aurboda override row that supersedes one or more synced
+ * activities. Each `target_id` becomes a row in `activity_override_targets`;
+ * cross-merge picks the override as winner whenever any group member is
+ * a target. Re-materializes supersession.
+ *
+ * `targetIds` is non-empty (an override with no targets is just a regular
+ * aurboda activity — caller should use `insertNewActivity` instead). The
+ * UNIQUE constraint on `target_id` rejects an override that tries to claim
+ * a target already overridden by someone else; the caller catches the
+ * unique-violation and either reuses the existing override or aborts.
  */
 export const insertOverride = async (
   user: string,
-  targetId: string,
-  override: Omit<Activity, 'source' | 'overrides_id'>,
+  targetIds: string[],
+  override: Omit<Activity, 'source' | 'override_target_ids'>,
 ): Promise<Activity | null> => {
-  const result = await query(
-    user,
-    `INSERT INTO activities (source, activity_type, start_time, end_time, title, notes, data, overrides_id)
-     VALUES ('aurboda', $1, $2, $3, $4, $5, $6, $7)
-     RETURNING id, source, external_id, activity_type, start_time, end_time, title, notes, data, deleted_at, superseded_by, overrides_id`,
-    [
-      override.activity_type,
-      override.start_time,
-      override.end_time ?? null,
-      override.title ?? null,
-      override.notes ?? null,
-      override.data ? JSON.stringify(override.data) : null,
-      targetId,
-    ],
-  )
-  if (result.rows.length === 0) return null
-  await materializeSuperseded(user, override.start_time)
-  return mapActivityRow(result.rows[0])
+  if (targetIds.length === 0) {
+    throw new Error('insertOverride requires at least one target id')
+  }
+  // Two-step insert: row first (so we have the id), then bulk-insert all
+  // target links. If the link insert fails (UNIQUE violation on a target
+  // already claimed by another override), the bare aurboda row would be
+  // orphaned — wrap in a transaction so a failure rolls back both steps.
+  await query(user, 'BEGIN')
+  try {
+    const inserted = await query(
+      user,
+      `INSERT INTO activities (source, activity_type, start_time, end_time, title, notes, data)
+       VALUES ('aurboda', $1, $2, $3, $4, $5, $6)
+       RETURNING id, source, external_id, activity_type, start_time, end_time, title, notes, data, deleted_at, superseded_by`,
+      [
+        override.activity_type,
+        override.start_time,
+        override.end_time ?? null,
+        override.title ?? null,
+        override.notes ?? null,
+        override.data ? JSON.stringify(override.data) : null,
+      ],
+    )
+    if (inserted.rows.length === 0) {
+      await query(user, 'ROLLBACK')
+      return null
+    }
+    const overrideId = inserted.rows[0].id as string
+    // Bulk insert target links via VALUES ($1, $2), ($1, $3), …
+    const valueClauses = targetIds.map((_, i) => `($1, $${i + 2})`).join(', ')
+    await query(
+      user,
+      `INSERT INTO activity_override_targets (override_id, target_id) VALUES ${valueClauses}`,
+      [overrideId, ...targetIds],
+    )
+    await query(user, 'COMMIT')
+    await materializeSuperseded(user, override.start_time)
+    return mapActivityRow({ ...inserted.rows[0], override_target_ids: targetIds })
+  } catch (err) {
+    await query(user, 'ROLLBACK').catch(() => {})
+    throw err
+  }
 }
 
 export const insertActivity = async (user: string, activity: Activity): Promise<string> => {
@@ -271,8 +301,7 @@ export const updateActivity = async (
   if (fields.length === 0) return getActivityById(user, id)
 
   const update = buildDynamicUpdate('activities', id, fields, {
-    returning:
-      'id, source, external_id, activity_type, start_time, end_time, title, notes, data, deleted_at, superseded_by, overrides_id',
+    returning: activityColumns(),
   })
   if (!update) return getActivityById(user, id)
 
