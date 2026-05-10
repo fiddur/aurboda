@@ -38,6 +38,7 @@ import { MetricContent } from './MetricContent'
 import { MusicPlaylist } from './MusicPlaylist'
 import { NotesSection } from './NotesSection'
 import { ProductivityDetail } from './ProductivityDetail'
+import { activityRouteAfterSave } from './saveNavigation'
 import { SchemaDataFields } from './SchemaDataFields'
 import {
   computeSleepMinutesFromStages,
@@ -530,7 +531,7 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
     onSuccess: () => invalidate(),
   })
 
-  const saveMutation = useMutation<{ id: string } | null, Error, void>({
+  const saveMutation = useMutation<{ id: string | undefined } | null, Error, void>({
     mutationFn: async () => {
       if (!activity) return null
       const body: {
@@ -559,19 +560,16 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
         body.data = draft.data
       }
       if (Object.keys(body).length === 0) return null
-      return await updateActivity(rawEntityId, body)
+      return updateActivity(rawEntityId, body)
     },
     onSuccess: (result) => {
       setIsEditing(false)
       invalidate()
-      // Editing a synced activity (e.g. Garmin) for the first time creates a
-      // new aurboda override row with a different id. Re-fetching the source
-      // id would just show the unedited source — the user's edits would
-      // appear to vanish. Navigate to the override so the page reflects
-      // what they just saved.
-      if (result && result.id !== rawEntityId) {
-        route(`/detail/activity/${result.id}`)
-      }
+      const target = activityRouteAfterSave(result?.id, rawEntityId)
+      // `replace=true` so back-button doesn't return to the source-id detail
+      // (which would now show the unedited source — exactly the confusing
+      // state this fix avoids).
+      if (target) route(target, true)
     },
   })
 
