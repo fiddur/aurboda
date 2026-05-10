@@ -120,7 +120,7 @@ type EnrichedMeal = Meal & { nutrients?: Record<string, number>; nutrient_data_i
 /**
  * Combine the meal's directly-set flags (stored on the meal row) with the
  * flags currently set on each of its food items. Flags from items are NOT
- * snapshotted — they're resolved live, so renames/edits on a food item
+ * snapshotted — they're resolved live, so flag changes on a food item
  * propagate automatically to every meal that references it.
  */
 const computeMealSensitivities = (meal: EnrichedMeal): string[] | undefined => {
@@ -161,6 +161,13 @@ const formatMeal = (meal: EnrichedMeal): MealResponse => ({
  * junction. When the canonical can't be resolved (e.g. hard-deleted
  * without a merge re-pointer) we fall back to the row's legacy snapshot
  * columns for the label so historical meals still render something.
+ *
+ * Sensitivities have no equivalent legacy fallback — when the canonical
+ * food item is gone, item-derived flags drop off the meal. This is
+ * intentional: the whole point of live resolution is that flags follow
+ * the food item, and a deleted food item simply has no flags. Names/
+ * icons need a fallback because the meal must still render a label;
+ * sensitivities are additive and gracefully degrade to nothing.
  */
 const linksToFoodItems = (
   links: MealFoodItemLink[],

@@ -1034,6 +1034,11 @@ export const migrateSchema = async (user: string) => {
     // Sensitivity flags used to be snapshotted here at meal-add time, but
     // that froze stale flag state across food-item edits. They're now
     // resolved live from food_item_sensitivities at meal read time.
+    // Destructive drop is safe under the current single-instance deploy
+    // model (one backend process per server, restarted in-place); a
+    // rolling/overlapping deploy would 500 on the old instance's SELECTs
+    // while the new instance is migrating, since the column would briefly
+    // be in JUNCTION_COLUMNS but absent from the table.
     await query(db, `ALTER TABLE meal_food_items DROP COLUMN IF EXISTS sensitivities`)
   }
 

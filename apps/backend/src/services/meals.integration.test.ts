@@ -388,6 +388,9 @@ describe('Meals service integration tests', () => {
 
       const before = await getMeal(user, mealId)
       expect(before.data!.food_items?.[0].sensitivities).toEqual(['Dairy'])
+      // Item-only flags also surface on the meal-level union when nothing
+      // is set directly on the meal row.
+      expect(before.data!.sensitivities).toEqual(['Dairy'])
 
       // Remove the flag — the meal should immediately reflect this.
       await setFoodItemSensitivities(user, milk.id, [])
