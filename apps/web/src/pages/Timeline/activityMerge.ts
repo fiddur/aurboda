@@ -126,10 +126,10 @@ export const createDurationActivityItem = (
   const actEnd = activity.end_time!
   const displayName = activity.title ?? toDisplayName(activity.activity_type)
   const icon =
-    itemIcons[displayName] ??
-    itemIcons[displayName.toLowerCase()] ??
     itemIcons[activity.activity_type] ??
-    typeDefinitions?.get(activity.activity_type)?.icon
+    typeDefinitions?.get(activity.activity_type)?.icon ??
+    itemIcons[displayName] ??
+    itemIcons[displayName.toLowerCase()]
 
   // Detect overlaps with existing activity items
   let overlapWarning: string | undefined
