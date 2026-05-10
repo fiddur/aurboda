@@ -42,6 +42,7 @@ export {
   getActivitiesExcludingCategories,
   getActivitiesNeedingDetail,
   getActivityById,
+  getActivitySourcesByIds,
   getAllActivitiesInRange,
   getAllActivityTypeNames,
   getNearbyActivities,

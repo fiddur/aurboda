@@ -547,9 +547,7 @@ describe('food-item display fallback', () => {
         ],
       ]),
     )
-    mockResolveFoodItemDisplay.mockResolvedValue(
-      new Map([['fi-1', { icon: '🥖', name: 'New name' }]]),
-    )
+    mockResolveFoodItemDisplay.mockResolvedValue(new Map([['fi-1', { icon: '🥖', name: 'New name' }]]))
 
     const result = await getMeal('testuser', 'meal-1')
 

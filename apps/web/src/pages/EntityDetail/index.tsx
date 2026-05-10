@@ -5,13 +5,13 @@
  * Activity detail is data-driven: features are shown based on what data exists
  * (sleep stages, HR zones, exercise type) rather than hard-coded by display_category.
  */
-import { exerciseTypeNames, getExerciseTypeName as getExerciseTypeNameFromValue } from '@aurboda/api-spec'
+import { getExerciseTypeName as getExerciseTypeNameFromValue } from '@aurboda/api-spec'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { useLocation, useRoute } from 'preact-iso'
 import { useCallback, useEffect, useState } from 'preact/hooks'
 
-import type { Activity, ActivityTypeDefinition, ExerciseTypeName, SourceRecord } from '../../state/api'
+import type { Activity, ActivityTypeDefinition, SourceRecord } from '../../state/api'
 
 import {
   fetchActivityById,
@@ -33,6 +33,7 @@ import { type ActivityDraft, EditableActivityFields } from './EditableActivityFi
 import { EntityActions, type EntityType } from './EntityActions'
 import { formatDateTimeLocal, formatTime } from './format-utils'
 import { LocationInfo } from './LocationInfo'
+import { forceMergedSpanForOverride, mergedEditAction } from './mergedEdit'
 import { MergePanel } from './MergePanel'
 import { MetricContent } from './MetricContent'
 import { MusicPlaylist } from './MusicPlaylist'
@@ -260,7 +261,7 @@ const ActivityDetailContent = ({
       {hasSourceRecords && (
         <div class="merged-indicator">Merged from {activity.source_records!.length} sources</div>
       )}
-      {activity.overrides_id && (
+      {activity.override_target_ids && activity.override_target_ids.length > 0 && (
         <div class="merged-indicator">
           User override active &mdash; edits to this activity stay even when the synced source re-syncs.
           {onRevertOverride && (
@@ -294,31 +295,6 @@ const ActivityDetailContent = ({
           durationLabel={hasSleepStages ? 'In Bed' : undefined}
         />
 
-        {/* Exercise type selector (edit mode, when exercise type data exists) */}
-        {isEditing && hasExerciseType && (
-          <div class="entity-fields" style={{ marginTop: '0.5rem' }}>
-            <div class="field-row">
-              <span class="field-label">Exercise Type</span>
-              <span class="field-value">
-                <select
-                  class="edit-datetime-input"
-                  value={draft.exercise_type ?? exerciseType ?? ''}
-                  onChange={(e) =>
-                    onDraftChange({ ...draft, exercise_type: (e.target as HTMLSelectElement).value })
-                  }
-                >
-                  <option value="">-- Select --</option>
-                  {exerciseTypeNames.map((name) => (
-                    <option key={name} value={name}>
-                      {formatExerciseTypeName(name)}
-                    </option>
-                  ))}
-                </select>
-              </span>
-            </div>
-          </div>
-        )}
-
         {/* Schema data fields — editable in edit mode, read-only otherwise */}
         {typeDef?.data_schema && (isEditing || activity.data) && (
           <SchemaDataFields
@@ -333,18 +309,6 @@ const ActivityDetailContent = ({
         {/* Read-only stats — shown based on data presence, not activity type */}
         {!isEditing && (
           <>
-            {hasExerciseType && (
-              <div class="entity-fields">
-                <div class="field-row">
-                  <span class="field-label">Exercise Type</span>
-                  <span class="field-value">
-                    <a href={badgeHref} class="entity-meta-link">
-                      {formatExerciseTypeName(exerciseType!)}
-                    </a>
-                  </span>
-                </div>
-              </div>
-            )}
             {totalCalories !== undefined && (
               <div class="entity-fields">
                 <div class="field-row">
@@ -403,12 +367,10 @@ const ActivityDetailContent = ({
 const makeDraft = (activity: Activity): ActivityDraft => {
   const displayStart = activity.merged_start_time ?? activity.start_time
   const displayEnd = activity.merged_end_time ?? activity.end_time
-  const exerciseType = resolveExerciseType(activity)
   return {
     activity_type: activity.activity_type,
     data: (activity.data as Record<string, unknown>) ?? {},
     end_time: displayEnd ? formatDateTimeLocal(displayEnd) : '',
-    exercise_type: exerciseType,
     notes: activity.notes ?? '',
     start_time: formatDateTimeLocal(displayStart),
     title: activity.title ?? '',
@@ -455,6 +417,7 @@ const ResyncDetailButton = ({
   )
 }
 
+// eslint-disable-next-line complexity -- composite component with edit / save / merge / revert flows
 const ActivityContent = ({ entityId }: { entityId: string }) => {
   const queryClient = useQueryClient()
   const { route } = useLocation()
@@ -513,12 +476,22 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
   const [draft, setDraft] = useState<ActivityDraft>(emptyDraft)
 
   const isMergedActivity = Boolean(activity?.source_records && activity.source_records.length > 1)
+  const aurbodaSource = activity?.source_records?.find((r) => r.source === 'aurboda')
 
   const startEditing = useCallback(() => {
     if (!activity) return
+    // Merged-view edit: if one of the merged sources is already an aurboda
+    // override / native row, route there so the user edits that directly.
+    // Otherwise fall through to in-place edit; the save handler forces the
+    // merged span on the new override so it visually represents the group.
+    const action = isMergedActivity ? mergedEditAction(activity.source_records) : null
+    if (action?.kind === 'navigate') {
+      route(action.url)
+      return
+    }
     setDraft(makeDraft(activity))
     setIsEditing(true)
-  }, [activity])
+  }, [activity, isMergedActivity, route])
 
   const revertOverrideMutation = useMutation({
     mutationFn: () => {
@@ -532,6 +505,7 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
   })
 
   const saveMutation = useMutation<{ id: string | undefined } | null, Error, void>({
+    // eslint-disable-next-line complexity -- linear field-by-field diff against orig draft
     mutationFn: async () => {
       if (!activity) return null
       const body: {
@@ -540,8 +514,8 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
         end_time?: string | null
         title?: string
         notes?: string
-        exercise_type?: ExerciseTypeName
         data?: Record<string, unknown>
+        override_target_ids?: string[]
       } = {}
       const orig = makeDraft(activity)
       if (draft.activity_type !== orig.activity_type) body.activity_type = draft.activity_type
@@ -553,12 +527,38 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
         body.end_time = draft.end_time ? new Date(draft.end_time).toISOString() : null
       }
       if (draft.notes !== orig.notes) body.notes = draft.notes
-      if (draft.exercise_type !== orig.exercise_type && draft.exercise_type) {
-        body.exercise_type = draft.exercise_type as ExerciseTypeName
-      }
       if (draft.data && JSON.stringify(draft.data) !== JSON.stringify(orig.data)) {
         body.data = draft.data
       }
+
+      // Merged-view edit creating a brand-new override: force the merged
+      // span as start_time/end_time so the override visually represents the
+      // whole group, not just the targeted source's individual times. Also
+      // guarantees `body` is non-empty, so the PATCH always reaches the
+      // backend (which then creates the override row).
+      const forced = forceMergedSpanForOverride(
+        isMergedActivity,
+        Boolean(aurbodaSource),
+        activity.merged_start_time ?? activity.start_time,
+        activity.merged_end_time ?? activity.end_time,
+      )
+      // Asymmetric on purpose: the `=== undefined` guards ensure an explicit
+      // user edit on either side wins, but the merged-group span still fills
+      // the *other* side. So shrinking only end_time still force-writes the
+      // group-wide start_time. Don't simplify by removing the guards — that
+      // would clobber explicit edits with the merged span.
+      if (forced?.start_time && body.start_time === undefined) body.start_time = forced.start_time
+      if (forced?.end_time && body.end_time === undefined) body.end_time = forced.end_time
+
+      // Merged-view edit creating a fresh override: claim ALL the merged
+      // sources as targets so the override hides the whole group, not just
+      // the row whose id we PATCHed. Aurboda sources are excluded — those
+      // can't be a target (only synced rows can).
+      if (isMergedActivity && !aurbodaSource && activity.source_records) {
+        const targets = activity.source_records.filter((r) => r.source !== 'aurboda').map((r) => r.id)
+        if (targets.length > 0) body.override_target_ids = targets
+      }
+
       if (Object.keys(body).length === 0) return null
       return updateActivity(rawEntityId, body)
     },

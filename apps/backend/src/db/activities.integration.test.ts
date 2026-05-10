@@ -679,7 +679,7 @@ describe('Activities Integration Tests', () => {
         title: 'Meditation',
       })
 
-      const override = await insertOverride(user, garminId, {
+      const override = await insertOverride(user, [garminId], {
         activity_type: 'walking',
         end_time: new Date('2026-05-05T10:30:00Z'),
         notes: 'pipe ceremony',
@@ -689,7 +689,7 @@ describe('Activities Integration Tests', () => {
 
       expect(override).not.toBeNull()
       expect(override?.source).toBe('aurboda')
-      expect(override?.overrides_id).toBe(garminId)
+      expect(override?.override_target_ids).toEqual([garminId])
       expect(override?.activity_type).toBe('walking')
 
       const looked = await getOverrideForActivity(user, garminId)
@@ -712,7 +712,7 @@ describe('Activities Integration Tests', () => {
       })
 
       // User overrides type
-      const override = await insertOverride(user, garminId, {
+      const override = await insertOverride(user, [garminId], {
         activity_type: 'walking',
         end_time: new Date('2026-05-05T10:30:00Z'),
         start_time: new Date('2026-05-05T10:00:00Z'),
@@ -750,7 +750,7 @@ describe('Activities Integration Tests', () => {
         start_time: new Date('2026-05-05T10:00:00Z'),
       })
 
-      const override = await insertOverride(user, garminId, {
+      const override = await insertOverride(user, [garminId], {
         activity_type: 'walking',
         end_time: new Date('2026-05-05T10:30:00Z'),
         start_time: new Date('2026-05-05T10:00:00Z'),
@@ -759,6 +759,176 @@ describe('Activities Integration Tests', () => {
       // Hard-delete the synced row to trigger cascade
       const { query } = await import('./connection.ts')
       await query(user, `DELETE FROM activities WHERE id = $1`, [garminId])
+
+      const survivor = await getActivityById(user, override!.id!, true)
+      expect(survivor).toBeNull()
+    })
+
+    test('multi-target cascade: deleting one of two targets keeps the override with the remaining target', async () => {
+      const user = getTestUser()
+      const garminId = randomUUID()
+      const stravaId = randomUUID()
+
+      await insertActivity(user, {
+        activity_type: 'running',
+        end_time: new Date('2026-05-05T10:30:00Z'),
+        external_id: 'garmin-12345',
+        id: garminId,
+        source: 'garmin',
+        start_time: new Date('2026-05-05T10:00:00Z'),
+      })
+      await insertActivity(user, {
+        activity_type: 'running',
+        end_time: new Date('2026-05-05T10:30:00Z'),
+        external_id: 'strava-12345',
+        id: stravaId,
+        source: 'strava',
+        start_time: new Date('2026-05-05T10:00:00Z'),
+      })
+
+      const override = await insertOverride(user, [garminId, stravaId], {
+        activity_type: 'walking',
+        end_time: new Date('2026-05-05T10:30:00Z'),
+        start_time: new Date('2026-05-05T10:00:00Z'),
+      })
+
+      // Drop one target → override survives with the other.
+      const { query } = await import('./connection.ts')
+      await query(user, `DELETE FROM activities WHERE id = $1`, [garminId])
+
+      const survivor = await getActivityById(user, override!.id!, true)
+      expect(survivor).not.toBeNull()
+      expect(survivor?.override_target_ids).toEqual([stravaId])
+    })
+
+    test('reuses an existing aurboda row at the same (type, start_time) instead of inserting a duplicate', async () => {
+      // Real-world case: a previous override edit created an aurboda row
+      // targeting one synced source. The user re-edits via a different
+      // synced source in the same merge group (e.g. strava instead of
+      // garmin). insertOverride should attach the new target to the
+      // existing aurboda row rather than 23505-ing on idx_activities_type_time.
+      const user = getTestUser()
+      const garminId = randomUUID()
+      const stravaId = randomUUID()
+
+      await insertActivity(user, {
+        activity_type: 'meditation',
+        end_time: new Date('2026-05-10T10:30:00Z'),
+        external_id: 'garmin-reuse',
+        id: garminId,
+        source: 'garmin',
+        start_time: new Date('2026-05-10T10:00:00Z'),
+      })
+      await insertActivity(user, {
+        activity_type: 'meditation',
+        end_time: new Date('2026-05-10T10:30:00Z'),
+        external_id: 'strava-reuse',
+        id: stravaId,
+        source: 'strava',
+        start_time: new Date('2026-05-10T10:00:00Z'),
+      })
+
+      const first = await insertOverride(user, [garminId], {
+        activity_type: 'walking',
+        end_time: new Date('2026-05-10T10:30:00Z'),
+        notes: 'first',
+        start_time: new Date('2026-05-10T10:00:00Z'),
+        title: 'first title',
+      })
+
+      const second = await insertOverride(user, [stravaId], {
+        activity_type: 'walking',
+        end_time: new Date('2026-05-10T10:25:00Z'),
+        notes: 'second',
+        start_time: new Date('2026-05-10T10:00:00Z'),
+        title: 'second title',
+      })
+
+      // Same row reused.
+      expect(second?.id).toBe(first?.id)
+      // Fields updated to the latest input.
+      expect(second?.title).toBe('second title')
+      expect(second?.notes).toBe('second')
+      expect(second?.end_time).toEqual(new Date('2026-05-10T10:25:00Z'))
+      // Both target ids now linked.
+      expect(second?.override_target_ids?.sort()).toEqual([garminId, stravaId].sort())
+    })
+
+    test('reuses a soft-deleted aurboda row at the same (type, start_time) by reviving it', async () => {
+      // Real-world case: user edits → override created. User clicks "revert
+      // to source" → override soft-deleted (deleted_at set). User edits
+      // again to the same type → must NOT 23505 on idx_activities_type_time
+      // (which doesn't filter on deleted_at). Revive the existing row.
+      const user = getTestUser()
+      const garminId = randomUUID()
+
+      await insertActivity(user, {
+        activity_type: 'meditation',
+        end_time: new Date('2026-05-11T10:30:00Z'),
+        external_id: 'garmin-revive',
+        id: garminId,
+        source: 'garmin',
+        start_time: new Date('2026-05-11T10:00:00Z'),
+      })
+
+      const first = await insertOverride(user, [garminId], {
+        activity_type: 'walking',
+        end_time: new Date('2026-05-11T10:30:00Z'),
+        notes: 'before revert',
+        start_time: new Date('2026-05-11T10:00:00Z'),
+        title: 'before revert',
+      })
+
+      // Soft-delete the override (mimics the "revert to source" flow).
+      const { query } = await import('./connection.ts')
+      await query(user, `UPDATE activities SET deleted_at = NOW() WHERE id = $1`, [first!.id])
+
+      // New edit at the same (type, start_time) — must succeed by reviving.
+      const second = await insertOverride(user, [garminId], {
+        activity_type: 'walking',
+        end_time: new Date('2026-05-11T10:25:00Z'),
+        notes: 'after revive',
+        start_time: new Date('2026-05-11T10:00:00Z'),
+        title: 'after revive',
+      })
+
+      expect(second?.id).toBe(first?.id)
+      expect(second?.title).toBe('after revive')
+      expect(second?.notes).toBe('after revive')
+      expect(second?.deleted_at).toBeUndefined()
+    })
+
+    test('multi-target cascade: deleting the last target removes the override (delete_orphan_override trigger)', async () => {
+      const user = getTestUser()
+      const garminId = randomUUID()
+      const stravaId = randomUUID()
+
+      await insertActivity(user, {
+        activity_type: 'running',
+        end_time: new Date('2026-05-05T10:30:00Z'),
+        external_id: 'garmin-67890',
+        id: garminId,
+        source: 'garmin',
+        start_time: new Date('2026-05-05T10:00:00Z'),
+      })
+      await insertActivity(user, {
+        activity_type: 'running',
+        end_time: new Date('2026-05-05T10:30:00Z'),
+        external_id: 'strava-67890',
+        id: stravaId,
+        source: 'strava',
+        start_time: new Date('2026-05-05T10:00:00Z'),
+      })
+
+      const override = await insertOverride(user, [garminId, stravaId], {
+        activity_type: 'walking',
+        end_time: new Date('2026-05-05T10:30:00Z'),
+        start_time: new Date('2026-05-05T10:00:00Z'),
+      })
+
+      const { query } = await import('./connection.ts')
+      await query(user, `DELETE FROM activities WHERE id = $1`, [garminId])
+      await query(user, `DELETE FROM activities WHERE id = $1`, [stravaId])
 
       const survivor = await getActivityById(user, override!.id!, true)
       expect(survivor).toBeNull()

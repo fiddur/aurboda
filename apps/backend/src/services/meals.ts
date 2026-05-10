@@ -117,6 +117,22 @@ interface MealsResult {
 
 type EnrichedMeal = Meal & { nutrients?: Record<string, number>; nutrient_data_incomplete?: boolean }
 
+/**
+ * Combine the meal's directly-set flags (stored on the meal row) with the
+ * flags currently set on each of its food items. Flags from items are NOT
+ * snapshotted — they're resolved live, so flag changes on a food item
+ * propagate automatically to every meal that references it.
+ */
+const computeMealSensitivities = (meal: EnrichedMeal): string[] | undefined => {
+  const direct = meal.sensitivities ?? []
+  const fromItems: string[] = []
+  for (const item of meal.food_items ?? []) {
+    if (item.sensitivities) fromItems.push(...item.sensitivities)
+  }
+  if (direct.length === 0 && fromItems.length === 0) return undefined
+  return [...new Set([...direct, ...fromItems])]
+}
+
 const formatMeal = (meal: EnrichedMeal): MealResponse => ({
   calories: meal.calories,
   carbs: meal.carbs,
@@ -132,25 +148,35 @@ const formatMeal = (meal: EnrichedMeal): MealResponse => ({
   nutrient_data_incomplete: meal.nutrient_data_incomplete,
   nutrients: meal.nutrients,
   protein: meal.protein,
-  sensitivities: meal.sensitivities,
+  sensitivities: computeMealSensitivities(meal),
   source: meal.source,
   time: meal.time.toISOString(),
 })
 
 /**
  * Convert junction links to the MealFoodItem format for API responses.
- * Name and icon are resolved live from the canonical food item via
- * `displayMap`. When the canonical can't be resolved (e.g. the food item
- * was hard-deleted without a merge re-pointer) we fall back to the
- * row's legacy snapshot columns so historical meals still render their
- * last-known label instead of blanking out.
+ * Name, icon, and sensitivity flag names are all resolved live (not
+ * snapshotted): name/icon via `displayMap` against the canonical food
+ * item, sensitivities via `sensitivityMap` against the food_item ↔ flag
+ * junction. When the canonical can't be resolved (e.g. hard-deleted
+ * without a merge re-pointer) we fall back to the row's legacy snapshot
+ * columns for the label so historical meals still render something.
+ *
+ * Sensitivities have no equivalent legacy fallback — when the canonical
+ * food item is gone, item-derived flags drop off the meal. This is
+ * intentional: the whole point of live resolution is that flags follow
+ * the food item, and a deleted food item simply has no flags. Names/
+ * icons need a fallback because the meal must still render a label;
+ * sensitivities are additive and gracefully degrade to nothing.
  */
 const linksToFoodItems = (
   links: MealFoodItemLink[],
   displayMap: Map<string, FoodItemDisplay>,
+  sensitivityMap: Map<string, string[]>,
 ): MealFoodItem[] =>
   links.map((link) => {
     const display = displayMap.get(link.food_item_id)
+    const sensitivities = sensitivityMap.get(link.food_item_id) ?? []
     return {
       food_item_id: link.food_item_id,
       name: display?.name ?? link.legacy_food_item_name ?? '',
@@ -162,7 +188,7 @@ const linksToFoodItems = (
       carbs: link.carbs as number | undefined,
       fat: link.fat as number | undefined,
       fiber: link.fiber as number | undefined,
-      sensitivities: (link as { sensitivities?: string[] }).sensitivities,
+      sensitivities: sensitivities.length > 0 ? sensitivities : undefined,
     }
   })
 
@@ -207,14 +233,17 @@ const attachFoodItems = async (user: string, meals: Meal[]): Promise<EnrichedMea
   const mealIds = meals.map((m) => m.id)
   const junctionMap = await getMealFoodItemsBatch(user, mealIds)
 
-  // Collect every food_item_id referenced across all meals so name/icon are
-  // resolved against the live canonical rows in a single batch — junction
-  // rows don't snapshot name/icon any more.
+  // Collect every food_item_id referenced across all meals so name/icon and
+  // sensitivity flag names are resolved against the live canonical rows in a
+  // single batch — junction rows don't snapshot any of these any more.
   const foodItemIds: string[] = []
   for (const links of junctionMap.values()) {
     for (const link of links) foodItemIds.push(link.food_item_id)
   }
-  const displayMap = await resolveFoodItemDisplay(user, getCentralDb(), foodItemIds)
+  const [displayMap, sensitivityMap] = await Promise.all([
+    resolveFoodItemDisplay(user, getCentralDb(), foodItemIds),
+    getFoodItemSensitivityNamesBatch(user, foodItemIds),
+  ])
 
   return meals.map((meal) => {
     const links = junctionMap.get(meal.id)
@@ -223,7 +252,7 @@ const attachFoodItems = async (user: string, meals: Meal[]): Promise<EnrichedMea
       const incomplete = hasIncompleteNutrients(links)
       return {
         ...meal,
-        food_items: linksToFoodItems(links, displayMap),
+        food_items: linksToFoodItems(links, displayMap, sensitivityMap),
         nutrients,
         ...(incomplete ? { nutrient_data_incomplete: true } : {}),
       }
@@ -252,8 +281,9 @@ const round2 = (n: number): number => Math.round(n * 100) / 100
 
 /**
  * Build a junction row by snapshotting the canonical food item's nutrient
- * values scaled by quantity. Name and icon are NOT snapshotted — they're
- * resolved at read time so user edits propagate to past meals.
+ * values scaled by quantity. Name, icon, and sensitivity flags are NOT
+ * snapshotted — they're resolved at read time so user edits propagate to
+ * past meals.
  *
  * `effectiveValues` carries the per-default-quantity nutrients to snapshot.
  * Callers should compute it via `getEffectiveNutrients(detail)` so composite
@@ -265,13 +295,11 @@ export const buildScaledJunctionItem = (
   canonical: MergedFoodItem,
   sortOrder: number,
   effectiveValues: Record<string, number>,
-  sensitivities: string[] = [],
 ): Record<string, unknown> => {
   const scale = computeScale(fi, canonical)
   const junctionItem: Record<string, unknown> = {
     food_item_id: canonical.id,
     quantity: fi.quantity,
-    sensitivities: sensitivities.length > 0 ? sensitivities : null,
     sort_order: sortOrder,
     unit: fi.unit,
   }
@@ -318,26 +346,16 @@ const syncFoodItemsToJunction = async (
   source = 'manual',
 ): Promise<void> => {
   const service = createFoodItemsService(getCentralDb())
-  // Resolve canonicals first so we can batch-load sensitivities for them all.
-  const resolved: Array<{ fi: FoodItemInput; canonical: MergedFoodItem }> = []
-  for (const fi of foodItems) {
-    const canonical = await resolveCanonical(user, fi, source)
-    if (canonical) resolved.push({ canonical, fi })
-  }
-  const sensitivityMap = await getFoodItemSensitivityNamesBatch(
-    user,
-    resolved.map(({ canonical }) => canonical.id),
-  )
-
   const junctionItems = []
-  for (let i = 0; i < resolved.length; i++) {
-    const { canonical, fi } = resolved[i]
+  for (let i = 0; i < foodItems.length; i++) {
+    const fi = foodItems[i]
+    const canonical = await resolveCanonical(user, fi, source)
+    if (!canonical) continue
     // Fetch detail to pick up derived (composite) or enriched (reference)
     // nutrients. Falls back to the canonical row when no detail is available.
     const detail = await service.getDetail(user, canonical.id)
     const effective = detail ? getEffectiveNutrients(detail) : {}
-    const sensitivities = sensitivityMap.get(canonical.id) ?? []
-    junctionItems.push(buildScaledJunctionItem(fi, canonical, i, effective, sensitivities))
+    junctionItems.push(buildScaledJunctionItem(fi, canonical, i, effective))
   }
 
   await setMealFoodItems(user, mealId, junctionItems as Parameters<typeof setMealFoodItems>[2])
@@ -348,33 +366,23 @@ const syncFoodItemsToJunction = async (
  * current junction rows and persist them on the meal row.
  *
  * Macro keys present in `explicit` are skipped — the caller's request body
- * wins (manual override).
+ * wins (manual override). Sensitivities are no longer touched here: the
+ * meal row holds only directly-set flags, and item-derived flags are
+ * resolved live at read time.
  */
 const recomputeMealMacros = async (
   user: string,
   mealId: string,
   explicit: Partial<Record<'calories' | 'protein' | 'carbs' | 'fat' | 'fiber', number | null>> = {},
-  explicitSensitivities = false,
 ): Promise<Meal | null> => {
   const map = await getMealFoodItemsBatch(user, [mealId])
   const links = map.get(mealId) ?? []
   const totals = aggregateNutrients(links)
   const macroKeys = ['calories', 'protein', 'carbs', 'fat', 'fiber'] as const
-  const update: Record<string, number | null | string[]> = {}
+  const update: Record<string, number | null> = {}
   for (const key of macroKeys) {
     if (key in explicit) continue
     update[key] = links.length === 0 ? null : (totals[key] ?? 0)
-  }
-  if (!explicitSensitivities) {
-    // Roll up the union of every food item's snapshotted sensitivities into
-    // meal.sensitivities. Snapshot semantics: copies what the food items had
-    // at meal-add time, not whatever's current on the food rows.
-    const aggregated = new Set<string>()
-    for (const link of links) {
-      const arr = (link as { sensitivities?: string[] }).sensitivities
-      if (Array.isArray(arr)) for (const s of arr) aggregated.add(s)
-    }
-    update.sensitivities = aggregated.size > 0 ? [...aggregated] : null
   }
   if (Object.keys(update).length === 0) return null
   return dbUpdateMeal(user, mealId, update)
@@ -410,16 +418,12 @@ export async function addMeal(user: string, input: AddMealInput): Promise<MealRe
   let meal = initialMeal
   if (input.food_items && input.food_items.length > 0) {
     await syncFoodItemsToJunction(user, meal.id, input.food_items, input.source)
-    const recomputed = await recomputeMealMacros(
-      user,
-      meal.id,
-      pickExplicitMacros(input),
-      input.sensitivities !== undefined,
-    )
+    const recomputed = await recomputeMealMacros(user, meal.id, pickExplicitMacros(input))
     if (recomputed) meal = recomputed
   }
 
-  return { data: formatMeal(meal), success: true }
+  const [enriched] = await attachFoodItems(user, [meal])
+  return { data: formatMeal(enriched), success: true }
 }
 
 /**
@@ -444,16 +448,12 @@ export async function updateMealById(user: string, id: string, input: UpdateMeal
     } else {
       await syncFoodItemsToJunction(user, id, input.food_items, meal.source)
     }
-    const recomputed = await recomputeMealMacros(
-      user,
-      id,
-      pickExplicitMacros(input),
-      input.sensitivities !== undefined,
-    )
+    const recomputed = await recomputeMealMacros(user, id, pickExplicitMacros(input))
     if (recomputed) meal = recomputed
   }
 
-  return { data: formatMeal(meal), success: true }
+  const [enriched] = await attachFoodItems(user, [meal])
+  return { data: formatMeal(enriched), success: true }
 }
 
 /**
@@ -487,10 +487,6 @@ export async function resnapshotMealsForFoodItem(
   if (!detail) throw new Error('Food item not found')
   const canonical = detail.item
   const effective = getEffectiveNutrients(detail)
-  // Pull current sensitivity flag names so the snapshot reflects the latest
-  // state of the food-item ↔ flag junction.
-  const sensitivityMap = await getFoodItemSensitivityNamesBatch(user, [foodItemId])
-  const sensitivities = sensitivityMap.get(foodItemId) ?? []
 
   const mealIds = await findMealsContainingFoodItem(user, foodItemId)
   let rowsUpdated = 0
@@ -503,7 +499,6 @@ export async function resnapshotMealsForFoodItem(
         const passThrough: Record<string, unknown> = {
           food_item_id: link.food_item_id,
           quantity: link.quantity,
-          sensitivities: link.sensitivities ?? null,
           sort_order: link.sort_order,
           unit: link.unit,
         }
@@ -520,7 +515,7 @@ export async function resnapshotMealsForFoodItem(
         quantity: link.quantity as number | undefined,
         unit: link.unit as string | undefined,
       }
-      return buildScaledJunctionItem(fi, canonical, link.sort_order, effective, sensitivities)
+      return buildScaledJunctionItem(fi, canonical, link.sort_order, effective)
     })
     await setMealFoodItems(user, mealId, updated as Parameters<typeof setMealFoodItems>[2])
     await recomputeMealMacros(user, mealId)

@@ -89,11 +89,18 @@ export interface Activity {
   /** If set, this activity is a cross-source duplicate of the referenced activity. */
   superseded_by?: string
   /**
-   * If set, this is a user-edited aurboda override of the referenced synced
-   * activity. Override rows always win in the merged view and are unaffected
-   * by integration re-syncs. Cascades on target delete.
+   * The synced activity ids this aurboda row is an override of. A
+   * non-empty array marks this row as an override; the listed ids are
+   * hidden by it in merged views and survive integration re-syncs.
+   * Cascades on any target's delete: each target's removal unlinks it
+   * from the override (the override row stays and its `override_target_ids`
+   * shrinks); deleting the override removes all links.
+   *
+   * Multi-target overrides (#735) — one aurboda row may claim a
+   * cross-source merge group as a whole rather than just one source row.
+   * Only aurboda rows may carry an override.
    */
-  overrides_id?: string
+  override_target_ids?: string[]
 }
 
 export interface MergedActivity extends Activity {
@@ -335,7 +342,7 @@ export interface MealFoodItem {
   fat?: number
   fiber?: number
   micros?: Micros
-  /** Sensitivity flag names snapshotted at meal-add time. */
+  /** Sensitivity flag names — resolved live from food_item_sensitivities; not snapshotted. */
   sensitivities?: string[]
 }
 
@@ -398,10 +405,8 @@ export interface MealFoodItemLink {
   quantity?: number
   unit?: string
   sort_order: number
-  /** Sensitivity flag names snapshotted at meal-add time. */
-  sensitivities?: string[]
   // Nutrient snapshot — same fields as FoodItemEntity
-  [nutrient: string]: string | number | boolean | Date | string[] | undefined
+  [nutrient: string]: string | number | boolean | Date | undefined
 }
 
 // ============================================================================

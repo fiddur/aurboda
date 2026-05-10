@@ -10,6 +10,22 @@ import { mapActivityRow } from '../row-mappers.ts'
 import { findMergedGroupForActivity, mergeOverlappingActivities } from './merge.ts'
 
 /**
+ * SELECT column list for an activities row. The `override_target_ids` is
+ * built from the `activity_override_targets` join table via a correlated
+ * subquery; NULL when the row has no targets and is normalised to
+ * `undefined` by the row mapper.
+ *
+ * `alias` defaults to the unqualified table name; pass `'a'` (or any other
+ * alias) when joining.
+ */
+export const activityColumns = (alias: string = 'activities'): string =>
+  `${alias}.id, ${alias}.source, ${alias}.external_id, ${alias}.activity_type, ${alias}.start_time, ${alias}.end_time, ${alias}.title, ${alias}.notes, ${alias}.data, ${alias}.deleted_at, ${alias}.superseded_by,
+  (SELECT array_agg(target_id) FROM activity_override_targets WHERE override_id = ${alias}.id) AS override_target_ids`
+
+const ACTIVITY_COLUMNS_BARE = activityColumns()
+const ACTIVITY_COLUMNS_ALIAS = activityColumns('a')
+
+/**
  * Find all non-deleted activities of the same type that belong to the same merge group
  * as the given activity. Uses transitive merge logic (via mergeOverlappingActivities +
  * findMergedGroupForActivity) to guarantee consistency with the day view.
@@ -25,7 +41,7 @@ export const getOverlappingActivities = async (user: string, activity: Activity)
 
   const result = await query(
     user,
-    `SELECT id, source, external_id, activity_type, start_time, end_time, title, notes, data, deleted_at, superseded_by, overrides_id
+    `SELECT ${ACTIVITY_COLUMNS_BARE}
      FROM activities
      WHERE activity_type = $1
        AND deleted_at IS NULL
@@ -49,7 +65,7 @@ export const getActivityById = async (
   const deletedClause = includeDeleted ? '' : ' AND deleted_at IS NULL'
   const result = await query(
     user,
-    `SELECT id, source, external_id, activity_type, start_time, end_time, title, notes, data, deleted_at, superseded_by, overrides_id
+    `SELECT ${ACTIVITY_COLUMNS_BARE}
      FROM activities
      WHERE id = $1${deletedClause}`,
     [id],
@@ -63,6 +79,25 @@ export const getActivityById = async (
 }
 
 /**
+ * Fetch the `source` for each given activity id (deleted rows included).
+ * Lightweight lookup used by services to validate override-target shape
+ * before insert. Returns rows in arbitrary order; missing ids are simply
+ * absent from the result.
+ */
+export const getActivitySourcesByIds = async (
+  user: string,
+  ids: readonly string[],
+): Promise<{ id: string; source: string }[]> => {
+  if (ids.length === 0) return []
+  const result = await query<{ id: string; source: string }>(
+    user,
+    `SELECT id, source FROM activities WHERE id = ANY($1)`,
+    [ids],
+  )
+  return result.rows
+}
+
+/**
  * Find the active aurboda override row that targets the given synced
  * activity, if any. Used by updateActivity to update an existing override in
  * place instead of creating duplicates.
@@ -70,9 +105,10 @@ export const getActivityById = async (
 export const getOverrideForActivity = async (user: string, targetId: string): Promise<Activity | null> => {
   const result = await query(
     user,
-    `SELECT id, source, external_id, activity_type, start_time, end_time, title, notes, data, deleted_at, superseded_by, overrides_id
+    `SELECT ${ACTIVITY_COLUMNS_BARE}
      FROM activities
-     WHERE overrides_id = $1 AND deleted_at IS NULL
+     WHERE id = (SELECT override_id FROM activity_override_targets WHERE target_id = $1 LIMIT 1)
+       AND deleted_at IS NULL
      LIMIT 1`,
     [targetId],
   )
@@ -112,7 +148,7 @@ export const getActivities = async (
 
   const result = await query(
     user,
-    `SELECT id, source, external_id, activity_type, start_time, end_time, title, notes, data, deleted_at, superseded_by, overrides_id
+    `SELECT ${ACTIVITY_COLUMNS_BARE}
      FROM activities
      WHERE activity_type = ANY($1) AND start_time >= $2 AND start_time <= $3
        AND deleted_at IS NULL${filterClauses}
@@ -133,7 +169,7 @@ export const getActivities = async (
 export const getSleepSessions = async (user: string, start: Date, end: Date): Promise<MergedActivity[]> => {
   const result = await query(
     user,
-    `SELECT id, source, external_id, activity_type, start_time, end_time, title, notes, data, deleted_at, superseded_by, overrides_id
+    `SELECT ${ACTIVITY_COLUMNS_BARE}
      FROM activities
      WHERE activity_type = 'sleep'
        AND start_time < $2
@@ -160,7 +196,7 @@ export const getActivitiesNeedingDetail = async (
   const detailFilter = forceAll ? '' : "AND (a.data->>'detail_synced') IS NULL"
   const result = await query(
     user,
-    `SELECT a.id, a.source, a.external_id, a.activity_type, a.start_time, a.end_time, a.title, a.notes, a.data, a.deleted_at, a.superseded_by, a.overrides_id
+    `SELECT ${ACTIVITY_COLUMNS_ALIAS}
      FROM activities a
      JOIN activity_type_definitions atd ON a.activity_type = atd.name
      WHERE atd.display_category IN ('exercise', 'meditation')
@@ -194,7 +230,7 @@ export const getNearbyActivities = async (
 
   const result = await query(
     user,
-    `SELECT id, source, external_id, activity_type, start_time, end_time, title, notes, data, deleted_at, superseded_by, overrides_id
+    `SELECT ${ACTIVITY_COLUMNS_BARE}
      FROM activities
      WHERE activity_type = $1
        AND id != $2
@@ -241,7 +277,7 @@ export const getActivitiesByCategory = async (
 ): Promise<MergedActivity[]> => {
   const result = await query(
     user,
-    `SELECT a.id, a.source, a.external_id, a.activity_type, a.start_time, a.end_time, a.title, a.notes, a.data, a.deleted_at, a.superseded_by, a.overrides_id
+    `SELECT ${ACTIVITY_COLUMNS_ALIAS}
      FROM activities a
      JOIN activity_type_definitions atd ON a.activity_type = atd.name
      WHERE atd.display_category = $1 AND a.start_time >= $2 AND a.start_time <= $3
@@ -277,7 +313,7 @@ export const getActivitiesExcludingCategories = async (
 ): Promise<Activity[]> => {
   const result = await query(
     user,
-    `SELECT a.id, a.source, a.external_id, a.activity_type, a.start_time, a.end_time, a.title, a.notes, a.data, a.deleted_at, a.superseded_by, a.overrides_id
+    `SELECT ${ACTIVITY_COLUMNS_ALIAS}
      FROM activities a
      LEFT JOIN activity_type_definitions atd ON a.activity_type = atd.name
      WHERE a.deleted_at IS NULL
@@ -301,7 +337,7 @@ export const getNonSleepActivitiesMerged = async (
 ): Promise<MergedActivity[]> => {
   const result = await query(
     user,
-    `SELECT a.id, a.source, a.external_id, a.activity_type, a.start_time, a.end_time, a.title, a.notes, a.data, a.deleted_at, a.superseded_by, a.overrides_id
+    `SELECT ${ACTIVITY_COLUMNS_ALIAS}
      FROM activities a
      LEFT JOIN activity_type_definitions atd ON a.activity_type = atd.name
      WHERE a.deleted_at IS NULL
@@ -318,7 +354,7 @@ export const getNonSleepActivitiesMerged = async (
 export const getScreentimeActivities = async (user: string, start: Date, end: Date): Promise<Activity[]> => {
   const result = await query(
     user,
-    `SELECT id, source, external_id, activity_type, start_time, end_time, title, notes, data, deleted_at, superseded_by, overrides_id
+    `SELECT ${ACTIVITY_COLUMNS_BARE}
      FROM activities
      WHERE activity_type = 'screentime'
        AND deleted_at IS NULL
@@ -333,7 +369,7 @@ export const getScreentimeActivities = async (user: string, start: Date, end: Da
 export const getAllActivitiesInRange = async (user: string, start: Date, end: Date): Promise<Activity[]> => {
   const result = await query(
     user,
-    `SELECT id, source, external_id, activity_type, start_time, end_time, title, notes, data, deleted_at, superseded_by, overrides_id
+    `SELECT ${ACTIVITY_COLUMNS_BARE}
      FROM activities WHERE deleted_at IS NULL AND start_time >= $1 AND start_time <= $2
      ORDER BY start_time`,
     [start, end],
@@ -367,7 +403,7 @@ export const findMergeableActivity = async (
 
   const result = await query(
     user,
-    `SELECT id, source, external_id, activity_type, start_time, end_time, title, notes, data, deleted_at, superseded_by, overrides_id
+    `SELECT ${ACTIVITY_COLUMNS_BARE}
      FROM activities
      WHERE activity_type = $1
        AND deleted_at IS NULL

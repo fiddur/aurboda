@@ -19,7 +19,7 @@ const override = (overrides: Partial<Activity> = {}): Activity => ({
   end_time: new Date('2026-05-05T10:20:00Z'), // narrower than source
   id: 'aurboda-id',
   notes: 'override notes',
-  overrides_id: 'garmin-id',
+  override_target_ids: ['garmin-id'],
   source: 'aurboda',
   start_time: new Date('2026-05-05T10:05:00Z'), // narrower than source
   title: 'Pipe ceremony',
@@ -88,5 +88,36 @@ describe('mergeOverlappingActivities — aurboda override semantics (#732 follow
     const merged = mergeOverlappingActivities([garmin(), override()], categoryMap)
     expect(merged[0].source_ids).toContain('garmin-id')
     expect(merged[0].source_ids).toContain('aurboda-id')
+  })
+
+  test('multi-target override (#735) wins across the entire merged group', () => {
+    // The case that motivated multi-target overrides: a cross-source merge
+    // group of three sync rows (Garmin + Strava + Health Connect) all
+    // claimed by one aurboda override at once.
+    const garminRow = garmin({ id: 'garmin-id' })
+    const stravaRow = garmin({
+      id: 'strava-id',
+      source: 'strava',
+      start_time: new Date('2026-05-05T10:01:00Z'),
+    })
+    const healthConnectRow = garmin({
+      id: 'hc-id',
+      source: 'health_connect',
+      start_time: new Date('2026-05-05T10:00:30Z'),
+    })
+    const multiOverride = override({
+      id: 'aurboda-multi',
+      override_target_ids: ['garmin-id', 'strava-id', 'hc-id'],
+    })
+
+    const merged = mergeOverlappingActivities(
+      [garminRow, stravaRow, healthConnectRow, multiOverride],
+      categoryMap,
+    )
+    // All four collapse into one group with the override winning.
+    expect(merged).toHaveLength(1)
+    expect(merged[0].id).toBe('aurboda-multi')
+    expect(merged[0].activity_type).toBe('pipe_ceremony')
+    expect(merged[0].source_ids?.sort()).toEqual(['aurboda-multi', 'garmin-id', 'hc-id', 'strava-id'].sort())
   })
 })

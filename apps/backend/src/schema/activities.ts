@@ -16,10 +16,7 @@ export const activitiesTables: Record<string, string> = {
       notes           TEXT,
       data            JSONB,
       deleted_at      TIMESTAMPTZ,
-      superseded_by   UUID REFERENCES activities(id) ON DELETE SET NULL,
-      -- When set, this row is a user override of the referenced synced activity.
-      -- Source must be 'aurboda'; cascades on target delete so the override can't outlive its synced row.
-      overrides_id    UUID REFERENCES activities(id) ON DELETE CASCADE
+      superseded_by   UUID REFERENCES activities(id) ON DELETE SET NULL
     )
   `,
 
@@ -28,8 +25,56 @@ export const activitiesTables: Record<string, string> = {
     CREATE UNIQUE INDEX IF NOT EXISTS idx_activities_type_time ON activities (source, activity_type, start_time) WHERE external_id IS NULL;
     CREATE INDEX IF NOT EXISTS idx_activities_time_range ON activities (start_time, end_time);
     CREATE INDEX IF NOT EXISTS idx_activities_not_deleted ON activities (activity_type, start_time DESC) WHERE deleted_at IS NULL;
-    CREATE INDEX IF NOT EXISTS idx_activities_not_superseded ON activities (activity_type, start_time DESC) WHERE deleted_at IS NULL AND superseded_by IS NULL;
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_activities_one_override_per_target ON activities (overrides_id) WHERE overrides_id IS NOT NULL AND deleted_at IS NULL
+    CREATE INDEX IF NOT EXISTS idx_activities_not_superseded ON activities (activity_type, start_time DESC) WHERE deleted_at IS NULL AND superseded_by IS NULL
+  `,
+
+  // Many-to-many: an aurboda override can target multiple synced rows (the
+  // common case post-cross-source merge — Garmin + Strava + Health Connect
+  // all reporting the same physical session). Each target may be overridden
+  // by at most one override (UNIQUE on target_id), preventing the
+  // ambiguous "which override wins for this source" case at merge time.
+  // Both sides cascade-delete: removing a target unlinks it from its
+  // override; removing an override removes all its target links.
+  activity_override_targets: `
+    CREATE TABLE IF NOT EXISTS activity_override_targets (
+      override_id UUID NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+      target_id   UUID NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+      PRIMARY KEY (override_id, target_id)
+    )
+  `,
+  activity_override_targets_indexes: `
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_aot_unique_target ON activity_override_targets (target_id);
+    CREATE INDEX IF NOT EXISTS idx_aot_override ON activity_override_targets (override_id)
+  `,
+
+  // Restore the old "delete override when its target is deleted" cascade
+  // semantics under the join-table model: when an override's LAST target
+  // row is removed, also remove the override activity itself. Multi-target
+  // overrides survive the loss of any single target — the override row
+  // stays until every target is gone.
+  activity_override_targets_trigger: `
+    CREATE OR REPLACE FUNCTION delete_orphan_override() RETURNS TRIGGER AS $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM activity_override_targets WHERE override_id = OLD.override_id
+      ) THEN
+        DELETE FROM activities WHERE id = OLD.override_id;
+      END IF;
+      RETURN OLD;
+    END;
+    $$ LANGUAGE plpgsql;
+
+    DO $$ BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM information_schema.triggers
+         WHERE event_object_table = 'activity_override_targets'
+           AND trigger_name = 'aot_delete_orphan_override'
+      ) THEN
+        CREATE TRIGGER aot_delete_orphan_override
+          AFTER DELETE ON activity_override_targets
+          FOR EACH ROW EXECUTE FUNCTION delete_orphan_override();
+      END IF;
+    END $$
   `,
 
   // Activity type definitions (built-in + custom)

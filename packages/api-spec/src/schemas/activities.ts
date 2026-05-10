@@ -209,9 +209,9 @@ export const activitySchema = activityComputedMetricsSchema
     external_id: z.string().optional().meta({ description: 'External ID from source system' }),
     id: z.string().uuid().optional().meta({ description: 'Activity ID' }),
     notes: z.string().optional().meta({ description: 'Activity notes' }),
-    overrides_id: z.string().uuid().optional().meta({
+    override_target_ids: z.array(z.string().uuid()).optional().meta({
       description:
-        'When set, this activity is a user override of the referenced synced activity (issue #715). Edits to synced activities create overrides that survive integration re-syncs.',
+        'When non-empty, this activity is a user-edited aurboda override that hides the listed synced activities in merged views (#715, #735). One override may target multiple synced rows when claiming a cross-source merge group as a whole. Each target may be overridden by at most one override.',
     }),
     source: z.string().optional().meta({ description: 'Data source' }),
     start_time: iso8601DateTimeSchema,
@@ -395,6 +395,10 @@ export const updateActivityBodySchema = z
       description: 'New exercise type name (only for exercise activities)',
     }),
     notes: z.string().optional().meta({ description: 'New activity notes' }),
+    override_target_ids: z.array(z.string().uuid()).min(1).optional().meta({
+      description:
+        'When the PATCH targets a synced activity from a merged view, the caller passes the full list of source ids the new override should claim. Defaults to just the targeted activity (single-target case).',
+    }),
     start_time: iso8601DateTimeSchema.optional().meta({ description: 'New start time of the activity' }),
     title: z.string().optional().meta({ description: 'New activity title' }),
   })
