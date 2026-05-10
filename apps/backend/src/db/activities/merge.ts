@@ -113,6 +113,7 @@ const pickOverrideWinner = (members: Activity[]): Activity | undefined => {
 }
 
 /** Merge a group of activities into one, using priority-based winner selection. */
+// eslint-disable-next-line complexity -- single-pass winner selection + field blending; splitting hurts readability
 const mergeGroupByPriority = (members: Activity[]): MergedActivity => {
   // An aurboda override row referencing any group member must win regardless
   // of computed priority — overrides are explicit user intent.
@@ -132,6 +133,16 @@ const mergeGroupByPriority = (members: Activity[]): MergedActivity => {
 
   for (const member of sorted) {
     if (member.id) sourceIds.push(member.id)
+
+    // Field blending below mirrors "two sources reporting the same physical
+    // session" semantics — extend the time span, fill missing title from a
+    // sibling, concat notes. That's wrong when the winner is a user-typed
+    // override: the user's edits to start/end/title/notes are explicit
+    // intent, not "missing data to fill in from the source." Skip blending
+    // for override winners. Other winners (cross-source priority) still
+    // blend so e.g. a Garmin/Polar pairing extends to the union of times.
+    if (overrideWinner) continue
+
     if (member.start_time < winner.start_time) winner.start_time = member.start_time
     if (member.end_time && (!winner.end_time || member.end_time > winner.end_time)) {
       winner.end_time = member.end_time

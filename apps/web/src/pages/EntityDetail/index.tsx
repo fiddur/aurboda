@@ -8,7 +8,7 @@
 import { exerciseTypeNames, getExerciseTypeName as getExerciseTypeNameFromValue } from '@aurboda/api-spec'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
-import { useRoute } from 'preact-iso'
+import { useLocation, useRoute } from 'preact-iso'
 import { useCallback, useEffect, useState } from 'preact/hooks'
 
 import type { Activity, ActivityTypeDefinition, ExerciseTypeName, SourceRecord } from '../../state/api'
@@ -38,6 +38,7 @@ import { MetricContent } from './MetricContent'
 import { MusicPlaylist } from './MusicPlaylist'
 import { NotesSection } from './NotesSection'
 import { ProductivityDetail } from './ProductivityDetail'
+import { activityRouteAfterSave } from './saveNavigation'
 import { SchemaDataFields } from './SchemaDataFields'
 import {
   computeSleepMinutesFromStages,
@@ -456,6 +457,7 @@ const ResyncDetailButton = ({
 
 const ActivityContent = ({ entityId }: { entityId: string }) => {
   const queryClient = useQueryClient()
+  const { route } = useLocation()
   const isMerged = entityId.startsWith('merged:')
   const rawEntityId = isMerged ? entityId.slice('merged:'.length) : entityId
 
@@ -529,9 +531,9 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
     onSuccess: () => invalidate(),
   })
 
-  const saveMutation = useMutation({
-    mutationFn: () => {
-      if (!activity) return Promise.resolve()
+  const saveMutation = useMutation<{ id: string | undefined } | null, Error, void>({
+    mutationFn: async () => {
+      if (!activity) return null
       const body: {
         activity_type?: string
         start_time?: string
@@ -557,12 +559,17 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
       if (draft.data && JSON.stringify(draft.data) !== JSON.stringify(orig.data)) {
         body.data = draft.data
       }
-      if (Object.keys(body).length === 0) return Promise.resolve()
+      if (Object.keys(body).length === 0) return null
       return updateActivity(rawEntityId, body)
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       setIsEditing(false)
       invalidate()
+      const target = activityRouteAfterSave(result?.id, rawEntityId)
+      // `replace=true` so back-button doesn't return to the source-id detail
+      // (which would now show the unedited source — exactly the confusing
+      // state this fix avoids).
+      if (target) route(target, true)
     },
   })
 
