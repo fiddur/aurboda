@@ -70,10 +70,13 @@ export const insertOverride = async (
   }
   await query(user, 'BEGIN')
   try {
-    // Look for an existing aurboda row at the same (type, start_time). It
-    // may be a sibling override left over from a prior single-target edit
-    // whose join row claims a different synced source; reuse it instead of
-    // INSERTing a duplicate (which the partial unique index would reject).
+    // Look for an existing aurboda row at the same (type, start_time),
+    // including soft-deleted ones. The partial unique index
+    // `idx_activities_type_time` doesn't filter on `deleted_at`, so a
+    // soft-deleted aurboda row (e.g. from a prior "revert to source") still
+    // occupies the (source, type, start_time) slot. INSERTing a fresh row
+    // would 23505 — instead, revive the soft-deleted row by clearing
+    // `deleted_at` and overwriting its fields with the new input.
     const existing = await query(
       user,
       `SELECT id, source, external_id, activity_type, start_time, end_time, title, notes, data, deleted_at, superseded_by
@@ -81,23 +84,23 @@ export const insertOverride = async (
         WHERE source = 'aurboda'
           AND activity_type = $1
           AND start_time = $2
-          AND deleted_at IS NULL
         LIMIT 1`,
       [override.activity_type, override.start_time],
     )
 
     let row: Record<string, unknown>
     if (existing.rows.length > 0) {
-      // Update the existing row's fields with the new input. The aurboda
-      // row's `start_time` is part of the lookup key so doesn't change;
-      // every other field is overwritten with the user's edited value.
+      // Update the existing row's fields with the new input. `start_time`
+      // is part of the lookup key so doesn't change; every other field is
+      // overwritten. `deleted_at = NULL` revives a soft-deleted override.
       const updated = await query(
         user,
         `UPDATE activities SET
            end_time = $2,
            title = $3,
            notes = $4,
-           data = $5
+           data = $5,
+           deleted_at = NULL
          WHERE id = $1
          RETURNING id, source, external_id, activity_type, start_time, end_time, title, notes, data, deleted_at, superseded_by`,
         [

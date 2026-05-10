@@ -854,6 +854,50 @@ describe('Activities Integration Tests', () => {
       expect(second?.override_target_ids?.sort()).toEqual([garminId, stravaId].sort())
     })
 
+    test('reuses a soft-deleted aurboda row at the same (type, start_time) by reviving it', async () => {
+      // Real-world case: user edits → override created. User clicks "revert
+      // to source" → override soft-deleted (deleted_at set). User edits
+      // again to the same type → must NOT 23505 on idx_activities_type_time
+      // (which doesn't filter on deleted_at). Revive the existing row.
+      const user = getTestUser()
+      const garminId = randomUUID()
+
+      await insertActivity(user, {
+        activity_type: 'meditation',
+        end_time: new Date('2026-05-11T10:30:00Z'),
+        external_id: 'garmin-revive',
+        id: garminId,
+        source: 'garmin',
+        start_time: new Date('2026-05-11T10:00:00Z'),
+      })
+
+      const first = await insertOverride(user, [garminId], {
+        activity_type: 'walking',
+        end_time: new Date('2026-05-11T10:30:00Z'),
+        notes: 'before revert',
+        start_time: new Date('2026-05-11T10:00:00Z'),
+        title: 'before revert',
+      })
+
+      // Soft-delete the override (mimics the "revert to source" flow).
+      const { query } = await import('./connection.ts')
+      await query(user, `UPDATE activities SET deleted_at = NOW() WHERE id = $1`, [first!.id])
+
+      // New edit at the same (type, start_time) — must succeed by reviving.
+      const second = await insertOverride(user, [garminId], {
+        activity_type: 'walking',
+        end_time: new Date('2026-05-11T10:25:00Z'),
+        notes: 'after revive',
+        start_time: new Date('2026-05-11T10:00:00Z'),
+        title: 'after revive',
+      })
+
+      expect(second?.id).toBe(first?.id)
+      expect(second?.title).toBe('after revive')
+      expect(second?.notes).toBe('after revive')
+      expect(second?.deleted_at).toBeUndefined()
+    })
+
     test('multi-target cascade: deleting the last target removes the override (delete_orphan_override trigger)', async () => {
       const user = getTestUser()
       const garminId = randomUUID()
