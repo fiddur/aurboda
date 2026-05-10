@@ -342,7 +342,7 @@ export interface MealFoodItem {
   fat?: number
   fiber?: number
   micros?: Micros
-  /** Sensitivity flag names snapshotted at meal-add time. */
+  /** Sensitivity flag names — resolved live from food_item_sensitivities; not snapshotted. */
   sensitivities?: string[]
 }
 
@@ -405,10 +405,8 @@ export interface MealFoodItemLink {
   quantity?: number
   unit?: string
   sort_order: number
-  /** Sensitivity flag names snapshotted at meal-add time. */
-  sensitivities?: string[]
   // Nutrient snapshot — same fields as FoodItemEntity
-  [nutrient: string]: string | number | boolean | Date | string[] | undefined
+  [nutrient: string]: string | number | boolean | Date | undefined
 }
 
 // ============================================================================

@@ -2,10 +2,11 @@
  * Meal ↔ Food Item junction table operations.
  *
  * Each junction row snapshots the canonical food item's nutrient values at
- * insertion time so historical totals stay frozen. Name and icon are NOT
- * snapshotted on new writes — they're presentation data and are resolved
- * live against the canonical food item (per-user `food_items` or central
- * `shared_food_items`, with per-user overrides) at meal read time.
+ * insertion time so historical totals stay frozen. Name, icon, and
+ * sensitivity flags are NOT snapshotted — they're presentation/inheritance
+ * data and are resolved live against the canonical food item (per-user
+ * `food_items` or central `shared_food_items`, with per-user overrides)
+ * and the `food_item_sensitivities` junction at meal read time.
  *
  * The `food_item_name` + `food_item_icon` legacy columns are still read,
  * though, so meals whose food item was hard-deleted (no merge re-pointer)
@@ -30,7 +31,6 @@ const JUNCTION_COLUMNS = [
   'quantity',
   'unit',
   'sort_order',
-  'sensitivities',
   ...NUTRIENT_FIELD_NAMES,
 ].join(', ')
 
@@ -44,7 +44,6 @@ const mapJunctionRow = (row: Record<string, unknown>): MealFoodItemLink => {
     quantity: row.quantity ?? undefined,
     unit: row.unit ?? undefined,
     sort_order: row.sort_order ?? 0,
-    sensitivities: Array.isArray(row.sensitivities) ? (row.sensitivities as string[]) : undefined,
   }
   for (const field of NUTRIENT_FIELD_NAMES) {
     const val = row[field]
@@ -60,8 +59,7 @@ export interface MealFoodItemInput {
   quantity?: number
   unit?: string
   sort_order?: number
-  sensitivities?: string[]
-  [nutrient: string]: string | number | string[] | undefined
+  [nutrient: string]: string | number | undefined
 }
 
 // ── Operations ───────────────────────────────────────────────────────────────
@@ -93,14 +91,13 @@ export const setMealFoodItems = async (
 
   for (let i = 0; i < items.length; i++) {
     const item = items[i]
-    const fields = ['meal_id', 'food_item_id', 'quantity', 'unit', 'sort_order', 'sensitivities']
+    const fields = ['meal_id', 'food_item_id', 'quantity', 'unit', 'sort_order']
     const values: unknown[] = [
       mealId,
       item.food_item_id,
       item.quantity ?? null,
       item.unit ?? null,
       item.sort_order ?? i,
-      item.sensitivities ?? null,
     ]
 
     for (const field of NUTRIENT_FIELD_NAMES) {
