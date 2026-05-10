@@ -40,10 +40,10 @@ export const categorizeOtherActivities = (
       const sourceLabel = a.source ? ` (${a.source})` : ''
       const displayName = a.title ?? toDisplayName(a.activity_type)
       const icon =
+        itemIcons[a.activity_type] ??
         typeDefsMap?.get(a.activity_type)?.icon ??
         itemIcons[displayName] ??
-        itemIcons[displayName.toLowerCase()] ??
-        itemIcons[a.activity_type]
+        itemIcons[displayName.toLowerCase()]
       return {
         color: getActivityColor(a),
         column: 'Activity' as Column,
