@@ -51,6 +51,14 @@ export const insertNewActivity = async (user: string, activity: Activity): Promi
  * UNIQUE constraint on `target_id` rejects an override that tries to claim
  * a target already overridden by someone else; the caller catches the
  * unique-violation and either reuses the existing override or aborts.
+ *
+ * Reuses an existing aurboda row at the same `(activity_type, start_time)`
+ * if one already exists — the legacy partial-unique index
+ * `idx_activities_type_time` would otherwise reject the INSERT, and
+ * pre-#735 single-target overrides may have left aurboda rows whose join
+ * links don't cover all of today's merge-group members. The reuse path
+ * updates the row's fields with the new input and attaches the new
+ * targets via `ON CONFLICT DO NOTHING`.
  */
 export const insertOverride = async (
   user: string,
@@ -60,41 +68,89 @@ export const insertOverride = async (
   if (targetIds.length === 0) {
     throw new Error('insertOverride requires at least one target id')
   }
-  // Two-step insert: row first (so we have the id), then bulk-insert all
-  // target links. If the link insert fails (UNIQUE violation on a target
-  // already claimed by another override), the bare aurboda row would be
-  // orphaned — wrap in a transaction so a failure rolls back both steps.
   await query(user, 'BEGIN')
   try {
-    const inserted = await query(
+    // Look for an existing aurboda row at the same (type, start_time). It
+    // may be a sibling override left over from a prior single-target edit
+    // whose join row claims a different synced source; reuse it instead of
+    // INSERTing a duplicate (which the partial unique index would reject).
+    const existing = await query(
       user,
-      `INSERT INTO activities (source, activity_type, start_time, end_time, title, notes, data)
-       VALUES ('aurboda', $1, $2, $3, $4, $5, $6)
-       RETURNING id, source, external_id, activity_type, start_time, end_time, title, notes, data, deleted_at, superseded_by`,
-      [
-        override.activity_type,
-        override.start_time,
-        override.end_time ?? null,
-        override.title ?? null,
-        override.notes ?? null,
-        override.data ? JSON.stringify(override.data) : null,
-      ],
+      `SELECT id, source, external_id, activity_type, start_time, end_time, title, notes, data, deleted_at, superseded_by
+         FROM activities
+        WHERE source = 'aurboda'
+          AND activity_type = $1
+          AND start_time = $2
+          AND deleted_at IS NULL
+        LIMIT 1`,
+      [override.activity_type, override.start_time],
     )
-    if (inserted.rows.length === 0) {
-      await query(user, 'ROLLBACK')
-      return null
+
+    let row: Record<string, unknown>
+    if (existing.rows.length > 0) {
+      // Update the existing row's fields with the new input. The aurboda
+      // row's `start_time` is part of the lookup key so doesn't change;
+      // every other field is overwritten with the user's edited value.
+      const updated = await query(
+        user,
+        `UPDATE activities SET
+           end_time = $2,
+           title = $3,
+           notes = $4,
+           data = $5
+         WHERE id = $1
+         RETURNING id, source, external_id, activity_type, start_time, end_time, title, notes, data, deleted_at, superseded_by`,
+        [
+          existing.rows[0].id,
+          override.end_time ?? null,
+          override.title ?? null,
+          override.notes ?? null,
+          override.data ? JSON.stringify(override.data) : null,
+        ],
+      )
+      row = updated.rows[0]
+    } else {
+      const inserted = await query(
+        user,
+        `INSERT INTO activities (source, activity_type, start_time, end_time, title, notes, data)
+         VALUES ('aurboda', $1, $2, $3, $4, $5, $6)
+         RETURNING id, source, external_id, activity_type, start_time, end_time, title, notes, data, deleted_at, superseded_by`,
+        [
+          override.activity_type,
+          override.start_time,
+          override.end_time ?? null,
+          override.title ?? null,
+          override.notes ?? null,
+          override.data ? JSON.stringify(override.data) : null,
+        ],
+      )
+      if (inserted.rows.length === 0) {
+        await query(user, 'ROLLBACK')
+        return null
+      }
+      row = inserted.rows[0]
     }
-    const overrideId = inserted.rows[0].id as string
+    const overrideId = row.id as string
     // Bulk insert target links via VALUES ($1, $2), ($1, $3), …
+    // ON CONFLICT DO NOTHING handles the reuse path where some of the
+    // requested targets are already linked from a prior edit.
     const valueClauses = targetIds.map((_, i) => `($1, $${i + 2})`).join(', ')
     await query(
       user,
-      `INSERT INTO activity_override_targets (override_id, target_id) VALUES ${valueClauses}`,
+      `INSERT INTO activity_override_targets (override_id, target_id) VALUES ${valueClauses}
+       ON CONFLICT DO NOTHING`,
       [overrideId, ...targetIds],
+    )
+    // Re-read targets so the returned row reflects the full link set
+    // (including any pre-existing links on the reused row).
+    const allTargets = await query<{ ids: string[] | null }>(
+      user,
+      `SELECT array_agg(target_id) AS ids FROM activity_override_targets WHERE override_id = $1`,
+      [overrideId],
     )
     await query(user, 'COMMIT')
     await materializeSuperseded(user, override.start_time)
-    return mapActivityRow({ ...inserted.rows[0], override_target_ids: targetIds })
+    return mapActivityRow({ ...row, override_target_ids: allTargets.rows[0]?.ids ?? targetIds })
   } catch (err) {
     await query(user, 'ROLLBACK').catch(() => {})
     throw err
