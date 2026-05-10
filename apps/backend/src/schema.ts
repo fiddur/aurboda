@@ -94,6 +94,7 @@ export const tableCreationOrder = [
   'food_item_sensitivities',
   'food_item_sensitivities_indexes',
   'shared_food_item_overrides',
+  'user_nutrient_recommendations',
   'locations',
   'locations_indexes',
   'places',

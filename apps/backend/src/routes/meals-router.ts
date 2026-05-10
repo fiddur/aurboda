@@ -14,6 +14,9 @@ import {
   type MealsQuery,
   type MealsResponse,
   mealsQuerySchema,
+  type NutrientPeriodSummaryQuery,
+  type NutrientPeriodSummaryResponse,
+  nutrientPeriodSummaryQuerySchema,
   type UpdateMealBody,
   updateMealBodySchema,
 } from '@aurboda/api-spec'
@@ -33,6 +36,7 @@ import {
   queryMeals,
   updateMealById,
 } from '../services/meals.ts'
+import { getMealPeriodSummary } from '../services/queries/meal-period-summary.ts'
 import { type AnyMiddleware, type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody, validateQuery } from '../validation.ts'
 
@@ -79,6 +83,20 @@ export const createMealsRouter = (authMiddleware: AnyMiddleware): TypedRouter =>
     async (req, res) => {
       const result = await queryFrequentFoodItems(req.user!, req.query)
       res.json({ data: result.data, success: true })
+    },
+  )
+
+  router.get<Record<string, never>, NutrientPeriodSummaryResponse, unknown, NutrientPeriodSummaryQuery>(
+    '/period-summary',
+    authMiddleware,
+    validateQuery(nutrientPeriodSummaryQuerySchema),
+    async (req, res) => {
+      const data = await getMealPeriodSummary(req.user!, {
+        end: req.query.end,
+        start: req.query.start,
+        tz: req.query.tz,
+      })
+      res.json({ data, success: true })
     },
   )
 

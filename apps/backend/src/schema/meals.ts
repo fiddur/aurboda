@@ -350,4 +350,19 @@ export const mealsTables: Record<string, string> = {
       updated_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `,
+
+  // Per-user override of the central nutrient recommendation defaults. A row
+  // here wins over `shared_nutrient_recommendations` (central, see
+  // central-nutrient-recommendations.ts) for the matching nutrient_name.
+  // Explicit NULLs mean "suppress this nutrient's recommendation" — they are
+  // distinct from "no row at all" (which lets the central default through).
+  user_nutrient_recommendations: `
+    CREATE TABLE IF NOT EXISTS user_nutrient_recommendations (
+      nutrient_name      TEXT PRIMARY KEY,
+      recommended_low    DOUBLE PRECISION,
+      recommended_high   DOUBLE PRECISION,
+      created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `,
 }

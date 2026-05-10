@@ -35,6 +35,7 @@ import { createLocationsRouter } from '../routes/locations-router.ts'
 import { createMealsRouter } from '../routes/meals-router.ts'
 import { createMetricsRouter } from '../routes/metrics-router.ts'
 import { createNotesRouter } from '../routes/notes-router.ts'
+import { createNutrientRecommendationsRouter } from '../routes/nutrient-recommendations-router.ts'
 import { createProductivityRouter } from '../routes/productivity-router.ts'
 import { createRawRecordsRouter } from '../routes/raw-records-router.ts'
 import { createReportsRouter } from '../routes/reports-router.ts'
@@ -89,6 +90,7 @@ export const mountRestRouters = ({
   httpd.use('/meals', createMealsRouter(authMiddleware))
   httpd.use('/food-items', createFoodItemsRouter(authMiddleware, centralDb))
   httpd.use('/sensitivity-flags', createSensitivityFlagsRouter(authMiddleware))
+  httpd.use('/nutrient-recommendations', createNutrientRecommendationsRouter(authMiddleware))
   httpd.use('/admin/imports', createImportsRouter(authMiddleware, adminMiddleware, centralDb))
   httpd.use('/reports', createReportsRouter(authMiddleware))
   httpd.use(
