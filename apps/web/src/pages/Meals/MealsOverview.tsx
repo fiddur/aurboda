@@ -55,9 +55,16 @@ const formatNutrientValue = (value: number, unit: string): string => {
 
 /**
  * Map a value against a recommended range to the same flag enum used by
- * report cards, so the existing ReferenceRangeBar marker color stays
+ * report cards so the existing ReferenceRangeBar marker color stays
  * consistent across the app. v1 doesn't surface "critical" thresholds —
  * that maps to a future tier on the override schema.
+ *
+ * Note: ReferenceRangeBar's FLAG_COLORS palette is symmetric (low and high
+ * both yellow, normal green) which fits two-sided medical ranges. For
+ * dietary contexts that's a v1 simplification — exceeding the salt cap
+ * arguably deserves stronger framing than missing the protein floor. A
+ * follow-up could either invert the palette per nutrient or introduce a
+ * dedicated dietary palette.
  */
 const flagFor = (
   value: number,
@@ -116,9 +123,11 @@ const balanceLabel = (balance: number): string => {
 function EnergySection({
   eaten,
   burned,
+  daysWithMeals,
 }: {
   eaten?: NutrientPeriodStat
   burned: CaloriesBurnedPeriodStat | null
+  daysWithMeals: number
 }) {
   const eatenAvg = eaten?.avg ?? 0
   const burnedAvg = burned?.avg ?? null
@@ -131,9 +140,9 @@ function EnergySection({
         <div class="energy-cell">
           <span class="energy-label">Eaten / day</span>
           <span class="energy-value">{eatenAvg ? `${Math.round(eatenAvg)} kcal` : '—'}</span>
-          {eaten && (
+          {daysWithMeals > 0 && (
             <span class="energy-sub">
-              over {eaten.days_with_data} {eaten.days_with_data === 1 ? 'day' : 'days'}
+              over {daysWithMeals} {daysWithMeals === 1 ? 'day' : 'days'}
             </span>
           )}
         </div>
@@ -282,7 +291,11 @@ export function MealsOverview() {
 
       {!isSummaryLoading && summary && (
         <>
-          <EnergySection eaten={summary.nutrients.calories} burned={summary.calories_burned ?? null} />
+          <EnergySection
+            eaten={summary.nutrients.calories}
+            burned={summary.calories_burned ?? null}
+            daysWithMeals={summary.days_with_meals}
+          />
           {NUTRIENT_CATEGORIES.map(({ key, label }) => {
             const rows = rowsByCategory.get(key)
             if (!rows || rows.length === 0) return null

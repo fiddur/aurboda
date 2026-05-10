@@ -35,6 +35,8 @@ interface CentralRow {
   source_version: string | null
 }
 
+const NUTRIENT_UNIT_BY_NAME = new Map<string, string>(NUTRIENT_FIELDS.map((f) => [f.name, f.unit]))
+
 const buildCentralLabel = (row: CentralRow): string =>
   row.source_version ? `${row.source} ${row.source_version}` : row.source
 
@@ -46,8 +48,6 @@ const buildCentralLabel = (row: CentralRow): string =>
  */
 const unitFor = (name: string, centralRow: CentralRow | undefined): string =>
   centralRow?.unit ?? NUTRIENT_UNIT_BY_NAME.get(name) ?? ''
-
-const NUTRIENT_UNIT_BY_NAME = new Map<string, string>(NUTRIENT_FIELDS.map((f) => [f.name, f.unit]))
 
 const mergeOne = (
   name: string,
@@ -111,20 +111,30 @@ export const getEffectiveRecommendation = async (
   return mergeOne(nutrientName, centralRow ?? undefined, userRow ?? undefined)
 }
 
+/**
+ * Upsert and return the merged effective view in one fewer round-trip than
+ * the naive "write then re-read both rows" path: the upsert already returns
+ * the user row via RETURNING, so we only have to fetch the central row.
+ */
 export const setUserNutrientRecommendation = async (
   user: string,
   nutrientName: string,
   input: UserNutrientRecommendationInput,
 ): Promise<NutrientRecommendation | null> => {
-  await dbUpsertUserNutrientRecommendation(user, nutrientName, input)
-  return getEffectiveRecommendation(user, nutrientName)
+  const userRow = await dbUpsertUserNutrientRecommendation(user, nutrientName, input)
+  const centralRow = await getCentralDb().getSharedNutrientRecommendation(nutrientName)
+  return mergeOne(nutrientName, centralRow ?? undefined, userRow)
 }
 
+/**
+ * Delete the user override and return the central default (if any). The
+ * post-delete user side is known to be empty so we skip the user lookup.
+ */
 export const clearUserNutrientRecommendation = async (
   user: string,
   nutrientName: string,
 ): Promise<{ cleared: boolean; effective: NutrientRecommendation | null }> => {
   const cleared = await dbClearUserNutrientRecommendation(user, nutrientName)
-  const effective = await getEffectiveRecommendation(user, nutrientName)
-  return { cleared, effective }
+  const centralRow = await getCentralDb().getSharedNutrientRecommendation(nutrientName)
+  return { cleared, effective: mergeOne(nutrientName, centralRow ?? undefined, undefined) }
 }

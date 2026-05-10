@@ -52,7 +52,8 @@ describe('GET /meals/period-summary', () => {
       start: '2025-01-01',
       end: '2025-01-07',
       days_in_range: 7,
-      nutrients: { calories: { avg: 2100, total: 14_700, days_with_data: 7 } },
+      days_with_meals: 7,
+      nutrients: { calories: { avg: 2100, total: 14_700, days_with_value: 7 } },
       calories_burned: { avg: 2400, days_with_data: 7 },
     })
     const res = await supertest(buildApp()).get('/meals/period-summary?start=2025-01-01&end=2025-01-07')
@@ -71,6 +72,7 @@ describe('GET /meals/period-summary', () => {
       start: '2025-01-01',
       end: '2025-01-01',
       days_in_range: 1,
+      days_with_meals: 0,
       nutrients: {},
       calories_burned: null,
     })

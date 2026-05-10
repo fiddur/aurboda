@@ -68,12 +68,15 @@ const computeDisplayRange = (
     return {
       displayMin,
       displayMax,
-      normalStartPct: ((displayMin - displayMin) / displaySpan) * 100, // 0
+      // Normal zone runs from displayMin (i.e. 0%) up to where `high` sits.
+      normalStartPct: 0,
       normalEndPct: ((high - displayMin) / displaySpan) * 100,
     }
   }
-  // low !== undefined && high === undefined
-  const lo = low!
+  // low !== undefined && high === undefined. Bind to a local so TS keeps
+  // the narrowing through the local arithmetic — without it the inferred
+  // type is `number | undefined` again on each reference.
+  const lo = low as number
   const displayMin = Math.min(lo * 0.7, value * 0.9)
   const displayMax = Math.max(lo * 1.5, value * 1.1)
   const displaySpan = displayMax - displayMin || 1

@@ -90,6 +90,12 @@ const NNR2023_SEED_ADVISORY_LOCK_KEY = 7702_320_023n // mnemonic: NNR-2023
  * it overwritten only if it actually drifted from this file. The seed file
  * is the source of truth.
  *
+ * Note: this is upsert-only; nutrients **removed** from `nnr2023Seed` linger
+ * in `shared_nutrient_recommendations` until manually deleted. The override
+ * layer can suppress them per-user, and a future curated-seed bump can do a
+ * one-shot delete pass — keeping it deliberate for now to avoid surprising
+ * users whose UI suddenly drops a familiar bar.
+ *
  * Wrapped in a transaction with `pg_advisory_xact_lock` so multiple backend
  * instances starting in parallel serialize through one writer instead of
  * each issuing the same ~30 INSERTs.
@@ -99,7 +105,13 @@ export const seedSharedNutrientRecommendations = async (client: pg.Client): Prom
   try {
     await client.query('SELECT pg_advisory_xact_lock($1)', [NNR2023_SEED_ADVISORY_LOCK_KEY.toString()])
     for (const entry of nnr2023Seed) {
-      if (entry.recommended_low === null && entry.recommended_high === null) continue
+      if (entry.recommended_low === null && entry.recommended_high === null) {
+        // The table CHECK constraint forbids all-null rows; if this hits, a
+        // typo in the seed file would silently no-op. Fail loudly instead.
+        throw new Error(
+          `nnr2023Seed entry "${entry.nutrient_name}" has no bounds — at least one of recommended_low / recommended_high is required`,
+        )
+      }
       await client.query(
         `INSERT INTO shared_nutrient_recommendations
            (nutrient_name, recommended_low, recommended_high, unit, source, source_version, notes, updated_at)

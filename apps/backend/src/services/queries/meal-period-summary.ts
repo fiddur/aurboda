@@ -98,24 +98,32 @@ const accumulateDayTotals = (
   return dayTotals
 }
 
+/**
+ * Roll up per-day totals to per-nutrient stats. The avg denominator is the
+ * count of days with **any** meal logged (passed in as `daysWithMeals`), not
+ * the count of days that had a value for this specific nutrient — otherwise
+ * intermittently-eaten nutrients (fiber, vitamin K) would average over a
+ * smaller window and overstate adequacy. `days_with_value` is preserved as a
+ * diagnostic so callers can spot data sparsity.
+ */
 const computeNutrientStats = (
   dayTotals: Map<string, Map<string, number>>,
+  daysWithMeals: number,
 ): Record<string, NutrientPeriodStat> => {
   const perNutrientTotal = new Map<string, number>()
-  const perNutrientDayCount = new Map<string, number>()
+  const perNutrientDaysWithValue = new Map<string, number>()
   for (const day of dayTotals.values()) {
     for (const [field, val] of day) {
       perNutrientTotal.set(field, (perNutrientTotal.get(field) ?? 0) + val)
-      perNutrientDayCount.set(field, (perNutrientDayCount.get(field) ?? 0) + 1)
+      perNutrientDaysWithValue.set(field, (perNutrientDaysWithValue.get(field) ?? 0) + 1)
     }
   }
   const stats: Record<string, NutrientPeriodStat> = {}
   for (const [field, total] of perNutrientTotal) {
-    const days = perNutrientDayCount.get(field) ?? 0
     stats[field] = {
-      avg: round2(days > 0 ? total / days : 0),
+      avg: round2(daysWithMeals > 0 ? total / daysWithMeals : 0),
       total: round2(total),
-      days_with_data: days,
+      days_with_value: perNutrientDaysWithValue.get(field) ?? 0,
     }
   }
   return stats
@@ -155,13 +163,15 @@ export const getMealPeriodSummary = async (
   )
 
   const dayTotals = accumulateDayTotals(meals, junctionMap, tz)
-  const nutrients = computeNutrientStats(dayTotals)
+  const daysWithMeals = dayTotals.size
+  const nutrients = computeNutrientStats(dayTotals, daysWithMeals)
   const calories_burned = await computeCaloriesBurned(user, start, end, tz)
 
   return {
     start: input.start,
     end: input.end,
     days_in_range: daysInRange,
+    days_with_meals: daysWithMeals,
     nutrients,
     calories_burned,
   }

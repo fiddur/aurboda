@@ -90,32 +90,50 @@ describe('PUT /nutrient-recommendations/:nutrient_name', () => {
     expect(svc.setUserNutrientRecommendation).not.toHaveBeenCalled()
   })
 
-  test('500 if the service can’t resolve effective state', async () => {
+  test('200 with no data when the user fully suppressed and no central default remains', async () => {
     vi.mocked(svc.setUserNutrientRecommendation).mockResolvedValue(null)
     const res = await supertest(buildApp())
       .put('/nutrient-recommendations/protein')
-      .send({ recommended_low: 80 })
-    expect(res.status).toBe(500)
+      .send({ recommended_low: null, recommended_high: null })
+    expect(res.status).toBe(200)
+    expect(res.body.success).toBe(true)
+    expect(res.body.data).toBeUndefined()
+  })
+
+  test('400 when nutrient_name is unknown', async () => {
+    const res = await supertest(buildApp())
+      .put('/nutrient-recommendations/not_a_nutrient')
+      .send({ recommended_low: 1 })
+    expect(res.status).toBe(400)
+    expect(svc.setUserNutrientRecommendation).not.toHaveBeenCalled()
   })
 })
 
 describe('DELETE /nutrient-recommendations/:nutrient_name', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  test('200 with the post-clear effective record (the central default)', async () => {
+  test('200 with the post-clear effective record (the central default) and cleared=true', async () => {
     vi.mocked(svc.clearUserNutrientRecommendation).mockResolvedValue({
       cleared: true,
       effective: rec(),
     })
     const res = await supertest(buildApp()).delete('/nutrient-recommendations/protein')
     expect(res.status).toBe(200)
+    expect(res.body.cleared).toBe(true)
     expect(res.body.data.source).toBe('central')
   })
 
-  test('200 with no data when nothing remains after clear', async () => {
+  test('200 with cleared=false when there was nothing to delete', async () => {
     vi.mocked(svc.clearUserNutrientRecommendation).mockResolvedValue({ cleared: false, effective: null })
-    const res = await supertest(buildApp()).delete('/nutrient-recommendations/unknown_nutrient')
+    const res = await supertest(buildApp()).delete('/nutrient-recommendations/protein')
     expect(res.status).toBe(200)
+    expect(res.body.cleared).toBe(false)
     expect(res.body.data).toBeUndefined()
+  })
+
+  test('400 when nutrient_name is unknown', async () => {
+    const res = await supertest(buildApp()).delete('/nutrient-recommendations/not_a_nutrient')
+    expect(res.status).toBe(400)
+    expect(svc.clearUserNutrientRecommendation).not.toHaveBeenCalled()
   })
 })

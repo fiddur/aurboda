@@ -7,8 +7,16 @@
  * - query_meals_period_summary returns daily-averaged nutrient intake plus
  *   averaged calories_total burn over a date range.
  */
-import { nutrientPeriodSummaryQuerySchema, upsertNutrientRecommendationBodySchema } from '@aurboda/api-spec'
+import {
+  NUTRIENT_FIELD_NAMES,
+  nutrientPeriodSummaryQuerySchema,
+  upsertNutrientRecommendationBodySchema,
+} from '@aurboda/api-spec'
 import { z } from 'zod'
+
+const nutrientNameMcpSchema = z
+  .enum(NUTRIENT_FIELD_NAMES as unknown as readonly [string, ...string[]])
+  .describe('Nutrient field name (must match NUTRIENT_FIELDS.name, e.g. "protein", "vitamin_c")')
 
 import {
   clearUserNutrientRecommendation,
@@ -36,9 +44,7 @@ export const registerNutrientRecommendationTools = (server: McpServer, user: str
       'Pass `null` for either bound to suppress the central default for that bound; pass both as null to suppress the recommendation entirely (the nutrient will still be measured but no range is shown).',
     ].join(' '),
     {
-      nutrient_name: z
-        .string()
-        .describe('Nutrient field name (must match NUTRIENT_FIELDS.name, e.g. "protein", "vitamin_c")'),
+      nutrient_name: nutrientNameMcpSchema,
       ...upsertNutrientRecommendationBodySchema.shape,
     },
     async ({ nutrient_name, recommended_low, recommended_high }) => {
@@ -58,7 +64,7 @@ export const registerNutrientRecommendationTools = (server: McpServer, user: str
     'clear_nutrient_recommendation',
     'Remove the per-user override for a nutrient, reverting to the central default (or no recommendation if no central row exists).',
     {
-      nutrient_name: z.string().describe('Nutrient field name to clear'),
+      nutrient_name: nutrientNameMcpSchema,
     },
     async ({ nutrient_name }) => {
       const { cleared, effective } = await clearUserNutrientRecommendation(user, nutrient_name)

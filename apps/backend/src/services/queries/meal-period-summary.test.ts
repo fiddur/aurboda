@@ -53,11 +53,36 @@ describe('getMealPeriodSummary', () => {
     expect(result.start).toBe('2025-01-10')
     expect(result.end).toBe('2025-01-12')
     expect(result.days_in_range).toBe(3)
-    expect(result.nutrients.calories.days_with_data).toBe(2)
+    expect(result.days_with_meals).toBe(2)
+    expect(result.nutrients.calories.days_with_value).toBe(2)
     expect(result.nutrients.calories.avg).toBe(700) // (600 + 800) / 2
     expect(result.nutrients.calories.total).toBe(1400)
     expect(result.nutrients.protein.avg).toBe(40)
     expect(result.calories_burned).toBeNull()
+  })
+
+  test('intermittent nutrients average over days_with_meals, not days_with_value', async () => {
+    // Three meals across three days. Fiber present on only 1 of the 3 days.
+    // Old (buggy) semantics: fiber.avg = 30 / 1 = 30.
+    // New semantics: fiber.avg = 30 / 3 = 10. days_with_value still reports 1.
+    vi.mocked(db.getMeals).mockResolvedValue([
+      mealAt('m1', '2025-02-01T12:00:00Z'),
+      mealAt('m2', '2025-02-02T12:00:00Z'),
+      mealAt('m3', '2025-02-03T12:00:00Z'),
+    ])
+    vi.mocked(db.getMealFoodItemsBatch).mockResolvedValue(
+      new Map<string, MealFoodItemLink[]>([
+        ['m1', [link('m1', { calories: 500, fiber: 30 })]],
+        ['m2', [link('m2', { calories: 500 })]],
+        ['m3', [link('m3', { calories: 500 })]],
+      ]),
+    )
+
+    const result = await getMealPeriodSummary('user', { start: '2025-02-01', end: '2025-02-03' })
+
+    expect(result.days_with_meals).toBe(3)
+    expect(result.nutrients.fiber).toEqual({ avg: 10, total: 30, days_with_value: 1 })
+    expect(result.nutrients.calories).toEqual({ avg: 500, total: 1500, days_with_value: 3 })
   })
 
   test('sums multiple meals on the same day before averaging', async () => {
@@ -76,7 +101,8 @@ describe('getMealPeriodSummary', () => {
     const result = await getMealPeriodSummary('user', { start: '2025-01-10', end: '2025-01-10' })
 
     expect(result.days_in_range).toBe(1)
-    expect(result.nutrients.calories.days_with_data).toBe(1)
+    expect(result.days_with_meals).toBe(1)
+    expect(result.nutrients.calories.days_with_value).toBe(1)
     expect(result.nutrients.calories.avg).toBe(1100)
     expect(result.nutrients.calories.total).toBe(1100)
   })
@@ -126,6 +152,7 @@ describe('getMealPeriodSummary', () => {
     const result = await getMealPeriodSummary('user', { start: '2025-01-01', end: '2025-01-07' })
 
     expect(result.days_in_range).toBe(7)
+    expect(result.days_with_meals).toBe(0)
     expect(result.nutrients).toEqual({})
     expect(result.calories_burned).toBeNull()
   })
