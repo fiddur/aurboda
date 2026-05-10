@@ -10,18 +10,20 @@ import { mapActivityRow } from '../row-mappers.ts'
 import { findMergedGroupForActivity, mergeOverlappingActivities } from './merge.ts'
 
 /**
- * The standard SELECT column list for an activities row. The
- * `override_target_ids` is built from the `activity_override_targets` join
- * table via a correlated subquery; NULL when the row has no targets and is
- * normalised to `undefined` by the row mapper.
+ * SELECT column list for an activities row. The `override_target_ids` is
+ * built from the `activity_override_targets` join table via a correlated
+ * subquery; NULL when the row has no targets and is normalised to
+ * `undefined` by the row mapper.
  *
- * Two variants because some queries use a table alias (`a`) and some don't.
+ * `alias` defaults to the unqualified table name; pass `'a'` (or any other
+ * alias) when joining.
  */
-const ACTIVITY_COLUMNS_BARE = `id, source, external_id, activity_type, start_time, end_time, title, notes, data, deleted_at, superseded_by,
-  (SELECT array_agg(target_id) FROM activity_override_targets WHERE override_id = activities.id) AS override_target_ids`
+export const activityColumns = (alias: string = 'activities'): string =>
+  `${alias}.id, ${alias}.source, ${alias}.external_id, ${alias}.activity_type, ${alias}.start_time, ${alias}.end_time, ${alias}.title, ${alias}.notes, ${alias}.data, ${alias}.deleted_at, ${alias}.superseded_by,
+  (SELECT array_agg(target_id) FROM activity_override_targets WHERE override_id = ${alias}.id) AS override_target_ids`
 
-const ACTIVITY_COLUMNS_ALIAS = `a.id, a.source, a.external_id, a.activity_type, a.start_time, a.end_time, a.title, a.notes, a.data, a.deleted_at, a.superseded_by,
-  (SELECT array_agg(target_id) FROM activity_override_targets WHERE override_id = a.id) AS override_target_ids`
+const ACTIVITY_COLUMNS_BARE = activityColumns()
+const ACTIVITY_COLUMNS_ALIAS = activityColumns('a')
 
 /**
  * Find all non-deleted activities of the same type that belong to the same merge group
@@ -74,6 +76,25 @@ export const getActivityById = async (
   }
 
   return mapActivityRow(result.rows[0])
+}
+
+/**
+ * Fetch the `source` for each given activity id (deleted rows included).
+ * Lightweight lookup used by services to validate override-target shape
+ * before insert. Returns rows in arbitrary order; missing ids are simply
+ * absent from the result.
+ */
+export const getActivitySourcesByIds = async (
+  user: string,
+  ids: readonly string[],
+): Promise<{ id: string; source: string }[]> => {
+  if (ids.length === 0) return []
+  const result = await query<{ id: string; source: string }>(
+    user,
+    `SELECT id, source FROM activities WHERE id = ANY($1)`,
+    [ids],
+  )
+  return result.rows
 }
 
 /**

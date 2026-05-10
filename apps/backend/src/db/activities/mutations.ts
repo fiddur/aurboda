@@ -11,7 +11,7 @@ import { query } from '../connection.ts'
 import { buildDynamicUpdate, type UpdateEntry } from '../dynamic-update.ts'
 import { mapActivityRow } from '../row-mappers.ts'
 import { isSupersedable } from './merge.ts'
-import { getActivityById } from './queries.ts'
+import { activityColumns, getActivityById } from './queries.ts'
 import { materializeSuperseded } from './supersession.ts'
 
 /**
@@ -301,12 +301,7 @@ export const updateActivity = async (
   if (fields.length === 0) return getActivityById(user, id)
 
   const update = buildDynamicUpdate('activities', id, fields, {
-    returning:
-      // Use a subquery to materialize override_target_ids alongside the
-      // updated row, so callers that read the result get the full activity
-      // shape (matches mapActivityRow's expectations).
-      `id, source, external_id, activity_type, start_time, end_time, title, notes, data, deleted_at, superseded_by,
-       (SELECT array_agg(target_id) FROM activity_override_targets WHERE override_id = activities.id) AS override_target_ids`,
+    returning: activityColumns(),
   })
   if (!update) return getActivityById(user, id)
 

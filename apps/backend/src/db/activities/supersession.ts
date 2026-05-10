@@ -8,6 +8,7 @@ import type { Activity, MergedActivity } from '../types.ts'
 import { query } from '../connection.ts'
 import { mapActivityRow } from '../row-mappers.ts'
 import { mergeOverlappingActivities } from './merge.ts'
+import { activityColumns } from './queries.ts'
 
 /** Window (half-day) used when materializing supersession around a given time. */
 const MATERIALIZE_WINDOW_MS = 12 * 60 * 60 * 1000
@@ -91,8 +92,7 @@ export const materializeSuperseded = async (user: string, aroundTime: Date): Pro
 
   const result = await query(
     user,
-    `SELECT id, source, external_id, activity_type, start_time, end_time, title, notes, data, deleted_at, superseded_by,
-       (SELECT array_agg(target_id) FROM activity_override_targets WHERE override_id = activities.id) AS override_target_ids
+    `SELECT ${activityColumns()}
      FROM activities
      WHERE deleted_at IS NULL
        AND start_time >= $1

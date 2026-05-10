@@ -18,6 +18,7 @@ import {
   deleteActivity as dbDeleteActivity,
   findMergeableActivity,
   getActivityById as dbGetActivityById,
+  getActivitySourcesByIds,
   getActivityTypeDefinition,
   getOverrideForActivity,
   insertActivity as dbInsertActivity,
@@ -581,6 +582,21 @@ export async function updateActivity(
     const targetIds = input.override_target_ids?.length
       ? Array.from(new Set([target.id!, ...input.override_target_ids]))
       : [target.id!]
+    // Defensive check: targets must be synced (non-aurboda) rows. The web
+    // client filters this client-side, but a buggy or non-web caller could
+    // pass an aurboda id and create an "override of an override" the merge
+    // logic isn't designed for.
+    if (input.override_target_ids?.length) {
+      const sources = await getActivitySourcesByIds(user, targetIds)
+      const aurbodaTarget = sources.find((r) => r.source === 'aurboda')
+      if (aurbodaTarget) {
+        return {
+          error: `override targets must be synced rows; ${aurbodaTarget.id} is an aurboda row`,
+          id,
+          success: false,
+        }
+      }
+    }
     try {
       updated = await dbInsertOverride(user, targetIds, {
         activity_type: finalType,

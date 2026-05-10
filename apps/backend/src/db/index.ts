@@ -137,6 +137,7 @@ export {
   getNonSleepActivitiesMerged,
   getAllActivityTypeNames,
   getActivityById,
+  getActivitySourcesByIds,
   getNearbyActivities,
   backfillSuperseded,
   getOverlappingActivities,

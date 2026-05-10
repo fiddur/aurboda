@@ -585,6 +585,11 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
         activity.merged_start_time ?? activity.start_time,
         activity.merged_end_time ?? activity.end_time,
       )
+      // Asymmetric on purpose: the `=== undefined` guards ensure an explicit
+      // user edit on either side wins, but the merged-group span still fills
+      // the *other* side. So shrinking only end_time still force-writes the
+      // group-wide start_time. Don't simplify by removing the guards — that
+      // would clobber explicit edits with the merged span.
       if (forced?.start_time && body.start_time === undefined) body.start_time = forced.start_time
       if (forced?.end_time && body.end_time === undefined) body.end_time = forced.end_time
 
