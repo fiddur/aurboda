@@ -186,6 +186,10 @@ export type AddCustomMetricBody = z.infer<typeof addCustomMetricBodySchema>
 export const updateCustomMetricBodySchema = z
   .object({
     description: z.string().optional().meta({ description: 'Human-readable description' }),
+    include_in_daily_summary: z.boolean().optional().meta({
+      description:
+        'When true, surface this metric in get_daily_summary under metrics_today and metrics_latest.',
+    }),
     max_value: z
       .number()
       .nullable()

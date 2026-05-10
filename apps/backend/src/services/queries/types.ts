@@ -240,11 +240,39 @@ export interface NoteSummary {
   updated_at: string
 }
 
+export interface DailySummaryMetricEntry {
+  time: string
+  value: number
+  source: string
+  notes?: string
+}
+
+export interface DailySummaryMetricStats {
+  unit: string
+  count: number
+  min: number
+  max: number
+  avg: number
+  latest: number
+  latest_time: string
+  entries: DailySummaryMetricEntry[]
+}
+
+export interface DailySummaryMetricLatest {
+  value: number
+  time: string
+  unit: string
+  source: string
+  notes?: string
+}
+
 export interface DailySummaryResult {
   date: string
   activities: ActivitySummary[]
   heart_rate: HeartRateStats | null
   meals: MealSummary[]
+  metrics_today: Record<string, DailySummaryMetricStats>
+  metrics_latest: Record<string, DailySummaryMetricLatest>
   notes: NoteSummary[]
   steps: { total: number }
   sleep_sessions: SleepSessionSummary[]

@@ -23,14 +23,15 @@ export const metricsTables: Record<string, string> = {
   // User-defined custom metric types (extracted from user_settings JSONB)
   custom_metrics: `
     CREATE TABLE IF NOT EXISTS custom_metrics (
-      id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      name            VARCHAR(100) NOT NULL UNIQUE,
-      unit            VARCHAR(30) NOT NULL,
-      description     TEXT,
-      min_value       DOUBLE PRECISION,
-      max_value       DOUBLE PRECISION,
-      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      id                       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      name                     VARCHAR(100) NOT NULL UNIQUE,
+      unit                     VARCHAR(30) NOT NULL,
+      description              TEXT,
+      min_value                DOUBLE PRECISION,
+      max_value                DOUBLE PRECISION,
+      include_in_daily_summary BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at               TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `,
   custom_metrics_indexes: `

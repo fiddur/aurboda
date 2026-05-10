@@ -961,6 +961,12 @@ export const migrateSchema = async (user: string) => {
   if (existingTableNames.has('time_series')) {
     await query(db, `ALTER TABLE time_series ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`)
   }
+  if (existingTableNames.has('custom_metrics')) {
+    await query(
+      db,
+      `ALTER TABLE custom_metrics ADD COLUMN IF NOT EXISTS include_in_daily_summary BOOLEAN NOT NULL DEFAULT FALSE`,
+    )
+  }
   if (existingTableNames.has('productivity')) {
     await query(db, `ALTER TABLE productivity ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`)
     await query(

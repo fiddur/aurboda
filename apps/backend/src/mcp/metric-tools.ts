@@ -89,13 +89,14 @@ export const registerMetricTools = (server: McpServer, user: string) => {
   // Tool: add_custom_metric
   server.tool(
     'add_custom_metric',
-    'Register a new custom metric type. Custom metrics allow tracking data not covered by built-in metrics.',
+    'Register a new custom metric type. Custom metrics allow tracking data not covered by built-in metrics. Set include_in_daily_summary=true to surface entries and the latest value in get_daily_summary.',
     { ...addCustomMetricBodySchema.shape },
-    async ({ description, max_value, min_value, name, unit }) => {
+    async ({ description, include_in_daily_summary, max_value, min_value, name, unit }) => {
       const definition = {
         ...(description !== undefined ? { description } : {}),
-        ...(max_value !== undefined ? { maxValue: max_value } : {}),
-        ...(min_value !== undefined ? { minValue: min_value } : {}),
+        ...(include_in_daily_summary !== undefined ? { include_in_daily_summary } : {}),
+        ...(max_value !== undefined ? { max_value } : {}),
+        ...(min_value !== undefined ? { min_value } : {}),
         name,
         unit,
       }
@@ -140,14 +141,15 @@ export const registerMetricTools = (server: McpServer, user: string) => {
   // Tool: update_custom_metric
   server.tool(
     'update_custom_metric',
-    'Update an existing custom metric definition. Only provided fields are changed. Set min_value/max_value to null to clear them.',
+    'Update an existing custom metric definition. Only provided fields are changed. Set min_value/max_value to null to clear them. Toggle include_in_daily_summary to surface or hide this metric in get_daily_summary.',
     {
       name: z.string().describe('The name of the custom metric to update'),
       ...updateCustomMetricBodySchema.shape,
     },
-    async ({ description, max_value, min_value, name, unit }) => {
+    async ({ description, include_in_daily_summary, max_value, min_value, name, unit }) => {
       const updates = {
         ...(description !== undefined ? { description } : {}),
+        ...(include_in_daily_summary !== undefined ? { include_in_daily_summary } : {}),
         ...(max_value !== undefined ? { maxValue: max_value } : {}),
         ...(min_value !== undefined ? { minValue: min_value } : {}),
         ...(unit !== undefined ? { unit } : {}),
