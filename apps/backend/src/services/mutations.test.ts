@@ -994,7 +994,7 @@ describe('updateActivity', () => {
       activity_type: 'meditation',
       end_time: new Date('2024-03-15T11:00:00Z'),
       id: 'override-1',
-      overrides_id: 'activity-123',
+      override_target_ids: ['activity-123'],
       source: 'aurboda',
       start_time: new Date('2024-03-15T10:00:00Z'),
     })
@@ -1007,7 +1007,7 @@ describe('updateActivity', () => {
     expect(result.activity_type).toBe('meditation')
     expect(db.insertOverride).toHaveBeenCalledWith(
       'testuser',
-      'activity-123',
+      ['activity-123'],
       expect.objectContaining({ activity_type: 'meditation' }),
     )
     expect(db.updateActivity).not.toHaveBeenCalled()
@@ -1205,7 +1205,7 @@ describe('updateActivity', () => {
         activity_type: 'pipeceremony',
         end_time: new Date('2026-05-05T10:30:00Z'),
         id: 'override-1',
-        overrides_id: 'garmin-1',
+        override_target_ids: ['garmin-1'],
         source: 'aurboda',
         start_time: new Date('2026-05-05T10:00:00Z'),
       })
@@ -1215,7 +1215,7 @@ describe('updateActivity', () => {
       expect(result.success).toBe(true)
       expect(db.insertOverride).toHaveBeenCalledWith(
         'testuser',
-        'garmin-1',
+        ['garmin-1'],
         expect.objectContaining({ activity_type: 'pipeceremony' }),
       )
       expect(db.updateActivity).not.toHaveBeenCalled()
@@ -1235,7 +1235,7 @@ describe('updateActivity', () => {
         activity_type: 'pipeceremony',
         end_time: new Date('2026-05-05T10:30:00Z'),
         id: 'override-1',
-        overrides_id: 'garmin-1',
+        override_target_ids: ['garmin-1'],
         source: 'aurboda',
         start_time: new Date('2026-05-05T10:00:00Z'),
       })
@@ -1244,7 +1244,7 @@ describe('updateActivity', () => {
         end_time: new Date('2026-05-05T10:30:00Z'),
         id: 'override-1',
         notes: 'second pipe ceremony this week',
-        overrides_id: 'garmin-1',
+        override_target_ids: ['garmin-1'],
         source: 'aurboda',
         start_time: new Date('2026-05-05T10:00:00Z'),
       })

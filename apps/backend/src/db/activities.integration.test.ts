@@ -679,7 +679,7 @@ describe('Activities Integration Tests', () => {
         title: 'Meditation',
       })
 
-      const override = await insertOverride(user, garminId, {
+      const override = await insertOverride(user, [garminId], {
         activity_type: 'walking',
         end_time: new Date('2026-05-05T10:30:00Z'),
         notes: 'pipe ceremony',
@@ -689,7 +689,7 @@ describe('Activities Integration Tests', () => {
 
       expect(override).not.toBeNull()
       expect(override?.source).toBe('aurboda')
-      expect(override?.overrides_id).toBe(garminId)
+      expect(override?.override_target_ids).toEqual([garminId])
       expect(override?.activity_type).toBe('walking')
 
       const looked = await getOverrideForActivity(user, garminId)
@@ -712,7 +712,7 @@ describe('Activities Integration Tests', () => {
       })
 
       // User overrides type
-      const override = await insertOverride(user, garminId, {
+      const override = await insertOverride(user, [garminId], {
         activity_type: 'walking',
         end_time: new Date('2026-05-05T10:30:00Z'),
         start_time: new Date('2026-05-05T10:00:00Z'),
@@ -750,7 +750,7 @@ describe('Activities Integration Tests', () => {
         start_time: new Date('2026-05-05T10:00:00Z'),
       })
 
-      const override = await insertOverride(user, garminId, {
+      const override = await insertOverride(user, [garminId], {
         activity_type: 'walking',
         end_time: new Date('2026-05-05T10:30:00Z'),
         start_time: new Date('2026-05-05T10:00:00Z'),

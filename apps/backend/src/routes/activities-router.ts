@@ -128,7 +128,7 @@ const buildMergedResponse = async (
     merged_end_time: mergedEndTime,
     merged_start_time: mergedStartTime,
     notes: mergedNotes,
-    overrides_id: activity.overrides_id,
+    override_target_ids: activity.override_target_ids,
     source: activity.source,
     source_records: sourceRecords,
     start_time: activity.start_time.toISOString(),
@@ -433,7 +433,16 @@ export const createActivitiesRouter = (
     validateBody(updateActivityBodySchema),
     async (req, res) => {
       const { id } = req.params
-      const { activity_type, start_time, end_time, title, notes, exercise_type, data: bodyData } = req.body
+      const {
+        activity_type,
+        start_time,
+        end_time,
+        title,
+        notes,
+        exercise_type,
+        data: bodyData,
+        override_target_ids,
+      } = req.body
       const user = req.user!
 
       // Merge exercise_type into data if provided
@@ -460,6 +469,7 @@ export const createActivitiesRouter = (
           data,
           end_time: end_time === null ? null : end_time ? new Date(end_time) : undefined,
           notes,
+          override_target_ids,
           start_time: start_time ? new Date(start_time) : undefined,
           title,
         },
@@ -532,7 +542,7 @@ export const createActivitiesRouter = (
         end_time: activity.end_time?.toISOString(),
         id: activity.id,
         notes: activity.notes,
-        overrides_id: activity.overrides_id,
+        override_target_ids: activity.override_target_ids,
         source: activity.source,
         start_time: activity.start_time.toISOString(),
         title: activity.title,
@@ -575,7 +585,7 @@ export const createActivitiesRouter = (
           end_time: activity.end_time?.toISOString(),
           id: activity.id,
           notes: activity.notes,
-          overrides_id: activity.overrides_id,
+          override_target_ids: activity.override_target_ids,
           source: activity.source,
           start_time: activity.start_time.toISOString(),
           title: activity.title,

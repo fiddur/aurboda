@@ -261,7 +261,7 @@ const ActivityDetailContent = ({
       {hasSourceRecords && (
         <div class="merged-indicator">Merged from {activity.source_records!.length} sources</div>
       )}
-      {activity.overrides_id && (
+      {activity.override_target_ids && activity.override_target_ids.length > 0 && (
         <div class="merged-indicator">
           User override active &mdash; edits to this activity stay even when the synced source re-syncs.
           {onRevertOverride && (
@@ -555,6 +555,7 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
         notes?: string
         exercise_type?: ExerciseTypeName
         data?: Record<string, unknown>
+        override_target_ids?: string[]
       } = {}
       const orig = makeDraft(activity)
       if (draft.activity_type !== orig.activity_type) body.activity_type = draft.activity_type
@@ -586,6 +587,15 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
       )
       if (forced?.start_time && body.start_time === undefined) body.start_time = forced.start_time
       if (forced?.end_time && body.end_time === undefined) body.end_time = forced.end_time
+
+      // Merged-view edit creating a fresh override: claim ALL the merged
+      // sources as targets so the override hides the whole group, not just
+      // the row whose id we PATCHed. Aurboda sources are excluded — those
+      // can't be a target (only synced rows can).
+      if (isMergedActivity && !aurbodaSource && activity.source_records) {
+        const targets = activity.source_records.filter((r) => r.source !== 'aurboda').map((r) => r.id)
+        if (targets.length > 0) body.override_target_ids = targets
+      }
 
       if (Object.keys(body).length === 0) return null
       return updateActivity(rawEntityId, body)

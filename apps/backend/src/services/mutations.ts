@@ -117,6 +117,13 @@ export interface UpdateActivityInput {
   title?: string
   notes?: string
   data?: Record<string, unknown>
+  /**
+   * Multi-target override (#735): when the PATCH targets a synced activity
+   * from a merged view, the caller passes the full list of source ids the
+   * new override should claim. Includes `id` itself. When omitted, defaults
+   * to `[id]` (single-target case).
+   */
+  override_target_ids?: string[]
 }
 
 export interface UpdateActivityResult {
@@ -566,8 +573,16 @@ export async function updateActivity(
     // carrying the synced row's snapshot overlaid with the user's input.
     // Mirror in-place semantics: input.notes / input.title === undefined keeps
     // the snapshot value; explicit '' (or null) clears it.
+    //
+    // Multi-target (#735): the caller may pass `override_target_ids` from a
+    // merged-view edit so the new override claims all the merged source rows
+    // at once. Always include `target.id` in the list (defaulting to just
+    // that single source when the caller didn't pass anything).
+    const targetIds = input.override_target_ids?.length
+      ? Array.from(new Set([target.id!, ...input.override_target_ids]))
+      : [target.id!]
     try {
-      updated = await dbInsertOverride(user, target.id!, {
+      updated = await dbInsertOverride(user, targetIds, {
         activity_type: finalType,
         data: mergedData,
         end_time: input.end_time === null ? undefined : (finalEndTime ?? undefined),
@@ -576,12 +591,14 @@ export async function updateActivity(
         title: input.title !== undefined ? input.title : target.title,
       })
     } catch (err) {
-      // Race: a concurrent edit created the override first; the partial unique
-      // index `idx_activities_one_override_per_target` rejects ours. Reload
-      // and apply the user's edits to the now-existing override instead.
+      // Race: a concurrent edit created the override first; the UNIQUE
+      // constraint on `activity_override_targets.target_id` rejects ours.
+      // Reload and apply the user's edits to the now-existing override
+      // instead. (We probe the first target id; with one-override-per-target
+      // any of them would resolve to the same row.)
       const code = (err as { code?: string }).code
       if (code !== '23505') throw err
-      const concurrent = await getOverrideForActivity(user, target.id!)
+      const concurrent = await getOverrideForActivity(user, targetIds[0])
       if (!concurrent) throw err
       updated = await dbUpdateActivity(user, concurrent.id!, {
         activity_type: input.activity_type,
@@ -612,9 +629,11 @@ export async function updateActivity(
   }
 
   // Sync inherited times on any notes attached to either the row we wrote or
-  // (for fresh overrides) the synced target — notes can be attached to either
-  // id and both should track the new times.
-  const noteEntityIds = updated.overrides_id ? [updated.id!, updated.overrides_id] : [updated.id!]
+  // (for fresh overrides) any synced target — notes can be attached to any
+  // of those ids and they should all track the new times.
+  const noteEntityIds = updated.override_target_ids?.length
+    ? [updated.id!, ...updated.override_target_ids]
+    : [updated.id!]
   for (const noteEntityId of noteEntityIds) {
     syncNoteTimesForEntity(
       user,
@@ -638,10 +657,11 @@ export async function updateActivity(
   }
 
   // Enqueue outbound HC sync only for aurboda activities that the user owns —
-  // override rows (overrides_id set) represent data that already exists on the
-  // synced source, so pushing them to HC would create duplicates.
+  // override rows (override_target_ids set) represent data that already
+  // exists on the synced source, so pushing them to HC would create
+  // duplicates.
   try {
-    if (updated.source === 'aurboda' && !updated.overrides_id) {
+    if (updated.source === 'aurboda' && !updated.override_target_ids?.length) {
       const oldWasSyncable = isHealthConnectSyncableActivity(before.activity_type)
       const newIsSyncable = isHealthConnectSyncableActivity(updated.activity_type)
 

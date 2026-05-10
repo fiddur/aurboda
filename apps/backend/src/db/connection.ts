@@ -695,6 +695,56 @@ export const migrateSchema = async (user: string) => {
       db,
       `CREATE UNIQUE INDEX IF NOT EXISTS idx_activities_one_override_per_target ON activities (overrides_id) WHERE overrides_id IS NOT NULL AND deleted_at IS NULL`,
     )
+    // Multi-target overrides (#735 follow-up): the `overrides_id` column was a
+    // single FK and prevented one aurboda row from claiming a cross-source
+    // merge group as a whole. Move the relationship to a join table, backfill
+    // from the column, then drop the column.
+    await query(
+      db,
+      `CREATE TABLE IF NOT EXISTS activity_override_targets (
+         override_id UUID NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+         target_id   UUID NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+         PRIMARY KEY (override_id, target_id)
+       )`,
+    )
+    await query(
+      db,
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_aot_unique_target ON activity_override_targets (target_id)`,
+    )
+    await query(db, `CREATE INDEX IF NOT EXISTS idx_aot_override ON activity_override_targets (override_id)`)
+    // Old cascade semantics: deleting a target row cascade-deleted the
+    // override (because `overrides_id` was a FK ON DELETE CASCADE). With
+    // the join table, deleting one target only removes the join row.
+    // Restore the spirit of the old behaviour with a trigger: when an
+    // override loses its LAST target, delete the override row too.
+    // Multi-target overrides survive the loss of any single target.
+    await query(
+      db,
+      `CREATE OR REPLACE FUNCTION delete_orphan_override() RETURNS TRIGGER AS $$
+       BEGIN
+         IF NOT EXISTS (
+           SELECT 1 FROM activity_override_targets WHERE override_id = OLD.override_id
+         ) THEN
+           DELETE FROM activities WHERE id = OLD.override_id;
+         END IF;
+         RETURN OLD;
+       END;
+       $$ LANGUAGE plpgsql`,
+    )
+    await query(
+      db,
+      `DO $$ BEGIN
+         IF NOT EXISTS (
+           SELECT 1 FROM information_schema.triggers
+            WHERE event_object_table = 'activity_override_targets'
+              AND trigger_name = 'aot_delete_orphan_override'
+         ) THEN
+           CREATE TRIGGER aot_delete_orphan_override
+             AFTER DELETE ON activity_override_targets
+             FOR EACH ROW EXECUTE FUNCTION delete_orphan_override();
+         END IF;
+       END $$`,
+    )
     // One-shot backfill: convert legacy `data._user_edited` flag (winning via
     // merge boost but unprotected from same-source re-sync) into a real
     // aurboda override row. Gated by a marker row in schema_migrations so we
@@ -751,6 +801,35 @@ export const migrateSchema = async (user: string) => {
       db,
       `CREATE INDEX IF NOT EXISTS idx_activities_not_superseded ON activities (activity_type, start_time DESC) WHERE deleted_at IS NULL AND superseded_by IS NULL`,
     )
+    // Backfill activity_override_targets from the legacy `overrides_id`
+    // column (if still present) and then drop the column. ON CONFLICT
+    // DO NOTHING makes the backfill idempotent for a partially-migrated
+    // state; checking column existence makes the DROP safe to re-run.
+    const hasOverridesIdColumn = await query<{ exists: boolean }>(
+      db,
+      `SELECT EXISTS (
+         SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'activities' AND column_name = 'overrides_id'
+       ) AS exists`,
+    )
+    if (hasOverridesIdColumn.rows[0]?.exists) {
+      await query(
+        db,
+        `INSERT INTO activity_override_targets (override_id, target_id)
+         SELECT id, overrides_id FROM activities
+          WHERE overrides_id IS NOT NULL
+            AND deleted_at IS NULL
+         ON CONFLICT DO NOTHING`,
+      )
+      await query(db, `DROP INDEX IF EXISTS idx_activities_one_override_per_target`)
+      await query(db, `ALTER TABLE activities DROP CONSTRAINT IF EXISTS overrides_id_aurboda_only`)
+      await query(db, `ALTER TABLE activities DROP COLUMN IF EXISTS overrides_id`)
+    }
+    // The aurboda-only invariant for overrides (previously enforced via the
+    // dropped `overrides_id_aurboda_only` CHECK on activities.overrides_id)
+    // is now enforced in the application layer at insertOverride. Postgres
+    // can't express "EXISTS subquery" in a CHECK, and the equivalent BEFORE
+    // INSERT trigger is heavier than the current call site needs.
   }
   if (existingTableNames.has('activity_type_definitions')) {
     await query(
