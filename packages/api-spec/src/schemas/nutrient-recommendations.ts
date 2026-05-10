@@ -103,6 +103,15 @@ export type UpsertNutrientRecommendationBody = z.infer<typeof upsertNutrientReco
 // Period summary (averaged daily nutrient intake)
 // ============================================================================
 
+/** Cap the period-summary window so a buggy or malicious caller can't request a multi-year scan. */
+export const NUTRIENT_PERIOD_SUMMARY_MAX_DAYS = 366
+
+const dayCount = (start: string, end: string): number => {
+  const a = new Date(`${start}T00:00:00Z`).getTime()
+  const b = new Date(`${end}T00:00:00Z`).getTime()
+  return Math.floor((b - a) / 86_400_000) + 1
+}
+
 export const nutrientPeriodSummaryQuerySchema = z
   .object({
     start: dateOnlySchema.meta({ description: 'Inclusive start date (YYYY-MM-DD)' }),
@@ -111,6 +120,11 @@ export const nutrientPeriodSummaryQuerySchema = z
       .string()
       .optional()
       .meta({ description: 'IANA timezone (e.g. "Europe/Stockholm") for bucketing meals into local days' }),
+  })
+  .refine((q) => q.start <= q.end, { message: 'start must be on or before end', path: ['start'] })
+  .refine((q) => dayCount(q.start, q.end) <= NUTRIENT_PERIOD_SUMMARY_MAX_DAYS, {
+    message: `window must be <= ${NUTRIENT_PERIOD_SUMMARY_MAX_DAYS} days`,
+    path: ['end'],
   })
   .meta({ description: 'Date-range query for the meal period summary', id: 'NutrientPeriodSummaryQuery' })
 

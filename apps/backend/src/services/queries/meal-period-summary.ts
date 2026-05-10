@@ -40,14 +40,29 @@ const inclusiveDayCount = (startDate: string, endDate: string): number => {
 
 const round2 = (n: number): number => Math.round(n * 100) / 100
 
+/**
+ * One-formatter-per-tz cache. `Intl.DateTimeFormat` is non-trivial to
+ * construct (locale data lookup); a 90-day window with dozens of meals would
+ * otherwise allocate a fresh formatter for every meal.
+ */
+const dateKeyFormatterCache = new Map<string, Intl.DateTimeFormat>()
+
+const getDateKeyFormatter = (tz: string): Intl.DateTimeFormat => {
+  let fmt = dateKeyFormatterCache.get(tz)
+  if (!fmt) {
+    fmt = new Intl.DateTimeFormat('sv-SE', {
+      timeZone: tz,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    })
+    dateKeyFormatterCache.set(tz, fmt)
+  }
+  return fmt
+}
+
 /** Convert a UTC Date to its local YYYY-MM-DD key for the given tz. */
-const localDateKey = (d: Date, tz: string): string =>
-  new Intl.DateTimeFormat('sv-SE', {
-    timeZone: tz,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(d)
+const localDateKey = (d: Date, tz: string): string => getDateKeyFormatter(tz).format(d)
 
 const aggregateNutrientsFromLinks = (links: MealFoodItemLink[]): Map<string, number> => {
   const totals = new Map<string, number>()

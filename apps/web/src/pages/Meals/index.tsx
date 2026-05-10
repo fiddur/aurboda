@@ -117,6 +117,7 @@ function FoodItemChip({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['foodItem', foodItemId] })
       queryClient.invalidateQueries({ queryKey: ['meals'] })
+      queryClient.invalidateQueries({ queryKey: ['mealsPeriodSummary'] })
     },
   })
 
@@ -714,10 +715,14 @@ function useMealMutations(mealsQueryKey: string[], meals: Meal[] | undefined) {
     [queryClient, mealsQueryKey],
   )
 
-  const invalidateMeals = useCallback(
-    () => queryClient.invalidateQueries({ queryKey: ['meals'] }),
-    [queryClient],
-  )
+  const invalidateMeals = useCallback(async () => {
+    // Day tab reads ['meals', dayKey]; Overview tab reads
+    // ['mealsPeriodSummary', start, end, tz]. Both go stale on any meal write.
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['meals'] }),
+      queryClient.invalidateQueries({ queryKey: ['mealsPeriodSummary'] }),
+    ])
+  }, [queryClient])
 
   const upsertMutation = useMutation({
     mutationFn: addMealApi,
@@ -864,6 +869,7 @@ function MealsContent({ dayKey }: { dayKey: string }) {
       time: mealTime.toISOString(),
     })
     queryClient.invalidateQueries({ queryKey: ['meals'] })
+    queryClient.invalidateQueries({ queryKey: ['mealsPeriodSummary'] })
     route(`/meals/${id}`)
   }
 
@@ -932,6 +938,7 @@ function MealsContent({ dayKey }: { dayKey: string }) {
       time: mealTime.toISOString(),
     })
     queryClient.invalidateQueries({ queryKey: ['meals'] })
+    queryClient.invalidateQueries({ queryKey: ['mealsPeriodSummary'] })
     route(`/meals/${id}`)
   }
 

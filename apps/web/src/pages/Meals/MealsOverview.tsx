@@ -37,6 +37,23 @@ const NUTRIENT_CATEGORIES: { key: NutrientFieldDef['category']; label: string }[
 const ymd = (d: Date): string => format(d, 'yyyy-MM-dd')
 
 /**
+ * Format a nutrient average for display. Picks decimals based on magnitude
+ * so vitamins in µg/mg with sub-1 values (B12 ≈ 2 µg, vitamin K ≈ 80 µg,
+ * folate ≈ 0.3 mg if mis-unit'd) stay legible — toFixed(1) would lose all
+ * precision on the small end.
+ */
+const formatNutrientValue = (value: number, unit: string): string => {
+  if (unit === 'kcal') return value.toFixed(0)
+  const abs = Math.abs(value)
+  let decimals: number
+  if (abs >= 100) decimals = 0
+  else if (abs >= 10) decimals = 1
+  else if (abs >= 1) decimals = 2
+  else decimals = 3
+  return value.toFixed(decimals)
+}
+
+/**
  * Map a value against a recommended range to the same flag enum used by
  * report cards, so the existing ReferenceRangeBar marker color stays
  * consistent across the app. v1 doesn't surface "critical" thresholds —
@@ -161,7 +178,7 @@ function NutrientRowView({ field, stat, recommendation }: NutrientRow) {
         )}
       </td>
       <td class="num">
-        {stat.avg.toFixed(field.unit === 'g' && stat.avg < 10 ? 2 : 1)} {field.unit}
+        {formatNutrientValue(stat.avg, field.unit)} {field.unit}
       </td>
       <td class="range-col">
         {recommendation && (

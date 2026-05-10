@@ -14,15 +14,17 @@
 
 import type { NutrientRecommendation } from '@aurboda/api-spec'
 
+import { NUTRIENT_FIELDS } from '@aurboda/api-spec'
+
 import {
   clearUserNutrientRecommendation as dbClearUserNutrientRecommendation,
+  getUserNutrientRecommendation as dbGetUserNutrientRecommendation,
   listUserNutrientRecommendations as dbListUserNutrientRecommendations,
   type UserNutrientRecommendationInput,
+  type UserNutrientRecommendationRow,
   upsertUserNutrientRecommendation as dbUpsertUserNutrientRecommendation,
 } from '../db/user-nutrient-recommendations.ts'
 import { getCentralDb } from './central-db.ts'
-
-const NUTRIENT_UNIT_FALLBACK = ''
 
 interface CentralRow {
   nutrient_name: string
@@ -36,6 +38,47 @@ interface CentralRow {
 const buildCentralLabel = (row: CentralRow): string =>
   row.source_version ? `${row.source} ${row.source_version}` : row.source
 
+/**
+ * Resolve the unit for a nutrient name. Prefer the central row's stored unit,
+ * fall back to the api-spec NUTRIENT_FIELDS table so a user override on a
+ * nutrient that has no central default still surfaces the right unit instead
+ * of an empty string.
+ */
+const unitFor = (name: string, centralRow: CentralRow | undefined): string =>
+  centralRow?.unit ?? NUTRIENT_UNIT_BY_NAME.get(name) ?? ''
+
+const NUTRIENT_UNIT_BY_NAME = new Map<string, string>(NUTRIENT_FIELDS.map((f) => [f.name, f.unit]))
+
+const mergeOne = (
+  name: string,
+  centralRow: CentralRow | undefined,
+  userRow: UserNutrientRecommendationRow | undefined,
+): NutrientRecommendation | null => {
+  if (userRow) {
+    // Suppression: user wrote NULL/NULL → no effective range.
+    if (userRow.recommended_low === null && userRow.recommended_high === null) return null
+    return {
+      nutrient_name: name,
+      recommended_low: userRow.recommended_low,
+      recommended_high: userRow.recommended_high,
+      unit: unitFor(name, centralRow),
+      source: 'user',
+      source_label: centralRow ? buildCentralLabel(centralRow) : null,
+    }
+  }
+  if (centralRow) {
+    return {
+      nutrient_name: name,
+      recommended_low: centralRow.recommended_low,
+      recommended_high: centralRow.recommended_high,
+      unit: centralRow.unit,
+      source: 'central',
+      source_label: buildCentralLabel(centralRow),
+    }
+  }
+  return null
+}
+
 export const getEffectiveRecommendations = async (user: string): Promise<NutrientRecommendation[]> => {
   const central = await getCentralDb().getAllSharedNutrientRecommendations()
   const overrides = await dbListUserNutrientRecommendations(user)
@@ -45,48 +88,27 @@ export const getEffectiveRecommendations = async (user: string): Promise<Nutrien
 
   const out: NutrientRecommendation[] = []
   for (const name of allNames) {
-    const centralRow = centralByName.get(name)
-    const userRow = overrideByName.get(name)
-    if (userRow) {
-      // Suppression: user wrote NULL/NULL → drop the entry so the UI shows
-      // the value without a recommended range.
-      if (userRow.recommended_low === null && userRow.recommended_high === null) continue
-      out.push({
-        nutrient_name: name,
-        recommended_low: userRow.recommended_low,
-        recommended_high: userRow.recommended_high,
-        unit: centralRow?.unit ?? NUTRIENT_UNIT_FALLBACK,
-        source: 'user',
-        source_label: centralRow ? buildCentralLabel(centralRow) : null,
-      })
-      continue
-    }
-    if (centralRow) {
-      out.push({
-        nutrient_name: name,
-        recommended_low: centralRow.recommended_low,
-        recommended_high: centralRow.recommended_high,
-        unit: centralRow.unit,
-        source: 'central',
-        source_label: buildCentralLabel(centralRow),
-      })
-    }
+    const merged = mergeOne(name, centralByName.get(name), overrideByName.get(name))
+    if (merged) out.push(merged)
   }
-
   out.sort((a, b) => a.nutrient_name.localeCompare(b.nutrient_name))
   return out
 }
 
 /**
- * Look up just one nutrient — used after upsert to return the merged record
- * back to the caller so the client can render the new effective state.
+ * Look up the merged effective recommendation for a single nutrient with two
+ * targeted queries, used after upsert/clear to return the new state without
+ * a full table scan.
  */
 export const getEffectiveRecommendation = async (
   user: string,
   nutrientName: string,
 ): Promise<NutrientRecommendation | null> => {
-  const all = await getEffectiveRecommendations(user)
-  return all.find((r) => r.nutrient_name === nutrientName) ?? null
+  const [centralRow, userRow] = await Promise.all([
+    getCentralDb().getSharedNutrientRecommendation(nutrientName),
+    dbGetUserNutrientRecommendation(user, nutrientName),
+  ])
+  return mergeOne(nutrientName, centralRow ?? undefined, userRow ?? undefined)
 }
 
 export const setUserNutrientRecommendation = async (
