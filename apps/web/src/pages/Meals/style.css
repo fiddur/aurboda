@@ -828,3 +828,252 @@ a.meal-name:hover {
     color: #9ca3af;
   }
 }
+
+/* Tabs in the header */
+.meals-tabs {
+  display: inline-flex;
+  gap: 0.25rem;
+  margin-left: 1rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 2px;
+  background: #fafafa;
+}
+
+.meals-tab {
+  background: transparent;
+  border: 0;
+  padding: 0.4rem 0.9rem;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  color: #6b7280;
+}
+
+.meals-tab.active {
+  background: #ffffff;
+  color: #111827;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.meals-tab:hover:not(.active) {
+  color: #111827;
+}
+
+/* Overview tab */
+.meals-overview {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.overview-controls {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.window-selector {
+  display: inline-flex;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.window-btn {
+  background: #ffffff;
+  border: 0;
+  padding: 0.4rem 0.9rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+  color: #6b7280;
+  border-right: 1px solid #e5e7eb;
+}
+
+.window-btn:last-child {
+  border-right: 0;
+}
+
+.window-btn.active {
+  background: #2563eb;
+  color: white;
+}
+
+.overview-range {
+  font-size: 0.85rem;
+  color: #6b7280;
+  font-variant-numeric: tabular-nums;
+}
+
+.overview-energy {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 1rem;
+  background: #fafafa;
+}
+
+.overview-energy h3 {
+  margin: 0 0 0.75rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #374151;
+}
+
+.energy-row {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.energy-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.energy-label {
+  font-size: 0.75rem;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.energy-value {
+  font-size: 1.4rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: #111827;
+}
+
+.energy-value.positive {
+  color: #b45309;
+}
+
+.energy-value.negative {
+  color: #166534;
+}
+
+.energy-sub {
+  font-size: 0.75rem;
+  color: #6b7280;
+}
+
+.overview-group h3 {
+  margin: 0 0 0.5rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #374151;
+}
+
+.overview-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.overview-table th {
+  text-align: left;
+  font-weight: 500;
+  font-size: 0.75rem;
+  color: #6b7280;
+  text-transform: uppercase;
+  padding: 0.25rem 0.5rem;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.overview-table th.num,
+.overview-table td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.overview-table td {
+  padding: 0.4rem 0.5rem;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.overview-table .nutrient-name {
+  color: #111827;
+}
+
+.overview-table .rec-source {
+  color: #b45309;
+  margin-left: 0.25rem;
+  font-size: 0.7rem;
+}
+
+.overview-table .range-col {
+  width: 40%;
+  min-width: 140px;
+}
+
+.overview-empty {
+  color: #9ca3af;
+  text-align: center;
+  padding: 2rem 0;
+}
+
+@media (prefers-color-scheme: dark) {
+  .meals-tabs {
+    border-color: #374151;
+    background: #111827;
+  }
+
+  .meals-tab {
+    color: #9ca3af;
+  }
+
+  .meals-tab.active {
+    background: #1f2937;
+    color: #f3f4f6;
+  }
+
+  .window-selector {
+    border-color: #374151;
+  }
+
+  .window-btn {
+    background: #1f2937;
+    color: #9ca3af;
+    border-right-color: #374151;
+  }
+
+  .window-btn.active {
+    background: #2563eb;
+    color: white;
+  }
+
+  .overview-energy {
+    background: #1f2937;
+    border-color: #374151;
+  }
+
+  .overview-energy h3,
+  .overview-group h3 {
+    color: #d1d5db;
+  }
+
+  .energy-value {
+    color: #f3f4f6;
+  }
+
+  .energy-label,
+  .energy-sub,
+  .overview-range {
+    color: #9ca3af;
+  }
+
+  .overview-table th {
+    color: #9ca3af;
+    border-bottom-color: #374151;
+  }
+
+  .overview-table td {
+    border-bottom-color: #1f2937;
+  }
+
+  .overview-table .nutrient-name {
+    color: #f3f4f6;
+  }
+}

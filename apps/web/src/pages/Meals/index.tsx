@@ -24,6 +24,7 @@ import {
 } from '../../state/api'
 import { auth } from '../../state/auth'
 import { isEmoji, isIconPath, isUrl } from '../../utils/emojiLookup'
+import { MealsOverview } from './MealsOverview'
 import './style.css'
 
 interface MealSlot {
@@ -116,6 +117,7 @@ function FoodItemChip({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['foodItem', foodItemId] })
       queryClient.invalidateQueries({ queryKey: ['meals'] })
+      queryClient.invalidateQueries({ queryKey: ['mealsPeriodSummary'] })
     },
   })
 
@@ -713,10 +715,14 @@ function useMealMutations(mealsQueryKey: string[], meals: Meal[] | undefined) {
     [queryClient, mealsQueryKey],
   )
 
-  const invalidateMeals = useCallback(
-    () => queryClient.invalidateQueries({ queryKey: ['meals'] }),
-    [queryClient],
-  )
+  const invalidateMeals = useCallback(async () => {
+    // Day tab reads ['meals', dayKey]; Overview tab reads
+    // ['mealsPeriodSummary', start, end, tz]. Both go stale on any meal write.
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['meals'] }),
+      queryClient.invalidateQueries({ queryKey: ['mealsPeriodSummary'] }),
+    ])
+  }, [queryClient])
 
   const upsertMutation = useMutation({
     mutationFn: addMealApi,
@@ -863,6 +869,7 @@ function MealsContent({ dayKey }: { dayKey: string }) {
       time: mealTime.toISOString(),
     })
     queryClient.invalidateQueries({ queryKey: ['meals'] })
+    queryClient.invalidateQueries({ queryKey: ['mealsPeriodSummary'] })
     route(`/meals/${id}`)
   }
 
@@ -931,6 +938,7 @@ function MealsContent({ dayKey }: { dayKey: string }) {
       time: mealTime.toISOString(),
     })
     queryClient.invalidateQueries({ queryKey: ['meals'] })
+    queryClient.invalidateQueries({ queryKey: ['mealsPeriodSummary'] })
     route(`/meals/${id}`)
   }
 
@@ -1004,10 +1012,16 @@ function MealsContent({ dayKey }: { dayKey: string }) {
   )
 }
 
+type MealsView = 'day' | 'overview'
+
+const parseView = (raw: string | null): MealsView => (raw === 'overview' ? 'overview' : 'day')
+
 export function Meals() {
   const { query: urlQuery, route } = useLocation()
+  const params = new URLSearchParams(urlQuery)
+  const view = parseView(params.get('view'))
 
-  const dateParam = new URLSearchParams(urlQuery).get('date')
+  const dateParam = params.get('date')
   const dayKey = dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam) ? dateParam : todayISO()
 
   const setDayKey = (date: string) => {
@@ -1015,13 +1029,38 @@ export function Meals() {
     else route(`/meals?date=${date}`)
   }
 
+  const switchView = (next: MealsView) => {
+    if (next === 'day') route('/meals')
+    else route('/meals?view=overview')
+  }
+
   return (
     <div class="meals-page">
       <div class="meals-header">
         <h1>Meals</h1>
-        <DateNav value={dayKey} onChange={setDayKey} />
+        <div class="meals-tabs" role="tablist">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === 'day'}
+            class={`meals-tab ${view === 'day' ? 'active' : ''}`}
+            onClick={() => switchView('day')}
+          >
+            Day
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === 'overview'}
+            class={`meals-tab ${view === 'overview' ? 'active' : ''}`}
+            onClick={() => switchView('overview')}
+          >
+            Overview
+          </button>
+        </div>
+        {view === 'day' && <DateNav value={dayKey} onChange={setDayKey} />}
       </div>
-      <MealsContent dayKey={dayKey} />
+      {view === 'day' ? <MealsContent dayKey={dayKey} /> : <MealsOverview />}
     </div>
   )
 }

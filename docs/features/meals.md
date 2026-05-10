@@ -91,6 +91,10 @@ Auth is read from `~/.config/aurboda/config`.
 - `DELETE /meals/:id` -- delete a meal
 - `PUT /meals/log-completed/:date` -- mark day as logging-complete
 - `DELETE /meals/log-completed/:date` -- unmark
+- `GET /meals/period-summary?start=&end=&tz=` -- daily-averaged nutrient intake + averaged calories_total burn
+- `GET /nutrient-recommendations` -- effective merged list (NNR2023 + user overrides)
+- `PUT /nutrient-recommendations/:nutrient_name` -- upsert a user override (pass null on a bound to suppress the central default)
+- `DELETE /nutrient-recommendations/:nutrient_name` -- revert to central default
 
 ## MCP Tools
 
@@ -99,3 +103,15 @@ Auth is read from `~/.config/aurboda/config`.
 - `get_meal` -- get by ID
 - `update_meal` -- update fields
 - `delete_meal` -- delete by ID
+- `query_meals_period_summary` -- daily-averaged nutrient intake + calories burned over a date range
+- `get_nutrient_recommendations` -- effective merged list
+- `set_nutrient_recommendation` -- upsert a user override
+- `clear_nutrient_recommendation` -- revert to central default
+
+## Multi-day Overview
+
+The Meals page exposes a second tab, **Overview**, with averaged nutrient intake over a selectable window (7 / 14 / 30 / 90 days) plus an energy-balance row comparing average kcal eaten against averaged daily `calories_total` burned.
+
+Each nutrient is rendered against a recommended min/max range using the same `ReferenceRangeBar` component reports use. The defaults come from a curated **NNR2023** seed in the central database; per-user overrides live in the `user_nutrient_recommendations` table and win whenever present. A user override can also explicitly suppress a nutrient's range (NULL/NULL) so the value is shown without a bar.
+
+Averaging ignores days with no meal data — a sparse log is not dragged toward zero. `calories_burned` is `null` when no `calories_total` metric exists in the window (the UI prompts to connect Garmin / Health Connect in that case).
