@@ -1348,6 +1348,24 @@ describe('updateCustomMetric', () => {
     expect(result.error).toContain('not found')
   })
 
+  test('updates include_in_daily_summary flag', async () => {
+    vi.mocked(db.updateCustomMetricDefinition).mockResolvedValue({
+      include_in_daily_summary: true,
+      name: 'fissure_pain',
+      unit: 'score',
+    })
+
+    const result = await updateCustomMetric('testuser', 'fissure_pain', {
+      include_in_daily_summary: true,
+    })
+
+    expect(result.success).toBe(true)
+    expect(db.updateCustomMetricDefinition).toHaveBeenCalledWith('testuser', 'fissure_pain', {
+      include_in_daily_summary: true,
+    })
+    expect(result.data?.include_in_daily_summary).toBe(true)
+  })
+
   test('partial update preserves other fields', async () => {
     vi.mocked(db.updateCustomMetricDefinition).mockResolvedValue({
       description: 'Daily mood',

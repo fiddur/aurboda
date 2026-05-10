@@ -224,6 +224,55 @@ export const mealSummarySchema = z
 export type MealSummary = z.infer<typeof mealSummarySchema>
 
 /**
+ * A single metric data point logged on the day, with optional note.
+ */
+export const dailySummaryMetricEntrySchema = z
+  .object({
+    notes: z.string().optional().meta({ description: 'Verbatim note(s) attached to this measurement' }),
+    source: z.string().meta({ description: 'Data source (e.g., "manual", "oura", "garmin")' }),
+    time: iso8601DateTimeSchema,
+    value: z.number().meta({ description: 'Metric value' }),
+  })
+  .meta({ id: 'DailySummaryMetricEntry' })
+
+export type DailySummaryMetricEntry = z.infer<typeof dailySummaryMetricEntrySchema>
+
+/**
+ * Aggregated stats for a metric measured on a given day, plus the raw entries.
+ */
+export const dailySummaryMetricStatsSchema = z
+  .object({
+    avg: z.number().meta({ description: 'Mean of values logged on this day' }),
+    count: z.number().int().meta({ description: 'Number of entries logged on this day' }),
+    entries: z.array(dailySummaryMetricEntrySchema).meta({
+      description: 'All entries verbatim, in chronological order. Notes carry context lost in aggregates.',
+    }),
+    latest: z.number().meta({ description: 'Value of the most recent entry on this day' }),
+    latest_time: iso8601DateTimeSchema.meta({ description: 'Time of the most recent entry on this day' }),
+    max: z.number().meta({ description: 'Maximum value on this day' }),
+    min: z.number().meta({ description: 'Minimum value on this day' }),
+    unit: z.string().meta({ description: 'Unit of measurement', example: 'kg' }),
+  })
+  .meta({ id: 'DailySummaryMetricStats' })
+
+export type DailySummaryMetricStats = z.infer<typeof dailySummaryMetricStatsSchema>
+
+/**
+ * Most recent value (regardless of age) for a flagged metric.
+ */
+export const dailySummaryMetricLatestSchema = z
+  .object({
+    notes: z.string().optional().meta({ description: 'Verbatim note(s) attached to this measurement' }),
+    source: z.string().meta({ description: 'Data source of the latest value' }),
+    time: iso8601DateTimeSchema.meta({ description: 'Timestamp of the most recent value' }),
+    unit: z.string().meta({ description: 'Unit of measurement' }),
+    value: z.number().meta({ description: 'Most recent value' }),
+  })
+  .meta({ id: 'DailySummaryMetricLatest' })
+
+export type DailySummaryMetricLatest = z.infer<typeof dailySummaryMetricLatestSchema>
+
+/**
  * Daily summary result schema.
  */
 export const dailySummaryResultSchema = z
@@ -236,6 +285,14 @@ export const dailySummaryResultSchema = z
     heart_rate: heartRateStatsSchema.nullable(),
     meals: z.array(mealSummarySchema).meta({
       description: 'Meals logged on this day, with macros and food item names',
+    }),
+    metrics_latest: z.record(z.string(), dailySummaryMetricLatestSchema).meta({
+      description:
+        'Most recent value for every metric flagged with include_in_daily_summary that has any historical entry, regardless of age. Use the timestamp to judge staleness. Metric keys appear here whether or not the metric was measured today.',
+    }),
+    metrics_today: z.record(z.string(), dailySummaryMetricStatsSchema).meta({
+      description:
+        'Per-metric summary of entries logged on this day for metrics flagged with include_in_daily_summary. Includes min/max/avg/count/latest plus the verbatim entries (with notes). Empty object if no flagged metrics were logged today.',
     }),
     notes: z.array(noteSchema).meta({
       description:

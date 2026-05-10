@@ -33,6 +33,7 @@ export interface UpdateCustomMetricInput {
   description?: string
   minValue?: number | null
   maxValue?: number | null
+  include_in_daily_summary?: boolean
 }
 
 export interface UpdateCustomMetricResult {
@@ -109,8 +110,12 @@ export async function updateCustomMetric(
   name: string,
   updates: UpdateCustomMetricInput,
 ): Promise<UpdateCustomMetricResult> {
-  const dbUpdates: Partial<Pick<CustomMetricDefinition, 'unit' | 'description' | 'min_value' | 'max_value'>> =
-    {}
+  const dbUpdates: Partial<
+    Pick<
+      CustomMetricDefinition,
+      'unit' | 'description' | 'min_value' | 'max_value' | 'include_in_daily_summary'
+    >
+  > = {}
 
   if (updates.unit !== undefined) dbUpdates.unit = updates.unit
   if (updates.description !== undefined) dbUpdates.description = updates.description
@@ -119,6 +124,9 @@ export async function updateCustomMetric(
   }
   if (updates.maxValue !== undefined) {
     dbUpdates.max_value = updates.maxValue === null ? undefined : updates.maxValue
+  }
+  if (updates.include_in_daily_summary !== undefined) {
+    dbUpdates.include_in_daily_summary = updates.include_in_daily_summary
   }
 
   const updated = await updateCustomMetricDefinition(user, name, dbUpdates)

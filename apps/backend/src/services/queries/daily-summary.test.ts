@@ -4,13 +4,22 @@ import type { MetricType } from '../../schema.ts'
 
 import * as db from '../../db/index.ts'
 import * as locationsService from '../locations.ts'
-import { computeSleepStageSummary, findSleepLocation, getDailySummary } from './daily-summary.ts'
+import {
+  buildMetricsLatest,
+  buildMetricsToday,
+  computeSleepStageSummary,
+  findSleepLocation,
+  getDailySummary,
+  resolveDailySummaryMetrics,
+} from './daily-summary.ts'
 
 // Mock the db module
 vi.mock('../../db', () => ({
   getActivities: vi.fn(),
   getActivityTypeDefinitions: vi.fn().mockResolvedValue([]),
+  getCustomMetricDefinitions: vi.fn().mockResolvedValue([]),
   getDailyAggregateValue: vi.fn(),
+  getLatestMetricValuesMulti: vi.fn().mockResolvedValue(new Map()),
   getMeals: vi.fn(),
   getNonSleepActivitiesMerged: vi.fn(),
   getNotesByEntityIds: vi.fn(),
@@ -19,6 +28,7 @@ vi.mock('../../db', () => ({
   getScreentimeActivities: vi.fn().mockResolvedValue([]),
   getSleepSessions: vi.fn(),
   getTimeSeries: vi.fn(),
+  getTimeSeriesEntriesMultiMetric: vi.fn().mockResolvedValue([]),
   getTimeSeriesMultiMetric: vi.fn(),
   getUserSettings: vi.fn(),
 }))
@@ -1179,6 +1189,191 @@ describe('getDailySummary', () => {
     for (let i = 1; i < startTimes.length; i++) {
       expect(startTimes[i] >= startTimes[i - 1]).toBe(true)
     }
+  })
+})
+
+describe('resolveDailySummaryMetrics', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  test('returns built-in defaults when no custom metrics are flagged', async () => {
+    vi.mocked(db.getCustomMetricDefinitions).mockResolvedValue([])
+    const result = await resolveDailySummaryMetrics('testuser')
+    expect(result).toContain('weight')
+    expect(result).toContain('blood_pressure_systolic')
+    expect(result).toContain('body_temperature')
+    expect(result).not.toContain('heart_rate')
+  })
+
+  test('includes custom metrics with include_in_daily_summary=true', async () => {
+    vi.mocked(db.getCustomMetricDefinitions).mockResolvedValue([
+      { include_in_daily_summary: true, name: 'fissure_pain', unit: 'score' },
+      { include_in_daily_summary: false, name: 'caffeine_mg', unit: 'mg' },
+      { include_in_daily_summary: true, name: 'mood', unit: 'score' },
+    ])
+    const result = await resolveDailySummaryMetrics('testuser')
+    expect(result).toContain('fissure_pain')
+    expect(result).toContain('mood')
+    expect(result).not.toContain('caffeine_mg')
+    expect(result).toContain('weight') // built-in still included
+  })
+})
+
+describe('buildMetricsToday', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(db.getNotesByEntityIds).mockResolvedValue(new Map())
+  })
+
+  test('returns empty object when no entries exist', async () => {
+    vi.mocked(db.getTimeSeriesEntriesMultiMetric).mockResolvedValue([])
+    const result = await buildMetricsToday(
+      'testuser',
+      ['weight'],
+      new Date('2024-01-15T00:00:00Z'),
+      new Date('2024-01-15T23:59:59Z'),
+    )
+    expect(result).toEqual({})
+  })
+
+  test('returns empty object when metrics list is empty', async () => {
+    const result = await buildMetricsToday(
+      'testuser',
+      [],
+      new Date('2024-01-15T00:00:00Z'),
+      new Date('2024-01-15T23:59:59Z'),
+    )
+    expect(result).toEqual({})
+    expect(db.getTimeSeriesEntriesMultiMetric).not.toHaveBeenCalled()
+  })
+
+  test('aggregates entries with min/max/avg/count and exposes verbatim entries', async () => {
+    vi.mocked(db.getTimeSeriesEntriesMultiMetric).mockResolvedValue([
+      {
+        metric: 'fissure_pain',
+        source: 'aurboda',
+        time: new Date('2024-01-15T07:00:00Z'),
+        unit: 'score',
+        value: 3,
+      },
+      {
+        metric: 'fissure_pain',
+        source: 'aurboda',
+        time: new Date('2024-01-15T10:00:00Z'),
+        unit: 'score',
+        value: 1,
+      },
+      {
+        metric: 'fissure_pain',
+        source: 'aurboda',
+        time: new Date('2024-01-15T18:00:00Z'),
+        unit: 'score',
+        value: 0,
+      },
+    ])
+    const result = await buildMetricsToday(
+      'testuser',
+      ['fissure_pain'],
+      new Date('2024-01-15T00:00:00Z'),
+      new Date('2024-01-15T23:59:59Z'),
+    )
+    expect(result.fissure_pain).toMatchObject({
+      avg: (3 + 1 + 0) / 3,
+      count: 3,
+      latest: 0,
+      latest_time: '2024-01-15T18:00:00.000Z',
+      max: 3,
+      min: 0,
+      unit: 'score',
+    })
+    expect(result.fissure_pain.entries).toHaveLength(3)
+    expect(result.fissure_pain.entries[0].value).toBe(3)
+    expect(result.fissure_pain.entries[2].value).toBe(0)
+  })
+
+  test('attaches notes to entries that have them', async () => {
+    const t = new Date('2024-01-15T07:00:00Z')
+    vi.mocked(db.getTimeSeriesEntriesMultiMetric).mockResolvedValue([
+      { metric: 'weight', source: 'aurboda', time: t, unit: 'kg', value: 102.3 },
+    ])
+    vi.mocked(db.getNotesByEntityIds).mockResolvedValue(
+      new Map([
+        [
+          `${t.toISOString()}|weight|aurboda`,
+          [
+            {
+              content: 'morning fasted',
+              created_at: new Date(),
+              entity_id: '',
+              entity_type: 'metric',
+              id: 'n1',
+              updated_at: new Date(),
+            },
+          ],
+        ],
+      ]),
+    )
+    const result = await buildMetricsToday(
+      'testuser',
+      ['weight'],
+      new Date('2024-01-15T00:00:00Z'),
+      new Date('2024-01-15T23:59:59Z'),
+    )
+    expect(result.weight.entries[0].notes).toBe('morning fasted')
+  })
+})
+
+describe('buildMetricsLatest', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(db.getNotesByEntityIds).mockResolvedValue(new Map())
+  })
+
+  test('returns empty when no metrics provided', async () => {
+    const result = await buildMetricsLatest('testuser', [])
+    expect(result).toEqual({})
+  })
+
+  test('returns latest value per metric with attached note', async () => {
+    const t = new Date('2026-05-06T07:42:00Z')
+    vi.mocked(db.getLatestMetricValuesMulti).mockResolvedValue(
+      new Map([['weight', { source: 'aurboda', time: t, unit: 'kg', value: 102.3 }]]),
+    )
+    vi.mocked(db.getNotesByEntityIds).mockResolvedValue(
+      new Map([
+        [
+          `${t.toISOString()}|weight|aurboda`,
+          [
+            {
+              content: 'morning fasted',
+              created_at: new Date(),
+              entity_id: '',
+              entity_type: 'metric',
+              id: 'n1',
+              updated_at: new Date(),
+            },
+          ],
+        ],
+      ]),
+    )
+    const result = await buildMetricsLatest('testuser', ['weight'])
+    expect(result.weight).toEqual({
+      notes: 'morning fasted',
+      source: 'aurboda',
+      time: t.toISOString(),
+      unit: 'kg',
+      value: 102.3,
+    })
+  })
+
+  test('omits notes field when entry has no note', async () => {
+    const t = new Date('2026-05-06T07:42:00Z')
+    vi.mocked(db.getLatestMetricValuesMulti).mockResolvedValue(
+      new Map([['weight', { source: 'aurboda', time: t, unit: 'kg', value: 102.3 }]]),
+    )
+    const result = await buildMetricsLatest('testuser', ['weight'])
+    expect(result.weight).not.toHaveProperty('notes')
   })
 })
 

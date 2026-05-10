@@ -295,6 +295,10 @@ export const metricUnits: Record<MetricType, string> = {
 export const customMetricDefinitionSchema = z
   .object({
     description: z.string().optional().meta({ description: 'Human-readable description' }),
+    include_in_daily_summary: z.boolean().optional().meta({
+      description:
+        'When true, this metric is surfaced in get_daily_summary under metrics_today (entries logged on the date) and metrics_latest (most recent value, regardless of age). Defaults to false to avoid noise from high-frequency streams.',
+    }),
     max_value: z.number().optional().meta({ description: 'Maximum allowed value' }),
     min_value: z.number().optional().meta({ description: 'Minimum allowed value' }),
     name: z
@@ -315,6 +319,23 @@ export const customMetricDefinitionSchema = z
   .meta({ id: 'CustomMetricDefinition' })
 
 export type CustomMetricDefinition = z.infer<typeof customMetricDefinitionSchema>
+
+/**
+ * Built-in metrics that ship with include_in_daily_summary defaulted to true.
+ * These are slow-varying body-state or episodic measurements that an LLM coach
+ * benefits from seeing in a single daily-summary fetch. Continuous-stream metrics
+ * (heart_rate, hrv_rmssd, body_battery, etc.) are intentionally excluded — they
+ * have first-class spots elsewhere or would balloon the response.
+ */
+export const builtinMetricsForDailySummary: readonly MetricType[] = [
+  'weight',
+  'body_fat',
+  'body_temperature',
+  'basal_body_temperature',
+  'blood_glucose',
+  'blood_pressure_systolic',
+  'blood_pressure_diastolic',
+] as const
 
 /**
  * Validate a custom metric name doesn't conflict with built-in metrics.

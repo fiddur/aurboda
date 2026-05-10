@@ -2,10 +2,13 @@
  * Daily summary query function.
  */
 
-import { getExerciseTypeName } from '@aurboda/api-spec'
+import { builtinMetricsForDailySummary, getExerciseTypeName } from '@aurboda/api-spec'
 
 import type {
   ActivitySummary,
+  DailySummaryMetricEntry,
+  DailySummaryMetricLatest,
+  DailySummaryMetricStats,
   DailySummaryResult,
   HeartRateStats,
   ProductivitySummary,
@@ -17,18 +20,23 @@ import type {
 } from './types.ts'
 
 import {
+  getCustomMetricDefinitions,
   getDailyAggregateValue,
+  getLatestMetricValuesMulti,
   getMeals,
   getNonSleepActivitiesMerged,
+  getNotesByEntityIds,
   getNotesForTimeRange,
   getProductivity,
   getScreentimeActivities,
   getSleepSessions,
   getTimeSeries,
+  getTimeSeriesEntriesMultiMetric,
   getTimeSeriesMultiMetric,
 } from '../../db/index.ts'
 import { getScreentimeCategories } from '../../db/screentime-categories.ts'
 import { getPlaceVisits, type PlaceVisit } from '../locations.ts'
+import { toMetricEntityId } from '../metric-entity-id.ts'
 import {
   categoryPathToString,
   getScreentimeCategoryPath,
@@ -187,6 +195,113 @@ export function findSleepLocation(
   }
 }
 
+// ============================================================================
+// Daily summary metrics (metrics_today / metrics_latest)
+// ============================================================================
+
+/**
+ * Resolve the set of metric names that should be surfaced in the daily summary.
+ * Built-in defaults union with any custom metric flagged include_in_daily_summary.
+ */
+export const resolveDailySummaryMetrics = async (user: string): Promise<string[]> => {
+  const custom = await getCustomMetricDefinitions(user)
+  const customFlagged = custom.filter((m) => m.include_in_daily_summary === true).map((m) => m.name)
+  // Deduplicate just in case a custom metric somehow shares a name with a built-in.
+  return [...new Set<string>([...builtinMetricsForDailySummary, ...customFlagged])]
+}
+
+/**
+ * Build the metrics_today block: per-metric stats and verbatim entries (with notes)
+ * for entries logged in [start, end].
+ */
+export const buildMetricsToday = async (
+  user: string,
+  metrics: string[],
+  start: Date,
+  end: Date,
+): Promise<Record<string, DailySummaryMetricStats>> => {
+  if (metrics.length === 0) return {}
+
+  const entries = await getTimeSeriesEntriesMultiMetric(user, metrics, start, end)
+  if (entries.length === 0) return {}
+
+  // Bulk-fetch notes for all entries via composite metric entity_id.
+  const entityIds = entries.map((e) => toMetricEntityId(e.time, e.metric, e.source))
+  const notesMap = await getNotesByEntityIds(user, 'metric', entityIds)
+  const noteFor = (e: { time: Date; metric: string; source: string }): string | undefined => {
+    const notes = notesMap.get(toMetricEntityId(e.time, e.metric, e.source))
+    if (!notes || notes.length === 0) return undefined
+    return notes.map((n) => n.content).join('\n')
+  }
+
+  const grouped = new Map<string, typeof entries>()
+  for (const entry of entries) {
+    const list = grouped.get(entry.metric) ?? []
+    list.push(entry)
+    grouped.set(entry.metric, list)
+  }
+
+  const result: Record<string, DailySummaryMetricStats> = {}
+  for (const [metric, list] of grouped) {
+    const sorted = [...list].sort((a, b) => a.time.getTime() - b.time.getTime())
+    const values = sorted.map((e) => e.value)
+    const summaryEntries: DailySummaryMetricEntry[] = sorted.map((e) => {
+      const note = noteFor(e)
+      const entry: DailySummaryMetricEntry = {
+        source: e.source,
+        time: e.time.toISOString(),
+        value: e.value,
+      }
+      if (note !== undefined) entry.notes = note
+      return entry
+    })
+    const last = sorted[sorted.length - 1]
+    result[metric] = {
+      avg: values.reduce((a, b) => a + b, 0) / values.length,
+      count: values.length,
+      entries: summaryEntries,
+      latest: last.value,
+      latest_time: last.time.toISOString(),
+      max: Math.max(...values),
+      min: Math.min(...values),
+      unit: last.unit,
+    }
+  }
+  return result
+}
+
+/**
+ * Build the metrics_latest block: most recent value per flagged metric (any age),
+ * with note attached if present.
+ */
+export const buildMetricsLatest = async (
+  user: string,
+  metrics: string[],
+): Promise<Record<string, DailySummaryMetricLatest>> => {
+  if (metrics.length === 0) return {}
+
+  const latestMap = await getLatestMetricValuesMulti(user, metrics)
+  if (latestMap.size === 0) return {}
+
+  const entityIds = [...latestMap.entries()].map(([metric, v]) => toMetricEntityId(v.time, metric, v.source))
+  const notesMap = await getNotesByEntityIds(user, 'metric', entityIds)
+
+  const result: Record<string, DailySummaryMetricLatest> = {}
+  for (const [metric, v] of latestMap) {
+    const notes = notesMap.get(toMetricEntityId(v.time, metric, v.source))
+    const noteContent = notes && notes.length > 0 ? notes.map((n) => n.content).join('\n') : undefined
+    const entry: DailySummaryMetricLatest = {
+      source: v.source,
+      time: v.time.toISOString(),
+      unit: v.unit,
+      value: v.value,
+    }
+    if (noteContent !== undefined) entry.notes = noteContent
+    result[metric] = entry
+  }
+  return result
+}
+
 /**
  * Get a comprehensive summary of health data for a specific day.
  * @param sync Optional sync provider to auto-refresh stale data before querying
@@ -237,6 +352,7 @@ export async function getDailySummary(
 
   // Build category map for cross-source merge (cheap query, run before parallel block)
   const categoryMap = await buildCategoryMap(user)
+  const dailySummaryMetrics = await resolveDailySummaryMetrics(user)
 
   // Run queries in parallel
   const [
@@ -253,6 +369,8 @@ export async function getDailySummary(
     stepsAggregate,
     screentimeCategories,
     stressData,
+    metricsToday,
+    metricsLatest,
   ] = await Promise.all([
     getTimeSeries(user, 'heart_rate', start, end),
     getTimeSeries(user, 'steps', start, end),
@@ -272,6 +390,8 @@ export async function getDailySummary(
     getDailyAggregateValue(user, 'steps', date),
     getScreentimeCategories(user),
     getTimeSeries(user, 'stress_level', start, end),
+    buildMetricsToday(user, dailySummaryMetrics, start, end),
+    buildMetricsLatest(user, dailySummaryMetrics),
   ])
 
   // Calculate heart rate stats
@@ -485,6 +605,8 @@ export async function getDailySummary(
       protein: m.protein,
       time: m.time.toISOString(),
     })),
+    metrics_latest: metricsLatest,
+    metrics_today: metricsToday,
     notes: orphanedNotes.map((n) => ({
       content: n.content,
       created_at: n.created_at.toISOString(),
