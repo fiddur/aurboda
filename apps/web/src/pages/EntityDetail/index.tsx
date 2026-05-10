@@ -197,7 +197,8 @@ const ActivityDetailContent = ({
 
   // Resolve type info
   const exerciseType = resolveExerciseType(activity)
-  const typeDef = typeDefinitions?.find((d) => d.name === activity.activity_type)
+  const currentActivityType = isEditing ? draft.activity_type : activity.activity_type
+  const typeDef = typeDefinitions?.find((d) => d.name === currentActivityType)
   const typeDisplayName = exerciseType
     ? formatExerciseTypeName(exerciseType)
     : (typeDef?.display_name ?? toDisplayName(activity.activity_type))
