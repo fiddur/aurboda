@@ -119,6 +119,56 @@ describe('getBaseline', () => {
     expect(result.stress.avg30day).toBeNull()
   })
 
+  test('falls back to raw hrv_rmssd when no samples overlap sleep windows (#747)', async () => {
+    vi.mocked(queries.queryMetrics).mockResolvedValue(emptyHrvResult)
+
+    vi.mocked(db.getTimeSeriesStats).mockImplementation(async (_user, metrics) => {
+      if (metrics.includes('hrv_rmssd')) {
+        return [{ avg: 43, count: 8, max: 50, metric: 'hrv_rmssd', min: 38, stddev: 3, unit: 'ms' }]
+      }
+      if (metrics.includes('resting_heart_rate')) {
+        return [
+          { avg: 55.9, count: 8, max: 60, metric: 'resting_heart_rate', min: 52, stddev: 2, unit: 'bpm' },
+        ]
+      }
+      return [{ avg: 30, count: 8, max: 60, metric: 'stress_level', min: 5, stddev: 10, unit: '' }]
+    })
+
+    const result = await getBaseline('testuser')
+
+    expect(result.hrv.avg7day).toBe(43)
+    expect(result.hrv.avg30day).toBe(43)
+    expect(result.resting_hr.avg7day).toBe(55.9)
+    const hrvRmssdCalls = vi
+      .mocked(db.getTimeSeriesStats)
+      .mock.calls.filter((call) => call[1].includes('hrv_rmssd'))
+    expect(hrvRmssdCalls).toHaveLength(3) // 7-day, 30-day, prev-30
+  })
+
+  test('prefers contextual hrv_sleep over raw hrv_rmssd when both exist', async () => {
+    vi.mocked(queries.queryMetrics).mockResolvedValue({
+      count: 2,
+      data: [
+        { time: '2024-01-14T02:00:00Z', value: 50 },
+        { time: '2024-01-15T02:00:00Z', value: 60 },
+      ],
+      metric: 'hrv_sleep',
+      unit: 'ms',
+    })
+    vi.mocked(db.getTimeSeriesStats).mockResolvedValue([
+      { avg: 100, count: 8, max: 110, metric: 'resting_heart_rate', min: 90, stddev: 5, unit: 'bpm' },
+    ])
+
+    const result = await getBaseline('testuser')
+
+    expect(result.hrv.avg7day).toBe(55) // hrv_sleep avg, NOT 100 from any fallback
+    // hrv_rmssd should NOT be queried when sleep HRV exists
+    const hrvRmssdCalls = vi
+      .mocked(db.getTimeSeriesStats)
+      .mock.calls.filter((call) => call[1].includes('hrv_rmssd'))
+    expect(hrvRmssdCalls).toHaveLength(0)
+  })
+
   test('uses reference date when provided', async () => {
     vi.mocked(queries.queryMetrics).mockResolvedValue(emptyHrvResult)
     vi.mocked(db.getTimeSeriesStats).mockResolvedValue([])
@@ -134,8 +184,9 @@ describe('getBaseline', () => {
     expect(metric).toBe('hrv_sleep')
     expect(endDate.toISOString().split('T')[0]).toBe('2024-01-15')
 
-    // getTimeSeriesStats called for resting HR and stress with dates from reference date
-    expect(db.getTimeSeriesStats).toHaveBeenCalledTimes(6) // 3 for HR + 3 for stress
+    // getTimeSeriesStats called for resting HR, stress, and the hrv_rmssd fallback
+    // (3 each since hrv_sleep was empty in this test) with dates from reference date
+    expect(db.getTimeSeriesStats).toHaveBeenCalledTimes(9)
     const statsCalls = vi.mocked(db.getTimeSeriesStats).mock.calls
     const [, , , hrEndDate] = statsCalls[0]
     expect(new Date(hrEndDate).toISOString().split('T')[0]).toBe('2024-01-15')

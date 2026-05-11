@@ -33,12 +33,18 @@ export async function getBaseline(user: string, referenceDate?: Date): Promise<B
   const prevEnd30day = new Date(start30day)
   prevEnd30day.setMilliseconds(-1)
 
-  // Compute average from sleep HRV data (contextual metric, not stored directly)
-  const getSleepHrvAvg = async (start: Date, end: Date): Promise<number | null> => {
-    const result = await queryMetrics(user, 'hrv_sleep', start, end)
-    if (result.count === 0) return null
-    const sum = result.data.reduce((acc, d) => acc + d.value, 0)
-    return sum / result.count
+  // Prefer the contextual sleep HRV signal; fall back to raw hrv_rmssd when no
+  // samples overlap the user's tracked sleep windows so the widget mirrors what
+  // /api/metrics/latest/hrv_rmssd surfaces (see #747).
+  const getHrvAvg = async (start: Date, end: Date): Promise<number | null> => {
+    const sleep = await queryMetrics(user, 'hrv_sleep', start, end)
+    if (sleep.count > 0) {
+      const sum = sleep.data.reduce((acc, d) => acc + d.value, 0)
+      return sum / sleep.count
+    }
+    const rawStats = await getTimeSeriesStats(user, ['hrv_rmssd'], start, end)
+    const raw = rawStats[0]
+    return raw && raw.count > 0 && raw.avg ? raw.avg : null
   }
 
   // Fetch sleep HRV, resting HR, and stress stats in parallel
@@ -53,9 +59,9 @@ export async function getBaseline(user: string, referenceDate?: Date): Promise<B
     stressStats30day,
     stressStatsPrev30day,
   ] = await Promise.all([
-    getSleepHrvAvg(start7day, end7day),
-    getSleepHrvAvg(start30day, end30day),
-    getSleepHrvAvg(prevStart30day, prevEnd30day),
+    getHrvAvg(start7day, end7day),
+    getHrvAvg(start30day, end30day),
+    getHrvAvg(prevStart30day, prevEnd30day),
     getTimeSeriesStats(user, ['resting_heart_rate'], start7day, end7day),
     getTimeSeriesStats(user, ['resting_heart_rate'], start30day, end30day),
     getTimeSeriesStats(user, ['resting_heart_rate'], prevStart30day, prevEnd30day),
