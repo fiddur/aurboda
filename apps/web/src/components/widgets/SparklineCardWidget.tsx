@@ -16,6 +16,7 @@ import {
   fetchRestingHeartRate,
   fetchSleepScores,
   fetchSteps,
+  periodStatsValue,
   type PeriodMetricStats,
 } from '../../state/api'
 import { SparklineChart } from '../SparklineChart'
@@ -105,11 +106,9 @@ export function SparklineCardWidget({ config }: SparklineCardWidgetProps) {
       periodSummary[m.metric] = m
     }
     const stats = periodSummary[apiMetric]
-    if (stats) {
-      value = stats.avg ?? null
-      trend = stats.change_from_previous_period_percent ?? null
-      subtitle = stats.count ? `${stats.count} days` : undefined
-    }
+    value = periodStatsValue(stats, 'avg')
+    trend = stats?.change_from_previous_period_percent ?? null
+    subtitle = stats?.count ? `${stats.count} days` : undefined
   }
 
   const sparklineData = timeSeriesQuery.data ?? []
