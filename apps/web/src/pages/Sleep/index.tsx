@@ -5,13 +5,22 @@ import { endOfDay, formatISO, startOfDay, subDays } from 'date-fns'
 import { useEffect, useRef } from 'preact/hooks'
 
 import { fetchActivities, fetchPeriodSummary, fetchSleepScores, type Activity } from '../../state/api'
+import { getSleepScoreEmptyState } from './emptyState'
 import './style.css'
 
 // Date range signal (default 30 days)
 const daysBack = signal(30)
 
 // Sleep score line chart component
-function SleepScoreChart({ data, height = 200 }: { data: [Date, number][]; height?: number }) {
+function SleepScoreChart({
+  data,
+  hasSleepSessions,
+  height = 200,
+}: {
+  data: [Date, number][]
+  hasSleepSessions: boolean
+  height?: number
+}) {
   const containerRef = useRef<HTMLDivElement>(null)
   const svgRef = useRef<SVGSVGElement>(null)
 
@@ -137,8 +146,19 @@ function SleepScoreChart({ data, height = 200 }: { data: [Date, number][]; heigh
       .text('Sleep Score')
   }, [data, height])
 
-  if (data.length < 2) {
-    return <div class="chart-placeholder">Not enough sleep data to display chart</div>
+  const emptyState = getSleepScoreEmptyState(data.length, hasSleepSessions)
+  if (emptyState) {
+    return (
+      <div class="chart-placeholder">
+        {emptyState.message}
+        {emptyState.linkHref && (
+          <>
+            {' '}
+            <a href={emptyState.linkHref}>{emptyState.linkLabel}</a>.
+          </>
+        )}
+      </div>
+    )
   }
 
   return (
@@ -428,7 +448,7 @@ export function Sleep() {
       {/* Sleep score chart */}
       <section class="chart-section">
         <h2>Sleep Score Trend</h2>
-        <SleepScoreChart data={sleepScores} />
+        <SleepScoreChart data={sleepScores} hasSleepSessions={sleepSessions.length > 0} />
       </section>
 
       {/* Sleep duration chart */}
