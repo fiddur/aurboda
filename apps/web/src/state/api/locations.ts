@@ -8,6 +8,7 @@ import type {
   NamedLocationsResponse,
   PromoteDetectedLocationBody,
   RawLocationsResponse,
+  UpdateNamedLocationBody,
 } from '@aurboda/api-spec'
 
 import axios from 'axios'
@@ -125,6 +126,19 @@ export const promoteDetectedLocation = async (
 export const addNamedLocation = async (params: AddNamedLocationBody): Promise<NamedLocation> => {
   const { token } = auth.value
   const response = await axios.post<AddNamedLocationResponse>(`${API_URL}/locations/named`, params, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+
+  return response.data.data!
+}
+
+// Update an existing named location
+export const updateNamedLocation = async (
+  id: string,
+  params: UpdateNamedLocationBody,
+): Promise<NamedLocation> => {
+  const { token } = auth.value
+  const response = await axios.patch<AddNamedLocationResponse>(`${API_URL}/locations/named/${id}`, params, {
     headers: { Authorization: `Bearer ${token}` },
   })
 
