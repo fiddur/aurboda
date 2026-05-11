@@ -168,11 +168,13 @@ function FoodItemRow({
   index,
   onChange,
   onRemove,
+  autoFocus,
 }: {
   item: FoodItemEdit
   index: number
   onChange: (index: number, item: FoodItemEdit) => void
   onRemove: (index: number) => void
+  autoFocus?: boolean
 }) {
   const update = (field: keyof FoodItemEdit, value: unknown) => onChange(index, { ...item, [field]: value })
   const parseNum = (v: string) => (v === '' ? undefined : parseFloat(v))
@@ -189,6 +191,7 @@ function FoodItemRow({
       <div class="food-row-top">
         <FoodItemAutocomplete
           value={item.name}
+          autoFocus={autoFocus}
           onChange={(name) => update('name', name)}
           onSelect={(fi: FoodItemEntity) => {
             onChange(index, {
@@ -247,18 +250,30 @@ function FoodItemsEditor({
   items: FoodItemEdit[]
   onChange: (items: FoodItemEdit[]) => void
 }) {
+  const [autoFocusIndex, setAutoFocusIndex] = useState<number | null>(null)
+
   const handleChange = (index: number, item: FoodItemEdit) => {
     const next = [...items]
     next[index] = item
     onChange(next)
   }
   const handleRemove = (index: number) => onChange(items.filter((_, i) => i !== index))
-  const handleAdd = () => onChange([...items, { name: '' }])
+  const handleAdd = () => {
+    setAutoFocusIndex(items.length)
+    onChange([...items, { name: '' }])
+  }
 
   return (
     <div class="food-items-editor">
       {items.map((item, i) => (
-        <FoodItemRow key={i} item={item} index={i} onChange={handleChange} onRemove={handleRemove} />
+        <FoodItemRow
+          key={i}
+          item={item}
+          index={i}
+          onChange={handleChange}
+          onRemove={handleRemove}
+          autoFocus={i === autoFocusIndex}
+        />
       ))}
       <button type="button" class="btn-secondary btn-add-item" onClick={handleAdd}>
         + Add food item
