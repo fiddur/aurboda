@@ -150,13 +150,13 @@ This starts:
 
 - **aurboda** (web + API) on port 8080
 - **PostgreSQL** with PostGIS
-- **Watchtower** for automatic updates
+- **Watchtower** -- polls Docker Hub once a day and automatically pulls/restarts the `aurboda` container when a new image is published. Convenient, but if you'd rather control your own update cadence, remove the `watchtower` service from `docker-compose.yml` before starting.
 
 ### Creating Your User
 
-Navigate to http://localhost:8080 and create your account through the web interface.
+Navigate to http://localhost:8080 and create your account through the web interface. **The first account created on a fresh instance is automatically granted admin rights** -- it's the account you'll use to invite others, configure shared integrations (Oura, Strava, etc.), and manage signup mode.
 
-After creating your user, you can set `ALLOW_SIGNUP=false` in docker-compose.yml to disallow other signups.
+After creating your user, switch signup to `invite_only` or `closed` from the in-app admin settings (or set `ALLOW_SIGNUP=false` in docker-compose.yml as a legacy fallback) to disallow other signups.
 
 ### Environment Variables
 

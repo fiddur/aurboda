@@ -61,13 +61,12 @@ Build from source or install from releases. The app requires Android with Health
 
 ### 2. Log In
 
-On first launch, enter:
+On first launch, enter the **Server URL** (e.g., `https://aurboda.net`) and authenticate with either:
 
-- **Server URL** (e.g., `https://aurboda.net`)
-- **Username**
-- **Auth token** (from the web interface)
+- **Username + password** -- the same credentials you use on the web, or
+- **Passkey** -- via Android's Credential Manager (works with Google Password Manager, 1Password, etc.; requires a passkey previously registered for your account on the web).
 
-Credentials are stored encrypted on-device using Android EncryptedSharedPreferences.
+The resulting auth token is stored encrypted on-device using Android EncryptedSharedPreferences.
 
 ### 3. Grant Permissions
 
