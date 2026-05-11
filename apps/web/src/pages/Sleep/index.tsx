@@ -4,7 +4,13 @@ import * as d3 from 'd3'
 import { endOfDay, formatISO, startOfDay, subDays } from 'date-fns'
 import { useEffect, useRef } from 'preact/hooks'
 
-import { fetchActivities, fetchPeriodSummary, fetchSleepScores, type Activity } from '../../state/api'
+import {
+  fetchActivities,
+  fetchPeriodSummary,
+  fetchSleepScores,
+  periodStatsValue,
+  type Activity,
+} from '../../state/api'
 import { getSleepScoreEmptyState } from './emptyState'
 import './style.css'
 
@@ -324,7 +330,7 @@ function StatCard({
             {unit && <span class="stat-unit">{unit}</span>}
           </>
         ) : (
-          <span class="no-data">--</span>
+          <span class="no-data">No data</span>
         )}
       </div>
       {trend !== null && trend !== undefined && (
@@ -380,7 +386,7 @@ export function Sleep() {
     {}
   for (const m of metricsArray) {
     metrics[m.metric] = {
-      avg: m.avg,
+      avg: periodStatsValue(m, 'avg'),
       change_from_previous_period_percent: m.change_from_previous_period_percent,
     }
   }

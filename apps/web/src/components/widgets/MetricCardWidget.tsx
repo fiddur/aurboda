@@ -7,7 +7,13 @@ import type { MetricCardConfig } from '@aurboda/api-spec'
 import { useQuery } from '@tanstack/react-query'
 import { endOfDay, startOfDay, subDays } from 'date-fns'
 
-import { fetchBaseline, fetchPeriodSummary, type BaselineData, type PeriodMetricStats } from '../../state/api'
+import {
+  fetchBaseline,
+  fetchPeriodSummary,
+  periodStatsValue,
+  type BaselineData,
+  type PeriodMetricStats,
+} from '../../state/api'
 
 // Trend indicator component
 function TrendIndicator({ value, inverse = false }: { value: number | null; inverse?: boolean }) {
@@ -76,24 +82,26 @@ const extractPeriodValue = (
 
   if (!stats) return { subtitle: undefined, trend: null, value: null }
 
+  const avg = periodStatsValue(stats, 'avg')
+  const max = periodStatsValue(stats, 'max')
   switch (metric) {
     case 'steps':
       return {
-        subtitle: stats.max ? `Max: ${Math.round(stats.max).toLocaleString()}` : undefined,
+        subtitle: max !== null ? `Max: ${Math.round(max).toLocaleString()}` : undefined,
         trend: stats.change_from_previous_period_percent ?? null,
-        value: stats.avg ? Math.round(stats.avg).toLocaleString() : null,
+        value: avg !== null ? Math.round(avg).toLocaleString() : null,
       }
     case 'zone2_weekly':
       return {
         subtitle: undefined,
         trend: stats.change_from_previous_period_percent ?? null,
-        value: stats.avg ? Math.round((stats.avg * 7) / 60) : null,
+        value: avg !== null ? Math.round((avg * 7) / 60) : null,
       }
     default:
       return {
         subtitle: stats.count ? `${stats.count} days` : undefined,
         trend: stats.change_from_previous_period_percent ?? null,
-        value: stats.avg ?? null,
+        value: avg,
       }
   }
 }

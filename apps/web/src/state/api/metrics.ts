@@ -75,6 +75,8 @@ export const fetchHrvSleep = async (start: Date, end: Date): Promise<[Date, numb
   return (response.data.data ?? []).map(({ time, value }) => [new Date(time), value])
 }
 
+export { periodStatsValue } from './periodSummary'
+
 // Fetch period summary for specified metrics
 export const fetchPeriodSummary = async (
   start: Date,
