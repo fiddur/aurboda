@@ -9,6 +9,7 @@ interface FoodItemAutocompleteProps {
   onSelect: (item: FoodItemEntity) => void
   placeholder?: string
   class?: string
+  autoFocus?: boolean
 }
 
 export function FoodItemAutocomplete({
@@ -16,6 +17,7 @@ export function FoodItemAutocomplete({
   onChange,
   onSelect,
   placeholder,
+  autoFocus,
   ...rest
 }: FoodItemAutocompleteProps) {
   const [suggestions, setSuggestions] = useState<FoodItemEntity[]>([])
@@ -27,7 +29,13 @@ export function FoodItemAutocomplete({
   // = N dropdowns opening simultaneously on page load.
   const [hasFocus, setHasFocus] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout>>()
+
+  useEffect(() => {
+    if (autoFocus) inputRef.current?.focus()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Debounced search — only when the input is focused. Re-runs when
   // hasFocus flips true so re-focusing a populated field also re-fetches.
@@ -86,6 +94,7 @@ export function FoodItemAutocomplete({
   return (
     <div ref={ref} class={`food-autocomplete ${rest.class ?? ''}`}>
       <input
+        ref={inputRef}
         type="text"
         value={value}
         placeholder={placeholder ?? 'Food name'}
