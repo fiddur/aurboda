@@ -10,7 +10,7 @@ import { aggregateBucketsAligned } from '../../utils/chart'
 import { packLanes } from '../../utils/lanePacking'
 import { computeBarLayout, type BarSlot } from './barLayout'
 import { drawActivitySparklines } from './drawActivitySparklines'
-import { attachHoverHandlers, drawItemIcon, getDetailUrl, truncateLabel } from './drawItems'
+import { attachHoverHandlers, clampLabelLayout, drawItemIcon, getDetailUrl, truncateLabel } from './drawItems'
 import { computeYScales, drawMetricsTrack, HR_COLOR, HRV_COLOR } from './drawMetricsTrack'
 import {
   buildMusicTooltipHtml,
@@ -861,14 +861,15 @@ export const Timeline = () => {
 
           const blockIconSize = Math.max(ICON_SIZE, Math.min(laneH, rw))
           if (!drawItemIcon(parent, item.icon, rx + rw / 2, laneY + laneH / 2, blockIconSize) && rw > 40) {
+            const { x: labelX, width: labelWidth } = clampLabelLayout(rx, rw, 4)
             parent
               .append('text')
-              .attr('x', rx + 4)
+              .attr('x', labelX)
               .attr('y', laneY + Math.min(laneH * 0.6, 14))
               .attr('fill', 'white')
               .attr('font-size', '0.65rem')
               .attr('pointer-events', 'none')
-              .text(truncateLabel(item.label, rw))
+              .text(truncateLabel(item.label, labelWidth))
           }
         }
 
@@ -897,15 +898,16 @@ export const Timeline = () => {
           attachHoverHandlers(placeRect, place, showTooltip, hideTooltip)
 
           if (pw > 30) {
+            const { x: labelX, width: labelWidth } = clampLabelLayout(px, pw, 4)
             parent
               .append('text')
-              .attr('x', px + 4)
+              .attr('x', labelX)
               .attr('y', trackPlaces + LOCATION_TRACK_HEIGHT / 2)
               .attr('dy', '0.35em')
               .attr('fill', 'white')
               .attr('font-size', '0.6rem')
               .attr('pointer-events', 'none')
-              .text(truncateLabel(place.label, pw))
+              .text(truncateLabel(place.label, labelWidth))
           }
         }
 

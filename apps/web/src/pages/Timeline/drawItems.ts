@@ -98,3 +98,21 @@ export const truncateLabel = (label: string, widthPx: number, charWidth = 6): st
   if (label.length <= maxChars) return label
   return label.slice(0, Math.max(maxChars - 1, 0)) + '…'
 }
+
+/**
+ * Position a label inside a horizontal bar so it stays inside the visible chart
+ * region even when the bar starts before the chart's left edge (e.g. an activity
+ * spanning midnight). Returns the clamped x and the remaining width available
+ * for truncation.
+ */
+export const clampLabelLayout = (
+  barStartX: number,
+  barWidth: number,
+  padding: number,
+  chartLeftX = 0,
+): { x: number; width: number } => {
+  const barEndX = barStartX + barWidth
+  const x = Math.max(barStartX + padding, chartLeftX + padding)
+  const width = Math.max(0, barEndX - x - padding)
+  return { x, width }
+}
