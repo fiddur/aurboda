@@ -124,6 +124,14 @@ export const exerciseTypeSchema = z
 
 export const isValidExerciseType = (name: string): name is ExerciseTypeName => name in exerciseTypes
 
+/**
+ * True when an activity_type counts as a workout/exercise — either the generic
+ * `'exercise'` bucket or one of the Health Connect exercise subtypes (running,
+ * cycling, …). Used by widgets and summaries that count "workouts".
+ */
+export const isExerciseActivityType = (activityType: string): boolean =>
+  activityType === 'exercise' || activityType in exerciseTypes
+
 /** Reverse lookup: Health Connect exercise type integer → exercise type name. */
 const exerciseTypesByValue = Object.fromEntries(
   Object.entries(exerciseTypes).map(([name, value]) => [value, name]),
