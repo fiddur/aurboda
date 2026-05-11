@@ -7,7 +7,8 @@ import type { ActivitySummaryConfig } from '@aurboda/api-spec'
 import { useQuery } from '@tanstack/react-query'
 import { endOfDay, formatISO, startOfDay, subDays } from 'date-fns'
 
-import { fetchActivities, type Activity } from '../../state/api'
+import { fetchActivities } from '../../state/api'
+import { summarizeActivities } from './activitySummary'
 
 interface ActivitySummaryWidgetProps {
   config: ActivitySummaryConfig
@@ -27,27 +28,14 @@ export function ActivitySummaryWidget({ config }: ActivitySummaryWidgetProps) {
 
   const activities = activitiesQuery.data ?? []
 
-  const exerciseSessions = activities.filter((a: Activity) => a.activity_type === 'exercise')
-  const sleepSessions = activities.filter((a: Activity) => a.activity_type === 'sleep')
-  const meditationSessions = activities.filter((a: Activity) => a.activity_type === 'meditation')
-
-  const totalExerciseMinutes = exerciseSessions.reduce((sum: number, a: Activity) => {
-    if (!a.end_time) return sum
-    return sum + (a.end_time.getTime() - a.start_time.getTime()) / 60000
-  }, 0)
-
-  const avgSleepHours =
-    sleepSessions.length > 0
-      ? sleepSessions.reduce((sum: number, a: Activity) => {
-          if (!a.end_time) return sum
-          return sum + (a.end_time.getTime() - a.start_time.getTime()) / 3600000
-        }, 0) / sleepSessions.length
-      : null
-
-  const totalMeditationMinutes = meditationSessions.reduce((sum: number, a: Activity) => {
-    if (!a.end_time) return sum
-    return sum + (a.end_time.getTime() - a.start_time.getTime()) / 60000
-  }, 0)
+  const {
+    avgSleepHours,
+    exerciseCount,
+    meditationCount,
+    sleepCount,
+    totalExerciseMinutes,
+    totalMeditationMinutes,
+  } = summarizeActivities(activities)
 
   if (activitiesQuery.isLoading) {
     return (
@@ -80,7 +68,7 @@ export function ActivitySummaryWidget({ config }: ActivitySummaryWidgetProps) {
               </svg>
             </span>
             <div class="activity-details">
-              <span class="activity-value">{exerciseSessions.length}</span>
+              <span class="activity-value">{exerciseCount}</span>
               <span class="activity-label">Workouts</span>
             </div>
             <div class="activity-sub">{Math.round(totalExerciseMinutes)} min total</div>
@@ -105,7 +93,7 @@ export function ActivitySummaryWidget({ config }: ActivitySummaryWidgetProps) {
               <span class="activity-value">{avgSleepHours !== null ? avgSleepHours.toFixed(1) : '--'}</span>
               <span class="activity-label">Avg Sleep (hrs)</span>
             </div>
-            <div class="activity-sub">{sleepSessions.length} nights tracked</div>
+            <div class="activity-sub">{sleepCount} nights tracked</div>
           </div>
         )}
 
@@ -125,7 +113,7 @@ export function ActivitySummaryWidget({ config }: ActivitySummaryWidgetProps) {
               </svg>
             </span>
             <div class="activity-details">
-              <span class="activity-value">{meditationSessions.length}</span>
+              <span class="activity-value">{meditationCount}</span>
               <span class="activity-label">Meditations</span>
             </div>
             <div class="activity-sub">{Math.round(totalMeditationMinutes)} min total</div>
