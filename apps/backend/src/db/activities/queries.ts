@@ -328,6 +328,10 @@ export const getActivitiesExcludingCategories = async (
 /**
  * Get all non-sleep activities for a time range, with overlapping same-type activities merged.
  * Used by the daily summary to build a unified activity timeline.
+ *
+ * Activity types flagged `show_on_timeline = false` (music scrobbles, screentime,
+ * location visits) are excluded — they're high-volume, low-signal-per-row and
+ * have their own dedicated tracks/summaries.
  */
 export const getNonSleepActivitiesMerged = async (
   user: string,
@@ -343,6 +347,7 @@ export const getNonSleepActivitiesMerged = async (
      WHERE a.deleted_at IS NULL
        AND a.start_time >= $1 AND a.start_time <= $2
        AND (atd.display_category IS NULL OR atd.display_category != 'sleep_rest')
+       AND COALESCE(atd.show_on_timeline, TRUE) = TRUE
      ORDER BY a.start_time`,
     [start, end],
   )

@@ -7,6 +7,7 @@ import {
   getActivities,
   getActivityById,
   getActivitiesNeedingDetail,
+  getNonSleepActivitiesMerged,
   getOverlappingActivities,
   getOverrideForActivity,
   getSleepSessions,
@@ -932,6 +933,64 @@ describe('Activities Integration Tests', () => {
 
       const survivor = await getActivityById(user, override!.id!, true)
       expect(survivor).toBeNull()
+    })
+  })
+
+  describe('getNonSleepActivitiesMerged', () => {
+    const dayStart = new Date('2026-05-05T00:00:00Z')
+    const dayEnd = new Date('2026-05-05T23:59:59Z')
+
+    test('excludes activity types flagged show_on_timeline = false', async () => {
+      const user = getTestUser()
+
+      // show_on_timeline = true (built-in default)
+      await insertActivity(user, {
+        activity_type: 'exercise',
+        end_time: new Date('2026-05-05T11:00:00Z'),
+        source: 'health_connect',
+        start_time: new Date('2026-05-05T10:00:00Z'),
+        title: 'Morning run',
+      })
+
+      // show_on_timeline = false — seeded that way for these built-in types
+      await insertActivity(user, {
+        activity_type: 'music_scrobble',
+        data: { artist: 'Aphex Twin', track: 'Avril 14th' },
+        source: 'lastfm',
+        start_time: new Date('2026-05-05T12:00:00Z'),
+      })
+      await insertActivity(user, {
+        activity_type: 'screentime',
+        data: { category_path: 'Work>IDE' },
+        end_time: new Date('2026-05-05T13:30:00Z'),
+        source: 'rescuetime',
+        start_time: new Date('2026-05-05T13:00:00Z'),
+      })
+
+      const result = await getNonSleepActivitiesMerged(user, dayStart, dayEnd)
+
+      expect(result.map((a) => a.activity_type)).toEqual(['exercise'])
+    })
+
+    test('still excludes sleep_rest types', async () => {
+      const user = getTestUser()
+
+      await insertActivity(user, {
+        activity_type: 'sleep',
+        end_time: new Date('2026-05-05T07:00:00Z'),
+        source: 'oura',
+        start_time: new Date('2026-05-05T01:00:00Z'),
+      })
+      await insertActivity(user, {
+        activity_type: 'exercise',
+        end_time: new Date('2026-05-05T11:00:00Z'),
+        source: 'health_connect',
+        start_time: new Date('2026-05-05T10:00:00Z'),
+      })
+
+      const result = await getNonSleepActivitiesMerged(user, dayStart, dayEnd)
+
+      expect(result.map((a) => a.activity_type)).toEqual(['exercise'])
     })
   })
 })
