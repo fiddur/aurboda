@@ -36,7 +36,7 @@ Nothing — the LSV API is unauthenticated and does not require API keys.
 
 The import is a server-wide admin action: only users with the `admin` role can start one, and there's only ever one import per source running at a time (single-flight guard in `startImport`). Once it's run, the data is available to **all** users.
 
-In the web UI: navigate to **Admin Settings** → **Shared Food Library** → click *Import from Livsmedelsverket*. The panel polls every 2 s and shows progress + skipped count.
+In the web UI: navigate to **Admin Settings** → **Shared Food Library** → click _Import from Livsmedelsverket_. The panel polls every 2 s and shows progress + skipped count.
 
 ## How sync works
 
@@ -63,9 +63,9 @@ REST:
 
 MCP:
 
-- `start_livsmedelsverket_import` *(admin-only)*
-- `list_import_jobs` *(admin-only)*
-- `get_import_job` *(admin-only)*
+- `start_livsmedelsverket_import` _(admin-only)_
+- `list_import_jobs` _(admin-only)_
+- `get_import_job` _(admin-only)_
 
 ## Attribution and license
 

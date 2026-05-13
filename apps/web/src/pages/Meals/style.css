@@ -369,13 +369,39 @@ a.meal-name:hover {
   color: #673ab8;
 }
 
-/* Frequent-meals quick-log strip — shown for empty slots */
+/* Frequent-meals quick-log strip — shown above every slot. When a meal is
+ * logged, it splits into two rows: "Included:" (items already on the meal)
+ * and "Add:" (suggestions filtered to exclude what's already there). */
 .frequent-meals-strip {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.375rem 0;
+  margin: 0.25rem 0;
+}
+
+.quick-log-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+}
+
+.quick-log-row-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  flex-shrink: 0;
+}
+
+.quick-log-row-items {
   display: flex;
   flex-wrap: wrap;
   gap: 0.375rem;
-  padding: 0.375rem 0;
-  margin: 0.25rem 0;
+  flex: 1;
+  margin: 0;
 }
 
 .frequent-chip {
@@ -556,6 +582,32 @@ a.meal-name:hover {
 .meal-calories {
   font-size: 0.75rem;
   color: #6b7280;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.meal-calories.calories-stale {
+  color: #9ca3af;
+  opacity: 0.7;
+}
+
+.calories-spinner {
+  width: 10px;
+  height: 10px;
+  border-width: 1.5px;
+}
+
+.popover-delete {
+  margin-top: 0.375rem;
+  padding-top: 0.375rem;
+  border-top: 1px solid #e5e7eb;
+}
+
+@media (prefers-color-scheme: dark) {
+  .popover-delete {
+    border-top-color: #374151;
+  }
 }
 
 .meal-notes {

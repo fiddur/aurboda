@@ -1,4 +1,4 @@
-import type { FrequentFoodItem } from '@aurboda/api-spec'
+import type { FoodItem, FoodItemInput, FrequentFoodItem, UpdateMealBody } from '@aurboda/api-spec'
 
 import { NUTRIENT_FIELDS } from '@aurboda/api-spec'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -66,6 +66,8 @@ function FoodItemChip({
   foodItemId,
   initialFlagNames,
   flags,
+  onDelete,
+  isDeletePending,
 }: {
   name: string
   foodItemId?: string
@@ -73,6 +75,9 @@ function FoodItemChip({
   initialFlagNames: string[]
   /** Full flag list from /sensitivity-flags. */
   flags: Array<{ id: string; name: string }>
+  /** When set, the popover shows a confirm-trash button that removes the item from the meal. */
+  onDelete?: () => void
+  isDeletePending?: boolean
 }) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLSpanElement>(null)
@@ -159,16 +164,56 @@ function FoodItemChip({
               {flag.name}
             </label>
           ))}
+          {onDelete && (
+            <div class="popover-delete">
+              <ConfirmButton
+                label="🗑 Remove"
+                confirmMessage={`Remove "${name}" from this meal?`}
+                confirmLabel="Remove"
+                onConfirm={onDelete}
+                isPending={isDeletePending}
+                pendingLabel="Removing..."
+                buttonClass="btn-danger-small"
+              />
+            </div>
+          )}
         </div>
       )}
     </span>
   )
 }
 
-function MealDetails({ meal, flags }: { meal: Meal; flags: Array<{ id: string; name: string }> }) {
+function MealCaloriesLine({ meal, isSaving }: { meal: Meal; isSaving: boolean }) {
+  if (meal.calories === undefined) return null
+  return (
+    <span class={`meal-calories${isSaving ? ' calories-stale' : ''}`}>
+      {meal.nutrient_data_incomplete && (
+        <span class="incomplete-indicator" title="Some food items lack nutrient data">
+          ~
+        </span>
+      )}
+      {meal.calories} kcal
+      {isSaving && <span class="saving-indicator calories-spinner" />}
+    </span>
+  )
+}
+
+function MealDetails({
+  meal,
+  flags,
+  showFoodItems = true,
+  isSaving = false,
+}: {
+  meal: Meal
+  flags: Array<{ id: string; name: string }>
+  /** Suppress the food-item chip strip — used when the parent renders chips elsewhere (the quick-log strip). */
+  showFoodItems?: boolean
+  /** When true, gray the calories number and show a spinner — signals "totals are stale, server is recomputing". */
+  isSaving?: boolean
+}) {
   const hasFoodItems = meal.food_items && meal.food_items.length > 0
   const hasCalories = meal.calories !== undefined
-  const hasContent = meal.name || hasFoodItems || meal.notes || hasCalories
+  const hasContent = meal.name || (showFoodItems && hasFoodItems) || meal.notes || hasCalories
 
   if (!hasContent) return null
 
@@ -179,7 +224,7 @@ function MealDetails({ meal, flags }: { meal: Meal; flags: Array<{ id: string; n
           {meal.name}
         </a>
       )}
-      {hasFoodItems && (
+      {showFoodItems && hasFoodItems && (
         <div class="food-items">
           {meal.food_items!.map((item, i) => (
             <FoodItemChip
@@ -192,16 +237,7 @@ function MealDetails({ meal, flags }: { meal: Meal; flags: Array<{ id: string; n
           ))}
         </div>
       )}
-      {hasCalories && (
-        <span class="meal-calories">
-          {meal.nutrient_data_incomplete && (
-            <span class="incomplete-indicator" title="Some food items lack nutrient data">
-              ~
-            </span>
-          )}
-          {meal.calories} kcal
-        </span>
-      )}
+      <MealCaloriesLine meal={meal} isSaving={isSaving} />
       {meal.notes && <div class="meal-notes">{meal.notes}</div>}
       {meal.source && meal.source !== 'manual' && <span class="meal-source">via {meal.source}</span>}
     </div>
@@ -246,9 +282,18 @@ function ChipIcon({ icon, size = 24 }: { icon: string; size?: number }) {
 function FrequentFoodItemsStrip({
   slotName,
   onQuickLog,
+  includedItems,
+  flags,
+  onDeleteFoodItem,
+  isDeletePending,
 }: {
   slotName: string
   onQuickLog: (foodItem: FrequentFoodItem) => void
+  /** Food items already on the meal — rendered as a leading "Included:" row, and filtered out of suggestions. */
+  includedItems?: FoodItem[]
+  flags?: Array<{ id: string; name: string }>
+  onDeleteFoodItem?: (index: number) => void
+  isDeletePending?: boolean
 }) {
   const mealType = slotName.toLowerCase()
   const { data: frequent } = useQuery({
@@ -269,12 +314,58 @@ function FrequentFoodItemsStrip({
     return () => document.removeEventListener('click', handler, true)
   }, [openIcon])
 
-  if (!frequent || frequent.length === 0) return null
+  const includedIds = new Set(
+    (includedItems ?? []).map((item) => item.food_item_id).filter((id): id is string => !!id),
+  )
+  const suggestions = (frequent ?? []).filter((item) => !includedIds.has(item.food_item_id))
+  const hasIncluded = includedItems && includedItems.length > 0
+  const hasSuggestions = suggestions.length > 0
 
-  const groups = groupFoodItemsByIcon(frequent)
+  if (!hasIncluded && !hasSuggestions) return null
+
+  const groups = groupFoodItemsByIcon(suggestions)
 
   return (
     <div ref={wrapperRef} class="frequent-meals-strip">
+      {hasIncluded && (
+        <div class="quick-log-row">
+          <span class="quick-log-row-label">Included:</span>
+          <div class="food-items quick-log-row-items">
+            {includedItems!.map((item, i) => (
+              <FoodItemChip
+                key={item.food_item_id ?? `idx:${i}`}
+                name={item.name}
+                foodItemId={item.food_item_id}
+                initialFlagNames={item.sensitivities ?? []}
+                flags={flags ?? []}
+                onDelete={onDeleteFoodItem ? () => onDeleteFoodItem(i) : undefined}
+                isDeletePending={isDeletePending}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+      {hasSuggestions && (
+        <div class="quick-log-row">
+          {hasIncluded && <span class="quick-log-row-label">Add:</span>}
+          <div class="quick-log-row-items">
+            {renderSuggestionChips(groups, openIcon, setOpenIcon, onQuickLog, slotName)}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function renderSuggestionChips(
+  groups: ReturnType<typeof groupFoodItemsByIcon>,
+  openIcon: string | null,
+  setOpenIcon: (icon: string | null) => void,
+  onQuickLog: (foodItem: FrequentFoodItem) => void,
+  slotName: string,
+) {
+  return (
+    <>
       {groups.map((group) => {
         const single = group.items[0]
         const ambiguous = group.items.length > 1
@@ -334,7 +425,7 @@ function FrequentFoodItemsStrip({
           </div>
         )
       })}
-    </div>
+    </>
   )
 }
 
@@ -348,6 +439,8 @@ interface MealSlotRowProps {
   onCreateAtTime: (slot: MealSlot, hour: number, minute: number) => void
   onCreateAndOpen: (slot: MealSlot) => void
   onQuickLog: (slot: MealSlot, hour: number, minute: number, foodItem: FrequentFoodItem) => void
+  onAppendFoodItem: (meal: Meal, foodItem: FrequentFoodItem) => void
+  onRemoveFoodItem: (meal: Meal, index: number) => void
   onDelete: (id: string) => void
   isDeletePending: boolean
   isSaving: boolean
@@ -363,6 +456,8 @@ function MealSlotRow({
   onCreateAtTime,
   onCreateAndOpen,
   onQuickLog,
+  onAppendFoodItem,
+  onRemoveFoodItem,
   onDelete,
   isDeletePending,
   isSaving,
@@ -458,16 +553,22 @@ function MealSlotRow({
         </div>
       </div>
 
-      {!primaryMeal && (
-        <FrequentFoodItemsStrip
-          slotName={slot.name}
-          onQuickLog={(foodItem) => {
+      <FrequentFoodItemsStrip
+        slotName={slot.name}
+        includedItems={primaryMeal?.food_items}
+        flags={flags}
+        onQuickLog={(foodItem) => {
+          if (primaryMeal) {
+            onAppendFoodItem(primaryMeal, foodItem)
+          } else {
             const hour = Math.floor(sliderValue / 60)
             const minute = sliderValue % 60
             onQuickLog(slot, hour, minute, foodItem)
-          }}
-        />
-      )}
+          }
+        }}
+        onDeleteFoodItem={primaryMeal ? (index) => onRemoveFoodItem(primaryMeal, index) : undefined}
+        isDeletePending={isDeletePending}
+      />
 
       {sensitivityAreas.length > 0 && (
         <div class="sensitivity-checks">
@@ -488,7 +589,9 @@ function MealSlotRow({
         </div>
       )}
 
-      {primaryMeal && <MealDetails meal={primaryMeal} flags={flags} />}
+      {primaryMeal && (
+        <MealDetails meal={primaryMeal} flags={flags} showFoodItems={false} isSaving={isSaving} />
+      )}
 
       {/*
        * If the slot has more than one meal (intentional split — two snacks
@@ -733,8 +836,7 @@ function useMealMutations(mealsQueryKey: string[], meals: Meal[] | undefined) {
   })
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, ...body }: { id: string; sensitivities?: string[]; time?: string }) =>
-      updateMealApi(id, body),
+    mutationFn: ({ id, ...body }: UpdateMealBody & { id: string }) => updateMealApi(id, body),
     onSettled: (_data, _err, variables) => {
       const meal = (meals ?? []).find((m) => m.id === variables.id)
       if (meal?.meal_type) markSlotSaving(meal.meal_type, false)
@@ -796,10 +898,45 @@ function useMealMutations(mealsQueryKey: string[], meals: Meal[] | undefined) {
     updateMutation.mutate({ id: meal.id!, time: newTime.toISOString() })
   }
 
+  const handleAppendFoodItem = (meal: Meal, foodItem: FrequentFoodItem) => {
+    const existingInputs = mapFoodItemsToInput(meal.food_items ?? [])
+    const newInput: FoodItemInput = {
+      food_item_id: foodItem.food_item_id,
+      icon: foodItem.icon ?? undefined,
+      name: foodItem.name,
+      quantity: foodItem.last_quantity ?? undefined,
+      unit: foodItem.last_unit ?? undefined,
+    }
+    const newItem: FoodItem = {
+      food_item_id: foodItem.food_item_id,
+      icon: foodItem.icon ?? undefined,
+      name: foodItem.name,
+      quantity: foodItem.last_quantity ?? undefined,
+      unit: foodItem.last_unit ?? undefined,
+    }
+    optimisticUpdate((old) =>
+      old.map((m) => (m.id === meal.id ? { ...m, food_items: [...(m.food_items ?? []), newItem] } : m)),
+    )
+    if (meal.meal_type) markSlotSaving(meal.meal_type, true)
+    updateMutation.mutate({ id: meal.id!, food_items: [...existingInputs, newInput] })
+  }
+
+  const handleRemoveFoodItem = (meal: Meal, index: number) => {
+    const current = meal.food_items ?? []
+    const nextInputs = mapFoodItemsToInput(current.filter((_, i) => i !== index))
+    optimisticUpdate((old) =>
+      old.map((m) => (m.id === meal.id ? { ...m, food_items: current.filter((_, i) => i !== index) } : m)),
+    )
+    if (meal.meal_type) markSlotSaving(meal.meal_type, true)
+    updateMutation.mutate({ id: meal.id!, food_items: nextInputs })
+  }
+
   return {
     savingSlots,
     handleToggleSensitivity,
     handleChangeTime,
+    handleAppendFoodItem,
+    handleRemoveFoodItem,
     optimisticUpdate,
     markSlotSaving,
     upsertMutation,
@@ -808,6 +945,20 @@ function useMealMutations(mealsQueryKey: string[], meals: Meal[] | undefined) {
     toggleCompletedMutation,
   }
 }
+
+/**
+ * Strip server-computed nutrient fields off a meal's food_items, leaving only
+ * what the updateMeal body accepts. The backend recomputes calories/macros
+ * from the canonical food item × quantity on save.
+ */
+const mapFoodItemsToInput = (items: FoodItem[]): FoodItemInput[] =>
+  items.map((item) => ({
+    food_item_id: item.food_item_id,
+    icon: item.icon,
+    name: item.name,
+    quantity: item.quantity,
+    unit: item.unit,
+  }))
 
 // eslint-disable-next-line complexity -- React component with many hooks and conditional renders
 function MealsContent({ dayKey }: { dayKey: string }) {
@@ -850,6 +1001,8 @@ function MealsContent({ dayKey }: { dayKey: string }) {
     savingSlots,
     handleToggleSensitivity,
     handleChangeTime,
+    handleAppendFoodItem,
+    handleRemoveFoodItem,
     optimisticUpdate,
     markSlotSaving,
     upsertMutation,
@@ -970,6 +1123,8 @@ function MealsContent({ dayKey }: { dayKey: string }) {
                 onCreateAtTime={handleCreateAtTime}
                 onCreateAndOpen={handleCreateAndOpen}
                 onQuickLog={handleQuickLog}
+                onAppendFoodItem={handleAppendFoodItem}
+                onRemoveFoodItem={handleRemoveFoodItem}
                 onDelete={(id) => deleteMutation.mutate(id)}
                 isDeletePending={deleteMutation.isPending}
                 isSaving={savingSlots.has(entry.slot.name.toLowerCase())}
