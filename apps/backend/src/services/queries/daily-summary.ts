@@ -6,6 +6,7 @@ import { builtinMetricsForDailySummary } from '@aurboda/api-spec'
 
 import type {
   ActivitySummary,
+  CommentSummary,
   DailySummaryMetricEntry,
   DailySummaryMetricLatest,
   DailySummaryMetricStats,
@@ -484,9 +485,13 @@ export async function getDailySummary(
   // Get user's HR zones for exercise session HR zone calculation
   const { zones: hrZones } = await getEffectiveHrZones(user)
 
-  // Fetch comments for all activities (generic exercises already absorbed at DB merge level)
+  // Fetch comments for all activities, including the ids of any siblings that
+  // were folded into this row by cross-source merge — HC/Garmin auto-notes
+  // anchor to the original source row's id, not the merged winner's, so we
+  // must look them up too or they disappear from the merged comments list.
   const activityIds = allActivities.map((a) => a.id).filter((id): id is string => id !== undefined)
-  const commentsMap = await getCommentsMap(user, 'activity', activityIds)
+  const siblingIds = allActivities.flatMap((a) => a.source_ids ?? [])
+  const commentsMap = await getCommentsMap(user, 'activity', [...new Set([...activityIds, ...siblingIds])])
 
   // Build unified activities array from DB activities (excludes screentime — handled separately)
   const activities: ActivitySummary[] = allActivities
@@ -501,9 +506,17 @@ export async function getDailySummary(
 
       if (s.data && Object.keys(s.data).length > 0) activity.data = s.data
 
-      // Comments
-      const comments = s.id ? commentsMap.get(s.id) : undefined
-      if (comments && comments.length > 0) activity.comments = comments
+      // Comments: winner's own attached notes plus any anchored to the
+      // source rows that were merged into this winner. Dedup by id in case
+      // the same note id surfaces twice.
+      const lookupIds = s.id ? [s.id, ...(s.source_ids ?? [])] : []
+      const collected = new Map<string, CommentSummary>()
+      for (const lid of lookupIds) {
+        for (const c of commentsMap.get(lid) ?? []) {
+          collected.set(c.id, c)
+        }
+      }
+      if (collected.size > 0) activity.comments = [...collected.values()]
 
       // HR zones for activities with time range
       if (s.end_time) {

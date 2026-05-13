@@ -240,6 +240,13 @@ export const processHealthConnectBatch = async (
     // HC records (always present) and fall back to (type + start_time) just in
     // case. upsertSyncedNote is idempotent so re-syncing the same HC record
     // updates the existing note in place.
+    //
+    // Soft-deleted-row caveat: insertActivities' upsert is gated by
+    // `WHERE activities.deleted_at IS NULL`, so a re-sync that targets a
+    // soft-deleted row produces no RETURNING row. We then drop the note
+    // attachment silently. That's the intended behaviour — surfacing a note
+    // on a deleted activity would be confusing — but worth flagging here so
+    // a future reader doesn't chase it as a "lost note" bug.
     if (activityNotes.length > 0) {
       const idByExternalId = new Map<string, string>()
       const idByTypeStart = new Map<string, string>()

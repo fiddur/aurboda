@@ -3,15 +3,13 @@
  * data-migration helpers. Triggers supersession materialization on writes that
  * may change the merge topology.
  */
-import type { ActivityType, DataSource } from '@aurboda/api-spec'
-
 import format from 'pg-format'
 
 import type { Activity, ActivityUpdate } from '../types.ts'
 
 import { query } from '../connection.ts'
 import { buildDynamicUpdate, type UpdateEntry } from '../dynamic-update.ts'
-import { mapActivityRow } from '../row-mappers.ts'
+import { type InsertedActivityKey, mapActivityRow, mapInsertedActivityKey } from '../row-mappers.ts'
 import { isSupersedable } from './merge.ts'
 import { activityColumns, getActivityById } from './queries.ts'
 import { materializeSuperseded } from './supersession.ts'
@@ -226,14 +224,6 @@ export const insertActivity = async (user: string, activity: Activity): Promise<
  * input row so callers (e.g. Health Connect ingest) can attach notes or
  * other linked rows by id afterwards.
  */
-export interface InsertedActivityKey {
-  id: string
-  source: DataSource
-  external_id: string | null
-  activity_type: ActivityType
-  start_time: Date
-}
-
 export const insertActivities = async (
   user: string,
   activities: Activity[],
@@ -276,13 +266,7 @@ export const insertActivities = async (
       ),
     )
     for (const row of result.rows) {
-      inserted.push({
-        activity_type: row.activity_type,
-        external_id: row.external_id,
-        id: row.id as string,
-        source: row.source,
-        start_time: new Date(row.start_time),
-      })
+      inserted.push(mapInsertedActivityKey(row))
     }
   }
 
@@ -313,13 +297,7 @@ export const insertActivities = async (
       ),
     )
     for (const row of result.rows) {
-      inserted.push({
-        activity_type: row.activity_type,
-        external_id: row.external_id,
-        id: row.id as string,
-        source: row.source,
-        start_time: new Date(row.start_time),
-      })
+      inserted.push(mapInsertedActivityKey(row))
     }
   }
 

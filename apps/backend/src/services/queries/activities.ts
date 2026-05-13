@@ -82,9 +82,16 @@ function enrichActivity(
   ctx: EnrichmentContext,
 ): ActivityResult {
   const isMerged = 'source_ids' in a && Boolean(a.source_ids)
+  // For merged rows, collect comments anchored to the winner and to any
+  // sibling source row that was folded in, deduping by note id.
+  const commentLookupIds = a.id ? [a.id, ...(a.source_ids ?? [])] : []
+  const seen = new Map<string, CommentSummary>()
+  for (const lid of commentLookupIds) {
+    for (const c of ctx.commentsMap.get(lid) ?? []) seen.set(c.id, c)
+  }
   const result: ActivityResult = {
     activity_type: a.activity_type,
-    comments: a.id ? (ctx.commentsMap.get(a.id) ?? []) : [],
+    comments: [...seen.values()],
     data: a.data,
     duration: a.end_time
       ? Math.round((a.end_time.getTime() - a.start_time.getTime()) / 1000 / 60)
@@ -168,6 +175,10 @@ export async function queryActivities(
   const span = hasExerciseLike || needsHrv ? activitySpan() : { from: start, to: end }
 
   const activityIds = activities.map((a) => a.id).filter((id): id is string => id !== undefined)
+  // Include sibling source ids so cross-source merged rows surface HC/Garmin
+  // auto-notes anchored to the original sources, not just the winner.
+  const siblingIds = activities.flatMap((a) => a.source_ids ?? [])
+  const commentLookupIds = [...new Set([...activityIds, ...siblingIds])]
 
   const emptySeries: SummaryMetricSeries = {}
   const [hrZonesResult, summarySeries, hrvSeries, commentsMap] = await Promise.all([
@@ -176,7 +187,7 @@ export async function queryActivities(
       ? getTimeSeriesMultiMetric(user, [...SUMMARY_METRICS], span.from, span.to)
       : Promise.resolve(emptySeries),
     needsHrv ? getTimeSeries(user, 'hrv_rmssd', span.from, span.to) : Promise.resolve([]),
-    getCommentsMap(user, 'activity', activityIds),
+    getCommentsMap(user, 'activity', commentLookupIds),
   ])
 
   const ctx: EnrichmentContext = {

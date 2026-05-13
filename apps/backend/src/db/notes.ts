@@ -140,6 +140,9 @@ export const deleteNote = async (user: string, id: string): Promise<boolean> => 
  * Replace all user-authored notes (`source IS NULL`) for an entity with a
  * single new note. Synced notes (source = 'health_connect', 'oura', …) are
  * left untouched. If `content` is empty, just clears the user notes.
+ *
+ * Wrapped in a transaction so a concurrent edit can't observe the entity
+ * with zero user notes between the DELETE and the INSERT.
  */
 export const replaceUserNotes = async (
   user: string,
@@ -149,17 +152,25 @@ export const replaceUserNotes = async (
   startTime?: Date,
   endTime?: Date,
 ): Promise<void> => {
-  await query(user, `DELETE FROM notes WHERE entity_type = $1 AND entity_id = $2 AND source IS NULL`, [
-    entityType,
-    entityId,
-  ])
-  if (content.length === 0) return
-  await query(
-    user,
-    `INSERT INTO notes (entity_type, entity_id, content, start_time, end_time)
-     VALUES ($1, $2, $3, $4, $5)`,
-    [entityType, entityId, content, startTime ?? null, endTime ?? null],
-  )
+  await query(user, 'BEGIN')
+  try {
+    await query(user, `DELETE FROM notes WHERE entity_type = $1 AND entity_id = $2 AND source IS NULL`, [
+      entityType,
+      entityId,
+    ])
+    if (content.length > 0) {
+      await query(
+        user,
+        `INSERT INTO notes (entity_type, entity_id, content, start_time, end_time)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [entityType, entityId, content, startTime ?? null, endTime ?? null],
+      )
+    }
+    await query(user, 'COMMIT')
+  } catch (err) {
+    await query(user, 'ROLLBACK').catch(() => {})
+    throw err
+  }
 }
 
 /**
