@@ -958,12 +958,6 @@ a.meal-name:hover {
   color: white;
 }
 
-.overview-range {
-  font-size: 0.85rem;
-  color: #6b7280;
-  font-variant-numeric: tabular-nums;
-}
-
 .overview-energy {
   border: 1px solid #e5e7eb;
   border-radius: 8px;
@@ -978,43 +972,70 @@ a.meal-name:hover {
   color: #374151;
 }
 
-.energy-row {
+/* Energy grid: label column + one column per window. On narrow the
+   media query below collapses to 2 columns (label + active window). */
+.energy-grid {
   display: grid;
-  gap: 1rem;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  row-gap: 0.5rem;
+  column-gap: 1rem;
+  align-items: baseline;
+  grid-template-columns: minmax(120px, max-content) repeat(4, minmax(0, 1fr));
 }
 
-.energy-cell {
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
+.energy-grid-header,
+.energy-grid-row {
+  display: contents;
 }
 
-.energy-label {
+.energy-col-label {
   font-size: 0.75rem;
   color: #6b7280;
   text-transform: uppercase;
   letter-spacing: 0.03em;
+  text-align: right;
 }
 
-.energy-value {
-  font-size: 1.4rem;
+.energy-row-label {
+  font-size: 0.8rem;
+  color: #6b7280;
+}
+
+.energy-grid-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  text-align: right;
+  gap: 0.1rem;
+}
+
+.energy-num {
+  font-size: 1.15rem;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   color: #111827;
 }
 
-.energy-value.positive {
+.energy-grid-cell.positive .energy-num {
   color: #b45309;
 }
 
-.energy-value.negative {
+.energy-grid-cell.negative .energy-num {
   color: #166534;
 }
 
+.energy-num.muted {
+  color: #9ca3af;
+  font-weight: 500;
+}
+
 .energy-sub {
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   color: #6b7280;
+}
+
+/* Window selector — shown only on narrow screens where columns don't fit. */
+.overview-window-control {
+  display: none;
 }
 
 .overview-group h3 {
@@ -1062,8 +1083,34 @@ a.meal-name:hover {
 }
 
 .overview-table .range-col {
-  width: 40%;
-  min-width: 140px;
+  min-width: 160px;
+}
+
+.overview-table .nutrient-unit {
+  color: #6b7280;
+  font-size: 0.75rem;
+}
+
+.overview-table td.num .muted {
+  color: #c4c8cf;
+}
+
+/* Narrow: hide non-active per-window cells, show selector. */
+@media (max-width: 759px) {
+  .overview-window-control {
+    display: inline-flex;
+  }
+
+  .meals-overview[data-active='1'] [data-window]:not([data-window='1']),
+  .meals-overview[data-active='7'] [data-window]:not([data-window='7']),
+  .meals-overview[data-active='30'] [data-window]:not([data-window='30']),
+  .meals-overview[data-active='90'] [data-window]:not([data-window='90']) {
+    display: none;
+  }
+
+  .energy-grid {
+    grid-template-columns: minmax(120px, max-content) minmax(0, 1fr);
+  }
 }
 
 .overview-empty {
@@ -1112,14 +1159,26 @@ a.meal-name:hover {
     color: #d1d5db;
   }
 
-  .energy-value {
+  .energy-num {
     color: #f3f4f6;
   }
 
-  .energy-label,
-  .energy-sub,
-  .overview-range {
+  .energy-num.muted {
+    color: #6b7280;
+  }
+
+  .energy-col-label,
+  .energy-row-label,
+  .energy-sub {
     color: #9ca3af;
+  }
+
+  .overview-table .nutrient-unit {
+    color: #9ca3af;
+  }
+
+  .overview-table td.num .muted {
+    color: #4b5563;
   }
 
   .overview-table th {

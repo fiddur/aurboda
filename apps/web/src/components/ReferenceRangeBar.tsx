@@ -2,11 +2,22 @@ import type { ReportFlag } from '@aurboda/api-spec'
 
 import './ReferenceRangeBar.css'
 
-interface ReferenceRangeBarProps {
+export interface RangeMarker {
   value: number
+  flag?: ReportFlag
+  /** Short label shown above the marker (e.g. "1d", "7d"). */
+  label?: string
+}
+
+interface ReferenceRangeBarProps {
+  /** Single-marker shorthand. Ignored when `markers` is provided. */
+  value?: number
+  /** Flag for the single-marker shorthand. */
+  flag?: ReportFlag
+  /** Multi-marker mode — overrides `value`/`flag`. */
+  markers?: RangeMarker[]
   reference_low?: number
   reference_high?: number
-  flag?: ReportFlag
 }
 
 const FLAG_COLORS: Record<string, string> = {
@@ -28,7 +39,8 @@ interface DisplayRange {
 
 /**
  * Compute where to draw the visible track and where the normal/warning
- * zones sit on it, given a possibly one-sided reference range.
+ * zones sit on it, given a possibly one-sided reference range and one or
+ * more values.
  *
  * Two-sided: existing 30%-padding-on-each-side display, with warning zones
  * on both ends and normal in the middle. Used by report cards (HRV, body
@@ -36,23 +48,25 @@ interface DisplayRange {
  *
  * Upper-only (e.g. salt, saturated_fat, alcohol): anchor at zero, extend
  * 30% beyond the cap; normal zone is everything from 0 up to the cap, the
- * warning zone covers only the over-cap region. Without this we used to
- * synthesize a fake low bound and label "ate 2 g of salt" as too-low.
+ * warning zone covers only the over-cap region.
  *
  * Lower-only (open upper bound, e.g. potassium minimum): warning zone
  * below the floor, normal zone above; extend display until at least the
- * value or 1.5× floor.
+ * highest value or 1.5× floor.
  */
 const computeDisplayRange = (
   low: number | undefined,
   high: number | undefined,
-  value: number,
+  values: number[],
 ): DisplayRange => {
+  const maxAbs = values.reduce((m, v) => Math.max(m, Math.abs(v)), 0)
+  const maxVal = values.reduce((m, v) => Math.max(m, v), Number.NEGATIVE_INFINITY)
+  const minVal = values.reduce((m, v) => Math.min(m, v), Number.POSITIVE_INFINITY)
   if (low !== undefined && high !== undefined) {
     const span = high - low
-    const padding = Math.max(span * 0.3, Math.abs(value) * 0.05)
-    const displayMin = low - padding
-    const displayMax = high + padding
+    const padding = Math.max(span * 0.3, maxAbs * 0.05)
+    const displayMin = Math.min(low - padding, minVal - padding * 0.1)
+    const displayMax = Math.max(high + padding, maxVal + padding * 0.1)
     const displaySpan = displayMax - displayMin
     return {
       displayMin,
@@ -62,23 +76,19 @@ const computeDisplayRange = (
     }
   }
   if (high !== undefined) {
-    const displayMin = Math.min(0, value)
-    const displayMax = Math.max(high * 1.3, value * 1.1)
+    const displayMin = Math.min(0, minVal)
+    const displayMax = Math.max(high * 1.3, maxVal * 1.1)
     const displaySpan = displayMax - displayMin || 1
     return {
       displayMin,
       displayMax,
-      // Normal zone runs from displayMin (i.e. 0%) up to where `high` sits.
       normalStartPct: 0,
       normalEndPct: ((high - displayMin) / displaySpan) * 100,
     }
   }
-  // low !== undefined && high === undefined. Bind to a local so TS keeps
-  // the narrowing through the local arithmetic — without it the inferred
-  // type is `number | undefined` again on each reference.
   const lo = low as number
-  const displayMin = Math.min(lo * 0.7, value * 0.9)
-  const displayMax = Math.max(lo * 1.5, value * 1.1)
+  const displayMin = Math.min(lo * 0.7, minVal * 0.9)
+  const displayMax = Math.max(lo * 1.5, maxVal * 1.1)
   const displaySpan = displayMax - displayMin || 1
   return {
     displayMin,
@@ -91,27 +101,35 @@ const computeDisplayRange = (
 const clampPct = (p: number): number => Math.max(0, Math.min(100, p))
 
 /**
- * Horizontal bar visualizing where a value falls relative to its reference
- * range. Supports both two-sided medical ranges (lab reports) and one-sided
- * dietary recommendations (salt cap, fiber floor) — see computeDisplayRange.
+ * Horizontal bar visualizing where one or more values fall relative to a
+ * reference range. Supports two-sided medical ranges (lab reports),
+ * one-sided dietary recommendations (salt cap, fiber floor), and overlay
+ * of multiple markers (e.g. 1d/7d/30d/90d averages on the same nutrient).
  */
-export function ReferenceRangeBar({ value, reference_low, reference_high, flag }: ReferenceRangeBarProps) {
+export function ReferenceRangeBar({
+  value,
+  flag,
+  markers,
+  reference_low,
+  reference_high,
+}: ReferenceRangeBarProps) {
   if (reference_low === undefined && reference_high === undefined) return null
+
+  const resolved: RangeMarker[] =
+    markers && markers.length > 0 ? markers : value !== undefined ? [{ flag, value }] : []
+  if (resolved.length === 0) return null
 
   const { displayMin, displayMax, normalStartPct, normalEndPct } = computeDisplayRange(
     reference_low,
     reference_high,
-    value,
+    resolved.map((m) => m.value),
   )
   const displaySpan = displayMax - displayMin || 1
-  const valuePct = clampPct(((value - displayMin) / displaySpan) * 100)
-  const markerColor = flag ? (FLAG_COLORS[flag] ?? '#6b7280') : '#6b7280'
+
+  const title = `Range: ${reference_low ?? '—'}–${reference_high ?? '—'}`
 
   return (
-    <div
-      class="ref-range-bar"
-      title={`Value: ${value}, Range: ${reference_low ?? '—'}–${reference_high ?? '—'}`}
-    >
+    <div class={`ref-range-bar${resolved.length > 1 ? ' ref-range-multi' : ''}`} title={title}>
       <div class="ref-range-track">
         {reference_low !== undefined && (
           <div class="ref-range-zone ref-range-low" style={{ left: 0, width: `${normalStartPct}%` }} />
@@ -126,7 +144,21 @@ export function ReferenceRangeBar({ value, reference_low, reference_high, flag }
           class="ref-range-zone ref-range-normal"
           style={{ left: `${normalStartPct}%`, width: `${normalEndPct - normalStartPct}%` }}
         />
-        <div class="ref-range-marker" style={{ backgroundColor: markerColor, left: `${valuePct}%` }} />
+        {resolved.map((m, i) => {
+          const pct = clampPct(((m.value - displayMin) / displaySpan) * 100)
+          const color = m.flag ? (FLAG_COLORS[m.flag] ?? '#6b7280') : '#6b7280'
+          return (
+            <div
+              key={m.label ?? i}
+              class="ref-range-marker"
+              data-marker-index={i}
+              style={{ backgroundColor: color, left: `${pct}%` }}
+              title={m.label ? `${m.label}: ${m.value}` : `${m.value}`}
+            >
+              {m.label && <span class="ref-range-marker-label">{m.label}</span>}
+            </div>
+          )
+        })}
       </div>
       <div class="ref-range-labels">
         {reference_low !== undefined ? <span class="ref-range-label-low">{reference_low}</span> : <span />}
