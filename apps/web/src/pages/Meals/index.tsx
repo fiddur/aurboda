@@ -63,6 +63,7 @@ const findMealsForSlot = (meals: Meal[], slotName: string): Meal[] =>
  */
 function FoodItemChip({
   name,
+  icon,
   foodItemId,
   initialFlagNames,
   flags,
@@ -70,6 +71,8 @@ function FoodItemChip({
   isDeletePending,
 }: {
   name: string
+  /** Optional icon — emoji or image path. Same renderer as the suggestion chips so heights match. */
+  icon?: string
   foodItemId?: string
   /** Flag names snapshotted on the meal-junction row — used as the initial popover state. */
   initialFlagNames: string[]
@@ -138,7 +141,8 @@ function FoodItemChip({
 
   return (
     <span ref={ref} class={`food-item-chip ${hasMappings ? 'mapped' : ''}`} onClick={() => setOpen(!open)}>
-      {name}
+      {icon && <ChipIcon icon={icon} />}
+      <span class="food-item-chip-name">{name}</span>
       {hasMappings && <span class="mapping-dot" />}
       {open && flags.length > 0 && (
         <div class="food-map-popover" onClick={(e) => e.stopPropagation()}>
@@ -292,7 +296,7 @@ function FrequentFoodItemsStrip({
   /** Food items already on the meal — rendered as a leading "Included:" row, and filtered out of suggestions. */
   includedItems?: FoodItem[]
   flags?: Array<{ id: string; name: string }>
-  onDeleteFoodItem?: (index: number) => void
+  onDeleteFoodItem?: (item: FoodItem) => void
   isDeletePending?: boolean
 }) {
   const mealType = slotName.toLowerCase()
@@ -335,10 +339,11 @@ function FrequentFoodItemsStrip({
               <FoodItemChip
                 key={item.food_item_id ?? `idx:${i}`}
                 name={item.name}
+                icon={item.icon}
                 foodItemId={item.food_item_id}
                 initialFlagNames={item.sensitivities ?? []}
                 flags={flags ?? []}
-                onDelete={onDeleteFoodItem ? () => onDeleteFoodItem(i) : undefined}
+                onDelete={onDeleteFoodItem ? () => onDeleteFoodItem(item) : undefined}
                 isDeletePending={isDeletePending}
               />
             ))}
@@ -440,7 +445,7 @@ interface MealSlotRowProps {
   onCreateAndOpen: (slot: MealSlot) => void
   onQuickLog: (slot: MealSlot, hour: number, minute: number, foodItem: FrequentFoodItem) => void
   onAppendFoodItem: (meal: Meal, foodItem: FrequentFoodItem) => void
-  onRemoveFoodItem: (meal: Meal, index: number) => void
+  onRemoveFoodItem: (meal: Meal, item: FoodItem) => void
   onDelete: (id: string) => void
   isDeletePending: boolean
   isSaving: boolean
@@ -566,7 +571,7 @@ function MealSlotRow({
             onQuickLog(slot, hour, minute, foodItem)
           }
         }}
-        onDeleteFoodItem={primaryMeal ? (index) => onRemoveFoodItem(primaryMeal, index) : undefined}
+        onDeleteFoodItem={primaryMeal ? (item) => onRemoveFoodItem(primaryMeal, item) : undefined}
         isDeletePending={isDeletePending}
       />
 
@@ -898,8 +903,19 @@ function useMealMutations(mealsQueryKey: string[], meals: Meal[] | undefined) {
     updateMutation.mutate({ id: meal.id!, time: newTime.toISOString() })
   }
 
+  // Read the meal's *current* food_items from the query cache rather than
+  // trusting the `meal` captured by the click closure. Otherwise rapid
+  // double-clicks on two "Add:" chips (or remove-while-append-in-flight)
+  // would both read the same pre-mutation snapshot and clobber each other.
+  const readLatestMeal = (mealId: string | undefined): Meal | undefined => {
+    if (!mealId) return undefined
+    const cached = queryClient.getQueryData<MealsResult>(mealsQueryKey)
+    return cached?.meals.find((m) => m.id === mealId)
+  }
+
   const handleAppendFoodItem = (meal: Meal, foodItem: FrequentFoodItem) => {
-    const existingInputs = mapFoodItemsToInput(meal.food_items ?? [])
+    const current = readLatestMeal(meal.id) ?? meal
+    const existingInputs = mapFoodItemsToInput(current.food_items ?? [])
     const newInput: FoodItemInput = {
       food_item_id: foodItem.food_item_id,
       icon: foodItem.icon ?? undefined,
@@ -921,14 +937,17 @@ function useMealMutations(mealsQueryKey: string[], meals: Meal[] | undefined) {
     updateMutation.mutate({ id: meal.id!, food_items: [...existingInputs, newInput] })
   }
 
-  const handleRemoveFoodItem = (meal: Meal, index: number) => {
-    const current = meal.food_items ?? []
-    const nextInputs = mapFoodItemsToInput(current.filter((_, i) => i !== index))
+  const handleRemoveFoodItem = (meal: Meal, target: FoodItem) => {
+    const current = readLatestMeal(meal.id) ?? meal
+    const items = current.food_items ?? []
+    const matchIdx = items.findIndex((item) => foodItemMatches(item, target))
+    if (matchIdx < 0) return // already removed by another mutation
+    const remaining = items.filter((_, i) => i !== matchIdx)
     optimisticUpdate((old) =>
-      old.map((m) => (m.id === meal.id ? { ...m, food_items: current.filter((_, i) => i !== index) } : m)),
+      old.map((m) => (m.id === meal.id ? { ...m, food_items: remaining } : m)),
     )
     if (meal.meal_type) markSlotSaving(meal.meal_type, true)
-    updateMutation.mutate({ id: meal.id!, food_items: nextInputs })
+    updateMutation.mutate({ id: meal.id!, food_items: mapFoodItemsToInput(remaining) })
   }
 
   return {
@@ -959,6 +978,22 @@ const mapFoodItemsToInput = (items: FoodItem[]): FoodItemInput[] =>
     quantity: item.quantity,
     unit: item.unit,
   }))
+
+/**
+ * Identify a food item in a meal's food_items array for removal.
+ * Prefer matching by food_item_id (stable canonical reference); fall back to
+ * name + quantity + unit for ad-hoc entries without an id. The first match
+ * wins, matching the visual order users see in the chip strip.
+ */
+const foodItemMatches = (item: FoodItem, target: FoodItem): boolean => {
+  if (target.food_item_id) return item.food_item_id === target.food_item_id
+  return (
+    !item.food_item_id &&
+    item.name === target.name &&
+    item.quantity === target.quantity &&
+    item.unit === target.unit
+  )
+}
 
 // eslint-disable-next-line complexity -- React component with many hooks and conditional renders
 function MealsContent({ dayKey }: { dayKey: string }) {
