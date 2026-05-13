@@ -207,7 +207,7 @@ export const createActivitiesRouter = (
         user,
         {
           activity_type,
-          data: bodyData as Record<string, unknown> | undefined,
+          data: bodyData,
           end_time: endDate,
           merge_span,
           notes,
@@ -413,7 +413,7 @@ export const createActivitiesRouter = (
         id,
         {
           activity_type,
-          data: bodyData as Record<string, unknown> | undefined,
+          data: bodyData,
           end_time: end_time === null ? null : end_time ? new Date(end_time) : undefined,
           notes,
           override_target_ids,
