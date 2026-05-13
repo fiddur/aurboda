@@ -2,24 +2,34 @@ import type {
   CaloriesBurnedPeriodStat,
   NutrientFieldDef,
   NutrientPeriodStat,
+  NutrientPeriodSummary,
   NutrientRecommendation,
   ReportFlag,
 } from '@aurboda/api-spec'
 
 import { NUTRIENT_FIELDS } from '@aurboda/api-spec'
-import { useQuery } from '@tanstack/react-query'
+import { useQueries, useQuery } from '@tanstack/react-query'
 import { format, subDays } from 'date-fns'
 import { useMemo, useState } from 'preact/hooks'
 
+import type { RangeMarker } from '../../components/ReferenceRangeBar'
+
+import { DateNav } from '../../components/DateNav'
 import { ReferenceRangeBar } from '../../components/ReferenceRangeBar'
 import { fetchMealsPeriodSummary, fetchNutrientRecommendations } from '../../state/api'
 import { auth } from '../../state/auth'
 
-type WindowKey = '7' | '14' | '30' | '90'
+type WindowKey = '1' | '7' | '30' | '90'
 
-const WINDOWS: { key: WindowKey; label: string; days: number }[] = [
+interface WindowDef {
+  key: WindowKey
+  label: string
+  days: number
+}
+
+const WINDOWS: WindowDef[] = [
+  { days: 1, key: '1', label: '1d' },
   { days: 7, key: '7', label: '7d' },
-  { days: 14, key: '14', label: '14d' },
   { days: 30, key: '30', label: '30d' },
   { days: 90, key: '90', label: '90d' },
 ]
@@ -36,12 +46,6 @@ const NUTRIENT_CATEGORIES: { key: NutrientFieldDef['category']; label: string }[
 
 const ymd = (d: Date): string => format(d, 'yyyy-MM-dd')
 
-/**
- * Format a nutrient average for display. Picks decimals based on magnitude
- * so vitamins in µg/mg with sub-1 values (B12 ≈ 2 µg, vitamin K ≈ 80 µg,
- * folate ≈ 0.3 mg if mis-unit'd) stay legible — toFixed(1) would lose all
- * precision on the small end.
- */
 const formatNutrientValue = (value: number, unit: string): string => {
   if (unit === 'kcal') return value.toFixed(0)
   const abs = Math.abs(value)
@@ -53,19 +57,6 @@ const formatNutrientValue = (value: number, unit: string): string => {
   return value.toFixed(decimals)
 }
 
-/**
- * Map a value against a recommended range to the same flag enum used by
- * report cards so the existing ReferenceRangeBar marker color stays
- * consistent across the app. v1 doesn't surface "critical" thresholds —
- * that maps to a future tier on the override schema.
- *
- * Note: ReferenceRangeBar's FLAG_COLORS palette is symmetric (low and high
- * both yellow, normal green) which fits two-sided medical ranges. For
- * dietary contexts that's a v1 simplification — exceeding the salt cap
- * arguably deserves stronger framing than missing the protein floor. A
- * follow-up could either invert the palette per nutrient or introduce a
- * dedicated dietary palette.
- */
 const flagFor = (
   value: number,
   low: number | null | undefined,
@@ -76,18 +67,25 @@ const flagFor = (
   return 'normal'
 }
 
-interface NutrientRow {
-  field: NutrientFieldDef
-  stat: NutrientPeriodStat
-  recommendation?: NutrientRecommendation
-}
-
 const userTz = (): string | undefined => {
   try {
     return Intl.DateTimeFormat().resolvedOptions().timeZone
   } catch {
     return undefined
   }
+}
+
+const balanceClass = (balance: number | null): string => {
+  if (balance === null) return ''
+  if (balance > 0) return 'positive'
+  if (balance < 0) return 'negative'
+  return ''
+}
+
+const balanceLabel = (balance: number): string => {
+  if (balance > 0) return 'surplus'
+  if (balance < 0) return 'deficit'
+  return 'balanced'
 }
 
 function WindowSelector({ windowKey, onChange }: { windowKey: WindowKey; onChange: (k: WindowKey) => void }) {
@@ -107,75 +105,121 @@ function WindowSelector({ windowKey, onChange }: { windowKey: WindowKey; onChang
   )
 }
 
-const balanceClass = (balance: number | null): string => {
-  if (balance === null) return ''
-  if (balance > 0) return 'positive'
-  if (balance < 0) return 'negative'
-  return ''
+interface WindowData {
+  window: WindowDef
+  start: string
+  end: string
+  summary: NutrientPeriodSummary | undefined
 }
 
-const balanceLabel = (balance: number): string => {
-  if (balance > 0) return 'surplus'
-  if (balance < 0) return 'deficit'
-  return 'balanced'
-}
-
-function EnergySection({
-  eaten,
-  burned,
-  daysWithMeals,
-}: {
-  eaten?: NutrientPeriodStat
-  burned: CaloriesBurnedPeriodStat | null
-  daysWithMeals: number
-}) {
-  const eatenAvg = eaten?.avg ?? 0
-  const burnedAvg = burned?.avg ?? null
-  const balance = burnedAvg !== null ? eatenAvg - burnedAvg : null
-
+function EnergySection({ windows, activeKey }: { windows: WindowData[]; activeKey: WindowKey }) {
   return (
     <section class="overview-energy">
       <h3>Energy balance</h3>
-      <div class="energy-row">
-        <div class="energy-cell">
-          <span class="energy-label">Eaten / day</span>
-          <span class="energy-value">{eatenAvg ? `${Math.round(eatenAvg)} kcal` : '—'}</span>
-          {daysWithMeals > 0 && (
-            <span class="energy-sub">
-              over {daysWithMeals} {daysWithMeals === 1 ? 'day' : 'days'}
+      <div class="energy-grid">
+        <div class="energy-grid-header">
+          <span />
+          {windows.map((w) => (
+            <span key={w.window.key} class="energy-col-label" data-window={w.window.key}>
+              {w.window.label}
             </span>
-          )}
+          ))}
         </div>
-        <div class="energy-cell">
-          <span class="energy-label">Burned / day</span>
-          <span class="energy-value">{burnedAvg !== null ? `${Math.round(burnedAvg)} kcal` : '—'}</span>
-          {burned ? (
-            <span class="energy-sub">
-              over {burned.days_with_data} {burned.days_with_data === 1 ? 'day' : 'days'}
-            </span>
-          ) : (
-            <span class="energy-sub">
-              No <code>calories_total</code> metric in window — connect Garmin / Health Connect to see burn
-              comparison.
-            </span>
-          )}
-        </div>
-        <div class="energy-cell">
-          <span class="energy-label">Balance</span>
-          <span class={`energy-value ${balanceClass(balance)}`}>
-            {balance !== null ? `${balance > 0 ? '+' : ''}${Math.round(balance)} kcal` : '—'}
-          </span>
-          {balance !== null && <span class="energy-sub">{balanceLabel(balance)}</span>}
-        </div>
+        <EnergyRow label="Eaten / day" windows={windows} activeKey={activeKey} kind="eaten" />
+        <EnergyRow label="Burned / day" windows={windows} activeKey={activeKey} kind="burned" />
+        <EnergyRow label="Balance" windows={windows} activeKey={activeKey} kind="balance" />
       </div>
     </section>
   )
 }
 
-function NutrientRowView({ field, stat, recommendation }: NutrientRow) {
-  const flag = recommendation
-    ? flagFor(stat.avg, recommendation.recommended_low, recommendation.recommended_high)
-    : undefined
+type EnergyKind = 'eaten' | 'burned' | 'balance'
+
+const energyValueFor = (w: WindowData, kind: EnergyKind): number | null => {
+  const eaten = w.summary?.nutrients.calories?.avg ?? null
+  const burned: CaloriesBurnedPeriodStat | null = w.summary?.calories_burned ?? null
+  const burnedAvg = burned?.avg ?? null
+  if (kind === 'eaten') return eaten
+  if (kind === 'burned') return burnedAvg
+  return eaten !== null && burnedAvg !== null ? eaten - burnedAvg : null
+}
+
+function EnergyCell({ w, kind, activeKey }: { w: WindowData; kind: EnergyKind; activeKey: WindowKey }) {
+  const value = energyValueFor(w, kind)
+  const cls = kind === 'balance' ? balanceClass(value) : ''
+  return (
+    <span
+      class={`energy-grid-cell ${cls}`}
+      data-window={w.window.key}
+      data-active={w.window.key === activeKey ? 'true' : 'false'}
+    >
+      {value !== null ? (
+        <>
+          <span class="energy-num">
+            {kind === 'balance' && value > 0 ? '+' : ''}
+            {Math.round(value)} kcal
+          </span>
+          {kind === 'balance' && <span class="energy-sub">{balanceLabel(value)}</span>}
+        </>
+      ) : (
+        <span class="energy-num muted">—</span>
+      )}
+    </span>
+  )
+}
+
+function EnergyRow({
+  label,
+  windows,
+  activeKey,
+  kind,
+}: {
+  label: string
+  windows: WindowData[]
+  activeKey: WindowKey
+  kind: EnergyKind
+}) {
+  return (
+    <div class="energy-grid-row">
+      <span class="energy-row-label">{label}</span>
+      {windows.map((w) => (
+        <EnergyCell key={w.window.key} w={w} kind={kind} activeKey={activeKey} />
+      ))}
+    </div>
+  )
+}
+
+interface NutrientCellInfo {
+  windowKey: WindowKey
+  label: string
+  stat: NutrientPeriodStat | undefined
+}
+
+function NutrientRowView({
+  field,
+  cells,
+  recommendation,
+  activeKey,
+}: {
+  field: NutrientFieldDef
+  cells: NutrientCellInfo[]
+  recommendation?: NutrientRecommendation
+  activeKey: WindowKey
+}) {
+  const markers: RangeMarker[] = recommendation
+    ? cells.flatMap((c) =>
+        c.stat
+          ? [
+              {
+                flag: flagFor(c.stat.avg, recommendation.recommended_low, recommendation.recommended_high),
+                label: c.label,
+                value: c.stat.avg,
+              },
+            ]
+          : [],
+      )
+    : []
+
   return (
     <tr>
       <td>
@@ -186,16 +230,28 @@ function NutrientRowView({ field, stat, recommendation }: NutrientRow) {
           </span>
         )}
       </td>
-      <td class="num">
-        {formatNutrientValue(stat.avg, field.unit)} {field.unit}
-      </td>
+      {cells.map((c) => (
+        <td
+          key={c.windowKey}
+          class="num window-col"
+          data-window={c.windowKey}
+          data-active={c.windowKey === activeKey ? 'true' : 'false'}
+        >
+          {c.stat ? (
+            <>
+              {formatNutrientValue(c.stat.avg, field.unit)} <span class="nutrient-unit">{field.unit}</span>
+            </>
+          ) : (
+            <span class="muted">—</span>
+          )}
+        </td>
+      ))}
       <td class="range-col">
-        {recommendation && (
+        {recommendation && markers.length > 0 && (
           <ReferenceRangeBar
-            value={stat.avg}
+            markers={markers}
             reference_low={recommendation.recommended_low ?? undefined}
             reference_high={recommendation.recommended_high ?? undefined}
-            flag={flag}
           />
         )}
       </td>
@@ -203,7 +259,23 @@ function NutrientRowView({ field, stat, recommendation }: NutrientRow) {
   )
 }
 
-function CategorySection({ label, rows }: { label: string; rows: NutrientRow[] }) {
+interface CategoryRow {
+  field: NutrientFieldDef
+  cells: NutrientCellInfo[]
+  recommendation?: NutrientRecommendation
+}
+
+function CategorySection({
+  label,
+  rows,
+  windows,
+  activeKey,
+}: {
+  label: string
+  rows: CategoryRow[]
+  windows: WindowData[]
+  activeKey: WindowKey
+}) {
   return (
     <section class="overview-group">
       <h3>{label}</h3>
@@ -211,13 +283,22 @@ function CategorySection({ label, rows }: { label: string; rows: NutrientRow[] }
         <thead>
           <tr>
             <th>Nutrient</th>
-            <th class="num">Avg / day</th>
+            {windows.map((w) => (
+              <th
+                key={w.window.key}
+                class="num window-col"
+                data-window={w.window.key}
+                data-active={w.window.key === activeKey ? 'true' : 'false'}
+              >
+                {w.window.label}
+              </th>
+            ))}
             <th class="range-col">Range</th>
           </tr>
         </thead>
         <tbody>
           {rows.map((row) => (
-            <NutrientRowView key={row.field.name} {...row} />
+            <NutrientRowView key={row.field.name} {...row} activeKey={activeKey} />
           ))}
         </tbody>
       </table>
@@ -226,40 +307,54 @@ function CategorySection({ label, rows }: { label: string; rows: NutrientRow[] }
 }
 
 const groupRowsByCategory = (
-  nutrients: Record<string, NutrientPeriodStat>,
+  windows: WindowData[],
   recByName: Map<string, NutrientRecommendation>,
-): Map<NutrientFieldDef['category'], NutrientRow[]> => {
-  const out = new Map<NutrientFieldDef['category'], NutrientRow[]>()
+): Map<NutrientFieldDef['category'], CategoryRow[]> => {
+  const out = new Map<NutrientFieldDef['category'], CategoryRow[]>()
   for (const field of NUTRIENT_FIELDS) {
-    const stat = nutrients[field.name]
-    if (!stat) continue
+    const cells: NutrientCellInfo[] = windows.map((w) => ({
+      label: w.window.label,
+      stat: w.summary?.nutrients[field.name],
+      windowKey: w.window.key,
+    }))
+    if (!cells.some((c) => c.stat)) continue
     const list = out.get(field.category) ?? []
-    list.push({ field, recommendation: recByName.get(field.name), stat })
+    list.push({ cells, field, recommendation: recByName.get(field.name) })
     out.set(field.category, list)
   }
   return out
 }
 
-const daysForWindow = (key: WindowKey): number => WINDOWS.find((w) => w.key === key)?.days ?? 30
+const rangeFor = (endDate: string, days: number): { start: string; end: string } => {
+  const end = new Date(endDate)
+  return { end: endDate, start: ymd(subDays(end, days - 1)) }
+}
 
 export function MealsOverview() {
   const isLoggedIn = auth.value.token
-  const [windowKey, setWindowKey] = useState<WindowKey>('30')
-  const days = daysForWindow(windowKey)
-
-  const range = useMemo(() => {
-    const today = new Date()
-    return { end: ymd(today), start: ymd(subDays(today, days - 1)) }
-  }, [days])
-
+  const [endDate, setEndDate] = useState<string>(ymd(new Date()))
+  const [activeKey, setActiveKey] = useState<WindowKey>('30')
   const tz = userTz()
 
-  const { data: summary, isLoading: isSummaryLoading } = useQuery({
-    enabled: !!isLoggedIn,
-    queryFn: () => fetchMealsPeriodSummary({ end: range.end, start: range.start, tz }),
-    queryKey: ['mealsPeriodSummary', range.start, range.end, tz],
-    staleTime: 60_000,
+  const ranges = useMemo(() => WINDOWS.map((w) => ({ window: w, ...rangeFor(endDate, w.days) })), [endDate])
+
+  const queries = useQueries({
+    queries: ranges.map((r) => ({
+      enabled: !!isLoggedIn,
+      queryFn: () => fetchMealsPeriodSummary({ end: r.end, start: r.start, tz }),
+      queryKey: ['mealsPeriodSummary', r.start, r.end, tz],
+      staleTime: 60_000,
+    })),
   })
+
+  const isAnyLoading = queries.some((q) => q.isLoading)
+
+  const windowsData: WindowData[] = ranges.map((r, i) => ({
+    end: r.end,
+    start: r.start,
+    summary: queries[i]?.data,
+    window: r.window,
+  }))
 
   const { data: recommendations = [] } = useQuery({
     enabled: !!isLoggedIn,
@@ -273,37 +368,40 @@ export function MealsOverview() {
     [recommendations],
   )
 
-  const nutrients = summary?.nutrients ?? {}
-  const rowsByCategory = useMemo(() => groupRowsByCategory(nutrients, recByName), [nutrients, recByName])
+  const rowsByCategory = groupRowsByCategory(windowsData, recByName)
 
   if (!isLoggedIn) return <p>Please log in to use meal tracking.</p>
 
+  const anyNutrientData = windowsData.some((w) => w.summary && Object.keys(w.summary.nutrients).length > 0)
+
   return (
-    <div class="meals-overview">
+    <div class="meals-overview" data-active={activeKey}>
       <div class="overview-controls">
-        <WindowSelector windowKey={windowKey} onChange={setWindowKey} />
-        <span class="overview-range">
-          {range.start} → {range.end}
-        </span>
+        <DateNav value={endDate} onChange={setEndDate} maxToday />
+        <div class="overview-window-control">
+          <WindowSelector windowKey={activeKey} onChange={setActiveKey} />
+        </div>
       </div>
 
-      {isSummaryLoading && <p class="loading">Loading…</p>}
+      {isAnyLoading && <p class="loading">Loading…</p>}
 
-      {!isSummaryLoading && summary && (
+      {!isAnyLoading && (
         <>
-          <EnergySection
-            eaten={summary.nutrients.calories}
-            burned={summary.calories_burned ?? null}
-            daysWithMeals={summary.days_with_meals}
-          />
+          <EnergySection windows={windowsData} activeKey={activeKey} />
           {NUTRIENT_CATEGORIES.map(({ key, label }) => {
             const rows = rowsByCategory.get(key)
             if (!rows || rows.length === 0) return null
-            return <CategorySection key={key} label={label} rows={rows} />
+            return (
+              <CategorySection
+                key={key}
+                label={label}
+                rows={rows}
+                windows={windowsData}
+                activeKey={activeKey}
+              />
+            )
           })}
-          {Object.keys(nutrients).length === 0 && (
-            <p class="overview-empty">No meal nutrient data in this window.</p>
-          )}
+          {!anyNutrientData && <p class="overview-empty">No meal nutrient data in this window.</p>}
         </>
       )}
     </div>

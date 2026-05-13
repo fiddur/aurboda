@@ -943,9 +943,7 @@ function useMealMutations(mealsQueryKey: string[], meals: Meal[] | undefined) {
     const matchIdx = items.findIndex((item) => foodItemMatches(item, target))
     if (matchIdx < 0) return // already removed by another mutation
     const remaining = items.filter((_, i) => i !== matchIdx)
-    optimisticUpdate((old) =>
-      old.map((m) => (m.id === meal.id ? { ...m, food_items: remaining } : m)),
-    )
+    optimisticUpdate((old) => old.map((m) => (m.id === meal.id ? { ...m, food_items: remaining } : m)))
     if (meal.meal_type) markSlotSaving(meal.meal_type, true)
     updateMutation.mutate({ id: meal.id!, food_items: mapFoodItemsToInput(remaining) })
   }
