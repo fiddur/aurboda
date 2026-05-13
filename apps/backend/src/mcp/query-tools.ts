@@ -250,7 +250,6 @@ Source-agnostic: works for any activity that has time-series and/or GPS populate
             data: window.data,
             end_time: activity.end_time?.toISOString(),
             id: activity.id,
-            notes: activity.notes,
             source: activity.source,
             start_time: activity.start_time.toISOString(),
             title: activity.title,

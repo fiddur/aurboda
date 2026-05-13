@@ -9,7 +9,7 @@ import type { Activity, ActivityUpdate } from '../types.ts'
 
 import { query } from '../connection.ts'
 import { buildDynamicUpdate, type UpdateEntry } from '../dynamic-update.ts'
-import { mapActivityRow } from '../row-mappers.ts'
+import { type InsertedActivityKey, mapActivityRow, mapInsertedActivityKey } from '../row-mappers.ts'
 import { isSupersedable } from './merge.ts'
 import { activityColumns, getActivityById } from './queries.ts'
 import { materializeSuperseded } from './supersession.ts'
@@ -22,8 +22,8 @@ import { materializeSuperseded } from './supersession.ts'
 export const insertNewActivity = async (user: string, activity: Activity): Promise<string> => {
   const result = await query(
     user,
-    `INSERT INTO activities (id, source, activity_type, start_time, end_time, title, notes, data)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    `INSERT INTO activities (id, source, activity_type, start_time, end_time, title, data)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
      RETURNING id`,
     [
       activity.id,
@@ -32,7 +32,6 @@ export const insertNewActivity = async (user: string, activity: Activity): Promi
       activity.start_time,
       activity.end_time,
       activity.title,
-      activity.notes,
       activity.data,
     ],
   )
@@ -79,7 +78,7 @@ export const insertOverride = async (
     // `deleted_at` and overwriting its fields with the new input.
     const existing = await query(
       user,
-      `SELECT id, source, external_id, activity_type, start_time, end_time, title, notes, data, deleted_at, superseded_by
+      `SELECT id, source, external_id, activity_type, start_time, end_time, title, data, deleted_at, superseded_by
          FROM activities
         WHERE source = 'aurboda'
           AND activity_type = $1
@@ -98,16 +97,14 @@ export const insertOverride = async (
         `UPDATE activities SET
            end_time = $2,
            title = $3,
-           notes = $4,
-           data = $5,
+           data = $4,
            deleted_at = NULL
          WHERE id = $1
-         RETURNING id, source, external_id, activity_type, start_time, end_time, title, notes, data, deleted_at, superseded_by`,
+         RETURNING id, source, external_id, activity_type, start_time, end_time, title, data, deleted_at, superseded_by`,
         [
           existing.rows[0].id,
           override.end_time ?? null,
           override.title ?? null,
-          override.notes ?? null,
           override.data ? JSON.stringify(override.data) : null,
         ],
       )
@@ -115,15 +112,14 @@ export const insertOverride = async (
     } else {
       const inserted = await query(
         user,
-        `INSERT INTO activities (source, activity_type, start_time, end_time, title, notes, data)
-         VALUES ('aurboda', $1, $2, $3, $4, $5, $6)
-         RETURNING id, source, external_id, activity_type, start_time, end_time, title, notes, data, deleted_at, superseded_by`,
+        `INSERT INTO activities (source, activity_type, start_time, end_time, title, data)
+         VALUES ('aurboda', $1, $2, $3, $4, $5)
+         RETURNING id, source, external_id, activity_type, start_time, end_time, title, data, deleted_at, superseded_by`,
         [
           override.activity_type,
           override.start_time,
           override.end_time ?? null,
           override.title ?? null,
-          override.notes ?? null,
           override.data ? JSON.stringify(override.data) : null,
         ],
       )
@@ -166,14 +162,13 @@ export const insertActivity = async (user: string, activity: Activity): Promise<
     // Upsert by external_id (for sourced data like calendar events, Oura tags, lastfm)
     const result = await query(
       user,
-      `INSERT INTO activities (id, source, external_id, activity_type, start_time, end_time, title, notes, data)
-       VALUES (COALESCE($1, gen_random_uuid()), $2, $3, $4, $5, $6, $7, $8, $9)
+      `INSERT INTO activities (id, source, external_id, activity_type, start_time, end_time, title, data)
+       VALUES (COALESCE($1, gen_random_uuid()), $2, $3, $4, $5, $6, $7, $8)
        ON CONFLICT (source, external_id) WHERE external_id IS NOT NULL DO UPDATE SET
          activity_type = EXCLUDED.activity_type,
          start_time = EXCLUDED.start_time,
          end_time = EXCLUDED.end_time,
          title = EXCLUDED.title,
-         notes = EXCLUDED.notes,
          data = COALESCE(activities.data, '{}'::jsonb) || EXCLUDED.data
        WHERE activities.deleted_at IS NULL
        RETURNING id`,
@@ -185,7 +180,6 @@ export const insertActivity = async (user: string, activity: Activity): Promise<
         activity.start_time,
         activity.end_time,
         activity.title,
-        activity.notes,
         activity.data,
       ],
     )
@@ -194,12 +188,11 @@ export const insertActivity = async (user: string, activity: Activity): Promise<
     // Upsert by type + time (for sync data without external_id)
     const result = await query(
       user,
-      `INSERT INTO activities (id, source, activity_type, start_time, end_time, title, notes, data)
-       VALUES (COALESCE($1, gen_random_uuid()), $2, $3, $4, $5, $6, $7, $8)
+      `INSERT INTO activities (id, source, activity_type, start_time, end_time, title, data)
+       VALUES (COALESCE($1, gen_random_uuid()), $2, $3, $4, $5, $6, $7)
        ON CONFLICT (source, activity_type, start_time) WHERE external_id IS NULL DO UPDATE SET
          end_time = EXCLUDED.end_time,
          title = EXCLUDED.title,
-         notes = EXCLUDED.notes,
          data = COALESCE(activities.data, '{}'::jsonb) || EXCLUDED.data
        WHERE activities.deleted_at IS NULL
        RETURNING id`,
@@ -210,7 +203,6 @@ export const insertActivity = async (user: string, activity: Activity): Promise<
         activity.start_time,
         activity.end_time,
         activity.title,
-        activity.notes,
         activity.data,
       ],
     )
@@ -226,12 +218,23 @@ export const insertActivity = async (user: string, activity: Activity): Promise<
   return insertedId
 }
 
-export const insertActivities = async (user: string, activities: Activity[]) => {
-  if (activities.length === 0) return
+/**
+ * Bulk insert / upsert a batch of activities. Returns the persisted
+ * `(source, external_id|null, activity_type, start_time, id)` tuple per
+ * input row so callers (e.g. Health Connect ingest) can attach notes or
+ * other linked rows by id afterwards.
+ */
+export const insertActivities = async (
+  user: string,
+  activities: Activity[],
+): Promise<InsertedActivityKey[]> => {
+  if (activities.length === 0) return []
 
   // Split into external_id and non-external_id batches for different conflict targets
   const withExtId = activities.filter((a) => a.external_id)
   const withoutExtId = activities.filter((a) => !a.external_id)
+
+  const inserted: InsertedActivityKey[] = []
 
   if (withExtId.length > 0) {
     const values = withExtId.map((a) => [
@@ -242,27 +245,29 @@ export const insertActivities = async (user: string, activities: Activity[]) => 
       a.start_time,
       a.end_time ?? null,
       a.title ?? null,
-      a.notes ?? null,
       a.data ?? null,
     ])
-    await query(
+    const result = await query(
       user,
       format(
-        `INSERT INTO activities (id, source, external_id, activity_type, start_time, end_time, title, notes, data)
+        `INSERT INTO activities (id, source, external_id, activity_type, start_time, end_time, title, data)
          SELECT COALESCE(v.id::uuid, gen_random_uuid()), v.source, v.external_id, v.activity_type,
-                v.start_time::timestamptz, v.end_time::timestamptz, v.title, v.notes, v.data::jsonb
-         FROM (VALUES %L) AS v(id, source, external_id, activity_type, start_time, end_time, title, notes, data)
+                v.start_time::timestamptz, v.end_time::timestamptz, v.title, v.data::jsonb
+         FROM (VALUES %L) AS v(id, source, external_id, activity_type, start_time, end_time, title, data)
          ON CONFLICT (source, external_id) WHERE external_id IS NOT NULL DO UPDATE SET
            activity_type = EXCLUDED.activity_type,
            start_time = EXCLUDED.start_time,
            end_time = EXCLUDED.end_time,
            title = EXCLUDED.title,
-           notes = EXCLUDED.notes,
            data = COALESCE(activities.data, '{}'::jsonb) || EXCLUDED.data
-         WHERE activities.deleted_at IS NULL`,
+         WHERE activities.deleted_at IS NULL
+         RETURNING id, source, external_id, activity_type, start_time`,
         values,
       ),
     )
+    for (const row of result.rows) {
+      inserted.push(mapInsertedActivityKey(row))
+    }
   }
 
   if (withoutExtId.length > 0) {
@@ -273,25 +278,27 @@ export const insertActivities = async (user: string, activities: Activity[]) => 
       a.start_time,
       a.end_time ?? null,
       a.title ?? null,
-      a.notes ?? null,
       a.data ?? null,
     ])
-    await query(
+    const result = await query(
       user,
       format(
-        `INSERT INTO activities (id, source, activity_type, start_time, end_time, title, notes, data)
+        `INSERT INTO activities (id, source, activity_type, start_time, end_time, title, data)
          SELECT COALESCE(v.id::uuid, gen_random_uuid()), v.source, v.activity_type,
-                v.start_time::timestamptz, v.end_time::timestamptz, v.title, v.notes, v.data::jsonb
-         FROM (VALUES %L) AS v(id, source, activity_type, start_time, end_time, title, notes, data)
+                v.start_time::timestamptz, v.end_time::timestamptz, v.title, v.data::jsonb
+         FROM (VALUES %L) AS v(id, source, activity_type, start_time, end_time, title, data)
          ON CONFLICT (source, activity_type, start_time) WHERE external_id IS NULL DO UPDATE SET
            end_time = EXCLUDED.end_time,
            title = EXCLUDED.title,
-           notes = EXCLUDED.notes,
            data = COALESCE(activities.data, '{}'::jsonb) || EXCLUDED.data
-         WHERE activities.deleted_at IS NULL`,
+         WHERE activities.deleted_at IS NULL
+         RETURNING id, source, external_id, activity_type, start_time`,
         values,
       ),
     )
+    for (const row of result.rows) {
+      inserted.push(mapInsertedActivityKey(row))
+    }
   }
 
   // Materialize once per distinct day covered by the batch. Activities from
@@ -306,6 +313,8 @@ export const insertActivities = async (user: string, activities: Activity[]) => 
   for (const t of days) {
     await materializeSuperseded(user, new Date(t))
   }
+
+  return inserted
 }
 
 export const deleteActivity = async (user: string, id: string): Promise<boolean> => {
@@ -354,7 +363,6 @@ export const updateActivity = async (
   if (updates.start_time !== undefined) fields.push({ column: 'start_time', value: updates.start_time })
   if (updates.end_time !== undefined) fields.push({ column: 'end_time', value: updates.end_time })
   if (updates.title !== undefined) fields.push({ column: 'title', value: updates.title })
-  if (updates.notes !== undefined) fields.push({ column: 'notes', value: updates.notes })
   if (updates.data !== undefined) fields.push({ column: 'data', value: JSON.stringify(updates.data) })
 
   if (fields.length === 0) return getActivityById(user, id)

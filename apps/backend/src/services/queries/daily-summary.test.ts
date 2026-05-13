@@ -622,7 +622,7 @@ describe('getDailySummary', () => {
     expect(result.sleep_sessions[0].sleep_location).toBeUndefined()
   })
 
-  test('surfaces inline notes and structured data fields on activities', async () => {
+  test('surfaces attached comments and structured data fields on activities', async () => {
     vi.mocked(db.getTimeSeries)
       .mockResolvedValueOnce([]) // heart rate
       .mockResolvedValueOnce([]) // steps
@@ -634,7 +634,7 @@ describe('getDailySummary', () => {
         activity_type: 'yoga',
         data: { reps: 12, weight: 20 },
         end_time: new Date('2024-01-15T07:00:00Z'),
-        notes: 'Focus on hip openers',
+        id: 'yoga-id',
         source: 'aurboda',
         start_time: new Date('2024-01-15T06:30:00Z'),
       },
@@ -642,10 +642,28 @@ describe('getDailySummary', () => {
         activity_type: 'sex',
         data: { partner: 'Sara' },
         end_time: new Date('2024-01-15T23:30:00Z'),
+        id: 'sex-id',
         source: 'aurboda',
         start_time: new Date('2024-01-15T23:00:00Z'),
       },
     ])
+    vi.mocked(db.getNotesByEntityIds).mockResolvedValue(
+      new Map([
+        [
+          'yoga-id',
+          [
+            {
+              content: 'Focus on hip openers',
+              created_at: new Date('2024-01-15T07:05:00Z'),
+              entity_id: 'yoga-id',
+              entity_type: 'activity',
+              id: 'note-1',
+              updated_at: new Date('2024-01-15T07:05:00Z'),
+            },
+          ],
+        ],
+      ]),
+    )
     vi.mocked(db.getProductivity).mockResolvedValue([])
     vi.mocked(locationsService.getPlaceVisits).mockResolvedValue([])
     vi.mocked(db.getDailyAggregateValue).mockResolvedValue(null)
@@ -655,14 +673,14 @@ describe('getDailySummary', () => {
 
     expect(result.activities).toHaveLength(2)
     const yoga = result.activities.find((a) => a.activity_type === 'yoga')!
-    expect(yoga.notes).toBe('Focus on hip openers')
+    expect(yoga.comments?.map((c) => c.content)).toEqual(['Focus on hip openers'])
     expect(yoga.data).toEqual({ reps: 12, weight: 20 })
     const sex = result.activities.find((a) => a.activity_type === 'sex')!
-    expect(sex.notes).toBeUndefined()
+    expect(sex.comments).toBeUndefined()
     expect(sex.data).toEqual({ partner: 'Sara' })
   })
 
-  test('omits notes and data when activity has neither', async () => {
+  test('omits comments and data when activity has neither', async () => {
     vi.mocked(db.getTimeSeries).mockResolvedValueOnce([]).mockResolvedValueOnce([]).mockResolvedValueOnce([])
 
     vi.mocked(db.getSleepSessions).mockResolvedValue([])
@@ -681,7 +699,7 @@ describe('getDailySummary', () => {
 
     const result = await getDailySummary('testuser', new Date('2024-01-15'))
 
-    expect(result.activities[0].notes).toBeUndefined()
+    expect(result.activities[0].comments).toBeUndefined()
     expect(result.activities[0].data).toBeUndefined()
   })
 

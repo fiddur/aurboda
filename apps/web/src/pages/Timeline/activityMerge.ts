@@ -226,7 +226,14 @@ const buildActivityDetails = (
       ? buildSleepDetails(a, end)
       : [formatDuration(a.start_time, end), ...(a.avg_hrv ? [`Avg HRV: ${a.avg_hrv} ms`] : [])]
 
-  if (a.notes) details.push(a.notes)
+  // User-typed comments (source-less) used to live on activity.notes — they
+  // now arrive in `comments`. Synced comments (HC, Oura) are deliberately
+  // skipped here to keep tooltip text user-driven.
+  if (a.comments) {
+    for (const c of a.comments) {
+      if (!c.source) details.push(c.content)
+    }
+  }
 
   if (a.activity_type === 'meditation') {
     const music = scrobbles

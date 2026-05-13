@@ -216,7 +216,6 @@ export const activitySchema = activityComputedMetricsSchema
     end_time: iso8601DateTimeSchema.optional(),
     external_id: z.string().optional().meta({ description: 'External ID from source system' }),
     id: z.string().uuid().optional().meta({ description: 'Activity ID' }),
-    notes: z.string().optional().meta({ description: 'Activity notes' }),
     override_target_ids: z.array(z.string().uuid()).optional().meta({
       description:
         'When non-empty, this activity is a user-edited aurboda override that hides the listed synced activities in merged views (#715, #735). One override may target multiple synced rows when claiming a cross-source merge group as a whole. Each target may be overridden by at most one override.',
@@ -345,7 +344,6 @@ const addedActivitySchema = z.object({
   activity_type: activityTypeSchema,
   end_time: iso8601DateTimeSchema.optional(),
   id: z.string().uuid(),
-  notes: z.string().optional(),
   start_time: iso8601DateTimeSchema,
   title: z.string().optional(),
 })

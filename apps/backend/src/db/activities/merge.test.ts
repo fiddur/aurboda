@@ -18,7 +18,6 @@ const override = (overrides: Partial<Activity> = {}): Activity => ({
   activity_type: 'pipe_ceremony',
   end_time: new Date('2026-05-05T10:20:00Z'), // narrower than source
   id: 'aurboda-id',
-  notes: 'override notes',
   override_target_ids: ['garmin-id'],
   source: 'aurboda',
   start_time: new Date('2026-05-05T10:05:00Z'), // narrower than source
@@ -58,14 +57,7 @@ describe('mergeOverlappingActivities — aurboda override semantics (#732 follow
     expect(merged[0].title).toBe('')
   })
 
-  test('override winner notes stand alone — source notes are not concatenated', () => {
-    const merged = mergeOverlappingActivities(
-      [garmin({ notes: 'auto-imported by Garmin' }), override({ notes: 'pipe ceremony with elders' })],
-      categoryMap,
-    )
-    expect(merged[0].notes).toBe('pipe ceremony with elders')
-    expect(merged[0].notes).not.toContain('auto-imported')
-  })
+  // note: PR #2 moved notes to the notes table; merge no longer touches them
 
   test('non-override merge still blends (cross-source pairing extends the span)', () => {
     // Sanity: the field-blending behaviour we suppressed for overrides is

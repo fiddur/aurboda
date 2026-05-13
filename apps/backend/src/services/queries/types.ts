@@ -22,6 +22,7 @@ export const buildCategoryMap = async (user: string): Promise<Map<string, string
 export interface CommentSummary {
   id: string
   content: string
+  source?: string
   start_time?: string
   end_time?: string
   created_at: string
@@ -43,6 +44,7 @@ export const getCommentsMap = async (
         created_at: n.created_at.toISOString(),
         end_time: n.end_time?.toISOString(),
         id: n.id,
+        source: n.source ?? undefined,
         start_time: n.start_time?.toISOString(),
         updated_at: n.updated_at.toISOString(),
       })),
@@ -147,7 +149,6 @@ export interface ActivitySummary {
   start_time: string
   end_time?: string
   title?: string
-  notes?: string
   data?: Record<string, unknown>
   comments?: CommentSummary[]
   hr_zone_secs?: HrZoneSecs
@@ -317,7 +318,6 @@ export interface ActivityResult extends ActivityComputedMetrics {
   total_sleep?: number // minutes (actual sleep excluding awake, sleep only)
   activity_type: string
   title?: string
-  notes?: string
   source: string
   data?: Record<string, unknown>
   comments: CommentSummary[]

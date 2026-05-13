@@ -91,6 +91,33 @@ export const parseMetricType = (value: unknown): MetricType => {
 // Row Mappers
 // ============================================================================
 
+/**
+ * Map an INSERT … RETURNING row from `activities` to the lean key tuple used
+ * by callers that need to attach related rows (notes, etc.) after a bulk
+ * insert. Kept separate from `mapActivityRow` because the RETURNING set is
+ * intentionally small.
+ */
+export interface InsertedActivityKey {
+  id: string
+  source: DataSource
+  external_id: string | null
+  activity_type: ActivityType
+  start_time: Date
+}
+
+export const mapInsertedActivityKey = (row: QueryResultRow): InsertedActivityKey => {
+  if (typeof row.id !== 'string') {
+    throw new Error(`mapInsertedActivityKey: expected string id, got ${JSON.stringify(row.id)}`)
+  }
+  return {
+    activity_type: parseActivityType(row.activity_type),
+    external_id: row.external_id ?? null,
+    id: row.id,
+    source: parseDataSource(row.source),
+    start_time: new Date(row.start_time),
+  }
+}
+
 export const mapActivityRow = (row: QueryResultRow): Activity => ({
   activity_type: parseActivityType(row.activity_type),
   data: row.data,
@@ -98,7 +125,6 @@ export const mapActivityRow = (row: QueryResultRow): Activity => ({
   end_time: row.end_time ? new Date(row.end_time) : undefined,
   external_id: row.external_id ?? undefined,
   id: row.id,
-  notes: row.notes,
   // Populated by the SELECT via a subquery against activity_override_targets
   // (when present). PostgreSQL returns NULL for an empty array_agg, which
   // the row-mapper normalises to undefined so the Activity type stays sparse.

@@ -41,7 +41,6 @@ describe('Activities Integration Tests', () => {
         activity_type: 'exercise',
         data: { calories: 300 },
         end_time: new Date('2024-01-15T11:00:00Z'),
-        notes: 'Morning run',
         source: 'health_connect',
         start_time: new Date('2024-01-15T10:00:00Z'),
         title: 'Running',
@@ -524,7 +523,7 @@ describe('Activities Integration Tests', () => {
       expect(updated?.end_time).toEqual(new Date('2024-01-15T12:00:00Z'))
     })
 
-    test('updates activity title and notes', async () => {
+    test('updates activity title', async () => {
       const user = getTestUser()
       const activityId = randomUUID()
 
@@ -537,13 +536,11 @@ describe('Activities Integration Tests', () => {
       })
 
       const updated = await updateActivity(user, activityId, {
-        notes: 'Felt great!',
         title: 'Morning workout',
       })
 
       expect(updated).not.toBeNull()
       expect(updated?.title).toBe('Morning workout')
-      expect(updated?.notes).toBe('Felt great!')
     })
 
     test('returns null when activity not found', async () => {
@@ -654,13 +651,11 @@ describe('Activities Integration Tests', () => {
 
       const updated = await updateActivity(user, activityId, {
         data: { exerciseType: 56, exerciseTypeName: 'running' },
-        notes: 'Morning run in the park',
         title: 'Morning Run',
       })
 
       expect(updated).not.toBeNull()
       expect(updated?.title).toBe('Morning Run')
-      expect(updated?.notes).toBe('Morning run in the park')
       expect(updated?.data).toEqual({ exerciseType: 56, exerciseTypeName: 'running' })
     })
   })
@@ -683,7 +678,6 @@ describe('Activities Integration Tests', () => {
       const override = await insertOverride(user, [garminId], {
         activity_type: 'walking',
         end_time: new Date('2026-05-05T10:30:00Z'),
-        notes: 'pipe ceremony',
         start_time: new Date('2026-05-05T10:00:00Z'),
         title: 'Pipe ceremony',
       })
@@ -832,7 +826,6 @@ describe('Activities Integration Tests', () => {
       const first = await insertOverride(user, [garminId], {
         activity_type: 'walking',
         end_time: new Date('2026-05-10T10:30:00Z'),
-        notes: 'first',
         start_time: new Date('2026-05-10T10:00:00Z'),
         title: 'first title',
       })
@@ -840,7 +833,6 @@ describe('Activities Integration Tests', () => {
       const second = await insertOverride(user, [stravaId], {
         activity_type: 'walking',
         end_time: new Date('2026-05-10T10:25:00Z'),
-        notes: 'second',
         start_time: new Date('2026-05-10T10:00:00Z'),
         title: 'second title',
       })
@@ -849,7 +841,6 @@ describe('Activities Integration Tests', () => {
       expect(second?.id).toBe(first?.id)
       // Fields updated to the latest input.
       expect(second?.title).toBe('second title')
-      expect(second?.notes).toBe('second')
       expect(second?.end_time).toEqual(new Date('2026-05-10T10:25:00Z'))
       // Both target ids now linked.
       expect(second?.override_target_ids?.sort()).toEqual([garminId, stravaId].sort())
@@ -875,7 +866,6 @@ describe('Activities Integration Tests', () => {
       const first = await insertOverride(user, [garminId], {
         activity_type: 'walking',
         end_time: new Date('2026-05-11T10:30:00Z'),
-        notes: 'before revert',
         start_time: new Date('2026-05-11T10:00:00Z'),
         title: 'before revert',
       })
@@ -888,14 +878,12 @@ describe('Activities Integration Tests', () => {
       const second = await insertOverride(user, [garminId], {
         activity_type: 'walking',
         end_time: new Date('2026-05-11T10:25:00Z'),
-        notes: 'after revive',
         start_time: new Date('2026-05-11T10:00:00Z'),
         title: 'after revive',
       })
 
       expect(second?.id).toBe(first?.id)
       expect(second?.title).toBe('after revive')
-      expect(second?.notes).toBe('after revive')
       expect(second?.deleted_at).toBeUndefined()
     })
 

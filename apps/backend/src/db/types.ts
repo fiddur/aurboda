@@ -83,7 +83,6 @@ export interface Activity {
   start_time: Date
   end_time?: Date
   title?: string
-  notes?: string
   data?: Record<string, unknown>
   deleted_at?: Date
   /** If set, this activity is a cross-source duplicate of the referenced activity. */
@@ -112,7 +111,6 @@ export interface ActivityUpdate {
   start_time?: Date
   end_time?: Date | null
   title?: string
-  notes?: string
   data?: Record<string, unknown>
 }
 

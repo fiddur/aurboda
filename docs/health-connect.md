@@ -100,6 +100,14 @@ The app uses Health Connect's **Changes API** with token-based tracking:
 4. Deleted records are reported to `POST /api/sync/deletions`
 5. Backend processes each record: stores raw JSON, extracts metrics to time series, creates activities for exercise/sleep
 
+### Activity notes
+
+`ExerciseSessionRecord.notes` (and the same field on sleep records) are not kept on the activity row itself. They are persisted as rows in the `notes` table with `source = 'health_connect'`, anchored to the activity's id. This means:
+
+- The same `notes` table also holds user-typed text and synced notes from other sources (Oura, etc.). Each row's `source` column distinguishes them — user-authored rows have `source IS NULL`.
+- Outbound HC sync (aurboda activity → Health Connect) only serializes user-authored notes into the HC record's `notes` field, joined with newlines. HC-sourced notes are deliberately skipped so a round-tripped record doesn't echo its own note back as "user input".
+- Re-syncing an HC record is idempotent: the same `(entity_id, source='health_connect')` row is upserted, not duplicated.
+
 ### Chunking
 
 HeartRateRecord data (which can contain thousands of samples) is sent in chunks of 10 records per request to avoid HTTP 413 errors.

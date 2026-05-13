@@ -95,11 +95,6 @@ const buildMergedResponse = async (
 
   const sorted = [...overlapping].sort((a, b) => a.start_time.getTime() - b.start_time.getTime())
   const mergedTitle = sorted.find((a) => a.title)?.title ?? activity.title
-  const mergedNotes =
-    sorted
-      .map((a) => a.notes)
-      .filter(Boolean)
-      .join('\n') || activity.notes
   const mergedData = sorted.reduce<Record<string, unknown>>(
     (acc, a) => (a.data ? { ...acc, ...a.data } : acc),
     {},
@@ -124,7 +119,6 @@ const buildMergedResponse = async (
     id: activity.id,
     merged_end_time: mergedEndTime,
     merged_start_time: mergedStartTime,
-    notes: mergedNotes,
     override_target_ids: activity.override_target_ids,
     source: activity.source,
     source_records: sourceRecords,
@@ -226,7 +220,6 @@ export const createActivitiesRouter = (
           activity_type: result.activity_type!,
           end_time: result.end_time!,
           id: result.id!,
-          notes: result.notes,
           start_time: result.start_time!,
           title: result.title,
         },
@@ -295,7 +288,6 @@ export const createActivitiesRouter = (
         activity_type: fitAct.activity_type,
         end_time: fitAct.end_time.toISOString(),
         id: result.id!,
-        notes: fitAct.notes,
         start_time: fitAct.start_time.toISOString(),
         title: fitAct.title,
       })
@@ -326,7 +318,6 @@ export const createActivitiesRouter = (
           activity_type: result.activity_type!,
           end_time: result.end_time,
           id: result.id,
-          notes: result.notes,
           source: 'aurboda',
           start_time: result.start_time!,
           title: result.title,
@@ -364,7 +355,6 @@ export const createActivitiesRouter = (
           data: a.data,
           end_time: a.end_time?.toISOString(),
           id: a.id,
-          notes: a.notes,
           source: a.source,
           start_time: a.start_time.toISOString(),
           title: a.title,
@@ -433,7 +423,6 @@ export const createActivitiesRouter = (
           activity_type: result.activity_type!,
           end_time: result.end_time ?? undefined,
           id: result.id!,
-          notes: result.notes,
           start_time: result.start_time!,
           title: result.title,
         },
@@ -488,7 +477,6 @@ export const createActivitiesRouter = (
         deleted_at: activity.deleted_at?.toISOString(),
         end_time: activity.end_time?.toISOString(),
         id: activity.id,
-        notes: activity.notes,
         override_target_ids: activity.override_target_ids,
         source: activity.source,
         start_time: activity.start_time.toISOString(),
@@ -531,7 +519,6 @@ export const createActivitiesRouter = (
           deleted_at: activity.deleted_at?.toISOString(),
           end_time: activity.end_time?.toISOString(),
           id: activity.id,
-          notes: activity.notes,
           override_target_ids: activity.override_target_ids,
           source: activity.source,
           start_time: activity.start_time.toISOString(),

@@ -153,9 +153,6 @@ const mergeGroupByPriority = (members: Activity[]): MergedActivity => {
       winner.data = { ...member.data, ...winner.data }
     }
     if (!winner.title && member.title) winner.title = member.title
-    if (member !== sorted[0] && member.notes) {
-      winner.notes = winner.notes ? `${winner.notes}\n${member.notes}` : member.notes
-    }
   }
 
   if (sourceIds.length > 1) winner.source_ids = sourceIds
@@ -343,11 +340,6 @@ export const mergeOverlappingActivities = (
         // Use first non-empty title
         if (!current.title && next.title) {
           current.title = next.title
-        }
-
-        // Concatenate notes
-        if (next.notes) {
-          current.notes = current.notes ? `${current.notes}\n${next.notes}` : next.notes
         }
 
         // Merge data objects

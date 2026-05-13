@@ -1065,7 +1065,6 @@ describe('MCP Server', () => {
         activity_type: 'exercise',
         end_time: '2024-03-15T11:00:00.000Z',
         id: testActivityId,
-        notes: 'Great session',
         start_time: '2024-03-15T10:00:00.000Z',
         success: true,
       })
