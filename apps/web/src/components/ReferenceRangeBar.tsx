@@ -151,6 +151,7 @@ export function ReferenceRangeBar({
             <div
               key={m.label ?? i}
               class="ref-range-marker"
+              data-marker-index={i}
               style={{ backgroundColor: color, left: `${pct}%` }}
               title={m.label ? `${m.label}: ${m.value}` : `${m.value}`}
             >
