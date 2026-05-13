@@ -10,7 +10,7 @@
 
 import { z } from 'zod'
 
-import { createDataArrayResponseSchema, createDataResponseSchema } from './common.ts'
+import { baseResponseSchema, createDataArrayResponseSchema, createDataResponseSchema } from './common.ts'
 
 /**
  * Rule type for screentime categories.
@@ -25,6 +25,10 @@ export const screentimeRuleTypeSchema = z.enum(['regex', 'none']).meta({
  */
 export const screentimeCategorySchema = z
   .object({
+    activity_type_name: z.string().optional().meta({
+      description:
+        'Slug of the linked `activity_type_definitions` row — set on first sync and stable across category renames. Read-only.',
+    }),
     color: z
       .string()
       .optional()
@@ -166,6 +170,63 @@ export const importAwCategoriesBodySchema = z
   .meta({ description: 'Import categories from ActivityWatch', id: 'ImportAwCategoriesBody' })
 
 export type ImportAwCategoriesBody = z.infer<typeof importAwCategoriesBodySchema>
+
+/**
+ * Move category body schema.
+ */
+export const moveScreentimeCategoryBodySchema = z
+  .object({
+    new_parent_id: z
+      .string()
+      .uuid()
+      .nullable()
+      .meta({ description: 'New parent category ID, or null for root' }),
+  })
+  .meta({ description: 'Move a category to a new parent', id: 'MoveScreentimeCategoryBody' })
+
+export type MoveScreentimeCategoryBody = z.infer<typeof moveScreentimeCategoryBodySchema>
+
+/**
+ * Delete screentime category response.
+ */
+export const deleteScreentimeCategoryResponseSchema = baseResponseSchema
+  .extend({
+    deleted: z.number().int().optional().meta({ description: 'Number of categories deleted' }),
+  })
+  .meta({ id: 'DeleteScreentimeCategoryResponse' })
+
+export type DeleteScreentimeCategoryResponse = z.infer<typeof deleteScreentimeCategoryResponseSchema>
+
+/**
+ * Move screentime category response.
+ */
+export const moveScreentimeCategoryResponseSchema = baseResponseSchema
+  .extend({
+    updated: z.number().int().meta({ description: 'Number of categories updated' }),
+  })
+  .meta({ id: 'MoveScreentimeCategoryResponse' })
+
+export type MoveScreentimeCategoryResponse = z.infer<typeof moveScreentimeCategoryResponseSchema>
+
+/**
+ * Recategorize screentime response.
+ */
+export const recategorizeScreentimeResponseSchema = baseResponseSchema
+  .extend({
+    records_updated: z.number().int().optional().meta({ description: 'Number of records recategorized' }),
+  })
+  .meta({ id: 'RecategorizeScreentimeResponse' })
+
+export type RecategorizeScreentimeResponse = z.infer<typeof recategorizeScreentimeResponseSchema>
+
+/**
+ * Default screentime categories response.
+ */
+export const screentimeCategoryDefaultsResponseSchema = createDataArrayResponseSchema(
+  createScreentimeCategoryBodySchema,
+).meta({ id: 'ScreentimeCategoryDefaultsResponse' })
+
+export type ScreentimeCategoryDefaultsResponse = z.infer<typeof screentimeCategoryDefaultsResponseSchema>
 
 /**
  * Default categories (matching ActivityWatch defaults) that can be suggested to users.

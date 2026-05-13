@@ -10,7 +10,7 @@ import {
   touchMcpSession,
 } from './mcp-sessions.ts'
 
-const CONTAINER_TIMEOUT = 60_000
+const CONTAINER_TIMEOUT = 120_000
 
 describe('MCP Sessions Integration Tests', () => {
   beforeAll(async () => {

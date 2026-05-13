@@ -1,5 +1,5 @@
 /**
- * Trend schemas for time-weighted averages of tags and metrics.
+ * Trend schemas for time-weighted averages of activity types and metrics.
  *
  * Uses Exponential Moving Average (EMA) with configurable half-life to give
  * more weight to recent data while still smoothing over a configurable period.
@@ -15,8 +15,9 @@ import { baseResponseSchema } from './common.ts'
 export const trendSourceTypeSchema = z
   .enum(['tag', 'metric', 'productivity_category', 'activity_type'])
   .meta({
-    description: 'Type of data source for trend calculation',
-    example: 'tag',
+    description:
+      "Type of data source for trend calculation. 'tag' is a deprecated alias for 'activity_type'.",
+    example: 'activity_type',
     id: 'TrendSourceType',
   })
 
@@ -62,7 +63,7 @@ export const getTrendQuerySchema = z
     aggregation: z
       .enum(['count', 'sum', 'mean'])
       .default('count')
-      .meta({ description: 'Aggregation method: count for tags, mean for metrics' }),
+      .meta({ description: 'Aggregation method: count for activity types, mean for metrics' }),
     display_period: trendDisplayPeriodSchema
       .default('monthly')
       .meta({ description: 'Period to normalize the rate to (daily, weekly, monthly)' }),
@@ -76,13 +77,25 @@ export const getTrendQuerySchema = z
       .positive()
       .default(90)
       .meta({ description: 'How many days of historical data to include' }),
-    pattern: z.string().meta({ description: 'For tags: regex pattern to match. For metrics: metric name.' }),
-    source_type: trendSourceTypeSchema.meta({ description: 'Type of source: tag or metric' }),
+    pattern: z
+      .string()
+      .meta({ description: 'For activity types: regex pattern to match. For metrics: metric name.' }),
+    source_type: trendSourceTypeSchema,
+    activity_type_id: z
+      .string()
+      .uuid()
+      .optional()
+      .meta({ description: 'Activity type definition ID (alternative to pattern for activity type trends)' }),
+    /** @deprecated Use activity_type_id instead */
     tag_definition_id: z
       .string()
       .uuid()
       .optional()
-      .meta({ description: 'Tag definition ID (alternative to pattern for tag trends)' }),
+      .meta({ description: 'Deprecated: use activity_type_id instead' }),
+    breakdown_fields: z.array(z.string()).optional().meta({
+      description:
+        'Data fields to break down by (for activity_type source). Produces per-series EMA histories.',
+    }),
   })
   .meta({ id: 'GetTrendQuery' })
 
@@ -111,6 +124,14 @@ export const trendResultSchema = z
     display_unit: z.string().meta({ description: 'Human-readable unit (e.g., "per month")' }),
     half_life_days: z.number().meta({ description: 'Half-life used for calculation' }),
     history: z.array(trendHistoryPointSchema).meta({ description: 'Historical trend values' }),
+    breakdown_series: z
+      .array(z.string())
+      .optional()
+      .meta({ description: 'Distinct series names when breakdown is used' }),
+    breakdown_histories: z
+      .record(z.string(), z.array(trendHistoryPointSchema))
+      .optional()
+      .meta({ description: 'Per-series EMA trend histories keyed by series name' }),
     lookback_days: z.number().meta({ description: 'Days of data included' }),
     pattern: z.string().meta({ description: 'Pattern used for matching' }),
     source_type: trendSourceTypeSchema.meta({ description: 'Source type queried' }),
@@ -143,13 +164,23 @@ export const trendQuerySchema = z
     pattern: z
       .string()
       .optional()
-      .meta({ description: 'Pattern (required unless tag_definition_id is provided)' }),
+      .meta({ description: 'Pattern (required unless activity_type_id is provided)' }),
     source_type: trendSourceTypeSchema,
+    activity_type_id: z
+      .string()
+      .uuid()
+      .optional()
+      .meta({ description: 'Activity type definition ID (alternative to pattern)' }),
+    /** @deprecated Use activity_type_id instead */
     tag_definition_id: z
       .string()
       .uuid()
       .optional()
-      .meta({ description: 'Tag definition ID (alternative to pattern for tag trends)' }),
+      .meta({ description: 'Deprecated: use activity_type_id instead' }),
+    breakdown_fields: z
+      .string()
+      .optional()
+      .meta({ description: 'Comma-separated data fields to break down by' }),
   })
   .meta({ id: 'TrendQuery' })
 

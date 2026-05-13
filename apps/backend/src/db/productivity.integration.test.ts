@@ -18,7 +18,7 @@ import {
 } from '../db/index.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 
-const CONTAINER_TIMEOUT = 60_000
+const CONTAINER_TIMEOUT = 120_000
 
 const makeRecord = (
   partial: Partial<ProductivityRecord> & Pick<ProductivityRecord, 'activity'>,

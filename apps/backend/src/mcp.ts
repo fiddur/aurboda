@@ -12,28 +12,34 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { type Request, type Response, Router } from 'express'
 
 import type { Auth } from './auth.ts'
-import type { GarminClient } from './garmin.ts'
-import type { ouraClient } from './oura.ts'
+import type { GarminClient } from './integrations/garmin/client.ts'
+import type { ouraClient } from './integrations/oura/client.ts'
 import type { CentralDb } from './services/central-db.ts'
-import type { SyncProvider } from './services/queries.ts'
+import type { DeductionEngineDeps } from './services/deduction-engine.ts'
+import type { ActivityNotifier, DeductionQueue } from './services/deduction-queue.ts'
+import type { SyncProvider } from './services/queries/index.ts'
+import type { StravaQueue } from './services/strava-queue.ts'
 
 import { registerActivityTools } from './mcp/activity-tools.ts'
 import { registerActivityTypeTools } from './mcp/activity-type-tools.ts'
 import { registerChartTools } from './mcp/chart-tools.ts'
 import { registerCorrelationTools } from './mcp/correlation-tools.ts'
+import { registerDebugTools } from './mcp/debug-tools.ts'
 import { registerDeductionRuleTools } from './mcp/deduction-rule-tools.ts'
 import { registerFoodItemTools } from './mcp/food-item-tools.ts'
-import { registerLastFmTools } from './mcp/lastfm-tools.ts'
+import { registerImportTools } from './mcp/import-tools.ts'
 import { registerLocationTools } from './mcp/location-tools.ts'
 import { registerMealTools } from './mcp/meal-tools.ts'
 import { registerMetricTools } from './mcp/metric-tools.ts'
 import { registerNoteTools } from './mcp/note-tools.ts'
+import { registerNutrientRecommendationTools } from './mcp/nutrient-recommendation-tools.ts'
 import { registerQueryTools } from './mcp/query-tools.ts'
 import { registerReportTools } from './mcp/report-tools.ts'
 import { registerScreentimeCategoryTools } from './mcp/screentime-category-tools.ts'
+import { registerSensitivityTools } from './mcp/sensitivity-tools.ts'
 import { registerSettingsTools } from './mcp/settings-tools.ts'
 import { registerSyncTools } from './mcp/sync-tools.ts'
-import { registerTagTools } from './mcp/tag-tools.ts'
+// tag-tools removed: tags are now activities
 import { registerTrainingLoadTools } from './mcp/training-load-tools.ts'
 import { registerTrendTools } from './mcp/trend-tools.ts'
 import { createDefaultEngineDeps } from './services/deduction-deps.ts'
@@ -43,8 +49,12 @@ type OuraClientType = ReturnType<typeof ouraClient>
 
 interface McpDeps {
   centralDb?: CentralDb
+  deductionQueue?: DeductionQueue
+  engineDeps?: DeductionEngineDeps
   garmin?: GarminClient
+  onActivityMutated?: ActivityNotifier
   oura?: OuraClientType
+  stravaQueue?: StravaQueue
   sync?: SyncProvider
 }
 
@@ -54,14 +64,14 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
     version: '1.0.0',
   })
 
+  const engineDeps = deps.engineDeps ?? createDefaultEngineDeps()
+
   registerQueryTools(server, user, deps.sync)
-  registerTagTools(server, user)
   registerMetricTools(server, user)
-  registerActivityTools(server, user)
+  registerActivityTools(server, user, deps.onActivityMutated)
   registerActivityTypeTools(server, user)
-  registerDeductionRuleTools(server, user, createDefaultEngineDeps())
-  registerSyncTools(server, user, deps.oura, deps.garmin)
-  registerLastFmTools(server, user)
+  registerDeductionRuleTools(server, user, engineDeps, deps.deductionQueue)
+  registerSyncTools(server, user, deps.oura, deps.garmin, deps.stravaQueue)
   registerSettingsTools(server, user)
   registerLocationTools(server, user)
   registerCorrelationTools(server, user, deps.sync)
@@ -70,9 +80,15 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
   registerChartTools(server, user)
   registerNoteTools(server, user)
   registerMealTools(server, user)
-  registerFoodItemTools(server, user)
+  registerNutrientRecommendationTools(server, user)
+  if (deps.centralDb) {
+    registerFoodItemTools(server, user, deps.centralDb)
+    registerSensitivityTools(server, user, deps.centralDb)
+    registerImportTools(server, user, deps.centralDb)
+  }
   registerReportTools(server, user)
   registerScreentimeCategoryTools(server, user)
+  registerDebugTools(server, user)
 
   return server
 }

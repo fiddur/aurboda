@@ -94,12 +94,37 @@ export type LoginBody = z.infer<typeof loginBodySchema>
 export const loginResponseSchema = z
   .object({
     is_admin: z.boolean().optional().meta({ description: 'Whether the user is an admin' }),
-    refresh: z.string().meta({ description: 'Refresh token' }),
     token: z.string().meta({ description: 'Authentication token' }),
   })
   .meta({ id: 'LoginResponse' })
 
 export type LoginResponse = z.infer<typeof loginResponseSchema>
+
+// ============================================================================
+// Version and auth token endpoints
+// ============================================================================
+
+/**
+ * Version response schema.
+ */
+export const versionResponseSchema = baseResponseSchema
+  .extend({
+    build_sha: z.string().meta({ description: 'Build commit SHA or "dev"' }),
+  })
+  .meta({ id: 'VersionResponse' })
+
+export type VersionResponse = z.infer<typeof versionResponseSchema>
+
+/**
+ * Auth token response schema.
+ */
+export const authTokenResponseSchema = baseResponseSchema
+  .extend({
+    token: z.string().meta({ description: 'Fresh API token' }),
+  })
+  .meta({ id: 'AuthTokenResponse' })
+
+export type AuthTokenResponse = z.infer<typeof authTokenResponseSchema>
 
 // ============================================================================
 // Admin settings endpoints
@@ -116,11 +141,17 @@ export const adminSettingsResponseSchema = baseResponseSchema
       .int()
       .meta({ description: 'Number of days to keep audit log entries (default: 3)' }),
     lastfm_api_key_set: z.boolean().meta({ description: 'Whether a Last.fm API key is configured' }),
+    oura_client_id_set: z.boolean().meta({ description: 'Whether an Oura client ID is configured' }),
+    oura_client_secret_set: z.boolean().meta({ description: 'Whether an Oura client secret is configured' }),
     oura_webhook_available: z.boolean().meta({
       description: 'Whether Oura webhook push can be enabled (requires HTTPS and Oura credentials)',
     }),
     oura_webhook_enabled: z.boolean().meta({ description: 'Whether Oura webhook push sync is enabled' }),
     signup_mode: signupModeSchema.meta({ description: 'Current signup mode' }),
+    strava_client_id_set: z.boolean().meta({ description: 'Whether a Strava client ID is configured' }),
+    strava_client_secret_set: z
+      .boolean()
+      .meta({ description: 'Whether a Strava client secret is configured' }),
   })
   .meta({ id: 'AdminSettingsResponse' })
 
@@ -143,11 +174,31 @@ export const updateAdminSettingsBodySchema = z
       .nullable()
       .optional()
       .meta({ description: 'Last.fm API key (set to null to clear)' }),
+    oura_client_id: z
+      .string()
+      .nullable()
+      .optional()
+      .meta({ description: 'Oura API client ID (set to null to clear)' }),
+    oura_client_secret: z
+      .string()
+      .nullable()
+      .optional()
+      .meta({ description: 'Oura API client secret (set to null to clear)' }),
     oura_webhook_enabled: z
       .boolean()
       .optional()
       .meta({ description: 'Enable or disable Oura webhook push sync' }),
     signup_mode: signupModeSchema.optional().meta({ description: 'New signup mode' }),
+    strava_client_id: z
+      .string()
+      .nullable()
+      .optional()
+      .meta({ description: 'Strava API client ID (set to null to clear)' }),
+    strava_client_secret: z
+      .string()
+      .nullable()
+      .optional()
+      .meta({ description: 'Strava API client secret (set to null to clear)' }),
   })
   .meta({ id: 'UpdateAdminSettingsBody' })
 

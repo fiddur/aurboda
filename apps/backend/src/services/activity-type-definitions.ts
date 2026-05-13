@@ -1,7 +1,7 @@
 /**
  * Activity type definition service — CRUD for custom activity types.
  */
-import type { ActivityTypeDefinition } from '@aurboda/api-spec'
+import type { ActivityTypeDefinition, DataSchemaDefinition } from '@aurboda/api-spec'
 
 import { builtinActivityTypes } from '@aurboda/api-spec'
 
@@ -10,6 +10,8 @@ import {
   getActivityTypeDefinition as dbGet,
   getActivityTypeDefinitions as dbList,
   insertActivityTypeDefinition as dbInsert,
+  mergeActivityTypeDefinition as dbMerge,
+  renameActivityTypeDefinition as dbRename,
   updateActivityTypeDefinition as dbUpdate,
 } from '../db/index.ts'
 
@@ -30,6 +32,8 @@ export const addActivityTypeDefinition = async (
     display_category: string
     color?: string
     icon?: string
+    aliases?: string[]
+    data_schema?: DataSchemaDefinition
   },
 ): Promise<ActivityTypeDefinitionResult> => {
   // Block names that conflict with built-in types
@@ -54,7 +58,10 @@ export const updateActivityTypeDefinition = async (
     display_name?: string
     display_category?: string
     color?: string
-    icon?: string
+    icon?: string | null
+    aliases?: string[]
+    show_on_timeline?: boolean
+    data_schema?: DataSchemaDefinition | null
   },
 ): Promise<ActivityTypeDefinitionResult> => {
   const existing = await dbGet(user, name)
@@ -84,4 +91,88 @@ export const deleteActivityTypeDefinition = async (
   }
 
   return { success: true }
+}
+
+// =============================================================================
+// Rename
+// =============================================================================
+
+export interface RenameActivityTypeResult {
+  success: boolean
+  error?: string
+  data?: ActivityTypeDefinition
+  activities_updated?: number
+  deduction_rules_updated?: number
+}
+
+export const renameActivityTypeDefinition = async (
+  user: string,
+  oldName: string,
+  newName: string,
+): Promise<RenameActivityTypeResult> => {
+  if (oldName === newName) {
+    return { error: 'New name is the same as the current name.', success: false }
+  }
+
+  if ((builtinActivityTypes as readonly string[]).includes(oldName)) {
+    return { error: `Cannot rename built-in activity type "${oldName}".`, success: false }
+  }
+
+  if ((builtinActivityTypes as readonly string[]).includes(newName)) {
+    return { error: `Cannot rename to built-in activity type name "${newName}".`, success: false }
+  }
+
+  const result = await dbRename(user, oldName, newName)
+  if (!result) {
+    return { error: `Activity type "${oldName}" not found or "${newName}" already exists.`, success: false }
+  }
+
+  return {
+    activities_updated: result.activities_updated,
+    data: result.definition,
+    deduction_rules_updated: result.deduction_rules_updated,
+    success: true,
+  }
+}
+
+// =============================================================================
+// Merge
+// =============================================================================
+
+export interface MergeActivityTypeResult {
+  success: boolean
+  error?: string
+  activities_reassigned?: number
+  deduction_rules_updated?: number
+  target?: ActivityTypeDefinition
+}
+
+/**
+ * Merge a custom activity type into another activity type.
+ * All activities are reassigned, aliases merged, deduction rules updated, source deleted.
+ */
+export const mergeActivityType = async (
+  user: string,
+  source: string,
+  target: string,
+): Promise<MergeActivityTypeResult> => {
+  if (source === target) {
+    return { error: 'Source and target cannot be the same activity type.', success: false }
+  }
+
+  if ((builtinActivityTypes as readonly string[]).includes(source)) {
+    return { error: `Cannot merge built-in activity type "${source}".`, success: false }
+  }
+
+  const result = await dbMerge(user, source, target)
+  if (!result) {
+    return { error: `Activity type "${source}" or "${target}" not found.`, success: false }
+  }
+
+  return {
+    activities_reassigned: result.activities_reassigned,
+    deduction_rules_updated: result.deduction_rules_updated,
+    success: true,
+    target: result.target,
+  }
 }

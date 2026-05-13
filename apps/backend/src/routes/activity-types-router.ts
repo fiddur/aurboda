@@ -1,4 +1,4 @@
-import type { RequestHandler, Router } from 'express'
+import type { RequestHandler } from 'express'
 
 /**
  * Activity type definitions route group.
@@ -10,6 +10,12 @@ import {
   type ActivityTypeDefinitionsResponse,
   type AddActivityTypeDefinitionBody,
   addActivityTypeDefinitionBodySchema,
+  type MergeActivityTypeBody,
+  mergeActivityTypeBodySchema,
+  type MergeActivityTypeResponse,
+  type RenameActivityTypeBody,
+  renameActivityTypeBodySchema,
+  type RenameActivityTypeResponse,
   type UpdateActivityTypeDefinitionBody,
   updateActivityTypeDefinitionBodySchema,
 } from '@aurboda/api-spec'
@@ -18,16 +24,17 @@ import {
   addActivityTypeDefinition,
   deleteActivityTypeDefinition,
   listActivityTypeDefinitions,
+  mergeActivityType,
+  renameActivityTypeDefinition,
   updateActivityTypeDefinition,
 } from '../services/activity-type-definitions.ts'
-import { typedRouter } from '../typed-router.ts'
+import { type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody } from '../validation.ts'
 
-export const createActivityTypesRouter = (authMiddleware: RequestHandler): Router => {
+export const createActivityTypesRouter = (authMiddleware: RequestHandler): TypedRouter => {
   const router = typedRouter()
 
-  // GET / - List all activity type definitions
-  router.get<Record<string, string>, ActivityTypeDefinitionsResponse>(
+  router.get<Record<string, never>, ActivityTypeDefinitionsResponse>(
     '/',
     authMiddleware,
     async (req, res) => {
@@ -37,16 +44,16 @@ export const createActivityTypesRouter = (authMiddleware: RequestHandler): Route
     },
   )
 
-  // POST / - Create a custom activity type
-  router.post<Record<string, string>, ActivityTypeDefinitionResponse, AddActivityTypeDefinitionBody>(
+  router.post<Record<string, never>, ActivityTypeDefinitionResponse, AddActivityTypeDefinitionBody>(
     '/',
     authMiddleware,
     validateBody(addActivityTypeDefinitionBodySchema),
     async (req, res) => {
       const user = req.user!
-      const { name, display_name, display_category, color, icon } = req.body
+      const { name, display_name, display_category, color, icon, data_schema } = req.body
       const result = await addActivityTypeDefinition(user, {
         color,
+        data_schema,
         display_category,
         display_name,
         icon,
@@ -61,7 +68,46 @@ export const createActivityTypesRouter = (authMiddleware: RequestHandler): Route
     },
   )
 
-  // PATCH /:name - Update an activity type definition
+  router.post<Record<string, never>, MergeActivityTypeResponse, MergeActivityTypeBody>(
+    '/merge',
+    authMiddleware,
+    validateBody(mergeActivityTypeBodySchema),
+    async (req, res) => {
+      const { source, target } = req.body
+      const user = req.user!
+      const result = await mergeActivityType(user, source, target)
+      if (!result.success) {
+        const status = result.error?.includes('not found') ? 404 : 400
+        return res.status(status).json({ error: result.error, success: false })
+      }
+      res.json(result)
+    },
+  )
+
+  router.post<{ name: string }, RenameActivityTypeResponse, RenameActivityTypeBody>(
+    '/:name/rename',
+    authMiddleware,
+    validateBody(renameActivityTypeBodySchema),
+    async (req, res) => {
+      const { name } = req.params
+      const { new_name } = req.body
+      const user = req.user!
+      const result = await renameActivityTypeDefinition(user, name, new_name)
+
+      if (!result.success) {
+        const status = result.error?.includes('not found') ? 404 : 400
+        return res.status(status).json({ error: result.error, success: false })
+      }
+
+      res.json({
+        activities_updated: result.activities_updated,
+        data: result.data,
+        deduction_rules_updated: result.deduction_rules_updated,
+        success: true,
+      })
+    },
+  )
+
   router.patch<{ name: string }, ActivityTypeDefinitionResponse, UpdateActivityTypeDefinitionBody>(
     '/:name',
     authMiddleware,
@@ -80,7 +126,6 @@ export const createActivityTypesRouter = (authMiddleware: RequestHandler): Route
     },
   )
 
-  // DELETE /:name - Delete a custom activity type
   router.delete<{ name: string }, ActivityTypeDefinitionResponse>(
     '/:name',
     authMiddleware,
@@ -98,5 +143,5 @@ export const createActivityTypesRouter = (authMiddleware: RequestHandler): Route
     },
   )
 
-  return router as unknown as Router
+  return router
 }

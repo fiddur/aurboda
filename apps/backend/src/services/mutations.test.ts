@@ -6,49 +6,51 @@ import {
   addActivity,
   addCustomMetric,
   addMetric,
-  addTag,
   bulkAddMetrics,
   deleteActivity,
   deleteCustomMetric,
   deleteMetric,
   deleteMetricData,
-  deleteTag,
   getCustomMetrics,
+  mergeActivities,
   updateActivity,
   updateCustomMetric,
-  updateTag,
 } from './mutations.ts'
 
 // Mock the db module
 vi.mock('../db', () => ({
   activityTypeExists: vi.fn().mockResolvedValue(true),
   checkActivityConflict: vi.fn().mockResolvedValue(false),
+  getActivityTypeDefinition: vi.fn().mockResolvedValue(null),
   deleteActivity: vi.fn(),
   deleteCustomMetricDefinition: vi.fn(),
-  deleteTag: vi.fn(),
   deleteTimeSeriesMetric: vi.fn(),
   deleteTimeSeriesPoint: vi.fn(),
   enqueueOutboundSync: vi.fn().mockResolvedValue(undefined),
   findHcRecordId: vi.fn().mockResolvedValue(null),
-  findMergeableTag: vi.fn(),
+  findMergeableActivity: vi.fn().mockResolvedValue(null),
   getActivityById: vi.fn(),
+  getActivitySourcesByIds: vi.fn().mockResolvedValue([]),
   getCustomMetricByName: vi.fn(),
   getCustomMetricDefinitions: vi.fn().mockResolvedValue([]),
-  getTagById: vi.fn(),
+  getOverrideForActivity: vi.fn().mockResolvedValue(null),
+  getUserNotesJoined: vi.fn().mockResolvedValue(undefined),
   getUserSettings: vi.fn(),
   insertCustomMetricDefinition: vi.fn(),
   insertActivity: vi.fn(),
-  insertTag: vi.fn(),
+  insertNewActivity: vi.fn().mockResolvedValue('new-id'),
+  insertOverride: vi.fn(),
   insertTimeSeries: vi.fn(),
-  resolveOrCreateTagDefinition: vi
+  materializeSuperseded: vi.fn().mockResolvedValue(undefined),
+  reanchorNotes: vi.fn().mockResolvedValue(undefined),
+  replaceUserNotes: vi.fn().mockResolvedValue(undefined),
+  resolveOrCreateActivityType: vi
     .fn()
     .mockImplementation((_user: string, tagName: string) =>
-      Promise.resolve({ aliases: [tagName.toLowerCase()], id: 'def-uuid', name: tagName }),
+      Promise.resolve(tagName.toLowerCase().replaceAll(/\s+/g, '_')),
     ),
   updateActivity: vi.fn(),
   updateCustomMetricDefinition: vi.fn(),
-  updateTag: vi.fn(),
-  updateTagEndTime: vi.fn(),
   upsertUserSettings: vi.fn(),
 }))
 
@@ -56,191 +58,6 @@ vi.mock('../db', () => ({
 vi.mock('./notes', () => ({
   syncNoteTimesForEntity: vi.fn().mockResolvedValue(undefined),
 }))
-
-describe('addTag', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-  })
-
-  test('creates a tag with start time only', async () => {
-    vi.mocked(db.insertTag).mockResolvedValue('tag-uuid-123')
-
-    const result = await addTag('testuser', {
-      start_time: new Date('2024-01-15T10:00:00Z'),
-      tag: 'coffee',
-    })
-
-    expect(result.success).toBe(true)
-    expect(result.tag).toBe('coffee')
-    expect(result.start_time).toBe('2024-01-15T10:00:00.000Z')
-    expect(result.end_time).toBeUndefined()
-    expect(result.id).toBeDefined()
-
-    expect(db.insertTag).toHaveBeenCalledWith('testuser', {
-      end_time: undefined,
-      external_id: expect.any(String),
-      source: 'aurboda',
-      start_time: new Date('2024-01-15T10:00:00Z'),
-      tag: 'coffee',
-      tag_definition_id: 'def-uuid',
-    })
-  })
-
-  test('creates a tag with start and end time', async () => {
-    vi.mocked(db.insertTag).mockResolvedValue('tag-uuid-123')
-
-    const result = await addTag('testuser', {
-      end_time: new Date('2024-01-15T11:00:00Z'),
-      start_time: new Date('2024-01-15T10:00:00Z'),
-      tag: 'meditation',
-    })
-
-    expect(result.success).toBe(true)
-    expect(result.start_time).toBe('2024-01-15T10:00:00.000Z')
-    expect(result.end_time).toBe('2024-01-15T11:00:00.000Z')
-
-    expect(db.insertTag).toHaveBeenCalledWith('testuser', {
-      end_time: new Date('2024-01-15T11:00:00Z'),
-      external_id: expect.any(String),
-      source: 'aurboda',
-      start_time: new Date('2024-01-15T10:00:00Z'),
-      tag: 'meditation',
-      tag_definition_id: 'def-uuid',
-    })
-  })
-
-  test('does not include merged field when mergeSpan not specified', async () => {
-    vi.mocked(db.insertTag).mockResolvedValue('tag-uuid-123')
-
-    const result = await addTag('testuser', {
-      start_time: new Date('2024-01-15T10:00:00Z'),
-      tag: 'coffee',
-    })
-
-    expect(result.success).toBe(true)
-    expect(result.merged).toBeUndefined()
-    expect(result.extendedBySeconds).toBeUndefined()
-    expect(db.findMergeableTag).not.toHaveBeenCalled()
-  })
-
-  test('creates new tag with merged: false when no mergeable tag found', async () => {
-    vi.mocked(db.findMergeableTag).mockResolvedValue(undefined)
-    vi.mocked(db.insertTag).mockResolvedValue('tag-uuid-123')
-
-    const result = await addTag('testuser', {
-      mergeSpan: 180,
-      start_time: new Date('2024-01-15T10:00:00Z'),
-      tag: 'computer:dharma',
-    })
-
-    expect(result.success).toBe(true)
-    expect(result.merged).toBe(false)
-    expect(result.extendedBySeconds).toBeUndefined()
-    expect(result.id).toBeDefined()
-
-    expect(db.findMergeableTag).toHaveBeenCalledWith(
-      'testuser',
-      'computer:dharma',
-      new Date('2024-01-15T10:00:00Z'),
-      180,
-    )
-    expect(db.insertTag).toHaveBeenCalled()
-    expect(db.updateTagEndTime).not.toHaveBeenCalled()
-  })
-
-  test('extends existing tag when mergeable tag found', async () => {
-    vi.mocked(db.findMergeableTag).mockResolvedValue({
-      end_time: new Date('2024-01-15T09:59:00Z'),
-      external_id: 'existing-tag-id',
-      id: 'db-id',
-      source: 'aurboda',
-      start_time: new Date('2024-01-15T09:00:00Z'),
-      tag: 'computer:dharma',
-    })
-    vi.mocked(db.updateTagEndTime).mockResolvedValue(true)
-
-    const result = await addTag('testuser', {
-      mergeSpan: 180,
-      start_time: new Date('2024-01-15T10:00:00Z'),
-      tag: 'computer:dharma',
-    })
-
-    expect(result.success).toBe(true)
-    expect(result.merged).toBe(true)
-    expect(result.extendedBySeconds).toBe(60) // From 09:59:00 to 10:00:00
-    expect(result.id).toBe('db-id')
-    expect(result.start_time).toBe('2024-01-15T09:00:00.000Z') // Original start
-    expect(result.end_time).toBe('2024-01-15T10:00:00.000Z') // New end
-
-    expect(db.updateTagEndTime).toHaveBeenCalledWith(
-      'testuser',
-      'existing-tag-id',
-      new Date('2024-01-15T10:00:00Z'),
-    )
-    expect(db.insertTag).not.toHaveBeenCalled()
-  })
-
-  test('extends tag with new end_time when both are provided', async () => {
-    vi.mocked(db.findMergeableTag).mockResolvedValue({
-      end_time: new Date('2024-01-15T09:59:00Z'),
-      external_id: 'existing-tag-id',
-      id: 'db-id',
-      source: 'aurboda',
-      start_time: new Date('2024-01-15T09:00:00Z'),
-      tag: 'computer:dharma',
-    })
-    vi.mocked(db.updateTagEndTime).mockResolvedValue(true)
-
-    const result = await addTag('testuser', {
-      end_time: new Date('2024-01-15T10:01:00Z'),
-      mergeSpan: 180,
-      start_time: new Date('2024-01-15T10:00:00Z'),
-      tag: 'computer:dharma',
-    })
-
-    expect(result.success).toBe(true)
-    expect(result.merged).toBe(true)
-    expect(result.extendedBySeconds).toBe(120) // From 09:59:00 to 10:01:00
-    expect(result.end_time).toBe('2024-01-15T10:01:00.000Z')
-
-    expect(db.updateTagEndTime).toHaveBeenCalledWith(
-      'testuser',
-      'existing-tag-id',
-      new Date('2024-01-15T10:01:00Z'),
-    )
-  })
-
-  test('merges with point-in-time tag (no end_time)', async () => {
-    // Existing tag has no end_time - it's a point-in-time tag
-    vi.mocked(db.findMergeableTag).mockResolvedValue({
-      end_time: undefined,
-      external_id: 'existing-tag-id',
-      id: 'db-id',
-      source: 'aurboda',
-      start_time: new Date('2024-01-15T09:59:00Z'),
-      tag: 'computer:dharma',
-    })
-    vi.mocked(db.updateTagEndTime).mockResolvedValue(true)
-
-    const result = await addTag('testuser', {
-      mergeSpan: 180,
-      start_time: new Date('2024-01-15T10:00:00Z'),
-      tag: 'computer:dharma',
-    })
-
-    expect(result.success).toBe(true)
-    expect(result.merged).toBe(true)
-    expect(result.extendedBySeconds).toBe(60) // From 09:59:00 (start) to 10:00:00 (new end)
-    expect(result.start_time).toBe('2024-01-15T09:59:00.000Z')
-    expect(result.end_time).toBe('2024-01-15T10:00:00.000Z')
-
-    expect(db.updateTagEndTime).toHaveBeenCalledWith(
-      'testuser',
-      'existing-tag-id',
-      new Date('2024-01-15T10:00:00Z'),
-    )
-  })
-})
 
 describe('addMetric', () => {
   beforeEach(() => {
@@ -299,40 +116,13 @@ describe('addMetric', () => {
   })
 })
 
-describe('deleteTag', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-  })
-
-  test('deletes tag and returns success when found', async () => {
-    vi.mocked(db.deleteTag).mockResolvedValue(true)
-
-    const result = await deleteTag('testuser', 'tag-123')
-
-    expect(result.success).toBe(true)
-    expect(result.deleted).toBe(true)
-    expect(result.external_id).toBe('tag-123')
-    expect(db.deleteTag).toHaveBeenCalledWith('testuser', 'tag-123')
-  })
-
-  test('returns success false when tag not found', async () => {
-    vi.mocked(db.deleteTag).mockResolvedValue(false)
-
-    const result = await deleteTag('testuser', 'nonexistent-tag')
-
-    expect(result.success).toBe(false)
-    expect(result.deleted).toBe(false)
-    expect(result.external_id).toBe('nonexistent-tag')
-  })
-})
-
 describe('addActivity', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
   test('creates an exercise activity with required fields', async () => {
-    vi.mocked(db.insertActivity).mockResolvedValue(undefined)
+    vi.mocked(db.insertActivity).mockResolvedValue('test-id')
 
     const result = await addActivity('testuser', {
       activity_type: 'exercise',
@@ -359,7 +149,7 @@ describe('addActivity', () => {
   })
 
   test('creates an activity with all fields', async () => {
-    vi.mocked(db.insertActivity).mockResolvedValue(undefined)
+    vi.mocked(db.insertActivity).mockResolvedValue('test-id')
 
     const result = await addActivity('testuser', {
       activity_type: 'exercise',
@@ -372,7 +162,6 @@ describe('addActivity', () => {
 
     expect(result.success).toBe(true)
     expect(result.title).toBe('Upper body')
-    expect(result.notes).toBe('Dumbbell Bench Press: 12×30kg, 8×35kg')
     expect(result.id).toBeDefined()
 
     expect(db.insertActivity).toHaveBeenCalledWith('testuser', {
@@ -380,11 +169,19 @@ describe('addActivity', () => {
       data: { exerciseType: 79 },
       end_time: new Date('2024-03-15T11:45:00Z'),
       id: expect.any(String),
-      notes: 'Dumbbell Bench Press: 12×30kg, 8×35kg',
       source: 'aurboda',
       start_time: new Date('2024-03-15T10:30:00Z'),
       title: 'Upper body',
     })
+    // Notes now persist as a notes-table row, not on the activities row.
+    expect(db.replaceUserNotes).toHaveBeenCalledWith(
+      'testuser',
+      'activity',
+      expect.any(String),
+      'Dumbbell Bench Press: 12×30kg, 8×35kg',
+      new Date('2024-03-15T10:30:00Z'),
+      new Date('2024-03-15T11:45:00Z'),
+    )
   })
 
   test('returns error when endTime is before startTime', async () => {
@@ -395,24 +192,25 @@ describe('addActivity', () => {
     })
 
     expect(result.success).toBe(false)
-    expect(result.error).toBe('end_time must be after start_time')
+    expect(result.error).toBe('end_time must not be before start_time')
     expect(db.insertActivity).not.toHaveBeenCalled()
   })
 
-  test('returns error when endTime equals startTime', async () => {
+  test('allows endTime equal to startTime', async () => {
+    vi.mocked(db.insertActivity).mockResolvedValue('test-id')
+
     const result = await addActivity('testuser', {
       activity_type: 'exercise',
       end_time: new Date('2024-03-15T10:30:00Z'),
       start_time: new Date('2024-03-15T10:30:00Z'),
     })
 
-    expect(result.success).toBe(false)
-    expect(result.error).toBe('end_time must be after start_time')
-    expect(db.insertActivity).not.toHaveBeenCalled()
+    expect(result.success).toBe(true)
+    expect(db.insertActivity).toHaveBeenCalled()
   })
 
   test('creates meditation activity', async () => {
-    vi.mocked(db.insertActivity).mockResolvedValue(undefined)
+    vi.mocked(db.insertActivity).mockResolvedValue('test-id')
 
     const result = await addActivity('testuser', {
       activity_type: 'meditation',
@@ -437,7 +235,7 @@ describe('addActivity', () => {
   })
 
   test('creates nap activity', async () => {
-    vi.mocked(db.insertActivity).mockResolvedValue(undefined)
+    vi.mocked(db.insertActivity).mockResolvedValue('test-id')
 
     const result = await addActivity('testuser', {
       activity_type: 'nap',
@@ -447,6 +245,72 @@ describe('addActivity', () => {
 
     expect(result.success).toBe(true)
     expect(result.activity_type).toBe('nap')
+  })
+
+  test('calls onMutated callback after successful insert', async () => {
+    vi.mocked(db.insertActivity).mockResolvedValue('test-id')
+    const onMutated = vi.fn()
+
+    await addActivity(
+      'testuser',
+      {
+        activity_type: 'exercise',
+        end_time: new Date('2024-03-15T11:00:00Z'),
+        start_time: new Date('2024-03-15T10:00:00Z'),
+      },
+      onMutated,
+    )
+
+    expect(onMutated).toHaveBeenCalledWith(
+      'testuser',
+      'exercise',
+      new Date('2024-03-15T10:00:00Z'),
+      new Date('2024-03-15T11:00:00Z'),
+    )
+  })
+
+  test('calls onMutated callback after merge-span extension', async () => {
+    vi.mocked(db.findMergeableActivity).mockResolvedValue({
+      activity_type: 'computer_active',
+      id: 'existing-id',
+      start_time: new Date('2024-03-15T10:00:00Z'),
+    } as never)
+    vi.mocked(db.updateActivity).mockResolvedValue({} as never)
+    const onMutated = vi.fn()
+
+    await addActivity(
+      'testuser',
+      {
+        activity_type: 'computer_active',
+        merge_span: 120,
+        start_time: new Date('2024-03-15T10:05:00Z'),
+      },
+      onMutated,
+    )
+
+    expect(onMutated).toHaveBeenCalledWith(
+      'testuser',
+      'computer_active',
+      new Date('2024-03-15T10:00:00Z'),
+      new Date('2024-03-15T10:05:00Z'),
+    )
+  })
+
+  test('does not call onMutated on validation failure', async () => {
+    vi.mocked(db.activityTypeExists).mockResolvedValue(false)
+    const onMutated = vi.fn()
+
+    await addActivity(
+      'testuser',
+      {
+        activity_type: 'nonexistent',
+        start_time: new Date('2024-03-15T10:00:00Z'),
+      },
+      onMutated,
+    )
+
+    expect(onMutated).not.toHaveBeenCalled()
+    vi.mocked(db.activityTypeExists).mockResolvedValue(true)
   })
 })
 
@@ -878,7 +742,6 @@ describe('updateActivity', () => {
       activity_type: 'exercise',
       end_time: new Date('2024-03-15T11:00:00Z'),
       id: 'activity-123',
-      notes: 'Felt great!',
       source: 'aurboda',
       start_time: new Date('2024-03-15T10:00:00Z'),
       title: 'Morning workout',
@@ -891,7 +754,6 @@ describe('updateActivity', () => {
 
     expect(result.success).toBe(true)
     expect(result.title).toBe('Morning workout')
-    expect(result.notes).toBe('Felt great!')
   })
 
   test('returns error when activity not found', async () => {
@@ -921,7 +783,7 @@ describe('updateActivity', () => {
     })
 
     expect(result.success).toBe(false)
-    expect(result.error).toBe('end_time must be after start_time')
+    expect(result.error).toBe('end_time must not be before start_time')
     expect(db.updateActivity).not.toHaveBeenCalled()
   })
 
@@ -939,7 +801,7 @@ describe('updateActivity', () => {
     })
 
     expect(result.success).toBe(false)
-    expect(result.error).toBe('end_time must be after start_time')
+    expect(result.error).toBe('end_time must not be before start_time')
     expect(db.updateActivity).not.toHaveBeenCalled()
   })
 
@@ -958,7 +820,7 @@ describe('updateActivity', () => {
     })
 
     expect(result.success).toBe(false)
-    expect(result.error).toBe('end_time must be after start_time')
+    expect(result.error).toBe('end_time must not be before start_time')
     expect(db.updateActivity).not.toHaveBeenCalled()
   })
 
@@ -1072,7 +934,6 @@ describe('updateActivity', () => {
       data: { exerciseType: 70 },
       end_time: new Date('2024-03-15T11:00:00Z'),
       id: 'activity-123',
-      notes: 'Updated notes',
       source: 'aurboda',
       start_time: new Date('2024-03-15T10:00:00Z'),
     })
@@ -1081,15 +942,23 @@ describe('updateActivity', () => {
       notes: 'Updated notes',
     })
 
-    // data should be undefined (not touched) when not provided in input
+    // data should be undefined (not touched) when not provided in input;
+    // notes go to the notes table via replaceUserNotes, not on the activity row.
     expect(db.updateActivity).toHaveBeenCalledWith('testuser', 'activity-123', {
       activity_type: undefined,
       data: undefined,
       end_time: undefined,
-      notes: 'Updated notes',
       start_time: undefined,
       title: undefined,
     })
+    expect(db.replaceUserNotes).toHaveBeenCalledWith(
+      'testuser',
+      'activity',
+      'activity-123',
+      'Updated notes',
+      new Date('2024-03-15T10:00:00Z'),
+      new Date('2024-03-15T11:00:00Z'),
+    )
   })
 
   test('updates data and other fields together', async () => {
@@ -1127,7 +996,7 @@ describe('updateActivity', () => {
     })
   })
 
-  test('updates activity_type successfully', async () => {
+  test('updates activity_type successfully (synced source → creates override per #715)', async () => {
     vi.mocked(db.getActivityById).mockResolvedValue({
       activity_type: 'exercise',
       end_time: new Date('2024-03-15T11:00:00Z'),
@@ -1135,12 +1004,14 @@ describe('updateActivity', () => {
       source: 'garmin',
       start_time: new Date('2024-03-15T10:00:00Z'),
     })
+    vi.mocked(db.getOverrideForActivity).mockResolvedValue(null)
     vi.mocked(db.checkActivityConflict).mockResolvedValue(false)
-    vi.mocked(db.updateActivity).mockResolvedValue({
+    vi.mocked(db.insertOverride).mockResolvedValue({
       activity_type: 'meditation',
       end_time: new Date('2024-03-15T11:00:00Z'),
-      id: 'activity-123',
-      source: 'garmin',
+      id: 'override-1',
+      override_target_ids: ['activity-123'],
+      source: 'aurboda',
       start_time: new Date('2024-03-15T10:00:00Z'),
     })
 
@@ -1150,14 +1021,12 @@ describe('updateActivity', () => {
 
     expect(result.success).toBe(true)
     expect(result.activity_type).toBe('meditation')
-    expect(db.updateActivity).toHaveBeenCalledWith('testuser', 'activity-123', {
-      activity_type: 'meditation',
-      data: undefined,
-      end_time: undefined,
-      notes: undefined,
-      start_time: undefined,
-      title: undefined,
-    })
+    expect(db.insertOverride).toHaveBeenCalledWith(
+      'testuser',
+      ['activity-123'],
+      expect.objectContaining({ activity_type: 'meditation' }),
+    )
+    expect(db.updateActivity).not.toHaveBeenCalled()
   })
 
   test('returns error when activity_type change would violate unique constraint', async () => {
@@ -1168,6 +1037,7 @@ describe('updateActivity', () => {
       source: 'garmin',
       start_time: new Date('2024-03-15T10:00:00Z'),
     })
+    vi.mocked(db.getOverrideForActivity).mockResolvedValue(null)
     vi.mocked(db.checkActivityConflict).mockResolvedValue(true)
 
     const result = await updateActivity('testuser', 'activity-123', {
@@ -1177,6 +1047,7 @@ describe('updateActivity', () => {
     expect(result.success).toBe(false)
     expect(result.error).toContain('Cannot change activity type')
     expect(db.updateActivity).not.toHaveBeenCalled()
+    expect(db.insertOverride).not.toHaveBeenCalled()
   })
 
   test('skips conflict check when activity_type is not changing', async () => {
@@ -1265,6 +1136,167 @@ describe('updateActivity', () => {
       payload: expect.objectContaining({ activity_type: 'exercise' }),
     })
   })
+
+  test('calls onMutated callback after successful update', async () => {
+    vi.mocked(db.getActivityById).mockResolvedValue({
+      activity_type: 'exercise',
+      end_time: new Date('2024-03-15T11:00:00Z'),
+      id: 'activity-123',
+      source: 'aurboda',
+      start_time: new Date('2024-03-15T10:00:00Z'),
+    })
+    vi.mocked(db.updateActivity).mockResolvedValue({
+      activity_type: 'exercise',
+      end_time: new Date('2024-03-15T12:00:00Z'),
+      id: 'activity-123',
+      source: 'aurboda',
+      start_time: new Date('2024-03-15T09:00:00Z'),
+    })
+    const onMutated = vi.fn()
+
+    await updateActivity('testuser', 'activity-123', { title: 'Updated' }, onMutated)
+
+    expect(onMutated).toHaveBeenCalledWith(
+      'testuser',
+      'exercise',
+      new Date('2024-03-15T09:00:00Z'),
+      new Date('2024-03-15T12:00:00Z'),
+    )
+  })
+
+  test('calls onMutated for both old and new type on type change', async () => {
+    vi.mocked(db.getActivityById).mockResolvedValue({
+      activity_type: 'nap',
+      end_time: new Date('2024-03-15T11:00:00Z'),
+      id: 'activity-123',
+      source: 'aurboda',
+      start_time: new Date('2024-03-15T10:00:00Z'),
+    })
+    vi.mocked(db.updateActivity).mockResolvedValue({
+      activity_type: 'rest',
+      end_time: new Date('2024-03-15T11:00:00Z'),
+      id: 'activity-123',
+      source: 'aurboda',
+      start_time: new Date('2024-03-15T10:00:00Z'),
+    })
+    const onMutated = vi.fn()
+
+    await updateActivity('testuser', 'activity-123', { activity_type: 'rest' }, onMutated)
+
+    expect(onMutated).toHaveBeenCalledTimes(2)
+    expect(onMutated).toHaveBeenCalledWith(
+      'testuser',
+      'rest',
+      new Date('2024-03-15T10:00:00Z'),
+      new Date('2024-03-15T11:00:00Z'),
+    )
+    expect(onMutated).toHaveBeenCalledWith(
+      'testuser',
+      'nap',
+      new Date('2024-03-15T10:00:00Z'),
+      new Date('2024-03-15T11:00:00Z'),
+    )
+  })
+
+  test('does not call onMutated when activity not found', async () => {
+    vi.mocked(db.getActivityById).mockResolvedValue(null)
+    const onMutated = vi.fn()
+
+    await updateActivity('testuser', 'nonexistent', { title: 'x' }, onMutated)
+
+    expect(onMutated).not.toHaveBeenCalled()
+  })
+
+  describe('synced-source overrides (issue #715)', () => {
+    test('first edit on a synced (garmin) activity creates an aurboda override', async () => {
+      vi.mocked(db.getActivityById).mockResolvedValue({
+        activity_type: 'meditation',
+        end_time: new Date('2026-05-05T10:30:00Z'),
+        id: 'garmin-1',
+        source: 'garmin',
+        start_time: new Date('2026-05-05T10:00:00Z'),
+      })
+      vi.mocked(db.getOverrideForActivity).mockResolvedValue(null)
+      vi.mocked(db.insertOverride).mockResolvedValue({
+        activity_type: 'pipeceremony',
+        end_time: new Date('2026-05-05T10:30:00Z'),
+        id: 'override-1',
+        override_target_ids: ['garmin-1'],
+        source: 'aurboda',
+        start_time: new Date('2026-05-05T10:00:00Z'),
+      })
+
+      const result = await updateActivity('testuser', 'garmin-1', { activity_type: 'pipeceremony' })
+
+      expect(result.success).toBe(true)
+      expect(db.insertOverride).toHaveBeenCalledWith(
+        'testuser',
+        ['garmin-1'],
+        expect.objectContaining({ activity_type: 'pipeceremony' }),
+      )
+      expect(db.updateActivity).not.toHaveBeenCalled()
+      // No outbound HC sync should be enqueued for override rows.
+      expect(db.enqueueOutboundSync).not.toHaveBeenCalled()
+    })
+
+    test('second edit on a synced activity updates the existing override in place', async () => {
+      vi.mocked(db.getActivityById).mockResolvedValue({
+        activity_type: 'meditation',
+        end_time: new Date('2026-05-05T10:30:00Z'),
+        id: 'garmin-1',
+        source: 'garmin',
+        start_time: new Date('2026-05-05T10:00:00Z'),
+      })
+      vi.mocked(db.getOverrideForActivity).mockResolvedValue({
+        activity_type: 'pipeceremony',
+        end_time: new Date('2026-05-05T10:30:00Z'),
+        id: 'override-1',
+        override_target_ids: ['garmin-1'],
+        source: 'aurboda',
+        start_time: new Date('2026-05-05T10:00:00Z'),
+      })
+      vi.mocked(db.updateActivity).mockResolvedValue({
+        activity_type: 'pipeceremony',
+        end_time: new Date('2026-05-05T10:30:00Z'),
+        id: 'override-1',
+        override_target_ids: ['garmin-1'],
+        source: 'aurboda',
+        start_time: new Date('2026-05-05T10:00:00Z'),
+      })
+
+      const result = await updateActivity('testuser', 'garmin-1', {
+        notes: 'second pipe ceremony this week',
+      })
+
+      expect(result.success).toBe(true)
+      expect(db.insertOverride).not.toHaveBeenCalled()
+      expect(db.updateActivity).toHaveBeenCalledWith('testuser', 'override-1', expect.any(Object))
+    })
+
+    test('aurboda-source target is updated in place (no override created)', async () => {
+      vi.mocked(db.getActivityById).mockResolvedValue({
+        activity_type: 'meditation',
+        end_time: new Date('2026-05-05T10:30:00Z'),
+        id: 'aurboda-1',
+        source: 'aurboda',
+        start_time: new Date('2026-05-05T10:00:00Z'),
+      })
+      vi.mocked(db.updateActivity).mockResolvedValue({
+        activity_type: 'pipeceremony',
+        end_time: new Date('2026-05-05T10:30:00Z'),
+        id: 'aurboda-1',
+        source: 'aurboda',
+        start_time: new Date('2026-05-05T10:00:00Z'),
+      })
+
+      const result = await updateActivity('testuser', 'aurboda-1', { activity_type: 'pipeceremony' })
+
+      expect(result.success).toBe(true)
+      expect(db.getOverrideForActivity).not.toHaveBeenCalled()
+      expect(db.insertOverride).not.toHaveBeenCalled()
+      expect(db.updateActivity).toHaveBeenCalledWith('testuser', 'aurboda-1', expect.any(Object))
+    })
+  })
 })
 
 describe('updateCustomMetric', () => {
@@ -1329,6 +1361,24 @@ describe('updateCustomMetric', () => {
 
     expect(result.success).toBe(false)
     expect(result.error).toContain('not found')
+  })
+
+  test('updates include_in_daily_summary flag', async () => {
+    vi.mocked(db.updateCustomMetricDefinition).mockResolvedValue({
+      include_in_daily_summary: true,
+      name: 'fissure_pain',
+      unit: 'score',
+    })
+
+    const result = await updateCustomMetric('testuser', 'fissure_pain', {
+      include_in_daily_summary: true,
+    })
+
+    expect(result.success).toBe(true)
+    expect(db.updateCustomMetricDefinition).toHaveBeenCalledWith('testuser', 'fissure_pain', {
+      include_in_daily_summary: true,
+    })
+    expect(result.data?.include_in_daily_summary).toBe(true)
   })
 
   test('partial update preserves other fields', async () => {
@@ -1466,75 +1516,36 @@ describe('parseMetricEntityId', () => {
   })
 })
 
-describe('updateTag', () => {
+describe('mergeActivities', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
-  test('returns error when tag not found', async () => {
-    vi.mocked(db.getTagById).mockResolvedValue(null)
+  test('calls onMutated callback after successful merge', async () => {
+    const onMutated = vi.fn()
+    const deps = {
+      deleteActivity: vi.fn().mockResolvedValue(true),
+      getActivityById: vi.fn().mockImplementation((_user: string, id: string) =>
+        Promise.resolve({
+          activity_type: 'exercise',
+          end_time: id === 'a1' ? new Date('2024-03-15T11:00:00Z') : new Date('2024-03-15T12:30:00Z'),
+          id,
+          source: 'aurboda',
+          start_time: id === 'a1' ? new Date('2024-03-15T10:00:00Z') : new Date('2024-03-15T12:00:00Z'),
+        }),
+      ),
+      insertNewActivity: vi.fn().mockResolvedValue('merged-id'),
+      materializeSuperseded: vi.fn().mockResolvedValue(undefined),
+    }
 
-    const result = await updateTag('testuser', 'nonexistent-id', {
-      start_time: new Date('2024-01-15T10:00:00Z'),
-    })
-
-    expect(result.success).toBe(false)
-    expect(result.error).toBe('Tag not found')
-  })
-
-  test('updates start_time', async () => {
-    vi.mocked(db.getTagById).mockResolvedValue({
-      id: 'tag-id',
-      source: 'aurboda',
-      start_time: new Date('2024-01-15T09:00:00Z'),
-      end_time: new Date('2024-01-15T10:00:00Z'),
-      tag: 'test',
-    })
-    vi.mocked(db.updateTag).mockResolvedValue(true)
-
-    const result = await updateTag('testuser', 'tag-id', {
-      start_time: new Date('2024-01-15T08:00:00Z'),
-    })
+    const result = await mergeActivities('testuser', { activity_ids: ['a1', 'a2'] }, deps, onMutated)
 
     expect(result.success).toBe(true)
-    expect(db.updateTag).toHaveBeenCalledWith('testuser', 'tag-id', {
-      start_time: new Date('2024-01-15T08:00:00Z'),
-    })
-  })
-
-  test('rejects end_time before start_time', async () => {
-    vi.mocked(db.getTagById).mockResolvedValue({
-      id: 'tag-id',
-      source: 'aurboda',
-      start_time: new Date('2024-01-15T10:00:00Z'),
-      tag: 'test',
-    })
-
-    const result = await updateTag('testuser', 'tag-id', {
-      end_time: new Date('2024-01-15T09:00:00Z'),
-    })
-
-    expect(result.success).toBe(false)
-    expect(result.error).toBe('end_time must be after start_time')
-  })
-
-  test('clears end_time with null', async () => {
-    vi.mocked(db.getTagById).mockResolvedValue({
-      id: 'tag-id',
-      source: 'aurboda',
-      start_time: new Date('2024-01-15T09:00:00Z'),
-      end_time: new Date('2024-01-15T10:00:00Z'),
-      tag: 'test',
-    })
-    vi.mocked(db.updateTag).mockResolvedValue(true)
-
-    const result = await updateTag('testuser', 'tag-id', {
-      end_time: null,
-    })
-
-    expect(result.success).toBe(true)
-    expect(db.updateTag).toHaveBeenCalledWith('testuser', 'tag-id', {
-      end_time: null,
-    })
+    expect(onMutated).toHaveBeenCalledWith(
+      'testuser',
+      'exercise',
+      new Date('2024-03-15T10:00:00Z'),
+      new Date('2024-03-15T12:30:00Z'),
+    )
   })
 })

@@ -1,7 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'preact/hooks'
+import { useLocation } from 'preact-iso'
+import { useEffect, useState } from 'preact/hooks'
 
 import { ConfirmButton } from '../../components/ConfirmButton'
+import { MergeFoodItemDialog } from '../../components/MergeFoodItemDialog'
 import { searchFoodItemsApi } from '../../state/api'
 import { auth } from '../../state/auth'
 import './style.css'
@@ -17,15 +19,37 @@ const deleteFoodItemApi = async (id: string): Promise<void> => {
   if (!res.ok) throw new Error('Delete failed')
 }
 
+const createFoodItemApi = async (name: string): Promise<{ id: string }> => {
+  const { token } = auth.value
+  const res = await fetch(`${API_URL}/food-items`, {
+    body: JSON.stringify({ name }),
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    method: 'POST',
+  })
+  if (!res.ok) throw new Error('Failed to create food item')
+  const json = (await res.json()) as { data: { id: string } }
+  return json.data
+}
+
 export function FoodItems() {
   const isLoggedIn = auth.value.token
   const queryClient = useQueryClient()
+  const { route } = useLocation()
   const [search, setSearch] = useState('')
+  const trimmed = search.trim()
+  const hasQuery = trimmed.length > 0
+
+  // Debounce so a fast typist doesn't fire one request per keystroke.
+  const [debouncedQuery, setDebouncedQuery] = useState(trimmed)
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedQuery(trimmed), 200)
+    return () => clearTimeout(id)
+  }, [trimmed])
 
   const { data: items, isLoading } = useQuery({
-    enabled: !!isLoggedIn,
-    queryFn: () => searchFoodItemsApi(search || '', 100),
-    queryKey: ['foodItems', search],
+    enabled: !!isLoggedIn && debouncedQuery.length > 0,
+    queryFn: () => searchFoodItemsApi(debouncedQuery, 100),
+    queryKey: ['foodItems', debouncedQuery],
     staleTime: 30_000,
   })
 
@@ -33,6 +57,24 @@ export function FoodItems() {
     mutationFn: deleteFoodItemApi,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['foodItems'] }),
   })
+
+  const createMutation = useMutation({
+    mutationFn: createFoodItemApi,
+    onSuccess: ({ id }) => {
+      queryClient.invalidateQueries({ queryKey: ['foodItems'] })
+      // Land on the detail page so the user can rename, set an icon, click
+      // "Convert to recipe" — the easiest path to creating a composite item.
+      route(`/food-items/${id}`)
+    },
+  })
+
+  const handleCreate = () => {
+    // Seed with the current search text when present so the user doesn't
+    // have to retype what they were looking for.
+    createMutation.mutate(trimmed || 'New food item')
+  }
+
+  const [mergeSource, setMergeSource] = useState<{ id: string; name: string } | null>(null)
 
   if (!isLoggedIn) {
     return (
@@ -53,13 +95,28 @@ export function FoodItems() {
           value={search}
           onInput={(e) => setSearch((e.target as HTMLInputElement).value)}
         />
-        <span class="fi-count">{items?.length ?? 0} items</span>
+        {hasQuery && <span class="fi-count">{items?.length ?? 0} items</span>}
+        <button
+          type="button"
+          class="btn-primary fi-create"
+          onClick={handleCreate}
+          disabled={createMutation.isPending}
+          title={
+            trimmed
+              ? `Create "${trimmed}" as a new food item`
+              : 'Create a new food item — useful as the parent of a composite recipe'
+          }
+        >
+          {createMutation.isPending ? 'Creating…' : '+ New'}
+        </button>
       </div>
 
-      {isLoading ? (
+      {!hasQuery ? (
+        <p class="fi-help">Type to search the food library.</p>
+      ) : isLoading ? (
         <p class="loading">Loading...</p>
       ) : !items || items.length === 0 ? (
-        <p class="no-data">No food items found.</p>
+        <p class="no-data">No food items match &ldquo;{trimmed}&rdquo;.</p>
       ) : (
         <table class="fi-table">
           <thead>
@@ -76,15 +133,25 @@ export function FoodItems() {
           </thead>
           <tbody>
             {items.map((item) => (
-              <tr key={item.id}>
-                <td class="fi-name">{item.name}</td>
+              <tr key={item.id} class="fi-row">
+                <td class="fi-name">
+                  <a href={`/food-items/${item.id}`}>{item.name}</a>
+                </td>
                 <td class="fi-num">{item.calories ?? '—'}</td>
                 <td class="fi-num">{item.protein ?? '—'}</td>
                 <td class="fi-num">{item.carbs ?? '—'}</td>
                 <td class="fi-num">{item.fat ?? '—'}</td>
                 <td class="fi-num">{item.fiber ?? '—'}</td>
                 <td class="fi-source">{item.source ?? '—'}</td>
-                <td>
+                <td class="fi-row-actions">
+                  <button
+                    type="button"
+                    class="btn-secondary fi-merge-btn"
+                    onClick={() => setMergeSource({ id: item.id, name: item.name })}
+                    title={`Merge ${item.name} into another food item`}
+                  >
+                    Merge…
+                  </button>
                   <ConfirmButton
                     label="Delete"
                     confirmMessage={`Delete ${item.name}?`}
@@ -97,6 +164,14 @@ export function FoodItems() {
             ))}
           </tbody>
         </table>
+      )}
+
+      {mergeSource && (
+        <MergeFoodItemDialog
+          source={mergeSource}
+          onClose={() => setMergeSource(null)}
+          onMerged={() => queryClient.invalidateQueries({ queryKey: ['foodItems'] })}
+        />
       )}
     </div>
   )

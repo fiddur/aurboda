@@ -61,13 +61,12 @@ Build from source or install from releases. The app requires Android with Health
 
 ### 2. Log In
 
-On first launch, enter:
+On first launch, enter the **Server URL** (e.g., `https://aurboda.net`) and authenticate with either:
 
-- **Server URL** (e.g., `https://aurboda.net`)
-- **Username**
-- **Auth token** (from the web interface)
+- **Username + password** -- the same credentials you use on the web, or
+- **Passkey** -- via Android's Credential Manager (works with Google Password Manager, 1Password, etc.; requires a passkey previously registered for your account on the web).
 
-Credentials are stored encrypted on-device using Android EncryptedSharedPreferences.
+The resulting auth token is stored encrypted on-device using Android EncryptedSharedPreferences.
 
 ### 3. Grant Permissions
 
@@ -100,6 +99,14 @@ The app uses Health Connect's **Changes API** with token-based tracking:
 3. All other records are sent as raw data to `POST /api/sync/{recordType}` (e.g., `/api/sync/HeartRateRecord`)
 4. Deleted records are reported to `POST /api/sync/deletions`
 5. Backend processes each record: stores raw JSON, extracts metrics to time series, creates activities for exercise/sleep
+
+### Activity notes
+
+`ExerciseSessionRecord.notes` (and the same field on sleep records) are not kept on the activity row itself. They are persisted as rows in the `notes` table with `source = 'health_connect'`, anchored to the activity's id. This means:
+
+- The same `notes` table also holds user-typed text and synced notes from other sources (Oura, etc.). Each row's `source` column distinguishes them — user-authored rows have `source IS NULL`.
+- Outbound HC sync (aurboda activity → Health Connect) only serializes user-authored notes into the HC record's `notes` field, joined with newlines. HC-sourced notes are deliberately skipped so a round-tripped record doesn't echo its own note back as "user input".
+- Re-syncing an HC record is idempotent: the same `(entity_id, source='health_connect')` row is upserted, not duplicated.
 
 ### Chunking
 

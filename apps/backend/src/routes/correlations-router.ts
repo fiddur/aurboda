@@ -1,4 +1,4 @@
-import type { RequestHandler, Router } from 'express'
+import type { RequestHandler } from 'express'
 
 /**
  * Correlations route group.
@@ -23,7 +23,7 @@ import {
   type HrvActivitiesResponse,
 } from '@aurboda/api-spec'
 
-import type { SyncProvider } from '../services/queries.ts'
+import type { SyncProvider } from '../services/queries/index.ts'
 
 import {
   getActivityImpact,
@@ -31,18 +31,17 @@ import {
   getEventProbability,
   getGenericCorrelation,
   getHrvActivitiesCorrelation,
-} from '../services/correlations.ts'
-import { typedRouter } from '../typed-router.ts'
+} from '../services/correlations/index.ts'
+import { type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody, validateQuery } from '../validation.ts'
 
 export const createCorrelationsRouter = (
   authMiddleware: RequestHandler,
   syncProvider?: SyncProvider,
-): Router => {
+): TypedRouter => {
   const router = typedRouter()
 
-  // GET /correlations/baseline - Get HRV baseline statistics
-  router.get<Record<string, string>, BaselineResponse, unknown, BaselineQuery>(
+  router.get<Record<string, never>, BaselineResponse, unknown, BaselineQuery>(
     '/baseline',
     authMiddleware,
     validateQuery(baselineQuerySchema),
@@ -56,8 +55,7 @@ export const createCorrelationsRouter = (
     },
   )
 
-  // GET /correlations/hrv-activities - Get HRV correlations with activities
-  router.get<Record<string, string>, HrvActivitiesResponse, unknown, HrvActivitiesQuery>(
+  router.get<Record<string, never>, HrvActivitiesResponse, unknown, HrvActivitiesQuery>(
     '/hrv-activities',
     authMiddleware,
     validateQuery(hrvActivitiesQuerySchema),
@@ -71,7 +69,6 @@ export const createCorrelationsRouter = (
     },
   )
 
-  // GET /correlations/activity-impact/:activity - Get activity impact on metrics
   router.get<{ activity: string }, ActivityImpactResponse, unknown, ActivityImpactQuery>(
     '/activity-impact/:activity',
     authMiddleware,
@@ -96,8 +93,7 @@ export const createCorrelationsRouter = (
     },
   )
 
-  // POST /correlations/event-probability - Get event probability correlation
-  router.post<Record<string, string>, EventProbabilityResponse, EventProbabilityBody>(
+  router.post<Record<string, never>, EventProbabilityResponse, EventProbabilityBody>(
     '/event-probability',
     authMiddleware,
     validateBody(eventProbabilityBodySchema),
@@ -117,8 +113,7 @@ export const createCorrelationsRouter = (
     },
   )
 
-  // POST /correlations/generic - Generic correlation analysis
-  router.post<Record<string, string>, GenericCorrelationResponse, GenericCorrelationBody>(
+  router.post<Record<string, never>, GenericCorrelationResponse, GenericCorrelationBody>(
     '/generic',
     authMiddleware,
     validateBody(genericCorrelationBodySchema),
@@ -138,5 +133,5 @@ export const createCorrelationsRouter = (
     },
   )
 
-  return router as unknown as Router
+  return router
 }

@@ -21,11 +21,11 @@ Timeline:
 
 ## Condition Types
 
-| Kind | Description | Example |
-|---|---|---|
-| `activity` | Matches time ranges of an activity type | `{kind: "activity", activity_type: "meditation"}` |
-| `tag` | Matches time ranges of a tag (duration tags use their span; point tags get 1-minute window) | `{kind: "tag", tag_name: "sauna"}` |
-| `screentime_category` | Matches productivity records in a hierarchical category | `{kind: "screentime_category", category: ["Work", "Programming"]}` |
+| Kind                  | Description                                                                                 | Example                                                            |
+| --------------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| `activity`            | Matches time ranges of an activity type                                                     | `{kind: "activity", activity_type: "meditation"}`                  |
+| `tag`                 | Matches time ranges of a tag (duration tags use their span; point tags get 1-minute window) | `{kind: "tag", tag_name: "sauna"}`                                 |
+| `screentime_category` | Matches productivity records in a hierarchical category                                     | `{kind: "screentime_category", category: ["Work", "Programming"]}` |
 
 More condition types (location, metric thresholds, scrobble patterns) are planned.
 
@@ -49,21 +49,23 @@ When a rule is created or updated, it is immediately evaluated against the last 
 ## Examples
 
 **Simple tag-to-activity conversion:**
+
 ```json
 {
   "name": "Sauna sessions",
-  "conditions": [{"kind": "tag", "tag_name": "sauna"}],
+  "conditions": [{ "kind": "tag", "tag_name": "sauna" }],
   "output_activity_type": "sauna"
 }
 ```
 
 **Multi-condition with merge gap:**
+
 ```json
 {
   "name": "Binaural Meditation",
   "conditions": [
-    {"kind": "activity", "activity_type": "meditation"},
-    {"kind": "tag", "tag_name": "Holosync"}
+    { "kind": "activity", "activity_type": "meditation" },
+    { "kind": "tag", "tag_name": "Holosync" }
   ],
   "output_activity_type": "binaural_meditation",
   "merge_gap_seconds": 300
@@ -71,10 +73,11 @@ When a rule is created or updated, it is immediately evaluated against the last 
 ```
 
 **Screentime-based activity:**
+
 ```json
 {
   "name": "Coding sessions",
-  "conditions": [{"kind": "screentime_category", "category": ["Work", "Programming"]}],
+  "conditions": [{ "kind": "screentime_category", "category": ["Work", "Programming"] }],
   "output_activity_type": "coding",
   "merge_gap_seconds": 600
 }

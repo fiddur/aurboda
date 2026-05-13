@@ -7,6 +7,8 @@ import { Footer } from './components/Footer.jsx'
 import { Header } from './components/Header.jsx'
 import { Sidebar } from './components/Sidebar.jsx'
 import { NotFound } from './pages/_404.jsx'
+import { ActivityTypeMeta } from './pages/ActivityTypeMeta/index.jsx'
+import { ActivityTypes } from './pages/ActivityTypes/index.jsx'
 import { AddData } from './pages/AddData/index.jsx'
 import { AdminSettings } from './pages/AdminSettings/index.jsx'
 import { AuditLog } from './pages/AuditLog/index.jsx'
@@ -24,8 +26,10 @@ import { LastFmSource } from './pages/DataSources/LastFmSource.jsx'
 import { OuraSource } from './pages/DataSources/OuraSource.jsx'
 import { OwnTracksSource } from './pages/DataSources/OwnTracksSource.jsx'
 import { RescueTimeSource } from './pages/DataSources/RescueTimeSource.jsx'
+import { StravaSource } from './pages/DataSources/StravaSource.jsx'
+import { DeductionRules } from './pages/DeductionRules/index.jsx'
+import { DeductionRuleDetail } from './pages/DeductionRules/RuleDetail.jsx'
 import { EntityDetail } from './pages/EntityDetail/index.jsx'
-import { ExerciseMeta } from './pages/ExerciseMeta/index.jsx'
 import { FoodItemDetail } from './pages/FoodItems/FoodItemDetail.jsx'
 import { FoodItems } from './pages/FoodItems/index.jsx'
 import { Goals } from './pages/Goals/index.jsx'
@@ -33,6 +37,7 @@ import { Home } from './pages/Home/index.jsx'
 import { Login } from './pages/Login/index.jsx'
 import { Meals } from './pages/Meals/index.jsx'
 import { MealDetail } from './pages/Meals/MealDetail.jsx'
+import { MealTypeMeta } from './pages/MealTypeMeta/index.jsx'
 import { MetricMeta } from './pages/MetricMeta/index.jsx'
 import { Places } from './pages/Places/index.jsx'
 import { Privacy } from './pages/Privacy/index.jsx'
@@ -44,7 +49,6 @@ import { ScreentimeCategories } from './pages/ScreentimeCategories/index.jsx'
 import { Settings } from './pages/Settings/index.jsx'
 import { Signup } from './pages/Signup/index.jsx'
 import { Sleep } from './pages/Sleep/index.jsx'
-import { TagMeta } from './pages/TagMeta/index.jsx'
 import { Terms } from './pages/Terms/index.jsx'
 import { Timeline } from './pages/Timeline/index.jsx'
 import { queryClient } from './state/queryClient.js'
@@ -72,12 +76,12 @@ export function App() {
               <Route path="/food-items" component={FoodItems} />
               <Route path="/meals/:id" component={MealDetail} />
               <Route path="/meals" component={Meals} />
+              <Route path="/meal-type/:name" component={MealTypeMeta} />
               <Route path="/reports/add" component={AddReport} />
               <Route path="/reports/:id" component={ReportDetail} />
               <Route path="/reports" component={Reports} />
               <Route path="/detail/:type/:id" component={EntityDetail} />
-              <Route path="/tag/:tagKey" component={TagMeta} />
-              <Route path="/exercise/:type" component={ExerciseMeta} />
+              <Route path="/activity-type/:name" component={ActivityTypeMeta} />
               <Route path="/metric/:metricName" component={MetricMeta} />
               <Route path="/sleep" component={Sleep} />
               <Route path="/correlations" component={Correlations} />
@@ -88,12 +92,16 @@ export function App() {
               <Route path="/data-sources/android-app" component={AndroidAppSource} />
               <Route path="/data-sources/oura" component={OuraSource} />
               <Route path="/data-sources/garmin" component={GarminSource} />
+              <Route path="/data-sources/strava" component={StravaSource} />
               <Route path="/data-sources/activitywatch-desktop" component={ActivityWatchDesktopSource} />
               <Route path="/data-sources/activitywatch-android" component={ActivityWatchAndroidSource} />
               <Route path="/data-sources/rescue-time" component={RescueTimeSource} />
               <Route path="/data-sources/lastfm" component={LastFmSource} />
               <Route path="/data-sources/owntracks" component={OwnTracksSource} />
               <Route path="/data-sources/calendars" component={CalendarsSource} />
+              <Route path="/activity-types" component={ActivityTypes} />
+              <Route path="/deduction-rules/:id" component={DeductionRuleDetail} />
+              <Route path="/deduction-rules" component={DeductionRules} />
               <Route path="/screentime-categories/:id" component={CategoryDetail} />
               <Route path="/screentime-categories" component={ScreentimeCategories} />
               <Route path="/settings" component={Settings} />

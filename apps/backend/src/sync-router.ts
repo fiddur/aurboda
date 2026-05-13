@@ -1,4 +1,4 @@
-import type { RequestHandler, Router } from 'express'
+import type { RequestHandler } from 'express'
 import type { ParamsDictionary } from 'express-serve-static-core'
 
 import {
@@ -19,6 +19,7 @@ import {
   syncLastFmBodySchema,
   syncOuraBodySchema,
   syncRescueTimeBodySchema,
+  syncStravaBodySchema,
   type ActivityWatchSyncResponse,
   type ActivityWatchSyncResult,
   type ActivityWatchSyncStatusResponse,
@@ -47,17 +48,24 @@ import {
   type RescueTimeSyncResponse,
   type RescueTimeSyncResult,
   type RescueTimeSyncStatusResponse,
+  type StravaSyncResponse,
+  type StravaSyncResult,
+  type StravaSyncStatusResponse,
   type SyncActivityWatchBody,
   type SyncCalendarsBody,
   type SyncGarminBody,
   type SyncLastFmBody,
   type SyncOuraBody,
   type SyncRescueTimeBody,
+  type SyncStravaBody,
   type SyncResponse,
 } from '@aurboda/api-spec'
 
-import { typedRouter } from './typed-router.ts'
+import { type TypedRouter, typedRouter } from './typed-router.ts'
 import { validateBody } from './validation.ts'
+
+/** Default lookback window for sync-triggered deduction evaluation (30 days). */
+const DEFAULT_SYNC_LOOKBACK_MS = 30 * 86400000
 
 /**
  * Dependencies for sync router - allows testing with mocks
@@ -93,6 +101,14 @@ export interface SyncRouterDeps {
   ) => Promise<void>
   processHealthConnectData: (user: string, recordType: string, data: HealthConnectRecord) => Promise<void>
   triggerCalorieComputation: (user: string, start: Date, end: Date) => Promise<void>
+  /**
+   * Optional pg-boss-backed enqueue. When present, HR ingestion enqueues a
+   * job and returns immediately. When absent (boss failed to init), falls
+   * back to fire-and-forget `triggerCalorieComputation` so dev/test still
+   * get the side effect. Either way, the response is not blocked on the
+   * full HR-fetch + per-minute compute + per-point outbound-sync loop.
+   */
+  enqueueCalorieComputation?: (user: string, start: Date, end: Date) => Promise<void>
   syncOura: (user: string, options: { fullResync?: boolean; startDate?: Date }) => Promise<OuraSyncResult[]>
   getOuraSyncStates: (user: string) => Promise<ProviderSyncStatus[]>
   resetOuraSyncState: (user: string, dataType?: string) => Promise<void>
@@ -137,6 +153,10 @@ export interface SyncRouterDeps {
     deviceName: string,
     isMobile?: boolean,
   ) => Promise<ActivityWatchSyncResult>
+  syncStrava: (user: string, options: { fullResync?: boolean }) => Promise<StravaSyncResult>
+  getStravaSyncStates: (user: string) => Promise<ProviderSyncStatus[]>
+  getStravaQueueStatus?: () => Promise<{ queued_count: number; active_count: number }>
+  resetStravaSyncState: (user: string, dataType?: string) => Promise<void>
   getActivityWatchSyncStates: (user: string) => Promise<ProviderSyncStatus[]>
   // Outbound sync (Health Connect write-back)
   getPendingOutboundSync: (user: string, limit?: number) => Promise<PendingOutboundSyncResult>
@@ -148,6 +168,7 @@ export interface SyncRouterDeps {
   ) => Promise<{ retrying: boolean; fail_count: number }>
   requeueOutboundSync: (user: string, id: string) => Promise<boolean>
   getOutboundSyncHistory: (user: string, limit?: number) => Promise<OutboundSyncEntry[]>
+  onActivitySynced?: (user: string, activityType: string, start: Date, end: Date) => void
 }
 
 /**
@@ -156,7 +177,7 @@ export interface SyncRouterDeps {
  * IMPORTANT: Route order matters! Specific routes must be defined BEFORE
  * the generic /sync/:recordType route to avoid Express matching issues.
  */
-export const createSyncRouter = (deps: SyncRouterDeps, authMiddleware: RequestHandler): Router => {
+export const createSyncRouter = (deps: SyncRouterDeps, authMiddleware: RequestHandler): TypedRouter => {
   const router = typedRouter()
 
   // ===========================================================================
@@ -202,6 +223,12 @@ export const createSyncRouter = (deps: SyncRouterDeps, authMiddleware: RequestHa
           startDate: start_date ? new Date(start_date) : undefined,
         })
 
+        deps.onActivitySynced?.(
+          user,
+          '*',
+          start_date ? new Date(start_date) : new Date(Date.now() - DEFAULT_SYNC_LOOKBACK_MS),
+          new Date(),
+        )
         res.json({ results, success: true })
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error'
@@ -249,14 +276,36 @@ export const createSyncRouter = (deps: SyncRouterDeps, authMiddleware: RequestHa
       const { full_resync, start_date } = req.body
 
       try {
+        // Prevent concurrent syncs
+        const states = await deps.getGarminSyncStates(user)
+        if (states.some((s) => s.status === 'syncing')) {
+          res.status(202).json({ status: 'already_syncing', success: true })
+          return
+        }
+
         const settings = await deps.getSettings(user)
-        const results = await deps.syncGarmin(user, {
+        const syncOptions = {
           disabledTypes: settings.garmin_disabled_data_types,
           fullResync: full_resync,
           startDate: start_date ? new Date(start_date) : undefined,
-        })
+        }
 
-        res.json({ results, success: true })
+        // Fire-and-forget: run sync in background, return immediately
+        deps
+          .syncGarmin(user, syncOptions)
+          .then(() => {
+            deps.onActivitySynced?.(
+              user,
+              '*',
+              start_date ? new Date(start_date) : new Date(Date.now() - DEFAULT_SYNC_LOOKBACK_MS),
+              new Date(),
+            )
+          })
+          .catch(() => {
+            // Errors are already recorded in sync_state by syncGarminDataType
+          })
+
+        res.status(202).json({ status: 'syncing', success: true })
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error'
         res.status(500).json({ error: message, success: false })
@@ -373,6 +422,7 @@ export const createSyncRouter = (deps: SyncRouterDeps, authMiddleware: RequestHa
 
       try {
         const results = await deps.syncCalendars(user, calendars, { fullResync: full_resync })
+        deps.onActivitySynced?.(user, '*', new Date(Date.now() - DEFAULT_SYNC_LOOKBACK_MS), new Date())
         res.json({ results, success: true })
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error'
@@ -438,6 +488,12 @@ export const createSyncRouter = (deps: SyncRouterDeps, authMiddleware: RequestHa
           startDate: start_date ? new Date(start_date) : undefined,
         })
 
+        deps.onActivitySynced?.(
+          user,
+          '*',
+          start_date ? new Date(start_date) : new Date(Date.now() - DEFAULT_SYNC_LOOKBACK_MS),
+          new Date(),
+        )
         res.json({ result, success: true })
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error'
@@ -486,6 +542,7 @@ export const createSyncRouter = (deps: SyncRouterDeps, authMiddleware: RequestHa
 
       try {
         const result = await deps.processActivityWatchEvents(user, events, deviceName, is_mobile)
+        deps.onActivitySynced?.(user, '*', new Date(Date.now() - 86400000), new Date())
         res.json({ result, success: true })
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error'
@@ -503,6 +560,59 @@ export const createSyncRouter = (deps: SyncRouterDeps, authMiddleware: RequestHa
       try {
         const states = await deps.getActivityWatchSyncStates(user)
         res.json({ states, success: true })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        res.status(500).json({ error: message, success: false })
+      }
+    },
+  )
+
+  // Strava sync endpoints (fire-and-forget 202 pattern)
+  router.post<ParamsDictionary, StravaSyncResponse, SyncStravaBody>(
+    '/strava',
+    authMiddleware,
+    validateBody(syncStravaBodySchema),
+    async (req, res) => {
+      const user = req.user!
+      const { full_resync } = req.body
+
+      try {
+        const result = await deps.syncStrava(user, { fullResync: full_resync })
+        res.status(202).json({ result, success: true })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        res.status(500).json({ error: message, success: false })
+      }
+    },
+  )
+
+  router.get<ParamsDictionary, StravaSyncStatusResponse>(
+    '/strava/status',
+    authMiddleware,
+    async (req, res) => {
+      const user = req.user!
+
+      try {
+        const states = await deps.getStravaSyncStates(user)
+        const queue = deps.getStravaQueueStatus ? await deps.getStravaQueueStatus() : undefined
+        res.json({ queue, states, success: true })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        res.status(500).json({ error: message, success: false })
+      }
+    },
+  )
+
+  router.delete<ParamsDictionary, SyncResponse, unknown, { dataType?: string }>(
+    '/strava/state',
+    authMiddleware,
+    async (req, res) => {
+      const user = req.user!
+      const { dataType } = req.query
+
+      try {
+        await deps.resetStravaSyncState(user, dataType)
+        res.json({ success: true })
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error'
         res.status(500).json({ error: message, success: false })
@@ -651,18 +761,36 @@ export const createSyncRouter = (deps: SyncRouterDeps, authMiddleware: RequestHa
       // Process all records in batch (bulk inserts)
       await deps.processHealthConnectBatch(user, recordType, records)
 
-      // Trigger calorie computation when HR data is ingested
+      // Notify deduction queue
+      deps.onActivitySynced?.(user, '*', new Date(Date.now() - 86400000), new Date())
+
+      // HR ingestion: defer calorie computation off the request path.
+      // Initial Android sync uploads weeks of HR data in 50-sample chunks;
+      // running the full compute (HR fetch, weight/VO2 lookup, per-minute
+      // formula, per-point outbound-sync enqueue, gap-fill) inline here
+      // turns each chunk into a multi-second request.
       if (recordType === 'HeartRateRecord' && records.length > 0) {
-        const timestamps = records.flatMap((r) => {
-          const samples = r.samples as Array<{ time: string }> | undefined
-          if (samples) return samples.map((s) => new Date(s.time).getTime())
-          const t = r.startTime || r.time
-          return t ? [new Date(t as string).getTime()] : []
-        })
+        // Drop NaN here — a malformed timestamp string would propagate to
+        // Math.min/max and then to new Date(NaN).toISOString(), throwing
+        // RangeError out of the request handler.
+        const timestamps = records
+          .flatMap((r) => {
+            const samples = r.samples as Array<{ time: string }> | undefined
+            if (samples) return samples.map((s) => new Date(s.time).getTime())
+            const t = r.startTime || r.time
+            return t ? [new Date(t as string).getTime()] : []
+          })
+          .filter((t) => !Number.isNaN(t))
         if (timestamps.length > 0) {
           const start = new Date(Math.min(...timestamps))
           const end = new Date(Math.max(...timestamps))
-          await deps.triggerCalorieComputation(user, start, end)
+          if (deps.enqueueCalorieComputation) {
+            await deps.enqueueCalorieComputation(user, start, end)
+          } else {
+            // No queue (e.g., pg-boss disabled in dev/test). Fire-and-forget
+            // so the response isn't blocked. triggerCalorieComputation never throws.
+            void deps.triggerCalorieComputation(user, start, end)
+          }
         }
       }
 
@@ -670,5 +798,5 @@ export const createSyncRouter = (deps: SyncRouterDeps, authMiddleware: RequestHa
     },
   )
 
-  return router as unknown as Router
+  return router
 }

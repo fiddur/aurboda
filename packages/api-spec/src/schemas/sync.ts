@@ -11,7 +11,6 @@ import {
   dateOnlySchema,
   iso8601DateTimeSchema,
   syncStatusSchema,
-  timeRangeQuerySchema,
 } from './common.ts'
 
 // Shared sync options fields
@@ -56,7 +55,7 @@ export type SyncStatusResponse = z.infer<typeof syncStatusResponseSchema>
 export const syncStatusQuerySchema = z
   .object({
     provider: z
-      .enum(['oura', 'garmin', 'rescuetime', 'calendar', 'lastfm', 'activitywatch', 'all'])
+      .enum(['oura', 'garmin', 'strava', 'rescuetime', 'calendar', 'lastfm', 'activitywatch', 'all'])
       .optional()
       .meta({
         description: 'Provider to check (defaults to all)',
@@ -70,7 +69,7 @@ export type SyncStatusQuery = z.infer<typeof syncStatusQuerySchema>
  * Sync provider schema (for MCP).
  */
 export const syncProviderSchema = z
-  .enum(['oura', 'garmin', 'rescuetime', 'calendar', 'lastfm', 'activitywatch', 'all'])
+  .enum(['oura', 'garmin', 'strava', 'rescuetime', 'calendar', 'lastfm', 'activitywatch', 'all'])
   .meta({
     description: 'Which provider to check',
   })
@@ -359,6 +358,66 @@ export const garminSyncResultSchema = z
 export type GarminSyncResult = z.infer<typeof garminSyncResultSchema>
 
 /**
+ * Sync Strava body schema.
+ */
+export const syncStravaBodySchema = z
+  .object({
+    full_resync: fullResyncSchema,
+  })
+  .meta({ id: 'SyncStravaBody' })
+
+export type SyncStravaBody = z.infer<typeof syncStravaBodySchema>
+
+/**
+ * Strava sync result.
+ */
+export const stravaSyncResultSchema = z
+  .object({
+    error: z.string().optional().meta({ description: 'Error message if status is error' }),
+    status: z
+      .enum(['syncing', 'already_syncing', 'queued', 'not_connected'])
+      .meta({ description: 'Async sync status' }),
+  })
+  .meta({ id: 'StravaSyncResult' })
+
+export type StravaSyncResult = z.infer<typeof stravaSyncResultSchema>
+
+/**
+ * Strava sync response.
+ */
+export const stravaSyncResponseSchema = baseResponseSchema
+  .extend({
+    result: stravaSyncResultSchema.optional().meta({ description: 'Sync result' }),
+  })
+  .meta({ id: 'StravaSyncResponse' })
+
+export type StravaSyncResponse = z.infer<typeof stravaSyncResponseSchema>
+
+/**
+ * Strava queue status (pg-boss counts).
+ */
+export const stravaQueueStatusSchema = z
+  .object({
+    active_count: z.number().int().meta({ description: 'Jobs currently being processed' }),
+    queued_count: z.number().int().meta({ description: 'Jobs waiting in the queue' }),
+  })
+  .meta({ id: 'StravaQueueStatus' })
+
+export type StravaQueueStatusType = z.infer<typeof stravaQueueStatusSchema>
+
+/**
+ * Strava sync status response.
+ */
+export const stravaSyncStatusResponseSchema = baseResponseSchema
+  .extend({
+    queue: stravaQueueStatusSchema.optional().meta({ description: 'Strava job queue status' }),
+    states: z.array(providerSyncStatusSchema).optional().meta({ description: 'Strava sync states' }),
+  })
+  .meta({ id: 'StravaSyncStatusResponse' })
+
+export type StravaSyncStatusResponse = z.infer<typeof stravaSyncStatusResponseSchema>
+
+/**
  * RescueTime sync result.
  */
 export const rescueTimeSyncResultSchema = z
@@ -389,6 +448,10 @@ export type OuraSyncResponse = z.infer<typeof ouraSyncResponseSchema>
 export const garminSyncResponseSchema = baseResponseSchema
   .extend({
     results: z.array(garminSyncResultSchema).optional().meta({ description: 'Sync results per data type' }),
+    status: z
+      .enum(['syncing', 'already_syncing'])
+      .optional()
+      .meta({ description: 'Async sync status — present when sync runs in the background' }),
   })
   .meta({ id: 'GarminSyncResponse' })
 
@@ -484,7 +547,6 @@ export const lastFmSyncResultSchema = z
     error: z.string().optional().meta({ description: 'Error message if status is error' }),
     scrobbles_processed: z.number().int().meta({ description: 'Number of scrobbles processed' }),
     status: syncResultStatusSchema,
-    tags_created: z.number().int().meta({ description: 'Number of tags created from rules' }),
   })
   .meta({ id: 'LastFmSyncResult' })
 
@@ -513,235 +575,8 @@ export const lastFmSyncStatusResponseSchema = baseResponseSchema
 export type LastFmSyncStatusResponse = z.infer<typeof lastFmSyncStatusResponseSchema>
 
 // ============================================================================
-// Last.fm tag rules schemas
-// ============================================================================
-
-/**
- * Last.fm match type for tag rules.
- */
-export const lastFmMatchTypeSchema = z.enum(['track', 'artist', 'track_artist']).meta({
-  description:
-    'Type of match: track (any scrobble with track name), artist (any scrobble by artist), track_artist (exact track + artist)',
-  id: 'LastFmMatchType',
-})
-
-export type LastFmMatchType = z.infer<typeof lastFmMatchTypeSchema>
-
-/**
- * Last.fm match mode for tag rules.
- */
-export const lastFmMatchModeSchema = z.enum(['exact', 'contains']).meta({
-  description: 'How to match: exact (case-insensitive exact match) or contains (substring match)',
-  id: 'LastFmMatchMode',
-})
-
-export type LastFmMatchMode = z.infer<typeof lastFmMatchModeSchema>
-
-/**
- * Last.fm tag rule schema.
- */
-export const lastFmTagRuleSchema = z
-  .object({
-    artist_name: z
-      .string()
-      .optional()
-      .meta({ description: 'Artist name to match (for artist or track_artist match type)' }),
-    artist_names: z
-      .array(z.string())
-      .optional()
-      .meta({ description: 'Multiple artist names to match (takes precedence over artistName when set)' }),
-    created_at: z.string().meta({ description: 'When the rule was created' }),
-    id: z.string().uuid().meta({ description: 'Unique rule ID' }),
-    match_mode: lastFmMatchModeSchema,
-    match_type: lastFmMatchTypeSchema,
-    merge_gap_seconds: z.number().int().positive().nullable().optional().meta({
-      description:
-        'Session merge gap in seconds. When set, consecutive matching scrobbles within this gap are merged into a single span tag.',
-    }),
-    rule_name: z.string().meta({ description: 'Human-readable name for the rule' }),
-    tag_name: z.string().meta({ description: 'Tag to create when rule matches' }),
-    track_name: z
-      .string()
-      .optional()
-      .meta({ description: 'Track name to match (for track or track_artist match type)' }),
-  })
-  .meta({ id: 'LastFmTagRule' })
-
-export type LastFmTagRule = z.infer<typeof lastFmTagRuleSchema>
-
-/**
- * Add Last.fm tag rule body schema.
- */
-export const addLastFmTagRuleBodySchema = z
-  .object({
-    artist_name: z
-      .string()
-      .optional()
-      .meta({ description: 'Artist name to match (required for artist or track_artist match type)' }),
-    artist_names: z
-      .array(z.string())
-      .optional()
-      .meta({ description: 'Multiple artist names to match (takes precedence over artistName when set)' }),
-    match_mode: lastFmMatchModeSchema
-      .optional()
-      .default('exact')
-      .meta({ description: 'Match mode (default: exact)' }),
-    match_type: lastFmMatchTypeSchema,
-    merge_gap_seconds: z.number().int().positive().nullable().optional().meta({
-      description:
-        'Session merge gap in seconds. When set, consecutive matching scrobbles within this gap are merged into a single span tag.',
-    }),
-    rule_name: z.string().min(1).meta({ description: 'Human-readable name for the rule' }),
-    tag_name: z.string().min(1).meta({ description: 'Tag to create when rule matches' }),
-    track_name: z
-      .string()
-      .optional()
-      .meta({ description: 'Track name to match (required for track or track_artist match type)' }),
-  })
-  .meta({ id: 'AddLastFmTagRuleBody' })
-
-export type AddLastFmTagRuleBody = z.infer<typeof addLastFmTagRuleBodySchema>
-
-/**
- * Update Last.fm tag rule body schema.
- * All fields are optional — only provided fields are updated.
- */
-export const updateLastFmTagRuleBodySchema = z
-  .object({
-    artist_name: z
-      .string()
-      .optional()
-      .meta({ description: 'Artist name to match (for artist or track_artist match type)' }),
-    artist_names: z
-      .array(z.string())
-      .optional()
-      .meta({ description: 'Multiple artist names to match (takes precedence over artist_name when set)' }),
-    match_mode: lastFmMatchModeSchema.optional().meta({ description: 'Match mode' }),
-    match_type: lastFmMatchTypeSchema.optional().meta({ description: 'Type of match' }),
-    merge_gap_seconds: z.number().int().positive().nullable().optional().meta({
-      description: 'Session merge gap in seconds. Set to null to remove.',
-    }),
-    rule_name: z.string().min(1).optional().meta({ description: 'Human-readable name for the rule' }),
-    tag_name: z.string().min(1).optional().meta({ description: 'Tag to create when rule matches' }),
-    track_name: z
-      .string()
-      .optional()
-      .meta({ description: 'Track name to match (for track or track_artist match type)' }),
-  })
-  .meta({
-    description: 'Partial update body for a Last.fm tag rule. Only provided fields are updated.',
-    id: 'UpdateLastFmTagRuleBody',
-  })
-
-export type UpdateLastFmTagRuleBody = z.infer<typeof updateLastFmTagRuleBodySchema>
-
-/**
- * Update Last.fm tag rule response.
- */
-export const updateLastFmTagRuleResponseSchema = baseResponseSchema
-  .extend({
-    data: lastFmTagRuleSchema
-      .extend({
-        tags_applied: z
-          .number()
-          .int()
-          .optional()
-          .meta({ description: 'Number of tags retroactively created after re-applying the updated rule' }),
-      })
-      .optional()
-      .meta({ description: 'Updated tag rule' }),
-  })
-  .meta({ id: 'UpdateLastFmTagRuleResponse' })
-
-export type UpdateLastFmTagRuleResponse = z.infer<typeof updateLastFmTagRuleResponseSchema>
-
-/**
- * Last.fm tag rules response.
- */
-export const lastFmTagRulesResponseSchema = baseResponseSchema
-  .extend({
-    data: z.array(lastFmTagRuleSchema).meta({ description: 'List of tag rules' }),
-  })
-  .meta({ id: 'LastFmTagRulesResponse' })
-
-export type LastFmTagRulesResponse = z.infer<typeof lastFmTagRulesResponseSchema>
-
-/**
- * Add Last.fm tag rule response.
- */
-export const addLastFmTagRuleResponseSchema = baseResponseSchema
-  .extend({
-    data: lastFmTagRuleSchema
-      .extend({
-        tags_applied: z
-          .number()
-          .int()
-          .optional()
-          .meta({ description: 'Number of tags retroactively created from existing scrobbles' }),
-      })
-      .optional()
-      .meta({ description: 'Created tag rule' }),
-  })
-  .meta({ id: 'AddLastFmTagRuleResponse' })
-
-export type AddLastFmTagRuleResponse = z.infer<typeof addLastFmTagRuleResponseSchema>
-
-/**
- * Delete Last.fm tag rule response.
- */
-export const deleteLastFmTagRuleResponseSchema = baseResponseSchema
-  .extend({
-    tags_removed: z.number().int().optional().meta({ description: 'Number of auto-generated tags removed' }),
-  })
-  .meta({ id: 'DeleteLastFmTagRuleResponse' })
-
-export type DeleteLastFmTagRuleResponse = z.infer<typeof deleteLastFmTagRuleResponseSchema>
-
-/**
- * Last.fm retag response.
- */
-export const retagLastFmResponseSchema = baseResponseSchema
-  .extend({
-    tags_created: z.number().int().optional().meta({ description: 'Number of tags created' }),
-    tags_deleted: z.number().int().optional().meta({ description: 'Number of tags deleted' }),
-  })
-  .meta({ id: 'RetagLastFmResponse' })
-
-export type RetagLastFmResponse = z.infer<typeof retagLastFmResponseSchema>
-
-// ============================================================================
 // Last.fm scrobbles query schemas
 // ============================================================================
-
-/**
- * Scrobble record schema.
- */
-export const scrobbleSchema = z
-  .object({
-    album: z.string().meta({ description: 'Album name' }),
-    artist: z.string().meta({ description: 'Artist name' }),
-    recorded_at: iso8601DateTimeSchema.meta({ description: 'When the track was played' }),
-    track: z.string().meta({ description: 'Track name' }),
-  })
-  .meta({ id: 'Scrobble' })
-
-export type Scrobble = z.infer<typeof scrobbleSchema>
-
-/**
- * Scrobbles query schema.
- */
-export const scrobblesQuerySchema = timeRangeQuerySchema.meta({ id: 'ScrobblesQuery' })
-
-export type ScrobblesQuery = z.infer<typeof scrobblesQuerySchema>
-
-/**
- * Scrobbles response schema.
- */
-export const scrobblesResponseSchema = createDataArrayResponseSchema(scrobbleSchema).meta({
-  id: 'ScrobblesResponse',
-})
-
-export type ScrobblesResponse = z.infer<typeof scrobblesResponseSchema>
 
 // ============================================================================
 // ActivityWatch push sync schemas

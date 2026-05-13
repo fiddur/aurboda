@@ -4,19 +4,20 @@
   "type": "module",
   "main": "src/api.ts",
   "scripts": {
-    "fix": "oxfmt . && oxlint --fix",
+    "fix": "oxfmt . && oxlint -c ../../.oxlintrc.json --fix",
     "start": "node src/api.ts",
     "watch": "node --watch src/api.ts",
-    "lint": "oxlint",
+    "lint": "oxlint -c ../../.oxlintrc.json",
     "test": "vitest run",
     "migrate": "node src/migrate.ts",
-    "check": "tsgo --noEmit && oxlint"
+    "check": "tsgo --noEmit && oxlint -c ../../.oxlintrc.json"
   },
   "dependencies": {
     "@aurboda/api-spec": "workspace:*",
     "@flow-js/garmin-connect": "github:fiddur/garmin-connect#feat/mfa-support",
     "@js-temporal/polyfill": "^0.5.1",
     "@modelcontextprotocol/sdk": "^1.25.2",
+    "@simplewebauthn/server": "^13.3.0",
     "@types/multer": "^2.1.0",
     "axios": "^1.11.0",
     "cors": "^2.8.5",

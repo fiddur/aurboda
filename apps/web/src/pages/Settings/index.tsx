@@ -4,9 +4,9 @@ import { useCallback, useState } from 'preact/hooks'
 import type { BiologicalSex, HrZoneThresholds, UpdateSettingsInput } from '../../state/api'
 
 import { MealPreferencesSettings } from '../../components/MealPreferencesSettings'
+import { PasskeySettings } from '../../components/PasskeySettings'
 import { type SaveStatus, SaveStatusIndicator } from '../../components/SaveStatusIndicator'
 import { SettingsSection } from '../../components/SettingsSection'
-import { TimelineIconsSettings } from '../../components/TimelineIconsSettings'
 import { fetchUserSettings, updateUserSettings } from '../../state/api'
 import { auth } from '../../state/auth'
 import { defaultHrZoneThresholds } from '../../utils/hrZones'
@@ -208,7 +208,7 @@ export function Settings() {
 
       <MealPreferencesSettings />
 
-      <TimelineIconsSettings />
+      <PasskeySettings />
 
       <section class="settings-section">
         <p class="section-description">

@@ -14,6 +14,7 @@ import { z } from 'zod'
 
 import { auditError, auditInfo } from '../services/audit-log.ts'
 import { computeAndStoreCalories, computeAndStoreCaloriesAll } from '../services/calorie-computation.ts'
+import { mergeCustomMetricService } from '../services/custom-metrics.ts'
 import {
   addCustomMetric,
   addMetric,
@@ -88,13 +89,14 @@ export const registerMetricTools = (server: McpServer, user: string) => {
   // Tool: add_custom_metric
   server.tool(
     'add_custom_metric',
-    'Register a new custom metric type. Custom metrics allow tracking data not covered by built-in metrics.',
+    'Register a new custom metric type. Custom metrics allow tracking data not covered by built-in metrics. Set include_in_daily_summary=true to surface entries and the latest value in get_daily_summary.',
     { ...addCustomMetricBodySchema.shape },
-    async ({ description, max_value, min_value, name, unit }) => {
+    async ({ description, include_in_daily_summary, max_value, min_value, name, unit }) => {
       const definition = {
         ...(description !== undefined ? { description } : {}),
-        ...(max_value !== undefined ? { maxValue: max_value } : {}),
-        ...(min_value !== undefined ? { minValue: min_value } : {}),
+        ...(include_in_daily_summary !== undefined ? { include_in_daily_summary } : {}),
+        ...(max_value !== undefined ? { max_value } : {}),
+        ...(min_value !== undefined ? { min_value } : {}),
         name,
         unit,
       }
@@ -139,14 +141,15 @@ export const registerMetricTools = (server: McpServer, user: string) => {
   // Tool: update_custom_metric
   server.tool(
     'update_custom_metric',
-    'Update an existing custom metric definition. Only provided fields are changed. Set min_value/max_value to null to clear them.',
+    'Update an existing custom metric definition. Only provided fields are changed. Set min_value/max_value to null to clear them. Toggle include_in_daily_summary to surface or hide this metric in get_daily_summary.',
     {
       name: z.string().describe('The name of the custom metric to update'),
       ...updateCustomMetricBodySchema.shape,
     },
-    async ({ description, max_value, min_value, name, unit }) => {
+    async ({ description, include_in_daily_summary, max_value, min_value, name, unit }) => {
       const updates = {
         ...(description !== undefined ? { description } : {}),
+        ...(include_in_daily_summary !== undefined ? { include_in_daily_summary } : {}),
         ...(max_value !== undefined ? { maxValue: max_value } : {}),
         ...(min_value !== undefined ? { minValue: min_value } : {}),
         ...(unit !== undefined ? { unit } : {}),
@@ -222,6 +225,23 @@ export const registerMetricTools = (server: McpServer, user: string) => {
       }
       const result = await computeAndStoreCalories(user, new Date(start), new Date(end), { force: true })
       return tzJsonResponse({ ...result, success: true }, tz)
+    },
+  )
+
+  // Tool: merge_custom_metric
+  server.tool(
+    'merge_custom_metric',
+    'Merge a custom metric into another metric (built-in or custom). All time_series data points are reassigned to the target metric and the source custom metric definition is deleted. Duplicate data points (same time + source) are skipped.',
+    {
+      source: z.string().describe('Name of the custom metric to merge away'),
+      target: z.string().describe('Name of the target metric to merge into (built-in or custom)'),
+    },
+    async ({ source, target }) => {
+      const result = await mergeCustomMetricService(user, source, target)
+      if (!result.success) {
+        return errorResponse(result.error ?? 'Failed to merge custom metric')
+      }
+      return jsonResponse(result)
     },
   )
 }

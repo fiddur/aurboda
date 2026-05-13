@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { resolveItemIcon } from './emojiLookup'
+import { isEmoji, resolveItemIcon } from './emojiLookup'
 
 describe('resolveItemIcon', () => {
   it('returns exact match from user icons', () => {
@@ -24,12 +24,12 @@ describe('resolveItemIcon', () => {
     expect(resolveItemIcon('exercise:yoga', { 'exercise:Yoga': '' })).toBeUndefined()
   })
 
-  it('falls back to defaults when no user icon set', () => {
-    expect(resolveItemIcon('exercise:Running', {})).toBe('🏃')
+  it('falls back to defaults for meal types', () => {
+    expect(resolveItemIcon('meal:breakfast', {})).toBe('🍳')
   })
 
-  it('falls back to defaults case-insensitively', () => {
-    expect(resolveItemIcon('exercise:running', {})).toBe('🏃')
+  it('falls back to defaults case-insensitively for meal types', () => {
+    expect(resolveItemIcon('meal:Breakfast', {})).toBe('🍳')
   })
 
   it('returns undefined when no match found', () => {
@@ -37,6 +37,42 @@ describe('resolveItemIcon', () => {
   })
 
   it('prefers user icon over default', () => {
-    expect(resolveItemIcon('exercise:Running', { 'exercise:Running': '🦵' })).toBe('🦵')
+    expect(resolveItemIcon('meal:breakfast', { 'meal:breakfast': '🥞' })).toBe('🥞')
+  })
+})
+
+describe('isEmoji', () => {
+  it('recognizes simple emoji', () => {
+    expect(isEmoji('☕')).toBe(true)
+    expect(isEmoji('🍽️')).toBe(true)
+    expect(isEmoji('🧘')).toBe(true)
+  })
+
+  it('recognizes ZWJ sequences', () => {
+    expect(isEmoji('👨‍💻')).toBe(true)
+    expect(isEmoji('🏃‍♂️')).toBe(true)
+  })
+
+  it('recognizes ZWJ sequences with skin tone modifiers', () => {
+    expect(isEmoji('👨🏻‍💻')).toBe(true)
+    expect(isEmoji('👩🏽‍🔬')).toBe(true)
+  })
+
+  it('recognizes emoji with skin tone modifier (no ZWJ)', () => {
+    expect(isEmoji('👋🏻')).toBe(true)
+  })
+
+  it('rejects plain text', () => {
+    expect(isEmoji('hello')).toBe(false)
+    expect(isEmoji('abc')).toBe(false)
+  })
+
+  it('rejects empty string', () => {
+    expect(isEmoji('')).toBe(false)
+  })
+
+  it('rejects mixed text and emoji', () => {
+    expect(isEmoji('hello 🍽️')).toBe(false)
+    expect(isEmoji('🍽️ food')).toBe(false)
   })
 })

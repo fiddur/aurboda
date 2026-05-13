@@ -1,4 +1,4 @@
-import type { RequestHandler, Router } from 'express'
+import type { RequestHandler } from 'express'
 
 /**
  * Notes route group.
@@ -18,14 +18,13 @@ import {
 } from '@aurboda/api-spec'
 
 import { addNote, deleteNoteById, getNotesForEntity, updateNoteContent } from '../services/mutations.ts'
-import { typedRouter } from '../typed-router.ts'
+import { type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody, validateQuery } from '../validation.ts'
 
-export const createNotesRouter = (authMiddleware: RequestHandler): Router => {
+export const createNotesRouter = (authMiddleware: RequestHandler): TypedRouter => {
   const router = typedRouter()
 
-  // GET /notes - Get notes for an entity
-  router.get<Record<string, string>, NotesResponse, unknown, NotesQuery>(
+  router.get<Record<string, never>, NotesResponse, unknown, NotesQuery>(
     '/',
     authMiddleware,
     validateQuery(notesQuerySchema),
@@ -38,8 +37,7 @@ export const createNotesRouter = (authMiddleware: RequestHandler): Router => {
     },
   )
 
-  // POST /notes - Add a note
-  router.post<Record<string, string>, NoteResponse, AddNoteBody>(
+  router.post<Record<string, never>, NoteResponse, AddNoteBody>(
     '/',
     authMiddleware,
     validateBody(addNoteBodySchema),
@@ -57,7 +55,6 @@ export const createNotesRouter = (authMiddleware: RequestHandler): Router => {
     },
   )
 
-  // PATCH /notes/:id - Update a note
   router.patch<{ id: string }, NoteResponse, UpdateNoteBody>(
     '/:id',
     authMiddleware,
@@ -77,7 +74,6 @@ export const createNotesRouter = (authMiddleware: RequestHandler): Router => {
     },
   )
 
-  // DELETE /notes/:id - Delete a note
   router.delete<{ id: string }, DeleteNoteResponse>('/:id', authMiddleware, async (req, res) => {
     const { id } = req.params
     const user = req.user!
@@ -91,5 +87,5 @@ export const createNotesRouter = (authMiddleware: RequestHandler): Router => {
     res.json({ success: true })
   })
 
-  return router as unknown as Router
+  return router
 }

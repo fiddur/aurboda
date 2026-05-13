@@ -238,7 +238,7 @@ export const getLocationPoints = async (user: string, start: Date, end: Date): P
     user,
     `SELECT ST_Y(location::geometry) as lat, ST_X(location::geometry) as lon, time
      FROM locations
-     WHERE time >= $1 AND time <= $2
+     WHERE time >= $1 AND time <= $2 AND deleted_at IS NULL
      ORDER BY time`,
     [start, end],
   )
@@ -324,6 +324,8 @@ export interface PlaceVisit {
   source: 'named' | 'detected' | 'owntracks' | 'unknown'
   address?: string
   detected_location_id?: string
+  /** Set when source='named' — the id of the matched named_location. */
+  named_location_id?: string
 }
 
 /**
@@ -363,6 +365,30 @@ export const matchLocationToDetected = (
 }
 
 /**
+ * Get raw GPS points for a time range, suitable for rendering a path on a map.
+ */
+export const getRawLocationPoints = async (
+  user: string,
+  start: Date,
+  end: Date,
+): Promise<{ lat: number; lon: number; time: Date }[]> => {
+  const result = await query(
+    user,
+    `SELECT ST_Y(location::geometry) as lat, ST_X(location::geometry) as lon, time
+     FROM locations
+     WHERE time >= $1 AND time <= $2
+     ORDER BY time`,
+    [start, end],
+  )
+
+  return result.rows.map((row) => ({
+    lat: Number(row.lat),
+    lon: Number(row.lon),
+    time: new Date(row.time),
+  }))
+}
+
+/**
  * Get place visits for a time range, using named locations when available.
  * Falls back to detected locations, then OwnTracks regions.
  */
@@ -372,7 +398,7 @@ export const getPlaceVisits = async (user: string, start: Date, end: Date): Prom
     user,
     `SELECT ST_Y(location::geometry) as lat, ST_X(location::geometry) as lon, time, regions
      FROM locations
-     WHERE time >= $1 AND time <= $2
+     WHERE time >= $1 AND time <= $2 AND deleted_at IS NULL
      ORDER BY time`,
     [start, end],
   )
@@ -406,6 +432,7 @@ export const getPlaceVisits = async (user: string, start: Date, end: Date): Prom
     source: 'named' | 'detected' | 'owntracks' | 'unknown'
     address?: string
     detected_location_id?: string
+    named_location_id?: string
   } | null = null
 
   for (const loc of locations) {
@@ -416,10 +443,12 @@ export const getPlaceVisits = async (user: string, start: Date, end: Date): Prom
     let source: 'named' | 'detected' | 'owntracks' | 'unknown'
     let address: string | undefined
     let detectedLocationId: string | undefined
+    let namedLocationId: string | undefined
 
     if (namedMatch) {
       placeName = namedMatch.name
       source = 'named'
+      namedLocationId = namedMatch.id
     } else {
       // Try to match against detected locations
       const detectedMatch = matchLocationToDetected(loc.lat, loc.lon, detectedLocations)
@@ -437,9 +466,13 @@ export const getPlaceVisits = async (user: string, start: Date, end: Date): Prom
       }
     }
 
-    // Check if this is a continuation of the same visit
+    // Check if this is a continuation of the same visit.
+    // named_location_id is part of the key so two named locations with the
+    // same name (e.g. different "Home" entries) correctly split into
+    // separate visits rather than being merged by display name alone.
     const samePlace =
       currentVisit &&
+      currentVisit.named_location_id === namedLocationId &&
       currentVisit.name === placeName &&
       currentVisit.detected_location_id === detectedLocationId
 
@@ -464,6 +497,7 @@ export const getPlaceVisits = async (user: string, start: Date, end: Date): Prom
         lat: loc.lat,
         lon: loc.lon,
         name: placeName,
+        named_location_id: namedLocationId,
         source,
         start_time: loc.time,
       }

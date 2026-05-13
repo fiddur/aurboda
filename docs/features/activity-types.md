@@ -6,14 +6,14 @@ Aurboda comes with five built-in activity types: **sleep**, **exercise**, **medi
 
 Custom activity types can be created via the REST API, MCP tools, or deduction rules. Each type has:
 
-| Field | Description |
-|---|---|
-| `name` | Snake_case identifier (e.g., `sauna`, `hot_bath`, `yin_yoga`) |
-| `display_name` | Human-readable name shown on the timeline |
+| Field              | Description                                                                                                              |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------ |
+| `name`             | Snake_case identifier (e.g., `sauna`, `hot_bath`, `yin_yoga`)                                                            |
+| `display_name`     | Human-readable name shown on the timeline                                                                                |
 | `display_category` | Groups types for timeline toggles: `sleep_rest`, `exercise`, `meditation`, `wellness`, `productivity`, `travel`, `other` |
-| `color` | Hex color for timeline rendering (e.g., `#ef4444`) |
-| `icon` | Optional emoji or icon identifier |
-| `show_on_timeline` | Whether activities of this type appear on the timeline (default: true) |
+| `color`            | Hex color for timeline rendering (e.g., `#ef4444`)                                                                       |
+| `icon`             | Optional emoji or icon identifier                                                                                        |
+| `show_on_timeline` | Whether activities of this type appear on the timeline (default: true)                                                   |
 
 Built-in types cannot be deleted but their display metadata (color, icon, display_name, show_on_timeline) can be updated.
 

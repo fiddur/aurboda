@@ -31,13 +31,17 @@ describe('sync router', () => {
     resetLastFmSyncState: vi.fn().mockResolvedValue(undefined),
     resetOuraSyncState: vi.fn().mockResolvedValue(undefined),
     resetRescueTimeSyncState: vi.fn().mockResolvedValue(undefined),
+    resetStravaSyncState: vi.fn().mockResolvedValue(undefined),
+    getStravaSyncStates: vi.fn().mockResolvedValue([]),
+    syncStrava: vi.fn().mockResolvedValue({ status: 'syncing' }),
     syncCalendars: vi.fn().mockResolvedValue([]),
     syncGarmin: vi.fn().mockResolvedValue([]),
-    syncLastFm: vi.fn().mockResolvedValue({ scrobbles_processed: 0, status: 'success', tags_created: 0 }),
+    syncLastFm: vi.fn().mockResolvedValue({ scrobbles_processed: 0, status: 'success' }),
     syncOura: vi.fn().mockResolvedValue({ success: true }),
     syncRescueTime: vi.fn().mockResolvedValue({ success: true }),
     triggerCalorieComputation: vi.fn().mockResolvedValue(undefined),
     upsertUserSettings: vi.fn().mockResolvedValue(undefined),
+    onActivitySynced: vi.fn(),
   }
 
   // Simple auth middleware that sets req.user for tests
@@ -268,6 +272,93 @@ describe('sync router', () => {
     })
   })
 
+  describe('HR ingestion calorie computation', () => {
+    test('uses enqueueCalorieComputation when provided (off request path)', async () => {
+      const enqueue = vi.fn().mockResolvedValue(undefined)
+      const trigger = vi.fn().mockResolvedValue(undefined)
+      const app = express()
+      app.use(express.json())
+      app.use(
+        '/sync',
+        createSyncRouter(
+          { ...mockDeps, enqueueCalorieComputation: enqueue, triggerCalorieComputation: trigger },
+          testAuthMiddleware,
+        ),
+      )
+
+      const response = await request(app)
+        .post('/sync/HeartRateRecord')
+        .send({
+          data: [
+            {
+              metadata: { id: 'hr-1' },
+              samples: [
+                { beatsPerMinute: 70, time: '2024-01-15T10:00:00Z' },
+                { beatsPerMinute: 72, time: '2024-01-15T10:05:00Z' },
+              ],
+            },
+          ],
+        })
+
+      expect(response.status).toBe(200)
+      expect(enqueue).toHaveBeenCalledWith(
+        'testuser',
+        new Date('2024-01-15T10:00:00Z'),
+        new Date('2024-01-15T10:05:00Z'),
+      )
+      expect(trigger).not.toHaveBeenCalled()
+    })
+
+    test('falls back to triggerCalorieComputation (fire-and-forget) when no queue configured', async () => {
+      // Slow trigger to assert the request doesn't await it.
+      let triggerResolve: () => void = () => {}
+      const trigger = vi.fn(
+        () =>
+          new Promise<void>((resolve) => {
+            triggerResolve = resolve
+          }),
+      )
+      const app = express()
+      app.use(express.json())
+      app.use(
+        '/sync',
+        createSyncRouter({ ...mockDeps, triggerCalorieComputation: trigger }, testAuthMiddleware),
+      )
+
+      const response = await request(app)
+        .post('/sync/HeartRateRecord')
+        .send({
+          data: [{ metadata: { id: 'hr-2' }, startTime: '2024-01-15T10:00:00Z' }],
+        })
+
+      // Response returns even though trigger hasn't resolved
+      expect(response.status).toBe(200)
+      expect(trigger).toHaveBeenCalledTimes(1)
+      triggerResolve()
+    })
+
+    test('does not enqueue or trigger for non-HR record types', async () => {
+      const enqueue = vi.fn().mockResolvedValue(undefined)
+      const trigger = vi.fn().mockResolvedValue(undefined)
+      const app = express()
+      app.use(express.json())
+      app.use(
+        '/sync',
+        createSyncRouter(
+          { ...mockDeps, enqueueCalorieComputation: enqueue, triggerCalorieComputation: trigger },
+          testAuthMiddleware,
+        ),
+      )
+
+      await request(app)
+        .post('/sync/WeightRecord')
+        .send({ data: [{ metadata: { id: 'w' }, time: '2024-01-15T08:00:00Z' }] })
+
+      expect(enqueue).not.toHaveBeenCalled()
+      expect(trigger).not.toHaveBeenCalled()
+    })
+  })
+
   describe('activitywatch endpoint', () => {
     test('POST /sync/activitywatch passes events and device_name', async () => {
       const app = createTestApp()
@@ -307,11 +398,12 @@ describe('sync router', () => {
   })
 
   describe('garmin endpoints', () => {
-    test('POST /sync/garmin calls syncGarmin', async () => {
+    test('POST /sync/garmin starts async sync and returns 202', async () => {
       const app = createTestApp()
       const response = await request(app).post('/sync/garmin').send({})
 
-      expect(response.status).toBe(200)
+      expect(response.status).toBe(202)
+      expect(response.body).toMatchObject({ status: 'syncing', success: true })
       expect(mockDeps.syncGarmin).toHaveBeenCalledWith('testuser', {
         disabledTypes: undefined,
         fullResync: undefined,
@@ -325,12 +417,32 @@ describe('sync router', () => {
         .post('/sync/garmin')
         .send({ full_resync: true, start_date: '2024-01-01' })
 
-      expect(response.status).toBe(200)
+      expect(response.status).toBe(202)
+      expect(response.body).toMatchObject({ status: 'syncing', success: true })
       expect(mockDeps.syncGarmin).toHaveBeenCalledWith('testuser', {
         disabledTypes: undefined,
         fullResync: true,
         startDate: new Date('2024-01-01'),
       })
+    })
+
+    test('POST /sync/garmin returns already_syncing when sync is in progress', async () => {
+      vi.mocked(mockDeps.getGarminSyncStates).mockResolvedValueOnce([
+        {
+          error_message: null,
+          last_sync_time: null,
+          provider: 'garmin',
+          retry_after: null,
+          status: 'syncing',
+        },
+      ])
+
+      const app = createTestApp()
+      const response = await request(app).post('/sync/garmin').send({})
+
+      expect(response.status).toBe(202)
+      expect(response.body).toMatchObject({ status: 'already_syncing', success: true })
+      expect(mockDeps.syncGarmin).not.toHaveBeenCalled()
     })
 
     test('GET /sync/garmin/status returns sync states', async () => {
@@ -457,6 +569,53 @@ describe('sync router', () => {
 
       expect(response.status).toBe(200)
       expect(mockDeps.resetLastFmSyncState).toHaveBeenCalledWith('testuser')
+    })
+  })
+
+  describe('strava endpoints', () => {
+    test('POST /sync/strava calls syncStrava and returns 202', async () => {
+      const app = createTestApp()
+      const response = await request(app).post('/sync/strava').send({ full_resync: true })
+
+      expect(response.status).toBe(202)
+      expect(mockDeps.syncStrava).toHaveBeenCalledWith('testuser', { fullResync: true })
+    })
+
+    test('GET /sync/strava/status returns states without queue when getStravaQueueStatus unset', async () => {
+      vi.mocked(mockDeps.getStravaSyncStates).mockResolvedValueOnce([])
+
+      const app = createTestApp()
+      const response = await request(app).get('/sync/strava/status')
+
+      expect(response.status).toBe(200)
+      expect(response.body).toEqual({ states: [], success: true })
+    })
+
+    test('GET /sync/strava/status includes queue counts when getStravaQueueStatus provided', async () => {
+      const depsWithQueue: SyncRouterDeps = {
+        ...mockDeps,
+        getStravaQueueStatus: vi.fn().mockResolvedValue({ active_count: 1, queued_count: 42 }),
+      }
+      const app = express()
+      app.use(express.json())
+      app.use('/sync', createSyncRouter(depsWithQueue, testAuthMiddleware))
+
+      const response = await request(app).get('/sync/strava/status')
+
+      expect(response.status).toBe(200)
+      expect(response.body).toEqual({
+        queue: { active_count: 1, queued_count: 42 },
+        states: [],
+        success: true,
+      })
+    })
+
+    test('DELETE /sync/strava/state resets sync state with optional dataType', async () => {
+      const app = createTestApp()
+      const response = await request(app).delete('/sync/strava/state?dataType=activities')
+
+      expect(response.status).toBe(200)
+      expect(mockDeps.resetStravaSyncState).toHaveBeenCalledWith('testuser', 'activities')
     })
   })
 

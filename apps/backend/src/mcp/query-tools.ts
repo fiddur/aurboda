@@ -2,28 +2,37 @@
  * MCP query tools - read-only data retrieval.
  */
 import {
-  activityTypes,
   activityTypeSchema,
   bucketSizeSchema,
   dateOnlySchema,
+  locationSummaryQuerySchema,
   type MetricType,
+  overnightStaysQuerySchema,
   timeRangeQuerySchema,
   tzSchema,
   validMetrics,
 } from '@aurboda/api-spec'
 import { z } from 'zod'
 
+import { getActivityById, getAllActivityTypeNames } from '../db/index.ts'
 import { getCustomMetrics } from '../services/mutations.ts'
 import {
+  computeActivityDetailMetrics,
+  getActivityFullDetail,
   getDailySummary,
+  getLocationSummary,
   getPeriodSummary,
+  parseActivityId,
+  parseMetricsParam,
   queryActivities,
   queryLocations,
   queryMetrics,
   queryMetricsBucketed,
+  queryOvernightStays,
   queryProductivity,
   queryTags,
-} from '../services/queries.ts'
+  resolveActivityWindow,
+} from '../services/queries/index.ts'
 import {
   errorResponse,
   type McpServer,
@@ -97,7 +106,7 @@ Use cases:
   // Tool: get_daily_summary
   server.tool(
     'get_daily_summary',
-    'Get a comprehensive summary of health data for a specific day including heart rate, steps, sleep, exercise, meals, tags, productivity, and visited places. Also includes Oura scores (sleep_score, readiness_score, resilience_score, cardiovascular_age) when available.\n\nExercise sessions include a human-readable `exercise_type` name (e.g., "yoga", "running", "weightlifting").\n\nMeals include macros (calories, protein, carbs, fat, fiber) and food item names.\n\nSleep sessions are disambiguated: `primary_sleep` is the session the user woke up from on this date (following Oura convention), `evening_sleep` is the session started this evening that continues to the next day. Each sleep session includes `sleep_date` (the date it belongs to, using wake-up convention) and `sleep_location` (best-guess location). The `oura_scores.sleep_score` evaluates the `primary_sleep` session.',
+    'Get a comprehensive daily timeline of health data. Returns a unified chronological `activities` array combining exercises, meditations, screen time categories, and all other activities — each with optional stress_zone_secs and hr_zone_secs. Screen time entries have a category_path (e.g., ["Work & Dev", "Software Dev"]).\n\nAlso includes: heart_rate stats, steps, sleep_sessions (with stages, location, date attribution), meals (with macros), productivity summary (with category breakdown), places, Oura scores, and day-level stress_zones.\n\nDesigned for AI correlation analysis — overlay activities with stress/HR data to find patterns.',
     {
       date: dateOnlySchema.describe('Date in YYYY-MM-DD format (e.g., 2024-01-15)'),
       tz: tzSchema,
@@ -136,7 +145,7 @@ Use cases:
   // Tool: query_tags
   server.tool(
     'query_tags',
-    'Query tags/labels for a time range. Returns all tags with start times, optional end times, and tag text.',
+    'Query non-exercise/sleep activities (formerly called tags) for a time range. Returns all tags with start times, optional end times, and tag text.',
     { ...timeRangeQuerySchema.shape, tz: tzSchema },
     async ({ end, start, tz }) => {
       const tags = await queryTags(user, new Date(start), new Date(end), sync)
@@ -156,12 +165,99 @@ Use cases:
         .describe(
           'Activity types to include. Defaults to all types (sleep, exercise, meditation, nap, rest).',
         ),
+      data_filter: z
+        .string()
+        .optional()
+        .describe(
+          'Filter by JSONB data field values. Format: "field:value" (comma-separated). Use "(none)" for null/empty.',
+        ),
       tz: tzSchema,
     },
-    async ({ end, start, types, tz }) => {
-      const requestedTypes = types ?? [...activityTypes]
-      const activities = await queryActivities(user, requestedTypes, new Date(start), new Date(end), sync)
+    async ({ data_filter, end, start, types, tz }) => {
+      const requestedTypes = types ?? (await getAllActivityTypeNames(user))
+      const dataFilters = data_filter
+        ? data_filter
+            .split(',')
+            .map((segment) => {
+              const colonIdx = segment.indexOf(':')
+              if (colonIdx === -1) return null
+              const field = segment.slice(0, colonIdx).trim()
+              const rawValue = segment.slice(colonIdx + 1).trim()
+              return { field, value: rawValue === '(none)' ? null : rawValue }
+            })
+            .filter((f): f is { field: string; value: string | null } => f !== null)
+        : undefined
+      const activities = await queryActivities(
+        user,
+        requestedTypes,
+        new Date(start),
+        new Date(end),
+        sync,
+        dataFilters,
+      )
       return tzJsonResponse({ data: activities, success: true }, tz)
+    },
+  )
+
+  // Tool: get_activity_detail
+  server.tool(
+    'get_activity_detail',
+    `Deep-dive detail for a single activity: summary metrics (distance, avg pace, avg cadence, avg power, avg ground contact time, body battery before/after, elevation gain/loss, HR zones), GPS trace, and per-metric time-series.
+
+Pass id with the "merged:" prefix to include all overlapping cross-source data in the time window.
+
+The 'metrics' parameter controls time-series payload size:
+- omit it for summary + GPS only (compact)
+- pass 'all' for every metric with data in the activity range
+- pass a comma-separated list (e.g. 'heart_rate,speed,elevation') for specific metrics
+
+Source-agnostic: works for any activity that has time-series and/or GPS populated within its time range.`,
+    {
+      id: z.string().describe('Activity ID. Prefix with "merged:" to get the merged cross-source view.'),
+      include_gps: z
+        .boolean()
+        .optional()
+        .default(true)
+        .describe('Include GPS trace if locations exist for the activity time range.'),
+      metrics: z
+        .string()
+        .optional()
+        .describe(
+          `Comma-separated metric names, or 'all' for every available metric. Omit for summary + GPS only.`,
+        ),
+      tz: tzSchema,
+    },
+    async ({ id: rawId, include_gps, metrics, tz }) => {
+      const { id, isMerged } = parseActivityId(rawId)
+      const activity = await getActivityById(user, id, true)
+      if (!activity) return errorResponse('Activity not found')
+
+      const window = await resolveActivityWindow(user, activity, isMerged)
+      const [summary, fullDetail] = await Promise.all([
+        computeActivityDetailMetrics(user, window),
+        getActivityFullDetail(user, window, {
+          includeGps: include_gps,
+          metrics: parseMetricsParam(metrics),
+        }),
+      ])
+
+      return tzJsonResponse(
+        {
+          data: {
+            ...summary,
+            ...fullDetail,
+            activity_type: activity.activity_type,
+            data: window.data,
+            end_time: activity.end_time?.toISOString(),
+            id: activity.id,
+            source: activity.source,
+            start_time: activity.start_time.toISOString(),
+            title: activity.title,
+          },
+          success: true,
+        },
+        tz,
+      )
     },
   )
 
@@ -171,8 +267,8 @@ Use cases:
     'Query productivity data (from RescueTime) for a time range. Returns application/website usage with productivity scores.',
     { ...timeRangeQuerySchema.shape, tz: tzSchema },
     async ({ end, start, tz }) => {
-      const productivity = await queryProductivity(user, new Date(start), new Date(end), sync)
-      return tzJsonResponse({ data: productivity, success: true }, tz)
+      const result = await queryProductivity(user, new Date(start), new Date(end), sync)
+      return tzJsonResponse({ data: result.data, success: true }, tz)
     },
   )
 
@@ -187,8 +283,10 @@ Use cases:
       tz: tzSchema,
     },
     async ({ bucket, end, start, tz }) => {
-      const { interval, ms: bucketMs } = (await import('../services/queries.ts')).parseBucketSize(bucket)
-      const { assembleScreentimeBuckets } = await import('../services/queries.ts')
+      const { interval, ms: bucketMs } = (await import('../services/queries/index.ts')).parseBucketSize(
+        bucket,
+      )
+      const { assembleScreentimeBuckets } = await import('../services/queries/index.ts')
       const rows = await (
         await import('../db/index.ts')
       ).getProductivityBucketed(user, new Date(start), new Date(end), interval, tz)
@@ -206,6 +304,52 @@ Use cases:
     async ({ end, start, tz }) => {
       const places = await queryLocations(user, new Date(start), new Date(end))
       return tzJsonResponse({ data: places, success: true }, tz)
+    },
+  )
+
+  // Tool: query_overnight_stays
+  server.tool(
+    'query_overnight_stays',
+    `Detect overnight stays at a named location.
+
+A night between day D and day D+1 counts when a visit overlaps both the evening window
+(>=17:00 of D, configurable via departure_after) and the morning window (<=10:00 of D+1,
+configurable via arrival_before), with both moments interpreted in the requested timezone.
+
+Multi-night visits yield one entry per crossed night, all sharing the same arrival/departure
+timestamps but with distinct overnight_date values.`,
+    { ...overnightStaysQuerySchema.shape },
+    async ({ arrival_before, departure_after, end, location_name, start, tz }) => {
+      const result = await queryOvernightStays(user, {
+        arrivalBefore: arrival_before,
+        departureAfter: departure_after,
+        end: new Date(end),
+        locationName: location_name,
+        start: new Date(start),
+        tz,
+      })
+      return tzJsonResponse({ data: result.data, success: true, total_nights: result.total_nights }, tz)
+    },
+  )
+
+  // Tool: get_location_summary
+  server.tool(
+    'get_location_summary',
+    `Aggregated statistics for time spent at a named location: total visits, total nights,
+total hours, and an optional per-period breakdown (day/week/month/year).
+
+Pairs naturally with query_overnight_stays — use this for the rolled-up numbers and
+query_overnight_stays for the per-night detail.`,
+    { ...locationSummaryQuerySchema.shape },
+    async ({ end, group_by, location_name, start, tz }) => {
+      const summary = await getLocationSummary(user, {
+        end: new Date(end),
+        groupBy: group_by,
+        locationName: location_name,
+        start: new Date(start),
+        tz,
+      })
+      return tzJsonResponse({ data: summary, success: true }, tz)
     },
   )
 }

@@ -9,12 +9,14 @@ import {
   syncOuraBodySchema,
   syncProviderSchema,
   syncRescueTimeBodySchema,
+  syncStravaBodySchema,
   tzSchema,
 } from '@aurboda/api-spec'
 import { z } from 'zod'
 
-import type { GarminClient } from '../garmin.ts'
-import type { ouraClient } from '../oura.ts'
+import type { GarminClient } from '../integrations/garmin/client.ts'
+import type { ouraClient } from '../integrations/oura/client.ts'
+import type { StravaQueue } from '../services/strava-queue.ts'
 
 import {
   ackOutboundSync,
@@ -23,12 +25,14 @@ import {
   getOutboundSyncHistory,
   getPendingOutboundSync,
   requeueOutboundSync,
+  resetSyncState,
 } from '../db/index.ts'
-import { type GarminDataType, syncAllGarminData } from '../garmin-sync.ts'
-import { syncAllCalendars } from '../ical-sync.ts'
-import { syncLastFmData } from '../lastfm-sync.ts'
-import { syncAllOuraData } from '../oura-sync.ts'
-import { syncRescueTimeData } from '../rescuetime-sync.ts'
+import { type GarminDataType, syncAllGarminData } from '../integrations/garmin/sync.ts'
+import { syncAllCalendars } from '../integrations/ical/sync.ts'
+import { syncLastFmData } from '../integrations/lastfm/sync.ts'
+import { syncAllOuraData } from '../integrations/oura/sync.ts'
+import { syncRescueTimeData } from '../integrations/rescuetime/sync.ts'
+import { syncStrava } from '../integrations/strava/sync.ts'
 import { getCentralDb } from '../services/central-db.ts'
 import { getSettings } from '../services/settings.ts'
 import { errorResponse, jsonResponse, type McpServer, tzJsonResponse } from './helpers.ts'
@@ -41,6 +45,7 @@ export const registerSyncTools = (
   user: string,
   oura?: OuraClient,
   garmin?: GarminClient,
+  stravaQueue?: StravaQueue,
 ) => {
   // Tool: sync_oura
   server.tool(
@@ -198,7 +203,6 @@ export const registerSyncTools = (
           scrobbles_processed: result.scrobbles_processed,
           status: result.status,
           success: result.status === 'success',
-          tags_created: result.tags_created,
         })
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error'
@@ -207,12 +211,45 @@ export const registerSyncTools = (
     },
   )
 
+  // Tool: sync_strava
+  server.tool(
+    'sync_strava',
+    'Sync activities from Strava. Fetches activity list, detailed metrics (HR, cadence, power), and GPS routes. Uses a queue with rate limiting (fire-and-forget).',
+    { ...syncStravaBodySchema.shape },
+    async ({ full_resync }) => {
+      if (!stravaQueue) {
+        return errorResponse('Strava integration is not configured on this server.')
+      }
+
+      const stravaToken = await getOAuthToken(user, 'strava')
+      if (!stravaToken || !stravaToken.access_token) {
+        return errorResponse('Strava is not connected. Please connect Strava in Settings first.')
+      }
+
+      try {
+        const result = await syncStrava(user, stravaQueue, { fullResync: full_resync })
+        return jsonResponse({ result, success: true })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        return jsonResponse({ error: message, success: false })
+      }
+    },
+  )
+
   // Tool: get_sync_status
-  const syncProviders = ['oura', 'garmin', 'rescuetime', 'calendar', 'lastfm', 'activitywatch'] as const
+  const syncProviders = [
+    'oura',
+    'garmin',
+    'strava',
+    'rescuetime',
+    'calendar',
+    'lastfm',
+    'activitywatch',
+  ] as const
 
   server.tool(
     'get_sync_status',
-    'Get the current sync status for Oura, Garmin, RescueTime, Calendar, Last.fm, and ActivityWatch data sources. Shows last sync time, status, and any errors.',
+    'Get the current sync status for Oura, Garmin, Strava, RescueTime, Calendar, Last.fm, and ActivityWatch data sources. Shows last sync time, status, and any errors. For Strava, also includes queue counts (pending and active jobs).',
     {
       provider: syncProviderSchema.optional().describe('Which provider to check. Defaults to "all".'),
       tz: tzSchema,
@@ -226,7 +263,38 @@ export const registerSyncTools = (
           states[p] = await getAllSyncStates(user, p)
         }
 
-        return tzJsonResponse({ states, success: true }, tz)
+        const response: Record<string, unknown> = { states, success: true }
+        if (stravaQueue && (provider === 'all' || provider === 'strava')) {
+          response.strava_queue = await stravaQueue.getStatus()
+        }
+
+        return tzJsonResponse(response, tz)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        return jsonResponse({ error: message, success: false })
+      }
+    },
+  )
+
+  // Tool: reset_sync_state
+  const resettableProviders = ['oura', 'garmin', 'strava', 'rescuetime', 'calendar', 'lastfm'] as const
+
+  server.tool(
+    'reset_sync_state',
+    'Reset sync state for a provider. Clears status, error messages, and last sync time. Use this to recover from stuck "syncing" states or to force a full re-sync.',
+    {
+      data_type: z
+        .string()
+        .optional()
+        .describe(
+          'Specific data type to reset (e.g. "activities"). If omitted, resets all data types for the provider.',
+        ),
+      provider: z.enum(resettableProviders).describe('Which provider to reset sync state for'),
+    },
+    async ({ data_type, provider }) => {
+      try {
+        await resetSyncState(user, provider, data_type)
+        return jsonResponse({ data_type: data_type ?? 'all', provider, reset: true, success: true })
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error'
         return jsonResponse({ error: message, success: false })

@@ -192,6 +192,133 @@ export const updateMeal = async (user: string, id: string, input: UpdateMealInpu
   return mapMealRow(result.rows[0])
 }
 
+export interface FrequentMealRow {
+  name: string
+  meal_type: string
+  count: number
+  last_time: Date
+  last_meal_id: string
+}
+
+interface FrequentMealsFilter {
+  meal_type: string
+  limit: number
+  since_days: number
+}
+
+/**
+ * Group meals by `name` within a meal_type and return the most-frequently-logged
+ * names alongside the most recent occurrence's id (for follow-up enrichment of
+ * food items / icon).
+ */
+export const getFrequentMeals = async (
+  user: string,
+  filter: FrequentMealsFilter,
+): Promise<FrequentMealRow[]> => {
+  const sql = `
+    WITH recent AS (
+      SELECT name, meal_type, time, id,
+             COUNT(*) OVER (PARTITION BY name) AS name_count,
+             ROW_NUMBER() OVER (PARTITION BY name ORDER BY time DESC) AS rn
+      FROM meals
+      WHERE meal_type = $1
+        AND name IS NOT NULL AND name <> ''
+        AND time > NOW() - ($2::int || ' days')::interval
+    )
+    SELECT name, meal_type, time AS last_time, id AS last_meal_id, name_count AS count
+    FROM recent
+    WHERE rn = 1
+    ORDER BY name_count DESC, time DESC
+    LIMIT $3
+  `
+  const result = await query(user, sql, [filter.meal_type, filter.since_days, filter.limit])
+  return result.rows.map((row) => ({
+    name: row.name as string,
+    meal_type: row.meal_type as string,
+    count: Number(row.count),
+    last_time: row.last_time as Date,
+    last_meal_id: row.last_meal_id as string,
+  }))
+}
+
+// ============================================================================
+// Frequent food items
+// ============================================================================
+
+export interface FrequentFoodItemRow {
+  food_item_id: string
+  count: number
+  last_used: Date
+  last_quantity: number | null
+  last_unit: string | null
+  /** Last-known name from the most recent row's legacy snapshot column. Read-only fallback for hard-deleted food items; current name is resolved live by the service layer. */
+  legacy_name: string | null
+  /** Last-known icon. See `legacy_name`. */
+  legacy_icon: string | null
+}
+
+interface FrequentFoodItemsFilter {
+  limit: number
+  since_days: number
+  /** Optional: scope to a single meal_type (e.g. "breakfast"). */
+  meal_type?: string
+}
+
+/**
+ * Aggregate `meal_food_items` to surface the food items the user logs most
+ * often. Useful for an MCP agent to suggest "your usual" without re-running
+ * fuzzy search every time, and as the data behind the per-slot quick-log
+ * chips on the meals overview.
+ *
+ * Returns only the food_item_id + usage stats — current name/icon are
+ * resolved live by the service layer against the canonical food_item, since
+ * those are presentation values that should reflect the latest edits, not
+ * a frozen snapshot.
+ *
+ * When `meal_type` is provided, only meal_food_items linked to meals of
+ * that type are counted.
+ */
+export const getFrequentFoodItems = async (
+  user: string,
+  filter: FrequentFoodItemsFilter,
+): Promise<FrequentFoodItemRow[]> => {
+  const params: unknown[] = [filter.since_days, filter.limit]
+  let mealTypeClause = ''
+  if (filter.meal_type) {
+    params.push(filter.meal_type)
+    mealTypeClause = `AND m.meal_type = $${params.length}`
+  }
+  const sql = `
+    WITH ranked AS (
+      SELECT mfi.food_item_id, mfi.quantity, mfi.unit, m.time,
+             mfi.food_item_name AS legacy_name, mfi.food_item_icon AS legacy_icon,
+             COUNT(*) OVER (PARTITION BY mfi.food_item_id) AS use_count,
+             ROW_NUMBER() OVER (PARTITION BY mfi.food_item_id ORDER BY m.time DESC) AS rn
+      FROM meal_food_items mfi
+      JOIN meals m ON m.id = mfi.meal_id
+      WHERE m.time > NOW() - ($1::int || ' days')::interval
+        AND mfi.food_item_id IS NOT NULL
+        ${mealTypeClause}
+    )
+    SELECT food_item_id, quantity, unit, legacy_name, legacy_icon,
+           time AS last_used, use_count AS count
+    FROM ranked
+    WHERE rn = 1
+    ORDER BY use_count DESC, time DESC
+    LIMIT $2
+  `
+  const result = await query(user, sql, params)
+  return result.rows.map((row) => ({
+    count: Number(row.count),
+    food_item_id: row.food_item_id as string,
+    last_quantity: row.quantity === null ? null : Number(row.quantity),
+    last_unit: (row.unit as string | null) ?? null,
+    last_used: row.last_used as Date,
+    legacy_icon: (row.legacy_icon as string | null) ?? null,
+    legacy_name: (row.legacy_name as string | null) ?? null,
+  }))
+}
+
 /**
  * Delete a meal by ID.
  * Returns true if the meal was found and deleted.

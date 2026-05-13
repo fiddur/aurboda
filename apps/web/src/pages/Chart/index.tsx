@@ -2,41 +2,43 @@
  * Chart exploration page — configurable trend + bar chart with URL-driven state.
  *
  * Reads/writes config via query params so charts are shareable/bookmarkable:
- *   /chart?source_type=tag&tag_definition_id=<uuid>&lookback_days=90&display_period=monthly&half_life_days=15
+ *   /chart?source_type=activity_type&pattern=coffee&lookback_days=90&display_period=monthly&half_life_days=15
  *   /chart?source_type=metric&pattern=weight&lookback_days=180&aggregation=mean
- *   /chart?source_type=tag&pattern=coffee&chart_type=bar&bucket_size=1d&lookback_days=30
+ *   /chart?source_type=activity_type&pattern=coffee&chart_type=bar&bucket_size=1d&lookback_days=30
  */
 import type {
   DashboardConfig,
   DashboardSection,
   DashboardWidget,
   SectionType,
-  TagDefinition,
+  TrendGoal,
 } from '@aurboda/api-spec'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useLocation } from 'preact-iso'
 import { useCallback, useMemo, useState } from 'preact/hooks'
 
-import { BarChart } from '../../components/charts/BarChart'
+import { ActivityTypePicker } from '../../components/ActivityTypePicker'
+import { BarChart, type BarClickInfo } from '../../components/charts/BarChart'
 import { TrendLineChart } from '../../components/charts/TrendLineChart'
 import { MetricPicker } from '../../components/MetricPicker'
-import { TagPicker } from '../../components/TagPicker'
 import {
+  fetchActivityTypeDefinitions,
   fetchChartData,
   type FetchChartDataParams,
   fetchDashboard,
   fetchScreentimeCategories,
-  fetchTagDefinitions,
   fetchTrend,
   type FetchTrendParams,
+  fetchUserSettings,
   saveDashboard,
   type TrendDisplayPeriod,
+  updateUserSettings,
 } from '../../state/api'
 import { auth } from '../../state/auth'
 import './style.css'
 
-type SourceType = 'tag' | 'metric' | 'productivity_category' | 'activity_type'
+type SourceType = 'metric' | 'productivity_category' | 'activity_type'
 type ChartType = 'trend' | 'bar'
 type BucketSize = '1m' | '5m' | '15m' | '1h' | '1d' | '1w' | '1M'
 
@@ -48,6 +50,7 @@ const LOOKBACK_OPTIONS = [
   { label: '180 days', value: 180 },
   { label: '1 year', value: 365 },
   { label: '2 years', value: 730 },
+  { label: 'All time', value: 3650 },
 ]
 
 const HALF_LIFE_OPTIONS = [
@@ -68,6 +71,7 @@ const BUCKET_SIZE_OPTIONS: { label: string; value: BucketSize }[] = [
 
 interface ChartState {
   aggregation: 'count' | 'mean' | 'sum'
+  breakdown_fields: string[]
   bucket_size: BucketSize
   chart_type: ChartType
   display_period: TrendDisplayPeriod
@@ -75,21 +79,22 @@ interface ChartState {
   lookback_days: number
   pattern: string
   source_type: SourceType
-  tag_definition_id: string
+  activity_type_id: string
 }
 
 /** Parse URL query params into chart config state. */
 function parseQuery(query: Record<string, string>): ChartState {
   return {
     aggregation: (query.aggregation ?? 'count') as 'count' | 'mean' | 'sum',
+    breakdown_fields: query.breakdown_fields ? query.breakdown_fields.split(',').filter(Boolean) : [],
     bucket_size: (query.bucket_size ?? '1d') as BucketSize,
     chart_type: (query.chart_type ?? 'trend') as ChartType,
     display_period: (query.display_period ?? 'monthly') as TrendDisplayPeriod,
     half_life_days: Number(query.half_life_days) || 15,
     lookback_days: Number(query.lookback_days) || 90,
     pattern: query.pattern ?? '',
-    source_type: (query.source_type ?? 'tag') as SourceType,
-    tag_definition_id: query.tag_definition_id ?? '',
+    source_type: (query.source_type ?? 'activity_type') as SourceType,
+    activity_type_id: query.activity_type_id ?? '',
   }
 }
 
@@ -98,7 +103,7 @@ function syncUrl(state: ChartState) {
   const params = new URLSearchParams()
   params.set('source_type', state.source_type)
   if (state.pattern) params.set('pattern', state.pattern)
-  if (state.tag_definition_id) params.set('tag_definition_id', state.tag_definition_id)
+  if (state.activity_type_id) params.set('activity_type_id', state.activity_type_id)
   params.set('lookback_days', String(state.lookback_days))
   params.set('chart_type', state.chart_type)
   if (state.chart_type === 'trend') {
@@ -107,17 +112,25 @@ function syncUrl(state: ChartState) {
   } else {
     params.set('bucket_size', state.bucket_size)
   }
-  if (state.source_type === 'metric' && state.aggregation !== 'count') {
+  if (
+    (state.source_type === 'metric' || state.source_type === 'activity_type') &&
+    state.aggregation !== 'count'
+  ) {
     params.set('aggregation', state.aggregation)
+  }
+  if (state.breakdown_fields.length > 0) {
+    params.set('breakdown_fields', state.breakdown_fields.join(','))
   }
   history.replaceState(null, '', `${window.location.pathname}?${params}`)
 }
 
-/** Compute start/end ISO strings from lookback_days. */
+/** Compute start/end ISO strings from lookback_days, rounded to day boundaries for stable query keys. */
 function lookbackToRange(lookbackDays: number): { start: string; end: string } {
-  const end = new Date()
-  const start = new Date()
-  start.setDate(start.getDate() - lookbackDays)
+  const now = new Date()
+  const end = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59))
+  const start = new Date(end)
+  start.setUTCDate(start.getUTCDate() - lookbackDays)
+  start.setUTCHours(0, 0, 0, 0)
   return { end: end.toISOString(), start: start.toISOString() }
 }
 
@@ -141,58 +154,6 @@ function CategoryPicker({ value, onChange }: { value: string; onChange: (v: stri
   )
 }
 
-/** Tag definition picker -- searchable dropdown of all definitions. */
-function TagDefinitionPicker({
-  definitions,
-  selectedId,
-  onChange,
-}: {
-  definitions: TagDefinition[]
-  selectedId: string
-  onChange: (id: string, pattern: string) => void
-}) {
-  const [search, setSearch] = useState('')
-  const filtered = useMemo(
-    () =>
-      search
-        ? definitions.filter(
-            (d) =>
-              d.name.toLowerCase().includes(search.toLowerCase()) ||
-              d.aliases.some((a) => a.toLowerCase().includes(search.toLowerCase())),
-          )
-        : definitions,
-    [definitions, search],
-  )
-
-  return (
-    <div>
-      <input
-        type="text"
-        value={search}
-        onInput={(e) => setSearch((e.target as HTMLInputElement).value)}
-        placeholder="Search tag definitions..."
-      />
-      <select
-        value={selectedId}
-        onChange={(e) => {
-          const id = (e.target as HTMLSelectElement).value
-          const def = definitions.find((d) => d.id === id)
-          onChange(id, def ? def.aliases.join('|') : '')
-        }}
-        style={{ marginTop: '0.25rem' }}
-      >
-        <option value="">Select a tag definition...</option>
-        {filtered.map((def) => (
-          <option key={def.id} value={def.id}>
-            {def.icon ? `${def.icon} ` : ''}
-            {def.name} ({def.aliases.join(', ')})
-          </option>
-        ))}
-      </select>
-    </div>
-  )
-}
-
 /** Source picker shared between both chart modes. */
 function SourcePicker({
   state,
@@ -201,9 +162,9 @@ function SourcePicker({
   state: ChartState
   onUpdate: (patch: Partial<ChartState>) => void
 }) {
-  const { data: tagDefinitions = [] } = useQuery({
-    queryFn: fetchTagDefinitions,
-    queryKey: ['tag-definitions'],
+  const { data: activityTypes = [] } = useQuery({
+    queryFn: fetchActivityTypeDefinitions,
+    queryKey: ['activity-type-definitions'],
     staleTime: 5 * 60 * 1000,
   })
 
@@ -215,35 +176,17 @@ function SourcePicker({
           value={state.source_type}
           onChange={(e) => {
             const source_type = (e.target as HTMLSelectElement).value as SourceType
-            onUpdate({ source_type, pattern: '', tag_definition_id: '' })
+            onUpdate({ source_type, pattern: '', activity_type_id: '' })
           }}
         >
-          <option value="tag">Tag</option>
+          <option value="activity_type">Activity Type</option>
           <option value="metric">Metric</option>
           <option value="productivity_category">Screentime Category</option>
-          <option value="activity_type">Activity Type</option>
         </select>
       </label>
 
       <label class="source-picker">
-        {state.source_type === 'tag' && tagDefinitions.length > 0 ? (
-          <>
-            Tag Definition
-            <TagDefinitionPicker
-              definitions={tagDefinitions}
-              selectedId={state.tag_definition_id}
-              onChange={(id, pattern) => onUpdate({ tag_definition_id: id, pattern })}
-            />
-          </>
-        ) : state.source_type === 'tag' ? (
-          <>
-            Tags
-            <TagPicker
-              selectedTags={state.pattern ? state.pattern.split('|').filter(Boolean) : []}
-              onChange={(tags) => onUpdate({ pattern: tags.join('|') })}
-            />
-          </>
-        ) : state.source_type === 'productivity_category' ? (
+        {state.source_type === 'productivity_category' ? (
           <>
             Category
             <CategoryPicker value={state.pattern} onChange={(pattern) => onUpdate({ pattern })} />
@@ -251,11 +194,10 @@ function SourcePicker({
         ) : state.source_type === 'activity_type' ? (
           <>
             Activity Type
-            <input
-              type="text"
+            <ActivityTypePicker
               value={state.pattern}
-              onInput={(e) => onUpdate({ pattern: (e.target as HTMLInputElement).value })}
-              placeholder="e.g. running, cycling..."
+              onChange={(pattern) => onUpdate({ breakdown_fields: [], pattern })}
+              placeholder="Search activity types..."
             />
           </>
         ) : (
@@ -269,6 +211,34 @@ function SourcePicker({
           </>
         )}
       </label>
+
+      {state.source_type === 'activity_type' &&
+        state.pattern &&
+        (() => {
+          const typeDef = activityTypes.find((d) => d.name === state.pattern)
+          const categoricalFields = typeDef?.data_schema?.fields.filter((f) => f.is_categorical) ?? []
+          if (categoricalFields.length === 0) return null
+          return (
+            <div class="breakdown-fields">
+              <span class="breakdown-label">Breakdown by:</span>
+              {categoricalFields.map((field) => (
+                <label key={field.name} class="breakdown-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={state.breakdown_fields.includes(field.name)}
+                    onChange={() => {
+                      const next = state.breakdown_fields.includes(field.name)
+                        ? state.breakdown_fields.filter((f) => f !== field.name)
+                        : [...state.breakdown_fields, field.name]
+                      onUpdate({ breakdown_fields: next })
+                    }}
+                  />
+                  {field.label ?? field.name}
+                </label>
+              ))}
+            </div>
+          )
+        })()}
     </div>
   )
 }
@@ -365,7 +335,7 @@ function ChartControls({
           </label>
         )}
 
-        {state.source_type === 'metric' && (
+        {(state.source_type === 'metric' || state.source_type === 'activity_type') && (
           <label>
             Aggregation
             <select
@@ -374,13 +344,28 @@ function ChartControls({
                 onUpdate({ aggregation: (e.target as HTMLSelectElement).value as 'count' | 'mean' | 'sum' })
               }
             >
-              <option value="mean">Average</option>
-              <option value="sum">Sum</option>
+              {state.source_type === 'metric' && <option value="mean">Average</option>}
+              <option value="sum">Sum (hours)</option>
               <option value="count">Count</option>
             </select>
           </label>
         )}
       </div>
+    </div>
+  )
+}
+
+const SERIES_COLORS = ['#8b5cf6', '#f97316', '#22c55e', '#3b82f6', '#ef4444', '#f59e0b', '#ec4899', '#14b8a6']
+
+function BreakdownLegend({ series, colors }: { series: string[]; colors: string[] }) {
+  return (
+    <div class="breakdown-legend">
+      {series.map((name, i) => (
+        <span key={name} class="breakdown-legend-item">
+          <span class="breakdown-legend-dot" style={{ background: colors[i % colors.length] }} />
+          {name}
+        </span>
+      ))}
     </div>
   )
 }
@@ -393,19 +378,29 @@ function TrendDisplay({ params }: { params: FetchTrendParams }) {
     staleTime: 5 * 60 * 1000,
   })
 
-  if (!params.pattern) {
-    return <div class="chart-empty">Select a source to view trend data.</div>
-  }
+  if (!params.pattern) return <div class="chart-empty">Select a source to view trend data.</div>
+  if (trendQuery.isLoading) return <div class="chart-loading">Loading trend data...</div>
+  if (trendQuery.isError || !trendQuery.data) return <div class="chart-error">Failed to load trend data.</div>
 
-  if (trendQuery.isLoading) {
-    return <div class="chart-loading">Loading trend data...</div>
-  }
+  const { breakdown_histories, breakdown_series, current_value, display_unit, history } = trendQuery.data
 
-  if (trendQuery.isError || !trendQuery.data) {
-    return <div class="chart-error">Failed to load trend data.</div>
+  if (breakdown_series?.length && breakdown_histories) {
+    return (
+      <div class="chart-display">
+        <BreakdownLegend series={breakdown_series} colors={SERIES_COLORS} />
+        <TrendLineChart
+          data={[]}
+          color="#8b5cf6"
+          height={350}
+          multiSeries={breakdown_series.map((name, i) => ({
+            color: SERIES_COLORS[i % SERIES_COLORS.length],
+            data: (breakdown_histories[name] ?? []).map((p) => ({ date: p.date, value: p.value })),
+            name,
+          }))}
+        />
+      </div>
+    )
   }
-
-  const { current_value, display_unit, history } = trendQuery.data
 
   return (
     <div class="chart-display">
@@ -418,15 +413,76 @@ function TrendDisplay({ params }: { params: FetchTrendParams }) {
   )
 }
 
+/** Compute the end of a bucket given its start and size. */
+const computeBucketEnd = (start: Date, bucketSize: string): Date => {
+  const end = new Date(start)
+  switch (bucketSize) {
+    case '1m':
+      end.setMinutes(end.getMinutes() + 1)
+      break
+    case '5m':
+      end.setMinutes(end.getMinutes() + 5)
+      break
+    case '15m':
+      end.setMinutes(end.getMinutes() + 15)
+      break
+    case '1h':
+      end.setHours(end.getHours() + 1)
+      break
+    case '1d':
+      end.setDate(end.getDate() + 1)
+      break
+    case '1w':
+      end.setDate(end.getDate() + 7)
+      break
+    case '1M':
+      end.setMonth(end.getMonth() + 1)
+      break
+  }
+  return end
+}
+
+/** Build a /data URL for a bar click. */
+const buildBarDataHref = (
+  info: BarClickInfo,
+  pattern: string,
+  bucketSize: string,
+  breakdownFields?: string[],
+): string => {
+  const bucketStart = new Date(info.bucket_start)
+  const bucketEnd = computeBucketEnd(bucketStart, bucketSize)
+
+  const urlParams = new URLSearchParams()
+  urlParams.set('from', bucketStart.toISOString())
+  urlParams.set('to', bucketEnd.toISOString())
+  urlParams.set('date', bucketStart.toISOString().slice(0, 10))
+  urlParams.set('types', pattern)
+  urlParams.set('hide', 'location,music,meal,report,screentime')
+
+  if (info.series_name && breakdownFields?.length) {
+    const values = info.series_name.split(' / ')
+    const filters = breakdownFields.map((field, i) => `${field}:${values[i] ?? '(none)'}`).join(',')
+    urlParams.set('data_filter', filters)
+  }
+
+  return `/data?${urlParams}`
+}
+
 function BarDisplay({ params }: { params: FetchChartDataParams }) {
+  const getBarHref =
+    params.source_type === 'activity_type' && params.pattern
+      ? (info: BarClickInfo) =>
+          buildBarDataHref(info, params.pattern!, params.bucket_size ?? '1d', params.breakdown_fields)
+      : undefined
+
   const barQuery = useQuery({
-    enabled: Boolean(params.pattern || params.tag_definition_id),
+    enabled: Boolean(params.pattern || params.activity_type_id),
     queryFn: () => fetchChartData(params),
     queryKey: ['chart-data', params],
     staleTime: 5 * 60 * 1000,
   })
 
-  if (!params.pattern && !params.tag_definition_id) {
+  if (!params.pattern && !params.activity_type_id) {
     return <div class="chart-empty">Select a source to view chart data.</div>
   }
 
@@ -438,11 +494,46 @@ function BarDisplay({ params }: { params: FetchChartDataParams }) {
     return <div class="chart-error">Failed to load chart data.</div>
   }
 
-  const buckets = barQuery.data ?? []
+  const result = barQuery.data
+
+  if (result?.breakdown_buckets?.length) {
+    const series = result.breakdown_series ?? []
+    return (
+      <div class="chart-display">
+        <BreakdownLegend series={series} colors={SERIES_COLORS} />
+        <BarChart
+          data={[]}
+          height={350}
+          bucketSize={params.bucket_size}
+          rangeStart={params.start}
+          rangeEnd={params.end}
+          getBarHref={getBarHref}
+          multiSeries={series.map((name, i) => ({
+            color: SERIES_COLORS[i % SERIES_COLORS.length],
+            data: result.breakdown_buckets!.map((b) => ({
+              bucket_start: b.bucket_start,
+              value: b.series[name] ?? 0,
+            })),
+            name,
+          }))}
+        />
+      </div>
+    )
+  }
+
+  const buckets = result?.buckets ?? []
 
   return (
     <div class="chart-display">
-      <BarChart data={buckets} color="#8b5cf6" height={350} />
+      <BarChart
+        data={buckets}
+        color="#8b5cf6"
+        height={350}
+        bucketSize={params.bucket_size}
+        rangeStart={params.start}
+        rangeEnd={params.end}
+        getBarHref={getBarHref}
+      />
     </div>
   )
 }
@@ -460,7 +551,7 @@ function buildWidgetFromState(state: ChartState, title: string): DashboardWidget
         lookback_days: state.lookback_days,
         ...(state.pattern ? { pattern: state.pattern } : {}),
         source_type: state.source_type,
-        ...(state.tag_definition_id ? { tag_definition_id: state.tag_definition_id } : {}),
+        ...(state.activity_type_id ? { tag_definition_id: state.activity_type_id } : {}),
         ...(title ? { title } : {}),
       },
       id: generateId('widget'),
@@ -475,8 +566,11 @@ function buildWidgetFromState(state: ChartState, title: string): DashboardWidget
       half_life_days: state.half_life_days,
       lookback_days: state.lookback_days,
       pattern: state.pattern,
-      source_type: state.source_type === 'tag' || state.source_type === 'metric' ? state.source_type : 'tag',
-      ...(state.tag_definition_id ? { tag_definition_id: state.tag_definition_id } : {}),
+      source_type:
+        state.source_type === 'activity_type' || state.source_type === 'metric'
+          ? state.source_type
+          : 'activity_type',
+      ...(state.activity_type_id ? { tag_definition_id: state.activity_type_id } : {}),
       ...(title ? { title } : {}),
     },
     id: generateId('widget'),
@@ -626,11 +720,17 @@ function AddToDashboardModal({ state, onClose }: { state: ChartState; onClose: (
   )
 }
 
+// eslint-disable-next-line complexity -- chart page with multiple feature sections
 export function Chart() {
   const isLoggedIn = auth.value.token
+  const queryClient = useQueryClient()
   const { query } = useLocation()
   const [state, setState] = useState(() => parseQuery(query))
   const [showAddToDashboard, setShowAddToDashboard] = useState(false)
+  const [showSetGoal, setShowSetGoal] = useState(false)
+  const [goalMax, setGoalMax] = useState('')
+  const [goalMin, setGoalMin] = useState('')
+  const [goalSaving, setGoalSaving] = useState(false)
 
   const handleUpdate = useCallback(
     (patch: Partial<ChartState>) => {
@@ -652,14 +752,14 @@ export function Chart() {
     )
   }
 
-  const { start, end } = lookbackToRange(state.lookback_days)
+  const { start, end } = useMemo(() => lookbackToRange(state.lookback_days), [state.lookback_days])
 
   return (
     <div class="chart-page">
       <h1>Chart Explorer</h1>
       <p class="chart-page-description">
-        Explore time-weighted averages (EMA) or raw bucketed data for tags, metrics, screentime categories,
-        and activity types. Toggle between Trend and Bar chart modes.
+        Explore time-weighted averages (EMA) or raw bucketed data for activity types, metrics, and screentime
+        categories. Toggle between Trend and Bar chart modes.
       </p>
 
       <ChartControls state={state} onUpdate={handleUpdate} />
@@ -667,30 +767,32 @@ export function Chart() {
       {state.chart_type === 'trend' ? (
         <TrendDisplay
           params={{
-            aggregation: state.source_type === 'metric' ? state.aggregation : 'count',
+            aggregation: state.aggregation,
+            breakdown_fields: state.breakdown_fields.length > 0 ? state.breakdown_fields : undefined,
             display_period: state.display_period,
             half_life_days: state.half_life_days,
             lookback_days: state.lookback_days,
             pattern: state.pattern,
             source_type: state.source_type,
-            ...(state.tag_definition_id ? { tag_definition_id: state.tag_definition_id } : {}),
+            ...(state.activity_type_id ? { activity_type_id: state.activity_type_id } : {}),
           }}
         />
       ) : (
         <BarDisplay
           params={{
-            aggregation: state.source_type === 'metric' ? state.aggregation : 'count',
+            aggregation: state.aggregation,
+            breakdown_fields: state.breakdown_fields.length > 0 ? state.breakdown_fields : undefined,
             bucket_size: state.bucket_size,
             end,
             pattern: state.pattern || undefined,
             source_type: state.source_type,
             start,
-            ...(state.tag_definition_id ? { tag_definition_id: state.tag_definition_id } : {}),
+            ...(state.activity_type_id ? { activity_type_id: state.activity_type_id } : {}),
           }}
         />
       )}
 
-      {(state.pattern || state.tag_definition_id) && (
+      {(state.pattern || state.activity_type_id) && (
         <div class="add-to-dashboard-row">
           <button class="btn-add-to-dashboard" onClick={() => setShowAddToDashboard(true)}>
             <svg
@@ -705,6 +807,90 @@ export function Chart() {
             </svg>
             Add to Dashboard
           </button>
+          {state.chart_type === 'trend' && (
+            <button class="btn-add-to-dashboard" onClick={() => setShowSetGoal((v) => !v)}>
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <circle cx="12" cy="12" r="10" />
+                <circle cx="12" cy="12" r="6" />
+                <circle cx="12" cy="12" r="2" />
+              </svg>
+              Set Goal
+            </button>
+          )}
+        </div>
+      )}
+
+      {showSetGoal && (
+        <div class="chart-goal-form">
+          <h3>Set Trend Goal</h3>
+          <p class="goal-form-description">
+            Set a target for the <strong>{state.pattern}</strong> trend ({state.display_period},{' '}
+            {state.half_life_days}d half-life).
+          </p>
+          <div class="goal-form-fields">
+            <label>
+              Min
+              <input
+                type="number"
+                step="0.1"
+                value={goalMin}
+                onInput={(e) => setGoalMin((e.target as HTMLInputElement).value)}
+                placeholder="e.g. 0.5"
+              />
+            </label>
+            <label>
+              Max
+              <input
+                type="number"
+                step="0.1"
+                value={goalMax}
+                onInput={(e) => setGoalMax((e.target as HTMLInputElement).value)}
+                placeholder="e.g. 0.7"
+              />
+            </label>
+          </div>
+          {!goalMin && !goalMax && <p class="goal-form-error">Set at least min or max.</p>}
+          <div class="goal-form-actions">
+            <button class="btn-cancel" onClick={() => setShowSetGoal(false)}>
+              Cancel
+            </button>
+            <button
+              class="btn-save"
+              disabled={goalSaving || (!goalMin && !goalMax)}
+              onClick={async () => {
+                setGoalSaving(true)
+                const settings = await fetchUserSettings()
+                const existingGoals = settings.goals ?? []
+                const newGoal: TrendGoal = {
+                  aggregation: state.aggregation,
+                  display_period: state.display_period,
+                  goal_type: 'trend',
+                  half_life_days: state.half_life_days,
+                  id: crypto.randomUUID(),
+                  ...(goalMax ? { max: parseFloat(goalMax) } : {}),
+                  ...(goalMin ? { min: parseFloat(goalMin) } : {}),
+                  pattern: state.pattern,
+                  source_type: state.source_type,
+                }
+                await updateUserSettings({ goals: [...existingGoals, newGoal] })
+                queryClient.invalidateQueries({ queryKey: ['userSettings'] })
+                queryClient.invalidateQueries({ queryKey: ['goalsProgress'] })
+                setGoalSaving(false)
+                setShowSetGoal(false)
+                setGoalMin('')
+                setGoalMax('')
+              }}
+            >
+              {goalSaving ? 'Saving...' : 'Save Goal'}
+            </button>
+          </div>
         </div>
       )}
 

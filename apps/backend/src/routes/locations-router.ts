@@ -1,4 +1,4 @@
-import type { RequestHandler, Router } from 'express'
+import type { RequestHandler } from 'express'
 
 /**
  * Locations route group.
@@ -9,14 +9,20 @@ import {
   type AddNamedLocationBody,
   addNamedLocationBodySchema,
   type AddNamedLocationResponse,
-  type DeleteTagResponse,
   type DetectedLocationsQuery,
   detectedLocationsQuerySchema,
   type DetectedLocationsResponse,
   type LocationsQuery,
   locationsQuerySchema,
   type LocationsResponse,
+  type LocationSummaryQuery,
+  locationSummaryQuerySchema,
+  type LocationSummaryResponse,
   type NamedLocationsResponse,
+  type OvernightStaysQuery,
+  overnightStaysQuerySchema,
+  type OvernightStaysResponse,
+  type RawLocationsResponse,
   type PromoteDetectedLocationBody,
   promoteDetectedLocationBodySchema,
   type UpdateNamedLocationBody,
@@ -28,18 +34,18 @@ import {
   deleteNamedLocation,
   getDetectedLocations,
   getNamedLocations,
+  getRawLocationPoints,
   insertNamedLocation,
   updateNamedLocation,
 } from '../services/locations.ts'
-import { queryLocations } from '../services/queries.ts'
-import { typedRouter } from '../typed-router.ts'
+import { getLocationSummary, queryLocations, queryOvernightStays } from '../services/queries/index.ts'
+import { type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody, validateQuery } from '../validation.ts'
 
-export const createLocationsRouter = (authMiddleware: RequestHandler): Router => {
+export const createLocationsRouter = (authMiddleware: RequestHandler): TypedRouter => {
   const router = typedRouter()
 
-  // GET /locations - Query location data for a time range
-  router.get<Record<string, string>, LocationsResponse, unknown, LocationsQuery>(
+  router.get<Record<string, never>, LocationsResponse, unknown, LocationsQuery>(
     '/',
     authMiddleware,
     validateQuery(locationsQuerySchema),
@@ -52,34 +58,86 @@ export const createLocationsRouter = (authMiddleware: RequestHandler): Router =>
     },
   )
 
-  // GET /locations/named - List all named locations
-  router.get<Record<string, string>, NamedLocationsResponse>('/named', authMiddleware, async (req, res) => {
+  router.get<Record<string, never>, OvernightStaysResponse, unknown, OvernightStaysQuery>(
+    '/overnight-stays',
+    authMiddleware,
+    validateQuery(overnightStaysQuerySchema),
+    async (req, res) => {
+      const { arrival_before, departure_after, end, location_name, start, tz } = req.query
+      const result = await queryOvernightStays(req.user!, {
+        arrivalBefore: arrival_before,
+        departureAfter: departure_after,
+        end: new Date(end),
+        locationName: location_name,
+        start: new Date(start),
+        tz,
+      })
+      res.json({ data: result.data, success: true, total_nights: result.total_nights })
+    },
+  )
+
+  router.get<Record<string, never>, LocationSummaryResponse, unknown, LocationSummaryQuery>(
+    '/summary',
+    authMiddleware,
+    validateQuery(locationSummaryQuerySchema),
+    async (req, res) => {
+      const { end, group_by, location_name, start, tz } = req.query
+      const summary = await getLocationSummary(req.user!, {
+        end: new Date(end),
+        groupBy: group_by,
+        locationName: location_name,
+        start: new Date(start),
+        tz,
+      })
+      res.json({ data: summary, success: true })
+    },
+  )
+
+  router.get<Record<string, never>, RawLocationsResponse, unknown, LocationsQuery>(
+    '/raw',
+    authMiddleware,
+    validateQuery(locationsQuerySchema),
+    async (req, res) => {
+      const { start, end } = req.query
+      const points = await getRawLocationPoints(req.user!, new Date(start), new Date(end))
+      res.json({
+        data: points.map((p) => ({ lat: p.lat, lon: p.lon, time: p.time.toISOString() })),
+        success: true,
+      })
+    },
+  )
+
+  router.get<Record<string, never>, NamedLocationsResponse>('/named', authMiddleware, async (req, res) => {
     const locations = await getNamedLocations(req.user!)
     res.json({ data: locations, success: true })
   })
 
-  // POST /locations/named - Create a named location
-  router.post<Record<string, string>, AddNamedLocationResponse, AddNamedLocationBody>(
+  router.post<Record<string, never>, AddNamedLocationResponse, AddNamedLocationBody>(
     '/named',
     authMiddleware,
     validateBody(addNamedLocationBodySchema),
     async (req, res) => {
-      const { name, lat, lon, radius } = req.body
+      const { auto_create_activity, lat, lon, name, radius } = req.body
       const user = req.user!
 
-      const location = await insertNamedLocation(user, { lat, lon, name, radius })
+      const location = await insertNamedLocation(user, {
+        auto_create_activity,
+        lat,
+        lon,
+        name,
+        radius,
+      })
       res.json({ data: location, success: true })
     },
   )
 
-  // PATCH /locations/named/:id - Update a named location
   router.patch<{ id: string }, AddNamedLocationResponse, UpdateNamedLocationBody>(
     '/named/:id',
     authMiddleware,
     validateBody(updateNamedLocationBodySchema),
     async (req, res) => {
       const { id } = req.params
-      const { name, lat, lon, radius } = req.body
+      const { auto_create_activity, lat, lon, name, radius } = req.body
       const user = req.user!
 
       // lat and lon must be updated together
@@ -87,7 +145,13 @@ export const createLocationsRouter = (authMiddleware: RequestHandler): Router =>
         return res.status(400).json({ error: 'lat and lon must be updated together', success: false })
       }
 
-      const location = await updateNamedLocation(user, id, { lat, lon, name, radius })
+      const location = await updateNamedLocation(user, id, {
+        auto_create_activity,
+        lat,
+        lon,
+        name,
+        radius,
+      })
       if (!location) {
         return res.status(404).json({ error: 'Named location not found', success: false })
       }
@@ -95,18 +159,20 @@ export const createLocationsRouter = (authMiddleware: RequestHandler): Router =>
     },
   )
 
-  // DELETE /locations/named/:id - Delete a named location
-  router.delete<{ id: string }, DeleteTagResponse>('/named/:id', authMiddleware, async (req, res) => {
-    const { id } = req.params
-    const deleted = await deleteNamedLocation(req.user!, id)
-    if (!deleted) {
-      return res.status(404).json({ error: 'Named location not found', success: false })
-    }
-    res.json({ success: true })
-  })
+  router.delete<{ id: string }, { success: boolean; error?: string }>(
+    '/named/:id',
+    authMiddleware,
+    async (req, res) => {
+      const { id } = req.params
+      const deleted = await deleteNamedLocation(req.user!, id)
+      if (!deleted) {
+        return res.status(404).json({ error: 'Named location not found', success: false })
+      }
+      res.json({ success: true })
+    },
+  )
 
-  // GET /locations/detected - Get computed detected location clusters
-  router.get<Record<string, string>, DetectedLocationsResponse, unknown, DetectedLocationsQuery>(
+  router.get<Record<string, never>, DetectedLocationsResponse, unknown, DetectedLocationsQuery>(
     '/detected',
     authMiddleware,
     validateQuery(detectedLocationsQuerySchema),
@@ -132,8 +198,7 @@ export const createLocationsRouter = (authMiddleware: RequestHandler): Router =>
     },
   )
 
-  // GET /locations/detected/stored - Get stored detected locations with addresses
-  router.get<Record<string, string>, DetectedLocationsResponse>(
+  router.get<Record<string, never>, DetectedLocationsResponse>(
     '/detected/stored',
     authMiddleware,
     async (req, res) => {
@@ -149,8 +214,7 @@ export const createLocationsRouter = (authMiddleware: RequestHandler): Router =>
     },
   )
 
-  // POST /locations/detected/promote - Promote detected location to named
-  router.post<Record<string, string>, AddNamedLocationResponse, PromoteDetectedLocationBody>(
+  router.post<Record<string, never>, AddNamedLocationResponse, PromoteDetectedLocationBody>(
     '/detected/promote',
     authMiddleware,
     validateBody(promoteDetectedLocationBodySchema),
@@ -163,5 +227,5 @@ export const createLocationsRouter = (authMiddleware: RequestHandler): Router =>
     },
   )
 
-  return router as unknown as Router
+  return router
 }

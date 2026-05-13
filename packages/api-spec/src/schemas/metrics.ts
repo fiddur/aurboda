@@ -186,6 +186,10 @@ export type AddCustomMetricBody = z.infer<typeof addCustomMetricBodySchema>
 export const updateCustomMetricBodySchema = z
   .object({
     description: z.string().optional().meta({ description: 'Human-readable description' }),
+    include_in_daily_summary: z.boolean().optional().meta({
+      description:
+        'When true, surface this metric in get_daily_summary under metrics_today and metrics_latest.',
+    }),
     max_value: z
       .number()
       .nullable()
@@ -220,6 +224,20 @@ export const deleteMetricQuerySchema = z
 export type DeleteMetricQuery = z.infer<typeof deleteMetricQuerySchema>
 
 /**
+ * Delete metric response.
+ */
+export const deleteMetricResponseSchema = baseResponseSchema
+  .extend({
+    deleted: z.boolean().meta({ description: 'Whether the measurement was deleted' }),
+    metric: z.string().optional().meta({ description: 'Metric name' }),
+    source: z.string().optional().meta({ description: 'Data source' }),
+    time: iso8601DateTimeSchema.optional().meta({ description: 'Measurement time' }),
+  })
+  .meta({ id: 'DeleteMetricResponse' })
+
+export type DeleteMetricResponse = z.infer<typeof deleteMetricResponseSchema>
+
+/**
  * Custom metric response.
  */
 export const customMetricResponseSchema = baseResponseSchema
@@ -247,15 +265,15 @@ export type CustomMetricsListResponse = z.infer<typeof customMetricsListResponse
 
 /**
  * Bucket size for time-based aggregation.
- * Format: {number}{unit} where unit is s (seconds), m (minutes), h (hours), d (days), M (months).
- * Examples: '10s', '5m', '1h', '1d', '1M'
+ * Format: {number}{unit} where unit is s (seconds), m (minutes), h (hours), d (days), w (weeks), M (months).
+ * Examples: '10s', '5m', '1h', '1d', '1w', '1M'
  */
 export const bucketSizeSchema = z
   .string()
-  .regex(/^\d+[smhdM]$/, 'Must be {number}{unit} where unit is s, m, h, d, or M')
+  .regex(/^\d+[smhdwM]$/, 'Must be {number}{unit} where unit is s, m, h, d, w, or M')
   .meta({
     description:
-      'Bucket size: {number}{unit} where unit is s (seconds), m (minutes), h (hours), d (days), M (months)',
+      'Bucket size: {number}{unit} where unit is s (seconds), m (minutes), h (hours), d (days), w (weeks), M (months)',
     example: '15m',
     id: 'BucketSize',
   })
@@ -418,3 +436,40 @@ export const latestMetricResponseSchema = baseResponseSchema
   .meta({ id: 'LatestMetricResponse' })
 
 export type LatestMetricResponse = z.infer<typeof latestMetricResponseSchema>
+
+// =============================================================================
+// Merge Custom Metric
+// =============================================================================
+
+/**
+ * Merge a custom metric into another metric (built-in or custom).
+ * All time_series data is reassigned; the source definition is deleted.
+ */
+export const mergeCustomMetricBodySchema = z
+  .object({
+    source: metricNameSchema.meta({ description: 'Custom metric to merge away' }),
+    target: metricNameSchema.meta({ description: 'Target metric to merge into (built-in or custom)' }),
+  })
+  .meta({ id: 'MergeCustomMetricBody' })
+
+export type MergeCustomMetricBody = z.infer<typeof mergeCustomMetricBodySchema>
+
+/**
+ * Merge custom metric response.
+ */
+export const mergeCustomMetricResponseSchema = baseResponseSchema
+  .extend({
+    rows_reassigned: z
+      .number()
+      .int()
+      .optional()
+      .meta({ description: 'Number of time_series rows moved to the target metric' }),
+    rows_skipped: z
+      .number()
+      .int()
+      .optional()
+      .meta({ description: 'Number of rows skipped due to duplicate (time, source) conflicts' }),
+  })
+  .meta({ id: 'MergeCustomMetricResponse' })
+
+export type MergeCustomMetricResponse = z.infer<typeof mergeCustomMetricResponseSchema>

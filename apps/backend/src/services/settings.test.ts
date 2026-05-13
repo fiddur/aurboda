@@ -20,7 +20,7 @@ vi.mock('../db', () => ({
   getOAuthToken: vi.fn(),
   getUserSettings: vi.fn(),
   replaceGoals: vi.fn(),
-  updateTagNameByKey: vi.fn(),
+  updateActivityTypeByTagKey: vi.fn(),
   upsertUserSettings: vi.fn(),
 }))
 
@@ -28,6 +28,7 @@ vi.mock('../db', () => ({
 vi.mock('./central-db', () => ({
   getCentralDb: () => ({
     getLastFmApiKey: vi.fn().mockResolvedValue(null),
+    getServerSetting: vi.fn().mockResolvedValue(null),
   }),
 }))
 
@@ -421,7 +422,7 @@ describe('setTagMapping', () => {
   test('sets mapping and returns new mappings', async () => {
     vi.mocked(db.getUserSettings).mockResolvedValue({ tag_mappings: { existing: 'Existing' } })
     vi.mocked(db.upsertUserSettings).mockResolvedValue({})
-    vi.mocked(db.updateTagNameByKey).mockResolvedValue(1)
+    vi.mocked(db.updateActivityTypeByTagKey).mockResolvedValue(1)
 
     const result = await setTagMapping('testuser', 'tag_abc', 'Coffee', '☕')
 
@@ -430,13 +431,13 @@ describe('setTagMapping', () => {
       item_icons: { Coffee: '☕' },
       tag_mappings: { existing: 'Existing', tag_abc: 'Coffee' },
     })
-    expect(db.updateTagNameByKey).toHaveBeenCalledWith('testuser', 'tag_abc', 'Coffee')
+    expect(db.updateActivityTypeByTagKey).toHaveBeenCalledWith('testuser', 'tag_abc', 'Coffee')
   })
 
   test('sets mapping without icon', async () => {
     vi.mocked(db.getUserSettings).mockResolvedValue(null)
     vi.mocked(db.upsertUserSettings).mockResolvedValue({})
-    vi.mocked(db.updateTagNameByKey).mockResolvedValue(0)
+    vi.mocked(db.updateActivityTypeByTagKey).mockResolvedValue(0)
 
     const result = await setTagMapping('testuser', 'tag_abc', 'Coffee')
 

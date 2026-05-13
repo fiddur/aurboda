@@ -1,12 +1,23 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
+import type { MealFoodItemLink } from '../db/types.ts'
+
 import * as db from '../db/index.ts'
-import { addMeal, deleteMealById, getMeal, queryMeals, updateMealById } from './meals.ts'
+import {
+  addMeal,
+  buildScaledJunctionItem,
+  deleteMealById,
+  getMeal,
+  hasIncompleteNutrients,
+  queryMeals,
+  updateMealById,
+} from './meals.ts'
 
 // Mock the db module
 vi.mock('../db', () => ({
   deleteMeal: vi.fn(),
-  findOrCreateFoodItem: vi.fn().mockResolvedValue({ id: 'fi-1', name: 'test' }),
+  findMealsContainingFoodItem: vi.fn().mockResolvedValue([]),
+  getFoodItemSensitivityNamesBatch: vi.fn().mockResolvedValue(new Map()),
   getMealById: vi.fn(),
   getMealFoodItems: vi.fn().mockResolvedValue([]),
   getMealFoodItemsBatch: vi.fn().mockResolvedValue(new Map()),
@@ -14,6 +25,41 @@ vi.mock('../db', () => ({
   setMealFoodItems: vi.fn().mockResolvedValue(undefined),
   updateMeal: vi.fn(),
   upsertMeal: vi.fn(),
+}))
+
+// meals.ts now resolves canonical food items via the merged user+central
+// service, which calls into the central DB. Stub it out so the unit tests
+// don't try to spin up a real Postgres central database.
+vi.mock('./central-db.ts', () => ({
+  getCentralDb: () => ({
+    getSharedFoodItemById: vi.fn().mockResolvedValue(null),
+    getSharedFoodItemByName: vi.fn().mockResolvedValue(null),
+    searchSharedFoodItems: vi.fn().mockResolvedValue([]),
+  }),
+}))
+
+vi.mock('./food-items.ts', () => ({
+  createFoodItemsService: () => ({
+    findOrCreate: vi.fn().mockResolvedValue({
+      default_quantity: 100,
+      default_unit: 'g',
+      icon: undefined,
+      id: 'fi-1',
+      name: 'test',
+    }),
+    getById: vi.fn().mockResolvedValue(null),
+    getByName: vi.fn().mockResolvedValue(null),
+    getDetail: vi.fn().mockResolvedValue(null),
+    search: vi.fn().mockResolvedValue([]),
+  }),
+  // The real service exports getEffectiveNutrients used by syncFoodItemsToJunction.
+  getEffectiveNutrients: vi.fn().mockReturnValue({}),
+  // No-op for unit tests — the resnapshot path calls this; the mock just
+  // returns void to satisfy the awaiter.
+  cacheCompositeNutrients: vi.fn().mockResolvedValue(undefined),
+  // Live name/icon resolver. Defaults to an empty map; individual tests can
+  // override via vi.mocked when they need to assert specific display values.
+  resolveFoodItemDisplay: vi.fn().mockResolvedValue(new Map()),
 }))
 
 const mockUpsertMeal = vi.mocked(db.upsertMeal)
@@ -56,8 +102,8 @@ describe('addMeal', () => {
       fat: 25,
       fiber: 8,
       food_items: [
-        { calories: 200, carbs: 40, name: 'Rye bread', protein: 6 },
-        { calories: 180, fat: 16, name: 'Peanut butter', protein: 7 },
+        { name: 'Rye bread', quantity: 100, unit: 'g' },
+        { name: 'Peanut butter', quantity: 30, unit: 'g' },
       ],
       meal_type: 'breakfast',
       micros: { iron: 3.2 },
@@ -233,5 +279,279 @@ describe('updateMealById', () => {
 
     expect(result.success).toBe(false)
     expect(result.error).toBe('Meal not found')
+  })
+})
+
+// ── buildScaledJunctionItem ───────────────────────────────────────────────
+
+const canonicalFoodItem = (overrides: Record<string, unknown> = {}) =>
+  ({
+    calories: 200,
+    carbs: 40,
+    created_at: new Date('2025-01-01T00:00:00Z'),
+    default_quantity: 100,
+    default_unit: 'g',
+    fat: 2,
+    fiber: 5,
+    id: 'canonical-1',
+    name: 'Rye bread',
+    name_lower: 'rye bread',
+    protein: 8,
+    source: 'manual',
+    updated_at: new Date('2025-01-01T00:00:00Z'),
+    ...overrides,
+  }) as unknown as Parameters<typeof buildScaledJunctionItem>[1]
+
+/** Default per-default-quantity nutrient values matching canonicalFoodItem(). */
+const defaultEffective = (): Record<string, number> => ({
+  calories: 200,
+  carbs: 40,
+  fat: 2,
+  fiber: 5,
+  protein: 8,
+})
+
+describe('buildScaledJunctionItem', () => {
+  test('scales nutrients linearly when quantity differs from default', () => {
+    const canonical = canonicalFoodItem()
+    const item = buildScaledJunctionItem(
+      { name: 'Rye bread', quantity: 500, unit: 'g' },
+      canonical,
+      0,
+      defaultEffective(),
+    )
+    expect(item.calories).toBe(1000)
+    expect(item.protein).toBe(40)
+    expect(item.carbs).toBe(200)
+    expect(item.fat).toBe(10)
+    expect(item.fiber).toBe(25)
+    expect(item.food_item_id).toBe('canonical-1')
+    expect(item.quantity).toBe(500)
+    expect(item.sort_order).toBe(0)
+  })
+
+  test('scales down for smaller quantities', () => {
+    const item = buildScaledJunctionItem(
+      { name: 'Rye bread', quantity: 50, unit: 'g' },
+      canonicalFoodItem(),
+      1,
+      defaultEffective(),
+    )
+    expect(item.calories).toBe(100)
+    expect(item.protein).toBe(4)
+  })
+
+  test('uses raw canonical values when quantity is missing', () => {
+    const item = buildScaledJunctionItem({ name: 'Rye bread' }, canonicalFoodItem(), 0, defaultEffective())
+    expect(item.calories).toBe(200)
+  })
+
+  test('uses raw canonical values when default_quantity is missing', () => {
+    const item = buildScaledJunctionItem(
+      { name: 'Rye bread', quantity: 500 },
+      canonicalFoodItem({ default_quantity: undefined }),
+      0,
+      defaultEffective(),
+    )
+    expect(item.calories).toBe(200)
+  })
+
+  test('falls back to scale=1 when units differ', () => {
+    const item = buildScaledJunctionItem(
+      { name: 'Rye bread', quantity: 2, unit: 'slice' },
+      canonicalFoodItem(),
+      0,
+      defaultEffective(),
+    )
+    expect(item.calories).toBe(200)
+  })
+
+  test('rounds to two decimal places', () => {
+    const item = buildScaledJunctionItem(
+      { name: 'Rye bread', quantity: 33, unit: 'g' },
+      canonicalFoodItem(),
+      0,
+      defaultEffective(),
+    )
+    expect(item.calories).toBe(66)
+    expect(item.protein).toBe(2.64)
+  })
+
+  test('snapshots effectiveValues, not the canonical row columns (composite case)', () => {
+    // Canonical has stale calories=200, but the recipe's live derived total is 320.
+    const item = buildScaledJunctionItem(
+      { name: 'Recipe', quantity: 100, unit: 'g' },
+      canonicalFoodItem(),
+      0,
+      { calories: 320, protein: 1 },
+    )
+    expect(item.calories).toBe(320)
+    expect(item.protein).toBe(1)
+  })
+})
+
+// ── hasIncompleteNutrients ─────────────────────────────────────────────────
+
+const makeLink = (overrides: Partial<MealFoodItemLink> = {}): MealFoodItemLink =>
+  ({
+    id: 'link-1',
+    meal_id: 'meal-1',
+    food_item_id: 'fi-1',
+    sort_order: 0,
+    calories: 200,
+    protein: 10,
+    carbs: 25,
+    fat: 8,
+    ...overrides,
+  }) as unknown as MealFoodItemLink
+
+describe('hasIncompleteNutrients', () => {
+  test('returns false when all items have calories', () => {
+    const links = [makeLink({ calories: 200 }), makeLink({ id: 'link-2', calories: 150 })]
+    expect(hasIncompleteNutrients(links)).toBe(false)
+  })
+
+  test('returns true when an item has undefined calories', () => {
+    const links = [makeLink({ calories: 200 }), makeLink({ id: 'link-2', calories: undefined })]
+    expect(hasIncompleteNutrients(links)).toBe(true)
+  })
+
+  test('returns false for empty array', () => {
+    expect(hasIncompleteNutrients([])).toBe(false)
+  })
+
+  test('returns false when calories is zero', () => {
+    const links = [makeLink({ calories: 0 })]
+    expect(hasIncompleteNutrients(links)).toBe(false)
+  })
+})
+
+// ── nutrient_data_incomplete in getMeal ─────────────────────────────────────
+
+const mockGetMealFoodItemsBatch = vi.mocked(db.getMealFoodItemsBatch)
+
+describe('getMeal nutrient_data_incomplete', () => {
+  test('sets nutrient_data_incomplete when a food item lacks calories', async () => {
+    mockGetMealById.mockResolvedValue({
+      created_at: new Date('2025-06-15T10:00:00Z'),
+      id: 'meal-1',
+      meal_type: 'lunch',
+      source: 'manual',
+      time: new Date('2025-06-15T12:00:00Z'),
+    })
+    mockGetMealFoodItemsBatch.mockResolvedValue(
+      new Map([['meal-1', [makeLink({ calories: 200 }), makeLink({ id: 'link-2', calories: undefined })]]]),
+    )
+
+    const result = await getMeal('testuser', 'meal-1')
+
+    expect(result.success).toBe(true)
+    expect(result.data!.nutrient_data_incomplete).toBe(true)
+  })
+
+  test('does not set nutrient_data_incomplete when all items have calories', async () => {
+    mockGetMealById.mockResolvedValue({
+      created_at: new Date('2025-06-15T10:00:00Z'),
+      id: 'meal-1',
+      meal_type: 'lunch',
+      source: 'manual',
+      time: new Date('2025-06-15T12:00:00Z'),
+    })
+    mockGetMealFoodItemsBatch.mockResolvedValue(
+      new Map([['meal-1', [makeLink({ calories: 200 }), makeLink({ id: 'link-2', calories: 150 })]]]),
+    )
+
+    const result = await getMeal('testuser', 'meal-1')
+
+    expect(result.success).toBe(true)
+    expect(result.data!.nutrient_data_incomplete).toBeUndefined()
+  })
+
+  test('does not set nutrient_data_incomplete when meal has no food items', async () => {
+    mockGetMealById.mockResolvedValue({
+      created_at: new Date('2025-06-15T10:00:00Z'),
+      id: 'meal-1',
+      meal_type: 'lunch',
+      source: 'manual',
+      time: new Date('2025-06-15T12:00:00Z'),
+    })
+    mockGetMealFoodItemsBatch.mockResolvedValue(new Map())
+
+    const result = await getMeal('testuser', 'meal-1')
+
+    expect(result.success).toBe(true)
+    expect(result.data!.nutrient_data_incomplete).toBeUndefined()
+  })
+})
+
+// ── Display fallback for deleted canonicals ─────────────────────────────────
+
+const foodItems = await import('./food-items.ts')
+const mockResolveFoodItemDisplay = vi.mocked(foodItems.resolveFoodItemDisplay)
+
+describe('food-item display fallback', () => {
+  beforeEach(() => {
+    mockResolveFoodItemDisplay.mockResolvedValue(new Map())
+  })
+
+  test('falls back to legacy snapshot name/icon when canonical is hard-deleted', async () => {
+    mockGetMealById.mockResolvedValue({
+      created_at: new Date('2026-04-26T19:00:00Z'),
+      id: 'meal-1',
+      meal_type: 'snack',
+      source: 'manual',
+      time: new Date('2026-04-26T20:00:00Z'),
+    })
+    mockGetMealFoodItemsBatch.mockResolvedValue(
+      new Map([
+        [
+          'meal-1',
+          [
+            makeLink({
+              calories: 50,
+              legacy_food_item_icon: '👻',
+              legacy_food_item_name: 'Ghost food',
+            }),
+          ],
+        ],
+      ]),
+    )
+    // Live resolution finds nothing — simulating the deleted-canonical case.
+    mockResolveFoodItemDisplay.mockResolvedValue(new Map())
+
+    const result = await getMeal('testuser', 'meal-1')
+
+    expect(result.success).toBe(true)
+    expect(result.data!.food_items?.[0].name).toBe('Ghost food')
+    expect(result.data!.food_items?.[0].icon).toBe('👻')
+  })
+
+  test('live resolution wins over the legacy snapshot when both are present', async () => {
+    mockGetMealById.mockResolvedValue({
+      created_at: new Date('2026-04-26T19:00:00Z'),
+      id: 'meal-1',
+      meal_type: 'snack',
+      source: 'manual',
+      time: new Date('2026-04-26T20:00:00Z'),
+    })
+    mockGetMealFoodItemsBatch.mockResolvedValue(
+      new Map([
+        [
+          'meal-1',
+          [
+            makeLink({
+              legacy_food_item_icon: '🍞',
+              legacy_food_item_name: 'Old name',
+            }),
+          ],
+        ],
+      ]),
+    )
+    mockResolveFoodItemDisplay.mockResolvedValue(new Map([['fi-1', { icon: '🥖', name: 'New name' }]]))
+
+    const result = await getMeal('testuser', 'meal-1')
+
+    expect(result.data!.food_items?.[0].name).toBe('New name')
+    expect(result.data!.food_items?.[0].icon).toBe('🥖')
   })
 })

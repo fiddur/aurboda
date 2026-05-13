@@ -10,7 +10,7 @@ import {
 } from './health-connect.ts'
 import { getTimeSeries } from './time-series.ts'
 
-const CONTAINER_TIMEOUT = 60_000
+const CONTAINER_TIMEOUT = 120_000
 
 describe('Health Connect Integration Tests', () => {
   beforeAll(async () => {

@@ -1,0 +1,243 @@
+/**
+ * Strava API client — OAuth2 authentication + API methods.
+ *
+ * Follows the oura/client.ts pattern: factory function returning methods
+ * for OAuth redirect, callback, token refresh, and API calls.
+ *
+ * All API methods return { data, headers } so the queue processor can
+ * read rate limit headers (X-ReadRateLimit-Usage).
+ */
+
+import type { Request, Response } from 'express'
+
+import axios, { type AxiosResponse } from 'axios'
+import { addSeconds, isFuture } from 'date-fns'
+import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
+
+import type {
+  StravaAthleteProfile,
+  StravaDetailedActivity,
+  StravaRateLimitInfo,
+  StravaStreamsResponse,
+  StravaSummaryActivity,
+  StravaTokenResponse,
+} from './types.ts'
+
+import { getOAuthToken, initializeSchema, schemaInitialized, upsertOAuthToken } from '../../db/index.ts'
+import { parseRateLimitHeaders } from './types.ts'
+
+const STRAVA_AUTH_URL = 'https://www.strava.com/oauth/authorize'
+const STRAVA_TOKEN_URL = 'https://www.strava.com/oauth/token'
+const STRAVA_API_BASE = 'https://www.strava.com/api/v3'
+const STRAVA_SCOPES = 'activity:read_all,profile:read_all,read'
+
+export interface StravaClientOptions {
+  onUserAuthenticated?: (stravaAthleteId: number, username: string) => Promise<void>
+}
+
+export type StravaCredentialGetter = () => Promise<{ clientId: string; clientSecret: string }>
+
+// HMAC-signed OAuth state parameter to prevent CSRF.
+// Format: base64url(nonce.username.hmac) — the HMAC covers nonce+username
+// so an attacker cannot forge or modify the state to link their Strava
+// account to a different user.
+const createSignedState = (username: string, secret: string): string => {
+  const nonce = randomBytes(16).toString('hex')
+  const payload = `${nonce}.${username}`
+  const hmac = createHmac('sha256', secret).update(payload).digest('hex')
+  return Buffer.from(`${payload}.${hmac}`).toString('base64url')
+}
+
+const verifySignedState = (state: string, secret: string): string | null => {
+  try {
+    const decoded = Buffer.from(state, 'base64url').toString()
+    const lastDot = decoded.lastIndexOf('.')
+    if (lastDot === -1) return null
+
+    const payload = decoded.slice(0, lastDot)
+    const receivedHmac = decoded.slice(lastDot + 1)
+
+    const expectedHmac = createHmac('sha256', secret).update(payload).digest('hex')
+    if (!timingSafeEqual(Buffer.from(receivedHmac), Buffer.from(expectedHmac))) return null
+
+    // payload is "nonce.username" — extract username after first dot
+    const firstDot = payload.indexOf('.')
+    if (firstDot === -1) return null
+    return payload.slice(firstDot + 1)
+  } catch {
+    return null
+  }
+}
+
+export interface StravaApiResponse<T> {
+  data: T
+  rateLimit: StravaRateLimitInfo
+}
+
+export const stravaClient = (
+  getCredentials: StravaCredentialGetter,
+  apiBaseUrl: string,
+  options?: StravaClientOptions,
+) => {
+  const redirectUri = `${apiBaseUrl}/auth/stravacb`
+
+  const apiGet = async <T>(path: string, token: string): Promise<StravaApiResponse<T>> => {
+    const response: AxiosResponse<T> = await axios.get(`${STRAVA_API_BASE}${path}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    return {
+      data: response.data,
+      rateLimit: parseRateLimitHeaders(response.headers as Record<string, unknown>),
+    }
+  }
+
+  return {
+    async authCb(req: Request, res: Response) {
+      const { code, state, error } = req.query as Record<string, string | undefined>
+
+      if (error || !state) {
+        return res.redirect('/data-sources/strava?error=auth_failed')
+      }
+
+      let clientId: string
+      let clientSecret: string
+      try {
+        ;({ clientId, clientSecret } = await getCredentials())
+      } catch {
+        return res.redirect('/data-sources/strava?error=not_configured')
+      }
+
+      const user = verifySignedState(state, clientSecret)
+      if (!user) {
+        return res.redirect('/data-sources/strava?error=invalid_state')
+      }
+
+      if (!(await schemaInitialized(user))) {
+        await initializeSchema(user)
+      }
+
+      try {
+        const response = await axios.post<StravaTokenResponse>(STRAVA_TOKEN_URL, {
+          client_id: clientId,
+          client_secret: clientSecret,
+          code,
+          grant_type: 'authorization_code',
+        })
+
+        const { access_token, refresh_token, expires_at, athlete } = response.data
+
+        await upsertOAuthToken(user, {
+          access_token,
+          expires_at: new Date(expires_at * 1000),
+          provider: 'strava',
+          refresh_token,
+          scopes: STRAVA_SCOPES.split(','),
+        })
+
+        if (options?.onUserAuthenticated && athlete?.id) {
+          await options.onUserAuthenticated(athlete.id, user)
+        }
+
+        return res.redirect('/data-sources/strava?connected=true')
+      } catch {
+        return res.redirect('/data-sources/strava?error=auth_failed')
+      }
+    },
+
+    async getAccessToken(user: string): Promise<string> {
+      const token = await getOAuthToken(user, 'strava')
+      if (!token) throw new Error('User has no Strava OAuth token')
+
+      // Return token if not expired (with 100 second buffer)
+      if (token.expires_at && isFuture(addSeconds(token.expires_at, -100))) {
+        return token.access_token
+      }
+
+      // Refresh the token
+      const { clientId, clientSecret } = await getCredentials()
+      const response = await axios.post<StravaTokenResponse>(STRAVA_TOKEN_URL, {
+        client_id: clientId,
+        client_secret: clientSecret,
+        grant_type: 'refresh_token',
+        refresh_token: token.refresh_token,
+      })
+
+      const { access_token, refresh_token, expires_at } = response.data
+
+      await upsertOAuthToken(user, {
+        access_token,
+        expires_at: new Date(expires_at * 1000),
+        provider: 'strava',
+        refresh_token,
+      })
+
+      return access_token
+    },
+
+    async getActivity(token: string, activityId: number): Promise<StravaApiResponse<StravaDetailedActivity>> {
+      return apiGet(`/activities/${activityId}`, token)
+    },
+
+    async getActivityStreams(
+      token: string,
+      activityId: number,
+    ): Promise<StravaApiResponse<StravaStreamsResponse>> {
+      return apiGet(
+        `/activities/${activityId}/streams?keys=heartrate,latlng,altitude,time,distance,cadence,watts,temp&key_by_type=true`,
+        token,
+      )
+    },
+
+    async getAthleteProfile(token: string): Promise<StravaApiResponse<StravaAthleteProfile>> {
+      return apiGet('/athlete', token)
+    },
+
+    // Returns the OAuth authorize URL as JSON (called with authMiddleware, uses req.user)
+    async getAuthorizeUrl(req: Request, res: Response) {
+      const user = req.user
+      if (!user) {
+        res.status(401).json({ error: 'Not authenticated', success: false })
+        return
+      }
+
+      let clientId: string
+      let clientSecret: string
+      try {
+        ;({ clientId, clientSecret } = await getCredentials())
+      } catch {
+        res
+          .status(400)
+          .json({ error: 'Strava not configured — set credentials in Admin Settings', success: false })
+        return
+      }
+
+      const state = createSignedState(user, clientSecret)
+
+      const location = new URL(STRAVA_AUTH_URL)
+      location.searchParams.append('client_id', clientId)
+      location.searchParams.append('redirect_uri', redirectUri)
+      location.searchParams.append('response_type', 'code')
+      location.searchParams.append('scope', STRAVA_SCOPES)
+      location.searchParams.append('state', state)
+      location.searchParams.append('approval_prompt', 'auto')
+
+      res.json({ success: true, url: location.toString() })
+    },
+
+    async listActivities(
+      token: string,
+      params: { before?: number; after?: number; page?: number; per_page?: number },
+    ): Promise<StravaApiResponse<StravaSummaryActivity[]>> {
+      const searchParams = new URLSearchParams()
+      if (params.before) searchParams.append('before', String(params.before))
+      if (params.after) searchParams.append('after', String(params.after))
+      if (params.page) searchParams.append('page', String(params.page))
+      searchParams.append('per_page', String(params.per_page ?? 200))
+
+      const qs = searchParams.toString()
+      return apiGet(`/athlete/activities${qs ? `?${qs}` : ''}`, token)
+    },
+  }
+}
+
+export type StravaClient = ReturnType<typeof stravaClient>

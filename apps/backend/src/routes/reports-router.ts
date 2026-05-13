@@ -1,4 +1,4 @@
-import type { RequestHandler, Router } from 'express'
+import type { RequestHandler } from 'express'
 
 /**
  * Reports route group.
@@ -19,14 +19,13 @@ import {
 } from '@aurboda/api-spec'
 
 import { addReport, deleteReportById, getReport, queryReports, updateReport } from '../services/reports.ts'
-import { typedRouter } from '../typed-router.ts'
+import { type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody, validateQuery } from '../validation.ts'
 
-export const createReportsRouter = (authMiddleware: RequestHandler): Router => {
+export const createReportsRouter = (authMiddleware: RequestHandler): TypedRouter => {
   const router = typedRouter()
 
-  // GET /reports - Query reports with optional filters
-  router.get<Record<string, string>, ReportsResponse, unknown, ReportsQuery>(
+  router.get<Record<string, never>, ReportsResponse, unknown, ReportsQuery>(
     '/',
     authMiddleware,
     validateQuery(reportsQuerySchema),
@@ -39,7 +38,6 @@ export const createReportsRouter = (authMiddleware: RequestHandler): Router => {
     },
   )
 
-  // GET /reports/:id - Get a single report
   router.get<{ id: string }, ReportResponse>('/:id', authMiddleware, async (req, res) => {
     const { id } = req.params
     const user = req.user!
@@ -53,8 +51,7 @@ export const createReportsRouter = (authMiddleware: RequestHandler): Router => {
     res.json({ data: result.data, success: true })
   })
 
-  // POST /reports - Create a new report
-  router.post<Record<string, string>, ReportResponse, AddReportBody>(
+  router.post<Record<string, never>, ReportResponse, AddReportBody>(
     '/',
     authMiddleware,
     validateBody(addReportBodySchema),
@@ -77,7 +74,6 @@ export const createReportsRouter = (authMiddleware: RequestHandler): Router => {
     },
   )
 
-  // PATCH /reports/:id - Update a report
   router.patch<{ id: string }, UpdateReportResponse, UpdateReportBody>(
     '/:id',
     authMiddleware,
@@ -102,7 +98,6 @@ export const createReportsRouter = (authMiddleware: RequestHandler): Router => {
     },
   )
 
-  // DELETE /reports/:id - Delete a report
   router.delete<{ id: string }, DeleteReportResponse>('/:id', authMiddleware, async (req, res) => {
     const { id } = req.params
     const user = req.user!
@@ -116,5 +111,5 @@ export const createReportsRouter = (authMiddleware: RequestHandler): Router => {
     res.json({ success: true })
   })
 
-  return router as unknown as Router
+  return router
 }

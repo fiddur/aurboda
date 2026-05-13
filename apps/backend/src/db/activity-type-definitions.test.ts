@@ -7,6 +7,8 @@ import {
   getActivityTypeDefinitions,
   getActivityTypeNames,
   insertActivityTypeDefinition,
+  mergeActivityTypeDefinition,
+  renameActivityTypeDefinition,
   updateActivityTypeDefinition,
 } from './activity-type-definitions.ts'
 
@@ -44,6 +46,7 @@ describe('activity-type-definitions db', () => {
     const result = await getActivityTypeDefinitions(user)
     expect(result).toEqual([
       {
+        aliases: [],
         color: '#3b82f6',
         display_category: 'sleep_rest',
         display_name: 'Sleep',
@@ -82,6 +85,7 @@ describe('activity-type-definitions db', () => {
 
     const result = await getActivityTypeDefinition(user, 'sauna')
     expect(result).toEqual({
+      aliases: [],
       color: '#ef4444',
       display_category: 'wellness',
       display_name: 'Sauna',
@@ -198,15 +202,40 @@ describe('activity-type-definitions db', () => {
   })
 
   test('deleteActivityTypeDefinition returns true on success', async () => {
-    mockQuery.mockResolvedValue({ command: 'DELETE', fields: [], oid: 0, rowCount: 1, rows: [] })
+    // 1. SELECT parent_type+is_builtin, 2. UPDATE reparent children, 3. DELETE the type
+    mockQuery
+      .mockResolvedValueOnce({
+        command: 'SELECT',
+        fields: [],
+        oid: 0,
+        rowCount: 1,
+        rows: [{ is_builtin: false, parent_type: null }],
+      })
+      .mockResolvedValueOnce({ command: 'UPDATE', fields: [], oid: 0, rowCount: 0, rows: [] })
+      .mockResolvedValueOnce({ command: 'DELETE', fields: [], oid: 0, rowCount: 1, rows: [] })
 
     expect(await deleteActivityTypeDefinition(user, 'sauna')).toBe(true)
   })
 
   test('deleteActivityTypeDefinition returns false when not found', async () => {
-    mockQuery.mockResolvedValue({ command: 'DELETE', fields: [], oid: 0, rowCount: 0, rows: [] })
+    // First SELECT returns no rows → type does not exist
+    mockQuery.mockResolvedValueOnce({ command: 'SELECT', fields: [], oid: 0, rowCount: 0, rows: [] })
 
     expect(await deleteActivityTypeDefinition(user, 'nonexistent')).toBe(false)
+  })
+
+  test('deleteActivityTypeDefinition returns false for builtin without reparenting', async () => {
+    // Only one query: SELECT returns is_builtin=true; no UPDATE / DELETE should run.
+    mockQuery.mockResolvedValueOnce({
+      command: 'SELECT',
+      fields: [],
+      oid: 0,
+      rowCount: 1,
+      rows: [{ is_builtin: true, parent_type: null }],
+    })
+
+    expect(await deleteActivityTypeDefinition(user, 'exercise')).toBe(false)
+    expect(mockQuery).toHaveBeenCalledTimes(1)
   })
 
   test('getActivityTypeNames returns name array', async () => {
@@ -220,5 +249,209 @@ describe('activity-type-definitions db', () => {
 
     const result = await getActivityTypeNames(user)
     expect(result).toEqual(['exercise', 'sleep'])
+  })
+
+  test('renameActivityTypeDefinition returns null for same name', async () => {
+    const result = await renameActivityTypeDefinition(user, 'sauna', 'sauna')
+    expect(result).toBeNull()
+    expect(mockQuery).not.toHaveBeenCalled()
+  })
+
+  test('renameActivityTypeDefinition returns null when source not found', async () => {
+    mockQuery.mockResolvedValue({ command: 'SELECT', fields: [], oid: 0, rowCount: 0, rows: [] })
+
+    const result = await renameActivityTypeDefinition(user, 'nonexistent', 'new_name')
+    expect(result).toBeNull()
+  })
+
+  test('renameActivityTypeDefinition returns null when source is built-in', async () => {
+    mockQuery.mockResolvedValue({
+      command: 'SELECT',
+      fields: [],
+      oid: 0,
+      rowCount: 1,
+      rows: [
+        {
+          aliases: ['sleep'],
+          color: '#3b82f6',
+          display_category: 'sleep_rest',
+          display_name: 'Sleep',
+          icon: null,
+          is_builtin: true,
+          name: 'sleep',
+          show_on_timeline: true,
+        },
+      ],
+    })
+
+    const result = await renameActivityTypeDefinition(user, 'sleep', 'slumber')
+    expect(result).toBeNull()
+  })
+
+  test('renameActivityTypeDefinition returns null when new name already exists', async () => {
+    mockQuery
+      // 1. Get source definition
+      .mockResolvedValueOnce({
+        command: 'SELECT',
+        fields: [],
+        oid: 0,
+        rowCount: 1,
+        rows: [
+          {
+            aliases: ['sauna'],
+            color: '#ef4444',
+            display_category: 'wellness',
+            display_name: 'Sauna',
+            icon: null,
+            is_builtin: false,
+            name: 'sauna',
+            show_on_timeline: true,
+          },
+        ],
+      })
+      // 2. Check if new name exists — it does
+      .mockResolvedValueOnce({
+        command: 'SELECT',
+        fields: [],
+        oid: 0,
+        rowCount: 1,
+        rows: [{ '?column?': 1 }],
+      })
+
+    const result = await renameActivityTypeDefinition(user, 'sauna', 'hot_bath')
+    expect(result).toBeNull()
+  })
+
+  test('renameActivityTypeDefinition renames and updates references', async () => {
+    const sourceDef = {
+      aliases: ['sauna'],
+      color: '#ef4444',
+      display_category: 'wellness',
+      display_name: 'Sauna',
+      icon: '🧖',
+      is_builtin: false,
+      name: 'sauna',
+      show_on_timeline: true,
+    }
+
+    mockQuery
+      // 1. Get source definition
+      .mockResolvedValueOnce({ command: 'SELECT', fields: [], oid: 0, rowCount: 1, rows: [sourceDef] })
+      // 2. Check new name doesn't exist
+      .mockResolvedValueOnce({ command: 'SELECT', fields: [], oid: 0, rowCount: 0, rows: [] })
+      // 3. Count activities to update
+      .mockResolvedValueOnce({ command: 'SELECT', fields: [], oid: 0, rowCount: 1, rows: [{ count: '5' }] })
+      // 4. Count deduction rules to update
+      .mockResolvedValueOnce({ command: 'SELECT', fields: [], oid: 0, rowCount: 1, rows: [{ count: '2' }] })
+      // 5. Update definition name and aliases (FK ON UPDATE CASCADE handles activities + rules)
+      .mockResolvedValueOnce({
+        command: 'UPDATE',
+        fields: [],
+        oid: 0,
+        rowCount: 1,
+        rows: [{ ...sourceDef, aliases: ['hot_sauna'], name: 'hot_sauna' }],
+      })
+      // 6. Update deduction rules conditions JSONB (not covered by FK)
+      .mockResolvedValueOnce({ command: 'UPDATE', fields: [], oid: 0, rowCount: 1, rows: [] })
+
+    const result = await renameActivityTypeDefinition(user, 'sauna', 'hot_sauna')
+
+    expect(result).not.toBeNull()
+    expect(result!.definition.name).toBe('hot_sauna')
+    expect(result!.activities_updated).toBe(5)
+    expect(result!.deduction_rules_updated).toBe(3)
+  })
+
+  test('mergeActivityTypeDefinition returns null for self-merge', async () => {
+    const result = await mergeActivityTypeDefinition(user, 'sauna', 'sauna')
+    expect(result).toBeNull()
+    expect(mockQuery).not.toHaveBeenCalled()
+  })
+
+  test('mergeActivityTypeDefinition returns null when source not found', async () => {
+    mockQuery.mockResolvedValue({ command: 'SELECT', fields: [], oid: 0, rowCount: 0, rows: [] })
+
+    const result = await mergeActivityTypeDefinition(user, 'nonexistent', 'exercise')
+    expect(result).toBeNull()
+  })
+
+  test('mergeActivityTypeDefinition returns null when source is built-in', async () => {
+    mockQuery.mockResolvedValue({
+      command: 'SELECT',
+      fields: [],
+      oid: 0,
+      rowCount: 1,
+      rows: [
+        {
+          aliases: ['exercise'],
+          color: '#3b82f6',
+          display_category: 'exercise',
+          display_name: 'Exercise',
+          icon: null,
+          is_builtin: true,
+          name: 'exercise',
+          show_on_timeline: true,
+        },
+      ],
+    })
+
+    const result = await mergeActivityTypeDefinition(user, 'exercise', 'sauna')
+    expect(result).toBeNull()
+  })
+
+  test('mergeActivityTypeDefinition merges custom type into target', async () => {
+    const sourceDef = {
+      aliases: ['old_sauna'],
+      color: '#ef4444',
+      display_category: 'wellness',
+      display_name: 'Old Sauna',
+      icon: null,
+      is_builtin: false,
+      name: 'old_sauna',
+      show_on_timeline: true,
+    }
+    const targetDef = {
+      aliases: ['sauna'],
+      color: '#f97316',
+      display_category: 'wellness',
+      display_name: 'Sauna',
+      icon: '🧖',
+      is_builtin: false,
+      name: 'sauna',
+      show_on_timeline: true,
+    }
+
+    mockQuery
+      // 1. Get source definition
+      .mockResolvedValueOnce({ command: 'SELECT', fields: [], oid: 0, rowCount: 1, rows: [sourceDef] })
+      // 2. Get target definition
+      .mockResolvedValueOnce({ command: 'SELECT', fields: [], oid: 0, rowCount: 1, rows: [targetDef] })
+      // 3. Update target aliases
+      .mockResolvedValueOnce({ command: 'UPDATE', fields: [], oid: 0, rowCount: 1, rows: [] })
+      // 4. Reassign activities
+      .mockResolvedValueOnce({ command: 'UPDATE', fields: [], oid: 0, rowCount: 3, rows: [] })
+      // 5. Reparent children of source to target
+      .mockResolvedValueOnce({ command: 'UPDATE', fields: [], oid: 0, rowCount: 0, rows: [] })
+      // 6. Update deduction rules output_activity_type
+      .mockResolvedValueOnce({ command: 'UPDATE', fields: [], oid: 0, rowCount: 1, rows: [] })
+      // 7. Update deduction rules conditions
+      .mockResolvedValueOnce({ command: 'UPDATE', fields: [], oid: 0, rowCount: 0, rows: [] })
+      // 8. Delete source
+      .mockResolvedValueOnce({ command: 'DELETE', fields: [], oid: 0, rowCount: 1, rows: [] })
+      // 9. Get updated target (getActivityTypeDefinition)
+      .mockResolvedValueOnce({
+        command: 'SELECT',
+        fields: [],
+        oid: 0,
+        rowCount: 1,
+        rows: [{ ...targetDef, aliases: ['sauna', 'old_sauna'] }],
+      })
+
+    const result = await mergeActivityTypeDefinition(user, 'old_sauna', 'sauna')
+
+    expect(result).not.toBeNull()
+    expect(result!.activities_reassigned).toBe(3)
+    expect(result!.deduction_rules_updated).toBe(1)
+    expect(result!.target.name).toBe('sauna')
   })
 })

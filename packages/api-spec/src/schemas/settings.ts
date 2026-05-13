@@ -283,6 +283,14 @@ export const userSettingsResponseSchema = baseResponseSchema
       .meta({ description: 'Whether Oura OAuth is configured on server' }),
     oura_connected: z.boolean().default(false).meta({ description: 'Whether Oura is connected via OAuth' }),
     rescue_time_key: z.string().nullable().default(null).meta({ description: 'RescueTime API key' }),
+    strava_connected: z
+      .boolean()
+      .default(false)
+      .meta({ description: 'Whether Strava is connected via OAuth' }),
+    strava_configured: z
+      .boolean()
+      .default(false)
+      .meta({ description: 'Whether Strava OAuth is configured on server' }),
     sensitivity_areas: sensitivityAreasSchema
       .default([])
       .meta({ description: 'Sensitivity areas to track in meals' }),

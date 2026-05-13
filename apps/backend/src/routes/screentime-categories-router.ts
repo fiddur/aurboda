@@ -1,4 +1,4 @@
-import type { RequestHandler, Router } from 'express'
+import type { RequestHandler } from 'express'
 
 /**
  * Screentime categories route group.
@@ -8,11 +8,21 @@ import type { RequestHandler, Router } from 'express'
 import {
   type CreateScreentimeCategoryBody,
   createScreentimeCategoryBodySchema,
+  type DeleteScreentimeCategoryResponse,
   type ImportAwCategoriesBody,
   importAwCategoriesBodySchema,
+  type MoveScreentimeCategoryBody,
+  moveScreentimeCategoryBodySchema,
+  type MoveScreentimeCategoryResponse,
+  type RecategorizeScreentimeResponse,
+  type ScreentimeCategoryDefaultsResponse,
+  type ScreentimeCategoryListResponse,
+  type ScreentimeCategoryResponse,
   type UpdateScreentimeCategoryBody,
   updateScreentimeCategoryBodySchema,
 } from '@aurboda/api-spec'
+
+import type { ScreentimeCategory as DbScreentimeCategory } from '../db/index.ts'
 
 import {
   createCategory,
@@ -26,112 +36,101 @@ import {
   removeCategory,
   upsertCategory,
 } from '../services/screentime-categories.ts'
-import { typedRouter } from '../typed-router.ts'
+import { type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody } from '../validation.ts'
 
-export const createScreentimeCategoriesRouter = (authMiddleware: RequestHandler): Router => {
+/** Serialize DB screentime category (Date timestamps) to API format (ISO strings). */
+const serializeCategory = (cat: DbScreentimeCategory) => ({
+  ...cat,
+  created_at: cat.created_at.toISOString(),
+  updated_at: cat.updated_at.toISOString(),
+})
+
+export const createScreentimeCategoriesRouter = (authMiddleware: RequestHandler): TypedRouter => {
   const router = typedRouter()
 
-  // GET / - List all categories
-  router.get<Record<string, string>, { success: boolean; data: unknown[] }>(
-    '/',
-    authMiddleware,
-    async (req, res) => {
-      const user = req.user!
-      const categories = await listCategories(user)
-      res.json({ data: categories, success: true })
-    },
-  )
+  router.get<Record<string, never>, ScreentimeCategoryListResponse>('/', authMiddleware, async (req, res) => {
+    const user = req.user!
+    const categories = await listCategories(user)
+    res.json({ data: categories.map(serializeCategory), success: true })
+  })
 
-  // GET /:id - Get a single category
-  router.get<{ id: string }, { success: boolean; data?: unknown; error?: string }>(
-    '/:id',
-    authMiddleware,
-    async (req, res) => {
-      const user = req.user!
-      const category = await getCategoryById(user, req.params.id)
-      if (!category) {
-        res.status(404).json({ error: 'Category not found', success: false })
-        return
-      }
-      res.json({ data: category, success: true })
-    },
-  )
+  router.get<{ id: string }, ScreentimeCategoryResponse>('/:id', authMiddleware, async (req, res) => {
+    const user = req.user!
+    const category = await getCategoryById(user, req.params.id)
+    if (!category) {
+      res.status(404).json({ error: 'Category not found', success: false })
+      return
+    }
+    res.json({ data: serializeCategory(category), success: true })
+  })
 
-  // POST / - Create a category
-  router.post<Record<string, string>, { success: boolean; data: unknown }>(
+  router.post<Record<string, never>, ScreentimeCategoryResponse, CreateScreentimeCategoryBody>(
     '/',
     authMiddleware,
     validateBody(createScreentimeCategoryBodySchema),
     async (req, res) => {
       const user = req.user!
-      const body = req.body as CreateScreentimeCategoryBody
       const category = await createCategory(user, {
-        color: body.color,
-        ignore_case: body.ignore_case ?? true,
-        name: body.name,
-        rule_regex: body.rule_regex,
-        rule_type: body.rule_type ?? 'none',
-        score: body.score,
-        sort_order: body.sort_order,
+        color: req.body.color,
+        ignore_case: req.body.ignore_case ?? true,
+        name: req.body.name,
+        rule_regex: req.body.rule_regex,
+        rule_type: req.body.rule_type ?? 'none',
+        score: req.body.score,
+        sort_order: req.body.sort_order,
       })
-      res.status(201).json({ data: category, success: true })
+      res.status(201).json({ data: serializeCategory(category), success: true })
     },
   )
 
-  // PUT /:id - Upsert a category (create with client-generated UUID or full update)
-  router.put<{ id: string }, { success: boolean; data: unknown }>(
+  router.put<{ id: string }, ScreentimeCategoryResponse, CreateScreentimeCategoryBody>(
     '/:id',
     authMiddleware,
     validateBody(createScreentimeCategoryBodySchema),
     async (req, res) => {
       const user = req.user!
-      const body = req.body as CreateScreentimeCategoryBody
       const category = await upsertCategory(user, req.params.id, {
-        color: body.color,
-        exclude_from_screentime: body.exclude_from_screentime,
-        ignore_case: body.ignore_case ?? true,
-        name: body.name,
-        rule_regex: body.rule_regex,
-        rule_type: body.rule_type ?? 'none',
-        score: body.score,
-        sort_order: body.sort_order,
+        color: req.body.color,
+        exclude_from_screentime: req.body.exclude_from_screentime,
+        ignore_case: req.body.ignore_case ?? true,
+        name: req.body.name,
+        rule_regex: req.body.rule_regex,
+        rule_type: req.body.rule_type ?? 'none',
+        score: req.body.score,
+        sort_order: req.body.sort_order,
       })
-      res.json({ data: category, success: true })
+      res.json({ data: serializeCategory(category), success: true })
     },
   )
 
-  // PATCH /:id - Partial update a category
-  router.patch<{ id: string }, { success: boolean; data?: unknown; error?: string }>(
+  router.patch<{ id: string }, ScreentimeCategoryResponse, UpdateScreentimeCategoryBody>(
     '/:id',
     authMiddleware,
     validateBody(updateScreentimeCategoryBodySchema),
     async (req, res) => {
       const user = req.user!
-      const body = req.body as UpdateScreentimeCategoryBody
-      const category = await modifyCategory(user, req.params.id, body)
+      const category = await modifyCategory(user, req.params.id, req.body)
       if (!category) {
         res.status(404).json({ error: 'Category not found', success: false })
         return
       }
-      res.json({ data: category, success: true })
+      res.json({ data: serializeCategory(category), success: true })
     },
   )
 
-  // PATCH /:id/move - Move a category to a new parent
-  router.patch<{ id: string }, { success: boolean; updated: number }>(
+  router.patch<{ id: string }, MoveScreentimeCategoryResponse, MoveScreentimeCategoryBody>(
     '/:id/move',
     authMiddleware,
+    validateBody(moveScreentimeCategoryBodySchema),
     async (req, res) => {
       const user = req.user!
-      const { new_parent_id } = req.body as { new_parent_id: string | null }
-      const result = await moveCategoryToParent(user, req.params.id, new_parent_id)
+      const result = await moveCategoryToParent(user, req.params.id, req.body.new_parent_id)
       res.json({ success: result.updated > 0, updated: result.updated })
     },
   )
 
-  // DELETE /:id - Delete a category and its children
-  router.delete<{ id: string }, { success: boolean; deleted?: number; error?: string }>(
+  router.delete<{ id: string }, DeleteScreentimeCategoryResponse>(
     '/:id',
     authMiddleware,
     async (req, res) => {
@@ -145,55 +144,37 @@ export const createScreentimeCategoriesRouter = (authMiddleware: RequestHandler)
     },
   )
 
-  // POST /import-activitywatch - Import categories from ActivityWatch
-  router.post<Record<string, string>, { success: boolean; data?: unknown; error?: string }>(
+  router.post<Record<string, never>, ScreentimeCategoryListResponse, ImportAwCategoriesBody>(
     '/import-activitywatch',
     authMiddleware,
     validateBody(importAwCategoriesBodySchema),
     async (req, res) => {
       const user = req.user!
-      const body = req.body as ImportAwCategoriesBody
 
-      try {
-        let awCategories = body.categories
+      let awCategories = req.body.categories
 
-        if (!awCategories) {
-          // Fetch from ActivityWatch server
-          const serverUrl = body.url || 'http://localhost:5600'
-          awCategories = await fetchAwCategories(serverUrl)
-        }
-
-        const result = await importFromActivityWatch(user, awCategories, body.replace ?? false)
-        res.json({ data: result, success: true })
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Import failed'
-        res.status(400).json({ error: message, success: false })
+      if (!awCategories) {
+        const serverUrl = req.body.url || 'http://localhost:5600'
+        awCategories = await fetchAwCategories(serverUrl)
       }
+
+      const result = await importFromActivityWatch(user, awCategories, req.body.replace ?? false)
+      res.json({ data: result.map(serializeCategory), success: true })
     },
   )
 
-  // POST /recategorize - Force full recategorization
-  router.post<Record<string, string>, { success: boolean; records_updated?: number; error?: string }>(
+  router.post<Record<string, never>, RecategorizeScreentimeResponse>(
     '/recategorize',
     authMiddleware,
     async (req, res) => {
       const user = req.user!
 
-      // Start recategorization and respond immediately
-      const countPromise = recategorizeAll(user)
-
-      try {
-        const count = await countPromise
-        res.json({ records_updated: count, success: true })
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Recategorization failed'
-        res.status(500).json({ error: message, success: false })
-      }
+      const count = await recategorizeAll(user)
+      res.json({ records_updated: count, success: true })
     },
   )
 
-  // GET /defaults - Get default category suggestions
-  router.get<Record<string, string>, { success: boolean; data: unknown[] }>(
+  router.get<Record<string, never>, ScreentimeCategoryDefaultsResponse>(
     '/defaults',
     authMiddleware,
     async (_req, res) => {
@@ -202,5 +183,5 @@ export const createScreentimeCategoriesRouter = (authMiddleware: RequestHandler)
     },
   )
 
-  return router as unknown as Router
+  return router
 }

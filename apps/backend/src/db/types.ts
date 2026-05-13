@@ -7,10 +7,15 @@
 import type {
   ActivityType,
   BiologicalSex,
+  Confidence,
   DashboardConfig,
   DataSource,
+  EntityType,
   GarminDataType,
+  GeocodeStatus,
   MetricType,
+  ReportFlag,
+  SyncStatus,
   TrainingLoadSettings,
 } from '@aurboda/api-spec'
 
@@ -73,13 +78,28 @@ export interface BucketedMetricData {
 export interface Activity {
   id?: string
   source: DataSource
+  external_id?: string
   activity_type: ActivityType
   start_time: Date
   end_time?: Date
   title?: string
-  notes?: string
   data?: Record<string, unknown>
   deleted_at?: Date
+  /** If set, this activity is a cross-source duplicate of the referenced activity. */
+  superseded_by?: string
+  /**
+   * The synced activity ids this aurboda row is an override of. A
+   * non-empty array marks this row as an override; the listed ids are
+   * hidden by it in merged views and survive integration re-syncs.
+   * Cascades on any target's delete: each target's removal unlinks it
+   * from the override (the override row stays and its `override_target_ids`
+   * shrinks); deleting the override removes all links.
+   *
+   * Multi-target overrides (#735) — one aurboda row may claim a
+   * cross-source merge group as a whole rather than just one source row.
+   * Only aurboda rows may carry an override.
+   */
+  override_target_ids?: string[]
 }
 
 export interface MergedActivity extends Activity {
@@ -89,9 +109,8 @@ export interface MergedActivity extends Activity {
 export interface ActivityUpdate {
   activity_type?: ActivityType
   start_time?: Date
-  end_time?: Date
+  end_time?: Date | null
   title?: string
-  notes?: string
   data?: Record<string, unknown>
 }
 
@@ -127,6 +146,7 @@ export interface NamedLocation {
   lat: number
   lon: number
   radius: number
+  auto_create_activity: boolean
   created_at: Date
   updated_at: Date
 }
@@ -136,9 +156,10 @@ export interface NamedLocationInput {
   lat: number
   lon: number
   radius?: number
+  auto_create_activity?: boolean
 }
 
-export type GeocodeStatus = 'pending' | 'geocoding' | 'success' | 'failed'
+export type { GeocodeStatus }
 
 export interface DetectedLocation {
   id: string
@@ -178,35 +199,6 @@ export interface DetectedLocationUpdate {
 }
 
 // ============================================================================
-// Tag Definitions
-// ============================================================================
-
-export interface TagDefinition {
-  id: string
-  name: string
-  icon?: string
-  aliases: string[]
-  created_at: Date
-  updated_at: Date
-}
-
-// ============================================================================
-// Tags
-// ============================================================================
-
-export interface Tag {
-  id?: string
-  source: DataSource
-  external_id?: string
-  tag: string
-  tag_key?: string
-  tag_definition_id?: string
-  start_time: Date
-  end_time?: Date
-  deleted_at?: Date
-}
-
-// ============================================================================
 // Productivity
 // ============================================================================
 
@@ -240,6 +232,10 @@ export interface ScreentimeCategory {
   score?: number
   exclude_from_screentime?: boolean
   sort_order: number
+  /** Slug pointing at the linked `activity_type_definitions` row. Set on first sync; never auto-changed. */
+  activity_type_name?: string
+  /** True when this category created the linked activity_type; false when it converged onto a pre-existing one. */
+  category_owns_type?: boolean
   created_at: Date
   updated_at: Date
 }
@@ -259,7 +255,7 @@ export interface ScreentimeCategoryInput {
 // Notes
 // ============================================================================
 
-export type EntityType = 'activity' | 'tag' | 'productivity' | 'metric' | 'report'
+export type { EntityType }
 
 export interface Note {
   id: string
@@ -298,8 +294,8 @@ export interface LabResult {
 // Reports (structured lab results)
 // ============================================================================
 
-export type ReportConfidence = 'measured' | 'estimated' | 'derived'
-export type ReportFlag = 'critical_low' | 'low' | 'normal' | 'high' | 'critical_high'
+export type ReportConfidence = Confidence
+export type { ReportFlag }
 
 export interface ReportEntry {
   id: string
@@ -334,6 +330,8 @@ export type Micros = Record<string, NutrientValue>
 export interface MealFoodItem {
   food_item_id?: string
   name: string
+  /** Icon for display — resolved live from the canonical food item; not snapshotted. */
+  icon?: string
   quantity?: number
   unit?: string
   calories?: number
@@ -342,6 +340,8 @@ export interface MealFoodItem {
   fat?: number
   fiber?: number
   micros?: Micros
+  /** Sensitivity flag names — resolved live from food_item_sensitivities; not snapshotted. */
+  sensitivities?: string[]
 }
 
 export interface Meal {
@@ -371,12 +371,19 @@ export interface FoodItemEntity {
   name: string
   name_lower: string
   source: string
+  source_id?: string
+  is_composite?: boolean
+  /** Soft pointer to a richer canonical food item (per-user OR central) used to inherit empty micronutrient fields. */
+  reference_food_item_id?: string
   default_quantity?: number
   default_unit?: string
-  // All ~65 nutrient fields are optional numbers.
-  // Using Record for the nutrient fields to avoid 65 lines of boilerplate.
-  // At runtime these are individual columns, but in TypeScript we use an index signature.
-  [nutrient: string]: string | number | Date | undefined
+  // ~65 nutrient fields are optional numbers, accessed dynamically via
+  // NUTRIENT_FIELD_NAMES from api-spec. The index signature has to cover
+  // every named field above too, hence the broad union — it loosens type
+  // safety on nutrient destructuring as a trade-off for not boilerplating
+  // 65 explicit columns. A dedicated cleanup PR could replace this with
+  // `extends Partial<NutrientFields>` and drop the index signature.
+  [nutrient: string]: string | number | boolean | Date | undefined
   created_at: Date
   updated_at: Date
 }
@@ -385,12 +392,19 @@ export interface MealFoodItemLink {
   id: string
   meal_id: string
   food_item_id: string
-  food_item_name?: string // populated via JOIN
+  /**
+   * Last-known name from the row's pre-PR snapshot column. Read-only
+   * fallback for rows whose canonical food_item has been hard-deleted —
+   * live resolution wins when the canonical row is still around.
+   */
+  legacy_food_item_name?: string
+  /** Last-known icon from the snapshot column. See `legacy_food_item_name`. */
+  legacy_food_item_icon?: string
   quantity?: number
   unit?: string
   sort_order: number
   // Nutrient snapshot — same fields as FoodItemEntity
-  [nutrient: string]: string | number | Date | undefined
+  [nutrient: string]: string | number | boolean | Date | undefined
 }
 
 // ============================================================================
@@ -409,7 +423,7 @@ export interface OAuthToken {
 // Sync State
 // ============================================================================
 
-export type SyncStatus = 'idle' | 'syncing' | 'error' | 'rate_limited'
+export type { SyncStatus }
 
 export interface SyncState {
   id?: string
@@ -460,37 +474,6 @@ export interface UserSettings {
   tag_mappings?: Record<string, string> // Tag name mappings from UUIDs to display names
   training_load?: TrainingLoadSettings // Training load (Banister model) parameters
   garmin_disabled_data_types?: GarminDataType[] // Garmin data types to skip during sync
-}
-
-// ============================================================================
-// Last.fm Tag Rules
-// ============================================================================
-
-export type LastFmMatchType = 'track' | 'artist' | 'track_artist'
-export type LastFmMatchMode = 'exact' | 'contains'
-
-export interface LastFmTagRule {
-  id: string
-  rule_name: string
-  match_type: LastFmMatchType
-  track_name?: string
-  artist_name?: string
-  artist_names?: string[]
-  match_mode: LastFmMatchMode
-  tag_name: string
-  merge_gap_seconds?: number
-  created_at: Date
-}
-
-export interface LastFmTagRuleInput {
-  rule_name: string
-  match_type: LastFmMatchType
-  track_name?: string
-  artist_name?: string
-  artist_names?: string[]
-  match_mode?: LastFmMatchMode
-  tag_name: string
-  merge_gap_seconds?: number
 }
 
 // ============================================================================

@@ -1,86 +1,74 @@
 /**
  * Express server entry point.
  *
- * Route handlers are split into focused modules under routes/.
- * This file handles: server setup, middleware, auth routes, and router mounting.
+ * Setup is split across helpers in `api/`:
+ *   - middleware.ts  — audit log, auth, admin
+ *   - auth-routes.ts — /version, /status, /signup, /login, /auth/token
+ *   - oauth-routes.ts — Garmin / Strava / Oura connect+disconnect
+ *   - sync-setup.ts  — `/sync` router wiring
+ *   - webhooks-setup.ts — Strava + Oura push integrations
+ *   - rest-routes.ts — per-domain REST router mounts
+ *
+ * This file orchestrates: clients, queues, central DB, auth, error handler,
+ * server lifecycle.
  */
-import type { LoginResponse, ServerStatusResponse, SignupResponse } from '@aurboda/api-spec'
-
 import cors from 'cors'
-import express, { json, type RequestHandler } from 'express'
+import express, { json, type NextFunction, type Request, type Response } from 'express'
 import { Client } from 'pg'
 
-import type { OuraDataType } from './oura-sync.ts'
-
-import { processActivityWatchEvents } from './activitywatch-sync.ts'
+import { registerAuthRoutes } from './api/auth-routes.ts'
+import { createAdminMiddleware, createAuditLogMiddleware, createAuthMiddleware } from './api/middleware.ts'
+import { registerOAuthRoutes } from './api/oauth-routes.ts'
+import { mountRestRouters } from './api/rest-routes.ts'
+import { mountSyncRouter } from './api/sync-setup.ts'
+import { setupOuraWebhook, setupStravaWebhook } from './api/webhooks-setup.ts'
 import { createAuth } from './auth.ts'
 import {
-  ackOutboundSync,
-  deleteHealthConnectRecords,
-  getAllSyncStates,
+  deleteRuleActivities,
+  getDeductionRulesByIds,
   getDetectedLocationById,
-  getOutboundSyncHistory,
-  getPendingOutboundSync,
-  reportSyncFailure,
-  requeueOutboundSync,
-  initializeSchema,
+  getEnabledDeductionRules,
+  getNamedLocations,
+  insertActivities,
+  insertActivity,
   insertLocation,
+  insertLocations,
   insertPlace,
+  insertRawRecord,
+  insertTimeSeries,
   loginToUserDb,
-  makeNewUserDb,
-  migrateSchema,
-  processDailyAggregate,
-  processHealthConnectBatch,
-  processHealthConnectData,
-  query,
-  resetSyncState,
-  schemaInitialized,
+  resolveOrCreateActivityType,
+  softDeleteLocationRange,
   updateDetectedLocation,
-  upsertUserSettings,
+  upsertSyncState,
 } from './db/index.ts'
-import { syncAllGarminData } from './garmin-sync.ts'
-import { garminClient } from './garmin.ts'
-import { syncAllCalendars } from './ical-sync.ts'
-import { createLastFmRouter } from './lastfm-router.ts'
-import { syncLastFmData } from './lastfm-sync.ts'
+import { httpError, isHttpError } from './http-error.ts'
+import { garminClient } from './integrations/garmin/client.ts'
+import { ouraClient } from './integrations/oura/client.ts'
+import { createOwnTracksRouter } from './integrations/owntracks/router.ts'
+import { stravaClient } from './integrations/strava/client.ts'
 import { createMcpRouter } from './mcp.ts'
-import { syncAllOuraData, syncOuraDataType } from './oura-sync.ts'
-import { ouraClient } from './oura.ts'
-import { createOwnTracksRouter } from './owntracks.ts'
-import { syncRescueTimeData } from './rescuetime-sync.ts'
-import { createActivitiesRouter } from './routes/activities-router.ts'
-import { createActivityTypesRouter } from './routes/activity-types-router.ts'
-import { createAdminRouter } from './routes/admin-router.ts'
-import { createAuditLogRouter } from './routes/audit-log-router.ts'
-import { createChartDataRouter } from './routes/chart-data-router.ts'
-import { createCorrelationsRouter } from './routes/correlations-router.ts'
-import { createDashboardRouter } from './routes/dashboard-router.ts'
-import { createDeductionRulesRouter } from './routes/deduction-rules-router.ts'
-import { createFoodItemsRouter } from './routes/food-items-router.ts'
-import { createIconsRouter } from './routes/icons-router.ts'
-import { createLocationsRouter } from './routes/locations-router.ts'
-import { createMealsRouter } from './routes/meals-router.ts'
-import { createMetricsRouter } from './routes/metrics-router.ts'
-import { createNotesRouter } from './routes/notes-router.ts'
 import { createOAuthRouter } from './routes/oauth-router.ts'
-import { createReportsRouter } from './routes/reports-router.ts'
-import { createScreentimeCategoriesRouter } from './routes/screentime-categories-router.ts'
-import { createSettingsRouter } from './routes/settings-router.ts'
-import { createTagsRouter } from './routes/tags-router.ts'
-import { createTrainingLoadRouter } from './routes/training-load-router.ts'
-import { createTrendsRouter } from './routes/trends-router.ts'
-import { auditError, auditInfo, pruneAuditLog } from './services/audit-log.ts'
+import { auditError } from './services/audit-log.ts'
 import { triggerCalorieComputation } from './services/calorie-computation.ts'
+import { createCalorieQueue, type CalorieQueue } from './services/calorie-queue.ts'
 import { getCentralDb, initializeCentralDb } from './services/central-db.ts'
 import { createDefaultEngineDeps } from './services/deduction-deps.ts'
+import { buildFullWindow, evaluateAllRules } from './services/deduction-engine.ts'
+import {
+  type ActivityNotifier,
+  createDeductionQueue,
+  type DeductionQueue,
+} from './services/deduction-queue.ts'
 import { createDetectionTrigger, type DetectionTrigger } from './services/detection-trigger.ts'
 import { runDetectionForUser } from './services/detection-worker.ts'
-import { createGeocodeQueue, type GeocodeQueue } from './services/geocode-queue.ts'
+import { createGeocodeQueue } from './services/geocode-queue.ts'
 import { createInvitationAuth } from './services/invitation.ts'
-import { createOuraWebhookManager, type OuraWebhookManager } from './services/oura-webhook-manager.ts'
-import { getSettings } from './services/settings.ts'
+import { getPlaceVisits } from './services/locations.ts'
+import { createPgBoss } from './services/pg-boss.ts'
+import { createStravaQueue, type StravaQueue } from './services/strava-queue.ts'
 import { createSyncProvider } from './services/sync-provider.ts'
-import { createSyncRouter } from './sync-router.ts'
+import { createWebAuthnService } from './services/webauthn.ts'
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -91,27 +79,107 @@ declare global {
   }
 }
 
+// eslint-disable-next-line complexity -- server setup orchestration
 const main = async () => {
-  const unauthorized = Object.assign(new Error('Unauthorized'), {
-    status: 401,
-  })
-  const forbidden = Object.assign(new Error('Forbidden'), { status: 403 })
+  const unauthorized = httpError(401, 'Unauthorized')
+  const forbidden = httpError(403, 'Forbidden')
 
   const sessionSecret = process.env.SESSION_SECRET ?? ''
   const auth = createAuth(sessionSecret)
   const invitationAuth = createInvitationAuth(sessionSecret)
+
+  // Callbacks to run after httpd.listen() — for tasks that need the server to be reachable
+  const postListenCallbacks: Array<() => Promise<void>> = []
 
   // Initialize central database (server settings, admins)
   await initializeCentralDb()
   const centralDb = getCentralDb()
 
   const webHost = process.env.WEB_HOST ?? 'http://localhost:5173'
-  const oura = ouraClient(process.env.OURA_CLIENT ?? '', process.env.OURA_SECRET ?? '', webHost, {
+  const apiBaseUrl = process.env.API_BASE_URL ?? 'http://localhost:3000'
+  console.info(`🌐 WEB_HOST=${webHost} API_BASE_URL=${apiBaseUrl}`)
+
+  // WebAuthn / passkey configuration. The Relying Party ID must match the
+  // origin the user's browser sees (i.e. the web host) — not the API host,
+  // which can be on a different subdomain.
+  const deriveHost = (url: string, label: string): string => {
+    try {
+      return new URL(url).hostname
+    } catch {
+      console.warn(
+        `⚠️ Could not parse ${label}=${url} for WebAuthn RP ID; falling back to "localhost". ` +
+          `Set WEBAUTHN_RP_ID explicitly to silence this.`,
+      )
+      return 'localhost'
+    }
+  }
+  const rpID = process.env.WEBAUTHN_RP_ID ?? deriveHost(webHost, 'WEB_HOST')
+  const rpName = process.env.WEBAUTHN_RP_NAME ?? 'Aurboda'
+  const expectedOrigins = (process.env.WEBAUTHN_ORIGINS ?? webHost)
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+  const webAuthn = createWebAuthnService({ expectedOrigins, rpID, rpName }, centralDb)
+  console.info(`🔐 WebAuthn rpID=${rpID} origins=${expectedOrigins.join(',')}`)
+
+  const androidPackageName = process.env.ANDROID_APP_PACKAGE ?? 'net.aurboda'
+  const androidFingerprints = (process.env.ANDROID_APP_FINGERPRINTS ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+  const wellKnown = { androidFingerprints, androidPackageName }
+
+  // Migrate legacy OURA_CLIENT/OURA_SECRET env vars into server_settings if DB empty
+  const envOuraClientId = process.env.OURA_CLIENT
+  const envOuraClientSecret = process.env.OURA_SECRET
+  if (envOuraClientId || envOuraClientSecret) {
+    const [existingId, existingSecret] = await Promise.all([
+      centralDb.getServerSetting('oura_client_id'),
+      centralDb.getServerSetting('oura_client_secret'),
+    ])
+    if (!existingId && envOuraClientId) {
+      await centralDb.setServerSetting('oura_client_id', envOuraClientId)
+      console.info('Migrated OURA_CLIENT env → server_settings.oura_client_id')
+    }
+    if (!existingSecret && envOuraClientSecret) {
+      await centralDb.setServerSetting('oura_client_secret', envOuraClientSecret)
+      console.info('Migrated OURA_SECRET env → server_settings.oura_client_secret')
+    }
+    console.info('DEPRECATION: OURA_CLIENT/OURA_SECRET envs are deprecated. Use Admin Settings.')
+  }
+
+  const getOuraCredentials = async () => {
+    const [clientId, clientSecret] = await Promise.all([
+      centralDb.getServerSetting('oura_client_id'),
+      centralDb.getServerSetting('oura_client_secret'),
+    ])
+    if (!clientId || !clientSecret) {
+      throw new Error('Oura not configured — set credentials in Admin Settings')
+    }
+    return { clientId, clientSecret }
+  }
+
+  const oura = ouraClient(getOuraCredentials, apiBaseUrl, {
     onUserAuthenticated: (ouraUserId, username) => centralDb.upsertOuraUserMapping(ouraUserId, username),
   })
 
   // Create Garmin client (no server-side credentials needed - uses per-user session tokens)
   const garmin = garminClient()
+
+  // Create Strava client with dynamic credentials (reads from DB on each request)
+  const getStravaCredentials = async () => {
+    const clientId = await centralDb.getServerSetting('strava_client_id')
+    const clientSecret = await centralDb.getServerSetting('strava_client_secret')
+    if (!clientId || !clientSecret) {
+      throw new Error('Strava not configured — set credentials in Admin Settings')
+    }
+    return { clientId, clientSecret }
+  }
+
+  const strava = stravaClient(getStravaCredentials, apiBaseUrl, {
+    onUserAuthenticated: (stravaAthleteId, username) =>
+      centralDb.upsertStravaAthleteMapping(stravaAthleteId, username),
+  })
 
   // Create sync provider for auto-syncing data before queries
   const syncProvider = createSyncProvider({
@@ -119,6 +187,86 @@ const main = async () => {
     getLastFmApiKey: () => centralDb.getLastFmApiKey(),
     oura,
   })
+
+  // Initialize shared pg-boss instance and job queues (before MCP mount)
+  const boss = await createPgBoss()
+
+  let deductionQueue: DeductionQueue | null = null
+  const activityNotifier: ActivityNotifier = (user, activityType, start, end, sourceRuleId) => {
+    deductionQueue?.enqueueEvaluation({
+      activity_type: activityType,
+      source_rule_id: sourceRuleId,
+      user,
+      window_end: end.toISOString(),
+      window_start: start.toISOString(),
+    })
+  }
+  const engineDeps = createDefaultEngineDeps(activityNotifier)
+
+  if (boss) {
+    try {
+      deductionQueue = await createDeductionQueue(boss, {
+        buildFullWindow: (user) => buildFullWindow(user, engineDeps),
+        deleteRuleActivities,
+        engineDeps,
+        evaluateAllRules,
+        getDeductionRules: getDeductionRulesByIds,
+        getEnabledRules: getEnabledDeductionRules,
+      })
+    } catch (error) {
+      console.error('Failed to initialize deduction queue:', error)
+    }
+  }
+  if (!deductionQueue) {
+    console.warn('⚠️ Deduction auto-evaluation disabled - rules will only run on manual trigger')
+  }
+
+  // Initialize calorie computation queue (uses shared boss).
+  // Without this, HR ingestion falls back to fire-and-forget which still
+  // returns the response fast but loses the cross-instance batching.
+  let calorieQueue: CalorieQueue | null = null
+  if (boss) {
+    try {
+      calorieQueue = await createCalorieQueue(boss, { triggerCalorieComputation })
+    } catch (error) {
+      console.error('Failed to initialize calorie queue:', error)
+    }
+  }
+  if (!calorieQueue) {
+    console.warn('⚠️ Calorie queue disabled - HR ingestion will fire-and-forget computation')
+  }
+
+  // Initialize Strava queue (uses shared boss + strava client)
+  let stravaQueue: StravaQueue | null = null
+  if (boss) {
+    try {
+      stravaQueue = await createStravaQueue(boss, {
+        getAccessToken: (user) => strava.getAccessToken(user),
+        getActivity: (token, id) => strava.getActivity(token, id),
+        getActivityStreams: (token, id) => strava.getActivityStreams(token, id),
+        listActivities: (token, params) => strava.listActivities(token, params),
+        processDeps: {
+          insertActivity,
+          insertLocations,
+          insertRawRecord,
+          insertTimeSeries,
+          resolveOrCreateActivityType,
+          softDeleteLocationRange,
+        },
+        updateSyncState: async (user, dataType, updates) => {
+          await upsertSyncState(user, {
+            data_type: dataType,
+            provider: 'strava',
+            status: (updates.status as 'idle' | 'syncing' | 'error' | 'rate_limited') ?? 'idle',
+            error_message: updates.error_message as string | undefined,
+            last_sync_time: updates.last_sync_time as Date | undefined,
+          })
+        },
+      })
+    } catch (error) {
+      console.error('Failed to initialize Strava queue:', error)
+    }
+  }
 
   const httpd = express()
 
@@ -133,424 +281,105 @@ const main = async () => {
 
   // Mount MCP server BEFORE body-parser (MCP SDK needs raw body)
   // Stateless mode — no session tracking needed (tools only, no subscriptions)
-  httpd.use('/mcp', createMcpRouter(auth, { centralDb, garmin, oura, sync: syncProvider }))
+  httpd.use(
+    '/mcp',
+    createMcpRouter(auth, {
+      centralDb,
+      deductionQueue: deductionQueue ?? undefined,
+      engineDeps,
+      garmin,
+      onActivityMutated: activityNotifier,
+      oura,
+      stravaQueue: stravaQueue ?? undefined,
+      sync: syncProvider,
+    }),
+  )
 
   httpd.use(json({ limit: '10mb' }))
 
-  // Log mutations to the user's audit log (GET requests are silent)
-  httpd.use((req, res, next) => {
-    if (req.method !== 'GET' && req.method !== 'OPTIONS' && req.method !== 'HEAD') {
-      const user = (() => {
-        try {
-          const authHeader = req.headers.authorization
-          if (typeof authHeader === 'string') {
-            return auth.getUsernameFromToken(authHeader.slice('bearer '.length))
-          }
-        } catch {}
-        return undefined
-      })()
+  // Audit-log middleware: records non-GET requests with response status / body
+  httpd.use(createAuditLogMiddleware(auth))
 
-      if (user) {
-        const sanitizedBody =
-          req.body && typeof req.body === 'object'
-            ? Object.fromEntries(
-                Object.entries(req.body as Record<string, unknown>).map(([k, v]) =>
-                  k === 'password' ? [k, '[REDACTED]'] : [k, v],
-                ),
-              )
-            : undefined
-        auditInfo(user, 'data', `${req.method} ${req.path}`, sanitizedBody)
-      }
-    }
-    next()
+  const authMiddleware = createAuthMiddleware(auth, unauthorized)
+  const adminMiddleware = createAdminMiddleware(centralDb, unauthorized, forbidden)
+
+  // Auth-related routes (version, status, signup, login, /auth/token)
+  registerAuthRoutes({
+    httpd,
+    auth,
+    authMiddleware,
+    centralDb,
+    invitationAuth,
+    userDb,
+    unauthorized,
   })
 
-  const authMiddleware: RequestHandler = (req, res, next) => {
-    try {
-      if (typeof req.headers.authorization === 'string') {
-        const token = req.headers.authorization.slice('bearer '.length)
-        req.user = auth.getUsernameFromToken(token)
-        return next()
-      }
-    } catch {
-      return next(unauthorized)
-    }
-    return next(unauthorized)
-  }
-
-  const adminMiddleware: RequestHandler = async (req, res, next) => {
-    if (!req.user) {
-      return next(unauthorized)
-    }
-    const isAdmin = await centralDb.isAdmin(req.user)
-    if (!isAdmin) {
-      return next(forbidden)
-    }
-    next()
-  }
-
-  // ==========================================================================
-  // Auth routes (stay here - tightly coupled to server setup)
-  // ==========================================================================
-
-  httpd.get('/version', (_req, res) => {
-    res.json({
-      build_sha: process.env.BUILD_SHA ?? 'dev',
-      success: true,
-    })
+  // /sync router (cross-provider sync orchestration)
+  mountSyncRouter({
+    httpd,
+    authMiddleware,
+    centralDb,
+    oura,
+    garmin,
+    stravaQueue,
+    calorieQueue,
+    activityNotifier,
   })
 
-  httpd.get<Record<string, never>, ServerStatusResponse>('/status', async (_req, res) => {
-    const signupMode = await centralDb.getSignupMode()
-    res.json({
-      signup_allowed: signupMode === 'open',
-      signup_mode: signupMode,
-      success: true,
-    })
+  // Per-provider OAuth/connect endpoints
+  registerOAuthRoutes({
+    httpd,
+    authMiddleware,
+    centralDb,
+    garmin,
+    oura,
+    strava,
   })
 
-  // eslint-disable-next-line complexity -- signup validation logic
-  httpd.post<Record<string, never>, SignupResponse>('/signup', async (req, res, next) => {
-    const signupMode = await centralDb.getSignupMode()
-
-    if (signupMode === 'closed') {
-      res.status(403).json({ error: 'Signup is currently closed', success: false })
-      return
-    }
-
-    const { username: user, password, invitation } = req.body
-
-    // In invite_only mode, require valid invitation token
-    if (signupMode === 'invite_only') {
-      if (!invitation || typeof invitation !== 'string') {
-        res.status(403).json({
-          error: 'An invitation is required to sign up',
-          success: false,
-        })
-        return
-      }
-      const validation = invitationAuth.validateInvitationToken(invitation)
-      if (!validation.valid) {
-        const errorMsg = validation.expired ? 'Invitation has expired' : 'Invalid invitation'
-        res.status(403).json({ error: errorMsg, success: false })
-        return
-      }
-    }
-
-    if (!user || typeof user !== 'string' || !password || typeof password !== 'string') {
-      res.status(400).json({
-        error: 'Username and password are required',
-        success: false,
-      })
-      return
-    }
-
-    // Validate username format (alphanumeric, lowercase, no special chars for PostgreSQL role)
-    if (!/^[a-z][a-z0-9_]{2,30}$/.test(user)) {
-      res.status(400).json({
-        error:
-          'Username must be 3-31 characters, start with a letter, and contain only lowercase letters, numbers, and underscores',
-        success: false,
-      })
-      return
-    }
-
-    // Block reserved PostgreSQL and system usernames
-    const reservedUsernames = [
-      'postgres',
-      'admin',
-      'root',
-      'administrator',
-      'superuser',
-      'system',
-      'public',
-      'guest',
-      'test',
-      'aurboda',
-    ]
-    if (reservedUsernames.includes(user)) {
-      res.status(400).json({ error: 'This username is reserved', success: false })
-      return
-    }
-
-    // Check if user already exists
-    const existingUser = await query(userDb, 'SELECT usename FROM pg_user WHERE usename=$1', [user])
-    if (existingUser.rowCount && existingUser.rowCount > 0) {
-      res.status(409).json({ error: 'Username already exists', success: false })
-      return
-    }
-
-    try {
-      await makeNewUserDb(userDb, user, password)
-      const token = auth.createToken(user)
-
-      // First user becomes admin automatically
-      const adminCount = await centralDb.getAdminCount()
-      let isAdmin = false
-      if (adminCount === 0) {
-        await centralDb.addAdmin(user)
-        isAdmin = true
-        console.log(`First user ${user} automatically made admin`)
-      }
-
-      res.json({ is_admin: isAdmin, success: true, token })
-    } catch (err) {
-      console.error('Signup error:', err)
-      next(err)
-    }
-  })
-
-  httpd.post<Record<string, never>, LoginResponse>('/login', async (req, res, next) => {
-    const { username: user, password } = req.body
-    if (!user) return next(unauthorized)
-
-    // Check if user exists as a PSQL user role
-    const userRows = await query(userDb, 'SELECT usename FROM pg_user WHERE usename=$1', [user])
-    if (userRows.rowCount === 1) {
-      try {
-        await loginToUserDb(user, password)
-        // Ensure schema is initialized and migrated
-        if (!(await schemaInitialized(user))) {
-          await initializeSchema(user)
-        } else {
-          // Run migrations for existing databases
-          await migrateSchema(user)
-        }
-      } catch {
-        return next(unauthorized)
-      }
-    } else return next(unauthorized)
-
-    const token = auth.createToken(user)
-    const isAdmin = await centralDb.isAdmin(user)
-
-    // Prune old audit log entries in the background
-    centralDb
-      .getAuditLogRetentionDays()
-      .then((days) => pruneAuditLog(user, days))
-      .catch(() => {})
-
-    res.writeHead(200, { 'Content-Type': 'application/json' })
-    res.end(JSON.stringify({ is_admin: isAdmin, refresh: token, token }))
-  })
-
-  httpd.post('/refresh', async (req, res) => {
-    const { refresh } = req.body
-    res.end(JSON.stringify({ refresh, token: refresh }))
-  })
-
-  // Generate a fresh API token for the authenticated user (e.g. for push agents like ActivityWatch)
-  httpd.get('/auth/token', authMiddleware, (req, res) => {
-    const user = req.user!
-    const token = auth.createToken(user)
-    res.json({ success: true, token })
-  })
-
-  // ==========================================================================
-  // External service routers (already extracted)
-  // ==========================================================================
-
-  // Transform SyncState to ProviderSyncStatus format (undefined -> null)
-  const transformSyncStates = async (user: string, provider: string) => {
-    const states = await getAllSyncStates(user, provider)
-    return states.map((s) => ({
-      error_message: s.error_message ?? null,
-      last_sync_time: s.last_sync_time?.toISOString() ?? null,
-      provider: s.provider,
-      retry_after: s.retry_after?.toISOString() ?? null,
-      status: s.status === 'rate_limited' ? ('error' as const) : s.status,
-    }))
-  }
-
-  const transformOuraSyncResults = async (
-    user: string,
-    options: { fullResync?: boolean; startDate?: Date },
-  ) => {
-    const results = await syncAllOuraData(user, oura, options)
-    return results.map((r) => ({
-      ...r,
-      retry_after: r.retry_after?.toISOString(),
-    }))
-  }
-
-  const transformRescueTimeSyncResult = async (
-    user: string,
-    apiKey: string,
-    options: { fullResync?: boolean; startDate?: Date },
-  ) => {
-    const result = await syncRescueTimeData(user, apiKey, options)
-    return {
-      ...result,
-      retry_after: result.retry_after?.toISOString(),
-    }
-  }
-
-  const transformLastFmSyncResult = async (
-    user: string,
-    apiKey: string,
-    username: string,
-    options: { fullResync?: boolean; startDate?: Date },
-  ) => {
-    return await syncLastFmData(user, apiKey, username, options)
-  }
-
-  httpd.use(
-    '/sync',
-    createSyncRouter(
-      {
-        ackOutboundSync,
-        deleteHealthConnectRecords,
-        getOutboundSyncHistory,
-        getActivityWatchSyncStates: (user) => transformSyncStates(user, 'activitywatch'),
-        getCalendarSyncStates: (user) => transformSyncStates(user, 'calendar'),
-        getGarminSyncStates: (user) => transformSyncStates(user, 'garmin'),
-        getLastFmApiKey: () => centralDb.getLastFmApiKey(),
-        getLastFmSyncStates: (user) => transformSyncStates(user, 'lastfm'),
-        getOuraSyncStates: (user) => transformSyncStates(user, 'oura'),
-        getPendingOutboundSync,
-        getRescueTimeSyncStates: (user) => transformSyncStates(user, 'rescuetime'),
-        getSettings,
-        processActivityWatchEvents,
-        processDailyAggregate,
-        processHealthConnectBatch,
-        processHealthConnectData,
-        reportSyncFailure,
-        requeueOutboundSync,
-        resetCalendarSyncState: (user) => resetSyncState(user, 'calendar'),
-        resetGarminSyncState: (user, dataType) => resetSyncState(user, 'garmin', dataType),
-        resetLastFmSyncState: (user) => resetSyncState(user, 'lastfm'),
-        resetOuraSyncState: (user, dataType) => resetSyncState(user, 'oura', dataType),
-        resetRescueTimeSyncState: (user) => resetSyncState(user, 'rescuetime'),
-        syncCalendars: (user, calendars) => syncAllCalendars(user, calendars),
-        syncGarmin: async (user, options) => {
-          const results = await syncAllGarminData(user, garmin, options)
-          return results.map((r) => ({
-            ...r,
-            retry_after: r.retry_after?.toISOString(),
-          }))
-        },
-        syncLastFm: transformLastFmSyncResult,
-        syncOura: transformOuraSyncResults,
-        syncRescueTime: transformRescueTimeSyncResult,
-        triggerCalorieComputation: (user: string, start: Date, end: Date) =>
-          triggerCalorieComputation(user, start, end),
-        upsertUserSettings: (user: string, settings: Record<string, unknown>) =>
-          upsertUserSettings(user, settings),
-      },
-      authMiddleware,
-    ),
-  )
-
-  httpd.use('/lastfm', createLastFmRouter(authMiddleware))
-
-  httpd.get('/auth/connectOura', oura.redirectToAuthorize)
-  httpd.get('/auth/ouracb', oura.authCb)
-
-  // Garmin Connect auth endpoints (login with credentials, tokens-only stored)
-  httpd.post('/auth/garmin/login', authMiddleware, async (req, res) => {
-    const user = req.user!
-    const { email, password } = req.body ?? {}
-
-    if (!email || !password) {
-      res.status(400).json({ error: 'Email and password are required', success: false })
-      return
-    }
-
-    try {
-      const result = await garmin.login(user, email, password)
-      if ('mfa_required' in result) {
-        res.json({ mfa_required: true, success: false })
-      } else {
-        res.json({ success: true })
-      }
-    } catch (error) {
-      auditError(user, 'auth', 'Garmin login endpoint error', { error: String(error) })
-      const message = error instanceof Error ? error.message : 'Login failed'
-      res.status(401).json({ error: message, success: false })
-    }
-  })
-
-  httpd.post('/auth/garmin/mfa', authMiddleware, async (req, res) => {
-    const user = req.user!
-    const { mfa_code } = req.body ?? {}
-
-    if (!mfa_code) {
-      res.status(400).json({ error: 'MFA code is required', success: false })
-      return
-    }
-
-    try {
-      await garmin.verifyMfa(user, mfa_code)
-      res.json({ success: true })
-    } catch (error) {
-      auditError(user, 'auth', 'Garmin MFA endpoint error', { error: String(error) })
-      const message = error instanceof Error ? error.message : 'MFA verification failed'
-      res.status(401).json({ error: message, success: false })
-    }
-  })
-
-  httpd.post('/auth/garmin/disconnect', authMiddleware, async (req, res) => {
-    const user = req.user!
-    try {
-      await garmin.disconnect(user)
-      res.json({ success: true })
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Disconnect failed'
-      res.status(500).json({ error: message, success: false })
-    }
-  })
-
-  // ==========================================================================
-  // Oura webhook push integration (admin-configurable via Web UI)
-  // ==========================================================================
-
-  const ouraClientId = process.env.OURA_CLIENT ?? ''
-  const ouraClientSecret = process.env.OURA_SECRET ?? ''
-
-  let ouraWebhookManager: OuraWebhookManager | null = null
-  if (ouraClientId && ouraClientSecret) {
-    const syncOuraDataTypeForUser = async (username: string, dataType: OuraDataType) => {
-      const accessToken = await oura.getAccessToken(username)
-      await syncOuraDataType(username, oura, dataType, accessToken)
-    }
-
-    ouraWebhookManager = createOuraWebhookManager({
+  // Strava webhook push integration
+  if (stravaQueue) {
+    const ensureStravaWebhook = setupStravaWebhook({
+      httpd,
+      apiBaseUrl,
+      sessionSecret,
       centralDb,
-      ouraClientId,
-      ouraClientSecret,
-      syncOuraDataTypeForUser,
-      webHost,
+      stravaQueue,
+      getStravaCredentials,
     })
-
-    // Mount proxy handler (delegates to inner router when enabled, 404 when disabled)
-    httpd.use('/webhooks/oura', (req, res, next) => ouraWebhookManager!.handleWebhookRequest(req, res, next))
-
-    // Enable if previously configured and host supports it
-    const webhookEnabled = await centralDb.getOuraWebhookEnabled()
-    if (webhookEnabled && ouraWebhookManager.canEnable()) {
-      try {
-        await ouraWebhookManager.enable()
-      } catch (error) {
-        console.error('Oura webhook: failed to enable on startup:', error)
-      }
-    }
+    postListenCallbacks.push(ensureStravaWebhook)
   }
 
-  // Initialize geocode queue (creates 'aurboda' database if needed)
-  let geocodeQueue: GeocodeQueue | null = null
-  try {
-    geocodeQueue = await createGeocodeQueue({ updateDetectedLocation })
-  } catch (error) {
-    console.error('Failed to initialize geocode queue:', error)
+  // Oura webhook push integration (admin-configurable via Web UI)
+  const ouraWebhookManager = await setupOuraWebhook({
+    httpd,
+    apiBaseUrl,
+    centralDb,
+    oura,
+    getOuraCredentials,
+  })
+
+  // Initialize geocode queue (uses shared boss)
+  let geocodeQueue: Awaited<ReturnType<typeof createGeocodeQueue>> | null = null
+  if (boss) {
+    try {
+      geocodeQueue = await createGeocodeQueue(boss, { updateDetectedLocation })
+    } catch (error) {
+      console.error('Failed to initialize geocode queue:', error)
+    }
   }
   if (!geocodeQueue) {
-    console.warn('Geocoding disabled - detected locations will not be reverse geocoded')
+    console.warn('⚠️ Geocoding disabled - detected locations will not be reverse geocoded')
   }
 
-  // Create detection trigger with geocode queue
+  // Create detection trigger with geocode queue. The proactive
+  // location_visit materialization piggy-backs on this same debounced
+  // post-GPS-ingestion path (see #654).
   const detectionTrigger: DetectionTrigger = createDetectionTrigger({
     geocodeQueue,
     getDetectedLocationById,
+    getNamedLocations,
+    getPlaceVisits,
+    insertActivities,
     runDetectionForUser,
   })
 
@@ -564,59 +393,59 @@ const main = async () => {
     }),
   )
 
-  // ==========================================================================
-  // REST API route modules
-  // ==========================================================================
+  // Per-domain REST routers
+  mountRestRouters({
+    activityNotifier,
+    adminMiddleware,
+    auth,
+    authMiddleware,
+    centralDb,
+    deductionQueue,
+    engineDeps,
+    garmin,
+    httpd,
+    invitationAuth,
+    ouraWebhookManager,
+    syncProvider,
+    userDb,
+    webAuthn,
+    webHost,
+    wellKnown,
+  })
 
-  httpd.use(createMetricsRouter(authMiddleware, syncProvider))
-  httpd.use('/tags', createTagsRouter(authMiddleware, syncProvider))
-  httpd.use('/icons', createIconsRouter(authMiddleware))
-  httpd.use('/notes', createNotesRouter(authMiddleware))
-  httpd.use('/meals', createMealsRouter(authMiddleware))
-  httpd.use('/food-items', createFoodItemsRouter(authMiddleware))
-  httpd.use('/reports', createReportsRouter(authMiddleware))
-  httpd.use(createActivitiesRouter(authMiddleware, syncProvider))
-  httpd.use('/activity-types', createActivityTypesRouter(authMiddleware))
-  httpd.use('/deduction-rules', createDeductionRulesRouter(authMiddleware, createDefaultEngineDeps()))
-  httpd.use('/locations', createLocationsRouter(authMiddleware))
-  httpd.use(createSettingsRouter(authMiddleware))
-  httpd.use(createAuditLogRouter(authMiddleware))
-  httpd.use('/dashboard', createDashboardRouter(authMiddleware))
-  httpd.use('/correlations', createCorrelationsRouter(authMiddleware, syncProvider))
-  httpd.use('/training-load', createTrainingLoadRouter(authMiddleware))
-  httpd.use('/trends', createTrendsRouter(authMiddleware))
-  httpd.use('/chart-data', createChartDataRouter(authMiddleware))
-  httpd.use('/screentime-categories', createScreentimeCategoriesRouter(authMiddleware))
-  httpd.use(
-    '/admin',
-    createAdminRouter(
-      authMiddleware,
-      adminMiddleware,
-      centralDb,
-      invitationAuth,
-      webHost,
-      ouraWebhookManager,
-    ),
-  )
+  // Centralized error handler
+  httpd.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
+    const status = isHttpError(err) ? err.status : 500
+    if (status >= 500) console.error(err)
 
-  // ==========================================================================
+    if (req.user) {
+      auditError(req.user, 'system', `${req.method} ${req.path}: ${err.message}`, {
+        status,
+        ...(status >= 500 && { stack: err.stack }),
+      })
+    }
+
+    res.status(status).json({ success: false, error: err.message })
+  })
+
   // Server startup
-  // ==========================================================================
-
   const port = Number(process.env.PORT ?? 80)
   const server = httpd.listen(port, () => {
-    console.log(`> Running on localhost:${port}`)
+    console.info(`> Running on localhost:${port}`)
+    for (const cb of postListenCallbacks) {
+      cb().catch(() => {})
+    }
   })
 
   // Graceful shutdown
   const shutdown = async () => {
-    console.log('Shutting down...')
+    console.info('Shutting down...')
     detectionTrigger.clearPendingDetections()
     if (ouraWebhookManager) {
       ouraWebhookManager.shutdown()
     }
-    if (geocodeQueue) {
-      await geocodeQueue.stop()
+    if (boss) {
+      await boss.stop()
     }
     await new Promise<void>((resolve, reject) => {
       server.close((err) => {
@@ -624,7 +453,7 @@ const main = async () => {
         else resolve()
       })
     })
-    console.log('Server closed')
+    console.info('Server closed')
     process.exit(0)
   }
 

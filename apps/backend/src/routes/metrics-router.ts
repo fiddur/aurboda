@@ -1,4 +1,4 @@
-import type { RequestHandler, Router } from 'express'
+import type { RequestHandler } from 'express'
 
 /**
  * Metrics route group.
@@ -21,7 +21,11 @@ import {
   type DailySummaryResponse,
   type DeleteMetricQuery,
   deleteMetricQuerySchema,
+  type DeleteMetricResponse,
   type LatestMetricResponse,
+  type MergeCustomMetricBody,
+  mergeCustomMetricBodySchema,
+  type MergeCustomMetricResponse,
   type PeriodSummaryQuery,
   periodSummaryQuerySchema,
   type PeriodSummaryResponse,
@@ -41,6 +45,7 @@ import type { MetricType } from '../schema.ts'
 
 import { auditError, auditInfo } from '../services/audit-log.ts'
 import { computeAndStoreCalories, computeAndStoreCaloriesAll } from '../services/calorie-computation.ts'
+import { mergeCustomMetricService } from '../services/custom-metrics.ts'
 import {
   addCustomMetric,
   addMetric,
@@ -57,16 +62,19 @@ import {
   queryMetrics,
   queryMetricsBucketed,
   type SyncProvider,
-} from '../services/queries.ts'
+} from '../services/queries/index.ts'
 import { getLatestMetric } from '../services/reports.ts'
-import { typedRouter } from '../typed-router.ts'
+import { type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody, validateQuery } from '../validation.ts'
 
-export const createMetricsRouter = (authMiddleware: RequestHandler, syncProvider?: SyncProvider): Router => {
+export const createMetricsRouter = (
+  authMiddleware: RequestHandler,
+  syncProvider?: SyncProvider,
+): TypedRouter => {
   const router = typedRouter()
 
-  // GET /metrics/bucketed - must come before /metrics/:metric to avoid parameter capture
-  router.get<Record<string, string>, QueryMetricsBucketedResponse, unknown, QueryMetricsBucketedQuery>(
+  // Must come before /metrics/:metric to avoid parameter capture
+  router.get<Record<string, never>, QueryMetricsBucketedResponse, unknown, QueryMetricsBucketedQuery>(
     '/metrics/bucketed',
     authMiddleware,
     validateQuery(queryMetricsBucketedQuerySchema),
@@ -92,8 +100,7 @@ export const createMetricsRouter = (authMiddleware: RequestHandler, syncProvider
     },
   )
 
-  // GET /metrics/custom - List all custom metric types
-  router.get<Record<string, string>, CustomMetricsListResponse>(
+  router.get<Record<string, never>, CustomMetricsListResponse>(
     '/metrics/custom',
     authMiddleware,
     async (req, res) => {
@@ -103,8 +110,7 @@ export const createMetricsRouter = (authMiddleware: RequestHandler, syncProvider
     },
   )
 
-  // POST /metrics/custom - Register a new custom metric type
-  router.post<Record<string, string>, CustomMetricResponse, AddCustomMetricBody>(
+  router.post<Record<string, never>, CustomMetricResponse, AddCustomMetricBody>(
     '/metrics/custom',
     authMiddleware,
     validateBody(addCustomMetricBodySchema),
@@ -118,7 +124,6 @@ export const createMetricsRouter = (authMiddleware: RequestHandler, syncProvider
     },
   )
 
-  // DELETE /metrics/custom/:name - Delete a custom metric type
   router.delete<{ name: string }, CustomMetricResponse>(
     '/metrics/custom/:name',
     authMiddleware,
@@ -133,7 +138,21 @@ export const createMetricsRouter = (authMiddleware: RequestHandler, syncProvider
     },
   )
 
-  // PATCH /metrics/custom/:name - Update a custom metric definition
+  router.post<Record<string, never>, MergeCustomMetricResponse, MergeCustomMetricBody>(
+    '/metrics/custom/merge',
+    authMiddleware,
+    validateBody(mergeCustomMetricBodySchema),
+    async (req, res) => {
+      const { source, target } = req.body
+      const user = req.user!
+      const result = await mergeCustomMetricService(user, source, target)
+      if (!result.success) {
+        return res.status(400).json({ error: result.error, success: false })
+      }
+      res.json(result)
+    },
+  )
+
   router.patch<{ name: string }, CustomMetricResponse, UpdateCustomMetricBody>(
     '/metrics/custom/:name',
     authMiddleware,
@@ -149,9 +168,8 @@ export const createMetricsRouter = (authMiddleware: RequestHandler, syncProvider
     },
   )
 
-  // POST /metrics/recalculate-calories - Recalculate calorie burn from HR data
   // With start/end: synchronous range recompute. Without: async full recompute.
-  router.post<Record<string, string>, RecalculateCaloriesResponse, Partial<RecalculateCaloriesBody>>(
+  router.post<Record<string, never>, RecalculateCaloriesResponse, Partial<RecalculateCaloriesBody>>(
     '/metrics/recalculate-calories',
     authMiddleware,
     async (req, res) => {
@@ -180,8 +198,7 @@ export const createMetricsRouter = (authMiddleware: RequestHandler, syncProvider
     },
   )
 
-  // POST /metrics/bulk - Bulk insert metric data points
-  router.post<Record<string, string>, BulkMetricsResponse, BulkMetricsBody>(
+  router.post<Record<string, never>, BulkMetricsResponse, BulkMetricsBody>(
     '/metrics/bulk',
     authMiddleware,
     validateBody(bulkMetricsBodySchema),
@@ -201,7 +218,6 @@ export const createMetricsRouter = (authMiddleware: RequestHandler, syncProvider
     },
   )
 
-  // GET /metrics/latest/:metric - Get the most recent value for a metric regardless of age
   router.get<{ metric: string }, LatestMetricResponse>(
     '/metrics/latest/:metric',
     authMiddleware,
@@ -219,7 +235,6 @@ export const createMetricsRouter = (authMiddleware: RequestHandler, syncProvider
     },
   )
 
-  // DELETE /metrics/:metric/data - Delete all manual measurements for a metric
   router.delete<{ metric: string }, { success: boolean; deleted?: number }>(
     '/metrics/:metric/data',
     authMiddleware,
@@ -231,8 +246,7 @@ export const createMetricsRouter = (authMiddleware: RequestHandler, syncProvider
     },
   )
 
-  // DELETE /metrics/:metric - Delete a single measurement (soft delete)
-  router.delete<{ metric: string }, unknown, unknown, DeleteMetricQuery>(
+  router.delete<{ metric: string }, DeleteMetricResponse, unknown, DeleteMetricQuery>(
     '/metrics/:metric',
     authMiddleware,
     validateQuery(deleteMetricQuerySchema),
@@ -242,13 +256,12 @@ export const createMetricsRouter = (authMiddleware: RequestHandler, syncProvider
       const user = req.user!
       const result = await deleteMetric(user, metric, new Date(time), source)
       if (!result.deleted) {
-        return res.status(404).json({ error: 'Measurement not found', success: false })
+        return res.status(404).json({ deleted: false, error: 'Measurement not found', success: false })
       }
       res.json({ ...result, success: true })
     },
   )
 
-  // GET /metrics/:metric - Query time series metrics
   router.get<{ metric: string }, QueryMetricsResponse, unknown, QueryMetricsQuery>(
     '/metrics/:metric',
     authMiddleware,
@@ -265,8 +278,7 @@ export const createMetricsRouter = (authMiddleware: RequestHandler, syncProvider
     },
   )
 
-  // POST /metrics - Add a manual metric measurement
-  router.post<Record<string, string>, AddMetricResponse, AddMetricBody>(
+  router.post<Record<string, never>, AddMetricResponse, AddMetricBody>(
     '/metrics',
     authMiddleware,
     validateBody(addMetricBodySchema),
@@ -281,8 +293,7 @@ export const createMetricsRouter = (authMiddleware: RequestHandler, syncProvider
     },
   )
 
-  // GET /daily-summary - Get comprehensive summary for a day
-  router.get<Record<string, string>, DailySummaryResponse, unknown, DailySummaryQuery>(
+  router.get<Record<string, never>, DailySummaryResponse, unknown, DailySummaryQuery>(
     '/daily-summary',
     authMiddleware,
     validateQuery(dailySummaryQuerySchema),
@@ -295,8 +306,7 @@ export const createMetricsRouter = (authMiddleware: RequestHandler, syncProvider
     },
   )
 
-  // GET /period-summary - Get aggregated stats for a period
-  router.get<Record<string, string>, PeriodSummaryResponse, unknown, PeriodSummaryQuery>(
+  router.get<Record<string, never>, PeriodSummaryResponse, unknown, PeriodSummaryQuery>(
     '/period-summary',
     authMiddleware,
     validateQuery(periodSummaryQuerySchema),
@@ -311,5 +321,5 @@ export const createMetricsRouter = (authMiddleware: RequestHandler, syncProvider
     },
   )
 
-  return router as unknown as Router
+  return router
 }

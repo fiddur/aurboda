@@ -10,26 +10,29 @@ import type { ActivityType, CustomMetricDefinition, DataSource } from '@aurboda/
 import { randomUUID } from 'node:crypto'
 
 import type { Activity } from '../db/types.ts'
+import type { ActivityNotifier } from './deduction-queue.ts'
 
 import {
   activityTypeExists,
   checkActivityConflict,
   deleteActivity as dbDeleteActivity,
-  deleteTag as dbDeleteTag,
+  findMergeableActivity,
   getActivityById as dbGetActivityById,
+  getActivitySourcesByIds,
+  getActivityTypeDefinition,
+  getOverrideForActivity,
+  getUserNotesJoined,
   insertActivity as dbInsertActivity,
   insertNewActivity as dbInsertNewActivity,
+  insertOverride as dbInsertOverride,
+  materializeSuperseded,
+  reanchorNotes,
+  replaceUserNotes,
   updateActivity as dbUpdateActivity,
   enqueueOutboundSync,
   findHcRecordId,
-  findMergeableTag,
-  getTagById,
-  insertTag,
   insertTimeSeries,
-  resolveOrCreateTagDefinition,
   type TimeSeriesPoint,
-  updateTag as dbUpdateTag,
-  updateTagEndTime,
 } from '../db/index.ts'
 import {
   activityTypeToHealthConnectType,
@@ -42,28 +45,12 @@ import {
 } from '../schema.ts'
 import { auditError } from './audit-log.ts'
 import { getCustomMetrics } from './custom-metrics.ts'
+import { validateActivityData } from './data-schema-validation.ts'
 import { syncNoteTimesForEntity } from './notes.ts'
 
 // ============================================================================
 // Types
 // ============================================================================
-
-export interface AddTagInput {
-  tag: string
-  start_time: Date
-  end_time?: Date
-  mergeSpan?: number
-}
-
-export interface AddTagResult {
-  success: boolean
-  id: string
-  tag: string
-  start_time: string
-  end_time?: string
-  merged?: boolean
-  extendedBySeconds?: number
-}
 
 export interface AddMetricInput {
   metric: string
@@ -81,19 +68,15 @@ export interface AddMetricResult {
   entity_id?: string
 }
 
-export interface DeleteTagResult {
-  success: boolean
-  deleted: boolean
-  external_id: string
-}
-
 export interface AddActivityInput {
   activity_type: ActivityType
   start_time: Date
-  end_time: Date
+  end_time?: Date
   title?: string
   notes?: string
   data?: Record<string, unknown>
+  external_id?: string
+  merge_span?: number
 }
 
 export interface AddActivityResult {
@@ -103,7 +86,6 @@ export interface AddActivityResult {
   start_time?: string
   end_time?: string
   title?: string
-  notes?: string
   error?: string
 }
 
@@ -134,10 +116,17 @@ export interface DeleteActivityResult {
 export interface UpdateActivityInput {
   activity_type?: ActivityType
   start_time?: Date
-  end_time?: Date
+  end_time?: Date | null
   title?: string
   notes?: string
   data?: Record<string, unknown>
+  /**
+   * Multi-target override (#735): when the PATCH targets a synced activity
+   * from a merged view, the caller passes the full list of source ids the
+   * new override should claim. Includes `id` itself. When omitted, defaults
+   * to `[id]` (single-target case).
+   */
+  override_target_ids?: string[]
 }
 
 export interface UpdateActivityResult {
@@ -147,110 +136,12 @@ export interface UpdateActivityResult {
   start_time?: string
   end_time?: string
   title?: string
-  notes?: string
   error?: string
 }
 
 // ============================================================================
 // Mutation Functions
 // ============================================================================
-
-/**
- * Add a manual tag/label to mark an activity or event.
- *
- * If mergeSpan is provided, attempts to merge with an existing tag of the same
- * name if its end_time (or start_time for point-in-time tags) is within
- * mergeSpan seconds of the new start_time.
- */
-export async function addTag(user: string, input: AddTagInput): Promise<AddTagResult> {
-  // If mergeSpan is specified, check for a mergeable tag
-  if (input.mergeSpan !== undefined) {
-    const existingTag = await findMergeableTag(user, input.tag, input.start_time, input.mergeSpan)
-
-    if (existingTag && existingTag.external_id) {
-      // Calculate the new end time - use new end_time if provided, otherwise use new start_time
-      const newEndTime = input.end_time ?? input.start_time
-
-      // Calculate the time extension
-      const previousEnd = existingTag.end_time ?? existingTag.start_time
-      const extendedBySeconds = Math.round((newEndTime.getTime() - previousEnd.getTime()) / 1000)
-
-      await updateTagEndTime(user, existingTag.external_id, newEndTime)
-
-      // Sync inherited times on any notes attached to this tag
-      if (existingTag.id) {
-        await syncNoteTimesForEntity(user, 'tag', existingTag.id, existingTag.start_time, newEndTime).catch(
-          (err) => auditError(user, 'data', 'Failed to sync note times for tag', { error: String(err) }),
-        )
-      }
-
-      return {
-        end_time: newEndTime.toISOString(),
-        extendedBySeconds,
-        id: existingTag.id!,
-        merged: true,
-        start_time: existingTag.start_time.toISOString(),
-        success: true,
-        tag: existingTag.tag,
-      }
-    }
-  }
-
-  // Resolve or create a tag definition for this tag name
-  const definition = await resolveOrCreateTagDefinition(user, input.tag)
-
-  // Create a new tag
-  const externalId = randomUUID()
-
-  const dbId = await insertTag(user, {
-    end_time: input.end_time,
-    external_id: externalId,
-    source: 'aurboda',
-    start_time: input.start_time,
-    tag: definition.name, // Use the canonical definition name
-    tag_definition_id: definition.id,
-  })
-
-  return {
-    end_time: input.end_time?.toISOString(),
-    id: dbId,
-    start_time: input.start_time.toISOString(),
-    success: true,
-    tag: input.tag,
-    ...(input.mergeSpan !== undefined ? { merged: false } : {}),
-  }
-}
-
-export interface UpdateTagInput {
-  start_time?: Date
-  end_time?: Date | null
-}
-
-export interface UpdateTagResult {
-  success: boolean
-  error?: string
-}
-
-export async function updateTag(user: string, id: string, input: UpdateTagInput): Promise<UpdateTagResult> {
-  const existing = await getTagById(user, id)
-  if (!existing) {
-    return { error: 'Tag not found', success: false }
-  }
-
-  const finalStartTime = input.start_time ?? existing.start_time
-  const finalEndTime = input.end_time === null ? undefined : (input.end_time ?? existing.end_time)
-
-  if (finalEndTime && finalEndTime <= finalStartTime) {
-    return { error: 'end_time must be after start_time', success: false }
-  }
-
-  const updates: { start_time?: Date; end_time?: Date | null } = {}
-  if (input.start_time !== undefined) updates.start_time = input.start_time
-  if (input.end_time !== undefined) updates.end_time = input.end_time
-
-  await dbUpdateTag(user, id, updates)
-  return { success: true }
-}
 
 /** Validate custom metric value range; returns error string if invalid, null if ok. */
 function validateCustomMetricRange(
@@ -402,16 +293,19 @@ export async function bulkAddMetrics(
 }
 
 /**
- * Delete a tag by its external ID.
+ * Validate activity data against the activity type's schema, if one is defined.
+ * Returns an error string if validation fails, or undefined if it passes.
  */
-export async function deleteTag(user: string, externalId: string): Promise<DeleteTagResult> {
-  const deleted = await dbDeleteTag(user, externalId)
-
-  return {
-    deleted,
-    external_id: externalId,
-    success: deleted,
-  }
+const validateDataForType = async (
+  user: string,
+  activityType: string,
+  data: Record<string, unknown> | undefined,
+): Promise<string | undefined> => {
+  const typeDef = await getActivityTypeDefinition(user, activityType)
+  if (!typeDef?.data_schema) return undefined
+  const validation = validateActivityData(data, typeDef.data_schema)
+  if (!validation.valid) return `Data validation failed: ${validation.errors?.join(', ')}`
+  return undefined
 }
 
 /**
@@ -419,7 +313,12 @@ export async function deleteTag(user: string, externalId: string): Promise<Delet
  *
  * Validates that end_time is after start_time.
  */
-export async function addActivity(user: string, input: AddActivityInput): Promise<AddActivityResult> {
+// eslint-disable-next-line complexity -- notification callbacks add branches
+export async function addActivity(
+  user: string,
+  input: AddActivityInput,
+  onMutated?: ActivityNotifier,
+): Promise<AddActivityResult> {
   // Validate activity type exists
   if (!(await activityTypeExists(user, input.activity_type))) {
     return {
@@ -428,11 +327,42 @@ export async function addActivity(user: string, input: AddActivityInput): Promis
     }
   }
 
-  // Validate that endTime is after startTime
-  if (input.end_time <= input.start_time) {
+  // Validate data against activity type schema (if defined)
+  const dataError = await validateDataForType(user, input.activity_type, input.data)
+  if (dataError) return { error: dataError, success: false }
+
+  // Validate that endTime is not before startTime (equal is valid for point-in-time activities)
+  if (input.end_time && input.end_time < input.start_time) {
     return {
-      error: 'end_time must be after start_time',
+      error: 'end_time must not be before start_time',
       success: false,
+    }
+  }
+
+  // If merge_span is specified, try to extend an existing activity instead of creating new
+  if (input.merge_span) {
+    const existing = await findMergeableActivity(
+      user,
+      input.activity_type,
+      input.start_time,
+      input.merge_span,
+      undefined,
+      input.data,
+    )
+    if (existing?.id) {
+      const newEndTime = input.end_time ?? input.start_time
+      await dbUpdateActivity(user, existing.id, { end_time: newEndTime })
+
+      onMutated?.(user, existing.activity_type, existing.start_time, newEndTime)
+
+      return {
+        activity_type: existing.activity_type,
+        end_time: newEndTime.toISOString(),
+        id: existing.id,
+        start_time: existing.start_time.toISOString(),
+        success: true,
+        title: existing.title,
+      }
     }
   }
 
@@ -443,11 +373,19 @@ export async function addActivity(user: string, input: AddActivityInput): Promis
     data: input.data,
     end_time: input.end_time,
     id,
-    notes: input.notes,
     source: 'aurboda',
     start_time: input.start_time,
     title: input.title,
   })
+
+  // Persist user-typed notes as a row in the notes table. Source is left
+  // NULL so it joins the "user-authored" set used by replaceUserNotes and
+  // the HC outbound-sync notes-join.
+  if (input.notes && input.notes.length > 0) {
+    await replaceUserNotes(user, 'activity', id, input.notes, input.start_time, input.end_time)
+  }
+
+  onMutated?.(user, input.activity_type, input.start_time, input.end_time ?? input.start_time)
 
   // Enqueue outbound sync to Health Connect if applicable (best-effort, never fails the mutation)
   try {
@@ -463,7 +401,7 @@ export async function addActivity(user: string, input: AddActivityInput): Promis
           payload: {
             activity_type: input.activity_type,
             data: input.data,
-            end_time: input.end_time.toISOString(),
+            end_time: input.end_time?.toISOString(),
             notes: input.notes,
             start_time: input.start_time.toISOString(),
             title: input.title,
@@ -477,9 +415,8 @@ export async function addActivity(user: string, input: AddActivityInput): Promis
 
   return {
     activity_type: input.activity_type,
-    end_time: input.end_time.toISOString(),
+    end_time: input.end_time?.toISOString(),
     id,
-    notes: input.notes,
     start_time: input.start_time.toISOString(),
     success: true,
     title: input.title,
@@ -511,6 +448,12 @@ export async function deleteActivity(user: string, id: string): Promise<DeleteAc
   // Look up the activity before deleting to check if it needs HC sync
   const activity = await dbGetActivityById(user, id)
   const deleted = await dbDeleteActivity(user, id)
+
+  // Recompute supersession — when a loser is deleted its winner row doesn't change,
+  // but when a winner is deleted a previously-superseded sibling becomes the new winner.
+  if (deleted && activity) {
+    await materializeSuperseded(user, activity.start_time)
+  }
 
   // Enqueue outbound delete if this was an aurboda-owned HC-syncable activity (best-effort)
   try {
@@ -549,18 +492,24 @@ export async function deleteActivity(user: string, id: string): Promise<DeleteAc
 /**
  * Update an existing activity.
  *
- * Validates that if both start_time and end_time are provided, end_time is after start_time.
- * Also validates against existing values if only one is provided.
+ * For activities owned by aurboda (source='aurboda'), the row is updated in
+ * place. For synced activities (garmin, health_connect, strava, oura, …), the
+ * edit creates or updates a separate aurboda override row that wins in the
+ * merged view and survives integration re-syncs (issue #715). Editing the
+ * synced row directly would be reverted on the next sync.
+ *
+ * Validates that if both start_time and end_time are provided, end_time is
+ * after start_time.
  */
-// eslint-disable-next-line complexity -- note-sync adds one branch above the limit
+// eslint-disable-next-line complexity -- override resolution adds branches; refactor candidate
 export async function updateActivity(
   user: string,
   id: string,
   input: UpdateActivityInput,
+  onMutated?: ActivityNotifier,
 ): Promise<UpdateActivityResult> {
-  // First, get the existing activity to validate times
-  const existing = await dbGetActivityById(user, id)
-  if (!existing) {
+  const target = await dbGetActivityById(user, id)
+  if (!target) {
     return {
       error: 'Activity not found',
       id,
@@ -568,21 +517,28 @@ export async function updateActivity(
     }
   }
 
-  // Determine final start and end times
-  const finalStartTime = input.start_time ?? existing.start_time
-  const finalEndTime = input.end_time ?? existing.end_time
+  // Resolve which row we'll actually mutate. For synced sources, prefer an
+  // existing aurboda override targeting `target`; otherwise we'll create one.
+  const isSyncedTarget = target.source !== 'aurboda'
+  const existingOverride = isSyncedTarget ? await getOverrideForActivity(user, target.id!) : null
+  const editRow = existingOverride ?? target
+  // The "before" snapshot used for time/type comparisons — what the merged
+  // view currently shows.
+  const before = editRow
 
-  // Validate that endTime is after startTime
-  if (finalEndTime && finalEndTime <= finalStartTime) {
+  const finalStartTime = input.start_time ?? before.start_time
+  const finalEndTime = input.end_time === null ? null : (input.end_time ?? before.end_time)
+
+  if (finalEndTime && finalEndTime < finalStartTime) {
     return {
-      error: 'end_time must be after start_time',
+      error: 'end_time must not be before start_time',
       id,
       success: false,
     }
   }
 
-  // Check for unique constraint conflict when changing activity_type
-  const isTypeChanging = input.activity_type && input.activity_type !== existing.activity_type
+  const finalType = input.activity_type ?? before.activity_type
+  const isTypeChanging = input.activity_type !== undefined && input.activity_type !== before.activity_type
   if (isTypeChanging && !(await activityTypeExists(user, input.activity_type!))) {
     return {
       error: `Unknown activity type: "${input.activity_type}"`,
@@ -591,33 +547,97 @@ export async function updateActivity(
     }
   }
   if (isTypeChanging) {
+    // Conflict check is against the row we'll actually write — aurboda for
+    // overrides (existing or new), or the same synced source for in-place edits.
+    const writeSource = isSyncedTarget ? 'aurboda' : target.source
+    const excludeId = existingOverride?.id ?? target.id!
     const conflict = await checkActivityConflict(
       user,
-      existing.source,
+      writeSource,
       input.activity_type!,
       finalStartTime,
-      id,
+      excludeId,
     )
     if (conflict) {
       return {
-        error: `Cannot change activity type: a ${input.activity_type} activity from ${existing.source} already exists at that start time`,
+        error: `Cannot change activity type: a ${input.activity_type} activity from ${writeSource} already exists at that start time`,
         id,
         success: false,
       }
     }
   }
 
-  // Merge new data fields into existing data (preserving fields not being updated)
-  const mergedData = input.data ? { ...(existing.data as Record<string, unknown>), ...input.data } : undefined
+  const mergedData = input.data ? { ...before.data, ...input.data } : before.data
 
-  const updated = await dbUpdateActivity(user, id, {
-    activity_type: input.activity_type,
-    data: mergedData,
-    end_time: input.end_time,
-    notes: input.notes,
-    start_time: input.start_time,
-    title: input.title,
-  })
+  if (mergedData) {
+    const dataError = await validateDataForType(user, finalType, mergedData)
+    if (dataError) return { error: dataError, id, success: false }
+  }
+
+  let updated: Activity | null
+  if (isSyncedTarget && !existingOverride) {
+    // First user edit on a synced activity → create an aurboda override
+    // carrying the synced row's snapshot overlaid with the user's input.
+    // Mirror in-place semantics: input.notes / input.title === undefined keeps
+    // the snapshot value; explicit '' (or null) clears it.
+    //
+    // Multi-target (#735): the caller may pass `override_target_ids` from a
+    // merged-view edit so the new override claims all the merged source rows
+    // at once. Always include `target.id` in the list (defaulting to just
+    // that single source when the caller didn't pass anything).
+    const targetIds = input.override_target_ids?.length
+      ? Array.from(new Set([target.id!, ...input.override_target_ids]))
+      : [target.id!]
+    // Defensive check: targets must be synced (non-aurboda) rows. The web
+    // client filters this client-side, but a buggy or non-web caller could
+    // pass an aurboda id and create an "override of an override" the merge
+    // logic isn't designed for.
+    if (input.override_target_ids?.length) {
+      const sources = await getActivitySourcesByIds(user, targetIds)
+      const aurbodaTarget = sources.find((r) => r.source === 'aurboda')
+      if (aurbodaTarget) {
+        return {
+          error: `override targets must be synced rows; ${aurbodaTarget.id} is an aurboda row`,
+          id,
+          success: false,
+        }
+      }
+    }
+    try {
+      updated = await dbInsertOverride(user, targetIds, {
+        activity_type: finalType,
+        data: mergedData,
+        end_time: input.end_time === null ? undefined : (finalEndTime ?? undefined),
+        start_time: finalStartTime,
+        title: input.title !== undefined ? input.title : target.title,
+      })
+    } catch (err) {
+      // Race: a concurrent edit created the override first; the UNIQUE
+      // constraint on `activity_override_targets.target_id` rejects ours.
+      // Reload and apply the user's edits to the now-existing override
+      // instead. (We probe the first target id; with one-override-per-target
+      // any of them would resolve to the same row.)
+      const code = (err as { code?: string }).code
+      if (code !== '23505') throw err
+      const concurrent = await getOverrideForActivity(user, targetIds[0])
+      if (!concurrent) throw err
+      updated = await dbUpdateActivity(user, concurrent.id!, {
+        activity_type: input.activity_type,
+        data: input.data ? mergedData : undefined,
+        end_time: input.end_time,
+        start_time: input.start_time,
+        title: input.title,
+      })
+    }
+  } else {
+    updated = await dbUpdateActivity(user, editRow.id!, {
+      activity_type: input.activity_type,
+      data: input.data ? mergedData : undefined,
+      end_time: input.end_time,
+      start_time: input.start_time,
+      title: input.title,
+    })
+  }
 
   if (!updated) {
     return {
@@ -627,27 +647,68 @@ export async function updateActivity(
     }
   }
 
-  // Sync inherited times on any notes attached to this activity (best-effort)
-  syncNoteTimesForEntity(user, 'activity', id, updated.start_time, updated.end_time ?? undefined).catch(
-    (err) => auditError(user, 'data', 'Failed to sync note times for activity', { error: String(err) }),
-  )
+  // Route a body-level `notes` update into the notes table. Replace semantics:
+  // wipe existing user-authored notes (source IS NULL) on this row, then insert
+  // the new content if non-empty. Synced notes (HC, Oura, …) are untouched.
+  // Attach to the row we wrote (override if we just created one, else the
+  // edited row itself).
+  if (input.notes !== undefined) {
+    await replaceUserNotes(
+      user,
+      'activity',
+      updated.id!,
+      input.notes,
+      updated.start_time,
+      updated.end_time ?? undefined,
+    )
+  }
 
-  // Enqueue outbound sync if this is an aurboda-owned activity (best-effort)
+  // Sync inherited times on any notes attached to either the row we wrote or
+  // (for fresh overrides) any synced target — notes can be attached to any
+  // of those ids and they should all track the new times.
+  const noteEntityIds = updated.override_target_ids?.length
+    ? [updated.id!, ...updated.override_target_ids]
+    : [updated.id!]
+  for (const noteEntityId of noteEntityIds) {
+    syncNoteTimesForEntity(
+      user,
+      'activity',
+      noteEntityId,
+      updated.start_time,
+      updated.end_time ?? undefined,
+    ).catch((err) =>
+      auditError(user, 'data', 'Failed to sync note times for activity', { error: String(err) }),
+    )
+  }
+
+  await materializeSuperseded(user, updated.start_time)
+  if (isTypeChanging || before.start_time.getTime() !== updated.start_time.getTime()) {
+    await materializeSuperseded(user, before.start_time)
+  }
+
+  onMutated?.(user, updated.activity_type, updated.start_time, updated.end_time ?? updated.start_time)
+  if (isTypeChanging) {
+    onMutated?.(user, before.activity_type, before.start_time, before.end_time ?? before.start_time)
+  }
+
+  // Enqueue outbound HC sync only for aurboda activities that the user owns —
+  // override rows (override_target_ids set) represent data that already
+  // exists on the synced source, so pushing them to HC would create
+  // duplicates.
   try {
-    if (updated.source === 'aurboda') {
-      const oldWasSyncable = isHealthConnectSyncableActivity(existing.activity_type)
+    if (updated.source === 'aurboda' && !updated.override_target_ids?.length) {
+      const oldWasSyncable = isHealthConnectSyncableActivity(before.activity_type)
       const newIsSyncable = isHealthConnectSyncableActivity(updated.activity_type)
 
       if (isTypeChanging && oldWasSyncable) {
-        // Type changed away from an HC-syncable type — delete the old HC record
         const oldHcType =
           activityTypeToHealthConnectType[
-            existing.activity_type as keyof typeof activityTypeToHealthConnectType
+            before.activity_type as keyof typeof activityTypeToHealthConnectType
           ]
-        const hcRecordId = await findHcRecordId(user, 'activity', id)
+        const hcRecordId = await findHcRecordId(user, 'activity', updated.id!)
         if (oldHcType && hcRecordId) {
           await enqueueOutboundSync(user, {
-            entity_id: id,
+            entity_id: updated.id!,
             entity_type: 'activity',
             hc_record_type: oldHcType,
             operation: 'delete',
@@ -662,8 +723,12 @@ export async function updateActivity(
             updated.activity_type as keyof typeof activityTypeToHealthConnectType
           ]
         if (hcRecordType) {
+          // HC's notes field is a single string; serialize all user-authored
+          // notes joined by newline (synced ones are skipped to avoid the
+          // telephone-game of HC notes echoing back through us).
+          const joinedNotes = await getUserNotesJoined(user, 'activity', updated.id!)
           await enqueueOutboundSync(user, {
-            entity_id: id,
+            entity_id: updated.id!,
             entity_type: 'activity',
             hc_record_type: hcRecordType,
             operation: isTypeChanging ? 'insert' : 'update',
@@ -671,7 +736,7 @@ export async function updateActivity(
               activity_type: updated.activity_type,
               data: updated.data,
               end_time: updated.end_time?.toISOString(),
-              notes: updated.notes,
+              notes: joinedNotes,
               start_time: updated.start_time.toISOString(),
               title: updated.title,
             },
@@ -687,7 +752,6 @@ export async function updateActivity(
     activity_type: updated.activity_type,
     end_time: updated.end_time?.toISOString(),
     id: updated.id,
-    notes: updated.notes,
     start_time: updated.start_time.toISOString(),
     success: true,
     title: updated.title,
@@ -711,22 +775,23 @@ export interface MergeActivitiesResult {
   start_time?: string
   end_time?: string
   title?: string
-  notes?: string
   error?: string
 }
 
 /**
  * Build the merged data object from a list of activities sorted by start_time.
  * Pure function — easy to unit-test independently.
+ *
+ * Notes are NOT folded in here; mergeActivities re-anchors the source rows'
+ * notes onto the new merged row via reanchorNotes after the insert.
  */
 export const buildMergedActivityData = (
   sortedActivities: Activity[],
-  overrides?: { title?: string; notes?: string },
+  overrides?: { title?: string },
 ): {
   start_time: Date
   end_time: Date | undefined
   title: string | undefined
-  notes: string | undefined
   data: Record<string, unknown>
 } => {
   const startTime = sortedActivities[0].start_time
@@ -742,7 +807,7 @@ export const buildMergedActivityData = (
   let mergedData: Record<string, unknown> = {}
   for (const a of sortedActivities) {
     if (a.data) {
-      mergedData = { ...mergedData, ...(a.data as Record<string, unknown>) }
+      mergedData = { ...mergedData, ...a.data }
     }
   }
 
@@ -757,16 +822,7 @@ export const buildMergedActivityData = (
   // Title: override > first non-empty from sources
   const title = overrides?.title || sortedActivities.find((a) => a.title)?.title
 
-  // Notes: override > concatenation
-  const notes =
-    overrides?.notes ||
-    sortedActivities
-      .filter((a) => a.notes)
-      .map((a) => a.notes)
-      .join('\n') ||
-    undefined
-
-  return { data: mergedData, end_time: endTime, notes, start_time: startTime, title }
+  return { data: mergedData, end_time: endTime, start_time: startTime, title }
 }
 
 /**
@@ -782,11 +838,14 @@ export async function mergeActivities(
     getActivityById: (user: string, id: string) => Promise<Activity | null>
     insertNewActivity: (user: string, activity: Activity) => Promise<string>
     deleteActivity: (user: string, id: string) => Promise<boolean>
+    materializeSuperseded: (user: string, aroundTime: Date) => Promise<void>
   } = {
     deleteActivity: dbDeleteActivity,
     getActivityById: dbGetActivityById,
     insertNewActivity: dbInsertNewActivity,
+    materializeSuperseded,
   },
+  onMutated?: ActivityNotifier,
 ): Promise<MergeActivitiesResult> {
   if (input.activity_ids.length < 2) {
     return { error: 'At least 2 activity IDs are required', success: false }
@@ -814,18 +873,29 @@ export async function mergeActivities(
   // Sort by start_time
   const sorted = [...activities].sort((a, b) => a.start_time.getTime() - b.start_time.getTime())
 
-  const merged = buildMergedActivityData(sorted, { notes: input.notes, title: input.title })
+  const merged = buildMergedActivityData(sorted, { title: input.title })
 
   const id = await deps.insertNewActivity(user, {
     activity_type: sorted[0].activity_type,
     data: merged.data,
     end_time: merged.end_time,
     id: randomUUID(),
-    notes: merged.notes,
     source: 'aurboda',
     start_time: merged.start_time,
     title: merged.title,
   })
+
+  // Re-anchor any notes attached to the source activities onto the merged row.
+  // If the caller passed an explicit notes override, replace the user-authored
+  // notes with that single string (synced notes from the sources are still
+  // re-anchored, so HC/Oura-sourced notes survive the merge).
+  const sourceIds = sorted.map((a) => a.id).filter((x): x is string => !!x)
+  if (sourceIds.length > 0) {
+    await reanchorNotes(user, 'activity', sourceIds, id)
+  }
+  if (input.notes !== undefined) {
+    await replaceUserNotes(user, 'activity', id, input.notes, merged.start_time, merged.end_time)
+  }
 
   // Soft-delete originals
   for (const activity of sorted) {
@@ -834,11 +904,15 @@ export async function mergeActivities(
     }
   }
 
+  // After the soft-delete + new aurboda insert, recompute supersession once.
+  await deps.materializeSuperseded(user, merged.start_time)
+
+  onMutated?.(user, sorted[0].activity_type, merged.start_time, merged.end_time ?? merged.start_time)
+
   return {
     activity_type: sorted[0].activity_type,
     end_time: merged.end_time?.toISOString(),
     id,
-    notes: merged.notes,
     start_time: merged.start_time.toISOString(),
     success: true,
     title: merged.title,
@@ -846,13 +920,7 @@ export async function mergeActivities(
 }
 
 // Re-export restore and delete-by-id functions
-export {
-  deleteProductivity,
-  deleteTagById,
-  restoreActivity,
-  restoreProductivity,
-  restoreTag,
-} from './restore.ts'
+export { deleteProductivity, restoreActivity, restoreProductivity } from './restore.ts'
 export type { RestoreResult } from './restore.ts'
 
 // Re-export notes functions for backward compatibility

@@ -22,7 +22,7 @@ const user = 'testuser'
 const mockQuery = vi.mocked(query)
 
 const mockRule = {
-  conditions: [{ kind: 'tag', tag_name: 'sauna' }],
+  conditions: [{ activity_type: 'sauna', kind: 'activity' }],
   created_at: new Date('2024-01-15T10:00:00Z'),
   enabled: true,
   id: 'rule-1',
@@ -64,7 +64,7 @@ describe('deduction-rules db', () => {
   test('insertDeductionRule inserts and returns rule', async () => {
     mockQuery.mockResolvedValue({ command: 'INSERT', fields: [], oid: 0, rowCount: 1, rows: [mockRule] })
     const result = await insertDeductionRule(user, {
-      conditions: [{ kind: 'tag' as const, tag_name: 'sauna' }],
+      conditions: [{ activity_type: 'sauna', kind: 'activity' as const }],
       name: 'Sauna rule',
       output_activity_type: 'sauna',
     })
@@ -77,7 +77,13 @@ describe('deduction-rules db', () => {
   })
 
   test('updateDeductionRule builds SET for provided fields', async () => {
-    mockQuery.mockResolvedValue({ command: 'UPDATE', fields: [], oid: 0, rowCount: 1, rows: [{ ...mockRule, name: 'Updated' }] })
+    mockQuery.mockResolvedValue({
+      command: 'UPDATE',
+      fields: [],
+      oid: 0,
+      rowCount: 1,
+      rows: [{ ...mockRule, name: 'Updated' }],
+    })
     const result = await updateDeductionRule(user, 'rule-1', { enabled: false, name: 'Updated' })
     expect(result?.name).toBe('Updated')
   })

@@ -1,3 +1,22 @@
 packages:
   - apps/*
   - packages/*
+
+# Supply-chain hardening.
+# Refuse to install package versions younger than this many minutes. Buys time
+# for the npm/community to detect and yank malicious publishes before they land
+# on a dev box or in CI. 4320 = 72h.
+minimumReleaseAge: 4320
+minimumReleaseAgeExclude:
+  - '@aurboda/*'
+
+# Refuse transitive deps that use non-registry protocols (github:, git:, file:,
+# URL tarballs). Direct deps in our own package.json are unaffected. Default is
+# true in pnpm 10.26+; pinned here to make the policy explicit.
+blockExoticSubdeps: true
+
+# Allowlist of packages permitted to run lifecycle scripts at install time.
+# Our garmin-connect fork (github: dep) ships TypeScript sources and needs its
+# `prepare` script to build.
+onlyBuiltDependencies:
+  - '@flow-js/garmin-connect'

@@ -129,11 +129,28 @@ suspend fun sendDailyAggregates(
   serverUrl: String,
   authToken: String,
   httpClient: HttpClient,
+  reporter: SyncProgressReporter = NoOpSyncProgressReporter,
 ): Boolean {
   if (aggregates.isEmpty()) {
     Log.d(TAG, "No aggregates to send")
+    reporter.updateStage(SyncStage.DailyAggregates) {
+      it.copy(status = SyncStageStatus.Done, message = "Up to date")
+    }
     return true
   }
+
+  reporter.updateStage(SyncStage.DailyAggregates) {
+    it.copy(
+      status = SyncStageStatus.Active,
+      message = "Sending ${aggregates.size} day-aggregates",
+      sentRecords = 0,
+    )
+  }
+  aggregates
+    .mapNotNull {
+      runCatching { LocalDate.parse(it.date).atStartOfDay(ZoneId.systemDefault()).toInstant() }.getOrNull()
+    }.minOrNull()
+    ?.let(reporter::reportDataInstant)
 
   val postData = DailyAggregatesBody(data = aggregates)
   return try {
@@ -143,10 +160,21 @@ suspend fun sendDailyAggregates(
         headers { append(HttpHeaders.Authorization, "Bearer $authToken") }
         setBody(postData)
       }
+    val ok = response.status == HttpStatusCode.OK || response.status == HttpStatusCode.Created
     Log.d(TAG, "Daily aggregates response: ${response.status} (${aggregates.size} aggregates)")
-    response.status == HttpStatusCode.OK || response.status == HttpStatusCode.Created
+    reporter.updateStage(SyncStage.DailyAggregates) {
+      if (ok) {
+        it.copy(status = SyncStageStatus.Done, sentRecords = aggregates.size, message = "${aggregates.size} aggregates sent")
+      } else {
+        it.copy(status = SyncStageStatus.Failed, errorMessage = "HTTP ${response.status.value}")
+      }
+    }
+    ok
   } catch (e: Exception) {
     Log.e(TAG, "Error posting daily aggregates: ${e.message}", e)
+    reporter.updateStage(SyncStage.DailyAggregates) {
+      it.copy(status = SyncStageStatus.Failed, errorMessage = e.message)
+    }
     false
   }
 }

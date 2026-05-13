@@ -62,6 +62,15 @@ export const validMetrics = [
   'intensity_minutes',
   'speed',
   'power',
+  'run_cadence',
+  'stride_length',
+  'ground_contact_time',
+  'vertical_ratio',
+  'elevation',
+  'vertical_oscillation',
+  'vertical_speed',
+  'grade_adjusted_speed',
+  'performance_condition',
 ] as const
 
 export const metricTypeSchema = z.enum(validMetrics).meta({
@@ -169,10 +178,12 @@ export const dataSourceSchema = z
     'garmin',
     'rescuetime',
     'owntracks',
+    'strava',
     'calendar',
     'manual',
     'lastfm',
     'lastfm-auto',
+    'location-detection',
   ])
   .meta({
     description: 'Source of the data',
@@ -266,6 +277,15 @@ export const metricUnits: Record<MetricType, string> = {
   weight: 'kg',
   speed: 'm/s',
   power: 'W',
+  run_cadence: 'spm',
+  stride_length: 'm',
+  ground_contact_time: 'ms',
+  vertical_ratio: 'percent',
+  elevation: 'm',
+  vertical_oscillation: 'cm',
+  vertical_speed: 'm/s',
+  grade_adjusted_speed: 'm/s',
+  performance_condition: 'score',
 }
 
 /**
@@ -275,6 +295,10 @@ export const metricUnits: Record<MetricType, string> = {
 export const customMetricDefinitionSchema = z
   .object({
     description: z.string().optional().meta({ description: 'Human-readable description' }),
+    include_in_daily_summary: z.boolean().optional().meta({
+      description:
+        'When true, this metric is surfaced in get_daily_summary under metrics_today (entries logged on the date) and metrics_latest (most recent value, regardless of age). Defaults to false to avoid noise from high-frequency streams.',
+    }),
     max_value: z.number().optional().meta({ description: 'Maximum allowed value' }),
     min_value: z.number().optional().meta({ description: 'Minimum allowed value' }),
     name: z
@@ -295,6 +319,23 @@ export const customMetricDefinitionSchema = z
   .meta({ id: 'CustomMetricDefinition' })
 
 export type CustomMetricDefinition = z.infer<typeof customMetricDefinitionSchema>
+
+/**
+ * Built-in metrics that ship with include_in_daily_summary defaulted to true.
+ * These are slow-varying body-state or episodic measurements that an LLM coach
+ * benefits from seeing in a single daily-summary fetch. Continuous-stream metrics
+ * (heart_rate, hrv_rmssd, body_battery, etc.) are intentionally excluded — they
+ * have first-class spots elsewhere or would balloon the response.
+ */
+export const builtinMetricsForDailySummary: readonly MetricType[] = [
+  'weight',
+  'body_fat',
+  'body_temperature',
+  'basal_body_temperature',
+  'blood_glucose',
+  'blood_pressure_systolic',
+  'blood_pressure_diastolic',
+] as const
 
 /**
  * Validate a custom metric name doesn't conflict with built-in metrics.
@@ -424,7 +465,7 @@ export type HrZoneSource = z.infer<typeof hrZoneSourceSchema>
 /**
  * Sync status schema.
  */
-export const syncStatusSchema = z.enum(['idle', 'syncing', 'error']).meta({
+export const syncStatusSchema = z.enum(['idle', 'syncing', 'error', 'rate_limited']).meta({
   description: 'Status of sync operation',
   example: 'idle',
   id: 'SyncStatus',

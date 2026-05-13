@@ -1,6 +1,6 @@
 /**
- * Chart data schemas for bucketed aggregation of tags, metrics,
- * productivity categories, and activity types.
+ * Chart data schemas for bucketed aggregation of activity types, metrics,
+ * productivity categories, and more.
  *
  * Supports daily, weekly, and monthly bucketing with count/sum/mean aggregation.
  */
@@ -15,8 +15,8 @@ import { baseResponseSchema } from './common.ts'
 export const chartDataSourceTypeSchema = z
   .enum(['tag', 'metric', 'productivity_category', 'activity_type'])
   .meta({
-    description: 'Type of data source for chart data query',
-    example: 'tag',
+    description: "Type of data source for chart data query. 'tag' is a deprecated alias for 'activity_type'.",
+    example: 'activity_type',
     id: 'ChartDataSourceType',
   })
 
@@ -53,17 +53,26 @@ export const chartDataQuerySchema = z
     aggregation: chartDataAggregationSchema.default('count').meta({ description: 'Aggregation method' }),
     bucket_size: chartDataBucketSizeSchema.default('1d').meta({ description: 'Bucket size for aggregation' }),
     end: z.iso.datetime().meta({ description: 'End of time range (ISO 8601)' }),
-    pattern: z
-      .string()
-      .optional()
-      .meta({ description: 'Pattern to match (regex for tags, metric name for metrics, category path)' }),
+    pattern: z.string().optional().meta({
+      description: 'Pattern to match (regex for activity types, metric name for metrics, category path)',
+    }),
     source_type: chartDataSourceTypeSchema.meta({ description: 'Type of data source' }),
     start: z.iso.datetime().meta({ description: 'Start of time range (ISO 8601)' }),
+    activity_type_id: z
+      .string()
+      .uuid()
+      .optional()
+      .meta({ description: 'Activity type definition ID (alternative to pattern)' }),
+    /** @deprecated Use activity_type_id instead */
     tag_definition_id: z
       .string()
       .uuid()
       .optional()
-      .meta({ description: 'Tag definition ID (alternative to pattern for tags)' }),
+      .meta({ description: 'Deprecated: use activity_type_id instead' }),
+    breakdown_fields: z.array(z.string()).optional().meta({
+      description:
+        'Data fields to break down by (for activity_type source). Multiple fields produce compound series keys.',
+    }),
   })
   .meta({ id: 'ChartDataQuery', description: 'Query parameters for bucketed chart data' })
 
@@ -75,16 +84,26 @@ export type ChartDataQuery = z.infer<typeof chartDataQuerySchema>
 export const chartDataHttpQuerySchema = z
   .object({
     aggregation: z.enum(['count', 'sum', 'mean']).optional(),
+    breakdown_fields: z
+      .string()
+      .optional()
+      .meta({ description: 'Comma-separated data fields to break down by' }),
     bucket_size: z.enum(['1m', '5m', '15m', '1h', '1d', '1w', '1M']).optional(),
     end: z.string().meta({ description: 'End of time range (ISO 8601 string)' }),
     pattern: z.string().optional().meta({ description: 'Pattern to match' }),
     source_type: chartDataSourceTypeSchema,
     start: z.string().meta({ description: 'Start of time range (ISO 8601 string)' }),
+    activity_type_id: z
+      .string()
+      .uuid()
+      .optional()
+      .meta({ description: 'Activity type definition ID (alternative to pattern)' }),
+    /** @deprecated Use activity_type_id instead */
     tag_definition_id: z
       .string()
       .uuid()
       .optional()
-      .meta({ description: 'Tag definition ID (alternative to pattern for tags)' }),
+      .meta({ description: 'Deprecated: use activity_type_id instead' }),
   })
   .meta({ id: 'ChartDataHttpQuery', description: 'HTTP query parameters for chart data endpoint' })
 
@@ -103,13 +122,33 @@ export const chartDataBucketSchema = z
 export type ChartDataBucket = z.infer<typeof chartDataBucketSchema>
 
 /**
+ * A breakdown bucket — one bucket with multiple series (keyed by field value).
+ */
+export const chartDataBreakdownBucketSchema = z
+  .object({
+    bucket_start: z.string().meta({ description: 'Start of the bucket (ISO 8601 datetime)' }),
+    series: z.record(z.string(), z.number()).meta({ description: 'Map of field value to aggregated value' }),
+  })
+  .meta({ id: 'ChartDataBreakdownBucket', description: 'A bucket with breakdown by data field value' })
+
+export type ChartDataBreakdownBucket = z.infer<typeof chartDataBreakdownBucketSchema>
+
+/**
  * Response schema for chart data endpoint.
  */
 export const chartDataResponseSchema = baseResponseSchema
   .extend({
     data: z
       .object({
-        buckets: z.array(chartDataBucketSchema),
+        breakdown_fields: z
+          .array(z.string())
+          .optional()
+          .meta({ description: 'Fields used for breakdown, if any' }),
+        breakdown_series: z
+          .array(z.string())
+          .optional()
+          .meta({ description: 'Distinct field values in breakdown' }),
+        buckets: z.array(z.union([chartDataBucketSchema, chartDataBreakdownBucketSchema])),
       })
       .optional(),
   })

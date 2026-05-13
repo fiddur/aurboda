@@ -68,9 +68,9 @@ const widgetTemplates: WidgetTemplate[] = [
       half_life_days: 15,
       lookback_days: 90,
       pattern: 'coffee',
-      source_type: 'tag',
+      source_type: 'activity_type',
     }),
-    description: 'EMA trend visualization for tags or metrics',
+    description: 'EMA trend visualization for activity types or metrics',
     label: 'Trend Chart',
     type: 'trend_chart',
   },
@@ -80,9 +80,9 @@ const widgetTemplates: WidgetTemplate[] = [
       bucket_size: '1d',
       lookback_days: 30,
       pattern: 'coffee',
-      source_type: 'tag',
+      source_type: 'activity_type',
     }),
-    description: 'Bucketed bar chart for tags, metrics, or categories',
+    description: 'Bucketed bar chart for activity types, metrics, or categories',
     label: 'Bar Chart',
     type: 'bar_chart',
   },
@@ -106,6 +106,15 @@ const widgetTemplates: WidgetTemplate[] = [
     description: 'Heart rate zone progress bars with targets',
     label: 'HR Zones',
     type: 'hr_zones',
+  },
+  {
+    allowedSections: ['metrics', 'charts'],
+    defaultConfig: () => ({
+      compact: false,
+    }),
+    description: 'Progress bars showing goal achievement',
+    label: 'Goal Progress',
+    type: 'goal_progress',
   },
   {
     allowedSections: ['links'],
@@ -255,10 +264,10 @@ export function DashboardEditor({ sectionType, onAddWidget, onClose }: Dashboard
             <div class="form-group">
               <label>Source Type</label>
               <select
-                value={(configValues.source_type as string) ?? 'tag'}
+                value={(configValues.source_type as string) ?? 'activity_type'}
                 onChange={(e) => updateConfig('source_type', (e.target as HTMLSelectElement).value)}
               >
-                <option value="tag">Tag</option>
+                <option value="activity_type">Activity Type</option>
                 <option value="metric">Metric</option>
               </select>
             </div>
@@ -299,11 +308,10 @@ export function DashboardEditor({ sectionType, onAddWidget, onClose }: Dashboard
             <div class="form-group">
               <label>Activity Type</label>
               <select
-                value={(configValues.activity_type as string) ?? 'tag'}
+                value={(configValues.activity_type as string) ?? 'activity_type'}
                 onChange={(e) => updateConfig('activity_type', (e.target as HTMLSelectElement).value)}
               >
-                <option value="tag">Tag</option>
-                <option value="activity_type">Activity</option>
+                <option value="activity_type">Activity Type</option>
                 <option value="location">Location</option>
               </select>
             </div>
@@ -342,6 +350,22 @@ export function DashboardEditor({ sectionType, onAddWidget, onClose }: Dashboard
                   onChange={(e) => updateConfig('show_targets', (e.target as HTMLInputElement).checked)}
                 />{' '}
                 Show target percentages
+              </label>
+            </div>
+          </div>
+        )
+
+      case 'goal_progress':
+        return (
+          <div class="config-form">
+            <div class="form-group">
+              <label>
+                <input
+                  type="checkbox"
+                  checked={(configValues.compact as boolean) ?? false}
+                  onChange={(e) => updateConfig('compact', (e.target as HTMLInputElement).checked)}
+                />{' '}
+                Compact mode (hide losing-tomorrow info)
               </label>
             </div>
           </div>

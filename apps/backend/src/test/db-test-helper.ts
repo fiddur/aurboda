@@ -46,6 +46,15 @@ export const startTestDb = async (): Promise<void> => {
 }
 
 /**
+ * Get the underlying pg client for tests that need to bypass the per-user
+ * routing — used by central-DB tests, which talk to a singleton client.
+ */
+export const getTestDbClient = (): Client => {
+  if (!client) throw new Error('Test DB not started — call startTestDb() first.')
+  return client
+}
+
+/**
  * Stop the PostgreSQL container.
  * Call this in afterAll().
  */
@@ -74,6 +83,10 @@ export const cleanTestDb = async (): Promise<void> => {
 
   // Truncate tables in reverse order to handle foreign keys
   const tables = [
+    'food_item_sensitivities',
+    'sensitivity_flags',
+    'shared_food_item_overrides',
+    'user_nutrient_recommendations',
     'meal_food_items',
     'food_items',
     'report_entries',
@@ -98,6 +111,7 @@ export const cleanTestDb = async (): Promise<void> => {
     'lastfm_tag_rules',
     'outbound_sync_queue',
     'screentime_categories',
+    'import_jobs',
   ]
 
   for (const table of tables) {

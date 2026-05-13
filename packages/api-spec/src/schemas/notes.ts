@@ -14,7 +14,7 @@ import {
 /**
  * Valid entity types for notes and soft-delete references.
  */
-export const entityTypes = ['activity', 'tag', 'productivity', 'metric', 'report'] as const
+export const entityTypes = ['activity', 'productivity', 'metric', 'report'] as const
 
 export const entityTypeSchema = z.enum(entityTypes).meta({
   description: 'Entity type for polymorphic references',
@@ -59,6 +59,10 @@ export const commentSchema = z
       description: 'End time inherited from the parent entity (if any)',
     }),
     id: z.string().uuid().optional().meta({ description: 'Comment/note ID' }),
+    source: z.string().optional().meta({
+      description:
+        'Data source that authored this comment. Null/absent for user-typed comments; set for synced comments (e.g. "health_connect", "oura").',
+    }),
     start_time: iso8601DateTimeSchema.optional().meta({
       description: 'Start time inherited from the parent entity',
     }),

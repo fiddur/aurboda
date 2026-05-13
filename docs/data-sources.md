@@ -4,21 +4,23 @@ Aurboda aggregates health, productivity, and location data from multiple sources
 
 ## Overview
 
-| Source                                | Data Types                                                                  | Sync Method                             | Admin Setup                  | User Setup                                               |
-| ------------------------------------- | --------------------------------------------------------------------------- | --------------------------------------- | ---------------------------- | -------------------------------------------------------- |
-| [Oura Ring](./oura.md)                | Sleep, readiness, resilience, cardiovascular age, meditation, HRV, tags     | Pull (API) + Push (webhook)             | OAuth credentials (env vars) | OAuth connect                                            |
-| [Garmin Connect](./garmin.md)         | Sleep, stress, body battery, HR, HRV, activities, SpO2, training readiness  | Pull (scrape)                           | None                         | Garmin credentials                                       |
-| [Health Connect](./health-connect.md) | HR, HRV, weight, body composition, steps, sleep, exercise, 40+ record types | Push (Android app)                      | None                         | Install Android app                                      |
-| [ActivityWatch](./activitywatch.md)   | App/window usage, per-device tracking                                       | Push (agent script / Android companion) | None                         | Install AW + push agent or enable in Aurboda Android app |
-| [RescueTime](./rescuetime.md)         | App/website usage, productivity scores                                      | Pull (API)                              | None                         | API key                                                  |
-| [Last.fm](./lastfm.md)                | Music scrobbles, auto-generated tags                                        | Pull (API)                              | API key (admin setting)      | Last.fm username                                         |
-| [Calendars](./calendars.md)           | Calendar events (stored as tags)                                            | Pull (ICS fetch)                        | None                         | ICS URL(s)                                               |
-| [OwnTracks](./owntracks.md)           | GPS location, geofences                                                     | Push (HTTP)                             | None                         | OwnTracks app config                                     |
-| Cronometer                            | Meals with full per-item macros and ~50 micronutrients                      | CSV import script                       | None                         | Export CSV from Cronometer                               |
+| Source                                    | Data Types                                                                    | Sync Method                             | Admin Setup                  | User Setup                                               |
+| ----------------------------------------- | ----------------------------------------------------------------------------- | --------------------------------------- | ---------------------------- | -------------------------------------------------------- |
+| [Oura Ring](./oura.md)                    | Sleep, readiness, resilience, cardiovascular age, meditation, HRV, tags       | Pull (API) + Push (webhook)             | OAuth credentials (env vars) | OAuth connect                                            |
+| [Garmin Connect](./garmin.md)             | Sleep, stress, body battery, HR, HRV, activities, SpO2, training readiness    | Pull (scrape)                           | None                         | Garmin credentials                                       |
+| [Strava](./strava.md)                     | Activities with HR, GPS, cadence, power                                       | Pull (API queue) + Push (webhook)       | OAuth credentials (admin)    | OAuth connect                                            |
+| [Health Connect](./health-connect.md)     | HR, HRV, weight, body composition, steps, sleep, exercise, 40+ record types   | Push (Android app)                      | None                         | Install Android app                                      |
+| [ActivityWatch](./activitywatch.md)       | App/window usage, per-device tracking                                         | Push (agent script / Android companion) | None                         | Install AW + push agent or enable in Aurboda Android app |
+| [RescueTime](./rescuetime.md)             | App/website usage, productivity scores                                        | Pull (API)                              | None                         | API key                                                  |
+| [Last.fm](./lastfm.md)                    | Music scrobbles, auto-generated tags                                          | Pull (API)                              | API key (admin setting)      | Last.fm username                                         |
+| [Calendars](./calendars.md)               | Calendar events (stored as tags)                                              | Pull (ICS fetch)                        | None                         | ICS URL(s)                                               |
+| [OwnTracks](./owntracks.md)               | GPS location, geofences                                                       | Push (HTTP)                             | None                         | OwnTracks app config                                     |
+| Cronometer                                | Meals with full per-item macros and ~50 micronutrients                        | CSV import script                       | None                         | Export CSV from Cronometer                               |
+| [Livsmedelsverket](./livsmedelsverket.md) | Canonical food library: 2,500+ Swedish foods with macros + micros (per 100 g) | One-shot bulk import (UI button)        | None                         | Click "Import from Livsmedelsverket" on `/food-items`    |
 
 ## Sync Behavior
 
-**Pull-based sources** (Oura, RescueTime, Last.fm, Calendars) support:
+**Pull-based sources** (Oura, Strava, RescueTime, Last.fm, Calendars) support:
 
 - **Manual sync** via REST API (`POST /api/sync/{provider}`) or MCP tool (`sync_{provider}`)
 - **Auto-sync** triggered before queries if data is older than 30 minutes

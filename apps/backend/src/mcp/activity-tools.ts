@@ -4,13 +4,12 @@
 import {
   addActivityBodySchema,
   deleteActivityParamsSchema,
-  exerciseTypeNames,
-  getExerciseTypeValue,
-  isValidExerciseType,
   tzSchema,
   updateActivityBodySchema,
 } from '@aurboda/api-spec'
 import { z } from 'zod'
+
+import type { ActivityNotifier } from '../services/deduction-queue.ts'
 
 import {
   addActivity,
@@ -21,47 +20,35 @@ import {
 } from '../services/mutations.ts'
 import { errorResponse, jsonResponse, type McpServer, tzJsonResponse } from './helpers.ts'
 
-export const registerActivityTools = (server: McpServer, user: string) => {
+export const registerActivityTools = (
+  server: McpServer,
+  user: string,
+  onActivityMutated?: ActivityNotifier,
+) => {
   // Tool: add_activity
   server.tool(
     'add_activity',
-    'Add an activity session (exercise, meditation, nap, rest). Use this to log workouts or other activities.',
+    'Add an activity session (exercise type like yoga/running/weightlifting, meditation, nap, rest, …). Pass the specific activity_type directly; structured fields go in `data`.',
     {
       ...addActivityBodySchema.shape,
-      // Override enum with z.string() to allow handler-level validation with friendlier error message
-      exercise_type: z
-        .string()
-        .optional()
-        .describe(
-          `Exercise type name (e.g., "weightlifting", "running"). Only for exercise activities. Valid types: ${exerciseTypeNames.slice(0, 10).join(', ')}...`,
-        ),
       tz: tzSchema,
     },
-    async ({ activity_type, end_time, exercise_type, notes, start_time, title, tz }) => {
+    async ({ activity_type, data, end_time, notes, start_time, title, tz }) => {
       const startDate = new Date(start_time)
-      const endDate = new Date(end_time)
+      const endDate = end_time ? new Date(end_time) : undefined
 
-      let data: Record<string, unknown> | undefined
-      if (exercise_type !== undefined) {
-        if (!isValidExerciseType(exercise_type)) {
-          return errorResponse(
-            `Invalid exercise_type "${exercise_type}". Valid types include: ${exerciseTypeNames.slice(0, 15).join(', ')}...`,
-          )
-        }
-        data = {
-          exerciseType: getExerciseTypeValue(exercise_type),
-          exerciseTypeName: exercise_type,
-        }
-      }
-
-      const result = await addActivity(user, {
-        activity_type,
-        data,
-        end_time: endDate,
-        notes,
-        start_time: startDate,
-        title,
-      })
+      const result = await addActivity(
+        user,
+        {
+          activity_type,
+          data,
+          end_time: endDate,
+          notes,
+          start_time: startDate,
+          title,
+        },
+        onActivityMutated,
+      )
 
       if (!result.success) {
         return errorResponse(result.error ?? 'Failed to add activity')
@@ -96,41 +83,26 @@ export const registerActivityTools = (server: McpServer, user: string) => {
   // Tool: update_activity
   server.tool(
     'update_activity',
-    'Update an existing activity. Can modify activity_type, start_time, end_time, title, notes, and exercise_type. Only provided fields will be updated. Validates that end_time is after start_time (considering both new and existing values).',
+    'Update an existing activity. Can modify activity_type, start_time, end_time, title, notes, and data. Only provided fields will be updated. Validates that end_time is after start_time (considering both new and existing values).',
     {
       id: z.string().uuid().describe('The ID of the activity to update'),
       ...updateActivityBodySchema.shape,
-      // Override enum with z.string() to allow handler-level validation with friendlier error message
-      exercise_type: z
-        .string()
-        .optional()
-        .describe(
-          `New exercise type name (e.g., "weightlifting", "running"). Only for exercise activities. Valid types: ${exerciseTypeNames.slice(0, 10).join(', ')}...`,
-        ),
       tz: tzSchema,
     },
-    async ({ id, activity_type, start_time, end_time, title, notes, exercise_type, tz }) => {
-      let data: Record<string, unknown> | undefined
-      if (exercise_type !== undefined) {
-        if (!isValidExerciseType(exercise_type)) {
-          return errorResponse(
-            `Invalid exercise_type "${exercise_type}". Valid types include: ${exerciseTypeNames.slice(0, 15).join(', ')}...`,
-          )
-        }
-        data = {
-          exerciseType: getExerciseTypeValue(exercise_type),
-          exerciseTypeName: exercise_type,
-        }
-      }
-
-      const result = await updateActivity(user, id, {
-        activity_type,
-        data,
-        end_time: end_time ? new Date(end_time) : undefined,
-        notes,
-        start_time: start_time ? new Date(start_time) : undefined,
-        title,
-      })
+    async ({ id, activity_type, data, start_time, end_time, title, notes, tz }) => {
+      const result = await updateActivity(
+        user,
+        id,
+        {
+          activity_type,
+          data,
+          end_time: end_time ? new Date(end_time) : undefined,
+          notes,
+          start_time: start_time ? new Date(start_time) : undefined,
+          title,
+        },
+        onActivityMutated,
+      )
 
       if (!result.success) {
         return errorResponse(result.error ?? 'Failed to update activity')
@@ -151,7 +123,7 @@ export const registerActivityTools = (server: McpServer, user: string) => {
       tz: tzSchema,
     },
     async ({ activity_ids, notes, title, tz }) => {
-      const result = await mergeActivities(user, { activity_ids, notes, title })
+      const result = await mergeActivities(user, { activity_ids, notes, title }, undefined, onActivityMutated)
 
       if (!result.success) {
         return errorResponse(result.error ?? 'Failed to merge activities')

@@ -18,10 +18,6 @@ export type {
   EntityType,
   GeocodeStatus,
   LabResult,
-  LastFmMatchMode,
-  LastFmMatchType,
-  LastFmTagRule,
-  LastFmTagRuleInput,
   Location,
   McpSessionRecord,
   FoodItemEntity,
@@ -46,7 +42,6 @@ export type {
   ScreentimeCategoryInput,
   SyncState,
   SyncStatus,
-  Tag,
   TimeSeriesPoint,
   UserSettings,
 } from './types.ts'
@@ -54,6 +49,7 @@ export type {
 // Connection & schema management
 export {
   _setClientForUser,
+  dropUserDb,
   getDbForUser,
   initializeSchema,
   loginToUserDb,
@@ -64,7 +60,15 @@ export {
 } from './connection.ts'
 
 // Raw records
-export { getAllScrobbles, getScrobbles, insertRawRecord, type ScrobbleRecord } from './raw-records.ts'
+export {
+  getAllScrobbles,
+  getScrobbles,
+  insertRawRecord,
+  queryRawRecords,
+  type QueryRawRecordsParams,
+  type RawRecordRow,
+  type ScrobbleRecord,
+} from './raw-records.ts'
 
 // Time series
 export {
@@ -74,8 +78,10 @@ export {
   getDailyAggregates,
   getDistinctMetrics,
   getRawDailySum,
+  getLatestMetricValuesMulti,
   getTimeSeries,
   getTimeSeriesBucketed,
+  getTimeSeriesEntriesMultiMetric,
   getTimeSeriesMultiMetric,
   getTimeSeriesStats,
   getTimeSeriesWithSource,
@@ -89,6 +95,7 @@ export {
   deleteStaleRuleActivities,
   getDeductionRule,
   getDeductionRules,
+  getDeductionRulesByIds,
   getEnabledDeductionRules,
   insertDeductionRule,
   insertDeductionRuleRun,
@@ -99,10 +106,18 @@ export {
 export {
   activityTypeExists,
   deleteActivityTypeDefinition,
+  expandActivityTypes,
   getActivityTypeDefinition,
   getActivityTypeDefinitions,
   getActivityTypeNames,
+  getDescendantTypes,
+  getHealthConnectExerciseType,
   insertActivityTypeDefinition,
+  mergeActivityTypeDefinition,
+  renameActivityTypeDefinition,
+  resolveActivityTypeByAlias,
+  resolveActivityTypeFromHcExerciseType,
+  resolveOrCreateActivityType,
   updateActivityTypeDefinition,
 } from './activity-type-definitions.ts'
 
@@ -111,20 +126,40 @@ export {
   checkActivityConflict,
   deleteActivity,
   deleteGarminActivityWithWrongType,
+  softDeleteActivityByExternalId,
+  findMergeableActivity,
   findMergedGroupForActivity,
   getActivities,
+  getActivitiesByCategory,
+  getActivitiesExcludingCategories,
   getActivitiesNeedingDetail,
+  getAllActivitiesInRange,
+  getScreentimeActivities,
+  migrateExerciseTypes,
+  getNonSleepActivitiesMerged,
+  getAllActivityTypeNames,
   getActivityById,
+  getActivitySourcesByIds,
   getNearbyActivities,
+  backfillSuperseded,
   getOverlappingActivities,
+  getOverrideForActivity,
   getSleepSessions,
+  hardDeleteActivitiesByExternalIdPrefix,
+  hardDeleteActivitiesBySource,
+  insertActivities,
   insertActivity,
   insertNewActivity,
+  insertOverride,
   markActivityDetailSynced,
+  materializeSuperseded,
   mergeOverlappingActivities,
   restoreActivity,
   updateActivity,
-} from './activities.ts'
+  updateActivityEndTimeByExternalId,
+  updateActivityTypeByTagKey,
+  updateScreentimeActivityCategoryPath,
+} from './activities/index.ts'
 
 // Locations
 export {
@@ -139,38 +174,13 @@ export {
   getNamedLocations,
   insertDetectedLocation,
   insertLocation,
+  insertLocations,
   insertNamedLocation,
   insertPlace,
+  softDeleteLocationRange,
   updateDetectedLocation,
   updateNamedLocation,
 } from './locations.ts'
-
-// Tags
-export {
-  deleteTag,
-  deleteTagById,
-  deleteTagDefinition,
-  findMergeableTag,
-  getProgrammaticTags,
-  getTagById,
-  getTagDefinitionById,
-  getTagDefinitions,
-  getTags,
-  getUniqueTags,
-  hardDeleteTagsByExternalIdPrefix,
-  hardDeleteTagsBySource,
-  insertTag,
-  insertTagDefinition,
-  isProgrammaticTag,
-  mergeTagDefinitions,
-  resolveOrCreateTagDefinition,
-  resolveTagDefinition,
-  restoreTag,
-  updateTag,
-  updateTagDefinition,
-  updateTagEndTime,
-  updateTagNameByKey,
-} from './tags.ts'
 
 // Productivity
 export {
@@ -206,7 +216,10 @@ export {
   getNotesByEntityIds,
   getNotesForEntity,
   getNotesForTimeRange,
+  getUserNotesJoined,
   insertNote,
+  reanchorNotes,
+  replaceUserNotes,
   updateNote,
   updateNoteTimesForEntity,
   upsertSyncedNote,
@@ -218,16 +231,58 @@ export {
   findOrCreateFoodItem,
   getFoodItemById,
   getFoodItemByName,
+  getFoodItemsByIds,
   listFoodItems,
+  type MergeFoodItemResult,
+  mergeFoodItems,
   searchFoodItems,
+  setFoodItemReference,
   updateFoodItem,
   upsertFoodItem,
 } from './food-items.ts'
-export { getMealFoodItems, getMealFoodItemsBatch, setMealFoodItems } from './meal-food-items.ts'
+export {
+  findMealsContainingFoodItem,
+  getMealFoodItems,
+  getMealFoodItemsBatch,
+  setMealFoodItems,
+} from './meal-food-items.ts'
+
+// Sensitivity flags + food-item junction
+export {
+  deleteFoodItemSensitivities,
+  deleteSensitivityFlag,
+  type FoodItemSensitivityRow,
+  getFoodItemSensitivities,
+  getFoodItemSensitivityFlagIds,
+  getFoodItemSensitivityNamesBatch,
+  getSensitivityFlagByName,
+  insertSensitivityFlag,
+  listSensitivityFlags,
+  mergeFoodItemSensitivities,
+  type SensitivityFlag,
+  type SensitivityFlagInput,
+  setFoodItemSensitivities,
+  updateSensitivityFlag,
+} from './sensitivities.ts'
+
+// Food item ingredients (composite/recipe support)
+export {
+  clearIngredients,
+  findCompositeParentsOfIngredient,
+  type FoodItemIngredientInput,
+  type FoodItemIngredientRow,
+  getIngredients,
+  getIngredientsBatch,
+  setIngredients,
+} from './food-item-ingredients.ts'
 
 // Meals
 export {
   deleteMeal,
+  type FrequentFoodItemRow,
+  type FrequentMealRow,
+  getFrequentFoodItems,
+  getFrequentMeals,
   getMealById,
   getMealLogCompleted,
   getMeals,
@@ -287,6 +342,26 @@ export {
 // Uploaded icons
 export { deleteIcon, getIcon, insertIcon } from './icons.ts'
 
+// Shared food-item overrides (per-user customizations layered onto central rows)
+export {
+  clearSharedFoodItemOverride,
+  getSharedFoodItemOverride,
+  getSharedFoodItemOverridesByIds,
+  setSharedFoodItemOverride,
+  type SharedFoodItemOverride,
+  type SharedFoodItemOverrideInput,
+} from './shared-food-item-overrides.ts'
+
+// Per-user nutrient recommendation overrides
+export {
+  clearUserNutrientRecommendation,
+  getUserNutrientRecommendation,
+  listUserNutrientRecommendations,
+  upsertUserNutrientRecommendation,
+  type UserNutrientRecommendationInput,
+  type UserNutrientRecommendationRow,
+} from './user-nutrient-recommendations.ts'
+
 // Settings
 export { getUserSettings, upsertUserSettings } from './settings.ts'
 
@@ -300,16 +375,9 @@ export {
   getCustomMetricByName,
   getCustomMetricDefinitions,
   insertCustomMetricDefinition,
+  mergeCustomMetric,
   updateCustomMetricDefinition,
 } from './custom-metrics.ts'
-
-// Last.fm tag rules
-export {
-  deleteLastFmTagRule,
-  getLastFmTagRules,
-  insertLastFmTagRule,
-  updateLastFmTagRule,
-} from './lastfm-rules.ts'
 
 // MCP sessions
 export {
@@ -330,11 +398,21 @@ export {
   type AuditLogRow,
 } from './audit-log.ts'
 
+// WebAuthn / passkey credentials
+export {
+  deleteWebAuthnCredential,
+  getWebAuthnCredentialById,
+  getWebAuthnCredentialsForUser,
+  insertWebAuthnCredential,
+  updateWebAuthnCredentialNickname,
+  updateWebAuthnCredentialUsage,
+  type WebAuthnCredentialRow,
+} from './webauthn.ts'
+
 // Row mappers (re-export for consumers that need them directly)
 export {
   mapActivityRow,
   mapDetectedLocationRow,
-  mapLastFmTagRuleRow,
   mapMcpSessionRow,
   mapMealRow,
   mapNamedLocationRow,
@@ -342,7 +420,6 @@ export {
   mapReportEntryRow,
   mapReportRow,
   mapSyncStateRow,
-  mapTagRow,
   parseActivityType,
   parseDataSource,
   parseEntityType,

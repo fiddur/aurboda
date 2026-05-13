@@ -1,17 +1,27 @@
+import type { QueryResultRow } from 'pg'
+
 /**
  * Row mapper functions for converting PostgreSQL rows to typed objects.
  *
  * Replaces inline `as Type` casts with validated type guards.
  */
-import type { ActivityType, DataSource, MetricType } from '@aurboda/api-spec'
-import type { QueryResultRow } from 'pg'
+import {
+  confidenceSchema,
+  dataSourceSchema,
+  entityTypes,
+  geocodeStatusSchema,
+  reportFlagSchema,
+  syncStatusSchema,
+  type ActivityType,
+  type DataSource,
+  type MetricType,
+} from '@aurboda/api-spec'
 
 import type {
   Activity,
   DetectedLocation,
   EntityType,
   GeocodeStatus,
-  LastFmTagRule,
   McpSessionRecord,
   Meal,
   MealFoodItem,
@@ -24,35 +34,16 @@ import type {
   ReportFlag,
   SyncState,
   SyncStatus,
-  Tag,
-  TagDefinition,
 } from './types.ts'
 
 // ============================================================================
 // Type Guards
 // ============================================================================
 
-const VALID_DATA_SOURCES = [
-  'aurboda',
-  'deduction-rule',
-  'health_connect',
-  'health_connect_aggregate',
-  'lab_report',
-  'oura',
-  'garmin',
-  'rescuetime',
-  'owntracks',
-  'calendar',
-  'manual',
-  'lastfm',
-] as const
-
-const VALID_GEOCODE_STATUSES = ['pending', 'geocoding', 'success', 'failed'] as const
-const VALID_SYNC_STATUSES = ['idle', 'syncing', 'error', 'rate_limited'] as const
-const VALID_ENTITY_TYPES = ['activity', 'tag', 'productivity', 'metric'] as const
-const VALID_LASTFM_MATCH_TYPES = ['track', 'artist', 'track_artist'] as const
-const VALID_LASTFM_MATCH_MODES = ['exact', 'contains'] as const
-
+const VALID_DATA_SOURCES = dataSourceSchema.options
+const VALID_GEOCODE_STATUSES = geocodeStatusSchema.options
+const VALID_SYNC_STATUSES = syncStatusSchema.options
+const VALID_ENTITY_TYPES = entityTypes
 export const parseActivityType = (value: unknown): ActivityType => {
   if (typeof value === 'string' && /^[a-z][a-z0-9_]*$/.test(value)) {
     return value
@@ -96,37 +87,59 @@ export const parseMetricType = (value: unknown): MetricType => {
   return value as MetricType
 }
 
-const parseLastFmMatchType = (value: unknown) => {
-  if (typeof value === 'string' && (VALID_LASTFM_MATCH_TYPES as readonly string[]).includes(value)) {
-    return value as (typeof VALID_LASTFM_MATCH_TYPES)[number]
-  }
-  throw new Error(`Invalid LastFmMatchType: ${JSON.stringify(value)}`)
-}
-
-const parseLastFmMatchMode = (value: unknown) => {
-  if (typeof value === 'string' && (VALID_LASTFM_MATCH_MODES as readonly string[]).includes(value)) {
-    return value as (typeof VALID_LASTFM_MATCH_MODES)[number]
-  }
-  throw new Error(`Invalid LastFmMatchMode: ${JSON.stringify(value)}`)
-}
-
 // ============================================================================
 // Row Mappers
 // ============================================================================
+
+/**
+ * Map an INSERT … RETURNING row from `activities` to the lean key tuple used
+ * by callers that need to attach related rows (notes, etc.) after a bulk
+ * insert. Kept separate from `mapActivityRow` because the RETURNING set is
+ * intentionally small.
+ */
+export interface InsertedActivityKey {
+  id: string
+  source: DataSource
+  external_id: string | null
+  activity_type: ActivityType
+  start_time: Date
+}
+
+export const mapInsertedActivityKey = (row: QueryResultRow): InsertedActivityKey => {
+  if (typeof row.id !== 'string') {
+    throw new Error(`mapInsertedActivityKey: expected string id, got ${JSON.stringify(row.id)}`)
+  }
+  return {
+    activity_type: parseActivityType(row.activity_type),
+    external_id: row.external_id ?? null,
+    id: row.id,
+    source: parseDataSource(row.source),
+    start_time: new Date(row.start_time),
+  }
+}
 
 export const mapActivityRow = (row: QueryResultRow): Activity => ({
   activity_type: parseActivityType(row.activity_type),
   data: row.data,
   deleted_at: row.deleted_at ? new Date(row.deleted_at) : undefined,
   end_time: row.end_time ? new Date(row.end_time) : undefined,
+  external_id: row.external_id ?? undefined,
   id: row.id,
-  notes: row.notes,
+  // Populated by the SELECT via a subquery against activity_override_targets
+  // (when present). PostgreSQL returns NULL for an empty array_agg, which
+  // the row-mapper normalises to undefined so the Activity type stays sparse.
+  override_target_ids:
+    Array.isArray(row.override_target_ids) && row.override_target_ids.length > 0
+      ? row.override_target_ids
+      : undefined,
   source: parseDataSource(row.source),
   start_time: new Date(row.start_time),
+  superseded_by: row.superseded_by ?? undefined,
   title: row.title,
 })
 
 export const mapNamedLocationRow = (row: QueryResultRow): NamedLocation => ({
+  auto_create_activity: row.auto_create_activity === true,
   created_at: new Date(row.created_at),
   id: row.id,
   lat: row.lat,
@@ -163,45 +176,11 @@ export const mapSyncStateRow = (row: QueryResultRow): SyncState => ({
   updated_at: row.updated_at ? new Date(row.updated_at) : undefined,
 })
 
-export const mapTagRow = (row: QueryResultRow): Tag => ({
-  deleted_at: row.deleted_at ? new Date(row.deleted_at) : undefined,
-  end_time: row.end_time ? new Date(row.end_time) : undefined,
-  external_id: row.external_id,
-  id: row.id,
-  source: row.source,
-  start_time: new Date(row.start_time),
-  tag: row.tag,
-  tag_definition_id: row.tag_definition_id ?? undefined,
-  tag_key: row.tag_key ?? undefined,
-})
-
-export const mapTagDefinitionRow = (row: QueryResultRow): TagDefinition => ({
-  aliases: row.aliases ?? [],
-  created_at: new Date(row.created_at),
-  icon: row.icon ?? undefined,
-  id: row.id,
-  name: row.name,
-  updated_at: new Date(row.updated_at),
-})
-
 export const mapMcpSessionRow = (row: QueryResultRow): McpSessionRecord => ({
   created_at: new Date(row.created_at),
   last_activity: new Date(row.last_activity),
   session_id: row.session_id,
   username: row.username,
-})
-
-export const mapLastFmTagRuleRow = (row: QueryResultRow): LastFmTagRule => ({
-  artist_name: row.artist_name ?? undefined,
-  artist_names: row.artist_names ?? undefined,
-  created_at: new Date(row.created_at),
-  id: row.id,
-  match_mode: parseLastFmMatchMode(row.match_mode),
-  match_type: parseLastFmMatchType(row.match_type),
-  merge_gap_seconds: row.merge_gap_seconds ?? undefined,
-  rule_name: row.rule_name,
-  tag_name: row.tag_name,
-  track_name: row.track_name ?? undefined,
 })
 
 export const mapNoteRow = (row: QueryResultRow): Note => ({
@@ -242,8 +221,8 @@ export const mapMealRow = (row: QueryResultRow): Meal => ({
 // Report Row Mappers
 // ============================================================================
 
-const VALID_CONFIDENCES = ['measured', 'estimated', 'derived'] as const
-const VALID_REPORT_FLAGS = ['critical_low', 'low', 'normal', 'high', 'critical_high'] as const
+const VALID_CONFIDENCES = confidenceSchema.options
+const VALID_REPORT_FLAGS = reportFlagSchema.options
 
 const parseConfidence = (value: unknown): ReportConfidence | undefined => {
   if (typeof value === 'string' && (VALID_CONFIDENCES as readonly string[]).includes(value)) {

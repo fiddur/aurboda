@@ -2,14 +2,14 @@
  * Restore (undo soft-delete) and additional delete-by-id services.
  */
 
-import type { DeleteActivityResult, DeleteTagResult } from './mutations.ts'
+import type { DeleteActivityResult } from './mutations.ts'
 
 import {
   deleteProductivityRecord as dbDeleteProductivityRecord,
-  deleteTagById as dbDeleteTagById,
+  getActivityById as dbGetActivityById,
+  materializeSuperseded,
   restoreActivity as dbRestoreActivity,
   restoreProductivityRecord as dbRestoreProductivityRecord,
-  restoreTag as dbRestoreTag,
 } from '../db/index.ts'
 
 export interface RestoreResult {
@@ -20,22 +20,16 @@ export interface RestoreResult {
 
 export async function restoreActivity(user: string, id: string): Promise<RestoreResult> {
   const restored = await dbRestoreActivity(user, id)
-  return { id, restored, success: restored }
-}
-
-export async function restoreTag(user: string, id: string): Promise<RestoreResult> {
-  const restored = await dbRestoreTag(user, id)
+  if (restored) {
+    const activity = await dbGetActivityById(user, id)
+    if (activity) await materializeSuperseded(user, activity.start_time)
+  }
   return { id, restored, success: restored }
 }
 
 export async function restoreProductivity(user: string, id: string): Promise<RestoreResult> {
   const restored = await dbRestoreProductivityRecord(user, id)
   return { id, restored, success: restored }
-}
-
-export async function deleteTagById(user: string, id: string): Promise<DeleteTagResult> {
-  const deleted = await dbDeleteTagById(user, id)
-  return { deleted, external_id: id, success: deleted }
 }
 
 export async function deleteProductivity(user: string, id: string): Promise<DeleteActivityResult> {

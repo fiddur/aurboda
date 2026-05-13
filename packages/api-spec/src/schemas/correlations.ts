@@ -15,10 +15,12 @@ export const hrvStatsSchema = z
   .object({
     mean_hr: z.number().nullable().meta({ description: 'Mean heart rate during period' }),
     mean_hrv: z.number().nullable().meta({ description: 'Mean HRV (RMSSD) during period' }),
+    mean_stress: z.number().nullable().meta({ description: 'Mean stress level during period' }),
     sample_count: z.number().int().meta({ description: 'Number of data samples' }),
     sample_minutes: z.number().meta({ description: 'Total minutes of data' }),
     stddev_hr: z.number().nullable().meta({ description: 'Standard deviation of HR' }),
     stddev_hrv: z.number().nullable().meta({ description: 'Standard deviation of HRV' }),
+    stddev_stress: z.number().nullable().meta({ description: 'Standard deviation of stress level' }),
   })
   .meta({ id: 'HrvStats' })
 
@@ -29,6 +31,10 @@ export const hrvStatsWithDeltaSchema = hrvStatsSchema
   .extend({
     hr_delta_from_baseline: z.number().nullable().meta({ description: 'HR change from baseline' }),
     hrv_delta_from_baseline: z.number().nullable().meta({ description: 'HRV change from baseline' }),
+    stress_delta_from_baseline: z
+      .number()
+      .nullable()
+      .meta({ description: 'Stress level change from baseline' }),
   })
   .meta({ id: 'HrvStatsWithDelta' })
 
@@ -66,6 +72,11 @@ export const baselineDataSchema = z
       avg7day: z.number().nullable(),
       avg30day: z.number().nullable(),
       trend_percent: z.number().nullable(),
+    }),
+    stress: z.object({
+      avg7day: z.number().nullable(),
+      avg30day: z.number().nullable(),
+      trend_percent: z.number().nullable().meta({ description: 'Change from previous 30-day period' }),
     }),
   })
   .meta({ id: 'BaselineData' })
@@ -118,23 +129,16 @@ export type LocationCorrelation = z.infer<typeof locationCorrelationSchema>
 /** Activity correlation */
 export const activityCorrelationSchema = hrvStatsWithDeltaSchema
   .extend({
-    activity_type: z.string().meta({ description: 'Activity type (exercise, meditation, etc.)' }),
-    avg_duration_min: z.number().meta({ description: 'Average duration in minutes' }),
+    activity_type: z.string().meta({ description: 'Activity type' }),
+    avg_duration_min: z
+      .number()
+      .optional()
+      .meta({ description: 'Average duration in minutes (undefined for point activities)' }),
     occurrences: z.number().int().meta({ description: 'Number of occurrences' }),
   })
   .meta({ id: 'ActivityCorrelation' })
 
 export type ActivityCorrelation = z.infer<typeof activityCorrelationSchema>
-
-/** Tag correlation */
-export const tagCorrelationSchema = hrvStatsWithDeltaSchema
-  .extend({
-    occurrences: z.number().int().meta({ description: 'Number of occurrences' }),
-    tag: z.string().meta({ description: 'Tag name' }),
-  })
-  .meta({ id: 'TagCorrelation' })
-
-export type TagCorrelation = z.infer<typeof tagCorrelationSchema>
 
 /** HRV-Activities result data */
 export const hrvActivitiesDataSchema = z
@@ -144,7 +148,6 @@ export const hrvActivitiesDataSchema = z
       activities: z.array(activityCorrelationSchema),
       locations: z.array(locationCorrelationSchema),
       productivity: z.array(productivityCorrelationSchema),
-      tags: z.array(tagCorrelationSchema),
     }),
     period: z.object({
       days: z.number().int(),
@@ -224,6 +227,13 @@ export const activityImpactDataSchema = z
       during: timeWindowStatsSchema,
     }),
     occurrences: z.number().int().meta({ description: 'Number of activity occurrences found' }),
+    stress_timeline: z.object({
+      after15min: timeWindowStatsSchema,
+      after30min: timeWindowStatsSchema,
+      before15min: timeWindowStatsSchema,
+      before30min: timeWindowStatsSchema,
+      during: timeWindowStatsSchema,
+    }),
   })
   .meta({ id: 'ActivityImpactData' })
 

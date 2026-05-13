@@ -1,4 +1,4 @@
-import type { RequestHandler, Router } from 'express'
+import type { RequestHandler } from 'express'
 
 /**
  * Trends route group.
@@ -9,20 +9,20 @@ import { type TrendQuery, trendQuerySchema, type TrendResponse } from '@aurboda/
 
 import { getCustomMetrics } from '../services/mutations.ts'
 import { getTrend } from '../services/trends.ts'
-import { typedRouter } from '../typed-router.ts'
+import { type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateQuery } from '../validation.ts'
 
-export const createTrendsRouter = (authMiddleware: RequestHandler): Router => {
+export const createTrendsRouter = (authMiddleware: RequestHandler): TypedRouter => {
   const router = typedRouter()
 
-  // GET /trends - Get time-weighted trend for tags or metrics
-  router.get<Record<string, string>, TrendResponse, unknown, TrendQuery>(
+  router.get<Record<string, never>, TrendResponse, unknown, TrendQuery>(
     '/',
     authMiddleware,
     validateQuery(trendQuerySchema),
     async (req, res) => {
       const {
         aggregation,
+        breakdown_fields: breakdownFieldsStr,
         display_period,
         half_life_days,
         lookback_days,
@@ -30,6 +30,12 @@ export const createTrendsRouter = (authMiddleware: RequestHandler): Router => {
         source_type,
         tag_definition_id,
       } = req.query
+      const breakdown_fields = breakdownFieldsStr
+        ? breakdownFieldsStr
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : undefined
       const user = req.user!
 
       // Require pattern or tag_definition_id
@@ -42,26 +48,22 @@ export const createTrendsRouter = (authMiddleware: RequestHandler): Router => {
       const halfLifeDays = half_life_days ? parseInt(half_life_days, 10) : undefined
       const lookbackDays = lookback_days ? parseInt(lookback_days, 10) : undefined
 
-      try {
-        const customMetrics = await getCustomMetrics(user)
+      const customMetrics = await getCustomMetrics(user)
 
-        const result = await getTrend(user, {
-          aggregation,
-          custom_metrics: customMetrics,
-          display_period,
-          half_life_days: halfLifeDays,
-          lookback_days: lookbackDays,
-          pattern: pattern ?? '',
-          source_type,
-          tag_definition_id,
-        })
-        res.json({ data: result, success: true })
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unknown error'
-        res.status(400).json({ error: message, success: false })
-      }
+      const result = await getTrend(user, {
+        aggregation,
+        breakdown_fields,
+        custom_metrics: customMetrics,
+        display_period,
+        half_life_days: halfLifeDays,
+        lookback_days: lookbackDays,
+        pattern: pattern ?? '',
+        source_type,
+        tag_definition_id,
+      })
+      res.json({ data: result, success: true })
     },
   )
 
-  return router as unknown as Router
+  return router
 }

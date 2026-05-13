@@ -24,7 +24,7 @@ export interface NutrientFieldDef {
  * All nutrient fields, in display order.
  * This is the single source of truth for nutrient columns across the system.
  */
-export const NUTRIENT_FIELDS: NutrientFieldDef[] = [
+export const NUTRIENT_FIELDS = [
   // Macros (also on meals table directly)
   { category: 'macro', label: 'Calories', name: 'calories', unit: 'kcal' },
   { category: 'macro', label: 'Protein', name: 'protein', unit: 'g' },
@@ -40,6 +40,11 @@ export const NUTRIENT_FIELDS: NutrientFieldDef[] = [
   { category: 'extended_macro', label: 'Starch', name: 'starch', unit: 'g' },
   { category: 'extended_macro', label: 'Sugars', name: 'sugars', unit: 'g' },
   { category: 'extended_macro', label: 'Added Sugars', name: 'added_sugars', unit: 'g' },
+  { category: 'extended_macro', label: 'Free Sugars', name: 'free_sugars', unit: 'g' },
+  { category: 'extended_macro', label: 'Sucrose', name: 'sucrose', unit: 'g' },
+  { category: 'extended_macro', label: 'Monosaccharides', name: 'monosaccharides', unit: 'g' },
+  { category: 'extended_macro', label: 'Disaccharides', name: 'disaccharides', unit: 'g' },
+  { category: 'extended_macro', label: 'Whole Grain', name: 'whole_grain', unit: 'g' },
   { category: 'extended_macro', label: 'Cholesterol', name: 'cholesterol', unit: 'mg' },
 
   // Fat breakdown
@@ -55,6 +60,20 @@ export const NUTRIENT_FIELDS: NutrientFieldDef[] = [
   { category: 'fat_breakdown', label: 'DPA', name: 'dpa', unit: 'g' },
   { category: 'fat_breakdown', label: 'AA', name: 'aa', unit: 'g' },
   { category: 'fat_breakdown', label: 'LA', name: 'la', unit: 'g' },
+  // Individual fatty acids (LSV)
+  {
+    category: 'fat_breakdown',
+    label: 'Short-chain Fatty Acids (4-10:0)',
+    name: 'short_chain_fatty_acids',
+    unit: 'g',
+  },
+  { category: 'fat_breakdown', label: 'Lauric Acid (12:0)', name: 'lauric_acid', unit: 'g' },
+  { category: 'fat_breakdown', label: 'Myristic Acid (14:0)', name: 'myristic_acid', unit: 'g' },
+  { category: 'fat_breakdown', label: 'Palmitic Acid (16:0)', name: 'palmitic_acid', unit: 'g' },
+  { category: 'fat_breakdown', label: 'Palmitoleic Acid (16:1)', name: 'palmitoleic_acid', unit: 'g' },
+  { category: 'fat_breakdown', label: 'Stearic Acid (18:0)', name: 'stearic_acid', unit: 'g' },
+  { category: 'fat_breakdown', label: 'Oleic Acid (18:1)', name: 'oleic_acid', unit: 'g' },
+  { category: 'fat_breakdown', label: 'Arachidic Acid (20:0)', name: 'arachidic_acid', unit: 'g' },
 
   // Vitamins
   { category: 'vitamin', label: 'Vitamin A', name: 'vitamin_a', unit: 'µg' },
@@ -62,11 +81,13 @@ export const NUTRIENT_FIELDS: NutrientFieldDef[] = [
   { category: 'vitamin', label: 'Beta-Carotene', name: 'beta_carotene', unit: 'µg' },
   { category: 'vitamin', label: 'Vitamin C', name: 'vitamin_c', unit: 'mg' },
   { category: 'vitamin', label: 'Vitamin D', name: 'vitamin_d', unit: 'µg' },
+  { category: 'vitamin', label: 'Vitamin D incl 25-OH-D3', name: 'vitamin_d_25oh', unit: 'µg' },
   { category: 'vitamin', label: 'Vitamin E', name: 'vitamin_e', unit: 'mg' },
   { category: 'vitamin', label: 'Vitamin K', name: 'vitamin_k', unit: 'µg' },
   { category: 'vitamin', label: 'B1 (Thiamine)', name: 'b1_thiamine', unit: 'mg' },
   { category: 'vitamin', label: 'B2 (Riboflavin)', name: 'b2_riboflavin', unit: 'mg' },
   { category: 'vitamin', label: 'B3 (Niacin)', name: 'b3_niacin', unit: 'mg' },
+  { category: 'vitamin', label: 'Niacin Equivalents', name: 'niacin_equivalents', unit: 'mg' },
   { category: 'vitamin', label: 'B5 (Pantothenic Acid)', name: 'b5_pantothenic_acid', unit: 'mg' },
   { category: 'vitamin', label: 'B6 (Pyridoxine)', name: 'b6_pyridoxine', unit: 'mg' },
   { category: 'vitamin', label: 'B12 (Cobalamin)', name: 'b12_cobalamin', unit: 'µg' },
@@ -74,6 +95,7 @@ export const NUTRIENT_FIELDS: NutrientFieldDef[] = [
 
   // Minerals
   { category: 'mineral', label: 'Calcium', name: 'calcium', unit: 'mg' },
+  { category: 'mineral', label: 'Chromium', name: 'chromium', unit: 'µg' },
   { category: 'mineral', label: 'Copper', name: 'copper', unit: 'mg' },
   { category: 'mineral', label: 'Iron', name: 'iron', unit: 'mg' },
   { category: 'mineral', label: 'Magnesium', name: 'magnesium', unit: 'mg' },
@@ -103,10 +125,83 @@ export const NUTRIENT_FIELDS: NutrientFieldDef[] = [
   { category: 'other', label: 'Phytate', name: 'phytate', unit: 'mg' },
   { category: 'other', label: 'Ash', name: 'ash', unit: 'g' },
   { category: 'other', label: 'Salt', name: 'salt', unit: 'g' },
-]
+] as const satisfies readonly NutrientFieldDef[]
 
 /** All nutrient field names. */
 export const NUTRIENT_FIELD_NAMES = NUTRIENT_FIELDS.map((f) => f.name)
+
+/** Macro field names ('calories' plus the four core macros). */
+export const MACRO_FIELD_NAMES = NUTRIENT_FIELDS.filter((f) => f.category === 'macro').map((f) => f.name)
+
+/** Macro field names excluding 'calories' — used to detect "more than just kcal". */
+export const NON_CALORIE_MACRO_FIELD_NAMES = MACRO_FIELD_NAMES.filter((n) => n !== 'calories')
+
+/**
+ * Every nutrient field that is *not* in the 'macro' category — i.e. the
+ * full set of richer-than-macro fields: extended_macro (sugars, alcohol,
+ * caffeine, water, cholesterol, …), fat_breakdown (saturated/poly/mono,
+ * omegas, individual fatty acids), vitamin, mineral, amino_acid, and
+ * other (oxalate, phytate, salt, ash). Used by search ranking to surface
+ * food items with richer nutrition data over bare kcal-only entries.
+ *
+ * Note: this is intentionally broader than just true micronutrients —
+ * the goal is to detect "this row has data beyond the basic macros",
+ * which is what distinguishes an LSV reference entry from an oura
+ * import.
+ */
+export const NON_MACRO_NUTRIENT_FIELD_NAMES = NUTRIENT_FIELDS.filter((f) => f.category !== 'macro').map(
+  (f) => f.name,
+)
+
+/**
+ * Quality tier for ranking food items by how complete their nutrition data
+ * is. Lower tier = better data. Used by food-item search to surface the
+ * Livsmedelsverket reference data above bare kcal-only imports.
+ *
+ * | tier | meaning                                                                |
+ * | ---- | ---------------------------------------------------------------------- |
+ * | 0    | has any non-macro nutrient (extended_macro, fat_breakdown, vitamin,    |
+ * |      | mineral, amino_acid, other)                                            |
+ * | 1    | has at least one non-calorie macro (protein/carbs/fat/fiber), no       |
+ * |      | non-macro nutrient                                                     |
+ * | 2    | only calories                                                          |
+ * | 3    | empty                                                                  |
+ */
+export const getFoodItemQualityTier = (item: Readonly<Record<string, unknown>>): 0 | 1 | 2 | 3 => {
+  const hasValue = (n: string): boolean => {
+    const v = item[n]
+    return typeof v === 'number' && !Number.isNaN(v)
+  }
+  if (NON_MACRO_NUTRIENT_FIELD_NAMES.some(hasValue)) return 0
+  if (NON_CALORIE_MACRO_FIELD_NAMES.some(hasValue)) return 1
+  if (hasValue('calories')) return 2
+  return 3
+}
+
+/**
+ * SQL fragment that resolves to a 0–3 integer quality tier for a row in
+ * `food_items` or `shared_food_items`. Mirrors `getFoodItemQualityTier`
+ * exactly so the JS-side merge in `FoodItemsService.search` can re-rank
+ * results from both stores against the same tier scale.
+ *
+ * Computed once at module load — the field lists never change at runtime.
+ */
+const buildFoodItemQualityTierSql = (): string => {
+  // FALSE keeps the SQL valid if either category becomes empty in the
+  // future (e.g. someone restructures NUTRIENT_FIELDS) — without it,
+  // `.join(' OR ')` produces an empty fragment and the CASE becomes a
+  // syntax error.
+  const orElseFalse = (names: readonly string[]): string =>
+    names.length === 0 ? 'FALSE' : names.map((n) => `${n} IS NOT NULL`).join(' OR ')
+  return `CASE
+    WHEN ${orElseFalse(NON_MACRO_NUTRIENT_FIELD_NAMES)} THEN 0
+    WHEN ${orElseFalse(NON_CALORIE_MACRO_FIELD_NAMES)} THEN 1
+    WHEN calories IS NOT NULL THEN 2
+    ELSE 3
+  END`
+}
+
+export const FOOD_ITEM_QUALITY_TIER_SQL = buildFoodItemQualityTierSql()
 
 /** Generate SQL column definitions for all nutrient fields. */
 export const nutrientColumnsDDL = (): string =>
@@ -115,7 +210,16 @@ export const nutrientColumnsDDL = (): string =>
 /**
  * Zod schema with all nutrient fields as optional numbers.
  * Used for food item and meal_food_item validation.
+ *
+ * The type assertion ensures TypeScript infers individual named fields
+ * (e.g. `{ calories?: number; protein?: number; ... }`) instead of a
+ * `Record<string, number | undefined>` index signature. Without this,
+ * extending the schema with non-number fields (like FoodItemEntity.name)
+ * would create an impossible type.
  */
+type NutrientFieldName = (typeof NUTRIENT_FIELDS)[number]['name']
+type NutrientSchemaShape = { [K in NutrientFieldName]: z.ZodOptional<z.ZodNumber> }
+
 export const nutrientFieldsSchema = z.object(
   Object.fromEntries(
     NUTRIENT_FIELDS.map((f) => [
@@ -125,7 +229,7 @@ export const nutrientFieldsSchema = z.object(
         .optional()
         .meta({ description: `${f.label} (${f.unit})` }),
     ]),
-  ),
+  ) as unknown as NutrientSchemaShape,
 )
 
 export type NutrientFields = z.infer<typeof nutrientFieldsSchema>

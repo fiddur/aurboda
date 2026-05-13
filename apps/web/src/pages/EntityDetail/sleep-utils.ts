@@ -83,8 +83,8 @@ export const formatMinutesAsHM = (minutes: number): string => {
   return m > 0 ? `${h}h ${m}m` : `${h}h`
 }
 
-/** Oura metric keys used for sleep detail. */
-export const OURA_SLEEP_METRICS = [
+/** Metric keys used for sleep detail. */
+export const SLEEP_METRICS = [
   'sleep_score',
   'sleep_efficiency',
   'sleep_restfulness',
@@ -92,9 +92,9 @@ export const OURA_SLEEP_METRICS = [
   'sleep_rem_score',
 ] as const
 
-export type OuraSleepMetricKey = (typeof OURA_SLEEP_METRICS)[number]
+export type SleepMetricKey = (typeof SLEEP_METRICS)[number]
 
-export const OURA_METRIC_LABELS: Record<OuraSleepMetricKey, string> = {
+export const SLEEP_METRIC_LABELS: Record<SleepMetricKey, string> = {
   sleep_deep_score: 'Deep',
   sleep_efficiency: 'Efficiency',
   sleep_rem_score: 'REM',
@@ -102,7 +102,7 @@ export const OURA_METRIC_LABELS: Record<OuraSleepMetricKey, string> = {
   sleep_score: 'Score',
 }
 
-export const OURA_METRIC_UNITS: Record<OuraSleepMetricKey, string> = {
+export const SLEEP_METRIC_UNITS: Record<SleepMetricKey, string> = {
   sleep_deep_score: '',
   sleep_efficiency: '%',
   sleep_rem_score: '',

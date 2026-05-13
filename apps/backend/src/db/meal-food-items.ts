@@ -1,7 +1,19 @@
 /**
  * Meal ↔ Food Item junction table operations.
  *
- * Links meals to canonical food items with per-serving nutrient snapshots.
+ * Each junction row snapshots the canonical food item's nutrient values at
+ * insertion time so historical totals stay frozen. Name, icon, and
+ * sensitivity flags are NOT snapshotted — they're presentation/inheritance
+ * data and are resolved live against the canonical food item (per-user
+ * `food_items` or central `shared_food_items`, with per-user overrides)
+ * and the `food_item_sensitivities` junction at meal read time.
+ *
+ * The `food_item_name` + `food_item_icon` legacy columns are still read,
+ * though, so meals whose food item was hard-deleted (no merge re-pointer)
+ * still render their last-known label on the timeline / detail view
+ * instead of blanking out. Live resolution always wins; the snapshot is a
+ * last-resort fallback. food_item_id is a soft pointer across user and
+ * central DBs, so we never JOIN food_items here.
  */
 
 import { NUTRIENT_FIELD_NAMES } from '@aurboda/api-spec'
@@ -11,14 +23,15 @@ import type { MealFoodItemLink } from './types.ts'
 import { query } from './connection.ts'
 
 const JUNCTION_COLUMNS = [
-  'mfi.id',
-  'mfi.meal_id',
-  'mfi.food_item_id',
-  'fi.name AS food_item_name',
-  'mfi.quantity',
-  'mfi.unit',
-  'mfi.sort_order',
-  ...NUTRIENT_FIELD_NAMES.map((f) => `mfi.${f}`),
+  'id',
+  'meal_id',
+  'food_item_id',
+  'food_item_name',
+  'food_item_icon',
+  'quantity',
+  'unit',
+  'sort_order',
+  ...NUTRIENT_FIELD_NAMES,
 ].join(', ')
 
 const mapJunctionRow = (row: Record<string, unknown>): MealFoodItemLink => {
@@ -26,7 +39,8 @@ const mapJunctionRow = (row: Record<string, unknown>): MealFoodItemLink => {
     id: row.id,
     meal_id: row.meal_id,
     food_item_id: row.food_item_id,
-    food_item_name: row.food_item_name ?? undefined,
+    legacy_food_item_name: row.food_item_name ?? undefined,
+    legacy_food_item_icon: row.food_item_icon ?? undefined,
     quantity: row.quantity ?? undefined,
     unit: row.unit ?? undefined,
     sort_order: row.sort_order ?? 0,
@@ -57,10 +71,9 @@ export const getMealFoodItems = async (user: string, mealId: string): Promise<Me
   const result = await query(
     user,
     `SELECT ${JUNCTION_COLUMNS}
-     FROM meal_food_items mfi
-     JOIN food_items fi ON fi.id = mfi.food_item_id
-     WHERE mfi.meal_id = $1
-     ORDER BY mfi.sort_order`,
+     FROM meal_food_items
+     WHERE meal_id = $1
+     ORDER BY sort_order`,
     [mealId],
   )
   return result.rows.map(mapJunctionRow)
@@ -98,6 +111,20 @@ export const setMealFoodItems = async (
 }
 
 /**
+ * Find every distinct meal_id that has at least one junction row pointing at
+ * the given food_item_id. Used by the re-snapshot flow to know which meals
+ * to recompute when a food item's effective nutrients change.
+ */
+export const findMealsContainingFoodItem = async (user: string, foodItemId: string): Promise<string[]> => {
+  const result = await query(
+    user,
+    'SELECT DISTINCT meal_id FROM meal_food_items WHERE food_item_id = $1 ORDER BY meal_id',
+    [foodItemId],
+  )
+  return result.rows.map((row) => row.meal_id as string)
+}
+
+/**
  * Get food items for multiple meals at once (batch query).
  * Returns a map of meal_id → MealFoodItemLink[].
  */
@@ -111,10 +138,9 @@ export const getMealFoodItemsBatch = async (
   const result = await query(
     user,
     `SELECT ${JUNCTION_COLUMNS}
-     FROM meal_food_items mfi
-     JOIN food_items fi ON fi.id = mfi.food_item_id
-     WHERE mfi.meal_id IN (${placeholders})
-     ORDER BY mfi.meal_id, mfi.sort_order`,
+     FROM meal_food_items
+     WHERE meal_id IN (${placeholders})
+     ORDER BY meal_id, sort_order`,
     mealIds,
   )
 

@@ -6,6 +6,7 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import io.mockk.coEvery
@@ -38,9 +39,9 @@ class LoginScreenTest {
 
         composeTestRule.onNodeWithText("Aurboda").assertIsDisplayed()
         composeTestRule.onNodeWithText("Server URL").assertIsDisplayed()
-        composeTestRule.onNodeWithText("Username").assertIsDisplayed()
-        composeTestRule.onNodeWithText("Password").assertIsDisplayed()
-        composeTestRule.onNodeWithText("Login").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Username").performScrollTo().assertIsDisplayed()
+        composeTestRule.onNodeWithText("Password").performScrollTo().assertIsDisplayed()
+        composeTestRule.onNodeWithText("Login").performScrollTo().assertIsDisplayed()
     }
 
     @Test
@@ -144,7 +145,7 @@ class LoginScreenTest {
         var loginSuccessCalled = false
 
         coEvery { mockAuthApi.login(any(), any(), any()) } returns
-            LoginResult.Success("test-token", "test-refresh")
+            LoginResult.Success("test-token")
 
         composeTestRule.setContent {
             LoginScreen(
@@ -158,9 +159,9 @@ class LoginScreenTest {
             )
         }
 
-        composeTestRule.onNodeWithText("Username").performTextInput("testuser")
-        composeTestRule.onNodeWithText("Password").performTextInput("testpass")
-        composeTestRule.onNodeWithText("Login").performClick()
+        composeTestRule.onNodeWithText("Username").performScrollTo().performTextInput("testuser")
+        composeTestRule.onNodeWithText("Password").performScrollTo().performTextInput("testpass")
+        composeTestRule.onNodeWithText("Login").performScrollTo().performClick()
 
         composeTestRule.waitForIdle()
 
@@ -211,9 +212,9 @@ class LoginScreenTest {
             )
         }
 
-        composeTestRule.onNodeWithText("Username").performTextInput("testuser")
-        composeTestRule.onNodeWithText("Password").performTextInput("testpass")
-        composeTestRule.onNodeWithText("Login").performClick()
+        composeTestRule.onNodeWithText("Username").performScrollTo().performTextInput("testuser")
+        composeTestRule.onNodeWithText("Password").performScrollTo().performTextInput("testpass")
+        composeTestRule.onNodeWithText("Login").performScrollTo().performClick()
 
         composeTestRule.waitForIdle()
 
@@ -225,7 +226,7 @@ class LoginScreenTest {
         val mockAuthApi = mockk<AuthApi>()
 
         coEvery { mockAuthApi.login(any(), any(), any()) } returns
-            LoginResult.Success("token", "refresh")
+            LoginResult.Success("token")
 
         composeTestRule.setContent {
             LoginScreen(
@@ -236,9 +237,9 @@ class LoginScreenTest {
             )
         }
 
-        composeTestRule.onNodeWithText("Username").performTextInput("testuser")
-        composeTestRule.onNodeWithText("Password").performTextInput("testpass")
-        composeTestRule.onNodeWithText("Login").performClick()
+        composeTestRule.onNodeWithText("Username").performScrollTo().performTextInput("testuser")
+        composeTestRule.onNodeWithText("Password").performScrollTo().performTextInput("testpass")
+        composeTestRule.onNodeWithText("Login").performScrollTo().performClick()
 
         composeTestRule.waitForIdle()
 

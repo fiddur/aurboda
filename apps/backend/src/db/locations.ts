@@ -1,3 +1,8 @@
+/**
+ * Location, Place, Named Location, and Detected Location CRUD operations.
+ */
+import format from 'pg-format'
+
 import type {
   DetectedLocation,
   DetectedLocationInput,
@@ -8,9 +13,6 @@ import type {
   Place,
 } from './types.ts'
 
-/**
- * Location, Place, Named Location, and Detected Location CRUD operations.
- */
 import { query } from './connection.ts'
 import { buildDynamicUpdate, type UpdateEntry } from './dynamic-update.ts'
 import { mapDetectedLocationRow, mapNamedLocationRow } from './row-mappers.ts'
@@ -38,12 +40,63 @@ export const insertLocation = async (user: string, location: Location) => {
   )
 }
 
+/** Batch-insert multiple locations in a single query. */
+export const insertLocations = async (user: string, locations: Location[]): Promise<void> => {
+  if (locations.length === 0) return
+
+  // pg-format %L produces invalid SQL for empty JS arrays (trailing comma before paren),
+  // so convert regions to a PostgreSQL array literal string.
+  const formatRegions = (regions: string[] | undefined): string =>
+    regions?.length ? `{${regions.join(',')}}` : '{}'
+
+  const values = locations.map((loc) => [
+    loc.source || 'owntracks',
+    loc.time,
+    loc.lon,
+    loc.lat,
+    loc.accuracy ?? null,
+    loc.altitude ?? null,
+    loc.velocity ?? null,
+    formatRegions(loc.regions),
+  ])
+
+  // pg-format %L quotes all values as text; cast to correct types for PostGIS and numeric columns
+  await query(
+    user,
+    format(
+      `INSERT INTO locations (source, time, location, accuracy, altitude, velocity, regions)
+       SELECT v.source, v.time::timestamptz,
+              ST_MakePoint(v.lon::double precision, v.lat::double precision)::geography,
+              v.accuracy::double precision, v.altitude::double precision,
+              v.velocity::double precision, v.regions::text[]
+       FROM (VALUES %L) AS v(source, time, lon, lat, accuracy, altitude, velocity, regions)
+       ON CONFLICT (source, time) DO NOTHING`,
+      values,
+    ),
+  )
+}
+
+/** Soft-delete locations from a given source within a time range. */
+export const softDeleteLocationRange = async (
+  user: string,
+  source: string,
+  start: Date,
+  end: Date,
+): Promise<void> => {
+  await query(
+    user,
+    `UPDATE locations SET deleted_at = NOW()
+     WHERE source = $1 AND time >= $2 AND time <= $3 AND deleted_at IS NULL`,
+    [source, start, end],
+  )
+}
+
 export const getLocations = async (user: string, start: Date, end: Date) => {
   const result = await query(
     user,
     `SELECT time, ST_AsGeoJSON(location) AS location, regions
      FROM locations
-     WHERE time >= $1 AND time <= $2
+     WHERE time >= $1 AND time <= $2 AND deleted_at IS NULL
      ORDER BY time`,
     [start, end],
   )
@@ -90,39 +143,36 @@ export const insertPlace = async (user: string, place: Place) => {
 // Named Locations (user-defined via Aurboda)
 // ============================================================================
 
+const NAMED_LOCATION_COLS =
+  'id, name, ST_Y(location::geometry) as lat, ST_X(location::geometry) as lon, radius, auto_create_activity, created_at, updated_at'
+
 export const insertNamedLocation = async (
   user: string,
   location: NamedLocationInput,
 ): Promise<NamedLocation> => {
   const result = await query(
     user,
-    `INSERT INTO named_locations (name, location, radius)
-     VALUES ($1, ST_MakePoint($2, $3)::geography, $4)
-     RETURNING id, name, ST_Y(location::geometry) as lat, ST_X(location::geometry) as lon, radius, created_at, updated_at`,
-    [location.name, location.lon, location.lat, location.radius ?? 200],
+    `INSERT INTO named_locations (name, location, radius, auto_create_activity)
+     VALUES ($1, ST_MakePoint($2, $3)::geography, $4, $5)
+     RETURNING ${NAMED_LOCATION_COLS}`,
+    [
+      location.name,
+      location.lon,
+      location.lat,
+      location.radius ?? 200,
+      location.auto_create_activity ?? false,
+    ],
   )
   return mapNamedLocationRow(result.rows[0])
 }
 
 export const getNamedLocations = async (user: string): Promise<NamedLocation[]> => {
-  const result = await query(
-    user,
-    `SELECT id, name, ST_Y(location::geometry) as lat, ST_X(location::geometry) as lon, radius, created_at, updated_at
-     FROM named_locations
-     ORDER BY name`,
-    [],
-  )
+  const result = await query(user, `SELECT ${NAMED_LOCATION_COLS} FROM named_locations ORDER BY name`, [])
   return result.rows.map(mapNamedLocationRow)
 }
 
 export const getNamedLocationById = async (user: string, id: string): Promise<NamedLocation | null> => {
-  const result = await query(
-    user,
-    `SELECT id, name, ST_Y(location::geometry) as lat, ST_X(location::geometry) as lon, radius, created_at, updated_at
-     FROM named_locations
-     WHERE id = $1`,
-    [id],
-  )
+  const result = await query(user, `SELECT ${NAMED_LOCATION_COLS} FROM named_locations WHERE id = $1`, [id])
   if (result.rows.length === 0) return null
   return mapNamedLocationRow(result.rows[0])
 }
@@ -141,11 +191,13 @@ export const updateNamedLocation = async (
     })
   }
   if (updates.radius !== undefined) fields.push({ column: 'radius', value: updates.radius })
+  if (updates.auto_create_activity !== undefined) {
+    fields.push({ column: 'auto_create_activity', value: updates.auto_create_activity })
+  }
 
   const update = buildDynamicUpdate('named_locations', id, fields, {
     defaultClauses: ['updated_at = NOW()'],
-    returning:
-      'id, name, ST_Y(location::geometry) as lat, ST_X(location::geometry) as lon, radius, created_at, updated_at',
+    returning: NAMED_LOCATION_COLS,
   })
   if (!update) return null
 

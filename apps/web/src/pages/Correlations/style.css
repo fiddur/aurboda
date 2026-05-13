@@ -96,6 +96,10 @@
   color: #ef4444;
 }
 
+.correlations-page .baseline-value.stress {
+  color: #f59e0b;
+}
+
 /* Impact section */
 .correlations-page .impact-section {
   margin-bottom: 2rem;
@@ -146,6 +150,10 @@
 
 .correlations-page .impact-legend .dot.hr {
   background: #ef4444;
+}
+
+.correlations-page .impact-legend .dot.stress {
+  background: #f59e0b;
 }
 
 .correlations-page .impact-legend .zone {

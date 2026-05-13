@@ -17,39 +17,56 @@ import type { ParamsDictionary, Query, RequestHandler, RequestHandlerParams } fr
 import { Router } from 'express'
 
 /**
+ * Middleware that doesn't constrain the route's query/body/param types.
+ *
+ * Use for cross-cutting middleware (auth, logging) that doesn't need typed
+ * access to req.query/body/params. Lets a single middleware value compose with
+ * routes that specify coerced (non-string) query types via the 4th generic.
+ */
+export type AnyMiddleware = RequestHandler<
+  ParamsDictionary,
+  any, // oxlint-disable-line typescript/no-explicit-any -- intentional any for query/body compat
+  any, // oxlint-disable-line typescript/no-explicit-any -- intentional any for query/body compat
+  any // oxlint-disable-line typescript/no-explicit-any -- intentional any for query/body compat
+>
+
+/**
  * Router method with ResBody defaulting to `never` instead of `any`.
  * Keeps the same overload structure as Express's IRouterMatcher but with stricter defaults.
  */
 interface StrictRouterMatcher<T> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- ReqBody stays `any` for Express compat; ResBody is the enforced contract
   <
     P extends ParamsDictionary = ParamsDictionary,
     ResBody = never,
-    ReqBody = any,
-    ReqQuery extends Query = Query,
+    ReqBody = any, // oxlint-disable-line typescript/no-explicit-any -- ReqBody stays `any` for Express compat
+    ReqQuery = Query,
   >(
     path: string,
     ...handlers: Array<RequestHandler<P, ResBody, ReqBody, ReqQuery>>
   ): T
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   <
     P extends ParamsDictionary = ParamsDictionary,
     ResBody = never,
-    ReqBody = any,
-    ReqQuery extends Query = Query,
+    ReqBody = any, // oxlint-disable-line typescript/no-explicit-any -- ReqBody stays `any` for Express compat
+    ReqQuery = Query,
   >(
     path: string,
     ...handlers: Array<RequestHandlerParams<P, ResBody, ReqBody, ReqQuery>>
   ): T
 }
 
-export interface TypedRouter extends Omit<Router, 'get' | 'post' | 'put' | 'patch' | 'delete'> {
-  get: StrictRouterMatcher<this>
-  post: StrictRouterMatcher<this>
-  put: StrictRouterMatcher<this>
-  patch: StrictRouterMatcher<this>
-  delete: StrictRouterMatcher<this>
+/**
+ * Router with strict response typing. Uses intersection with Router so that
+ * TypedRouter IS-A Router (no `as unknown as Router` cast needed at boundaries).
+ * The StrictRouterMatcher overloads take priority in call-site resolution.
+ */
+export type TypedRouter = Router & {
+  get: StrictRouterMatcher<TypedRouter>
+  post: StrictRouterMatcher<TypedRouter>
+  put: StrictRouterMatcher<TypedRouter>
+  patch: StrictRouterMatcher<TypedRouter>
+  delete: StrictRouterMatcher<TypedRouter>
 }
 
 /** Create an Express Router with strict response typing (ResBody defaults to `never`). */
-export const typedRouter = (): TypedRouter => Router() as unknown as TypedRouter
+export const typedRouter = (): TypedRouter => Router() as TypedRouter

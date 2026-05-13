@@ -6,8 +6,6 @@
  * inherited times since they reference a point in time already encoded in the entity_id.
  */
 
-import type { EntityType as ApiEntityType } from '@aurboda/api-spec'
-
 import {
   deleteNote as dbDeleteNote,
   getNotesForEntity as dbGetNotesForEntity,
@@ -17,7 +15,6 @@ import {
   getActivityById,
   getProductivityById,
   getReportById,
-  getTagById,
   type EntityType,
 } from '../db/index.ts'
 
@@ -31,7 +28,7 @@ export interface NoteResult {
   success: boolean
   data?: {
     id: string
-    entity_type: ApiEntityType
+    entity_type: EntityType
     entity_id: string
     content: string
     start_time?: string
@@ -52,11 +49,6 @@ async function getEntityTimes(
   entityId: string,
 ): Promise<{ start_time: Date; end_time?: Date } | undefined> {
   switch (entityType) {
-    case 'tag': {
-      const tag = await getTagById(user, entityId)
-      if (!tag) return undefined
-      return { end_time: tag.end_time, start_time: tag.start_time }
-    }
     case 'activity': {
       const activity = await getActivityById(user, entityId)
       if (!activity) return undefined
@@ -132,8 +124,8 @@ export async function deleteNoteById(
   return { deleted, success: deleted }
 }
 
-export async function getNotesForEntity(user: string, entityType: ApiEntityType, entityId: string) {
-  const notes = await dbGetNotesForEntity(user, entityType as EntityType, entityId)
+export async function getNotesForEntity(user: string, entityType: EntityType, entityId: string) {
+  const notes = await dbGetNotesForEntity(user, entityType, entityId)
   return notes.map((n) => ({
     content: n.content,
     created_at: n.created_at.toISOString(),

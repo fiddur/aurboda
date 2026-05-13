@@ -26,6 +26,7 @@ No public signup, but self-hosting is straightforward via Docker. It was initiat
 - [**Custom Activity Types**](docs/features/activity-types.md) -- User-defined activity types with display categories, colors, and timeline visibility
 - [**Deduction Rules**](docs/features/deduction-rules.md) -- Automatic activity creation from data conditions (tag + activity + screentime), with rule chaining
 - [**Active Calorie Computation**](docs/features/calories.md) -- HR-based calculation with gap-fill from Health Connect
+- [**Passkey Login**](docs/passkeys.md) -- WebAuthn-based sign-in for web and Android, with Digital Asset Links to share passkeys between the website and the Android app
 - **MCP Integration** -- Full AI assistant access via [Model Context Protocol](docs/mcp-server.md) (60+ tools)
 
 ### Data Sources
@@ -149,13 +150,13 @@ This starts:
 
 - **aurboda** (web + API) on port 8080
 - **PostgreSQL** with PostGIS
-- **Watchtower** for automatic updates
+- **Watchtower** -- polls Docker Hub once a day and automatically pulls/restarts the `aurboda` container when a new image is published. Convenient, but if you'd rather control your own update cadence, remove the `watchtower` service from `docker-compose.yml` before starting.
 
 ### Creating Your User
 
-Navigate to http://localhost:8080 and create your account through the web interface.
+Navigate to http://localhost:8080 and create your account through the web interface. **The first account created on a fresh instance is automatically granted admin rights** -- it's the account you'll use to invite others, configure shared integrations (Oura, Strava, etc.), and manage signup mode.
 
-After creating your user, you can set `ALLOW_SIGNUP=false` in docker-compose.yml to disallow other signups.
+After creating your user, switch signup to `invite_only` or `closed` from the in-app admin settings (or set `ALLOW_SIGNUP=false` in docker-compose.yml as a legacy fallback) to disallow other signups.
 
 ### Environment Variables
 

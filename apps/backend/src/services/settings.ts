@@ -18,7 +18,7 @@ import {
   getOAuthToken,
   getUserSettings,
   replaceGoals,
-  updateTagNameByKey,
+  updateActivityTypeByTagKey,
   upsertUserSettings,
 } from '../db/index.ts'
 import { getCentralDb } from './central-db.ts'
@@ -181,7 +181,7 @@ export const setTagMapping = async (
   const settings = await getSettings(user)
   const updates = buildTagMappingUpdates(settings, tagKey, name, icon)
   await upsertUserSettings(user, updates)
-  await updateTagNameByKey(user, tagKey, name)
+  await updateActivityTypeByTagKey(user, tagKey, name)
   return updates.tag_mappings!
 }
 
@@ -234,7 +234,15 @@ export const getSettingsResponse = async (user: string): Promise<SettingsRespons
   const { zones, source } = await getEffectiveHrZones(user)
   const ouraToken = await getOAuthToken(user, 'oura')
   const garminToken = await getOAuthToken(user, 'garmin')
-  const lastFmConfigured = !!(await getCentralDb().getLastFmApiKey())
+  const stravaToken = await getOAuthToken(user, 'strava')
+  const centralDb = getCentralDb()
+  const lastFmConfigured = !!(await centralDb.getLastFmApiKey())
+  const ouraConfigured =
+    !!(await centralDb.getServerSetting('oura_client_id')) &&
+    !!(await centralDb.getServerSetting('oura_client_secret'))
+  const stravaConfigured =
+    !!(await centralDb.getServerSetting('strava_client_id')) &&
+    !!(await centralDb.getServerSetting('strava_client_secret'))
 
   const goals = await getEffectiveGoals(user)
 
@@ -245,24 +253,35 @@ export const getSettingsResponse = async (user: string): Promise<SettingsRespons
     hr_zone_start: zones,
     hr_zone_start_source: source,
     lastfm_configured: lastFmConfigured,
-    oura_configured: !!(process.env.OURA_CLIENT && process.env.OURA_SECRET),
+    oura_configured: ouraConfigured,
     oura_connected: ouraToken !== null,
+    strava_configured: stravaConfigured,
+    strava_connected: stravaToken !== null && stravaToken.access_token !== '',
     success: true,
   }
 }
 
-const buildErrorSettingsResponse = async (errorMessage: string): Promise<SettingsResponse> => ({
-  ...settingsWithDefaultsSchema.parse({}),
-  error: errorMessage,
-  goals: defaultGoals,
-  hr_zone_start: calculateDefaultHrZones(null),
-  hr_zone_start_source: 'default' as const,
-  lastfm_configured: !!(await getCentralDb().getLastFmApiKey()),
-  oura_configured: !!(process.env.OURA_CLIENT && process.env.OURA_SECRET),
-  garmin_connected: false,
-  oura_connected: false,
-  success: false,
-})
+const buildErrorSettingsResponse = async (errorMessage: string): Promise<SettingsResponse> => {
+  const centralDb = getCentralDb()
+  const lastFmConfigured = !!(await centralDb.getLastFmApiKey())
+  const ouraConfigured =
+    !!(await centralDb.getServerSetting('oura_client_id')) &&
+    !!(await centralDb.getServerSetting('oura_client_secret'))
+  return {
+    ...settingsWithDefaultsSchema.parse({}),
+    error: errorMessage,
+    goals: defaultGoals,
+    hr_zone_start: calculateDefaultHrZones(null),
+    hr_zone_start_source: 'default' as const,
+    lastfm_configured: lastFmConfigured,
+    oura_configured: ouraConfigured,
+    garmin_connected: false,
+    oura_connected: false,
+    strava_configured: false,
+    strava_connected: false,
+    success: false,
+  }
+}
 
 export const validateAndUpdateSettings = async (user: string, input: unknown): Promise<SettingsResponse> => {
   const parsed = updateSettingsInputSchema.safeParse(input)

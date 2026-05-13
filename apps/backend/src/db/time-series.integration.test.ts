@@ -13,14 +13,16 @@ import {
   deleteTimeSeriesMetric,
   deleteTimeSeriesPoint,
   getDistinctMetrics,
+  getLatestMetricValuesMulti,
   getTimeSeries,
   getTimeSeriesBucketed,
+  getTimeSeriesEntriesMultiMetric,
   getTimeSeriesWithSource,
   insertTimeSeries,
 } from './time-series.ts'
 
 // Increase timeout for container startup
-const CONTAINER_TIMEOUT = 60_000
+const CONTAINER_TIMEOUT = 120_000
 
 describe('Time Series Integration Tests', () => {
   beforeAll(async () => {
@@ -764,6 +766,93 @@ describe('Time Series Integration Tests', () => {
       )
 
       expect(metrics).toEqual([])
+    })
+  })
+
+  describe('getTimeSeriesEntriesMultiMetric', () => {
+    test('returns entries with unit and source for multiple metrics in range', async () => {
+      const user = getTestUser()
+
+      await insertTimeSeries(user, [
+        { metric: 'weight', source: 'aurboda', time: new Date('2024-01-15T07:00:00Z'), value: 102.3 },
+        { metric: 'weight', source: 'aurboda', time: new Date('2024-01-16T07:00:00Z'), value: 102.0 },
+        {
+          metric: 'body_temperature',
+          source: 'aurboda',
+          time: new Date('2024-01-15T08:00:00Z'),
+          value: 36.6,
+        },
+      ])
+
+      const entries = await getTimeSeriesEntriesMultiMetric(
+        user,
+        ['weight', 'body_temperature'],
+        new Date('2024-01-15T00:00:00Z'),
+        new Date('2024-01-15T23:59:59Z'),
+      )
+
+      expect(entries).toHaveLength(2)
+      const weight = entries.find((e) => e.metric === 'weight')
+      expect(weight).toMatchObject({ source: 'aurboda', unit: 'kg', value: 102.3 })
+      const temp = entries.find((e) => e.metric === 'body_temperature')
+      expect(temp).toMatchObject({ source: 'aurboda', unit: 'celsius', value: 36.6 })
+    })
+
+    test('returns empty when no metrics provided', async () => {
+      const entries = await getTimeSeriesEntriesMultiMetric(
+        getTestUser(),
+        [],
+        new Date('2024-01-15T00:00:00Z'),
+        new Date('2024-01-15T23:59:59Z'),
+      )
+      expect(entries).toEqual([])
+    })
+
+    test('excludes soft-deleted rows', async () => {
+      const user = getTestUser()
+      await insertTimeSeries(user, [
+        { metric: 'weight', source: 'aurboda', time: new Date('2024-01-15T07:00:00Z'), value: 102 },
+      ])
+      await deleteTimeSeriesPoint(user, 'weight', new Date('2024-01-15T07:00:00Z'), 'aurboda')
+
+      const entries = await getTimeSeriesEntriesMultiMetric(
+        user,
+        ['weight'],
+        new Date('2024-01-15T00:00:00Z'),
+        new Date('2024-01-15T23:59:59Z'),
+      )
+      expect(entries).toEqual([])
+    })
+  })
+
+  describe('getLatestMetricValuesMulti', () => {
+    test('returns the most recent entry per metric, regardless of age', async () => {
+      const user = getTestUser()
+
+      await insertTimeSeries(user, [
+        { metric: 'weight', source: 'aurboda', time: new Date('2023-11-01T07:00:00Z'), value: 105 },
+        { metric: 'weight', source: 'aurboda', time: new Date('2024-01-15T07:00:00Z'), value: 102 },
+        {
+          metric: 'blood_pressure_systolic',
+          source: 'aurboda',
+          time: new Date('2024-01-10T07:00:00Z'),
+          value: 122,
+        },
+      ])
+
+      const latest = await getLatestMetricValuesMulti(user, [
+        'weight',
+        'blood_pressure_systolic',
+        'body_temperature',
+      ])
+      expect(latest.get('weight')).toMatchObject({ source: 'aurboda', unit: 'kg', value: 102 })
+      expect(latest.get('blood_pressure_systolic')).toMatchObject({ unit: 'mmHg', value: 122 })
+      expect(latest.has('body_temperature')).toBe(false)
+    })
+
+    test('returns empty map when no metrics provided', async () => {
+      const latest = await getLatestMetricValuesMulti(getTestUser(), [])
+      expect(latest.size).toBe(0)
     })
   })
 })

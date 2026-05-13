@@ -15,7 +15,7 @@ import {
   type OuraRenewResponse,
   type OuraSubscriptionResponse,
   type OuraWebhookDataType,
-} from '../oura-webhook-api.ts'
+} from '../integrations/oura/webhook-api.ts'
 
 const RENEWAL_INTERVAL_MS = 12 * 60 * 60 * 1000 // 12 hours
 const RENEWAL_THRESHOLD_HOURS = 24
@@ -47,13 +47,13 @@ export const createOuraWebhookService = (deps: OuraWebhookServiceDeps): OuraWebh
   let renewalTimer: NodeJS.Timeout | null = null
 
   const initSubscriptions = async (): Promise<void> => {
-    console.log('Oura webhook: initializing subscriptions...')
+    console.info('Oura webhook: initializing subscriptions...')
 
     // Get existing remote subscriptions
     let remoteSubscriptions: OuraSubscriptionResponse[] = []
     try {
       remoteSubscriptions = await deps.listRemoteSubscriptions()
-      console.log(`Oura webhook: found ${remoteSubscriptions.length} existing remote subscriptions`)
+      console.info(`Oura webhook: found ${remoteSubscriptions.length} existing remote subscriptions`)
     } catch (error) {
       console.error('Oura webhook: failed to list remote subscriptions:', error)
     }
@@ -87,14 +87,14 @@ export const createOuraWebhookService = (deps: OuraWebhookServiceDeps): OuraWebh
             expiration_time: created.expiration_time ? new Date(created.expiration_time) : null,
             oura_subscription_id: created.id,
           })
-          console.log(`Oura webhook: created subscription for ${dataType}/${eventType} (id=${created.id})`)
+          console.info(`Oura webhook: created subscription for ${dataType}/${eventType} (id=${created.id})`)
         } catch (error) {
           console.error(`Oura webhook: failed to create subscription for ${dataType}/${eventType}:`, error)
         }
       }
     }
 
-    console.log('Oura webhook: subscription initialization complete')
+    console.info('Oura webhook: subscription initialization complete')
   }
 
   const renewExpiringSubscriptions = async (): Promise<void> => {
@@ -111,7 +111,7 @@ export const createOuraWebhookService = (deps: OuraWebhookServiceDeps): OuraWebh
           ...sub,
           expiration_time: renewed.expiration_time ? new Date(renewed.expiration_time) : null,
         })
-        console.log(`Oura webhook: renewed subscription ${sub.oura_subscription_id}`)
+        console.info(`Oura webhook: renewed subscription ${sub.oura_subscription_id}`)
       } catch (error) {
         console.error(`Oura webhook: failed to renew subscription ${sub.oura_subscription_id}:`, error)
       }
@@ -125,14 +125,14 @@ export const createOuraWebhookService = (deps: OuraWebhookServiceDeps): OuraWebh
         console.error('Oura webhook: renewal timer error:', error)
       })
     }, RENEWAL_INTERVAL_MS)
-    console.log('Oura webhook: renewal timer started (every 12h)')
+    console.info('Oura webhook: renewal timer started (every 12h)')
   }
 
   const stopRenewalTimer = (): void => {
     if (renewalTimer) {
       clearInterval(renewalTimer)
       renewalTimer = null
-      console.log('Oura webhook: renewal timer stopped')
+      console.info('Oura webhook: renewal timer stopped')
     }
   }
 

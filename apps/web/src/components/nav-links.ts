@@ -8,6 +8,8 @@ export const NAV_LINKS = [
   { href: '/add', label: '+ Add', icon: '➕' },
   { href: '/chart', label: 'Chart', icon: '📈' },
   { href: '/places', label: 'Places', icon: '📍' },
+  { href: '/activity-types', label: 'Types', icon: '🏷' },
+  { href: '/deduction-rules', label: 'Rules', icon: '🔗' },
 ]
 
 export const DATA_SOURCE_LINKS = [
@@ -16,6 +18,7 @@ export const DATA_SOURCE_LINKS = [
   { label: 'Aurboda Android', path: '/data-sources/android-app' },
   { label: 'Oura Ring', path: '/data-sources/oura' },
   { label: 'Garmin Connect', path: '/data-sources/garmin' },
+  { label: 'Strava', path: '/data-sources/strava' },
   { label: 'ActivityWatch (Desktop)', path: '/data-sources/activitywatch-desktop' },
   { label: 'ActivityWatch (Android)', path: '/data-sources/activitywatch-android' },
   { label: 'RescueTime', path: '/data-sources/rescue-time' },

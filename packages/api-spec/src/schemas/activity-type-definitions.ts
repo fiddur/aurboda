@@ -4,16 +4,24 @@
 import { z } from 'zod'
 
 import { baseResponseSchema, createDataArrayResponseSchema, displayCategorySchema } from './common.ts'
+import { dataSchemaDefinitionSchema } from './data-schema.ts'
 
 /**
  * Activity type definition schema.
  */
 export const activityTypeDefinitionSchema = z
   .object({
+    aliases: z
+      .array(z.string())
+      .optional()
+      .meta({ description: 'Lowercase match strings for resolving tags/imports to this type' }),
     color: z
       .string()
       .regex(/^#[0-9a-fA-F]{6}$/)
       .meta({ description: 'Hex color for timeline rendering' }),
+    data_schema: dataSchemaDefinitionSchema
+      .optional()
+      .meta({ description: 'Schema defining expected data fields for this activity type' }),
     display_category: displayCategorySchema,
     display_name: z.string().meta({ description: 'Human-readable display name' }),
     icon: z.string().optional().meta({ description: 'Emoji or icon identifier' }),
@@ -22,6 +30,23 @@ export const activityTypeDefinitionSchema = z
       .string()
       .regex(/^[a-z][a-z0-9_]*$/)
       .meta({ description: 'Snake_case identifier used as activity_type value' }),
+    parent_type: z
+      .string()
+      .regex(/^[a-z][a-z0-9_]*$/)
+      .optional()
+      .meta({
+        description:
+          'Parent activity type name — queries for the parent include activities of this type and all descendants',
+      }),
+    health_connect_exercise_type: z
+      .number()
+      .int()
+      .optional()
+      .meta({ description: 'Health Connect exercise type integer value' }),
+    health_connect_record_type: z
+      .string()
+      .optional()
+      .meta({ description: 'Health Connect record type (e.g. ExerciseSessionRecord)' }),
     show_on_timeline: z.boolean().meta({ description: 'Whether to show on the timeline' }),
   })
   .meta({ id: 'ActivityTypeDefinition', description: 'Activity type definition with display metadata' })
@@ -33,11 +58,18 @@ export type ActivityTypeDefinition = z.infer<typeof activityTypeDefinitionSchema
  */
 export const addActivityTypeDefinitionBodySchema = z
   .object({
+    aliases: z
+      .array(z.string())
+      .optional()
+      .meta({ description: 'Lowercase match strings (name is always auto-included)' }),
     color: z
       .string()
       .regex(/^#[0-9a-fA-F]{6}$/)
       .optional()
       .meta({ description: 'Hex color (defaults to #6b7280)' }),
+    data_schema: dataSchemaDefinitionSchema
+      .optional()
+      .meta({ description: 'Schema defining expected data fields' }),
     display_category: displayCategorySchema.meta({ description: 'Display category for timeline grouping' }),
     display_name: z.string().meta({ description: 'Human-readable display name' }),
     icon: z.string().optional().meta({ description: 'Emoji or icon identifier' }),
@@ -45,6 +77,11 @@ export const addActivityTypeDefinitionBodySchema = z
       .string()
       .regex(/^[a-z][a-z0-9_]*$/)
       .meta({ description: 'Snake_case identifier (e.g. "sauna", "driving")' }),
+    parent_type: z
+      .string()
+      .regex(/^[a-z][a-z0-9_]*$/)
+      .optional()
+      .meta({ description: 'Optional parent activity type name (must already exist)' }),
     show_on_timeline: z
       .boolean()
       .optional()
@@ -59,14 +96,28 @@ export type AddActivityTypeDefinitionBody = z.infer<typeof addActivityTypeDefini
  */
 export const updateActivityTypeDefinitionBodySchema = z
   .object({
+    aliases: z
+      .array(z.string())
+      .optional()
+      .meta({ description: 'Replace aliases (name is always auto-included)' }),
     color: z
       .string()
       .regex(/^#[0-9a-fA-F]{6}$/)
       .optional()
       .meta({ description: 'New hex color' }),
+    data_schema: dataSchemaDefinitionSchema
+      .nullable()
+      .optional()
+      .meta({ description: 'New data schema (null to clear)' }),
     display_category: displayCategorySchema.optional().meta({ description: 'New display category' }),
     display_name: z.string().optional().meta({ description: 'New display name' }),
-    icon: z.string().optional().meta({ description: 'New icon' }),
+    icon: z.string().nullable().optional().meta({ description: 'New icon (null to clear)' }),
+    parent_type: z
+      .string()
+      .regex(/^[a-z][a-z0-9_]*$/)
+      .nullable()
+      .optional()
+      .meta({ description: 'New parent activity type (null to clear)' }),
     show_on_timeline: z.boolean().optional().meta({ description: 'Whether to show on the timeline' }),
   })
   .meta({ id: 'UpdateActivityTypeDefinitionBody' })
@@ -92,3 +143,83 @@ export const activityTypeDefinitionResponseSchema = baseResponseSchema
   .meta({ id: 'ActivityTypeDefinitionResponse' })
 
 export type ActivityTypeDefinitionResponse = z.infer<typeof activityTypeDefinitionResponseSchema>
+
+// =============================================================================
+// Rename Activity Type
+// =============================================================================
+
+const activityTypeNameSchema = z
+  .string()
+  .regex(/^[a-z][a-z0-9_]*$/)
+  .meta({ description: 'Activity type name (snake_case)' })
+
+/**
+ * Rename a custom activity type's snake_case identifier.
+ * Updates all references (activities, deduction rules).
+ */
+export const renameActivityTypeBodySchema = z
+  .object({
+    new_name: activityTypeNameSchema.meta({ description: 'New snake_case identifier for the activity type' }),
+  })
+  .meta({ id: 'RenameActivityTypeBody' })
+
+export type RenameActivityTypeBody = z.infer<typeof renameActivityTypeBodySchema>
+
+/**
+ * Rename activity type response.
+ */
+export const renameActivityTypeResponseSchema = baseResponseSchema
+  .extend({
+    activities_updated: z
+      .number()
+      .int()
+      .optional()
+      .meta({ description: 'Number of activities updated to the new name' }),
+    data: activityTypeDefinitionSchema.optional().meta({ description: 'Updated activity type definition' }),
+    deduction_rules_updated: z
+      .number()
+      .int()
+      .optional()
+      .meta({ description: 'Number of deduction rules updated' }),
+  })
+  .meta({ id: 'RenameActivityTypeResponse' })
+
+export type RenameActivityTypeResponse = z.infer<typeof renameActivityTypeResponseSchema>
+
+// =============================================================================
+// Merge Activity Type
+// =============================================================================
+
+/**
+ * Merge a custom activity type into another activity type (built-in or custom).
+ * All activities are reassigned; aliases are merged; the source definition is deleted.
+ */
+export const mergeActivityTypeBodySchema = z
+  .object({
+    source: activityTypeNameSchema.meta({ description: 'Custom activity type to merge away' }),
+    target: activityTypeNameSchema.meta({ description: 'Target activity type to merge into' }),
+  })
+  .meta({ id: 'MergeActivityTypeBody' })
+
+export type MergeActivityTypeBody = z.infer<typeof mergeActivityTypeBodySchema>
+
+/**
+ * Merge activity type response.
+ */
+export const mergeActivityTypeResponseSchema = baseResponseSchema
+  .extend({
+    activities_reassigned: z
+      .number()
+      .int()
+      .optional()
+      .meta({ description: 'Number of activities moved to the target type' }),
+    deduction_rules_updated: z
+      .number()
+      .int()
+      .optional()
+      .meta({ description: 'Number of deduction rules updated to reference the target type' }),
+    target: activityTypeDefinitionSchema.optional().meta({ description: 'Updated target definition' }),
+  })
+  .meta({ id: 'MergeActivityTypeResponse' })
+
+export type MergeActivityTypeResponse = z.infer<typeof mergeActivityTypeResponseSchema>

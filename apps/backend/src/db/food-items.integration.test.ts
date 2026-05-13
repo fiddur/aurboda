@@ -7,13 +7,14 @@ import {
   getFoodItemById,
   getFoodItemByName,
   searchFoodItems,
+  setFoodItemReference,
   updateFoodItem,
   upsertFoodItem,
 } from './food-items.ts'
 import { getMealFoodItems, setMealFoodItems } from './meal-food-items.ts'
 import { insertMeal } from './meals.ts'
 
-const CONTAINER_TIMEOUT = 60_000
+const CONTAINER_TIMEOUT = 120_000
 
 describe('Food Items Integration Tests', () => {
   beforeAll(async () => {
@@ -85,6 +86,115 @@ describe('Food Items Integration Tests', () => {
       expect(results).toHaveLength(1)
       expect(results[0].name).toBe('Fat Coffee')
     })
+
+    test('matches mid-word substrings (brand-prefixed names)', async () => {
+      const user = getTestUser()
+
+      await upsertFoodItem(user, { name: 'Arla, Hushallsost' })
+      await upsertFoodItem(user, { name: 'Banana' })
+
+      const results = await searchFoodItems(user, 'hushallsost', 10)
+      expect(results.map((r) => r.name)).toContain('Arla, Hushallsost')
+    })
+
+    test('folds diacritics (å/ä/ö → a/a/o)', async () => {
+      const user = getTestUser()
+
+      await upsertFoodItem(user, { name: 'Arla, Hushållsost' })
+      await upsertFoodItem(user, { name: 'Mjölk' })
+
+      const cheeseHits = await searchFoodItems(user, 'hushallsost', 10)
+      expect(cheeseHits.map((r) => r.name)).toContain('Arla, Hushållsost')
+
+      const milkHits = await searchFoodItems(user, 'mjolk', 10)
+      expect(milkHits.map((r) => r.name)).toContain('Mjölk')
+    })
+
+    test('tolerates typos via trigram similarity', async () => {
+      const user = getTestUser()
+
+      await upsertFoodItem(user, { name: 'Arla, Hushållsost' })
+      await upsertFoodItem(user, { name: 'Banana' })
+
+      // "hushalsost" — missing one 'l' compared to "hushållsost"
+      const results = await searchFoodItems(user, 'hushalsost', 10)
+      expect(results.map((r) => r.name)).toContain('Arla, Hushållsost')
+    })
+
+    test('ranks substring hits above fuzzy-only hits', async () => {
+      const user = getTestUser()
+
+      // "hushallsost" is a substring of the first; only fuzzy-similar to the second.
+      await upsertFoodItem(user, { name: 'Arla, Hushållsost' })
+      await upsertFoodItem(user, { name: 'Hushållsosk' })
+
+      const results = await searchFoodItems(user, 'hushallsost', 10)
+      expect(results[0].name).toBe('Arla, Hushållsost')
+    })
+
+    test('within substring matches, items with richer nutrition rank higher', async () => {
+      const user = getTestUser()
+
+      // Three items all match "banan" by substring; differ only in nutrition data.
+      await upsertFoodItem(user, { name: 'Banan empty' })
+      await upsertFoodItem(user, { calories: 90, name: 'Banan kcal-only' })
+      await upsertFoodItem(user, { calories: 90, name: 'Banan with macros', protein: 1.1 })
+      await upsertFoodItem(user, {
+        calories: 92,
+        name: 'Banan with micros',
+        potassium: 360,
+        protein: 1.1,
+      })
+
+      const results = await searchFoodItems(user, 'banan', 10)
+      expect(results.map((r) => r.name)).toEqual([
+        'Banan with micros',
+        'Banan with macros',
+        'Banan kcal-only',
+        'Banan empty',
+      ])
+    })
+
+    test('returns empty array for empty query', async () => {
+      const user = getTestUser()
+      await upsertFoodItem(user, { name: 'Banana' })
+
+      expect(await searchFoodItems(user, '', 10)).toEqual([])
+      expect(await searchFoodItems(user, '   ', 10)).toEqual([])
+    })
+
+    test('treats LIKE wildcards in user input as literals', async () => {
+      const user = getTestUser()
+
+      await upsertFoodItem(user, { name: '500g pasta' })
+      await upsertFoodItem(user, { name: '50% off-cut bacon' })
+
+      // Plain "50%" must only match the literal "50%" string, not "500g..."
+      const percentHits = await searchFoodItems(user, '50%', 10)
+      expect(percentHits.map((r) => r.name)).toEqual(['50% off-cut bacon'])
+
+      // Plain "_" must be a literal (it shouldn't match the underscore wildcard).
+      await upsertFoodItem(user, { name: 'a_b widget' })
+      const underscoreHits = await searchFoodItems(user, 'a_b', 10)
+      expect(underscoreHits.map((r) => r.name)).toEqual(['a_b widget'])
+    })
+
+    test('does not run trigram fuzzy matching for queries shorter than 3 chars', async () => {
+      const user = getTestUser()
+
+      // "hu" is a fuzzy-similar substring of "Hushållsost" — the trigram path
+      // would surface it, but we want short queries restricted to substring.
+      await upsertFoodItem(user, { name: 'Hushållsost' })
+      await upsertFoodItem(user, { name: 'Cucumber' })
+
+      // 'cu' is a literal substring of 'Cucumber' (substring path)
+      const subHits = await searchFoodItems(user, 'cu', 10)
+      expect(subHits.map((r) => r.name)).toEqual(['Cucumber'])
+
+      // 'xz' has no substring match anywhere; without trigram it returns nothing.
+      const noHits = await searchFoodItems(user, 'xz', 10)
+      expect(noHits).toEqual([])
+    })
   })
 
   describe('getFoodItemByName', () => {
@@ -150,6 +260,26 @@ describe('Food Items Integration Tests', () => {
     })
   })
 
+  describe('setFoodItemReference', () => {
+    test('sets and clears the reference_food_item_id pointer', async () => {
+      const user = getTestUser()
+      const target = await upsertFoodItem(user, { name: 'Hushållsost' })
+      const product = await upsertFoodItem(user, { name: 'Arla Hushållsost' })
+
+      const set = await setFoodItemReference(user, product.id, target.id)
+      expect(set?.reference_food_item_id).toBe(target.id)
+
+      const cleared = await setFoodItemReference(user, product.id, null)
+      expect(cleared?.reference_food_item_id).toBeUndefined()
+    })
+
+    test('returns null for missing food item', async () => {
+      const user = getTestUser()
+      const result = await setFoodItemReference(user, '00000000-0000-0000-0000-000000000000', null)
+      expect(result).toBeNull()
+    })
+  })
+
   describe('meal_food_items junction', () => {
     test('links food items to meals', async () => {
       const user = getTestUser()
@@ -159,15 +289,28 @@ describe('Food Items Integration Tests', () => {
       const meal = await insertMeal(user, { time: new Date('2025-06-15T08:00:00Z') })
 
       await setMealFoodItems(user, meal.id, [
-        { food_item_id: food1.id, quantity: 2, unit: 'slice', sort_order: 0, calories: 400 },
-        { food_item_id: food2.id, quantity: 1, unit: 'tbsp', sort_order: 1, calories: 100, fat: 11 },
+        {
+          calories: 400,
+          food_item_id: food1.id,
+          quantity: 2,
+          sort_order: 0,
+          unit: 'slice',
+        },
+        {
+          calories: 100,
+          fat: 11,
+          food_item_id: food2.id,
+          quantity: 1,
+          sort_order: 1,
+          unit: 'tbsp',
+        },
       ])
 
       const links = await getMealFoodItems(user, meal.id)
       expect(links).toHaveLength(2)
-      expect(links[0].food_item_name).toBe('Bread')
+      expect(links[0].food_item_id).toBe(food1.id)
       expect(links[0].calories).toBe(400)
-      expect(links[1].food_item_name).toBe('Butter')
+      expect(links[1].food_item_id).toBe(food2.id)
       expect(links[1].fat).toBe(11)
     })
 
@@ -178,17 +321,17 @@ describe('Food Items Integration Tests', () => {
       const meal = await insertMeal(user, { time: new Date('2025-06-15T12:00:00Z') })
 
       await setMealFoodItems(user, meal.id, [
-        { food_item_id: food.id, quantity: 1, unit: 'cup', sort_order: 0 },
+        { food_item_id: food.id, quantity: 1, sort_order: 0, unit: 'cup' },
       ])
 
       const food2 = await upsertFoodItem(user, { name: 'Chicken' })
       await setMealFoodItems(user, meal.id, [
-        { food_item_id: food2.id, quantity: 150, unit: 'g', sort_order: 0 },
+        { food_item_id: food2.id, quantity: 150, sort_order: 0, unit: 'g' },
       ])
 
       const links = await getMealFoodItems(user, meal.id)
       expect(links).toHaveLength(1)
-      expect(links[0].food_item_name).toBe('Chicken')
+      expect(links[0].food_item_id).toBe(food2.id)
     })
 
     test('cascade deletes junction rows when meal is deleted', async () => {

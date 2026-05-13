@@ -192,38 +192,106 @@
   }
 }
 
-.time-selector {
+/* Time slider */
+
+.time-slider-wrapper {
   display: flex;
-  gap: 2px;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+  min-width: 0;
 }
 
-.time-btn {
-  padding: 0.25rem 0.5rem;
+.time-label {
   font-size: 0.8rem;
-  border: 1px solid #d1d5db;
-  background: #fff;
+  font-weight: 500;
   color: #374151;
+  min-width: 3.25rem;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.time-slider {
+  flex: 1;
+  min-width: 0;
+  width: 0;
+  height: 6px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: #d1d5db;
+  border-radius: 3px;
+  outline: none;
   cursor: pointer;
-  border-radius: 4px;
 }
 
-.time-btn:first-child {
-  border-radius: 4px 0 0 4px;
-}
-
-.time-btn:last-child {
-  border-radius: 0 4px 4px 0;
-}
-
-.time-btn.active {
+.time-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
   background: #673ab8;
-  color: white;
-  border-color: #673ab8;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  cursor: grab;
 }
 
-.time-btn:disabled:not(.active) {
-  opacity: 0.4;
-  cursor: not-allowed;
+.time-slider::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #673ab8;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  cursor: grab;
+}
+
+.time-slider:active::-webkit-slider-thumb {
+  cursor: grabbing;
+  transform: scale(1.15);
+}
+
+.time-slider:active::-moz-range-thumb {
+  cursor: grabbing;
+  transform: scale(1.15);
+}
+
+/* Ad hoc meal button */
+
+.btn-add-meal {
+  margin-top: 0.75rem;
+  padding: 0.5rem 1rem;
+  font-size: 0.85rem;
+  border: 1px dashed #d1d5db;
+  background: transparent;
+  color: #6b7280;
+  border-radius: 8px;
+  cursor: pointer;
+  width: 100%;
+  text-align: center;
+}
+
+.btn-add-meal:hover {
+  border-color: #673ab8;
+  color: #673ab8;
+  background: #faf5ff;
+}
+
+/* Incomplete nutrient indicators */
+
+.incomplete-indicator {
+  color: #d97706;
+  font-weight: 600;
+  margin-left: 0.25rem;
+}
+
+.incomplete-notice {
+  font-size: 0.8rem;
+  color: #d97706;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  margin-top: 0.5rem;
 }
 
 .sensitivity-checks {
@@ -270,16 +338,144 @@ a.meal-name:hover {
   color: #673ab8;
 }
 
+.slot-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+  /* Push actions to the right of the slot row. In MealSlotRow the slider
+     wrapper already has flex:1 so this is redundant; in OtherMealRow there's
+     no flex sibling between title+time and the actions, and without this the
+     edit pen and delete button cling to the time. Auto-margin is the
+     cheapest right-align that works in both cases. */
+  margin-left: auto;
+}
+
 .meal-edit-link {
-  font-size: 0.8rem;
+  font-size: 1rem;
+  line-height: 1;
   color: #6b7280;
   text-decoration: none;
-  padding: 0.125rem 0.375rem;
+  padding: 0.25rem 0.5rem;
   border-radius: 4px;
+  border: 1px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  flex-shrink: 0;
 }
 
 .meal-edit-link:hover {
   background: #f3f4f6;
+  color: #673ab8;
+}
+
+/* Frequent-meals quick-log strip — shown above every slot. When a meal is
+ * logged, it splits into two rows: "Included:" (items already on the meal)
+ * and "Add:" (suggestions filtered to exclude what's already there). */
+.frequent-meals-strip {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.375rem 0;
+  margin: 0.25rem 0;
+}
+
+.quick-log-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+}
+
+.quick-log-row-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  flex-shrink: 0;
+}
+
+.quick-log-row-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  flex: 1;
+  margin: 0;
+}
+
+.frequent-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.625rem;
+  font-size: 0.85rem;
+  background: #f9fafb;
+  border: 1px solid #d1d5db;
+  border-radius: 999px;
+  cursor: pointer;
+  color: #1f2937;
+}
+
+.frequent-chip:hover {
+  background: #ede9fe;
+  border-color: #673ab8;
+  color: #673ab8;
+}
+
+.frequent-icon {
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.frequent-icon-img {
+  display: inline-block;
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+  vertical-align: middle;
+}
+
+.frequent-multi-caret {
+  font-size: 0.7rem;
+  color: #6b7280;
+}
+
+.frequent-chip-group {
+  position: relative;
+  display: inline-block;
+}
+
+.frequent-picker {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 0.25rem;
+  background: #fff;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.1);
+  min-width: 10rem;
+  max-width: calc(100vw - 1rem);
+  z-index: 20;
+  padding: 0.25rem;
+  display: flex;
+  flex-direction: column;
+}
+
+.frequent-picker-item {
+  padding: 0.375rem 0.625rem;
+  font-size: 0.85rem;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  color: #1f2937;
+}
+
+.frequent-picker-item:hover {
+  background: #ede9fe;
   color: #673ab8;
 }
 
@@ -343,6 +539,15 @@ a.meal-name:hover {
   white-space: nowrap;
 }
 
+.popover-title-link {
+  color: #673ab8;
+  text-decoration: none;
+}
+
+.popover-title-link:hover {
+  text-decoration: underline;
+}
+
 .popover-option {
   display: flex;
   align-items: center;
@@ -377,6 +582,32 @@ a.meal-name:hover {
 .meal-calories {
   font-size: 0.75rem;
   color: #6b7280;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.meal-calories.calories-stale {
+  color: #9ca3af;
+  opacity: 0.7;
+}
+
+.calories-spinner {
+  width: 10px;
+  height: 10px;
+  border-width: 1.5px;
+}
+
+.popover-delete {
+  margin-top: 0.375rem;
+  padding-top: 0.375rem;
+  border-top: 1px solid #e5e7eb;
+}
+
+@media (prefers-color-scheme: dark) {
+  .popover-delete {
+    border-top-color: #374151;
+  }
 }
 
 .meal-notes {
@@ -411,7 +642,6 @@ a.meal-name:hover {
 }
 
 .btn-danger-small {
-  margin-left: auto;
   padding: 0.2rem 0.5rem;
   font-size: 0.75rem;
   border: 1px solid #fca5a5;
@@ -506,16 +736,41 @@ a.meal-name:hover {
     border-color: #6d28d9;
   }
 
-  .time-btn {
-    background: #374151;
-    border-color: #4b5563;
+  .time-label {
     color: #d1d5db;
   }
 
-  .time-btn.active {
-    background: #673ab8;
-    border-color: #673ab8;
-    color: white;
+  .time-slider {
+    background: #4b5563;
+  }
+
+  .time-slider::-webkit-slider-thumb {
+    border-color: #1f2937;
+  }
+
+  .time-slider::-moz-range-thumb {
+    border-color: #1f2937;
+  }
+
+  .btn-add-meal {
+    border-color: #4b5563;
+    color: #9ca3af;
+  }
+
+  .btn-add-meal:hover {
+    border-color: #7c3aed;
+    color: #c4b5fd;
+    background: #1e1b4b;
+  }
+
+  .incomplete-indicator {
+    color: #f59e0b;
+  }
+
+  .incomplete-notice {
+    color: #f59e0b;
+    background: #1c1917;
+    border-color: #78350f;
   }
 
   .sensitivity-label {
@@ -591,5 +846,286 @@ a.meal-name:hover {
 
   .completion-label {
     color: #d1d5db;
+  }
+}
+
+/* Duplicate meal in the same slot — two breakfasts, etc. */
+.duplicate-meal-row {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px dashed #e5e7eb;
+}
+
+.duplicate-meal-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.25rem;
+}
+
+.duplicate-meal-time {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #6b7280;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-color-scheme: dark) {
+  .duplicate-meal-row {
+    border-top-color: #374151;
+  }
+
+  .duplicate-meal-time {
+    color: #9ca3af;
+  }
+}
+
+/* Tabs in the header */
+.meals-tabs {
+  display: inline-flex;
+  gap: 0.25rem;
+  margin-left: 1rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 2px;
+  background: #fafafa;
+}
+
+.meals-tab {
+  background: transparent;
+  border: 0;
+  padding: 0.4rem 0.9rem;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  color: #6b7280;
+}
+
+.meals-tab.active {
+  background: #ffffff;
+  color: #111827;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.meals-tab:hover:not(.active) {
+  color: #111827;
+}
+
+/* Overview tab */
+.meals-overview {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.overview-controls {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.window-selector {
+  display: inline-flex;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.window-btn {
+  background: #ffffff;
+  border: 0;
+  padding: 0.4rem 0.9rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+  color: #6b7280;
+  border-right: 1px solid #e5e7eb;
+}
+
+.window-btn:last-child {
+  border-right: 0;
+}
+
+.window-btn.active {
+  background: #2563eb;
+  color: white;
+}
+
+.overview-range {
+  font-size: 0.85rem;
+  color: #6b7280;
+  font-variant-numeric: tabular-nums;
+}
+
+.overview-energy {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 1rem;
+  background: #fafafa;
+}
+
+.overview-energy h3 {
+  margin: 0 0 0.75rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #374151;
+}
+
+.energy-row {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.energy-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.energy-label {
+  font-size: 0.75rem;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.energy-value {
+  font-size: 1.4rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: #111827;
+}
+
+.energy-value.positive {
+  color: #b45309;
+}
+
+.energy-value.negative {
+  color: #166534;
+}
+
+.energy-sub {
+  font-size: 0.75rem;
+  color: #6b7280;
+}
+
+.overview-group h3 {
+  margin: 0 0 0.5rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #374151;
+}
+
+.overview-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.overview-table th {
+  text-align: left;
+  font-weight: 500;
+  font-size: 0.75rem;
+  color: #6b7280;
+  text-transform: uppercase;
+  padding: 0.25rem 0.5rem;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.overview-table th.num,
+.overview-table td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.overview-table td {
+  padding: 0.4rem 0.5rem;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.overview-table .nutrient-name {
+  color: #111827;
+}
+
+.overview-table .rec-source {
+  color: #b45309;
+  margin-left: 0.25rem;
+  font-size: 0.7rem;
+}
+
+.overview-table .range-col {
+  width: 40%;
+  min-width: 140px;
+}
+
+.overview-empty {
+  color: #9ca3af;
+  text-align: center;
+  padding: 2rem 0;
+}
+
+@media (prefers-color-scheme: dark) {
+  .meals-tabs {
+    border-color: #374151;
+    background: #111827;
+  }
+
+  .meals-tab {
+    color: #9ca3af;
+  }
+
+  .meals-tab.active {
+    background: #1f2937;
+    color: #f3f4f6;
+  }
+
+  .window-selector {
+    border-color: #374151;
+  }
+
+  .window-btn {
+    background: #1f2937;
+    color: #9ca3af;
+    border-right-color: #374151;
+  }
+
+  .window-btn.active {
+    background: #2563eb;
+    color: white;
+  }
+
+  .overview-energy {
+    background: #1f2937;
+    border-color: #374151;
+  }
+
+  .overview-energy h3,
+  .overview-group h3 {
+    color: #d1d5db;
+  }
+
+  .energy-value {
+    color: #f3f4f6;
+  }
+
+  .energy-label,
+  .energy-sub,
+  .overview-range {
+    color: #9ca3af;
+  }
+
+  .overview-table th {
+    color: #9ca3af;
+    border-bottom-color: #374151;
+  }
+
+  .overview-table td {
+    border-bottom-color: #1f2937;
+  }
+
+  .overview-table .nutrient-name {
+    color: #f3f4f6;
   }
 }

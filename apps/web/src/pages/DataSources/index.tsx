@@ -103,14 +103,15 @@ export function DataSources() {
   const hasHeartRate = (heartRateQuery.data?.length ?? 0) > 0
   const hasSleep = (sleepQuery.data?.length ?? 0) > 0
   const hasExercise = (exerciseQuery.data?.length ?? 0) > 0
-  const hasProductivity = (productivityQuery.data?.length ?? 0) > 0
+  const hasProductivity = (productivityQuery.data?.records?.length ?? 0) > 0
   const hasLocations = (locationsQuery.data?.length ?? 0) > 0
   const isOuraConnected = settingsQuery.data?.oura_connected ?? false
   const isGarminConnected = settingsQuery.data?.garmin_connected ?? false
+  const isStravaConnected = settingsQuery.data?.strava_connected ?? false
   const isRescueTimeConfigured = !!settingsQuery.data?.rescue_time_key
   const hasLastfm = !!settingsQuery.data?.lastfm_username
   const hasCalendars = (settingsQuery.data?.calendars ?? []).length > 0
-  const awProductivity = (productivityQuery.data ?? []).filter((r) => r.source === 'activitywatch')
+  const awProductivity = (productivityQuery.data?.records ?? []).filter((r) => r.source === 'activitywatch')
   const hasAwDesktop = awProductivity.some((r) => !r.is_mobile)
   const hasAwMobile = awProductivity.some((r) => r.is_mobile)
 
@@ -159,6 +160,13 @@ export function DataSources() {
       statusText: isGarminConnected ? 'Connected' : 'Not connected',
     },
     {
+      dataTypes: 'Activities with HR, GPS routes, cadence, power',
+      isConnected: isStravaConnected,
+      name: 'Strava',
+      path: '/data-sources/strava',
+      statusText: isStravaConnected ? 'Connected' : 'Not connected',
+    },
+    {
       dataTypes: 'App and window usage on desktop',
       isConnected: hasAwDesktop,
       name: 'ActivityWatch (Desktop)',
@@ -185,7 +193,7 @@ export function DataSources() {
             : 'Not configured',
     },
     {
-      dataTypes: 'Music scrobbles, auto-generated tags from listening',
+      dataTypes: 'Music scrobbles',
       isConnected: hasLastfm,
       name: 'Last.fm',
       path: '/data-sources/lastfm',

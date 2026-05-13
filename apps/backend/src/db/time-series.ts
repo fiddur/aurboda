@@ -142,13 +142,82 @@ export const getRawDailySum = async (
   return Number(result.rows[0].total)
 }
 
+/** Time series entry returned by getTimeSeriesEntriesMultiMetric. */
+export interface TimeSeriesEntry {
+  metric: string
+  time: Date
+  value: number
+  unit: string
+  source: string
+}
+
+/**
+ * Fetch all time series entries for a list of metrics in a time range,
+ * including unit and source. Supports built-in and custom metric names.
+ */
+export const getTimeSeriesEntriesMultiMetric = async (
+  user: string,
+  metrics: string[],
+  start: Date,
+  end: Date,
+): Promise<TimeSeriesEntry[]> => {
+  if (metrics.length === 0) return []
+
+  const result = await query(
+    user,
+    `SELECT time, metric, value, unit, source FROM time_series
+     WHERE metric = ANY($1) AND time >= $2 AND time <= $3 AND deleted_at IS NULL
+     ORDER BY metric, time`,
+    [metrics, start, end],
+  )
+
+  return result.rows.map((row) => ({
+    metric: row.metric as string,
+    source: row.source as string,
+    time: new Date(row.time),
+    unit: row.unit as string,
+    value: row.value as number,
+  }))
+}
+
+/**
+ * Get the latest (most recent, regardless of age) value for each metric.
+ * Returns one entry per metric that has any data; metrics with no data are absent.
+ */
+export const getLatestMetricValuesMulti = async (
+  user: string,
+  metrics: string[],
+): Promise<Map<string, { time: Date; value: number; unit: string; source: string }>> => {
+  const map = new Map<string, { time: Date; value: number; unit: string; source: string }>()
+  if (metrics.length === 0) return map
+
+  const result = await query(
+    user,
+    `SELECT DISTINCT ON (metric) metric, time, value, unit, source
+     FROM time_series
+     WHERE metric = ANY($1) AND deleted_at IS NULL
+     ORDER BY metric, time DESC`,
+    [metrics],
+  )
+
+  for (const row of result.rows) {
+    map.set(row.metric as string, {
+      source: row.source as string,
+      time: new Date(row.time),
+      unit: row.unit as string,
+      value: row.value as number,
+    })
+  }
+  return map
+}
+
 export const getTimeSeriesMultiMetric = async (
   user: string,
   metrics: MetricType[],
   start: Date,
   end: Date,
-): Promise<Record<MetricType, [Date, number][]>> => {
-  if (metrics.length === 0) return {} as Record<MetricType, [Date, number][]>
+): Promise<Partial<Record<MetricType, [Date, number][]>>> => {
+  if (metrics.length === 0) return {}
 
   const rows = await querySplitByCumulative<{ metric: string; time: Date; value: number }>({
     cumulativeExtraParams: [cumulativeSources],
@@ -165,13 +234,14 @@ export const getTimeSeriesMultiMetric = async (
        ORDER BY metric, time`,
   })
 
-  const data: Record<string, [Date, number][]> = {}
+  const data: Partial<Record<MetricType, [Date, number][]>> = {}
   for (const row of rows) {
-    if (!data[row.metric]) data[row.metric] = []
-    data[row.metric].push([row.time, row.value])
+    const metric = row.metric as MetricType
+    const list = data[metric] ?? []
+    list.push([row.time, row.value])
+    data[metric] = list
   }
-
-  return data as Record<MetricType, [Date, number][]>
+  return data
 }
 
 // ============================================================================

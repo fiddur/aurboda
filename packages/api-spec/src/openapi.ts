@@ -48,11 +48,20 @@ import {
   syncStatusResponseSchema,
 } from './schemas/sync.ts'
 import {
-  addTagBodySchema,
-  addTagResponseSchema,
-  deleteTagResponseSchema,
-  tagsResponseSchema,
-} from './schemas/tags.ts'
+  webauthnAuthOptionsBodySchema,
+  webauthnAuthOptionsResponseSchema,
+  webauthnAuthVerifyBodySchema,
+  webauthnAuthVerifyResponseSchema,
+  webauthnCredentialsResponseSchema,
+  webauthnRegistrationOptionsResponseSchema,
+  webauthnRegistrationVerifyBodySchema,
+  webauthnRegistrationVerifyResponseSchema,
+  webauthnSignupOptionsBodySchema,
+  webauthnSignupOptionsResponseSchema,
+  webauthnSignupVerifyBodySchema,
+  webauthnSignupVerifyResponseSchema,
+  webauthnUpdateCredentialBodySchema,
+} from './schemas/webauthn.ts'
 
 // Error response
 const errorResponseSchema = z
@@ -690,71 +699,176 @@ const openApiDocument = createDocument({
       },
     },
 
-    // --- Tags ---
-    '/tags': {
-      get: {
-        description: 'Get tags/labels for a time range.',
-        requestParams: {
-          query: z.object({
-            end: iso8601DateTimeSchema.meta({ description: 'End date/time' }),
-            start: iso8601DateTimeSchema.meta({
-              description: 'Start date/time',
-            }),
-          }),
+    // --- WebAuthn / Passkey ---
+    '/webauthn/auth/options': {
+      post: {
+        description:
+          'Begin a WebAuthn authentication ceremony. Username is optional (discoverable credentials).',
+        requestBody: {
+          content: { 'application/json': { schema: webauthnAuthOptionsBodySchema } },
         },
         responses: {
           200: {
-            content: { 'application/json': { schema: tagsResponseSchema } },
+            content: { 'application/json': { schema: webauthnAuthOptionsResponseSchema } },
             description: 'Successful response',
           },
         },
-        security: [{ bearerAuth: [] }],
-        summary: 'Get tags',
-        tags: ['Tags'],
+        summary: 'Get authentication options',
+        tags: ['Auth'],
       },
+    },
+    '/webauthn/auth/verify': {
       post: {
-        description: 'Add a manual tag/label to mark an activity or event.',
+        description: 'Complete a WebAuthn authentication ceremony and receive an auth token.',
         requestBody: {
-          content: { 'application/json': { schema: addTagBodySchema } },
+          content: { 'application/json': { schema: webauthnAuthVerifyBodySchema } },
         },
         responses: {
           200: {
-            content: { 'application/json': { schema: addTagResponseSchema } },
+            content: { 'application/json': { schema: webauthnAuthVerifyResponseSchema } },
+            description: 'Successful response',
+          },
+          401: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Verification failed',
+          },
+        },
+        summary: 'Verify authentication assertion',
+        tags: ['Auth'],
+      },
+    },
+    '/webauthn/credentials': {
+      get: {
+        description: "List the authenticated user's registered passkeys.",
+        responses: {
+          200: {
+            content: { 'application/json': { schema: webauthnCredentialsResponseSchema } },
+            description: 'Registered passkeys',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'List passkeys',
+        tags: ['Auth'],
+      },
+    },
+    '/webauthn/credentials/{id}': {
+      delete: {
+        description: 'Delete a registered passkey by its credential ID.',
+        requestParams: {
+          path: z.object({ id: z.string().meta({ description: 'Credential ID (base64url)' }) }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: deleteResponseSchema } },
+            description: 'Deleted',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Delete passkey',
+        tags: ['Auth'],
+      },
+      patch: {
+        description: 'Rename a registered passkey.',
+        requestBody: {
+          content: { 'application/json': { schema: webauthnUpdateCredentialBodySchema } },
+        },
+        requestParams: {
+          path: z.object({ id: z.string().meta({ description: 'Credential ID (base64url)' }) }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: deleteResponseSchema } },
+            description: 'Updated',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Rename passkey',
+        tags: ['Auth'],
+      },
+    },
+    '/webauthn/signup/options': {
+      post: {
+        description:
+          'Begin a passkey-only signup. Validates the desired username and signup mode (and invitation if required), then returns WebAuthn registration options. The user is not yet created.',
+        requestBody: {
+          content: { 'application/json': { schema: webauthnSignupOptionsBodySchema } },
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: webauthnSignupOptionsResponseSchema } },
             description: 'Successful response',
           },
           400: {
             content: { 'application/json': { schema: errorResponseSchema } },
-            description: 'Bad request',
+            description: 'Bad request (invalid username, taken username, etc.)',
+          },
+          403: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Signup closed or invitation invalid',
           },
         },
-        security: [{ bearerAuth: [] }],
-        summary: 'Add tag',
-        tags: ['Tags'],
+        summary: 'Begin passkey-only signup',
+        tags: ['Auth'],
       },
     },
-    '/tags/{externalId}': {
-      delete: {
-        description: 'Delete a tag by its external ID.',
-        requestParams: {
-          path: z.object({
-            externalId: z.string().meta({ description: 'External ID of the tag to delete' }),
-          }),
+    '/webauthn/signup/verify': {
+      post: {
+        description:
+          'Complete a passkey-only signup. On success the Postgres user is created with an internally-generated random password, the credential is bound, and an auth token is returned.',
+        requestBody: {
+          content: { 'application/json': { schema: webauthnSignupVerifyBodySchema } },
         },
         responses: {
           200: {
-            content: {
-              'application/json': { schema: deleteTagResponseSchema },
-            },
-            description: 'Successful response',
+            content: { 'application/json': { schema: webauthnSignupVerifyResponseSchema } },
+            description: 'Successful signup',
           },
-          404: {
+          400: {
             content: { 'application/json': { schema: errorResponseSchema } },
-            description: 'Tag not found',
+            description: 'Verification failed',
+          },
+        },
+        summary: 'Complete passkey-only signup',
+        tags: ['Auth'],
+      },
+    },
+    '/webauthn/register/options': {
+      post: {
+        description: 'Begin a WebAuthn registration ceremony for the authenticated user.',
+        responses: {
+          200: {
+            content: { 'application/json': { schema: webauthnRegistrationOptionsResponseSchema } },
+            description: 'Registration options',
           },
         },
         security: [{ bearerAuth: [] }],
-        summary: 'Delete tag',
-        tags: ['Tags'],
+        summary: 'Get registration options',
+        tags: ['Auth'],
+      },
+    },
+    '/webauthn/register/verify': {
+      post: {
+        description: 'Verify and persist a new passkey for the authenticated user.',
+        requestBody: {
+          content: { 'application/json': { schema: webauthnRegistrationVerifyBodySchema } },
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: webauthnRegistrationVerifyResponseSchema } },
+            description: 'Verification result',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Verify registration',
+        tags: ['Auth'],
       },
     },
 
@@ -810,7 +924,6 @@ const openApiDocument = createDocument({
     { description: 'Health metric goals and progress tracking', name: 'Goals' },
     { description: 'Time series health metrics', name: 'Metrics' },
     { description: 'Daily and period summaries', name: 'Summary' },
-    { description: 'Activity tags/labels', name: 'Tags' },
     { description: 'Sleep, exercise, meditation sessions', name: 'Activities' },
     { description: 'Named and detected locations', name: 'Locations' },
     { description: 'RescueTime productivity data', name: 'Productivity' },
@@ -827,6 +940,6 @@ fs.mkdirSync('./generated', { recursive: true })
 fs.writeFileSync('./generated/openapi.yaml', yaml.stringify(openApiDocument))
 fs.writeFileSync('./generated/openapi.json', JSON.stringify(openApiDocument, null, 2))
 
-console.log('Generated OpenAPI specification:')
-console.log('  - generated/openapi.yaml')
-console.log('  - generated/openapi.json')
+console.info('Generated OpenAPI specification:')
+console.info('  - generated/openapi.yaml')
+console.info('  - generated/openapi.json')

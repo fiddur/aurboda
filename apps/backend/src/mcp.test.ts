@@ -6,10 +6,10 @@ import { createAuth } from './auth.ts'
 import * as db from './db/index.ts'
 import { createMcpRouter } from './mcp.ts'
 import * as mutations from './services/mutations.ts'
-import * as queries from './services/queries.ts'
+import * as queries from './services/queries/index.ts'
 
 // Mock the services
-vi.mock('./services/queries', () => ({
+vi.mock('./services/queries/index', () => ({
   getDailySummary: vi.fn(),
   getPeriodSummary: vi.fn(),
   queryActivities: vi.fn(),
@@ -26,7 +26,6 @@ vi.mock('./services/mutations', () => ({
   addTag: vi.fn(),
   deleteActivity: vi.fn(),
   deleteCustomMetric: vi.fn(),
-  deleteTag: vi.fn(),
   getCustomMetrics: vi.fn().mockResolvedValue([]),
   restoreActivity: vi.fn(),
   updateActivity: vi.fn(),
@@ -43,6 +42,7 @@ vi.mock('./db', () => ({
   getActivityTypeDefinition: vi.fn().mockResolvedValue(null),
   getActivityTypeDefinitions: vi.fn().mockResolvedValue([]),
   getActivityTypeNames: vi.fn().mockResolvedValue(['sleep', 'exercise', 'meditation', 'nap', 'rest']),
+  getAllActivityTypeNames: vi.fn().mockResolvedValue(['sleep', 'exercise', 'meditation', 'nap', 'rest']),
   getAllSyncStates: vi.fn(),
   getDeductionRule: vi.fn().mockResolvedValue(null),
   getDeductionRules: vi.fn().mockResolvedValue([]),
@@ -51,14 +51,24 @@ vi.mock('./db', () => ({
   getOAuthToken: vi.fn().mockResolvedValue(null),
   getProgrammaticTags: vi.fn().mockResolvedValue([]),
   getSyncState: vi.fn().mockResolvedValue(null),
+  resetSyncState: vi.fn().mockResolvedValue(undefined),
   getUniqueTags: vi.fn().mockResolvedValue([]),
   getUserSettings: vi.fn().mockResolvedValue(null),
   insertActivity: vi.fn().mockResolvedValue(undefined),
   insertActivityTypeDefinition: vi.fn(),
-  insertDeductionRule: vi.fn().mockResolvedValue({ conditions: [], enabled: true, id: 'mock-id', name: 'mock', output_activity_type: 'test', priority: 0 }),
+  insertLocations: vi.fn().mockResolvedValue(undefined),
+  insertDeductionRule: vi.fn().mockResolvedValue({
+    conditions: [],
+    enabled: true,
+    id: 'mock-id',
+    name: 'mock',
+    output_activity_type: 'test',
+    priority: 0,
+  }),
   insertDeductionRuleRun: vi.fn().mockResolvedValue(undefined),
   insertRawRecord: vi.fn().mockResolvedValue(undefined),
   insertTimeSeries: vi.fn().mockResolvedValue(undefined),
+  softDeleteLocationRange: vi.fn().mockResolvedValue(undefined),
   updateActivityTypeDefinition: vi.fn(),
   updateDeductionRule: vi.fn().mockResolvedValue(null),
   upsertSyncState: vi.fn().mockResolvedValue(undefined),
@@ -69,9 +79,13 @@ vi.mock('./db', () => ({
 vi.mock('./services/deduction-deps', () => ({
   createDefaultEngineDeps: vi.fn().mockReturnValue({
     deleteStaleRuleActivities: vi.fn().mockResolvedValue(0),
+    enrichActivities: vi.fn().mockResolvedValue([]),
     getActivities: vi.fn().mockResolvedValue([]),
+    getActivitiesWithData: vi.fn().mockResolvedValue([]),
+    getActivitiesWithDataFilters: vi.fn().mockResolvedValue([]),
+    getEarliestActivityTime: vi.fn().mockResolvedValue(null),
+    getLocationVisits: vi.fn().mockResolvedValue([]),
     getScreentime: vi.fn().mockResolvedValue([]),
-    getTags: vi.fn().mockResolvedValue([]),
     insertActivity: vi.fn().mockResolvedValue(undefined),
     insertRuleRun: vi.fn().mockResolvedValue(undefined),
   }),
@@ -120,8 +134,6 @@ describe('MCP Server', () => {
     // Restore default mock implementations cleared by resetAllMocks
     vi.mocked(mutations.getCustomMetrics).mockResolvedValue([])
     vi.mocked(db.getUserSettings).mockResolvedValue(null)
-    vi.mocked(db.getUniqueTags).mockResolvedValue([])
-    vi.mocked(db.getProgrammaticTags).mockResolvedValue([])
   })
 
   afterEach(() => {
@@ -512,116 +524,6 @@ describe('MCP Server', () => {
     })
   })
 
-  describe('Tool: get_programmatic_tags', () => {
-    async function callTool(
-      app: express.Express,
-      token: string,
-      toolName: string,
-      args: Record<string, unknown>,
-    ) {
-      const response = await mcpPost(app)
-        .set('Authorization', `Bearer ${token}`)
-        .send({
-          id: 1,
-          jsonrpc: '2.0',
-          method: 'tools/call',
-          params: { arguments: args, name: toolName },
-        })
-
-      const parsed = parseSSEResponse(response.text) as { result: { content: { text: string }[] } }
-      return {
-        ...response,
-        parsed,
-        toolResult: JSON.parse(parsed.result.content[0].text),
-      }
-    }
-
-    test('returns programmatic tags with is_programmatic flag and mapped name', async () => {
-      const app = createTestApp()
-      const token = auth.createToken('testuser')
-
-      const uuid = '067e2862-8cf8-4307-a621-0636dd379cda'
-      vi.mocked(db.getProgrammaticTags).mockResolvedValue([
-        { count: 5, isProgrammatic: true, latestTime: new Date('2024-01-15T12:00:00Z'), tagKey: uuid },
-      ])
-      vi.mocked(db.getUserSettings).mockResolvedValue({
-        tag_mappings: { [uuid]: 'Food' },
-      })
-
-      const response = await callTool(app, token, 'get_programmatic_tags', { tz: 'UTC' })
-
-      expect(response.status).toBe(200)
-      expect(response.toolResult.success).toBe(true)
-      expect(response.toolResult.data).toHaveLength(1)
-      expect(response.toolResult.data[0]).toEqual({
-        count: 5,
-        current_name: 'Food',
-        is_programmatic: true,
-        latest_time: '2024-01-15T12:00:00+00:00',
-        tag_key: uuid,
-      })
-    })
-
-    test('returns non-programmatic tags with current_name set to tag name', async () => {
-      const app = createTestApp()
-      const token = auth.createToken('testuser')
-
-      vi.mocked(db.getProgrammaticTags).mockResolvedValue([
-        {
-          count: 3,
-          isProgrammatic: false,
-          latestTime: new Date('2024-01-15T14:00:00Z'),
-          tagKey: 'VocalExercise',
-        },
-        { count: 10, isProgrammatic: false, latestTime: new Date('2024-01-15T16:00:00Z'), tagKey: 'coffee' },
-      ])
-      vi.mocked(db.getUserSettings).mockResolvedValue(null)
-
-      const response = await callTool(app, token, 'get_programmatic_tags', { tz: 'UTC' })
-
-      expect(response.status).toBe(200)
-      expect(response.toolResult.success).toBe(true)
-      expect(response.toolResult.data).toHaveLength(2)
-      // Non-programmatic tags use their tag name as current_name
-      expect(response.toolResult.data[0]).toEqual({
-        count: 3,
-        current_name: 'VocalExercise',
-        is_programmatic: false,
-        latest_time: '2024-01-15T14:00:00+00:00',
-        tag_key: 'VocalExercise',
-      })
-      expect(response.toolResult.data[1]).toEqual({
-        count: 10,
-        current_name: 'coffee',
-        is_programmatic: false,
-        latest_time: '2024-01-15T16:00:00+00:00',
-        tag_key: 'coffee',
-      })
-    })
-
-    test('returns mixed programmatic and non-programmatic tags', async () => {
-      const app = createTestApp()
-      const token = auth.createToken('testuser')
-
-      const uuid = '067e2862-8cf8-4307-a621-0636dd379cda'
-      vi.mocked(db.getProgrammaticTags).mockResolvedValue([
-        { count: 2, isProgrammatic: true, latestTime: new Date('2024-01-15T10:00:00Z'), tagKey: uuid },
-        { count: 7, isProgrammatic: false, latestTime: new Date('2024-01-15T12:00:00Z'), tagKey: 'coffee' },
-      ])
-      vi.mocked(db.getUserSettings).mockResolvedValue(null)
-
-      const response = await callTool(app, token, 'get_programmatic_tags', { tz: 'UTC' })
-
-      expect(response.toolResult.data).toHaveLength(2)
-      // Programmatic tag without mapping has null current_name
-      expect(response.toolResult.data[0].is_programmatic).toBe(true)
-      expect(response.toolResult.data[0].current_name).toBeNull()
-      // Non-programmatic tag always has current_name = tag name
-      expect(response.toolResult.data[1].is_programmatic).toBe(false)
-      expect(response.toolResult.data[1].current_name).toBe('coffee')
-    })
-  })
-
   describe('Tool: query_activities', () => {
     async function callTool(
       app: express.Express,
@@ -717,6 +619,7 @@ describe('MCP Server', () => {
         expect.any(Date),
         expect.any(Date),
         undefined,
+        undefined,
       )
     })
   })
@@ -749,26 +652,28 @@ describe('MCP Server', () => {
       const app = createTestApp()
       const token = auth.createToken('testuser')
 
-      vi.mocked(queries.queryProductivity).mockResolvedValue([
-        {
-          activity: 'Visual Studio Code',
-          category: 'Software Development',
-          comments: [],
-          duration_sec: 7200,
-          end_time: '2024-01-15T17:00:00Z',
-          productivity: 2,
-          start_time: '2024-01-15T09:00:00Z',
-        },
-        {
-          activity: 'Twitter',
-          category: 'Social Networking',
-          comments: [],
-          duration_sec: 1800,
-          end_time: '2024-01-15T18:00:00Z',
-          productivity: -2,
-          start_time: '2024-01-15T17:30:00Z',
-        },
-      ])
+      vi.mocked(queries.queryProductivity).mockResolvedValue({
+        data: [
+          {
+            activity: 'Visual Studio Code',
+            category: 'Software Development',
+            comments: [],
+            duration_sec: 7200,
+            end_time: '2024-01-15T17:00:00Z',
+            productivity: 2,
+            start_time: '2024-01-15T09:00:00Z',
+          },
+          {
+            activity: 'Twitter',
+            category: 'Social Networking',
+            comments: [],
+            duration_sec: 1800,
+            end_time: '2024-01-15T18:00:00Z',
+            productivity: -2,
+            start_time: '2024-01-15T17:30:00Z',
+          },
+        ],
+      })
 
       const response = await callTool(app, token, 'query_productivity', {
         end: '2024-01-31T23:59:59Z',
@@ -980,12 +885,12 @@ describe('MCP Server', () => {
       }
     }
 
-    test('creates exercise activity with exercise_type name', async () => {
+    test('creates exercise activity using the specific activity_type', async () => {
       const app = createTestApp()
       const token = auth.createToken('testuser')
 
       vi.mocked(mutations.addActivity).mockResolvedValue({
-        activity_type: 'exercise',
+        activity_type: 'weightlifting',
         end_time: '2024-03-15T11:45:00.000Z',
         id: 'test-uuid',
         start_time: '2024-03-15T10:30:00.000Z',
@@ -994,9 +899,9 @@ describe('MCP Server', () => {
       })
 
       const response = await callTool(app, token, 'add_activity', {
-        activity_type: 'exercise',
+        activity_type: 'weightlifting',
+        data: { reps: 12 },
         end_time: '2024-03-15T11:45:00Z',
-        exercise_type: 'weightlifting',
         start_time: '2024-03-15T10:30:00Z',
         title: 'Upper body',
         tz: 'UTC',
@@ -1005,20 +910,21 @@ describe('MCP Server', () => {
       expect(response.status).toBe(200)
       expect(response.toolResult.success).toBe(true)
       expect(response.toolResult.id).toBe('test-uuid')
-      expect(mutations.addActivity).toHaveBeenCalledWith('testuser', {
-        activity_type: 'exercise',
-        data: {
-          exerciseType: 81,
-          exerciseTypeName: 'weightlifting',
+      expect(mutations.addActivity).toHaveBeenCalledWith(
+        'testuser',
+        {
+          activity_type: 'weightlifting',
+          data: { reps: 12 },
+          end_time: expect.any(Date),
+          notes: undefined,
+          start_time: expect.any(Date),
+          title: 'Upper body',
         },
-        end_time: expect.any(Date),
-        notes: undefined,
-        start_time: expect.any(Date),
-        title: 'Upper body',
-      })
+        undefined,
+      )
     })
 
-    test('creates activity without exercise_type', async () => {
+    test('creates activity without data', async () => {
       const app = createTestApp()
       const token = auth.createToken('testuser')
 
@@ -1041,42 +947,18 @@ describe('MCP Server', () => {
 
       expect(response.status).toBe(200)
       expect(response.toolResult.success).toBe(true)
-      expect(mutations.addActivity).toHaveBeenCalledWith('testuser', {
-        activity_type: 'meditation',
-        data: undefined,
-        end_time: expect.any(Date),
-        notes: undefined,
-        start_time: expect.any(Date),
-        title: 'Morning meditation',
-      })
-    })
-
-    test('returns error for invalid exercise_type name', async () => {
-      const app = createTestApp()
-      const token = auth.createToken('testuser')
-
-      const response = await mcpPost(app)
-        .set('Authorization', `Bearer ${token}`)
-        .send({
-          id: 1,
-          jsonrpc: '2.0',
-          method: 'tools/call',
-          params: {
-            arguments: {
-              activity_type: 'exercise',
-              end_time: '2024-03-15T11:45:00Z',
-              exercise_type: 'invalid_exercise_type',
-              start_time: '2024-03-15T10:30:00Z',
-              tz: 'UTC',
-            },
-            name: 'add_activity',
-          },
-        })
-
-      expect(response.status).toBe(200)
-      const parsed = parseSSEResponse(response.text) as { result: { content: { text: string }[] } }
-      expect(parsed.result.content[0].text).toContain('Invalid exercise_type')
-      expect(mutations.addActivity).not.toHaveBeenCalled()
+      expect(mutations.addActivity).toHaveBeenCalledWith(
+        'testuser',
+        {
+          activity_type: 'meditation',
+          data: undefined,
+          end_time: expect.any(Date),
+          notes: undefined,
+          start_time: expect.any(Date),
+          title: 'Morning meditation',
+        },
+        undefined,
+      )
     })
 
     test('returns error when end_time is before start_time', async () => {
@@ -1084,7 +966,7 @@ describe('MCP Server', () => {
       const token = auth.createToken('testuser')
 
       vi.mocked(mutations.addActivity).mockResolvedValue({
-        error: 'end_time must be after start_time',
+        error: 'end_time must not be before start_time',
         success: false,
       })
 
@@ -1107,7 +989,7 @@ describe('MCP Server', () => {
 
       expect(response.status).toBe(200)
       const parsed = parseSSEResponse(response.text) as { result: { content: { text: string }[] } }
-      expect(parsed.result.content[0].text).toContain('end_time must be after start_time')
+      expect(parsed.result.content[0].text).toContain('end_time must not be before start_time')
     })
   })
 
@@ -1137,12 +1019,12 @@ describe('MCP Server', () => {
 
     const testActivityId = '00000000-0000-4000-a000-000000000001'
 
-    test('updates activity with exercise_type', async () => {
+    test('updates activity_type and data fields', async () => {
       const app = createTestApp()
       const token = auth.createToken('testuser')
 
       vi.mocked(mutations.updateActivity).mockResolvedValue({
-        activity_type: 'exercise',
+        activity_type: 'weightlifting',
         end_time: '2024-03-15T11:00:00.000Z',
         id: testActivityId,
         start_time: '2024-03-15T10:00:00.000Z',
@@ -1151,7 +1033,8 @@ describe('MCP Server', () => {
       })
 
       const response = await callTool(app, token, 'update_activity', {
-        exercise_type: 'weightlifting',
+        activity_type: 'weightlifting',
+        data: { weight: 80 },
         id: testActivityId,
         title: 'Workout',
         tz: 'UTC',
@@ -1159,19 +1042,22 @@ describe('MCP Server', () => {
 
       expect(response.status).toBe(200)
       expect(response.toolResult.success).toBe(true)
-      expect(mutations.updateActivity).toHaveBeenCalledWith('testuser', testActivityId, {
-        data: {
-          exerciseType: 81,
-          exerciseTypeName: 'weightlifting',
+      expect(mutations.updateActivity).toHaveBeenCalledWith(
+        'testuser',
+        testActivityId,
+        {
+          activity_type: 'weightlifting',
+          data: { weight: 80 },
+          end_time: undefined,
+          notes: undefined,
+          start_time: undefined,
+          title: 'Workout',
         },
-        end_time: undefined,
-        notes: undefined,
-        start_time: undefined,
-        title: 'Workout',
-      })
+        undefined,
+      )
     })
 
-    test('updates activity without exercise_type', async () => {
+    test('updates activity notes only', async () => {
       const app = createTestApp()
       const token = auth.createToken('testuser')
 
@@ -1179,7 +1065,6 @@ describe('MCP Server', () => {
         activity_type: 'exercise',
         end_time: '2024-03-15T11:00:00.000Z',
         id: testActivityId,
-        notes: 'Great session',
         start_time: '2024-03-15T10:00:00.000Z',
         success: true,
       })
@@ -1192,39 +1077,19 @@ describe('MCP Server', () => {
 
       expect(response.status).toBe(200)
       expect(response.toolResult.success).toBe(true)
-      expect(mutations.updateActivity).toHaveBeenCalledWith('testuser', testActivityId, {
-        data: undefined,
-        end_time: undefined,
-        notes: 'Great session',
-        start_time: undefined,
-        title: undefined,
-      })
-    })
-
-    test('returns error for invalid exercise_type', async () => {
-      const app = createTestApp()
-      const token = auth.createToken('testuser')
-
-      const response = await mcpPost(app)
-        .set('Authorization', `Bearer ${token}`)
-        .send({
-          id: 1,
-          jsonrpc: '2.0',
-          method: 'tools/call',
-          params: {
-            arguments: {
-              exercise_type: 'not_a_real_exercise',
-              id: testActivityId,
-              tz: 'UTC',
-            },
-            name: 'update_activity',
-          },
-        })
-
-      expect(response.status).toBe(200)
-      const parsed = parseSSEResponse(response.text) as { result: { content: { text: string }[] } }
-      expect(parsed.result.content[0].text).toContain('Invalid exercise_type')
-      expect(mutations.updateActivity).not.toHaveBeenCalled()
+      expect(mutations.updateActivity).toHaveBeenCalledWith(
+        'testuser',
+        testActivityId,
+        {
+          activity_type: undefined,
+          data: undefined,
+          end_time: undefined,
+          notes: 'Great session',
+          start_time: undefined,
+          title: undefined,
+        },
+        undefined,
+      )
     })
 
     test('passes time updates as Date objects', async () => {
@@ -1246,13 +1111,18 @@ describe('MCP Server', () => {
         tz: 'UTC',
       })
 
-      expect(mutations.updateActivity).toHaveBeenCalledWith('testuser', testActivityId, {
-        data: undefined,
-        end_time: expect.any(Date),
-        notes: undefined,
-        start_time: expect.any(Date),
-        title: undefined,
-      })
+      expect(mutations.updateActivity).toHaveBeenCalledWith(
+        'testuser',
+        testActivityId,
+        {
+          data: undefined,
+          end_time: expect.any(Date),
+          notes: undefined,
+          start_time: expect.any(Date),
+          title: undefined,
+        },
+        undefined,
+      )
     })
 
     test('returns error from service on failure', async () => {
@@ -1284,6 +1154,72 @@ describe('MCP Server', () => {
       expect(response.status).toBe(200)
       const parsed = parseSSEResponse(response.text) as { result: { content: { text: string }[] } }
       expect(parsed.result.content[0].text).toContain('Activity not found')
+    })
+  })
+
+  describe('Tool: reset_sync_state', () => {
+    async function callResetSyncState(app: express.Express, token: string, args: Record<string, unknown>) {
+      const response = await mcpPost(app)
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          id: 1,
+          jsonrpc: '2.0',
+          method: 'tools/call',
+          params: { arguments: args, name: 'reset_sync_state' },
+        })
+      const parsed = parseSSEResponse(response.text) as { result: { content: { text: string }[] } }
+      const toolResult = JSON.parse(parsed.result.content[0].text) as Record<string, unknown>
+      return { response, toolResult }
+    }
+
+    test('resets all data types when data_type is omitted', async () => {
+      const resetSpy = vi.mocked(db.resetSyncState).mockResolvedValue(undefined)
+      const app = createTestApp()
+      const token = auth.createToken('testuser')
+
+      const { response, toolResult } = await callResetSyncState(app, token, { provider: 'strava' })
+
+      expect(response.status).toBe(200)
+      expect(toolResult).toEqual({
+        data_type: 'all',
+        provider: 'strava',
+        reset: true,
+        success: true,
+      })
+      expect(resetSpy).toHaveBeenCalledWith('testuser', 'strava', undefined)
+    })
+
+    test('resets specific data_type when provided', async () => {
+      const resetSpy = vi.mocked(db.resetSyncState).mockResolvedValue(undefined)
+      const app = createTestApp()
+      const token = auth.createToken('testuser')
+
+      const { response, toolResult } = await callResetSyncState(app, token, {
+        data_type: 'activities',
+        provider: 'strava',
+      })
+
+      expect(response.status).toBe(200)
+      expect(toolResult.data_type).toBe('activities')
+      expect(resetSpy).toHaveBeenCalledWith('testuser', 'strava', 'activities')
+    })
+
+    test('rejects invalid provider', async () => {
+      const resetSpy = vi.mocked(db.resetSyncState)
+      const app = createTestApp()
+      const token = auth.createToken('testuser')
+
+      const response = await mcpPost(app)
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          id: 1,
+          jsonrpc: '2.0',
+          method: 'tools/call',
+          params: { arguments: { provider: 'nonexistent' }, name: 'reset_sync_state' },
+        })
+
+      expect(response.status).toBe(200)
+      expect(resetSpy).not.toHaveBeenCalled()
     })
   })
 })

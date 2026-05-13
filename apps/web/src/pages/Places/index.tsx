@@ -15,6 +15,7 @@ import {
   fetchPlaceVisits,
   fetchStoredDetectedLocations,
   promoteDetectedLocation,
+  updateNamedLocation,
 } from '../../state/api'
 
 // Fix Leaflet default marker icon path issue with bundlers
@@ -28,6 +29,7 @@ L.Icon.Default.mergeOptions({
 
 const selectedDate = signal(formatISO(new Date(), { representation: 'date' }))
 
+// eslint-disable-next-line complexity -- TODO: extract modal + handlers into helpers
 export const Places = () => {
   const queryClient = useQueryClient()
   const { query } = useLocation()
@@ -50,8 +52,11 @@ export const Places = () => {
     lat: number
     lon: number
     address?: string
+    /** When set, the modal is in edit mode for an existing named location. */
+    editingId?: string
   } | null>(null)
   const [nameInput, setNameInput] = useState('')
+  const [autoCreateActivity, setAutoCreateActivity] = useState(false)
 
   const mapRef = useRef<HTMLDivElement>(null)
   const leafletMapRef = useRef<L.Map | null>(null)
@@ -75,25 +80,29 @@ export const Places = () => {
     staleTime: 5 * 60 * 1000,
   })
 
+  const invalidateAfterMutation = () => {
+    queryClient.invalidateQueries({ queryKey: ['namedLocations'] })
+    queryClient.invalidateQueries({ queryKey: ['placeVisits'] })
+    queryClient.invalidateQueries({ queryKey: ['storedDetectedLocations'] })
+    setNamingLocation(null)
+    setNameInput('')
+    setAutoCreateActivity(false)
+  }
+
   const promoteMutation = useMutation({
     mutationFn: promoteDetectedLocation,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['namedLocations'] })
-      queryClient.invalidateQueries({ queryKey: ['placeVisits'] })
-      queryClient.invalidateQueries({ queryKey: ['storedDetectedLocations'] })
-      setNamingLocation(null)
-      setNameInput('')
-    },
+    onSuccess: invalidateAfterMutation,
   })
 
   const addNamedMutation = useMutation({
     mutationFn: addNamedLocation,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['namedLocations'] })
-      queryClient.invalidateQueries({ queryKey: ['placeVisits'] })
-      setNamingLocation(null)
-      setNameInput('')
-    },
+    onSuccess: invalidateAfterMutation,
+  })
+
+  const updateNamedMutation = useMutation({
+    mutationFn: ({ id, body }: { id: string; body: { auto_create_activity?: boolean } }) =>
+      updateNamedLocation(id, body),
+    onSuccess: invalidateAfterMutation,
   })
 
   // Auto-select place from URL param after data loads
@@ -194,27 +203,61 @@ export const Places = () => {
 
   const handlePlaceClick = (place: PlaceVisit) => {
     setSelectedPlace(place)
+    // Edit existing named location
+    if (place.source === 'named') {
+      const named = namedQuery.data?.find((nl) => nl.name === place.name)
+      if (named?.id && place.lat && place.lon) {
+        setNamingLocation({ editingId: named.id, lat: place.lat, lon: place.lon })
+        setNameInput(named.name)
+        setAutoCreateActivity(named.auto_create_activity ?? false)
+      }
+      return
+    }
     // Open naming modal for unnamed locations (detected or unknown) with valid coordinates
     if ((place.source === 'detected' || place.source === 'unknown') && place.lat && place.lon) {
       setNamingLocation({ address: place.address, lat: place.lat, lon: place.lon })
       setNameInput(place.address || '')
+      setAutoCreateActivity(false)
     }
   }
 
-  const handlePromote = () => {
+  const handleSave = () => {
     if (!namingLocation || !nameInput.trim()) return
+
+    if (namingLocation.editingId) {
+      updateNamedMutation.mutate({
+        body: { auto_create_activity: autoCreateActivity },
+        id: namingLocation.editingId,
+      })
+      return
+    }
 
     // Use appropriate mutation based on whether it's a detected location
     const placeSource = selectedPlace && 'source' in selectedPlace ? selectedPlace.source : null
     if (placeSource === 'detected') {
-      promoteMutation.mutate({
-        lat: namingLocation.lat,
-        lon: namingLocation.lon,
-        name: nameInput.trim(),
-      })
+      promoteMutation.mutate(
+        {
+          lat: namingLocation.lat,
+          lon: namingLocation.lon,
+          name: nameInput.trim(),
+        },
+        {
+          onSuccess: (created) => {
+            // PromoteDetectedLocation body doesn't carry the flag — if the
+            // user opted in, follow up with a PATCH to set it on the new row.
+            if (autoCreateActivity) {
+              updateNamedMutation.mutate({
+                body: { auto_create_activity: true },
+                id: created.id!,
+              })
+            }
+          },
+        },
+      )
     } else {
       // For unknown locations, create a new named location directly
       addNamedMutation.mutate({
+        auto_create_activity: autoCreateActivity,
         lat: namingLocation.lat,
         lon: namingLocation.lon,
         name: nameInput.trim(),
@@ -225,6 +268,7 @@ export const Places = () => {
   const closeModal = () => {
     setNamingLocation(null)
     setNameInput('')
+    setAutoCreateActivity(false)
   }
 
   // Handle escape key to close modal
@@ -277,7 +321,7 @@ export const Places = () => {
     }
   }
 
-  const isPending = promoteMutation.isPending || addNamedMutation.isPending
+  const isPending = promoteMutation.isPending || addNamedMutation.isPending || updateNamedMutation.isPending
 
   return (
     <div class="places-page">
@@ -351,11 +395,11 @@ export const Places = () => {
         </div>
       </div>
 
-      {/* Naming Modal */}
+      {/* Naming / Edit Modal */}
       {namingLocation && (
         <div class="modal-overlay" onClick={closeModal}>
           <div class="modal-content" onClick={(e) => e.stopPropagation()}>
-            <h3>Name this location</h3>
+            <h3>{namingLocation.editingId ? 'Edit named location' : 'Name this location'}</h3>
 
             {namingLocation.address && <div class="modal-address">Address: {namingLocation.address}</div>}
 
@@ -367,12 +411,28 @@ export const Places = () => {
                 onInput={(e) => setNameInput((e.target as HTMLInputElement).value)}
                 placeholder="e.g., Home, Office, Gym"
                 autofocus
+                disabled={!!namingLocation.editingId}
               />
+            </div>
+
+            <div class="modal-field">
+              <label class="modal-checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={autoCreateActivity}
+                  onChange={(e) => setAutoCreateActivity((e.target as HTMLInputElement).checked)}
+                />
+                Create activities for visits to this location
+              </label>
+              <div class="modal-hint">
+                When on, each visit detected here is recorded as a <code>location_visit</code> activity so it
+                shows up in your timeline and correlations.
+              </div>
             </div>
 
             <div class="modal-actions">
               <button onClick={closeModal}>Cancel</button>
-              <button class="btn-primary" onClick={handlePromote} disabled={!nameInput.trim() || isPending}>
+              <button class="btn-primary" onClick={handleSave} disabled={!nameInput.trim() || isPending}>
                 {isPending ? 'Saving...' : 'Save'}
               </button>
             </div>

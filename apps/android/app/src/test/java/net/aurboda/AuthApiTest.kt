@@ -32,30 +32,26 @@ class AuthApiTest {
 
     @Test
     fun `LoginResponse deserializes correctly`() {
-        val json = """{"token":"abc123","refresh":"def456"}"""
+        val json = """{"token":"abc123"}"""
         val response = appJson.decodeFromString<LoginResponse>(json)
 
         assertEquals("abc123", response.token)
-        assertEquals("def456", response.refresh)
     }
 
     @Test
     fun `LoginResponse serializes correctly`() {
-        val response = LoginResponse(refresh = "myrefresh", token = "mytoken")
+        val response = LoginResponse(token = "mytoken")
         val json = appJson.encodeToString(LoginResponse.serializer(), response)
 
         assertTrue(json.contains("\"token\""))
         assertTrue(json.contains("\"mytoken\""))
-        assertTrue(json.contains("\"refresh\""))
-        assertTrue(json.contains("\"myrefresh\""))
     }
 
     @Test
-    fun `LoginResult Success contains token data`() {
-        val result = LoginResult.Success("token123", "refresh456")
+    fun `LoginResult Success contains token`() {
+        val result = LoginResult.Success("token123")
 
         assertEquals("token123", result.token)
-        assertEquals("refresh456", result.refreshToken)
     }
 
     @Test
@@ -67,7 +63,7 @@ class AuthApiTest {
 
     @Test
     fun `LoginResult can be checked with when expression`() {
-        val successResult: LoginResult = LoginResult.Success("token", "refresh")
+        val successResult: LoginResult = LoginResult.Success("token")
         val errorResult: LoginResult = LoginResult.Error("error")
 
         val successMessage = when (successResult) {
@@ -86,10 +82,9 @@ class AuthApiTest {
 
     @Test
     fun `LoginResponse ignores unknown keys`() {
-        val json = """{"token":"t1","refresh":"r1","unknown":"ignored"}"""
+        val json = """{"token":"t1","unknown":"ignored"}"""
         val response = appJson.decodeFromString<LoginResponse>(json)
 
         assertEquals("t1", response.token)
-        assertEquals("r1", response.refresh)
     }
 }

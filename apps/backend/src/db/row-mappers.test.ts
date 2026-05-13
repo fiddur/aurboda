@@ -3,11 +3,11 @@ import { describe, expect, test } from 'vitest'
 import {
   mapActivityRow,
   mapDetectedLocationRow,
-  mapLastFmTagRuleRow,
   mapMcpSessionRow,
+  mapMealRow,
   mapNamedLocationRow,
+  mapReportEntryRow,
   mapSyncStateRow,
-  mapTagRow,
   parseActivityType,
   parseDataSource,
   parseGeocodeStatus,
@@ -79,7 +79,6 @@ describe('mapActivityRow', () => {
       data: { hr: 150 },
       end_time: '2024-01-15T11:00:00Z',
       id: 'abc-123',
-      notes: 'Morning run',
       source: 'aurboda',
       start_time: '2024-01-15T10:00:00Z',
       title: 'Run',
@@ -92,7 +91,6 @@ describe('mapActivityRow', () => {
       data: { hr: 150 },
       end_time: new Date('2024-01-15T11:00:00Z'),
       id: 'abc-123',
-      notes: 'Morning run',
       source: 'aurboda',
       start_time: new Date('2024-01-15T10:00:00Z'),
       title: 'Run',
@@ -145,11 +143,46 @@ describe('mapActivityRow', () => {
 
     expect(() => mapActivityRow(row)).toThrow('Invalid ActivityType')
   })
+
+  test('maps superseded_by when present', () => {
+    const row = {
+      activity_type: 'running',
+      data: null,
+      end_time: null,
+      id: 'loser-id',
+      notes: null,
+      source: 'oura',
+      start_time: '2024-01-15T10:00:00Z',
+      superseded_by: 'winner-id',
+      title: null,
+    }
+
+    const result = mapActivityRow(row)
+    expect(result.superseded_by).toBe('winner-id')
+  })
+
+  test('leaves superseded_by undefined when null', () => {
+    const row = {
+      activity_type: 'running',
+      data: null,
+      end_time: null,
+      id: 'winner-id',
+      notes: null,
+      source: 'garmin',
+      start_time: '2024-01-15T10:00:00Z',
+      superseded_by: null,
+      title: null,
+    }
+
+    const result = mapActivityRow(row)
+    expect(result.superseded_by).toBeUndefined()
+  })
 })
 
 describe('mapNamedLocationRow', () => {
   test('maps a database row to NamedLocation', () => {
     const row = {
+      auto_create_activity: false,
       created_at: '2024-01-15T10:00:00Z',
       id: 'loc-1',
       lat: 59.3293,
@@ -162,6 +195,7 @@ describe('mapNamedLocationRow', () => {
     const result = mapNamedLocationRow(row)
 
     expect(result).toEqual({
+      auto_create_activity: false,
       created_at: new Date('2024-01-15T10:00:00Z'),
       id: 'loc-1',
       lat: 59.3293,
@@ -170,6 +204,19 @@ describe('mapNamedLocationRow', () => {
       radius: 200,
       updated_at: new Date('2024-01-15T10:00:00Z'),
     })
+  })
+
+  test('defaults auto_create_activity to false when missing/null', () => {
+    const row = {
+      created_at: '2024-01-15T10:00:00Z',
+      id: 'loc-2',
+      lat: 0,
+      lon: 0,
+      name: 'X',
+      radius: 200,
+      updated_at: '2024-01-15T10:00:00Z',
+    }
+    expect(mapNamedLocationRow(row).auto_create_activity).toBe(false)
   })
 })
 
@@ -276,44 +323,6 @@ describe('mapSyncStateRow', () => {
   })
 })
 
-describe('mapTagRow', () => {
-  test('maps a database row to Tag', () => {
-    const row = {
-      end_time: '2024-01-15T11:00:00Z',
-      external_id: 'ext-1',
-      id: 'tag-1',
-      source: 'aurboda',
-      start_time: '2024-01-15T10:00:00Z',
-      tag: 'coffee',
-    }
-
-    const result = mapTagRow(row)
-
-    expect(result).toEqual({
-      end_time: new Date('2024-01-15T11:00:00Z'),
-      external_id: 'ext-1',
-      id: 'tag-1',
-      source: 'aurboda',
-      start_time: new Date('2024-01-15T10:00:00Z'),
-      tag: 'coffee',
-    })
-  })
-
-  test('handles null end_time', () => {
-    const row = {
-      end_time: null,
-      external_id: 'ext-1',
-      id: 'tag-1',
-      source: 'aurboda',
-      start_time: '2024-01-15T10:00:00Z',
-      tag: 'coffee',
-    }
-
-    const result = mapTagRow(row)
-    expect(result.end_time).toBeUndefined()
-  })
-})
-
 describe('mapMcpSessionRow', () => {
   test('maps a database row to McpSessionRecord', () => {
     const row = {
@@ -334,31 +343,111 @@ describe('mapMcpSessionRow', () => {
   })
 })
 
-describe('mapLastFmTagRuleRow', () => {
-  test('maps a database row to LastFmTagRule', () => {
+describe('mapMealRow', () => {
+  test('maps a row with all optional fields null', () => {
     const row = {
-      artist_name: 'Pink Floyd',
+      calories: null,
+      carbs: null,
       created_at: '2024-01-15T10:00:00Z',
-      id: 'rule-1',
-      match_mode: 'exact',
-      match_type: 'artist',
-      rule_name: 'Pink Floyd tag',
-      tag_name: 'psychedelic',
-      track_name: null,
+      fat: null,
+      fiber: null,
+      food_items: null,
+      id: 'meal-1',
+      meal_type: null,
+      micros: null,
+      name: null,
+      notes: null,
+      protein: null,
+      sensitivities: null,
+      source: 'manual',
+      time: '2024-01-15T12:00:00Z',
     }
+    const result = mapMealRow(row)
+    expect(result.id).toBe('meal-1')
+    expect(result.calories).toBeUndefined()
+    expect(result.food_items).toBeUndefined()
+    expect(result.micros).toBeUndefined()
+  })
 
-    const result = mapLastFmTagRuleRow(row)
+  test('maps a row with all optional fields present', () => {
+    const row = {
+      calories: 500,
+      carbs: 60,
+      created_at: '2024-01-15T10:00:00Z',
+      fat: 20,
+      fiber: 5,
+      food_items: [{ name: 'Rice' }],
+      id: 'meal-2',
+      meal_type: 'lunch',
+      micros: { iron: 2 },
+      name: 'Lunch',
+      notes: 'Good',
+      protein: 30,
+      sensitivities: ['gluten'],
+      source: 'manual',
+      time: '2024-01-15T12:00:00Z',
+    }
+    const result = mapMealRow(row)
+    expect(result.calories).toBe(500)
+    expect(result.food_items).toEqual([{ name: 'Rice' }])
+    expect(result.micros).toEqual({ iron: 2 })
+  })
+})
 
-    expect(result).toEqual({
-      artist_name: 'Pink Floyd',
-      created_at: new Date('2024-01-15T10:00:00Z'),
-      id: 'rule-1',
-      match_mode: 'exact',
-      match_type: 'artist',
-      merge_gap_seconds: undefined,
-      rule_name: 'Pink Floyd tag',
-      tag_name: 'psychedelic',
-      track_name: undefined,
-    })
+describe('mapReportEntryRow', () => {
+  test('maps a row with valid confidence and flag', () => {
+    const row = {
+      confidence: 'measured',
+      flag: 'high',
+      id: 'entry-1',
+      method: 'ELISA',
+      metric: 'vitamin_d',
+      reference_high: 100,
+      reference_low: 30,
+      report_id: 'report-1',
+      unit: 'ng/mL',
+      value: 45,
+    }
+    const result = mapReportEntryRow(row)
+    expect(result.confidence).toBe('measured')
+    expect(result.flag).toBe('high')
+    expect(result.method).toBe('ELISA')
+  })
+
+  test('maps a row with null optional fields', () => {
+    const row = {
+      confidence: null,
+      flag: null,
+      id: 'entry-2',
+      method: null,
+      metric: 'iron',
+      reference_high: null,
+      reference_low: null,
+      report_id: 'report-1',
+      unit: 'mg/dL',
+      value: 80,
+    }
+    const result = mapReportEntryRow(row)
+    expect(result.confidence).toBeUndefined()
+    expect(result.flag).toBeUndefined()
+    expect(result.method).toBeUndefined()
+  })
+
+  test('returns undefined for invalid confidence/flag values', () => {
+    const row = {
+      confidence: 'invalid',
+      flag: 'invalid',
+      id: 'entry-3',
+      method: null,
+      metric: 'test',
+      reference_high: null,
+      reference_low: null,
+      report_id: 'report-1',
+      unit: 'x',
+      value: 1,
+    }
+    const result = mapReportEntryRow(row)
+    expect(result.confidence).toBeUndefined()
+    expect(result.flag).toBeUndefined()
   })
 })

@@ -1,26 +1,29 @@
+import type { UpdateMealBody } from '@aurboda/api-spec'
+
 import { NUTRIENT_FIELDS } from '@aurboda/api-spec'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { useLocation, useRoute } from 'preact-iso'
-import { useEffect, useState } from 'preact/hooks'
+import { useEffect, useRef, useState } from 'preact/hooks'
 
 import { ConfirmButton } from '../../components/ConfirmButton'
 import { FoodItemAutocomplete } from '../../components/FoodItemAutocomplete'
 import {
   deleteMealApi,
   fetchMeal,
-  fetchUserSettings,
+  fetchSensitivityFlags,
   type FoodItemEntity,
   updateMealApi,
 } from '../../state/api'
+import { createDebouncedFlusher } from '../../utils/debouncedFlusher'
+import { LocationInfo, MEAL_LOCATION_WINDOW_MS } from '../EntityDetail/LocationInfo'
 import './MealDetail.css'
+import { DEFAULT_CUSTOM_TYPE, MEAL_TYPES, resolveMealTypeChange } from './mealTypes'
 
 // ── Sub-components ───────────────────────────────────────────────────────────
 
-interface FoodItemEdit {
-  name: string
+interface FoodItemRef {
   quantity?: number
-  unit?: string
   calories?: number
   protein?: number
   carbs?: number
@@ -28,17 +31,56 @@ interface FoodItemEdit {
   fiber?: number
 }
 
-const MEAL_TYPES = ['breakfast', 'lunch', 'dinner', 'snack', 'drink']
+interface FoodItemEdit {
+  food_item_id?: string
+  name: string
+  quantity?: number
+  unit?: string
+  /**
+   * Reference values for live display scaling. Captured at row creation
+   * (autocomplete pick: canonical default_quantity + canonical nutrients;
+   * existing item edit: server snapshot quantity + snapshot nutrients).
+   * Stripped before save — the backend re-derives the snapshot from the
+   * canonical food item × quantity.
+   */
+  ref?: FoodItemRef
+}
 
-function MealTypeEditor({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const isCustom = !MEAL_TYPES.includes(value)
+/** Linearly scale a reference nutrient value to the current quantity. */
+const scaleNutrient = (
+  ref: FoodItemRef | undefined,
+  field: keyof Omit<FoodItemRef, 'quantity'>,
+  currentQuantity: number | undefined,
+): number | undefined => {
+  if (!ref) return undefined
+  const baseValue = ref[field]
+  if (typeof baseValue !== 'number') return undefined
+  if (ref.quantity === undefined || ref.quantity === 0) return baseValue
+  if (currentQuantity === undefined) return baseValue
+  return Math.round(((baseValue * currentQuantity) / ref.quantity) * 10) / 10
+}
+
+function MealTypeEditor({
+  value,
+  onChange,
+  onCustomCommit,
+}: {
+  value: string
+  onChange: (v: string) => void
+  /**
+   * Called on blur of the custom-type text input — gives the parent a
+   * chance to debounce keystroke saves and only persist the final value.
+   */
+  onCustomCommit?: (v: string) => void
+}) {
+  const isCustom = !(MEAL_TYPES as readonly string[]).includes(value)
   return (
     <div class="type-editor">
       <select
         value={isCustom ? '__custom' : value}
         onChange={(e) => {
-          const v = (e.target as HTMLSelectElement).value
-          if (v !== '__custom') onChange(v)
+          const next = resolveMealTypeChange(value, (e.target as HTMLSelectElement).value)
+          if (next !== null) onChange(next)
         }}
       >
         {MEAL_TYPES.map((t) => (
@@ -54,44 +96,40 @@ function MealTypeEditor({ value, onChange }: { value: string; onChange: (v: stri
           value={value}
           placeholder="Custom type"
           onInput={(e) => onChange((e.target as HTMLInputElement).value)}
+          onBlur={(e) => onCustomCommit?.((e.target as HTMLInputElement).value)}
         />
       )}
     </div>
   )
 }
 
+type MacroField = 'calories' | 'protein' | 'carbs' | 'fat' | 'fiber'
+type MacroValues = Partial<Record<MacroField, number | null | undefined>>
+
 function MacrosEditor({
-  calories,
-  protein,
-  carbs,
-  fat,
-  fiber,
+  values,
   onChange,
+  onCommit,
 }: {
-  calories?: number | null
-  protein?: number | null
-  carbs?: number | null
-  fat?: number | null
-  fiber?: number | null
-  onChange: (field: string, value: number | null) => void
+  values: MacroValues
+  onChange: (field: MacroField, value: number | null) => void
+  onCommit: (field: MacroField, value: number | null) => void
 }) {
   const parseNum = (v: string) => (v === '' ? null : parseFloat(v))
   return (
     <div class="macros-grid">
-      {(['calories', 'protein', 'carbs', 'fat', 'fiber'] as const).map((field) => {
-        const val = { calories, protein, carbs, fat, fiber }[field]
-        return (
-          <label key={field} class="macro-input">
-            <span>{field === 'calories' ? 'kcal' : `${field} (g)`}</span>
-            <input
-              type="number"
-              step="0.1"
-              value={val ?? ''}
-              onInput={(e) => onChange(field, parseNum((e.target as HTMLInputElement).value))}
-            />
-          </label>
-        )
-      })}
+      {(['calories', 'protein', 'carbs', 'fat', 'fiber'] as const).map((field) => (
+        <label key={field} class="macro-input">
+          <span>{field === 'calories' ? 'kcal' : `${field} (g)`}</span>
+          <input
+            type="number"
+            step="0.1"
+            value={values[field] ?? ''}
+            onInput={(e) => onChange(field, parseNum((e.target as HTMLInputElement).value))}
+            onBlur={(e) => onCommit(field, parseNum((e.target as HTMLInputElement).value))}
+          />
+        </label>
+      ))}
     </div>
   )
 }
@@ -130,31 +168,46 @@ function FoodItemRow({
   index,
   onChange,
   onRemove,
+  autoFocus,
 }: {
   item: FoodItemEdit
   index: number
   onChange: (index: number, item: FoodItemEdit) => void
   onRemove: (index: number) => void
+  autoFocus?: boolean
 }) {
-  const update = (field: string, value: unknown) => onChange(index, { ...item, [field]: value })
+  const update = (field: keyof FoodItemEdit, value: unknown) => onChange(index, { ...item, [field]: value })
   const parseNum = (v: string) => (v === '' ? undefined : parseFloat(v))
+
+  const kcal = scaleNutrient(item.ref, 'calories', item.quantity)
+  const prot = scaleNutrient(item.ref, 'protein', item.quantity)
+  const carbs = scaleNutrient(item.ref, 'carbs', item.quantity)
+  const fat = scaleNutrient(item.ref, 'fat', item.quantity)
+  const fiber = scaleNutrient(item.ref, 'fiber', item.quantity)
+  const hasMacros = [kcal, prot, carbs, fat, fiber].some((v) => typeof v === 'number')
+
   return (
     <div class="food-item-edit-row">
       <div class="food-row-top">
         <FoodItemAutocomplete
           value={item.name}
+          autoFocus={autoFocus}
           onChange={(name) => update('name', name)}
           onSelect={(fi: FoodItemEntity) => {
             onChange(index, {
               ...item,
+              food_item_id: fi.id,
               name: fi.name,
               quantity: fi.default_quantity ?? 1,
               unit: fi.default_unit ?? item.unit,
-              calories: fi.calories ?? item.calories,
-              protein: fi.protein ?? item.protein,
-              carbs: fi.carbs ?? item.carbs,
-              fat: fi.fat ?? item.fat,
-              fiber: fi.fiber ?? item.fiber,
+              ref: {
+                calories: fi.calories,
+                carbs: fi.carbs,
+                fat: fi.fat,
+                fiber: fi.fiber,
+                protein: fi.protein,
+                quantity: fi.default_quantity,
+              },
             })
           }}
         />
@@ -177,53 +230,15 @@ function FoodItemRow({
           &times;
         </button>
       </div>
-      <div class="food-row-macros">
-        <label>
-          <span>kcal</span>
-          <input
-            type="number"
-            step="0.1"
-            value={item.calories ?? ''}
-            onInput={(e) => update('calories', parseNum((e.target as HTMLInputElement).value))}
-          />
-        </label>
-        <label>
-          <span>prot</span>
-          <input
-            type="number"
-            step="0.1"
-            value={item.protein ?? ''}
-            onInput={(e) => update('protein', parseNum((e.target as HTMLInputElement).value))}
-          />
-        </label>
-        <label>
-          <span>carbs</span>
-          <input
-            type="number"
-            step="0.1"
-            value={item.carbs ?? ''}
-            onInput={(e) => update('carbs', parseNum((e.target as HTMLInputElement).value))}
-          />
-        </label>
-        <label>
-          <span>fat</span>
-          <input
-            type="number"
-            step="0.1"
-            value={item.fat ?? ''}
-            onInput={(e) => update('fat', parseNum((e.target as HTMLInputElement).value))}
-          />
-        </label>
-        <label>
-          <span>fiber</span>
-          <input
-            type="number"
-            step="0.1"
-            value={item.fiber ?? ''}
-            onInput={(e) => update('fiber', parseNum((e.target as HTMLInputElement).value))}
-          />
-        </label>
-      </div>
+      {hasMacros && (
+        <div class="food-row-macros-display">
+          {typeof kcal === 'number' && <span>{kcal} kcal</span>}
+          {typeof prot === 'number' && <span>P {prot}g</span>}
+          {typeof carbs === 'number' && <span>C {carbs}g</span>}
+          {typeof fat === 'number' && <span>F {fat}g</span>}
+          {typeof fiber === 'number' && <span>Fib {fiber}g</span>}
+        </div>
+      )}
     </div>
   )
 }
@@ -235,18 +250,30 @@ function FoodItemsEditor({
   items: FoodItemEdit[]
   onChange: (items: FoodItemEdit[]) => void
 }) {
+  const [autoFocusIndex, setAutoFocusIndex] = useState<number | null>(null)
+
   const handleChange = (index: number, item: FoodItemEdit) => {
     const next = [...items]
     next[index] = item
     onChange(next)
   }
   const handleRemove = (index: number) => onChange(items.filter((_, i) => i !== index))
-  const handleAdd = () => onChange([...items, { name: '' }])
+  const handleAdd = () => {
+    setAutoFocusIndex(items.length)
+    onChange([...items, { name: '' }])
+  }
 
   return (
     <div class="food-items-editor">
       {items.map((item, i) => (
-        <FoodItemRow key={i} item={item} index={i} onChange={handleChange} onRemove={handleRemove} />
+        <FoodItemRow
+          key={i}
+          item={item}
+          index={i}
+          onChange={handleChange}
+          onRemove={handleRemove}
+          autoFocus={i === autoFocusIndex}
+        />
       ))}
       <button type="button" class="btn-secondary btn-add-item" onClick={handleAdd}>
         + Add food item
@@ -301,61 +328,69 @@ function NutrientBreakdown({ nutrients }: { nutrients: Record<string, number> })
   )
 }
 
-// ── Edit state ───────────────────────────────────────────────────────────────
+// ── Save indicator ───────────────────────────────────────────────────────────
 
-interface EditState {
-  name?: string
-  time?: string
-  notes?: string
-  meal_type?: string
-  calories?: number | null
-  protein?: number | null
-  carbs?: number | null
-  fat?: number | null
-  fiber?: number | null
-  food_items?: FoodItemEdit[]
-  sensitivities?: string[]
-}
-
-/** Build the PATCH body from edit state, auto-summing macros from food items. */
-const buildSaveBody = (editing: EditState): Record<string, unknown> => {
-  const body: Record<string, unknown> = {}
-  if (editing.name !== undefined) body.name = editing.name || null
-  if (editing.time !== undefined) body.time = new Date(editing.time).toISOString()
-  if (editing.notes !== undefined) body.notes = editing.notes || null
-  if (editing.meal_type !== undefined) body.meal_type = editing.meal_type
-  if (editing.sensitivities !== undefined) body.sensitivities = editing.sensitivities
-
-  const items = editing.food_items?.filter((fi) => fi.name.trim())
-  if (items !== undefined) {
-    body.food_items = items
-    // Auto-sum macros from food items
-    const sumField = (field: keyof FoodItemEdit) => {
-      const total = items.reduce((s, fi) => s + ((fi[field] as number) ?? 0), 0)
-      return total > 0 ? Math.round(total * 100) / 100 : null
-    }
-    body.calories = sumField('calories')
-    body.protein = sumField('protein')
-    body.carbs = sumField('carbs')
-    body.fat = sumField('fat')
-    body.fiber = sumField('fiber')
-  } else {
-    if (editing.calories !== undefined) body.calories = editing.calories
-    if (editing.protein !== undefined) body.protein = editing.protein
-    if (editing.carbs !== undefined) body.carbs = editing.carbs
-    if (editing.fat !== undefined) body.fat = editing.fat
-    if (editing.fiber !== undefined) body.fiber = editing.fiber
-  }
-
-  return body
+function SaveIndicator({
+  isPending,
+  showSaved,
+  error,
+}: {
+  isPending: boolean
+  showSaved: boolean
+  error: string | null
+}) {
+  if (error) return <span class="save-status save-error">⚠ {error}</span>
+  if (isPending) return <span class="save-status save-pending">Saving…</span>
+  if (showSaved) return <span class="save-status save-ok">Saved ✓</span>
+  return null
 }
 
 // ── Main component ───────────────────────────────────────────────────────────
 
-// eslint-disable-next-line complexity -- detail page with edit mode and multiple data sections
+const FOOD_ITEM_DEBOUNCE_MS = 600
+
+const mealItemsToEdit = (
+  items?: {
+    name: string
+    food_item_id?: string
+    quantity?: number
+    unit?: string
+    calories?: number
+    protein?: number
+    carbs?: number
+    fat?: number
+    fiber?: number
+  }[],
+): FoodItemEdit[] =>
+  (items ?? []).map((fi) => ({
+    food_item_id: fi.food_item_id,
+    name: fi.name,
+    quantity: fi.quantity,
+    ref: {
+      calories: fi.calories,
+      carbs: fi.carbs,
+      fat: fi.fat,
+      fiber: fi.fiber,
+      protein: fi.protein,
+      quantity: fi.quantity,
+    },
+    unit: fi.unit,
+  }))
+
+const editItemsToBody = (items: FoodItemEdit[]): UpdateMealBody['food_items'] =>
+  items
+    .filter((fi) => fi.name.trim())
+    .map((fi) => ({
+      food_item_id: fi.food_item_id,
+      name: fi.name,
+      quantity: fi.quantity,
+      unit: fi.unit,
+    }))
+
+// eslint-disable-next-line complexity -- detail page with many independently auto-saved fields
 export function MealDetail() {
   const { params } = useRoute()
-  const { route, query } = useLocation()
+  const { route } = useLocation()
   const queryClient = useQueryClient()
   const id = params.id
 
@@ -364,23 +399,87 @@ export function MealDetail() {
     queryKey: ['meal', id],
   })
 
-  const { data: settings } = useQuery({
-    queryFn: fetchUserSettings,
-    queryKey: ['userSettings'],
+  const { data: sensitivityFlags = [] } = useQuery({
+    queryFn: fetchSensitivityFlags,
+    queryKey: ['sensitivityFlags'],
   })
 
-  const startInEditMode = new URLSearchParams(query).has('edit')
-  const [editing, setEditing] = useState<EditState | null>(startInEditMode ? {} : null)
+  // Local input state — synced from `meal` on load and after each save.
+  const [name, setName] = useState('')
+  const [timeStr, setTimeStr] = useState('')
+  const [notes, setNotes] = useState('')
+  const [mealType, setMealType] = useState('lunch')
+  const [items, setItems] = useState<FoodItemEdit[]>([])
+  const [flags, setFlags] = useState<string[]>([])
+  const [macros, setMacros] = useState<MacroValues>({})
 
-  // Invalidate the meals list when leaving this page so the day overview refreshes
-  useEffect(() => () => void queryClient.invalidateQueries({ queryKey: ['meals'] }), [queryClient])
+  const [savedFlash, setSavedFlash] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Stable ref to the latest save callback so the debounced flushers always
+  // invoke the most recent closure rather than one captured at first render.
+  const saveRef = useRef<(body: UpdateMealBody) => void>(() => {})
+  // Two flushers — food-items edits debounce 600 ms (mostly autocomplete +
+  // qty/unit typing), meal_type custom edits debounce 600 ms too. Both
+  // flush synchronously on unmount so navigating away mid-debounce doesn't
+  // drop the user's last edit (the bug behind "Back doesn't show new item").
+  const itemsFlusherRef = useRef(
+    createDebouncedFlusher<UpdateMealBody>(FOOD_ITEM_DEBOUNCE_MS, (body) => saveRef.current(body)),
+  )
+  const mealTypeFlusherRef = useRef(
+    createDebouncedFlusher<string>(FOOD_ITEM_DEBOUNCE_MS, (v) => saveRef.current({ meal_type: v })),
+  )
+
+  // The previous unmount-time invalidate of ['meals'] was redundant — every
+  // save mutation already invalidates the list. It also caused a flicker when
+  // a flushed save and the manual invalidate raced. Removed.
+
+  // Clear pending flash timer + flush both debouncers on unmount so any
+  // mid-debounce edit is persisted before the route changes.
+  useEffect(
+    () => () => {
+      if (flashTimer.current) clearTimeout(flashTimer.current)
+      itemsFlusherRef.current.flush()
+      mealTypeFlusherRef.current.flush()
+    },
+    [],
+  )
+
+  // Re-seed local fields only when navigating to a different meal — depending
+  // on `[meal]` would re-run on every post-save refetch and clobber any
+  // in-progress autocomplete draft (e.g. typing a new food item name when
+  // a debounced save round-trips). Same fix as on FoodItemDetail.
+  useEffect(() => {
+    if (!meal) return
+    setName(meal.name ?? '')
+    setTimeStr(format(meal.time, "yyyy-MM-dd'T'HH:mm"))
+    setNotes(meal.notes ?? '')
+    // No meal_type means this was created via the ad-hoc flow — the user
+    // explicitly opted out of a slot, so treat it as a custom "other" rather
+    // than silently defaulting to lunch.
+    setMealType(meal.meal_type ?? DEFAULT_CUSTOM_TYPE)
+    setItems(mealItemsToEdit(meal.food_items))
+    setFlags(meal.sensitivities ?? [])
+    setMacros({
+      calories: meal.calories,
+      protein: meal.protein,
+      carbs: meal.carbs,
+      fat: meal.fat,
+      fiber: meal.fiber,
+    })
+  }, [meal?.id])
 
   const updateMutation = useMutation({
-    mutationFn: (body: Parameters<typeof updateMealApi>[1]) => updateMealApi(id, body),
+    mutationFn: (body: UpdateMealBody) => updateMealApi(id, body),
+    onError: (err: Error) => setSaveError(err.message ?? 'Save failed'),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['meal', id] })
       queryClient.invalidateQueries({ queryKey: ['meals'] })
-      setEditing(null)
+      setSaveError(null)
+      setSavedFlash(true)
+      if (flashTimer.current) clearTimeout(flashTimer.current)
+      flashTimer.current = setTimeout(() => setSavedFlash(false), 1200)
     },
   })
 
@@ -391,6 +490,14 @@ export function MealDetail() {
       route('/meals')
     },
   })
+
+  // Apply a partial update if the new value differs from the current server value.
+  const save = (body: UpdateMealBody) => {
+    setSaveError(null)
+    updateMutation.mutate(body)
+  }
+  // Keep the debouncers' save callback up to date with the latest closure.
+  saveRef.current = save
 
   if (isLoading) {
     return (
@@ -407,50 +514,29 @@ export function MealDetail() {
     )
   }
 
-  const isEditing = editing !== null
-  const flagAreas: string[] = settings?.sensitivity_areas ?? []
+  const flagAreas: string[] = sensitivityFlags.map((f) => f.name)
 
-  // Edit values with fallback to meal
-  const editName = editing?.name ?? meal.name ?? ''
-  const editTime = editing?.time ?? format(meal.time, "yyyy-MM-dd'T'HH:mm")
-  const editNotes = editing?.notes ?? meal.notes ?? ''
-  const editType = editing?.meal_type ?? meal.meal_type ?? 'lunch'
-  const editCal = editing?.calories !== undefined ? editing.calories : meal.calories
-  const editProt = editing?.protein !== undefined ? editing.protein : meal.protein
-  const editCarbs = editing?.carbs !== undefined ? editing.carbs : meal.carbs
-  const editFat = editing?.fat !== undefined ? editing.fat : meal.fat
-  const editFiber = editing?.fiber !== undefined ? editing.fiber : meal.fiber
-  const editItems =
-    editing?.food_items ??
-    (meal.food_items ?? []).map((fi) => ({
-      name: fi.name,
-      quantity: fi.quantity,
-      unit: fi.unit,
-      calories: fi.calories,
-      protein: fi.protein,
-      carbs: fi.carbs,
-      fat: fi.fat,
-      fiber: fi.fiber,
-    }))
-  const editFlags = editing?.sensitivities ?? meal.sensitivities ?? []
-
-  const startEditing = () => setEditing({})
-
-  const handleSave = () => {
-    if (!editing) return
-    const body = buildSaveBody(editing)
-    updateMutation.mutate(body)
+  const commitItems = (next: FoodItemEdit[]) => {
+    setItems(next)
+    itemsFlusherRef.current.schedule({ food_items: editItemsToBody(next) })
   }
 
-  const macroDisplay = [
-    meal.calories !== undefined && `${meal.calories} kcal`,
-    meal.protein !== undefined && `${meal.protein}g protein`,
-    meal.carbs !== undefined && `${meal.carbs}g carbs`,
-    meal.fat !== undefined && `${meal.fat}g fat`,
-    meal.fiber !== undefined && `${meal.fiber}g fiber`,
-  ]
-    .filter(Boolean)
-    .join(' · ')
+  const commitName = () => {
+    if ((name || null) !== (meal.name ?? null)) save({ name: name || null })
+  }
+  const commitTime = () => {
+    const d = new Date(timeStr)
+    if (Number.isNaN(d.getTime())) return // ignore invalid/empty datetime input
+    const iso = d.toISOString()
+    if (iso !== meal.time.toISOString()) save({ time: iso })
+  }
+  const commitNotes = () => {
+    if ((notes || null) !== (meal.notes ?? null)) save({ notes: notes || null })
+  }
+  const commitMacro = (field: MacroField, value: number | null) => {
+    const current = meal[field] ?? null
+    if (value !== current) save({ [field]: value } as UpdateMealBody)
+  }
 
   return (
     <div class="meal-detail-page">
@@ -459,25 +545,7 @@ export function MealDetail() {
           &larr; Back
         </a>
         <div class="detail-actions">
-          {isEditing ? (
-            <>
-              <button
-                type="button"
-                class="btn-primary"
-                onClick={handleSave}
-                disabled={updateMutation.isPending}
-              >
-                {updateMutation.isPending ? 'Saving...' : 'Save'}
-              </button>
-              <button type="button" class="btn-secondary" onClick={() => setEditing(null)}>
-                Cancel
-              </button>
-            </>
-          ) : (
-            <button type="button" class="btn-secondary" onClick={startEditing}>
-              Edit
-            </button>
-          )}
+          <SaveIndicator isPending={updateMutation.isPending} showSaved={savedFlash} error={saveError} />
           <ConfirmButton
             label="Delete"
             confirmMessage="Delete this meal?"
@@ -487,149 +555,109 @@ export function MealDetail() {
         </div>
       </div>
 
+      {meal.source && meal.source !== 'manual' && <p class="detail-source-caption">Source: {meal.source}</p>}
+
       <div class="detail-layout">
         <div class="detail-card">
-          {/* Type */}
           <div class="detail-row">
             <label>Type</label>
-            {isEditing ? (
-              <MealTypeEditor value={editType} onChange={(v) => setEditing({ ...editing, meal_type: v })} />
-            ) : (
-              <span class="detail-value">{meal.meal_type ?? '—'}</span>
-            )}
+            <MealTypeEditor
+              value={mealType}
+              onChange={(v) => {
+                setMealType(v)
+                if (v === (meal.meal_type ?? '')) return
+                if ((MEAL_TYPES as readonly string[]).includes(v)) {
+                  // Dropdown selection — commit immediately, the debounce is
+                  // only meaningful for free-text custom-type keystrokes.
+                  mealTypeFlusherRef.current.cancel()
+                  save({ meal_type: v })
+                } else {
+                  mealTypeFlusherRef.current.schedule(v)
+                }
+              }}
+              onCustomCommit={(v) => {
+                // Blur of the custom input — flush any pending debounced save
+                // so the final value is persisted without waiting out the
+                // debounce window.
+                if (v !== (meal.meal_type ?? '')) {
+                  mealTypeFlusherRef.current.cancel()
+                  save({ meal_type: v })
+                }
+              }}
+            />
           </div>
 
-          {/* Time */}
           <div class="detail-row">
             <label>Time</label>
-            {isEditing ? (
-              <input
-                type="datetime-local"
-                value={editTime}
-                onInput={(e) => setEditing({ ...editing, time: (e.target as HTMLInputElement).value })}
-              />
-            ) : (
-              <span class="detail-value">{format(meal.time, 'yyyy-MM-dd HH:mm')}</span>
-            )}
+            <input
+              type="datetime-local"
+              value={timeStr}
+              onInput={(e) => setTimeStr((e.target as HTMLInputElement).value)}
+              onBlur={commitTime}
+            />
           </div>
 
-          {/* Name */}
           <div class="detail-row">
             <label>Name</label>
-            {isEditing ? (
-              <input
-                type="text"
-                value={editName}
-                placeholder="Meal name"
-                onInput={(e) => setEditing({ ...editing, name: (e.target as HTMLInputElement).value })}
-              />
-            ) : (
-              <span class="detail-value">{meal.name || '—'}</span>
-            )}
+            <input
+              type="text"
+              value={name}
+              placeholder="Meal name"
+              onInput={(e) => setName((e.target as HTMLInputElement).value)}
+              onBlur={commitName}
+            />
           </div>
 
-          {/* Flags */}
           <div class="detail-row">
             <label>Flags</label>
-            {isEditing ? (
-              <MealFlagsEditor
-                selected={editFlags}
-                areas={flagAreas}
-                onChange={(flags) => setEditing({ ...editing, sensitivities: flags })}
-              />
-            ) : meal.sensitivities && meal.sensitivities.length > 0 ? (
-              <div class="detail-sensitivities">
-                {meal.sensitivities.map((s) => (
-                  <span key={s} class="detail-sensitivity-chip">
-                    {s}
-                  </span>
-                ))}
-              </div>
-            ) : (
-              <span class="detail-value">—</span>
-            )}
+            <MealFlagsEditor
+              selected={flags}
+              areas={flagAreas}
+              onChange={(next) => {
+                setFlags(next)
+                save({ sensitivities: next })
+              }}
+            />
           </div>
 
-          {/* Food Items */}
+          <LocationInfo start={meal.time} end={new Date(meal.time.getTime() + MEAL_LOCATION_WINDOW_MS)} />
+
           <div class="detail-row detail-row-block">
             <label>Food Items</label>
-            {isEditing ? (
-              <FoodItemsEditor
-                items={editItems}
-                onChange={(items) => setEditing({ ...editing, food_items: items })}
-              />
-            ) : meal.food_items && meal.food_items.length > 0 ? (
-              <div class="detail-food-items">
-                {meal.food_items.map((item, i) =>
-                  item.food_item_id ? (
-                    <a
-                      key={i}
-                      href={`/food-items/${item.food_item_id}`}
-                      class="detail-food-chip detail-food-link"
-                    >
-                      {item.name}
-                      {item.quantity ? ` (${item.quantity}${item.unit ? ' ' + item.unit : ''})` : ''}
-                    </a>
-                  ) : (
-                    <span key={i} class="detail-food-chip">
-                      {item.name}
-                      {item.quantity ? ` (${item.quantity}${item.unit ? ' ' + item.unit : ''})` : ''}
-                    </span>
-                  ),
-                )}
-              </div>
-            ) : (
-              <span class="detail-value">—</span>
-            )}
+            <FoodItemsEditor items={items} onChange={commitItems} />
           </div>
 
-          {/* Macros */}
           <div class="detail-row">
             <label>Macros</label>
-            {isEditing ? (
-              <MacrosEditor
-                calories={editCal}
-                protein={editProt}
-                carbs={editCarbs}
-                fat={editFat}
-                fiber={editFiber}
-                onChange={(field, val) => setEditing({ ...editing, [field]: val })}
-              />
-            ) : (
-              <span class="detail-value">{macroDisplay || '—'}</span>
-            )}
+            <MacrosEditor
+              values={macros}
+              onChange={(field, val) => setMacros((s) => ({ ...s, [field]: val }))}
+              onCommit={commitMacro}
+            />
           </div>
 
-          {/* Notes */}
           <div class="detail-row">
             <label>Notes</label>
-            {isEditing ? (
-              <textarea
-                value={editNotes}
-                placeholder="Notes..."
-                rows={3}
-                onInput={(e) => setEditing({ ...editing, notes: (e.target as HTMLTextAreaElement).value })}
-              />
-            ) : (
-              <span class="detail-value">{meal.notes || '—'}</span>
-            )}
+            <textarea
+              value={notes}
+              placeholder="Notes..."
+              rows={3}
+              onInput={(e) => setNotes((e.target as HTMLTextAreaElement).value)}
+              onBlur={commitNotes}
+            />
           </div>
-
-          {!isEditing && (
-            <div class="detail-row">
-              <label>Source</label>
-              <span class="detail-value">{meal.source ?? '—'}</span>
-            </div>
-          )}
         </div>
 
-        {/* Nutrient sidebar — shown beside the card on wide screens */}
-        {!isEditing &&
-          (meal.nutrients && Object.keys(meal.nutrients).length > 0 ? (
+        {meal.nutrients && Object.keys(meal.nutrients).length > 0 ? (
+          <div>
             <NutrientBreakdown nutrients={meal.nutrients} />
-          ) : (
-            <div class="nutrient-breakdown nutrient-placeholder" />
-          ))}
+            {meal.nutrient_data_incomplete && (
+              <p class="incomplete-notice">Some food items lack nutrient data — totals may be understated.</p>
+            )}
+          </div>
+        ) : (
+          <div class="nutrient-breakdown nutrient-placeholder" />
+        )}
       </div>
     </div>
   )

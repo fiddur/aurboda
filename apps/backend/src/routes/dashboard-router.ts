@@ -1,3 +1,5 @@
+import type { RequestHandler } from 'express'
+
 /**
  * Dashboard route group.
  *
@@ -9,23 +11,20 @@ import {
   type UpdateDashboardInput,
   updateDashboardInputSchema,
 } from '@aurboda/api-spec'
-import { type RequestHandler, Router } from 'express'
 
 import { upsertUserSettings } from '../db/index.ts'
 import { getSettings } from '../services/settings.ts'
+import { type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody } from '../validation.ts'
 
-export const createDashboardRouter = (authMiddleware: RequestHandler): Router => {
-  const router = Router()
-
-  // GET /dashboard - Get user's dashboard configuration
+export const createDashboardRouter = (authMiddleware: RequestHandler): TypedRouter => {
+  const router = typedRouter()
   router.get<Record<string, never>, DashboardResponse>('/', authMiddleware, async (req, res) => {
     const settings = await getSettings(req.user!)
     const dashboard = settings.dashboard ?? defaultDashboardConfig
     res.json({ dashboard, success: true })
   })
 
-  // PUT /dashboard - Replace entire dashboard configuration
   router.put<Record<string, never>, DashboardResponse, UpdateDashboardInput>(
     '/',
     authMiddleware,
@@ -37,7 +36,6 @@ export const createDashboardRouter = (authMiddleware: RequestHandler): Router =>
     },
   )
 
-  // POST /dashboard/reset - Reset dashboard to default configuration
   router.post<Record<string, never>, DashboardResponse>('/reset', authMiddleware, async (req, res) => {
     const user = req.user!
     await upsertUserSettings(user, { dashboard: undefined })

@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { createOuraWebhookManager, type OuraWebhookManagerDeps } from './oura-webhook-manager.ts'
 
 describe('oura-webhook-manager', () => {
-  const createDeps = (webHost = 'https://example.com'): OuraWebhookManagerDeps => ({
+  const createDeps = (apiBaseUrl = 'https://example.com'): OuraWebhookManagerDeps => ({
     centralDb: {
       deleteAllOuraWebhookSubscriptions: vi.fn().mockResolvedValue(0),
       deleteOuraWebhookSubscription: vi.fn().mockResolvedValue(true),
@@ -13,10 +13,11 @@ describe('oura-webhook-manager', () => {
       setServerSetting: vi.fn().mockResolvedValue(undefined),
       upsertOuraWebhookSubscription: vi.fn().mockResolvedValue(undefined),
     },
-    ouraClientId: 'test-client-id',
-    ouraClientSecret: 'test-client-secret',
+    getCredentials: vi
+      .fn()
+      .mockResolvedValue({ clientId: 'test-client-id', clientSecret: 'test-client-secret' }),
     syncOuraDataTypeForUser: vi.fn().mockResolvedValue(undefined),
-    webHost,
+    apiBaseUrl,
   })
 
   beforeEach(() => {
@@ -29,19 +30,26 @@ describe('oura-webhook-manager', () => {
   })
 
   describe('canEnable', () => {
-    test('returns true for HTTPS host', () => {
+    test('returns true for HTTPS host with credentials', async () => {
       const manager = createOuraWebhookManager(createDeps('https://aurboda.net'))
-      expect(manager.canEnable()).toBe(true)
+      expect(await manager.canEnable()).toBe(true)
     })
 
-    test('returns false for HTTP host', () => {
+    test('returns false for HTTP host', async () => {
       const manager = createOuraWebhookManager(createDeps('http://localhost:5173'))
-      expect(manager.canEnable()).toBe(false)
+      expect(await manager.canEnable()).toBe(false)
     })
 
-    test('returns false for invalid URL', () => {
+    test('returns false for invalid URL', async () => {
       const manager = createOuraWebhookManager(createDeps('not-a-url'))
-      expect(manager.canEnable()).toBe(false)
+      expect(await manager.canEnable()).toBe(false)
+    })
+
+    test('returns false when credentials are missing', async () => {
+      const deps = createDeps('https://aurboda.net')
+      vi.mocked(deps.getCredentials).mockRejectedValue(new Error('not configured'))
+      const manager = createOuraWebhookManager(deps)
+      expect(await manager.canEnable()).toBe(false)
     })
   })
 

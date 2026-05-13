@@ -14,14 +14,15 @@ describe('createDetectionTrigger', () => {
     geocodeQueue: {
       enqueueJob: vi.fn().mockResolvedValue('job-id'),
       enqueueJobs: vi.fn(),
-      getBoss: vi.fn().mockReturnValue({}),
-      stop: vi.fn(),
     },
     getDetectedLocationById: vi.fn().mockResolvedValue({
       id: 'loc-1',
       lat: 59.3293,
       lon: 18.0686,
     }),
+    getNamedLocations: vi.fn().mockResolvedValue([]),
+    getPlaceVisits: vi.fn().mockResolvedValue([]),
+    insertActivities: vi.fn().mockResolvedValue(undefined),
     runDetectionForUser: vi.fn().mockResolvedValue({
       created: 1,
       needsGeocode: ['loc-1'],
@@ -216,5 +217,93 @@ describe('createDetectionTrigger', () => {
 
     expect(trigger1.getPendingDetectionCount()).toBe(1)
     expect(trigger2.getPendingDetectionCount()).toBe(0)
+  })
+
+  test('proactively materializes location_visit activities for opted-in named visits', async () => {
+    const deps = createMockDeps()
+    const start = new Date('2026-04-20T08:00:00Z')
+    const end = new Date('2026-04-20T09:30:00Z')
+    vi.mocked(deps.getPlaceVisits).mockResolvedValue([
+      {
+        duration_minutes: 90,
+        end_time: end,
+        lat: 59.33,
+        lon: 18.07,
+        name: 'Home',
+        named_location_id: 'nl-home',
+        source: 'named',
+        start_time: start,
+      },
+    ] as never)
+    vi.mocked(deps.getNamedLocations).mockResolvedValue([
+      {
+        auto_create_activity: true,
+        id: 'nl-home',
+        lat: 59.33,
+        lon: 18.07,
+        name: 'Home',
+        radius: 100,
+      },
+    ] as never)
+
+    const trigger = createDetectionTrigger(deps)
+    trigger.triggerDetectionForUser('testuser')
+    await vi.advanceTimersByTimeAsync(5000)
+
+    expect(deps.insertActivities).toHaveBeenCalledWith(
+      'testuser',
+      expect.arrayContaining([
+        expect.objectContaining({
+          activity_type: 'location_visit',
+          external_id: `locvisit_nl-home_${start.getTime()}`,
+        }),
+      ]),
+    )
+  })
+
+  test('skips materialization when no opted-in named locations exist', async () => {
+    const deps = createMockDeps()
+    vi.mocked(deps.getPlaceVisits).mockResolvedValue([
+      {
+        duration_minutes: 30,
+        end_time: new Date(),
+        lat: 0,
+        lon: 0,
+        name: 'X',
+        named_location_id: 'nl-x',
+        source: 'named',
+        start_time: new Date(),
+      },
+    ] as never)
+    // No opted-in locations
+    vi.mocked(deps.getNamedLocations).mockResolvedValue([
+      { auto_create_activity: false, id: 'nl-x', lat: 0, lon: 0, name: 'X', radius: 100 },
+    ] as never)
+
+    const trigger = createDetectionTrigger(deps)
+    trigger.triggerDetectionForUser('testuser')
+    await vi.advanceTimersByTimeAsync(5000)
+
+    expect(deps.insertActivities).not.toHaveBeenCalled()
+  })
+
+  test('materialization failure does not derail detection bookkeeping', async () => {
+    const { auditError } = await import('./audit-log.ts')
+    const deps = createMockDeps()
+    vi.mocked(deps.getPlaceVisits).mockRejectedValue(new Error('boom'))
+
+    const trigger = createDetectionTrigger(deps)
+    trigger.triggerDetectionForUser('testuser')
+    await vi.advanceTimersByTimeAsync(5000)
+
+    expect(deps.runDetectionForUser).toHaveBeenCalled()
+    expect(auditError).toHaveBeenCalledWith(
+      'testuser',
+      'data',
+      'location_visit materialization failed',
+      expect.objectContaining({ error: expect.stringContaining('boom') }),
+    )
+    // Pending tracker still cleans up
+    expect(trigger.hasPendingDetection('testuser')).toBe(false)
   })
 })

@@ -1,13 +1,13 @@
 /**
- * Chart data service — bucketed aggregation of tags, metrics,
- * productivity categories, and activity types.
+ * Chart data service — bucketed aggregation of activity types, metrics,
+ * and productivity categories.
  *
  * Returns time-bucketed data for bar chart visualizations.
  */
 
-import type { ChartDataBucket, ChartDataSourceType } from '@aurboda/api-spec'
+import type { ChartDataBreakdownBucket, ChartDataBucket, ChartDataSourceType } from '@aurboda/api-spec'
 
-import { query } from '../db/index.ts'
+import { expandActivityTypes, query } from '../db/index.ts'
 
 /** Map bucket_size parameter to PostgreSQL date_trunc interval name (day and above). */
 const bucketToTrunc: Record<string, string> = {
@@ -56,35 +56,40 @@ export const buildBucketExpr = (
 }
 
 export interface ChartDataInput {
+  activity_type_id?: string
   aggregation: 'count' | 'mean' | 'sum'
+  breakdown_fields?: string[]
   bucket_size: '1m' | '5m' | '15m' | '1M' | '1d' | '1h' | '1w'
   end: string
   pattern?: string
   source_type: ChartDataSourceType
   start: string
+  /** @deprecated Use activity_type_id instead */
   tag_definition_id?: string
 }
 
-/** Query bucketed tag counts by tag_definition_id. */
-const queryTagsByDefinition = async (
+/** Query bucketed activity counts by activity_type name (formerly tag_definition_id). */
+const queryActivitiesByType = async (
   user: string,
-  tagDefinitionId: string,
+  activityType: string,
   start: string,
   end: string,
   bucketSize: string,
 ): Promise<ChartDataBucket[]> => {
+  const types = await expandActivityTypes(user, [activityType])
   const bucket = buildBucketExpr(bucketSize, 'start_time', 1)
   const result = await query(
     user,
     `SELECT ${bucket.expr} AS bucket_start,
             count(*) AS value
-       FROM tags
-      WHERE tag_definition_id = $${bucket.params.length + 1}
+       FROM activities
+      WHERE activity_type = ANY($${bucket.params.length + 1})
         AND deleted_at IS NULL
+        AND superseded_by IS NULL
         AND start_time BETWEEN $${bucket.params.length + 2} AND $${bucket.params.length + 3}
       GROUP BY 1
       ORDER BY 1`,
-    [...bucket.params, tagDefinitionId, start, end],
+    [...bucket.params, types, start, end],
   )
   return result.rows.map((row) => ({
     bucket_start: row.bucket_start.toISOString(),
@@ -92,8 +97,8 @@ const queryTagsByDefinition = async (
   }))
 }
 
-/** Query bucketed tag counts by regex pattern. */
-const queryTagsByPattern = async (
+/** Query bucketed activity counts by activity_type regex pattern. */
+const queryActivitiesByTypePattern = async (
   user: string,
   pattern: string,
   start: string,
@@ -105,9 +110,10 @@ const queryTagsByPattern = async (
     user,
     `SELECT ${bucket.expr} AS bucket_start,
             count(*) AS value
-       FROM tags
-      WHERE tag ~* $${bucket.params.length + 1}
+       FROM activities
+      WHERE activity_type ~* $${bucket.params.length + 1}
         AND deleted_at IS NULL
+        AND superseded_by IS NULL
         AND start_time BETWEEN $${bucket.params.length + 2} AND $${bucket.params.length + 3}
       GROUP BY 1
       ORDER BY 1`,
@@ -147,7 +153,15 @@ const queryMetricBuckets = async (
   }))
 }
 
-/** Query bucketed productivity category hours. */
+/**
+ * Query bucketed productivity category hours.
+ *
+ * Reads from the `activities` table (activity_type='screentime') so a
+ * prefix match on data->>'category_path' walks the category hierarchy
+ * (e.g. categoryPath='Work' matches 'Work', 'Work > Programming', etc.).
+ * Activities are derived from productivity records during sync (#648) and
+ * historical data is filled in by a one-shot backfill.
+ */
 const queryProductivityCategoryBuckets = async (
   user: string,
   categoryPath: string,
@@ -159,11 +173,16 @@ const queryProductivityCategoryBuckets = async (
   const result = await query(
     user,
     `SELECT ${bucket.expr} AS bucket_start,
-            SUM(duration_sec) / 3600.0 AS value
-       FROM productivity
-      WHERE deleted_at IS NULL
-        AND resolved_category IS NOT NULL
-        AND array_to_string(resolved_category, ' > ') LIKE $${bucket.params.length + 1} || '%'
+            SUM(EXTRACT(EPOCH FROM (end_time - start_time))) / 3600.0 AS value
+       FROM activities
+      WHERE activity_type = 'screentime'
+        AND deleted_at IS NULL
+        AND superseded_by IS NULL
+        AND end_time IS NOT NULL
+        AND (
+          data->>'category_path' = $${bucket.params.length + 1}
+          OR starts_with(data->>'category_path', $${bucket.params.length + 1} || ' > ')
+        )
         AND start_time BETWEEN $${bucket.params.length + 2} AND $${bucket.params.length + 3}
       GROUP BY 1
       ORDER BY 1`,
@@ -182,20 +201,26 @@ const queryActivityTypeBuckets = async (
   start: string,
   end: string,
   bucketSize: string,
+  aggregation = 'sum',
 ): Promise<ChartDataBucket[]> => {
+  const types = await expandActivityTypes(user, [pattern])
   const bucket = buildBucketExpr(bucketSize, 'start_time', 1)
+  const valueExpr =
+    aggregation === 'count'
+      ? 'count(*)'
+      : "SUM(EXTRACT(EPOCH FROM (COALESCE(end_time, start_time + interval '1 hour') - start_time))) / 3600.0"
   const result = await query(
     user,
     `SELECT ${bucket.expr} AS bucket_start,
-            SUM(EXTRACT(EPOCH FROM (end_time - start_time))) / 3600.0 AS value
+            ${valueExpr} AS value
        FROM activities
-      WHERE activity_type = 'exercise'
+      WHERE activity_type = ANY($${bucket.params.length + 1})
         AND deleted_at IS NULL
-        AND (data->>'exerciseTypeName' = $${bucket.params.length + 1} OR data->>'exerciseType' = $${bucket.params.length + 1})
+        AND superseded_by IS NULL
         AND start_time BETWEEN $${bucket.params.length + 2} AND $${bucket.params.length + 3}
       GROUP BY 1
       ORDER BY 1`,
-    [...bucket.params, pattern, start, end],
+    [...bucket.params, types, start, end],
   )
   return result.rows.map((row) => ({
     bucket_start: row.bucket_start.toISOString(),
@@ -204,29 +229,142 @@ const queryActivityTypeBuckets = async (
 }
 
 /**
+ * Query activity type data broken down by one or more data fields.
+ * Multiple fields produce compound series keys like "spanda / external_monitor".
+ */
+const queryActivityTypeBreakdown = async (
+  user: string,
+  activityType: string,
+  fields: string[],
+  start: string,
+  end: string,
+  bucketSize: string,
+  aggregation = 'sum',
+): Promise<{ buckets: ChartDataBreakdownBucket[]; series: string[] }> => {
+  // Sanitize all field names
+  for (const field of fields) {
+    if (!/^[a-z][a-z0-9_]*$/.test(field)) return { buckets: [], series: [] }
+  }
+
+  const types = await expandActivityTypes(user, [activityType])
+  const bucket = buildBucketExpr(bucketSize, 'start_time', 1)
+  const valueExpr =
+    aggregation === 'count'
+      ? 'count(*)'
+      : "SUM(EXTRACT(EPOCH FROM (COALESCE(end_time, start_time + interval '1 hour') - start_time))) / 3600.0"
+
+  // Build SELECT and GROUP BY for each breakdown field
+  const fieldSelects = fields.map((f, i) => `COALESCE(data->>'${f}', '(none)') AS field_${i}`)
+  const fieldGroupBys = fields.map((_, i) => `field_${i}`)
+
+  const result = await query(
+    user,
+    `SELECT ${bucket.expr} AS bucket_start,
+            ${fieldSelects.join(', ')},
+            ${valueExpr} AS value
+       FROM activities
+      WHERE activity_type = ANY($${bucket.params.length + 1})
+        AND deleted_at IS NULL
+        AND superseded_by IS NULL
+        AND start_time BETWEEN $${bucket.params.length + 2} AND $${bucket.params.length + 3}
+      GROUP BY 1, ${fieldGroupBys.join(', ')}
+      ORDER BY 1`,
+    [...bucket.params, types, start, end],
+  )
+
+  // Pivot rows into breakdown buckets with compound series keys
+  const seriesSet = new Set<string>()
+  const bucketMap = new Map<string, Record<string, number>>()
+  for (const row of result.rows) {
+    const bucketStart = (row.bucket_start as Date).toISOString()
+    const keyParts = fields.map((_, i) => row[`field_${i}`] as string)
+    const seriesKey = keyParts.join(' / ')
+    const value = Number(row.value)
+    seriesSet.add(seriesKey)
+    const existing = bucketMap.get(bucketStart) ?? {}
+    existing[seriesKey] = value
+    bucketMap.set(bucketStart, existing)
+  }
+
+  const series = [...seriesSet].sort()
+  const buckets: ChartDataBreakdownBucket[] = [...bucketMap.entries()].map(([bucketStart, seriesData]) => ({
+    bucket_start: bucketStart,
+    series: seriesData,
+  }))
+
+  return { buckets, series }
+}
+
+/**
  * Get bucketed chart data for the given source type and parameters.
  */
-export const getChartData = async (user: string, input: ChartDataInput): Promise<ChartDataBucket[]> => {
-  const { aggregation, bucket_size, end, pattern, source_type, start, tag_definition_id } = input
+export const getChartData = async (
+  user: string,
+  input: ChartDataInput,
+): Promise<{
+  buckets: (ChartDataBucket | ChartDataBreakdownBucket)[]
+  breakdown_fields?: string[]
+  breakdown_series?: string[]
+}> => {
+  const { activity_type_id, aggregation, bucket_size, end, pattern, source_type, start, tag_definition_id } =
+    input
+
+  // Breakdown mode for activity types
+  if (
+    source_type === 'activity_type' &&
+    pattern &&
+    input.breakdown_fields &&
+    input.breakdown_fields.length > 0
+  ) {
+    const result = await queryActivityTypeBreakdown(
+      user,
+      pattern,
+      input.breakdown_fields,
+      start,
+      end,
+      bucket_size,
+      aggregation,
+    )
+    return {
+      breakdown_fields: input.breakdown_fields,
+      breakdown_series: result.series,
+      buckets: result.buckets,
+    }
+  }
+
+  let buckets: ChartDataBucket[]
 
   switch (source_type) {
-    case 'tag':
-      if (tag_definition_id) {
-        return queryTagsByDefinition(user, tag_definition_id, start, end, bucket_size)
+    case 'tag': {
+      // 'tag' is a backward-compat alias for activity_type count
+      const typeId = activity_type_id ?? tag_definition_id
+      if (typeId) {
+        buckets = await queryActivitiesByType(user, typeId, start, end, bucket_size)
+      } else if (pattern) {
+        buckets = await queryActivitiesByTypePattern(user, pattern, start, end, bucket_size)
+      } else {
+        buckets = []
       }
-      if (!pattern) return []
-      return queryTagsByPattern(user, pattern, start, end, bucket_size)
+      break
+    }
 
     case 'metric':
-      if (!pattern) return []
-      return queryMetricBuckets(user, pattern, start, end, bucket_size, aggregation)
+      buckets = pattern ? await queryMetricBuckets(user, pattern, start, end, bucket_size, aggregation) : []
+      break
 
     case 'productivity_category':
-      if (!pattern) return []
-      return queryProductivityCategoryBuckets(user, pattern, start, end, bucket_size)
+      buckets = pattern ? await queryProductivityCategoryBuckets(user, pattern, start, end, bucket_size) : []
+      break
 
     case 'activity_type':
-      if (!pattern) return []
-      return queryActivityTypeBuckets(user, pattern, start, end, bucket_size)
+      buckets = pattern
+        ? await queryActivityTypeBuckets(user, pattern, start, end, bucket_size, aggregation)
+        : []
+      break
+
+    default:
+      buckets = []
   }
+
+  return { buckets }
 }

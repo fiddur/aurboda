@@ -108,7 +108,7 @@ export const trendChartConfigSchema = z
     half_life_days: z.number().int().positive().optional().meta({ description: 'EMA half-life in days' }),
     lookback_days: z.number().int().positive().optional().meta({ description: 'Days of data to analyze' }),
     pattern: z.string().min(1).meta({ description: 'Tag pattern (regex) or metric name' }),
-    source_type: z.enum(['tag', 'metric']).meta({ description: 'Data source type' }),
+    source_type: z.enum(['tag', 'metric', 'activity_type']).meta({ description: 'Data source type' }),
     tag_definition_id: z
       .string()
       .uuid()
@@ -222,6 +222,17 @@ export const hrZonesConfigSchema = z
 
 export type HrZonesConfig = z.infer<typeof hrZonesConfigSchema>
 
+/**
+ * Goal progress widget - displays progress bars for user goals.
+ */
+export const goalProgressConfigSchema = z
+  .object({
+    compact: z.boolean().optional().meta({ description: 'Hide losing-tomorrow info (default: false)' }),
+  })
+  .meta({ id: 'GoalProgressConfig' })
+
+export type GoalProgressConfig = z.infer<typeof goalProgressConfigSchema>
+
 // =============================================================================
 // Widget Type Discriminated Union
 // =============================================================================
@@ -238,6 +249,7 @@ export const widgetTypeSchema = z.enum([
   'activity_summary',
   'quick_link',
   'hr_zones',
+  'goal_progress',
 ])
 
 export type WidgetType = z.infer<typeof widgetTypeSchema>
@@ -285,6 +297,11 @@ export const dashboardWidgetSchema = z.discriminatedUnion('type', [
     config: hrZonesConfigSchema,
     id: z.string().min(1).meta({ description: 'Unique widget ID' }),
     type: z.literal('hr_zones'),
+  }),
+  z.object({
+    config: goalProgressConfigSchema,
+    id: z.string().min(1).meta({ description: 'Unique widget ID' }),
+    type: z.literal('goal_progress'),
   }),
 ])
 

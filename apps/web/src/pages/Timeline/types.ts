@@ -1,11 +1,4 @@
-export type Column =
-  | 'Activity'
-  | 'Sleep / Rest'
-  | 'Exercise'
-  | 'Location'
-  | 'Tags / Events'
-  | 'Screen Time'
-  | 'Music'
+export type Column = 'Activity' | 'Sleep / Rest' | 'Exercise' | 'Location' | 'Screen Time' | 'Music'
 
 export type Orientation = 'horizontal' | 'vertical'
 
@@ -24,7 +17,7 @@ export interface ChartItem {
   tooltip: TooltipContent
   isPoint: boolean
   entity_id?: string
-  entity_type?: 'activity' | 'tag' | 'productivity' | 'metric' | 'meal'
+  entity_type?: 'activity' | 'productivity' | 'metric' | 'meal'
   href?: string
   /** Activity type for sparkline overlay targeting */
   activity_type?: string

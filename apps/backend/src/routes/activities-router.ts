@@ -1,88 +1,63 @@
-import type { RequestHandler, Router } from 'express'
-
 /**
- * Activities and productivity route group.
+ * Activities route group.
  *
- * Handles: /activities/*, /productivity
+ * Handles: /activities/*. Productivity routes live in productivity-router.ts.
  */
 import {
   type ActivitiesQuery,
   activitiesQuerySchema,
   type ActivitiesResponse,
+  type ActivityComputedMetrics,
+  type ActivityDetailResponse,
+  type ActivityFullDetailQuery,
+  activityFullDetailQuerySchema,
+  type ActivityFullDetailResponse,
   type AddActivityBody,
   addActivityBodySchema,
   type AddActivityResponse,
   type DeleteActivityResponse,
-  getExerciseTypeValue,
-  isValidExerciseType,
   type MergeActivitiesBody,
   mergeActivitiesBodySchema,
   type MergeActivitiesResponse,
-  type ProductivityQuery,
-  productivityQuerySchema,
-  type ProductivityResponse,
-  type ScreentimeBucketedQuery,
-  screentimeBucketedQuerySchema,
-  type ScreentimeBucketedResponse,
+  type NearbyActivitiesResponse,
+  type ResyncActivityDetailResponse,
   type UpdateActivityBody,
   updateActivityBodySchema,
   type UpdateActivityResponse,
 } from '@aurboda/api-spec'
 import multer from 'multer'
 
+import type { ActivityNotifier } from '../services/deduction-queue.ts'
+
 import {
   getActivityById,
-  getActivityTypeNames,
-  getDistinctApps,
+  getAllActivityTypeNames,
+  getDeductionRule,
   getNearbyActivities,
   getOverlappingActivities,
-  getProductivityBucketed,
-  getProductivityById,
-  getTimeSeries,
   insertTimeSeries,
   type TimeSeriesPoint,
 } from '../db/index.ts'
+import { httpError } from '../http-error.ts'
 import { parseFitBuffer } from '../services/fit-parser.ts'
 import {
   addActivity,
   deleteActivity,
-  deleteProductivity,
   mergeActivities,
   restoreActivity,
-  restoreProductivity,
   updateActivity,
 } from '../services/mutations.ts'
 import {
-  assembleScreentimeBuckets,
-  parseBucketSize,
+  computeActivityDetailMetrics,
+  getActivityFullDetail,
+  parseActivityId,
+  parseMetricsParam,
   queryActivities,
-  queryProductivity,
+  resolveActivityWindow,
   type SyncProvider,
-} from '../services/queries.ts'
-import { computeHrZoneSecs, getEffectiveHrZones } from '../services/settings.ts'
-import { typedRouter } from '../typed-router.ts'
+} from '../services/queries/index.ts'
+import { type AnyMiddleware, type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody, validateQuery } from '../validation.ts'
-
-/** Compute HR zone seconds and avg HRV for an exercise activity time range. */
-const computeExerciseMetrics = async (
-  user: string,
-  start: Date,
-  end: Date,
-): Promise<{ hr_zone_secs?: Record<number, number>; avg_hrv?: number }> => {
-  const [hrData, { zones: hrZones }, hrvData] = await Promise.all([
-    getTimeSeries(user, 'heart_rate', start, end),
-    getEffectiveHrZones(user),
-    getTimeSeries(user, 'hrv_rmssd', start, end),
-  ])
-
-  return {
-    avg_hrv:
-      hrvData.length > 0
-        ? Math.round(hrvData.reduce((sum, [, v]) => sum + v, 0) / hrvData.length)
-        : undefined,
-    hr_zone_secs: hrData.length > 0 ? computeHrZoneSecs(hrData, hrZones) : undefined,
-  }
-}
 
 type ActivityRow = Awaited<ReturnType<typeof getActivityById>> & {}
 
@@ -90,18 +65,19 @@ type ActivityRow = Awaited<ReturnType<typeof getActivityById>> & {}
 const buildMergedResponse = async (
   user: string,
   activity: NonNullable<ActivityRow>,
-  exerciseMetrics: { hr_zone_secs?: Record<number, number>; avg_hrv?: number },
+  activityMetrics: ActivityComputedMetrics,
 ) => {
   const overlapping = await getOverlappingActivities(user, activity)
   const hasMultipleSources = overlapping.length > 1
 
   const sourceRecords = hasMultipleSources
     ? overlapping.map((a) => {
-        const data = a.data as Record<string, unknown> | undefined
+        const data = a.data
+        const dataOrigin = data?.dataOrigin
         return {
-          data_origin: data?.dataOrigin as string | undefined,
+          activity_type: a.activity_type,
+          data_origin: typeof dataOrigin === 'string' ? dataOrigin : undefined,
           end_time: a.end_time?.toISOString(),
-          exercise_type_name: data?.exerciseTypeName as string | undefined,
           id: a.id!,
           source: a.source,
           start_time: a.start_time.toISOString(),
@@ -119,32 +95,31 @@ const buildMergedResponse = async (
 
   const sorted = [...overlapping].sort((a, b) => a.start_time.getTime() - b.start_time.getTime())
   const mergedTitle = sorted.find((a) => a.title)?.title ?? activity.title
-  const mergedNotes =
-    sorted
-      .map((a) => a.notes)
-      .filter(Boolean)
-      .join('\n') || activity.notes
   const mergedData = sorted.reduce<Record<string, unknown>>(
     (acc, a) => (a.data ? { ...acc, ...a.data } : acc),
     {},
   )
 
-  // For merged exercise, recompute HR zones using full merged time range
-  let metrics = exerciseMetrics
-  if (activity.activity_type === 'exercise' && mergedStartTime && mergedEndTime) {
-    metrics = await computeExerciseMetrics(user, new Date(mergedStartTime), new Date(mergedEndTime))
+  // For merged activities, recompute over the full merged time range — HR
+  // zones, HRV, and summary metrics all need the wider window.
+  let metrics = activityMetrics
+  if (mergedStartTime && mergedEndTime) {
+    metrics = await computeActivityDetailMetrics(user, {
+      data: Object.keys(mergedData).length > 0 ? mergedData : activity.data,
+      end_time: new Date(mergedEndTime),
+      start_time: new Date(mergedStartTime),
+    })
   }
 
   return {
+    ...metrics,
     activity_type: activity.activity_type,
-    avg_hrv: metrics.avg_hrv,
     data: Object.keys(mergedData).length > 0 ? mergedData : activity.data,
     end_time: activity.end_time?.toISOString(),
-    hr_zone_secs: metrics.hr_zone_secs,
     id: activity.id,
     merged_end_time: mergedEndTime,
     merged_start_time: mergedStartTime,
-    notes: mergedNotes,
+    override_target_ids: activity.override_target_ids,
     source: activity.source,
     source_records: sourceRecords,
     start_time: activity.start_time.toISOString(),
@@ -153,63 +128,88 @@ const buildMergedResponse = async (
 }
 
 export const createActivitiesRouter = (
-  authMiddleware: RequestHandler,
+  authMiddleware: AnyMiddleware,
   syncProvider?: SyncProvider,
-): Router => {
+  onActivityMutated?: ActivityNotifier,
+  resyncActivityDetail?: (user: string, activityId: string, garminActivityId: number) => Promise<number>,
+): TypedRouter => {
   const router = typedRouter()
 
-  // GET /activities - Query activities for a time range
-  router.get<Record<string, string>, ActivitiesResponse, unknown, ActivitiesQuery>(
+  router.get<Record<string, never>, ActivitiesResponse, unknown, ActivitiesQuery>(
     '/activities',
     authMiddleware,
     validateQuery(activitiesQuerySchema),
     async (req, res) => {
-      const { start, end, types: typesParam } = req.query
+      const {
+        start,
+        end,
+        types: typesParam,
+        exclude_types: excludeTypesParam,
+        data_filter: dataFilterStr,
+        deduction_rule_id: deductionRuleId,
+      } = req.query
       const user = req.user!
 
-      const types = typesParam ? typesParam.split(',') : await getActivityTypeNames(user)
+      // When no types specified, query all activity types (not just those with definitions)
+      let types = typesParam ? typesParam.split(',') : await getAllActivityTypeNames(user)
 
-      const activities = await queryActivities(user, types, new Date(start), new Date(end), syncProvider)
+      // Filter out excluded types when specified
+      if (excludeTypesParam) {
+        const excludeSet = new Set(excludeTypesParam.split(','))
+        types = types.filter((t) => !excludeSet.has(t))
+      }
+
+      // Parse data field filters (format: "field:value,field2:value2")
+      const dataFilters = dataFilterStr
+        ? dataFilterStr
+            .split(',')
+            .map((segment) => {
+              const colonIdx = segment.indexOf(':')
+              if (colonIdx === -1) return null
+              const field = segment.slice(0, colonIdx).trim()
+              const rawValue = segment.slice(colonIdx + 1).trim()
+              return { field, value: rawValue === '(none)' ? null : rawValue }
+            })
+            .filter((f): f is { field: string; value: string | null } => f !== null)
+        : undefined
+
+      const activities = await queryActivities(
+        user,
+        types,
+        new Date(start),
+        new Date(end),
+        syncProvider,
+        dataFilters,
+        deductionRuleId,
+      )
       res.json({ data: activities, success: true })
     },
   )
 
-  // POST /activities - Add a manual activity
-
-  router.post<Record<string, string>, AddActivityResponse, AddActivityBody>(
+  router.post<Record<string, never>, AddActivityResponse, AddActivityBody>(
     '/activities',
     authMiddleware,
     validateBody(addActivityBodySchema),
     async (req, res) => {
-      const { activity_type, start_time, end_time, title, notes, exercise_type } = req.body
+      const { activity_type, start_time, end_time, title, notes, merge_span, data: bodyData } = req.body
       const user = req.user!
 
       const startDate = new Date(start_time)
-      const endDate = new Date(end_time)
+      const endDate = end_time ? new Date(end_time) : undefined
 
-      // Validate and convert exercise_type name to value if provided
-      let data: Record<string, unknown> | undefined
-      if (exercise_type !== undefined) {
-        if (!isValidExerciseType(exercise_type)) {
-          return res.status(400).json({
-            error: `Invalid exercise_type "${exercise_type}"`,
-            success: false,
-          })
-        }
-        data = {
-          exerciseType: getExerciseTypeValue(exercise_type),
-          exerciseTypeName: exercise_type,
-        }
-      }
-
-      const result = await addActivity(user, {
-        activity_type,
-        data,
-        end_time: endDate,
-        notes,
-        start_time: startDate,
-        title,
-      })
+      const result = await addActivity(
+        user,
+        {
+          activity_type,
+          data: bodyData,
+          end_time: endDate,
+          merge_span,
+          notes,
+          start_time: startDate,
+          title,
+        },
+        onActivityMutated,
+      )
 
       if (!result.success) {
         return res.status(400).json({ error: result.error, success: false })
@@ -220,7 +220,6 @@ export const createActivitiesRouter = (
           activity_type: result.activity_type!,
           end_time: result.end_time!,
           id: result.id!,
-          notes: result.notes,
           start_time: result.start_time!,
           title: result.title,
         },
@@ -229,15 +228,13 @@ export const createActivitiesRouter = (
     },
   )
 
-  // POST /activities/upload-fit - Import activities from a FIT file
-
   const upload = multer({
     limits: { fileSize: 10 * 1024 * 1024 },
     storage: multer.memoryStorage(),
   })
 
   router.post<
-    Record<string, string>,
+    Record<string, never>,
     { success: boolean; data?: AddActivityResponse['data'] | AddActivityResponse['data'][]; error?: string }
   >('/activities/upload-fit', authMiddleware, upload.single('fit_file'), async (req, res) => {
     const user = req.user!
@@ -248,66 +245,61 @@ export const createActivitiesRouter = (
       return
     }
 
+    let fitActivities
     try {
-      const fitActivities = await parseFitBuffer(file.buffer.buffer as ArrayBuffer)
-      const results: AddActivityResponse['data'][] = []
+      fitActivities = await parseFitBuffer(file.buffer.buffer as ArrayBuffer)
+    } catch (error) {
+      throw httpError(400, error instanceof Error ? error.message : 'Failed to parse FIT file')
+    }
 
-      for (const fitAct of fitActivities) {
-        // Map exercise type name to Health Connect value
-        const data = {
-          ...fitAct.data,
-          exerciseType: isValidExerciseType(fitAct.exercise_type)
-            ? getExerciseTypeValue(fitAct.exercise_type)
-            : undefined,
-        }
+    const results: AddActivityResponse['data'][] = []
 
-        const result = await addActivity(user, {
+    for (const fitAct of fitActivities) {
+      const result = await addActivity(
+        user,
+        {
           activity_type: fitAct.activity_type,
-          data,
+          data: fitAct.data,
           end_time: fitAct.end_time,
           notes: fitAct.notes,
           start_time: fitAct.start_time,
           title: fitAct.title,
-        })
+        },
+        onActivityMutated,
+      )
 
-        if (!result.success) {
-          res.status(400).json({ error: result.error, success: false })
-          return
-        }
-
-        // Insert time series data (heart rate, power, cadence, speed)
-        if (fitAct.timeSeries.length > 0 && result.id) {
-          const points: TimeSeriesPoint[] = fitAct.timeSeries.map((ts) => ({
-            metric: ts.metric,
-            source: 'aurboda' as const,
-            time: ts.time,
-            value: ts.value,
-          }))
-          await insertTimeSeries(user, points)
-        }
-
-        results.push({
-          activity_type: fitAct.activity_type,
-          end_time: fitAct.end_time.toISOString(),
-          id: result.id!,
-          notes: fitAct.notes,
-          start_time: fitAct.start_time.toISOString(),
-          title: fitAct.title,
-        })
+      if (!result.success) {
+        res.status(400).json({ error: result.error, success: false })
+        return
       }
 
-      res.json({
-        data: results.length === 1 ? results[0] : results,
-        success: true,
+      // Insert time series data (heart rate, power, cadence, speed)
+      if (fitAct.timeSeries.length > 0 && result.id) {
+        const points: TimeSeriesPoint[] = fitAct.timeSeries.map((ts) => ({
+          metric: ts.metric,
+          source: 'aurboda' as const,
+          time: ts.time,
+          value: ts.value,
+        }))
+        await insertTimeSeries(user, points)
+      }
+
+      results.push({
+        activity_type: fitAct.activity_type,
+        end_time: fitAct.end_time.toISOString(),
+        id: result.id!,
+        start_time: fitAct.start_time.toISOString(),
+        title: fitAct.title,
       })
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to parse FIT file'
-      res.status(400).json({ error: message, success: false })
     }
+
+    res.json({
+      data: results.length === 1 ? results[0] : results,
+      success: true,
+    })
   })
 
-  // POST /activities/merge - Merge multiple activities into one
-  router.post<Record<string, string>, MergeActivitiesResponse, MergeActivitiesBody>(
+  router.post<Record<string, never>, MergeActivitiesResponse, MergeActivitiesBody>(
     '/activities/merge',
     authMiddleware,
     validateBody(mergeActivitiesBodySchema),
@@ -315,7 +307,7 @@ export const createActivitiesRouter = (
       const { activity_ids, title, notes } = req.body
       const user = req.user!
 
-      const result = await mergeActivities(user, { activity_ids, notes, title })
+      const result = await mergeActivities(user, { activity_ids, notes, title }, undefined, onActivityMutated)
 
       if (!result.success) {
         return res.status(400).json({ error: result.error, success: false })
@@ -326,7 +318,6 @@ export const createActivitiesRouter = (
           activity_type: result.activity_type!,
           end_time: result.end_time,
           id: result.id,
-          notes: result.notes,
           source: 'aurboda',
           start_time: result.start_time!,
           title: result.title,
@@ -336,8 +327,7 @@ export const createActivitiesRouter = (
     },
   )
 
-  // GET /activities/:id/nearby - Get nearby same-type activities for merge suggestions
-  router.get<{ id: string }, { success: boolean; data: unknown[]; error?: string }>(
+  router.get<{ id: string }, NearbyActivitiesResponse>(
     '/activities/:id/nearby',
     authMiddleware,
     async (req, res) => {
@@ -365,7 +355,6 @@ export const createActivitiesRouter = (
           data: a.data,
           end_time: a.end_time?.toISOString(),
           id: a.id,
-          notes: a.notes,
           source: a.source,
           start_time: a.start_time.toISOString(),
           title: a.title,
@@ -375,7 +364,6 @@ export const createActivitiesRouter = (
     },
   )
 
-  // DELETE /activities/:id - Delete an activity by ID
   router.delete<{ id: string }, DeleteActivityResponse>(
     '/activities/:id',
     authMiddleware,
@@ -393,39 +381,37 @@ export const createActivitiesRouter = (
     },
   )
 
-  // PATCH /activities/:id - Update an activity by ID
   router.patch<{ id: string }, UpdateActivityResponse, UpdateActivityBody>(
     '/activities/:id',
     authMiddleware,
     validateBody(updateActivityBodySchema),
     async (req, res) => {
       const { id } = req.params
-      const { activity_type, start_time, end_time, title, notes, exercise_type } = req.body
+      const {
+        activity_type,
+        start_time,
+        end_time,
+        title,
+        notes,
+        data: bodyData,
+        override_target_ids,
+      } = req.body
       const user = req.user!
 
-      // Convert exercise_type name to data object if provided
-      let data: Record<string, unknown> | undefined
-      if (exercise_type !== undefined) {
-        if (!isValidExerciseType(exercise_type)) {
-          return res.status(400).json({
-            error: `Invalid exercise_type "${exercise_type}"`,
-            success: false,
-          })
-        }
-        data = {
-          exerciseType: getExerciseTypeValue(exercise_type),
-          exerciseTypeName: exercise_type,
-        }
-      }
-
-      const result = await updateActivity(user, id, {
-        activity_type,
-        data,
-        end_time: end_time ? new Date(end_time) : undefined,
-        notes,
-        start_time: start_time ? new Date(start_time) : undefined,
-        title,
-      })
+      const result = await updateActivity(
+        user,
+        id,
+        {
+          activity_type,
+          data: bodyData,
+          end_time: end_time === null ? null : end_time ? new Date(end_time) : undefined,
+          notes,
+          override_target_ids,
+          start_time: start_time ? new Date(start_time) : undefined,
+          title,
+        },
+        onActivityMutated,
+      )
 
       if (!result.success) {
         const status = result.error === 'Activity not found' ? 404 : 400
@@ -435,9 +421,8 @@ export const createActivitiesRouter = (
       res.json({
         data: {
           activity_type: result.activity_type!,
-          end_time: result.end_time!,
+          end_time: result.end_time ?? undefined,
           id: result.id!,
-          notes: result.notes,
           start_time: result.start_time!,
           title: result.title,
         },
@@ -446,46 +431,95 @@ export const createActivitiesRouter = (
     },
   )
 
-  // GET /activities/:id - Get a single activity by ID (for detail page)
-  // Supports merged: prefix — merged:<uuid> returns merged view, plain uuid returns raw activity
-  router.get<{ id: string }, { success: boolean; data?: unknown; error?: string }>(
-    '/activities/:id',
+  // Supports merged: prefix -- merged:<uuid> returns merged view, plain uuid returns raw activity
+  router.get<{ id: string }, ActivityDetailResponse>('/activities/:id', authMiddleware, async (req, res) => {
+    const rawId = req.params.id
+    const user = req.user!
+
+    const isMerged = rawId.startsWith('merged:')
+    const realId = isMerged ? rawId.slice('merged:'.length) : rawId
+
+    const activity = await getActivityById(user, realId, true)
+    if (!activity) {
+      return res.status(404).json({ error: 'Activity not found', success: false })
+    }
+
+    // Compute HR zones, avg HRV, and summary metrics for any activity with a time range
+    const activityMetrics = await computeActivityDetailMetrics(user, activity)
+
+    // For merged: prefix, fetch overlapping activities and return merged view
+    if (isMerged && !activity.deleted_at) {
+      const data = await buildMergedResponse(user, activity, activityMetrics)
+      return res.json({ data, success: true })
+    }
+
+    // Resolve referenced deduction rules from activity data
+    const referencedRules: Record<string, string> = {}
+    const activityData = activity.data
+    if (activityData) {
+      const ruleIds = [
+        typeof activityData._enriched_by === 'string' ? activityData._enriched_by : undefined,
+        typeof activityData.rule_id === 'string' ? activityData.rule_id : undefined,
+      ].filter((id): id is string => id !== undefined)
+
+      for (const ruleId of ruleIds) {
+        const rule = await getDeductionRule(user, ruleId)
+        if (rule) referencedRules[ruleId] = rule.name
+      }
+    }
+
+    // Plain UUID: return raw single activity (no overlap lookup)
+    res.json({
+      data: {
+        ...activityMetrics,
+        activity_type: activity.activity_type,
+        data: activity.data,
+        deleted_at: activity.deleted_at?.toISOString(),
+        end_time: activity.end_time?.toISOString(),
+        id: activity.id,
+        override_target_ids: activity.override_target_ids,
+        source: activity.source,
+        start_time: activity.start_time.toISOString(),
+        title: activity.title,
+      },
+      referenced_rules: Object.keys(referencedRules).length > 0 ? referencedRules : undefined,
+      success: true,
+    })
+  })
+
+  router.get<{ id: string }, ActivityFullDetailResponse, unknown, ActivityFullDetailQuery>(
+    '/activities/:id/full',
     authMiddleware,
+    validateQuery(activityFullDetailQuerySchema),
     async (req, res) => {
-      const rawId = req.params.id
       const user = req.user!
+      const { id, isMerged } = parseActivityId(req.params.id)
+      const { metrics, include_gps } = req.query
 
-      const isMerged = rawId.startsWith('merged:')
-      const realId = isMerged ? rawId.slice('merged:'.length) : rawId
-
-      const activity = await getActivityById(user, realId, true)
+      const activity = await getActivityById(user, id, true)
       if (!activity) {
         return res.status(404).json({ error: 'Activity not found', success: false })
       }
 
-      // Compute HR zones and avg HRV for exercise activities
-      let exerciseMetrics: { hr_zone_secs?: Record<number, number>; avg_hrv?: number } = {}
-      if (activity.activity_type === 'exercise' && activity.end_time) {
-        exerciseMetrics = await computeExerciseMetrics(user, activity.start_time, activity.end_time)
-      }
+      const window = await resolveActivityWindow(user, activity, isMerged)
+      const [activityMetrics, fullDetail] = await Promise.all([
+        computeActivityDetailMetrics(user, window),
+        getActivityFullDetail(user, window, {
+          includeGps: include_gps,
+          metrics: parseMetricsParam(metrics),
+        }),
+      ])
 
-      // For merged: prefix, fetch overlapping activities and return merged view
-      if (isMerged && !activity.deleted_at) {
-        const data = await buildMergedResponse(user, activity, exerciseMetrics)
-        return res.json({ data, success: true })
-      }
-
-      // Plain UUID: return raw single activity (no overlap lookup)
       res.json({
         data: {
+          ...activityMetrics,
+          ...fullDetail,
           activity_type: activity.activity_type,
-          avg_hrv: exerciseMetrics.avg_hrv,
-          data: activity.data,
+          data: window.data,
           deleted_at: activity.deleted_at?.toISOString(),
           end_time: activity.end_time?.toISOString(),
-          hr_zone_secs: exerciseMetrics.hr_zone_secs,
           id: activity.id,
-          notes: activity.notes,
+          override_target_ids: activity.override_target_ids,
           source: activity.source,
           start_time: activity.start_time.toISOString(),
           title: activity.title,
@@ -495,7 +529,6 @@ export const createActivitiesRouter = (
     },
   )
 
-  // POST /activities/:id/restore - Restore a soft-deleted activity
   router.post<{ id: string }, { success: boolean; error?: string }>(
     '/activities/:id/restore',
     authMiddleware,
@@ -512,117 +545,58 @@ export const createActivitiesRouter = (
     },
   )
 
-  // GET /productivity/bucketed - Get screentime bucketed by time and category
-  router.get<Record<string, string>, ScreentimeBucketedResponse, unknown, ScreentimeBucketedQuery>(
-    '/productivity/bucketed',
-    authMiddleware,
-    validateQuery(screentimeBucketedQuerySchema),
-    async (req, res) => {
-      const user = req.user!
-      const { start, end, bucket, tz } = req.query
-      const { interval, ms: bucketMs } = parseBucketSize(bucket)
-
-      const rows = await getProductivityBucketed(user, new Date(start), new Date(end), interval, tz ?? 'UTC')
-      const buckets = assembleScreentimeBuckets(rows, bucketMs)
-
-      res.json({
-        bucket: req.query.bucket,
-        buckets,
-        end,
-        start,
-        success: true,
-      })
-    },
-  )
-
-  // GET /productivity/apps - Get distinct app names with their categories
-  router.get<Record<string, string>, { success: boolean; data: unknown[] }>(
-    '/productivity/apps',
+  router.post<{ id: string }, ResyncActivityDetailResponse>(
+    '/activities/:id/resync-detail',
     authMiddleware,
     async (req, res) => {
       const user = req.user!
-      const apps = await getDistinctApps(user)
-      res.json({ data: apps, success: true })
-    },
-  )
-
-  // GET /productivity/:id - Get a single productivity record by ID
-  router.get<{ id: string }, { success: boolean; data?: unknown; error?: string }>(
-    '/productivity/:id',
-    authMiddleware,
-    async (req, res) => {
-      const user = req.user!
-      const record = await getProductivityById(user, req.params.id)
-      if (!record) {
-        return res.status(404).json({ error: 'Productivity record not found', success: false })
-      }
-      res.json({
-        data: {
-          activity: record.activity,
-          category: record.category,
-          device_name: record.device_name,
-          duration_sec: record.duration_sec,
-          end_time: record.end_time.toISOString(),
-          id: record.id,
-          is_mobile: record.is_mobile,
-          productivity: record.productivity,
-          resolved_category: record.resolved_category,
-          source: record.source,
-          start_time: record.start_time.toISOString(),
-          title: record.title,
-        },
-        success: true,
-      })
-    },
-  )
-
-  // DELETE /productivity/:id - Soft-delete a productivity record
-  router.delete<{ id: string }, { success: boolean; error?: string }>(
-    '/productivity/:id',
-    authMiddleware,
-    async (req, res) => {
       const { id } = req.params
-      const user = req.user!
 
-      const result = await deleteProductivity(user, id)
-      if (!result.success) {
-        return res.status(404).json({ error: 'Productivity record not found', success: false })
+      if (!resyncActivityDetail) {
+        res.status(501).json({ points: 0, success: false, error: 'Garmin sync not configured' })
+        return
       }
 
-      res.json({ success: true })
-    },
-  )
-
-  // POST /productivity/:id/restore - Restore a soft-deleted productivity record
-  router.post<{ id: string }, { success: boolean; error?: string }>(
-    '/productivity/:id/restore',
-    authMiddleware,
-    async (req, res) => {
-      const { id } = req.params
-      const user = req.user!
-
-      const result = await restoreProductivity(user, id)
-      if (!result.success) {
-        return res.status(404).json({ error: 'Record not found or not deleted', success: false })
+      const activity = await getActivityById(user, id)
+      if (!activity) {
+        res.status(404).json({ points: 0, success: false, error: 'Activity not found' })
+        return
       }
 
-      res.json({ success: true })
+      // Look for garmin_activity_id in this activity and its overlapping (merged) sources
+      const getData = (a: { data?: Record<string, unknown> }): number | undefined => {
+        const garminId = a.data?.garmin_activity_id
+        return typeof garminId === 'number' ? garminId : undefined
+      }
+
+      let garminActivityId = getData(activity)
+      let garminSourceId = activity.id!
+
+      if (!garminActivityId) {
+        const overlapping = await getOverlappingActivities(user, activity)
+        for (const src of overlapping) {
+          const gid = getData(src)
+          if (gid) {
+            garminActivityId = gid
+            garminSourceId = src.id!
+            break
+          }
+        }
+      }
+
+      if (!garminActivityId) {
+        res.status(400).json({
+          points: 0,
+          success: false,
+          error: 'No Garmin activity ID found in activity or its merged sources',
+        })
+        return
+      }
+
+      const points = await resyncActivityDetail(user, garminSourceId, garminActivityId)
+      res.json({ points, success: true })
     },
   )
 
-  // GET /productivity - Query productivity data for a time range
-  router.get<Record<string, string>, ProductivityResponse, unknown, ProductivityQuery>(
-    '/productivity',
-    authMiddleware,
-    validateQuery(productivityQuerySchema),
-    async (req, res) => {
-      const { start, end } = req.query
-      const user = req.user!
-
-      const productivity = await queryProductivity(user, new Date(start), new Date(end), syncProvider)
-      res.json({ data: productivity, success: true })
-    },
-  )
-
-  return router as unknown as Router
+  return router
 }

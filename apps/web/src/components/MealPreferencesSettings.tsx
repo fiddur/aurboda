@@ -1,7 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'preact/hooks'
 
-import { fetchUserSettings, updateUserSettings } from '../state/api'
+import {
+  createSensitivityFlag,
+  deleteSensitivityFlag,
+  fetchSensitivityFlags,
+  fetchUserSettings,
+  updateUserSettings,
+} from '../state/api'
 import { auth } from '../state/auth'
 import { type SaveStatus, SaveStatusIndicator } from './SaveStatusIndicator'
 import { SettingsSection } from './SettingsSection'
@@ -16,21 +22,29 @@ export function MealPreferencesSettings() {
   const isLoggedIn = auth.value.token
   const queryClient = useQueryClient()
 
-  const { data: settings, isLoading } = useQuery({
+  const { data: settings, isLoading: settingsLoading } = useQuery({
     enabled: !!isLoggedIn,
     queryFn: fetchUserSettings,
     queryKey: ['userSettings'],
   })
 
-  const [newArea, setNewArea] = useState('')
+  const { data: flags = [], isLoading: flagsLoading } = useQuery({
+    enabled: !!isLoggedIn,
+    queryFn: fetchSensitivityFlags,
+    queryKey: ['sensitivityFlags'],
+  })
+  const isLoading = settingsLoading || flagsLoading
+
+  const [newFlagName, setNewFlagName] = useState('')
   const [newSlotName, setNewSlotName] = useState('')
   const [newSlotHour, setNewSlotHour] = useState('12')
   const [saveStatus, setSaveStatus] = useState<SaveStatus>({ status: 'idle' })
 
   const currentSlots: MealSlot[] = settings?.meal_slots ?? []
-  const currentAreas: string[] = settings?.sensitivity_areas ?? []
+  const currentFlagNames: string[] = flags.map((f) => f.name)
 
-  // Save immediately on any change
+  // Save immediately on any change (settings — meal slots only now; flags
+  // are managed via the dedicated /sensitivity-flags endpoint).
   const saveMutation = useMutation({
     mutationFn: updateUserSettings,
     onSuccess: (result) => {
@@ -45,26 +59,49 @@ export function MealPreferencesSettings() {
     },
   })
 
-  const saveAreas = (areas: string[]) => {
-    setSaveStatus({ status: 'saving' })
-    saveMutation.mutate({ sensitivity_areas: areas })
+  const flagSaveSettled = (err?: unknown) => {
+    if (err) {
+      setSaveStatus({
+        error: err instanceof Error ? err.message : 'Failed to save',
+        status: 'error',
+      })
+    } else {
+      setSaveStatus({ status: 'saved', time: new Date() })
+    }
+    queryClient.invalidateQueries({ queryKey: ['sensitivityFlags'] })
   }
+
+  const addFlagMutation = useMutation({
+    mutationFn: (name: string) => createSensitivityFlag({ name, sort_order: flags.length }),
+    onError: (err) => flagSaveSettled(err),
+    onSuccess: () => flagSaveSettled(),
+  })
+
+  const deleteFlagMutation = useMutation({
+    mutationFn: deleteSensitivityFlag,
+    onError: (err) => flagSaveSettled(err),
+    onSuccess: () => flagSaveSettled(),
+  })
 
   const saveSlots = (slots: MealSlot[]) => {
     setSaveStatus({ status: 'saving' })
     saveMutation.mutate({ meal_slots: slots })
   }
 
-  // Sensitivity areas — save on each action
-  const addArea = () => {
-    const trimmed = newArea.trim()
-    if (!trimmed || currentAreas.includes(trimmed)) return
-    saveAreas([...currentAreas, trimmed])
-    setNewArea('')
+  // Sensitivity flags — write through the dedicated endpoint
+  const addFlag = () => {
+    const trimmed = newFlagName.trim()
+    if (!trimmed || currentFlagNames.includes(trimmed)) return
+    setSaveStatus({ status: 'saving' })
+    addFlagMutation.mutate(trimmed)
+    setNewFlagName('')
   }
 
-  const removeArea = (area: string) => {
-    saveAreas(currentAreas.filter((a) => a !== area))
+  const removeFlag = (name: string) => {
+    const flag = flags.find((f) => f.name === name)
+    if (!flag) return
+    setSaveStatus({ status: 'saving' })
+    deleteFlagMutation.mutate(flag.id)
   }
 
   // Meal slots — save on each action
@@ -104,14 +141,14 @@ export function MealPreferencesSettings() {
         <p class="subsection-desc">Flags for categorizing meals (e.g., gluten, dairy, keto, cheat day).</p>
 
         <div class="area-list">
-          {currentAreas.map((area) => (
-            <div key={area} class="area-chip">
-              <span>{area}</span>
+          {currentFlagNames.map((flagName) => (
+            <div key={flagName} class="area-chip">
+              <span>{flagName}</span>
               <button
                 type="button"
                 class="chip-remove"
-                onClick={() => removeArea(area)}
-                aria-label={`Remove ${area}`}
+                onClick={() => removeFlag(flagName)}
+                aria-label={`Remove ${flagName}`}
               >
                 &times;
               </button>
@@ -123,11 +160,11 @@ export function MealPreferencesSettings() {
           <input
             type="text"
             placeholder="Add meal flag..."
-            value={newArea}
-            onInput={(e) => setNewArea((e.target as HTMLInputElement).value)}
-            onKeyDown={(e) => e.key === 'Enter' && addArea()}
+            value={newFlagName}
+            onInput={(e) => setNewFlagName((e.target as HTMLInputElement).value)}
+            onKeyDown={(e) => e.key === 'Enter' && addFlag()}
           />
-          <button type="button" class="btn-secondary" onClick={addArea}>
+          <button type="button" class="btn-secondary" onClick={addFlag}>
             Add
           </button>
         </div>
@@ -139,27 +176,29 @@ export function MealPreferencesSettings() {
         <p class="subsection-desc">Define your typical meal times for the quick-log UI.</p>
 
         <div class="slots-list">
-          {currentSlots.map((slot) => (
-            <div key={slot.name} class="slot-row">
-              <span class="slot-label">{slot.name}</span>
-              <label class="slot-hour-label">
-                Default hour:
-                <input
-                  type="number"
-                  min="0"
-                  max="23"
-                  value={slot.default_hour}
-                  onChange={(e) =>
-                    updateSlotHour(slot.name, parseInt((e.target as HTMLInputElement).value, 10))
-                  }
-                  class="slot-hour-input"
-                />
-              </label>
-              <button type="button" class="btn-danger-small" onClick={() => removeSlot(slot.name)}>
-                Remove
-              </button>
-            </div>
-          ))}
+          {[...currentSlots]
+            .sort((a, b) => a.default_hour - b.default_hour)
+            .map((slot) => (
+              <div key={slot.name} class="slot-row">
+                <span class="slot-label">{slot.name}</span>
+                <label class="slot-hour-label">
+                  Default hour:
+                  <input
+                    type="number"
+                    min="0"
+                    max="23"
+                    value={slot.default_hour}
+                    onChange={(e) =>
+                      updateSlotHour(slot.name, parseInt((e.target as HTMLInputElement).value, 10))
+                    }
+                    class="slot-hour-input"
+                  />
+                </label>
+                <button type="button" class="btn-danger-small" onClick={() => removeSlot(slot.name)}>
+                  Remove
+                </button>
+              </div>
+            ))}
         </div>
 
         <div class="add-row">

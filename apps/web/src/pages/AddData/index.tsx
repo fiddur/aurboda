@@ -1,22 +1,23 @@
-import { exerciseTypeNames, type ExerciseTypeName } from '@aurboda/api-spec'
+import type { DataFieldDefinition } from '@aurboda/api-spec'
+
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { useLocation } from 'preact-iso'
 import { useCallback, useState } from 'preact/hooks'
 
+import { ActivityTypePicker } from '../../components/ActivityTypePicker'
 import { MetricPicker } from '../../components/MetricPicker'
 import {
   addActivity,
   addMetric,
   addNote,
-  addTag,
-  fetchUniqueTags,
+  fetchActivityTypeDefinitions,
   uploadFitFile,
   type ActivityType,
 } from '../../state/api'
 import './style.css'
 
-type Tab = 'activity' | 'tag' | 'metric'
+type Tab = 'activity' | 'metric'
 
 const STORAGE_KEY = 'addData.addMore'
 const getAddMore = (): boolean => localStorage.getItem(STORAGE_KEY) !== 'false'
@@ -83,24 +84,92 @@ const FitUpload = ({ onCreated }: FormProps) => {
   )
 }
 
+const SchemaFieldInput = ({
+  field,
+  value,
+  onChange,
+}: {
+  field: DataFieldDefinition
+  value: string
+  onChange: (value: string) => void
+}) => {
+  const label = field.label ?? field.name.replaceAll('_', ' ').replace(/^\w/, (c) => c.toUpperCase())
+  const unitSuffix = field.unit ? ` (${field.unit})` : ''
+
+  if (field.type === 'boolean') {
+    return (
+      <div class="form-check">
+        <input
+          type="checkbox"
+          id={`data-${field.name}`}
+          checked={value === 'true'}
+          onChange={(e) => onChange((e.target as HTMLInputElement).checked ? 'true' : '')}
+        />
+        <label for={`data-${field.name}`}>{label}</label>
+      </div>
+    )
+  }
+
+  if (field.type === 'string' && field.enum_values) {
+    return (
+      <div class="form-field">
+        <label>{label}</label>
+        <select value={value} onChange={(e) => onChange((e.target as HTMLSelectElement).value)}>
+          <option value="">-- Select --</option>
+          {field.enum_values.map((v) => (
+            <option key={v} value={v}>
+              {v}
+            </option>
+          ))}
+        </select>
+      </div>
+    )
+  }
+
+  return (
+    <div class="form-field">
+      <label>{`${label}${unitSuffix}`}</label>
+      <input
+        type={field.type === 'number' ? 'number' : 'text'}
+        step={field.type === 'number' ? 'any' : undefined}
+        value={value}
+        onInput={(e) => onChange((e.target as HTMLInputElement).value)}
+        placeholder={`Optional ${label.toLowerCase()}`}
+      />
+    </div>
+  )
+}
+
 const AddActivityForm = ({ onCreated }: FormProps) => {
   const queryClient = useQueryClient()
-  const [activityType, setActivityType] = useState<ActivityType>('exercise')
-  const [exerciseType, setExerciseType] = useState<ExerciseTypeName>('other_workout')
+  const [activityType, setActivityType] = useState<ActivityType>('')
   const [title, setTitle] = useState('')
   const [startTime, setStartTime] = useState(nowLocal())
   const [endTime, setEndTime] = useState(nowLocal())
+  const [hasEndTime, setHasEndTime] = useState(true)
   const [notes, setNotes] = useState('')
   const [comment, setComment] = useState('')
+  const [structuredData, setStructuredData] = useState<Record<string, string>>({})
   const [success, setSuccess] = useState('')
   const [error, setError] = useState('')
 
+  const { data: typeDefs } = useQuery({
+    queryFn: fetchActivityTypeDefinitions,
+    queryKey: ['activity-type-definitions'],
+    staleTime: 30 * 60 * 1000,
+  })
+
+  const selectedTypeDef = typeDefs?.find((t) => t.name === activityType)
+  const dataFields = selectedTypeDef?.data_schema?.fields ?? []
+
   const mutation = useMutation({
     mutationFn: async () => {
+      if (!activityType) throw new Error('Please select an activity type')
+      const dataMap = Object.fromEntries(Object.entries(structuredData).filter(([, v]) => v !== ''))
       const result = await addActivity({
         activity_type: activityType,
-        end_time: new Date(endTime).toISOString(),
-        ...(activityType === 'exercise' ? { exercise_type: exerciseType } : {}),
+        ...(Object.keys(dataMap).length > 0 ? { data: dataMap } : {}),
+        ...(hasEndTime ? { end_time: new Date(endTime).toISOString() } : {}),
         ...(notes ? { notes } : {}),
         start_time: new Date(startTime).toISOString(),
         ...(title ? { title } : {}),
@@ -126,8 +195,10 @@ const AddActivityForm = ({ onCreated }: FormProps) => {
       setTitle('')
       setNotes('')
       setComment('')
+      setStructuredData({})
       setStartTime(nowLocal())
       setEndTime(nowLocal())
+      setHasEndTime(true)
     },
   })
 
@@ -138,33 +209,14 @@ const AddActivityForm = ({ onCreated }: FormProps) => {
 
       <div class="form-field">
         <label>Activity Type</label>
-        <select
+        <ActivityTypePicker
           value={activityType}
-          onChange={(e) => setActivityType((e.target as HTMLSelectElement).value as ActivityType)}
-        >
-          <option value="exercise">Exercise</option>
-          <option value="meditation">Meditation</option>
-          <option value="nap">Nap</option>
-          <option value="rest">Rest</option>
-          <option value="sleep">Sleep</option>
-        </select>
+          onChange={(type) => {
+            setActivityType(type)
+            setStructuredData({})
+          }}
+        />
       </div>
-
-      {activityType === 'exercise' && (
-        <div class="form-field">
-          <label>Exercise Type</label>
-          <select
-            value={exerciseType}
-            onChange={(e) => setExerciseType((e.target as HTMLSelectElement).value as ExerciseTypeName)}
-          >
-            {exerciseTypeNames.map((name) => (
-              <option key={name} value={name}>
-                {name.replaceAll('_', ' ')}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
 
       <div class="form-field">
         <label>Title</label>
@@ -176,15 +228,26 @@ const AddActivityForm = ({ onCreated }: FormProps) => {
         />
       </div>
 
-      <div class="form-row">
-        <div class="form-field">
-          <label>Start</label>
-          <input
-            type="datetime-local"
-            value={startTime}
-            onInput={(e) => setStartTime((e.target as HTMLInputElement).value)}
-          />
-        </div>
+      <div class="form-field">
+        <label>Start</label>
+        <input
+          type="datetime-local"
+          value={startTime}
+          onInput={(e) => setStartTime((e.target as HTMLInputElement).value)}
+        />
+      </div>
+
+      <div class="form-check">
+        <input
+          type="checkbox"
+          id="has-end-time-activity"
+          checked={hasEndTime}
+          onChange={(e) => setHasEndTime((e.target as HTMLInputElement).checked)}
+        />
+        <label for="has-end-time-activity">Has end time</label>
+      </div>
+
+      {hasEndTime && (
         <div class="form-field">
           <label>End</label>
           <input
@@ -193,7 +256,17 @@ const AddActivityForm = ({ onCreated }: FormProps) => {
             onInput={(e) => setEndTime((e.target as HTMLInputElement).value)}
           />
         </div>
-      </div>
+      )}
+
+      {dataFields.length > 0 &&
+        dataFields.map((field) => (
+          <SchemaFieldInput
+            key={field.name}
+            field={field}
+            value={structuredData[field.name] ?? ''}
+            onChange={(v) => setStructuredData((prev) => ({ ...prev, [field.name]: v }))}
+          />
+        ))}
 
       <div class="form-field">
         <label>Notes</label>
@@ -228,173 +301,6 @@ const AddActivityForm = ({ onCreated }: FormProps) => {
           type="button"
         >
           {mutation.isPending ? 'Adding...' : 'Add Activity'}
-        </button>
-      </div>
-    </div>
-  )
-}
-
-const AddTagForm = ({ onCreated }: FormProps) => {
-  const queryClient = useQueryClient()
-  const [tagName, setTagName] = useState('')
-  const [startTime, setStartTime] = useState(nowLocal())
-  const [hasEndTime, setHasEndTime] = useState(false)
-  const [endTime, setEndTime] = useState(nowLocal())
-  const [mergeSpan, setMergeSpan] = useState('')
-  const [comment, setComment] = useState('')
-  const [success, setSuccess] = useState('')
-  const [error, setError] = useState('')
-
-  const { data: uniqueTags } = useQuery({
-    queryFn: fetchUniqueTags,
-    queryKey: ['uniqueTags'],
-    staleTime: 5 * 60 * 1000,
-  })
-
-  const [showSuggestions, setShowSuggestions] = useState(false)
-  const filteredTags = (uniqueTags ?? []).filter(
-    (t) => tagName && t.toLowerCase().includes(tagName.toLowerCase()) && t !== tagName,
-  )
-
-  const mutation = useMutation({
-    mutationFn: async () => {
-      const result = await addTag({
-        ...(hasEndTime ? { end_time: new Date(endTime).toISOString() } : {}),
-        ...(mergeSpan ? { merge_span: parseInt(mergeSpan, 10) } : {}),
-        start_time: new Date(startTime).toISOString(),
-        tag: tagName,
-      })
-      // Backend returns id at top level (not wrapped in data)
-      const tagId = result.data?.id ?? (result as unknown as { id?: string }).id
-      if (comment.trim() && tagId) {
-        try {
-          await addNote('tag', tagId, comment.trim())
-        } catch {
-          // Tag was created successfully; comment save failed silently
-        }
-      }
-      return result
-    },
-    onError: (err: Error) => {
-      setError(err.message)
-      setSuccess('')
-    },
-    onSuccess: (result) => {
-      queryClient.invalidateQueries({ queryKey: ['dayview-tags'] })
-      queryClient.invalidateQueries({ queryKey: ['uniqueTags'] })
-      const tagId = result.data?.id ?? (result as unknown as { id?: string }).id
-      if (onCreated('tag', tagId)) return
-      setSuccess(`Tag "${tagName}" added`)
-      setError('')
-      setTagName('')
-      setComment('')
-      setStartTime(nowLocal())
-      setHasEndTime(false)
-      setMergeSpan('')
-    },
-  })
-
-  return (
-    <div class="add-form">
-      {success && <div class="add-success">{success}</div>}
-      {error && <div class="add-error">{error}</div>}
-
-      <div class="form-field" style={{ position: 'relative' }}>
-        <label>Tag Name</label>
-        <input
-          type="text"
-          value={tagName}
-          onInput={(e) => {
-            setTagName((e.target as HTMLInputElement).value)
-            setShowSuggestions(true)
-          }}
-          onFocus={() => setShowSuggestions(true)}
-          onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
-          placeholder="e.g. coffee, gym, meeting"
-        />
-        {showSuggestions && filteredTags.length > 0 && (
-          <ul
-            class="tag-picker-dropdown"
-            style={{ left: 0, position: 'absolute', right: 0, top: '100%', zIndex: 10 }}
-          >
-            {filteredTags.slice(0, 8).map((t) => (
-              <li
-                key={t}
-                class="tag-picker-option"
-                onMouseDown={(e) => {
-                  e.preventDefault()
-                  setTagName(t)
-                  setShowSuggestions(false)
-                }}
-              >
-                <span class="tag-option-display">{t}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-
-      <div class="form-field">
-        <label>Start Time</label>
-        <input
-          type="datetime-local"
-          value={startTime}
-          onInput={(e) => setStartTime((e.target as HTMLInputElement).value)}
-        />
-      </div>
-
-      <div class="form-check">
-        <input
-          type="checkbox"
-          id="has-end-time"
-          checked={hasEndTime}
-          onChange={(e) => setHasEndTime((e.target as HTMLInputElement).checked)}
-        />
-        <label for="has-end-time">Has end time (span tag)</label>
-      </div>
-
-      {hasEndTime && (
-        <div class="form-field">
-          <label>End Time</label>
-          <input
-            type="datetime-local"
-            value={endTime}
-            onInput={(e) => setEndTime((e.target as HTMLInputElement).value)}
-          />
-        </div>
-      )}
-
-      <div class="form-field">
-        <label>Merge Span (seconds)</label>
-        <input
-          type="number"
-          value={mergeSpan}
-          onInput={(e) => setMergeSpan((e.target as HTMLInputElement).value)}
-          placeholder="Optional (1-3600)"
-          min="1"
-          max="3600"
-        />
-        <span class="form-hint">If set, extends an existing tag if it ended within this many seconds</span>
-      </div>
-
-      <div class="form-field">
-        <label>Comment</label>
-        <textarea
-          value={comment}
-          onInput={(e) => setComment((e.target as HTMLTextAreaElement).value)}
-          placeholder="Optional comment"
-          rows={2}
-        />
-      </div>
-
-      <div class="add-form-actions">
-        <button
-          class="btn-primary"
-          onClick={() => mutation.mutate()}
-          disabled={mutation.isPending || !tagName.trim() || !startTime}
-          type="button"
-        >
-          {mutation.isPending ? 'Adding...' : 'Add Tag'}
         </button>
       </div>
     </div>
@@ -550,13 +456,6 @@ export const AddData = () => {
           Activity
         </button>
         <button
-          class={`add-data-tab ${activeTab === 'tag' ? 'active' : ''}`}
-          onClick={() => handleTabClick('tag')}
-          type="button"
-        >
-          Tag
-        </button>
-        <button
           class={`add-data-tab ${activeTab === 'metric' ? 'active' : ''}`}
           onClick={() => handleTabClick('metric')}
           type="button"
@@ -572,7 +471,6 @@ export const AddData = () => {
           <AddActivityForm onCreated={handleCreated} />
         </>
       )}
-      {activeTab === 'tag' && <AddTagForm onCreated={handleCreated} />}
       {activeTab === 'metric' && <AddMetricForm onCreated={handleCreated} />}
     </div>
   )

@@ -67,6 +67,32 @@
   align-items: center;
 }
 
+.save-status {
+  font-size: 0.85rem;
+  padding: 0.125rem 0.5rem;
+  border-radius: 4px;
+}
+
+.save-pending {
+  color: #6b7280;
+}
+
+.save-ok {
+  color: #166534;
+  background: #dcfce7;
+}
+
+.save-error {
+  color: #991b1b;
+  background: #fee2e2;
+}
+
+.detail-source-caption {
+  margin: 0 0 0.5rem 0;
+  font-size: 0.8rem;
+  color: #6b7280;
+}
+
 .detail-card {
   border: 1px solid #e5e7eb;
   border-radius: 8px;
@@ -276,6 +302,19 @@
   flex-wrap: wrap;
 }
 
+.food-row-macros-display {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  color: #6b7280;
+  padding-left: 0.25rem;
+}
+
+.food-row-macros-display span {
+  white-space: nowrap;
+}
+
 .food-row-macros label {
   display: flex;
   flex-direction: column;
@@ -390,8 +429,24 @@ a.detail-food-link:hover {
   background: #f3f4f6;
 }
 
+.incomplete-notice {
+  font-size: 0.8rem;
+  color: #d97706;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  margin-top: 0.5rem;
+}
+
 /* Dark mode */
 @media (prefers-color-scheme: dark) {
+  .incomplete-notice {
+    color: #f59e0b;
+    background: #1c1917;
+    border-color: #78350f;
+  }
+
   .nutrient-breakdown {
     border-color: #374151;
     background: #1f2937;

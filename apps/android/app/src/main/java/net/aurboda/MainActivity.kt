@@ -26,6 +26,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -50,10 +51,6 @@ import androidx.health.connect.client.request.ReadRecordsRequest
 import androidx.health.connect.client.time.TimeRangeFilter
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import io.ktor.client.HttpClient
-import io.ktor.client.engine.android.Android
-import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
-import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -74,7 +71,9 @@ import net.aurboda.allRecordTypes
 import net.aurboda.writableRecordTypes
 import java.io.File
 import java.time.Instant
+import java.time.ZoneId
 import java.time.ZonedDateTime
+import java.time.temporal.ChronoUnit
 import kotlin.reflect.KClass
 
 private const val PREFS_NAME = "AurbodaAppPrefs"
@@ -143,14 +142,14 @@ private fun invalidateTokenIfGrantedTypesChanged(
 class MainActivity : ComponentActivity() {
   companion object {
     const val EXTRA_OPEN_TAB = "open_tab"
-    const val TAB_DATA = "data"
+    const val TAB_ADD = "add"
   }
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     val initialTab =
       when (intent?.getStringExtra(EXTRA_OPEN_TAB)) {
-        TAB_DATA -> MainTab.Data
+        TAB_ADD -> MainTab.Add
         else -> null
       }
     setContent {
@@ -174,7 +173,7 @@ fun AurbodaApp(initialTab: MainTab? = null) {
   val appState = rememberAppState(initialTab = initialTab)
   val context = LocalContext.current
   val scope = rememberCoroutineScope()
-  val ktorHttpClient = remember { HttpClient(Android) { install(ContentNegotiation) { json(appJson) } } }
+  val ktorHttpClient = remember { syncHttpClient() }
 
   // Update check state
   var updateAvailable by remember { mutableStateOf<VersionInfo?>(null) }
@@ -296,8 +295,8 @@ fun AurbodaApp(initialTab: MainTab? = null) {
               modifier = modifier,
             )
           },
-          dataContent = { modifier ->
-            net.aurboda.ui.screens.DataScreen(
+          addContent = { modifier ->
+            net.aurboda.ui.screens.AddDataScreen(
               apiUrl = credentials.apiUrl,
               authToken = credentials.authToken,
               modifier = modifier,
@@ -364,10 +363,17 @@ fun HealthConnectScreen(
     derivedStateOf { getCategoryStatuses(grantedPermissions) }
   }
 
-  var isProcessing by remember { mutableStateOf(false) }
-  var statusMessage by remember { mutableStateOf("Checking permissions...") }
+  val reporter = remember(context) { context.syncProgressReporter() }
+  val progressState by reporter.state.collectAsState()
+  val isProcessing = progressState.isRunning
+  var permissionStatusMessage by remember { mutableStateOf("Checking permissions...") }
   var backgroundSyncEnabled by remember { mutableStateOf(isBackgroundSyncEnabled(context)) }
   var showBatteryOptimizationDialog by remember { mutableStateOf(false) }
+  val bgSyncStatusFlow = remember(context) {
+    (context.applicationContext as? AurbodaApplication)?.backgroundSyncStatus
+      ?: kotlinx.coroutines.flow.MutableStateFlow(BackgroundSyncStatus())
+  }
+  val bgSyncStatus by bgSyncStatusFlow.collectAsState()
 
   // -- ActivityWatch state --
   var awSyncEnabled by remember { mutableStateOf(isActivityWatchSyncEnabled(context)) }
@@ -389,9 +395,12 @@ fun HealthConnectScreen(
     remember(allRecordTypes) {
       val readPerms = allRecordTypes.map { HealthPermission.getReadPermission(it) }
       val writePerms = writableRecordTypes.map { HealthPermission.getWritePermission(it) }
-      (readPerms + writePerms).toSet()
+      (readPerms + writePerms + HC_BACKGROUND_READ_PERMISSION).toSet()
     }
-  val ktorHttpClient = remember { HttpClient(Android) { install(ContentNegotiation) { json(appJson) } } }
+  val hasBackgroundReadPermission by remember(grantedPermissions) {
+    derivedStateOf { HC_BACKGROUND_READ_PERMISSION in grantedPermissions }
+  }
+  val ktorHttpClient = remember { syncHttpClient() }
 
   /**
    * Sync Health Connect data incrementally: fetch and send page by page.
@@ -402,26 +411,22 @@ fun HealthConnectScreen(
    */
   suspend fun syncHealthData(currentActiveContext: Context) {
     if (grantedRecordTypes.isEmpty()) {
-      statusMessage = "No permissions granted. Cannot sync."
+      reporter.updateStage(SyncStage.HealthConnect) {
+        it.copy(status = SyncStageStatus.Skipped, message = "No permissions granted")
+      }
       Log.d("SyncData", "syncHealthData called but no granted types.")
       return
     }
-    if (isProcessing) {
-      Log.d("SyncData", "syncHealthData called while already processing. Bailing.")
-      return
-    }
-    isProcessing = true
-    statusMessage = "Syncing..."
     val typesToFetch = grantedRecordTypes
     Log.d("SyncData", "Starting sync for ${typesToFetch.size} granted types...")
-
-    // Invalidate token if the set of granted types has changed
     invalidateTokenIfGrantedTypesChanged(currentActiveContext, typesToFetch)
-
     val lastTokenFromPrefs = loadChangesToken(currentActiveContext)
 
+    reporter.updateStage(SyncStage.HealthConnect) {
+      it.copy(status = SyncStageStatus.Active, message = "Reading from Health Connect…", sentRecords = 0, sentDeletions = 0)
+    }
+
     if (lastTokenFromPrefs == null) {
-      // Initial sync: read last 7 days per record type and send each immediately
       Log.d("SyncData", "No token found. Performing initial sync.")
       try {
         val sevenDaysAgo = ZonedDateTime.now().minusDays(7).toInstant()
@@ -446,37 +451,46 @@ fun HealthConnectScreen(
 
             if (recordsOfType.isNotEmpty()) {
               Log.d("SyncData", "Fetched ${recordsOfType.size} ${recordType.simpleName} records, sending...")
-              statusMessage = "Syncing ${recordType.simpleName}... ($totalSent records sent so far)"
-              val result = sendRecords(recordsOfType, apiUrl, authToken, ktorHttpClient, "SyncData")
+              recordsOfType.oldestModifiedTime()?.let(reporter::reportDataInstant)
+              val result = sendRecords(recordsOfType, apiUrl, authToken, ktorHttpClient, reporter, "SyncData")
               if (!result.isSuccess) {
-                statusMessage = "Sync failed on ${recordType.simpleName}: ${result.errorMessage()}"
+                reporter.updateStage(SyncStage.HealthConnect) {
+                  it.copy(status = SyncStageStatus.Failed, errorMessage = result.errorMessage())
+                }
                 Log.w("SyncData", "Failed to send ${recordType.simpleName}: ${result.errorMessage()}")
-                isProcessing = false
                 return
               }
               totalSent += recordsOfType.size
+              reporter.updateStage(SyncStage.HealthConnect) { it.copy(sentRecords = totalSent) }
             }
           } catch (e: Exception) {
             Log.w("SyncData", "Error fetching ${recordType.simpleName}: ${e.message}")
           }
         }
 
-        // All types sent successfully -- get and save the initial changes token
         try {
           val initialToken = healthConnectClient.getChangesToken(ChangesTokenRequest(typesToFetch.toSet()))
           saveChangesToken(currentActiveContext, initialToken)
           Log.d("SyncData", "Initial sync complete. Sent $totalSent records. Token saved.")
-          statusMessage = if (totalSent > 0) "Synced $totalSent records." else "No records found."
+          reporter.updateStage(SyncStage.HealthConnect) {
+            it.copy(
+              status = SyncStageStatus.Done,
+              message = if (totalSent > 0) "Initial sync: $totalSent records" else "No records found",
+            )
+          }
         } catch (e: Exception) {
           Log.e("SyncData", "Failed to get/save initial changes token.", e)
-          statusMessage = "Sync completed but token error: ${e.message}"
+          reporter.updateStage(SyncStage.HealthConnect) {
+            it.copy(status = SyncStageStatus.Failed, errorMessage = "token error: ${e.message}")
+          }
         }
       } catch (e: Exception) {
         Log.e("SyncData", "Error during initial sync.", e)
-        statusMessage = "Sync error: ${e.message}"
+        reporter.updateStage(SyncStage.HealthConnect) {
+          it.copy(status = SyncStageStatus.Failed, errorMessage = e.message)
+        }
       }
     } else {
-      // Incremental sync: process each getChanges() page and send immediately
       Log.d("SyncData", "Token found: ${lastTokenFromPrefs.take(10)}... Fetching changes.")
       try {
         var currentToken: String = lastTokenFromPrefs
@@ -501,41 +515,59 @@ fun HealthConnectScreen(
 
           if (upsertions.isNotEmpty() || deletionIds.isNotEmpty()) {
             Log.d("SyncData", "Page $pageNum: ${upsertions.size} records, ${deletionIds.size} deletions")
-            statusMessage = "Syncing... ($totalRecords records, $totalDeletions deletions sent)"
-            val result = sendPage(upsertions, deletionIds, apiUrl, authToken, ktorHttpClient, "SyncData")
+            upsertions.oldestModifiedTime()?.let(reporter::reportDataInstant)
+            reporter.updateStage(SyncStage.HealthConnect) {
+              it.copy(
+                currentPage = pageNum,
+                message = "Page $pageNum (${upsertions.size} records, ${deletionIds.size} deletions)",
+              )
+            }
+            val result = sendPage(upsertions, deletionIds, apiUrl, authToken, ktorHttpClient, reporter, "SyncData")
             if (!result.isSuccess) {
-              statusMessage = "Sync failed on page $pageNum: ${result.errorMessage()}"
+              reporter.updateStage(SyncStage.HealthConnect) {
+                it.copy(status = SyncStageStatus.Failed, errorMessage = result.errorMessage())
+              }
               Log.w("SyncData", "Page $pageNum failed: ${result.errorMessage()}")
-              isProcessing = false
               return
             }
             totalRecords += upsertions.size
             totalDeletions += deletionIds.size
+            reporter.updateStage(SyncStage.HealthConnect) {
+              it.copy(sentRecords = totalRecords, sentDeletions = totalDeletions)
+            }
           }
 
-          // Save intermediate token -- this page is permanently done
           currentToken = changesResponse.nextChangesToken
           saveChangesToken(currentActiveContext, currentToken)
           hasMore = changesResponse.hasMore
         }
 
         if (totalRecords > 0 || totalDeletions > 0) {
-          val parts = mutableListOf<String>()
-          if (totalRecords > 0) parts.add("$totalRecords records")
-          if (totalDeletions > 0) parts.add("$totalDeletions deletions")
-          statusMessage = "Synced ${parts.joinToString(", ")}."
+          val parts = buildList {
+            if (totalRecords > 0) add("$totalRecords records")
+            if (totalDeletions > 0) add("$totalDeletions deletions")
+          }
+          reporter.updateStage(SyncStage.HealthConnect) {
+            it.copy(
+              status = SyncStageStatus.Done,
+              totalPages = pageNum,
+              message = "${parts.joinToString(", ")} ($pageNum pages)",
+            )
+          }
           Log.d("SyncData", "Incremental sync complete: ${parts.joinToString(", ")} across $pageNum pages")
         } else {
-          statusMessage = "Up to date."
+          reporter.updateStage(SyncStage.HealthConnect) {
+            it.copy(status = SyncStageStatus.Done, message = "Up to date")
+          }
           Log.d("SyncData", "No new changes found")
         }
       } catch (e: Exception) {
         Log.e("SyncData", "Error during incremental sync.", e)
-        statusMessage = "Sync error: ${e.message}"
+        reporter.updateStage(SyncStage.HealthConnect) {
+          it.copy(status = SyncStageStatus.Failed, errorMessage = e.message)
+        }
       }
     }
-
-    isProcessing = false
   }
 
   /** Re-query actual granted permissions from system after launcher returns. */
@@ -543,11 +575,9 @@ fun HealthConnectScreen(
     grantedPermissions = healthConnectClient.permissionController.getGrantedPermissions()
     val count = grantedRecordTypes.size
     Log.d("HealthConnect", "Permissions refreshed: $count/${allRecordTypes.size} types granted")
-    if (count > 0) {
-      statusMessage = "$count of ${allRecordTypes.size} data types authorized."
-    } else {
-      statusMessage = "No permissions granted."
-    }
+    permissionStatusMessage =
+      if (count > 0) "$count of ${allRecordTypes.size} data types authorized."
+      else "No permissions granted."
   }
 
   val requestPermissionLauncher =
@@ -557,10 +587,13 @@ fun HealthConnectScreen(
       // Don't trust the launcher result -- re-query actual permissions from system
       scope.launch {
         refreshPermissions()
-        if (grantedRecordTypes.isNotEmpty()) {
-          syncHealthData(context)
-        } else {
-          isProcessing = false
+        if (grantedRecordTypes.isNotEmpty() && !reporter.state.value.isRunning) {
+          reporter.begin()
+          try {
+            syncHealthData(context)
+          } finally {
+            reporter.end()
+          }
         }
       }
     }
@@ -574,81 +607,96 @@ fun HealthConnectScreen(
     Log.d("HealthConnect", "Permission check: $grantedCount/${allRecordTypes.size} types granted")
 
     if (grantedCount > 0) {
-      statusMessage = "$grantedCount of ${allRecordTypes.size} data types authorized."
-      coroutineScope.launch { syncHealthData(currentContext) }
+      permissionStatusMessage = "$grantedCount of ${allRecordTypes.size} data types authorized."
+      coroutineScope.launch {
+        if (reporter.state.value.isRunning) return@launch
+        reporter.begin()
+        try {
+          syncHealthData(currentContext)
+        } finally {
+          reporter.end()
+        }
+      }
     } else {
-      // No permissions at all -- request everything
-      statusMessage = "No permissions granted. Requesting access..."
-      isProcessing = false
+      permissionStatusMessage = "No permissions granted. Requesting access..."
       requestPermissionLauncher.launch(allPermissions.toTypedArray())
     }
   }
 
   /** Perform full sync: aggregates + Health Connect data + outbound + ActivityWatch. */
   suspend fun syncNow(currentContext: Context) {
-    // Fetch and send daily aggregates for cumulative metrics (steps, distance, etc.)
+    if (reporter.state.value.isRunning) return
+    reporter.begin()
+    var fatal: String? = null
     try {
-      val aggregates = fetchDailyAggregates(healthConnectClient, grantedRecordTypes.toSet(), days = 7)
-      if (aggregates.isNotEmpty()) {
-        val success = sendDailyAggregates(aggregates, apiUrl, authToken, ktorHttpClient)
-        if (success) {
-          Log.d("SyncNow", "Sent ${aggregates.size} daily aggregates")
+      // Daily aggregates
+      try {
+        val aggregates = fetchDailyAggregates(healthConnectClient, grantedRecordTypes.toSet(), days = 7)
+        if (aggregates.isNotEmpty()) {
+          sendDailyAggregates(aggregates, apiUrl, authToken, ktorHttpClient, reporter)
         } else {
-          Log.w("SyncNow", "Failed to send daily aggregates")
-          statusMessage = "Failed to send daily aggregates."
+          reporter.updateStage(SyncStage.DailyAggregates) {
+            it.copy(status = SyncStageStatus.Done, message = "Nothing to send")
+          }
+        }
+      } catch (e: Exception) {
+        Log.w("SyncNow", "Daily aggregate sync failed: ${e.message}", e)
+        reporter.updateStage(SyncStage.DailyAggregates) {
+          it.copy(status = SyncStageStatus.Failed, errorMessage = e.message)
         }
       }
-    } catch (e: Exception) {
-      Log.w("SyncNow", "Daily aggregate sync failed: ${e.message}", e)
-      statusMessage = "Daily aggregate sync error: ${e.message}"
-    }
 
-    // Incremental Health Connect sync (fetch and send page by page)
-    syncHealthData(currentContext)
+      syncHealthData(currentContext)
 
-    // Process outbound sync: write backend changes to Health Connect
-    try {
-      val result =
+      try {
         processOutboundSync(
           apiUrl = apiUrl,
           authToken = authToken,
           httpClient = ktorHttpClient,
           healthConnectClient = healthConnectClient,
           grantedPermissions = grantedPermissions,
+          reporter = reporter,
         )
-      if (result.fetched > 0) {
-        val parts = mutableListOf<String>()
-        if (result.written > 0) parts.add("${result.written} written to HC")
-        if (result.skipped > 0) parts.add("${result.skipped} skipped")
-        if (result.transientFailures > 0) parts.add("${result.transientFailures} transient failures")
-        if (!result.acknowledged) parts.add("ack failed")
-        val msg = "Outbound: ${parts.joinToString(", ")} (of ${result.fetched} pending)"
-        val details = result.skipReasons + result.failReasons
-        statusMessage =
-          if (details.isNotEmpty()) {
-            "$msg\n${details.joinToString("\n")}"
-          } else {
-            msg
+      } catch (e: Exception) {
+        Log.w("OutboundSync", "Outbound sync failed in syncNow: ${e.message}", e)
+        reporter.updateStage(SyncStage.Outbound) {
+          it.copy(status = SyncStageStatus.Failed, errorMessage = e.message)
+        }
+      }
+
+      if (awSyncEnabled) {
+        reporter.updateStage(SyncStage.ActivityWatch) {
+          it.copy(status = SyncStageStatus.Active, message = "Syncing app usage…")
+        }
+        try {
+          val r =
+            processActivityWatchSync(
+              apiUrl = apiUrl,
+              authToken = authToken,
+              httpClient = ktorHttpClient,
+              context = currentContext,
+            )
+          awSyncResult = r
+          reporter.updateStage(SyncStage.ActivityWatch) {
+            when {
+              r.error != null -> it.copy(status = SyncStageStatus.Failed, errorMessage = r.error)
+              !r.available -> it.copy(status = SyncStageStatus.Skipped, message = "Not detected")
+              else -> it.copy(status = SyncStageStatus.Done, message = "${r.eventsPushed} events synced", sentRecords = r.eventsPushed)
+            }
           }
+        } catch (e: Exception) {
+          Log.w("ActivityWatch", "AW sync failed in syncNow: ${e.message}", e)
+          awSyncResult = ActivityWatchSyncResult(error = e.message)
+          reporter.updateStage(SyncStage.ActivityWatch) {
+            it.copy(status = SyncStageStatus.Failed, errorMessage = e.message)
+          }
+        }
       }
     } catch (e: Exception) {
-      Log.w("OutboundSync", "Outbound sync failed in syncNow: ${e.message}", e)
-      statusMessage = "Outbound sync error: ${e.message}"
-    }
-    // ActivityWatch sync (if enabled)
-    if (awSyncEnabled) {
-      try {
-        awSyncResult =
-          processActivityWatchSync(
-            apiUrl = apiUrl,
-            authToken = authToken,
-            httpClient = ktorHttpClient,
-            context = currentContext,
-          )
-      } catch (e: Exception) {
-        Log.w("ActivityWatch", "AW sync failed in syncNow: ${e.message}", e)
-        awSyncResult = ActivityWatchSyncResult(error = e.message)
-      }
+      fatal = e.message
+      Log.e("SyncNow", "syncNow fatal: ${e.message}", e)
+    } finally {
+      reporter.end(fatal)
     }
   }
 
@@ -665,25 +713,31 @@ fun HealthConnectScreen(
       LifecycleEventObserver { _, event ->
         if (event == Lifecycle.Event.ON_RESUME) {
           Log.d("HealthConnectScreen", "App resumed. HasAny: $hasAnyPermissions, IsProcessing: $isProcessing")
-          if (hasAnyPermissions && !isProcessing) {
+          if (hasAnyPermissions && !reporter.state.value.isRunning) {
             scope.launch {
-              // Re-check permissions in case user changed them in system settings
               refreshPermissions()
-              // Incremental sync: fetch and send page by page
-              syncHealthData(context)
-              // Process outbound sync: write backend changes to Health Connect
+              if (reporter.state.value.isRunning) return@launch
+              reporter.begin()
               try {
-                processOutboundSync(
-                  apiUrl = apiUrl,
-                  authToken = authToken,
-                  httpClient = ktorHttpClient,
-                  healthConnectClient = healthConnectClient,
-                  grantedPermissions = grantedPermissions,
-                )
-              } catch (e: Exception) {
-                Log.w("OutboundSync", "Outbound sync failed on resume: ${e.message}")
+                syncHealthData(context)
+                try {
+                  processOutboundSync(
+                    apiUrl = apiUrl,
+                    authToken = authToken,
+                    httpClient = ktorHttpClient,
+                    healthConnectClient = healthConnectClient,
+                    grantedPermissions = grantedPermissions,
+                    reporter = reporter,
+                  )
+                } catch (e: Exception) {
+                  Log.w("OutboundSync", "Outbound sync failed on resume: ${e.message}")
+                  reporter.updateStage(SyncStage.Outbound) {
+                    it.copy(status = SyncStageStatus.Failed, errorMessage = e.message)
+                  }
+                }
+              } finally {
+                reporter.end()
               }
-              // Refresh widget with latest data
               net.aurboda.widget.HrZoneWidgetProvider
                 .triggerUpdate(context)
             }
@@ -702,7 +756,7 @@ fun HealthConnectScreen(
       Log.d("HealthConnectScreen", "Starting periodic sync loop (60s interval)")
       while (true) {
         delay(60_000L)
-        if (!isProcessing) {
+        if (!reporter.state.value.isRunning) {
           Log.d("HealthConnectScreen", "Periodic sync: fetching and sending data")
           syncNow(context)
         }
@@ -743,10 +797,10 @@ fun HealthConnectScreen(
             }
           }
 
-          Text(
-            statusMessage,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+          SyncProgressView(
+            state = progressState,
+            permissionStatusMessage = permissionStatusMessage,
+            activityWatchEnabled = awSyncEnabled,
           )
 
           Text(
@@ -769,6 +823,48 @@ fun HealthConnectScreen(
                 }
               },
             )
+          }
+
+          if (backgroundSyncEnabled) {
+            BackgroundSyncStatusRow(bgSyncStatus)
+          }
+
+          // Background read permission is granted separately from foreground reads:
+          // Health Connect requires the user to grant at least one foreground read first,
+          // then offers a separate "all the time" / "while in use" prompt for this one.
+          if (hasAnyPermissions && !hasBackgroundReadPermission) {
+            androidx.compose.material3.Surface(
+              shape = MaterialTheme.shapes.small,
+              color = MaterialTheme.colorScheme.surfaceVariant,
+              modifier = Modifier.fillMaxWidth(),
+            ) {
+              Column(modifier = Modifier.padding(12.dp)) {
+                Text(
+                  "Background access not granted",
+                  style = MaterialTheme.typography.bodyMedium,
+                  fontWeight = FontWeight.Bold,
+                )
+                androidx.compose.foundation.layout
+                  .Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                  "Periodic background sync needs Health Connect to allow reads " +
+                    "while Aurboda is closed. Without it, the every-15-minute job " +
+                    "fails until you open the app.",
+                  style = MaterialTheme.typography.bodySmall,
+                  color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                androidx.compose.foundation.layout
+                  .Spacer(modifier = Modifier.height(8.dp))
+                androidx.compose.material3.OutlinedButton(
+                  onClick = {
+                    requestPermissionLauncher.launch(arrayOf(HC_BACKGROUND_READ_PERMISSION))
+                  },
+                  modifier = Modifier.fillMaxWidth(),
+                ) {
+                  Text("Allow Background Access")
+                }
+              }
+            }
           }
 
           Button(

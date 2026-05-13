@@ -1,3 +1,5 @@
+import type { RequestHandler } from 'express'
+
 /**
  * Settings and goals route group.
  *
@@ -8,17 +10,16 @@ import {
   type UpdateSettingsInput,
   updateSettingsInputSchema,
   type UserSettingsResponse,
+  type WidgetGoalProgress,
 } from '@aurboda/api-spec'
-import { type RequestHandler, Router } from 'express'
 
-import { getGoalsProgress } from '../services/goals.ts'
+import { getGoalsProgress, getWidgetGoalsProgress } from '../services/goals.ts'
 import { getSettingsResponse, validateAndUpdateSettings } from '../services/settings.ts'
+import { type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody } from '../validation.ts'
 
-export const createSettingsRouter = (authMiddleware: RequestHandler): Router => {
-  const router = Router()
-
-  // GET /user/settings - Get user settings with effective HR zones
+export const createSettingsRouter = (authMiddleware: RequestHandler): TypedRouter => {
+  const router = typedRouter()
   router.get<Record<string, never>, UserSettingsResponse>(
     '/user/settings',
     authMiddleware,
@@ -28,7 +29,6 @@ export const createSettingsRouter = (authMiddleware: RequestHandler): Router => 
     },
   )
 
-  // PATCH /user/settings - Update user settings
   router.patch<Record<string, never>, UserSettingsResponse, UpdateSettingsInput>(
     '/user/settings',
     authMiddleware,
@@ -42,12 +42,20 @@ export const createSettingsRouter = (authMiddleware: RequestHandler): Router => 
     },
   )
 
-  // GET /goals/progress - Get progress toward all user goals
   router.get<Record<string, never>, GoalsProgressResponse>(
     '/goals/progress',
     authMiddleware,
     async (req, res) => {
       const goals = await getGoalsProgress(req.user!)
+      res.json({ goals, success: true })
+    },
+  )
+
+  router.get<Record<string, never>, { goals: WidgetGoalProgress[]; success: true }>(
+    '/goals/progress/widget',
+    authMiddleware,
+    async (req, res) => {
+      const goals = await getWidgetGoalsProgress(req.user!)
       res.json({ goals, success: true })
     },
   )

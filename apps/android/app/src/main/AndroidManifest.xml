@@ -24,6 +24,14 @@
 
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
 
+    <!--
+        Background access lets WorkManager periodic sync read Health Connect
+        data when Aurboda is not in the foreground. The user has to grant the
+        relevant foreground read permissions first; Health Connect then offers
+        a separate "all the time" / "while in use" choice for this permission.
+    -->
+    <uses-permission android:name="android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND" />
+
     <!-- Alphabetically Sorted Health Permissions -->
     <uses-permission android:name="android.permission.health.READ_ACTIVE_CALORIES_BURNED"/>
     <uses-permission android:name="android.permission.health.READ_BASAL_BODY_TEMPERATURE" />

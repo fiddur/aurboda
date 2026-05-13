@@ -7,24 +7,29 @@
 
 import { isBefore, subMinutes } from 'date-fns'
 
-import type { GarminClient } from '../garmin.ts'
-import type { ouraClient } from '../oura.ts'
-import type { SyncProvider } from './queries.ts'
+import type { GarminClient } from '../integrations/garmin/client.ts'
+import type { ouraClient } from '../integrations/oura/client.ts'
+import type { SyncProvider } from './queries/index.ts'
 
 import { getSyncState } from '../db/index.ts'
 import {
   type GarminDataType,
   isRateLimited as isGarminRateLimited,
+  syncActivityDetails,
   syncGarminDataType,
-} from '../garmin-sync.ts'
-import { syncAllCalendars } from '../ical-sync.ts'
-import { syncLastFmData } from '../lastfm-sync.ts'
-import { isRateLimited as isOuraRateLimited, type OuraDataType, syncOuraDataType } from '../oura-sync.ts'
+} from '../integrations/garmin/sync.ts'
+import { syncAllCalendars } from '../integrations/ical/sync.ts'
+import { syncLastFmData } from '../integrations/lastfm/sync.ts'
+import {
+  isRateLimited as isOuraRateLimited,
+  type OuraDataType,
+  syncOuraDataType,
+} from '../integrations/oura/sync.ts'
 import {
   isRateLimited as isRescueTimeRateLimited,
   needsSync as rescueTimeNeedsSync,
   syncRescueTimeData,
-} from '../rescuetime-sync.ts'
+} from '../integrations/rescuetime/sync.ts'
 import { auditError, auditInfo, auditWarn } from './audit-log.ts'
 import { getSettings } from './settings.ts'
 
@@ -96,6 +101,11 @@ export function createSyncProvider(config: SyncProviderConfig): SyncProvider {
 
         auditInfo(user, 'sync', `Auto-syncing Garmin ${dataType}`)
         await syncGarminDataType(user, config.garmin, dataType as GarminDataType)
+
+        // After syncing activities, also fetch per-second detail data (GPS, HR, etc.)
+        if (dataType === 'activities') {
+          await syncActivityDetails(user, config.garmin)
+        }
       } catch (error) {
         auditError(user, 'sync', `Failed to auto-sync Garmin ${dataType}`, { error: String(error) })
       }
