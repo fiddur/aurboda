@@ -19,7 +19,7 @@ import { findMergedGroupForActivity, mergeOverlappingActivities } from './merge.
  * alias) when joining.
  */
 export const activityColumns = (alias: string = 'activities'): string =>
-  `${alias}.id, ${alias}.source, ${alias}.external_id, ${alias}.activity_type, ${alias}.start_time, ${alias}.end_time, ${alias}.title, ${alias}.notes, ${alias}.data, ${alias}.deleted_at, ${alias}.superseded_by,
+  `${alias}.id, ${alias}.source, ${alias}.external_id, ${alias}.activity_type, ${alias}.start_time, ${alias}.end_time, ${alias}.title, ${alias}.data, ${alias}.deleted_at, ${alias}.superseded_by,
   (SELECT array_agg(target_id) FROM activity_override_targets WHERE override_id = ${alias}.id) AS override_target_ids`
 
 const ACTIVITY_COLUMNS_BARE = activityColumns()

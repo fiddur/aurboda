@@ -98,7 +98,6 @@ export const mapActivityRow = (row: QueryResultRow): Activity => ({
   end_time: row.end_time ? new Date(row.end_time) : undefined,
   external_id: row.external_id ?? undefined,
   id: row.id,
-  notes: row.notes,
   // Populated by the SELECT via a subquery against activity_override_targets
   // (when present). PostgreSQL returns NULL for an empty array_agg, which
   // the row-mapper normalises to undefined so the Activity type stays sparse.

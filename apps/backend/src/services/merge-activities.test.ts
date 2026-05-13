@@ -2,6 +2,15 @@ import { describe, expect, test, vi } from 'vitest'
 
 import type { Activity } from '../db/types.ts'
 
+// Stub db helpers that the service touches directly (independent of injected deps)
+// — keeps these unit tests off the network without expanding the deps interface.
+vi.mock('../db', () => ({
+  activityTypeExists: vi.fn().mockResolvedValue(true),
+  enqueueOutboundSync: vi.fn().mockResolvedValue(undefined),
+  reanchorNotes: vi.fn().mockResolvedValue(undefined),
+  replaceUserNotes: vi.fn().mockResolvedValue(undefined),
+}))
+
 import { buildMergedActivityData, mergeActivities } from './mutations.ts'
 
 const makeActivity = (overrides: Partial<Activity> & { id: string }): Activity => ({
@@ -48,23 +57,7 @@ describe('buildMergedActivityData', () => {
     expect(result.title).toBe('Combined Run')
   })
 
-  test('concatenates notes from all sources', () => {
-    const activities = [
-      makeActivity({ id: 'a1', notes: 'First part' }),
-      makeActivity({ id: 'a2', notes: 'Second part' }),
-    ]
-    const result = buildMergedActivityData(activities)
-    expect(result.notes).toBe('First part\nSecond part')
-  })
-
-  test('notes override wins over concatenation', () => {
-    const activities = [
-      makeActivity({ id: 'a1', notes: 'First part' }),
-      makeActivity({ id: 'a2', notes: 'Second part' }),
-    ]
-    const result = buildMergedActivityData(activities, { notes: 'Merged notes' })
-    expect(result.notes).toBe('Merged notes')
-  })
+  // note: PR #2 moved notes to the notes table; merge no longer touches them
 
   test('merges data objects with later overriding earlier', () => {
     const activities = [
@@ -218,14 +211,9 @@ describe('mergeActivities', () => {
       }),
     })
 
-    const result = await mergeActivities(
-      'user1',
-      { activity_ids: ['a1', 'a2'], title: 'Combined Run', notes: 'Merged' },
-      deps,
-    )
+    const result = await mergeActivities('user1', { activity_ids: ['a1', 'a2'], title: 'Combined Run' }, deps)
 
     expect(result.success).toBe(true)
     expect(result.title).toBe('Combined Run')
-    expect(result.notes).toBe('Merged')
   })
 })

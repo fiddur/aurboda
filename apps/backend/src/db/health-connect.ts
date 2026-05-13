@@ -42,6 +42,7 @@ const stripExerciseTypeFromData = (data: Record<string, unknown>): Record<string
 import { insertActivities, insertActivity } from './activities/index.ts'
 import { query } from './connection.ts'
 import { insertMeal } from './meals.ts'
+import { upsertSyncedNote } from './notes.ts'
 import { insertRawRecord, insertRawRecords } from './raw-records.ts'
 import { insertTimeSeries } from './time-series.ts'
 
@@ -103,15 +104,24 @@ export const processHealthConnectData = async (
     // For exercise sessions, resolve the specific exercise type (yoga, running, etc.)
     const activityType =
       baseActivityType === 'exercise' ? resolveExerciseActivityType(data) : baseActivityType
-    await insertActivity(user, {
+    const startTime = new Date(data.startTime as string)
+    const endTime = data.endTime ? new Date(data.endTime as string) : undefined
+    const activityId = await insertActivity(user, {
       activity_type: activityType,
       data: stripExerciseTypeFromData(data),
-      end_time: data.endTime ? new Date(data.endTime as string) : undefined,
-      notes: data.notes as string | undefined,
+      end_time: endTime,
       source: 'health_connect',
-      start_time: new Date(data.startTime as string),
+      start_time: startTime,
       title: data.title as string | undefined,
     })
+    // HC sends `notes` as a single string. Persist it as a synced note row
+    // (source='health_connect') so it round-trips cleanly: outbound HC sync
+    // only includes user-authored (source IS NULL) notes, so this row never
+    // gets echoed back as user input.
+    const hcNotes = data.notes as string | undefined
+    if (activityId && hcNotes) {
+      await upsertSyncedNote(user, 'activity', activityId, 'health_connect', hcNotes, startTime, endTime)
+    }
   }
 }
 
@@ -125,6 +135,7 @@ export const processHealthConnectData = async (
  * Meals (NutritionRecord) are still inserted individually since they're rare
  * and don't support upsert.
  */
+// eslint-disable-next-line complexity -- record-type fan-out across HC types
 export const processHealthConnectBatch = async (
   user: string,
   recordType: string,
@@ -136,6 +147,13 @@ export const processHealthConnectBatch = async (
   const rawRecords: RawRecord[] = []
   const allTimeSeriesPoints: TimeSeriesPoint[] = []
   const activities: Activity[] = []
+  const activityNotes: {
+    externalId: string | undefined
+    activityType: string
+    startTime: Date
+    endTime?: Date
+    content: string
+  }[] = []
   const mealRecords: Record<string, unknown>[] = []
 
   for (const data of records) {
@@ -186,15 +204,26 @@ export const processHealthConnectBatch = async (
       // For exercise sessions, resolve the specific exercise type (yoga, running, etc.)
       const resolvedType =
         baseActivityType === 'exercise' ? resolveExerciseActivityType(data) : baseActivityType
+      const startTime = new Date(data.startTime as string)
+      const endTime = data.endTime ? new Date(data.endTime as string) : undefined
       activities.push({
         activity_type: resolvedType,
         data: stripExerciseTypeFromData(data),
-        end_time: data.endTime ? new Date(data.endTime as string) : undefined,
-        notes: data.notes as string | undefined,
+        end_time: endTime,
         source: 'health_connect',
-        start_time: new Date(data.startTime as string),
+        start_time: startTime,
         title: data.title as string | undefined,
       })
+      const noteContent = data.notes as string | undefined
+      if (noteContent) {
+        activityNotes.push({
+          activityType: resolvedType,
+          content: noteContent,
+          endTime,
+          externalId,
+          startTime,
+        })
+      }
     }
   }
 
@@ -206,7 +235,34 @@ export const processHealthConnectBatch = async (
   }
 
   if (activities.length > 0) {
-    await insertActivities(user, activities)
+    const inserted = await insertActivities(user, activities)
+    // Persist notes for activities that carry them. Match on (external_id) for
+    // HC records (always present) and fall back to (type + start_time) just in
+    // case. upsertSyncedNote is idempotent so re-syncing the same HC record
+    // updates the existing note in place.
+    if (activityNotes.length > 0) {
+      const idByExternalId = new Map<string, string>()
+      const idByTypeStart = new Map<string, string>()
+      for (const row of inserted) {
+        if (row.external_id) idByExternalId.set(row.external_id, row.id)
+        idByTypeStart.set(`${row.activity_type}|${row.start_time.toISOString()}`, row.id)
+      }
+      for (const note of activityNotes) {
+        const id =
+          (note.externalId && idByExternalId.get(note.externalId)) ??
+          idByTypeStart.get(`${note.activityType}|${note.startTime.toISOString()}`)
+        if (!id) continue
+        await upsertSyncedNote(
+          user,
+          'activity',
+          id,
+          'health_connect',
+          note.content,
+          note.startTime,
+          note.endTime,
+        )
+      }
+    }
   }
 
   // Meals don't have upsert logic and are rare -- insert individually

@@ -1212,6 +1212,40 @@ export const migrateSchema = async (user: string) => {
     )
   }
 
+  // Migrate activity notes from the activities.notes column into the notes
+  // table (one row per non-empty value). HC/sync-sourced notes get the
+  // owning activity's source; aurboda/manual-sourced ones land as
+  // user-authored (source = NULL) which is what `replaceUserNotes` /
+  // `getUserNotesJoined` look for. Idempotent via NOT EXISTS guard; the
+  // column is then dropped so the notes table is the single source of truth.
+  if (existingTableNames.has('activities')) {
+    const colCheck = await query<{ exists: boolean }>(
+      db,
+      `SELECT EXISTS (
+         SELECT 1 FROM information_schema.columns
+         WHERE table_name = 'activities' AND column_name = 'notes'
+       ) AS exists`,
+    )
+    if (colCheck.rows[0]?.exists) {
+      await query(
+        db,
+        `INSERT INTO notes (entity_type, entity_id, content, source, start_time, end_time)
+         SELECT 'activity', a.id::text, a.notes,
+                CASE WHEN a.source IN ('aurboda', 'manual') THEN NULL ELSE a.source END,
+                a.start_time, a.end_time
+           FROM activities a
+          WHERE a.notes IS NOT NULL AND a.notes != ''
+            AND NOT EXISTS (
+              SELECT 1 FROM notes n
+               WHERE n.entity_type = 'activity'
+                 AND n.entity_id = a.id::text
+                 AND n.content = a.notes
+            )`,
+      )
+      await query(db, `ALTER TABLE activities DROP COLUMN IF EXISTS notes`)
+    }
+  }
+
   // Step 3: Align Garmin typeKey names with HC exercise type names.
   // Garmin uses modifier_noun (e.g., treadmill_running), HC uses noun_modifier (running_treadmill).
   if (existingTableNames.has('activities')) {

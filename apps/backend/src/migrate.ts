@@ -96,14 +96,16 @@ async function migrateHcData(db: Client, user: string) {
       ])
     }
 
-    // Normalize to activities if applicable
+    // Normalize to activities if applicable. Notes are no longer kept on the
+    // activities row; HC's notes get persisted via upsertSyncedNote during
+    // live ingest (this one-shot legacy migration skips them — they'll be
+    // backfilled if the source HC payload still includes them).
     const activityType = healthConnectActivityMapping[recordType]
     if (activityType) {
       await insertActivity(user, {
         activity_type: activityType,
         data: fullData,
         end_time: row.endTime ? new Date(row.endTime) : undefined,
-        notes: row.data.notes,
         source: 'health_connect',
         start_time: new Date(row.startTime),
         title: row.data.title,

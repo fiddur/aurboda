@@ -92,7 +92,6 @@ function enrichActivity(
     end_time: a.end_time?.toISOString(),
     hr_zone_secs: hrZonesForActivity(a, ctx),
     id: isMerged ? `merged:${a.id}` : a.id,
-    notes: a.notes,
     override_target_ids: a.override_target_ids,
     source: a.source,
     start_time: a.start_time.toISOString(),

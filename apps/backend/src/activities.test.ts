@@ -208,40 +208,7 @@ describe('mergeOverlappingActivities', () => {
     })
   })
 
-  test('concatenates notes with newline when merging', () => {
-    const activities = [
-      makeActivity({
-        end_time: new Date('2024-01-15T11:00:00Z'),
-        notes: 'First note',
-        start_time: new Date('2024-01-15T10:00:00Z'),
-      }),
-      makeActivity({
-        end_time: new Date('2024-01-15T11:30:00Z'),
-        notes: 'Second note',
-        start_time: new Date('2024-01-15T10:30:00Z'),
-      }),
-    ]
-    const result = mergeOverlappingActivities(activities)
-    expect(result).toHaveLength(1)
-    expect(result[0].notes).toBe('First note\nSecond note')
-  })
-
-  test('preserves notes when only one activity has notes', () => {
-    const activities = [
-      makeActivity({
-        end_time: new Date('2024-01-15T11:00:00Z'),
-        start_time: new Date('2024-01-15T10:00:00Z'),
-      }),
-      makeActivity({
-        end_time: new Date('2024-01-15T11:30:00Z'),
-        notes: 'Only note',
-        start_time: new Date('2024-01-15T10:30:00Z'),
-      }),
-    ]
-    const result = mergeOverlappingActivities(activities)
-    expect(result).toHaveLength(1)
-    expect(result[0].notes).toBe('Only note')
-  })
+  // note: PR #2 moved notes to the notes table; merge no longer touches them
 
   test('keeps first source when merging', () => {
     const activities = [
@@ -870,26 +837,23 @@ describe('mergeOverlappingActivities with override links (issue #715)', () => {
     expect(result[0].source_ids).toEqual(expect.arrayContaining(['garmin-1', 'aurboda-override']))
   })
 
-  test('override wins for same-type edits (notes-only override) where regular cross-merge skips same-type pairs', () => {
+  test('override wins for same-type edits where regular cross-merge skips same-type pairs', () => {
     const garmin = makeActivity({
       activity_type: 'meditation',
       end_time: new Date('2024-01-15T09:30:00Z'),
       id: 'garmin-1',
-      notes: 'auto-tagged',
       source: 'garmin',
     })
     const override = makeActivity({
       activity_type: 'meditation',
       end_time: new Date('2024-01-15T09:30:00Z'),
       id: 'aurboda-override',
-      notes: 'pipe ceremony — second time this week',
       override_target_ids: ['garmin-1'],
       source: 'aurboda',
     })
     const result = mergeOverlappingActivities([garmin, override], categoryMap)
     expect(result).toHaveLength(1)
     expect(result[0].id).toBe('aurboda-override')
-    expect(result[0].notes).toContain('pipe ceremony')
   })
 
   test('override pairs with target even when start_times have drifted past 120s threshold', () => {

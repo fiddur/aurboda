@@ -21,10 +21,13 @@ import {
   getActivitySourcesByIds,
   getActivityTypeDefinition,
   getOverrideForActivity,
+  getUserNotesJoined,
   insertActivity as dbInsertActivity,
   insertNewActivity as dbInsertNewActivity,
   insertOverride as dbInsertOverride,
   materializeSuperseded,
+  reanchorNotes,
+  replaceUserNotes,
   updateActivity as dbUpdateActivity,
   enqueueOutboundSync,
   findHcRecordId,
@@ -83,7 +86,6 @@ export interface AddActivityResult {
   start_time?: string
   end_time?: string
   title?: string
-  notes?: string
   error?: string
 }
 
@@ -134,7 +136,6 @@ export interface UpdateActivityResult {
   start_time?: string
   end_time?: string
   title?: string
-  notes?: string
   error?: string
 }
 
@@ -372,11 +373,17 @@ export async function addActivity(
     data: input.data,
     end_time: input.end_time,
     id,
-    notes: input.notes,
     source: 'aurboda',
     start_time: input.start_time,
     title: input.title,
   })
+
+  // Persist user-typed notes as a row in the notes table. Source is left
+  // NULL so it joins the "user-authored" set used by replaceUserNotes and
+  // the HC outbound-sync notes-join.
+  if (input.notes && input.notes.length > 0) {
+    await replaceUserNotes(user, 'activity', id, input.notes, input.start_time, input.end_time)
+  }
 
   onMutated?.(user, input.activity_type, input.start_time, input.end_time ?? input.start_time)
 
@@ -410,7 +417,6 @@ export async function addActivity(
     activity_type: input.activity_type,
     end_time: input.end_time?.toISOString(),
     id,
-    notes: input.notes,
     start_time: input.start_time.toISOString(),
     success: true,
     title: input.title,
@@ -602,7 +608,6 @@ export async function updateActivity(
         activity_type: finalType,
         data: mergedData,
         end_time: input.end_time === null ? undefined : (finalEndTime ?? undefined),
-        notes: input.notes !== undefined ? input.notes : target.notes,
         start_time: finalStartTime,
         title: input.title !== undefined ? input.title : target.title,
       })
@@ -620,7 +625,6 @@ export async function updateActivity(
         activity_type: input.activity_type,
         data: input.data ? mergedData : undefined,
         end_time: input.end_time,
-        notes: input.notes,
         start_time: input.start_time,
         title: input.title,
       })
@@ -630,7 +634,6 @@ export async function updateActivity(
       activity_type: input.activity_type,
       data: input.data ? mergedData : undefined,
       end_time: input.end_time,
-      notes: input.notes,
       start_time: input.start_time,
       title: input.title,
     })
@@ -642,6 +645,22 @@ export async function updateActivity(
       id,
       success: false,
     }
+  }
+
+  // Route a body-level `notes` update into the notes table. Replace semantics:
+  // wipe existing user-authored notes (source IS NULL) on this row, then insert
+  // the new content if non-empty. Synced notes (HC, Oura, …) are untouched.
+  // Attach to the row we wrote (override if we just created one, else the
+  // edited row itself).
+  if (input.notes !== undefined) {
+    await replaceUserNotes(
+      user,
+      'activity',
+      updated.id!,
+      input.notes,
+      updated.start_time,
+      updated.end_time ?? undefined,
+    )
   }
 
   // Sync inherited times on any notes attached to either the row we wrote or
@@ -704,6 +723,10 @@ export async function updateActivity(
             updated.activity_type as keyof typeof activityTypeToHealthConnectType
           ]
         if (hcRecordType) {
+          // HC's notes field is a single string; serialize all user-authored
+          // notes joined by newline (synced ones are skipped to avoid the
+          // telephone-game of HC notes echoing back through us).
+          const joinedNotes = await getUserNotesJoined(user, 'activity', updated.id!)
           await enqueueOutboundSync(user, {
             entity_id: updated.id!,
             entity_type: 'activity',
@@ -713,7 +736,7 @@ export async function updateActivity(
               activity_type: updated.activity_type,
               data: updated.data,
               end_time: updated.end_time?.toISOString(),
-              notes: updated.notes,
+              notes: joinedNotes,
               start_time: updated.start_time.toISOString(),
               title: updated.title,
             },
@@ -729,7 +752,6 @@ export async function updateActivity(
     activity_type: updated.activity_type,
     end_time: updated.end_time?.toISOString(),
     id: updated.id,
-    notes: updated.notes,
     start_time: updated.start_time.toISOString(),
     success: true,
     title: updated.title,
@@ -753,22 +775,23 @@ export interface MergeActivitiesResult {
   start_time?: string
   end_time?: string
   title?: string
-  notes?: string
   error?: string
 }
 
 /**
  * Build the merged data object from a list of activities sorted by start_time.
  * Pure function — easy to unit-test independently.
+ *
+ * Notes are NOT folded in here; mergeActivities re-anchors the source rows'
+ * notes onto the new merged row via reanchorNotes after the insert.
  */
 export const buildMergedActivityData = (
   sortedActivities: Activity[],
-  overrides?: { title?: string; notes?: string },
+  overrides?: { title?: string },
 ): {
   start_time: Date
   end_time: Date | undefined
   title: string | undefined
-  notes: string | undefined
   data: Record<string, unknown>
 } => {
   const startTime = sortedActivities[0].start_time
@@ -799,16 +822,7 @@ export const buildMergedActivityData = (
   // Title: override > first non-empty from sources
   const title = overrides?.title || sortedActivities.find((a) => a.title)?.title
 
-  // Notes: override > concatenation
-  const notes =
-    overrides?.notes ||
-    sortedActivities
-      .filter((a) => a.notes)
-      .map((a) => a.notes)
-      .join('\n') ||
-    undefined
-
-  return { data: mergedData, end_time: endTime, notes, start_time: startTime, title }
+  return { data: mergedData, end_time: endTime, start_time: startTime, title }
 }
 
 /**
@@ -859,18 +873,29 @@ export async function mergeActivities(
   // Sort by start_time
   const sorted = [...activities].sort((a, b) => a.start_time.getTime() - b.start_time.getTime())
 
-  const merged = buildMergedActivityData(sorted, { notes: input.notes, title: input.title })
+  const merged = buildMergedActivityData(sorted, { title: input.title })
 
   const id = await deps.insertNewActivity(user, {
     activity_type: sorted[0].activity_type,
     data: merged.data,
     end_time: merged.end_time,
     id: randomUUID(),
-    notes: merged.notes,
     source: 'aurboda',
     start_time: merged.start_time,
     title: merged.title,
   })
+
+  // Re-anchor any notes attached to the source activities onto the merged row.
+  // If the caller passed an explicit notes override, replace the user-authored
+  // notes with that single string (synced notes from the sources are still
+  // re-anchored, so HC/Oura-sourced notes survive the merge).
+  const sourceIds = sorted.map((a) => a.id).filter((x): x is string => !!x)
+  if (sourceIds.length > 0) {
+    await reanchorNotes(user, 'activity', sourceIds, id)
+  }
+  if (input.notes !== undefined) {
+    await replaceUserNotes(user, 'activity', id, input.notes, merged.start_time, merged.end_time)
+  }
 
   // Soft-delete originals
   for (const activity of sorted) {
@@ -888,7 +913,6 @@ export async function mergeActivities(
     activity_type: sorted[0].activity_type,
     end_time: merged.end_time?.toISOString(),
     id,
-    notes: merged.notes,
     start_time: merged.start_time.toISOString(),
     success: true,
     title: merged.title,

@@ -13,7 +13,6 @@ export const activitiesTables: Record<string, string> = {
       start_time      TIMESTAMPTZ NOT NULL,
       end_time        TIMESTAMPTZ,
       title           VARCHAR(255),
-      notes           TEXT,
       data            JSONB,
       deleted_at      TIMESTAMPTZ,
       superseded_by   UUID REFERENCES activities(id) ON DELETE SET NULL

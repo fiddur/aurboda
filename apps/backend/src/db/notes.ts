@@ -137,6 +137,73 @@ export const deleteNote = async (user: string, id: string): Promise<boolean> => 
 }
 
 /**
+ * Replace all user-authored notes (`source IS NULL`) for an entity with a
+ * single new note. Synced notes (source = 'health_connect', 'oura', …) are
+ * left untouched. If `content` is empty, just clears the user notes.
+ */
+export const replaceUserNotes = async (
+  user: string,
+  entityType: EntityType,
+  entityId: string,
+  content: string,
+  startTime?: Date,
+  endTime?: Date,
+): Promise<void> => {
+  await query(user, `DELETE FROM notes WHERE entity_type = $1 AND entity_id = $2 AND source IS NULL`, [
+    entityType,
+    entityId,
+  ])
+  if (content.length === 0) return
+  await query(
+    user,
+    `INSERT INTO notes (entity_type, entity_id, content, start_time, end_time)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [entityType, entityId, content, startTime ?? null, endTime ?? null],
+  )
+}
+
+/**
+ * Join all user-authored notes (`source IS NULL`) for an entity into a single
+ * string, ordered chronologically by created_at. Returns undefined if none.
+ * Used for outbound HC sync, where the destination has a single `notes` field.
+ */
+export const getUserNotesJoined = async (
+  user: string,
+  entityType: EntityType,
+  entityId: string,
+): Promise<string | undefined> => {
+  const result = await query<{ content: string }>(
+    user,
+    `SELECT content FROM notes
+     WHERE entity_type = $1 AND entity_id = $2 AND source IS NULL
+     ORDER BY created_at ASC`,
+    [entityType, entityId],
+  )
+  if (result.rows.length === 0) return undefined
+  return result.rows.map((r) => r.content).join('\n')
+}
+
+/**
+ * Re-anchor notes from a set of source entities to a new entity (e.g. when
+ * `mergeActivities` collapses several activities into one). All notes whose
+ * `entity_id` is in `sourceIds` are reassigned to `targetId`.
+ */
+export const reanchorNotes = async (
+  user: string,
+  entityType: EntityType,
+  sourceIds: string[],
+  targetId: string,
+): Promise<void> => {
+  if (sourceIds.length === 0) return
+  await query(
+    user,
+    `UPDATE notes SET entity_id = $1, updated_at = NOW()
+     WHERE entity_type = $2 AND entity_id = ANY($3)`,
+    [targetId, entityType, sourceIds],
+  )
+}
+
+/**
  * Upsert a note from an external sync source.
  * If a note with the same entity + source already exists, update its content.
  * If the content is empty/null, delete the synced note (comment was removed upstream).

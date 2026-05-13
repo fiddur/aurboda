@@ -30,9 +30,11 @@ vi.mock('../db', () => ({
   findHcRecordId: vi.fn().mockResolvedValue(null),
   findMergeableActivity: vi.fn().mockResolvedValue(null),
   getActivityById: vi.fn(),
+  getActivitySourcesByIds: vi.fn().mockResolvedValue([]),
   getCustomMetricByName: vi.fn(),
   getCustomMetricDefinitions: vi.fn().mockResolvedValue([]),
   getOverrideForActivity: vi.fn().mockResolvedValue(null),
+  getUserNotesJoined: vi.fn().mockResolvedValue(undefined),
   getUserSettings: vi.fn(),
   insertCustomMetricDefinition: vi.fn(),
   insertActivity: vi.fn(),
@@ -40,6 +42,8 @@ vi.mock('../db', () => ({
   insertOverride: vi.fn(),
   insertTimeSeries: vi.fn(),
   materializeSuperseded: vi.fn().mockResolvedValue(undefined),
+  reanchorNotes: vi.fn().mockResolvedValue(undefined),
+  replaceUserNotes: vi.fn().mockResolvedValue(undefined),
   resolveOrCreateActivityType: vi
     .fn()
     .mockImplementation((_user: string, tagName: string) =>
@@ -158,7 +162,6 @@ describe('addActivity', () => {
 
     expect(result.success).toBe(true)
     expect(result.title).toBe('Upper body')
-    expect(result.notes).toBe('Dumbbell Bench Press: 12×30kg, 8×35kg')
     expect(result.id).toBeDefined()
 
     expect(db.insertActivity).toHaveBeenCalledWith('testuser', {
@@ -166,11 +169,19 @@ describe('addActivity', () => {
       data: { exerciseType: 79 },
       end_time: new Date('2024-03-15T11:45:00Z'),
       id: expect.any(String),
-      notes: 'Dumbbell Bench Press: 12×30kg, 8×35kg',
       source: 'aurboda',
       start_time: new Date('2024-03-15T10:30:00Z'),
       title: 'Upper body',
     })
+    // Notes now persist as a notes-table row, not on the activities row.
+    expect(db.replaceUserNotes).toHaveBeenCalledWith(
+      'testuser',
+      'activity',
+      expect.any(String),
+      'Dumbbell Bench Press: 12×30kg, 8×35kg',
+      new Date('2024-03-15T10:30:00Z'),
+      new Date('2024-03-15T11:45:00Z'),
+    )
   })
 
   test('returns error when endTime is before startTime', async () => {
@@ -731,7 +742,6 @@ describe('updateActivity', () => {
       activity_type: 'exercise',
       end_time: new Date('2024-03-15T11:00:00Z'),
       id: 'activity-123',
-      notes: 'Felt great!',
       source: 'aurboda',
       start_time: new Date('2024-03-15T10:00:00Z'),
       title: 'Morning workout',
@@ -744,7 +754,6 @@ describe('updateActivity', () => {
 
     expect(result.success).toBe(true)
     expect(result.title).toBe('Morning workout')
-    expect(result.notes).toBe('Felt great!')
   })
 
   test('returns error when activity not found', async () => {
@@ -925,7 +934,6 @@ describe('updateActivity', () => {
       data: { exerciseType: 70 },
       end_time: new Date('2024-03-15T11:00:00Z'),
       id: 'activity-123',
-      notes: 'Updated notes',
       source: 'aurboda',
       start_time: new Date('2024-03-15T10:00:00Z'),
     })
@@ -934,15 +942,23 @@ describe('updateActivity', () => {
       notes: 'Updated notes',
     })
 
-    // data should be undefined (not touched) when not provided in input
+    // data should be undefined (not touched) when not provided in input;
+    // notes go to the notes table via replaceUserNotes, not on the activity row.
     expect(db.updateActivity).toHaveBeenCalledWith('testuser', 'activity-123', {
       activity_type: undefined,
       data: undefined,
       end_time: undefined,
-      notes: 'Updated notes',
       start_time: undefined,
       title: undefined,
     })
+    expect(db.replaceUserNotes).toHaveBeenCalledWith(
+      'testuser',
+      'activity',
+      'activity-123',
+      'Updated notes',
+      new Date('2024-03-15T10:00:00Z'),
+      new Date('2024-03-15T11:00:00Z'),
+    )
   })
 
   test('updates data and other fields together', async () => {
@@ -1243,7 +1259,6 @@ describe('updateActivity', () => {
         activity_type: 'pipeceremony',
         end_time: new Date('2026-05-05T10:30:00Z'),
         id: 'override-1',
-        notes: 'second pipe ceremony this week',
         override_target_ids: ['garmin-1'],
         source: 'aurboda',
         start_time: new Date('2026-05-05T10:00:00Z'),

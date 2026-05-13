@@ -70,6 +70,23 @@ const SourceRecordsSection = ({ records }: { records: SourceRecord[] }) => (
   </div>
 )
 
+// ── Notes / comments helpers ──────────────────────────────────────────────────
+
+/**
+ * Join all user-typed comments (no `source`) attached to the activity into a
+ * single string. Source-tagged comments (e.g. health_connect, oura) live in
+ * the NotesSection below — they're not user-editable from the inline notes
+ * field, so we exclude them here to keep edit semantics 1:1 with the previous
+ * `activity.notes` column.
+ */
+const getUserNotesContent = (activity: Activity): string => {
+  if (!activity.comments) return ''
+  return activity.comments
+    .filter((c) => !c.source)
+    .map((c) => c.content)
+    .join('\n')
+}
+
 // ── Exercise helpers ──────────────────────────────────────────────────────────
 
 const formatExerciseTypeName = (name: string): string => name.replaceAll('_', ' ')
@@ -289,7 +306,7 @@ const ActivityDetailContent = ({
           title={activity.title || exerciseDisplayName || typeDisplayName}
           displayStart={displayStart}
           displayEnd={realEnd}
-          notes={activity.notes}
+          notes={getUserNotesContent(activity)}
           isEditing={isEditing}
           draft={draft}
           onDraftChange={onDraftChange}
@@ -373,7 +390,7 @@ const makeDraft = (activity: Activity): ActivityDraft => {
     activity_type: activity.activity_type,
     data: (activity.data as Record<string, unknown>) ?? {},
     end_time: displayEnd ? formatDateTimeLocal(displayEnd) : '',
-    notes: activity.notes ?? '',
+    notes: getUserNotesContent(activity),
     start_time: formatDateTimeLocal(displayStart),
     title: activity.title ?? '',
   }

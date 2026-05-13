@@ -499,7 +499,6 @@ export async function getDailySummary(
         title: s.title,
       }
 
-      if (s.notes) activity.notes = s.notes
       if (s.data && Object.keys(s.data).length > 0) activity.data = s.data
 
       // Comments
