@@ -12,9 +12,8 @@ describe('parseFitBuffer', () => {
     expect(activities).toHaveLength(1)
     const act = activities[0]
 
-    expect(act.activity_type).toBe('exercise')
     // QZ file has sport=running, sub_sport=virtual_activity → running_treadmill
-    expect(act.exercise_type).toBe('running_treadmill')
+    expect(act.activity_type).toBe('running_treadmill')
     expect(act.start_time).toBeInstanceOf(Date)
     expect(act.end_time).toBeInstanceOf(Date)
     expect(act.end_time.getTime()).toBeGreaterThan(act.start_time.getTime())

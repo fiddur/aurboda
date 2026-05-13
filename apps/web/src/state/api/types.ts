@@ -70,7 +70,7 @@ export interface SourceRecord {
   end_time?: string
   title?: string
   data_origin?: string
-  exercise_type_name?: string
+  activity_type?: string
 }
 
 export interface Activity extends Omit<ApiActivity, 'start_time' | 'end_time'> {

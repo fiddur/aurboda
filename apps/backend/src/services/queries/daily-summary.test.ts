@@ -622,7 +622,7 @@ describe('getDailySummary', () => {
     expect(result.sleep_sessions[0].sleep_location).toBeUndefined()
   })
 
-  test('includes exercise_type name from numeric Health Connect code', async () => {
+  test('surfaces inline notes and structured data fields on activities', async () => {
     vi.mocked(db.getTimeSeries)
       .mockResolvedValueOnce([]) // heart rate
       .mockResolvedValueOnce([]) // steps
@@ -631,18 +631,19 @@ describe('getDailySummary', () => {
     vi.mocked(db.getSleepSessions).mockResolvedValue([])
     vi.mocked(db.getNonSleepActivitiesMerged).mockResolvedValue([
       {
-        activity_type: 'exercise',
-        data: { exerciseType: 83 }, // yoga
+        activity_type: 'yoga',
+        data: { reps: 12, weight: 20 },
         end_time: new Date('2024-01-15T07:00:00Z'),
-        source: 'health_connect',
+        notes: 'Focus on hip openers',
+        source: 'aurboda',
         start_time: new Date('2024-01-15T06:30:00Z'),
       },
       {
-        activity_type: 'exercise',
-        data: { exerciseType: 56 }, // running
-        end_time: new Date('2024-01-15T12:00:00Z'),
-        source: 'health_connect',
-        start_time: new Date('2024-01-15T11:30:00Z'),
+        activity_type: 'sex',
+        data: { partner: 'Sara' },
+        end_time: new Date('2024-01-15T23:30:00Z'),
+        source: 'aurboda',
+        start_time: new Date('2024-01-15T23:00:00Z'),
       },
     ])
     vi.mocked(db.getProductivity).mockResolvedValue([])
@@ -652,10 +653,36 @@ describe('getDailySummary', () => {
 
     const result = await getDailySummary('testuser', new Date('2024-01-15'))
 
-    const exerciseActivities = result.activities.filter((a) => a.activity_type === 'exercise')
-    expect(exerciseActivities).toHaveLength(2)
-    expect(exerciseActivities[0].exercise_type).toBe('yoga')
-    expect(exerciseActivities[1].exercise_type).toBe('running')
+    expect(result.activities).toHaveLength(2)
+    const yoga = result.activities.find((a) => a.activity_type === 'yoga')!
+    expect(yoga.notes).toBe('Focus on hip openers')
+    expect(yoga.data).toEqual({ reps: 12, weight: 20 })
+    const sex = result.activities.find((a) => a.activity_type === 'sex')!
+    expect(sex.notes).toBeUndefined()
+    expect(sex.data).toEqual({ partner: 'Sara' })
+  })
+
+  test('omits notes and data when activity has neither', async () => {
+    vi.mocked(db.getTimeSeries).mockResolvedValueOnce([]).mockResolvedValueOnce([]).mockResolvedValueOnce([])
+
+    vi.mocked(db.getSleepSessions).mockResolvedValue([])
+    vi.mocked(db.getNonSleepActivitiesMerged).mockResolvedValue([
+      {
+        activity_type: 'coffee',
+        end_time: new Date('2024-01-15T08:30:00Z'),
+        source: 'aurboda',
+        start_time: new Date('2024-01-15T08:00:00Z'),
+      },
+    ])
+    vi.mocked(db.getProductivity).mockResolvedValue([])
+    vi.mocked(locationsService.getPlaceVisits).mockResolvedValue([])
+    vi.mocked(db.getDailyAggregateValue).mockResolvedValue(null)
+    vi.mocked(db.getTimeSeriesMultiMetric).mockResolvedValue({} as Record<MetricType, [Date, number][]>)
+
+    const result = await getDailySummary('testuser', new Date('2024-01-15'))
+
+    expect(result.activities[0].notes).toBeUndefined()
+    expect(result.activities[0].data).toBeUndefined()
   })
 
   test('includes meals with food item names', async () => {
@@ -762,7 +789,7 @@ describe('getDailySummary', () => {
     })
   })
 
-  test('omits data blob from activities and sleep sessions', async () => {
+  test('passes activity data through but omits it from sleep sessions', async () => {
     vi.mocked(db.getTimeSeries).mockResolvedValue([])
     vi.mocked(db.getSleepSessions).mockResolvedValue([
       {
@@ -775,8 +802,8 @@ describe('getDailySummary', () => {
     ])
     vi.mocked(db.getNonSleepActivitiesMerged).mockResolvedValue([
       {
-        activity_type: 'exercise',
-        data: { exerciseType: 83, metadata: { device: 'oura' } },
+        activity_type: 'yoga',
+        data: { metadata: { device: 'oura' }, partner: 'Sara' },
         end_time: new Date('2024-01-15T07:30:00Z'),
         source: 'health_connect',
         start_time: new Date('2024-01-15T07:00:00Z'),
@@ -789,10 +816,11 @@ describe('getDailySummary', () => {
 
     const result = await getDailySummary('testuser', new Date('2024-01-15'))
 
-    // Exercise activities should not have raw data blob
-    const exerciseActivities = result.activities.filter((a) => a.activity_type === 'exercise')
-    expect(exerciseActivities[0]).not.toHaveProperty('data')
-    // Sleep sessions should not have raw data blob
+    // Activities now include their full data blob so that structured fields
+    // like `partner` reach AI consumers without bespoke surfacing per key.
+    const yoga = result.activities.find((a) => a.activity_type === 'yoga')!
+    expect(yoga.data).toEqual({ metadata: { device: 'oura' }, partner: 'Sara' })
+    // Sleep sessions still strip the raw blob — their data is summarized via sleep_stages.
     expect(result.sleep_sessions[0]).not.toHaveProperty('data')
   })
 

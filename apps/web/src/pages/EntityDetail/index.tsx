@@ -5,7 +5,7 @@
  * Activity detail is data-driven: features are shown based on what data exists
  * (sleep stages, HR zones, exercise type) rather than hard-coded by display_category.
  */
-import { getExerciseTypeName as getExerciseTypeNameFromValue } from '@aurboda/api-spec'
+import { isExerciseActivityType } from '@aurboda/api-spec'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { useLocation, useRoute } from 'preact-iso'
@@ -58,7 +58,7 @@ const SourceRecordsSection = ({ records }: { records: SourceRecord[] }) => (
     {records.map((record) => (
       <a key={record.id} href={`/detail/activity/${record.id}`} class="source-record">
         <span class="source-record-source">
-          {record.title ?? record.exercise_type_name ?? record.data_origin ?? record.source}
+          {record.title ?? record.activity_type ?? record.data_origin ?? record.source}
         </span>
         <span class="source-record-time">
           {formatTime(new Date(record.start_time))}
@@ -74,13 +74,14 @@ const SourceRecordsSection = ({ records }: { records: SourceRecord[] }) => (
 
 const formatExerciseTypeName = (name: string): string => name.replaceAll('_', ' ')
 
-/** Resolve exercise type name from activity data (supports both string name and numeric HC value). */
+/**
+ * Return the activity's specific exercise type (e.g. 'yoga') for exercise activities,
+ * or undefined for non-exercise activities and the generic 'exercise' bucket.
+ */
 export const resolveExerciseType = (activity: Activity): string | undefined => {
-  const data = activity.data as Record<string, unknown> | undefined
-  return (
-    (data?.exerciseTypeName as string | undefined) ??
-    (typeof data?.exerciseType === 'number' ? getExerciseTypeNameFromValue(data.exerciseType) : undefined)
-  )
+  const type = activity.activity_type
+  if (!type || type === 'exercise') return undefined
+  return isExerciseActivityType(type) ? type : undefined
 }
 
 // ── HR Zone Bar ───────────────────────────────────────────────────────────────

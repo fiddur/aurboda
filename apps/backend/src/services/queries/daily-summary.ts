@@ -2,7 +2,7 @@
  * Daily summary query function.
  */
 
-import { builtinMetricsForDailySummary, getExerciseTypeName } from '@aurboda/api-spec'
+import { builtinMetricsForDailySummary } from '@aurboda/api-spec'
 
 import type {
   ActivitySummary,
@@ -492,10 +492,6 @@ export async function getDailySummary(
   const activities: ActivitySummary[] = allActivities
     .filter((s) => s.activity_type !== 'screentime')
     .map((s) => {
-      const exerciseTypeCode = s.data?.exerciseType
-      const exerciseType =
-        typeof exerciseTypeCode === 'number' ? getExerciseTypeName(exerciseTypeCode) : undefined
-
       const activity: ActivitySummary = {
         activity_type: s.activity_type,
         end_time: s.end_time?.toISOString(),
@@ -503,7 +499,8 @@ export async function getDailySummary(
         title: s.title,
       }
 
-      if (exerciseType) activity.exercise_type = exerciseType
+      if (s.notes) activity.notes = s.notes
+      if (s.data && Object.keys(s.data).length > 0) activity.data = s.data
 
       // Comments
       const comments = s.id ? commentsMap.get(s.id) : undefined

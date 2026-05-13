@@ -1199,6 +1199,19 @@ export const migrateSchema = async (user: string) => {
     )
   }
 
+  // Strip redundant exerciseType / exerciseTypeName keys from activities.data.
+  // The specific activity_type (yoga, running, ...) is the authoritative carrier;
+  // keeping both in data duplicates state and leaks into the daily-summary `data`
+  // passthrough. Raw HC payloads still hold the originals in raw_records.
+  if (existingTableNames.has('activities')) {
+    await query(
+      db,
+      `UPDATE activities
+       SET data = data - 'exerciseType' - 'exerciseTypeName'
+       WHERE data ?| ARRAY['exerciseType', 'exerciseTypeName']`,
+    )
+  }
+
   // Step 3: Align Garmin typeKey names with HC exercise type names.
   // Garmin uses modifier_noun (e.g., treadmill_running), HC uses noun_modifier (running_treadmill).
   if (existingTableNames.has('activities')) {
