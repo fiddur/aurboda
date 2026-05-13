@@ -487,14 +487,20 @@ a.meal-name:hover {
 }
 
 .food-item-chip {
-  display: inline-block;
-  padding: 0.125rem 0.5rem;
-  font-size: 0.75rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.625rem;
+  font-size: 0.85rem;
   background: #e0f2fe;
   color: #0369a1;
   cursor: pointer;
   position: relative;
-  border-radius: 10px;
+  border-radius: 999px;
+}
+
+.food-item-chip-name {
+  line-height: 1;
 }
 
 .food-item-chip:hover {
