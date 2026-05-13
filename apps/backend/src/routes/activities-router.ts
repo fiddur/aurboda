@@ -16,8 +16,6 @@ import {
   addActivityBodySchema,
   type AddActivityResponse,
   type DeleteActivityResponse,
-  getExerciseTypeValue,
-  isValidExerciseType,
   type MergeActivitiesBody,
   mergeActivitiesBodySchema,
   type MergeActivitiesResponse,
@@ -76,11 +74,10 @@ const buildMergedResponse = async (
     ? overlapping.map((a) => {
         const data = a.data
         const dataOrigin = data?.dataOrigin
-        const exerciseTypeName = data?.exerciseTypeName
         return {
+          activity_type: a.activity_type,
           data_origin: typeof dataOrigin === 'string' ? dataOrigin : undefined,
           end_time: a.end_time?.toISOString(),
-          exercise_type_name: typeof exerciseTypeName === 'string' ? exerciseTypeName : undefined,
           id: a.id!,
           source: a.source,
           start_time: a.start_time.toISOString(),
@@ -200,42 +197,17 @@ export const createActivitiesRouter = (
     authMiddleware,
     validateBody(addActivityBodySchema),
     async (req, res) => {
-      const {
-        activity_type,
-        start_time,
-        end_time,
-        title,
-        notes,
-        exercise_type,
-        merge_span,
-        data: bodyData,
-      } = req.body
+      const { activity_type, start_time, end_time, title, notes, merge_span, data: bodyData } = req.body
       const user = req.user!
 
       const startDate = new Date(start_time)
       const endDate = end_time ? new Date(end_time) : undefined
 
-      // Build data: merge body data with exercise_type conversion if provided
-      let data: Record<string, unknown> | undefined = bodyData as Record<string, unknown> | undefined
-      if (exercise_type !== undefined) {
-        if (!isValidExerciseType(exercise_type)) {
-          return res.status(400).json({
-            error: `Invalid exercise_type "${exercise_type}"`,
-            success: false,
-          })
-        }
-        data = {
-          ...data,
-          exerciseType: getExerciseTypeValue(exercise_type),
-          exerciseTypeName: exercise_type,
-        }
-      }
-
       const result = await addActivity(
         user,
         {
           activity_type,
-          data,
+          data: bodyData,
           end_time: endDate,
           merge_span,
           notes,
@@ -290,19 +262,11 @@ export const createActivitiesRouter = (
     const results: AddActivityResponse['data'][] = []
 
     for (const fitAct of fitActivities) {
-      // Map exercise type name to Health Connect value
-      const data = {
-        ...fitAct.data,
-        exerciseType: isValidExerciseType(fitAct.exercise_type)
-          ? getExerciseTypeValue(fitAct.exercise_type)
-          : undefined,
-      }
-
       const result = await addActivity(
         user,
         {
           activity_type: fitAct.activity_type,
-          data,
+          data: fitAct.data,
           end_time: fitAct.end_time,
           notes: fitAct.notes,
           start_time: fitAct.start_time,
@@ -439,34 +403,17 @@ export const createActivitiesRouter = (
         end_time,
         title,
         notes,
-        exercise_type,
         data: bodyData,
         override_target_ids,
       } = req.body
       const user = req.user!
-
-      // Merge exercise_type into data if provided
-      let data: Record<string, unknown> | undefined = bodyData as Record<string, unknown> | undefined
-      if (exercise_type !== undefined) {
-        if (!isValidExerciseType(exercise_type)) {
-          return res.status(400).json({
-            error: `Invalid exercise_type "${exercise_type}"`,
-            success: false,
-          })
-        }
-        data = {
-          ...data,
-          exerciseType: getExerciseTypeValue(exercise_type),
-          exerciseTypeName: exercise_type,
-        }
-      }
 
       const result = await updateActivity(
         user,
         id,
         {
           activity_type,
-          data,
+          data: bodyData,
           end_time: end_time === null ? null : end_time ? new Date(end_time) : undefined,
           notes,
           override_target_ids,

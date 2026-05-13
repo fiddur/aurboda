@@ -241,12 +241,9 @@ export type Activity = z.infer<typeof activitySchema>
  */
 export const sourceRecordSchema = z
   .object({
+    activity_type: z.string().optional().meta({ description: 'Activity type (e.g. yoga, running)' }),
     data_origin: z.string().optional().meta({ description: 'Health Connect data origin package' }),
     end_time: iso8601DateTimeSchema.optional(),
-    exercise_type_name: z
-      .string()
-      .optional()
-      .meta({ description: 'Exercise type name (e.g. weightlifting)' }),
     id: z.string().uuid().meta({ description: 'Activity ID' }),
     source: z.string().meta({ description: 'Data source' }),
     start_time: iso8601DateTimeSchema,
@@ -323,9 +320,6 @@ export const addActivityBodySchema = z
     end_time: iso8601DateTimeSchema.optional().meta({
       description: 'End time (omit for point-in-time activities)',
     }),
-    exercise_type: exerciseTypeSchema.optional().meta({
-      description: 'Exercise type name (only for exercise activities)',
-    }),
     merge_span: z.number().int().positive().max(3600).optional().meta({
       description:
         'If provided, merge with existing activity of same type if its end_time is within this many seconds of new start_time. Max 3600.',
@@ -399,9 +393,6 @@ export const updateActivityBodySchema = z
       .nullable()
       .optional()
       .meta({ description: 'New end time of the activity (null to clear)' }),
-    exercise_type: exerciseTypeSchema.optional().meta({
-      description: 'New exercise type name (only for exercise activities)',
-    }),
     notes: z.string().optional().meta({ description: 'New activity notes' }),
     override_target_ids: z.array(z.string().uuid()).min(1).optional().meta({
       description:

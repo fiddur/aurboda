@@ -4,7 +4,6 @@
 
 import { z } from 'zod'
 
-import { exerciseTypeSchema } from './activities.ts'
 import {
   addressSchema,
   createDataResponseSchema,
@@ -119,13 +118,16 @@ export const activitySummarySchema = z
         'Screen time category path (e.g., ["Work & Dev", "Software Dev"]). Only present for screentime activities.',
     }),
     comments: z.array(commentSchema).optional().meta({ description: 'Comments attached to this activity' }),
-    end_time: iso8601DateTimeSchema.optional(),
-    exercise_type: exerciseTypeSchema.optional().meta({
+    data: z.record(z.string(), z.unknown()).optional().meta({
       description:
-        'Human-readable exercise type name (e.g., "yoga", "running"). Only present for exercise activities.',
+        'Structured data attached to this activity (free-form key/value pairs, e.g. "partner", "weight", "reps", source-specific fields).',
     }),
+    end_time: iso8601DateTimeSchema.optional(),
     hr_zone_secs: hrZoneSecsSchema.optional().meta({
       description: 'Time spent in each HR zone during this activity',
+    }),
+    notes: z.string().optional().meta({
+      description: 'Free-text notes typed on the activity itself (separate from attached comments).',
     }),
     start_time: iso8601DateTimeSchema,
     stress_zone_secs: stressZoneSecsSchema.optional().meta({
@@ -279,7 +281,7 @@ export const dailySummaryResultSchema = z
   .object({
     activities: z.array(activitySummarySchema).meta({
       description:
-        'Unified chronological timeline of all activities: exercises, meditations, screen time categories, custom activities, etc. Sorted by start_time. Screen time entries have category_path set. Exercise entries have exercise_type and hr_zone_secs. Activities with stress data have stress_zone_secs.',
+        'Unified chronological timeline of all activities: exercises, meditations, screen time categories, custom activities, etc. Sorted by start_time. Screen time entries have category_path set. Exercise entries (yoga, running, weightlifting, ...) carry their type directly in `activity_type`. Activities with HR or stress data have hr_zone_secs / stress_zone_secs. Free-text notes and arbitrary structured data are surfaced via `notes` and `data`.',
     }),
     date: dateOnlySchema,
     heart_rate: heartRateStatsSchema.nullable(),

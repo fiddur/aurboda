@@ -1,4 +1,3 @@
-import { getExerciseTypeName as getExerciseTypeNameFromValue } from '@aurboda/api-spec'
 import { format } from 'date-fns'
 
 import type { Activity } from '../../state/api'
@@ -17,13 +16,8 @@ export const formatDuration = (start: Date, end: Date): string => {
 export const formatExerciseType = (name: string): string => name.replaceAll('_', ' ')
 
 export const getExerciseTypeName = (activity: Activity): string => {
-  const data = activity.data as Record<string, unknown> | undefined
-  const typeName = data?.exerciseTypeName as string | undefined
-  if (typeName) return formatExerciseType(typeName)
-  const typeValue = data?.exerciseType as number | undefined
-  if (typeValue !== undefined) {
-    const name = getExerciseTypeNameFromValue(typeValue)
-    if (name) return formatExerciseType(name)
+  if (activity.activity_type && activity.activity_type !== 'exercise') {
+    return formatExerciseType(activity.activity_type)
   }
   return activity.title || 'Workout'
 }

@@ -885,12 +885,12 @@ describe('MCP Server', () => {
       }
     }
 
-    test('creates exercise activity with exercise_type name', async () => {
+    test('creates exercise activity using the specific activity_type', async () => {
       const app = createTestApp()
       const token = auth.createToken('testuser')
 
       vi.mocked(mutations.addActivity).mockResolvedValue({
-        activity_type: 'exercise',
+        activity_type: 'weightlifting',
         end_time: '2024-03-15T11:45:00.000Z',
         id: 'test-uuid',
         start_time: '2024-03-15T10:30:00.000Z',
@@ -899,9 +899,9 @@ describe('MCP Server', () => {
       })
 
       const response = await callTool(app, token, 'add_activity', {
-        activity_type: 'exercise',
+        activity_type: 'weightlifting',
+        data: { reps: 12 },
         end_time: '2024-03-15T11:45:00Z',
-        exercise_type: 'weightlifting',
         start_time: '2024-03-15T10:30:00Z',
         title: 'Upper body',
         tz: 'UTC',
@@ -913,11 +913,8 @@ describe('MCP Server', () => {
       expect(mutations.addActivity).toHaveBeenCalledWith(
         'testuser',
         {
-          activity_type: 'exercise',
-          data: {
-            exerciseType: 81,
-            exerciseTypeName: 'weightlifting',
-          },
+          activity_type: 'weightlifting',
+          data: { reps: 12 },
           end_time: expect.any(Date),
           notes: undefined,
           start_time: expect.any(Date),
@@ -927,7 +924,7 @@ describe('MCP Server', () => {
       )
     })
 
-    test('creates activity without exercise_type', async () => {
+    test('creates activity without data', async () => {
       const app = createTestApp()
       const token = auth.createToken('testuser')
 
@@ -962,34 +959,6 @@ describe('MCP Server', () => {
         },
         undefined,
       )
-    })
-
-    test('returns error for invalid exercise_type name', async () => {
-      const app = createTestApp()
-      const token = auth.createToken('testuser')
-
-      const response = await mcpPost(app)
-        .set('Authorization', `Bearer ${token}`)
-        .send({
-          id: 1,
-          jsonrpc: '2.0',
-          method: 'tools/call',
-          params: {
-            arguments: {
-              activity_type: 'exercise',
-              end_time: '2024-03-15T11:45:00Z',
-              exercise_type: 'invalid_exercise_type',
-              start_time: '2024-03-15T10:30:00Z',
-              tz: 'UTC',
-            },
-            name: 'add_activity',
-          },
-        })
-
-      expect(response.status).toBe(200)
-      const parsed = parseSSEResponse(response.text) as { result: { content: { text: string }[] } }
-      expect(parsed.result.content[0].text).toContain('Invalid exercise_type')
-      expect(mutations.addActivity).not.toHaveBeenCalled()
     })
 
     test('returns error when end_time is before start_time', async () => {
@@ -1050,12 +1019,12 @@ describe('MCP Server', () => {
 
     const testActivityId = '00000000-0000-4000-a000-000000000001'
 
-    test('updates activity with exercise_type', async () => {
+    test('updates activity_type and data fields', async () => {
       const app = createTestApp()
       const token = auth.createToken('testuser')
 
       vi.mocked(mutations.updateActivity).mockResolvedValue({
-        activity_type: 'exercise',
+        activity_type: 'weightlifting',
         end_time: '2024-03-15T11:00:00.000Z',
         id: testActivityId,
         start_time: '2024-03-15T10:00:00.000Z',
@@ -1064,7 +1033,8 @@ describe('MCP Server', () => {
       })
 
       const response = await callTool(app, token, 'update_activity', {
-        exercise_type: 'weightlifting',
+        activity_type: 'weightlifting',
+        data: { weight: 80 },
         id: testActivityId,
         title: 'Workout',
         tz: 'UTC',
@@ -1076,10 +1046,8 @@ describe('MCP Server', () => {
         'testuser',
         testActivityId,
         {
-          data: {
-            exerciseType: 81,
-            exerciseTypeName: 'weightlifting',
-          },
+          activity_type: 'weightlifting',
+          data: { weight: 80 },
           end_time: undefined,
           notes: undefined,
           start_time: undefined,
@@ -1089,7 +1057,7 @@ describe('MCP Server', () => {
       )
     })
 
-    test('updates activity without exercise_type', async () => {
+    test('updates activity notes only', async () => {
       const app = createTestApp()
       const token = auth.createToken('testuser')
 
@@ -1114,6 +1082,7 @@ describe('MCP Server', () => {
         'testuser',
         testActivityId,
         {
+          activity_type: undefined,
           data: undefined,
           end_time: undefined,
           notes: 'Great session',
@@ -1122,32 +1091,6 @@ describe('MCP Server', () => {
         },
         undefined,
       )
-    })
-
-    test('returns error for invalid exercise_type', async () => {
-      const app = createTestApp()
-      const token = auth.createToken('testuser')
-
-      const response = await mcpPost(app)
-        .set('Authorization', `Bearer ${token}`)
-        .send({
-          id: 1,
-          jsonrpc: '2.0',
-          method: 'tools/call',
-          params: {
-            arguments: {
-              exercise_type: 'not_a_real_exercise',
-              id: testActivityId,
-              tz: 'UTC',
-            },
-            name: 'update_activity',
-          },
-        })
-
-      expect(response.status).toBe(200)
-      const parsed = parseSSEResponse(response.text) as { result: { content: { text: string }[] } }
-      expect(parsed.result.content[0].text).toContain('Invalid exercise_type')
-      expect(mutations.updateActivity).not.toHaveBeenCalled()
     })
 
     test('passes time updates as Date objects', async () => {

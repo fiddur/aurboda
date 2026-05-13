@@ -9,8 +9,7 @@ import type { ExerciseTypeName } from '@aurboda/api-spec'
 import FitParser from 'fit-file-parser'
 
 export interface FitActivity {
-  activity_type: 'exercise'
-  exercise_type: ExerciseTypeName
+  activity_type: ExerciseTypeName | 'exercise'
   start_time: Date
   end_time: Date
   title: string
@@ -127,7 +126,6 @@ export const parseFitBuffer = async (buffer: ArrayBuffer | Buffer<ArrayBuffer>):
     const endTime = computeEndTime(session, startTime, totalElapsed, records)
 
     const summaryData: Record<string, unknown> = {
-      exerciseTypeName: exerciseType,
       source_detail: 'fit_import',
     }
     if (session.total_calories !== undefined) summaryData.calories = session.total_calories
@@ -136,11 +134,15 @@ export const parseFitBuffer = async (buffer: ArrayBuffer | Buffer<ArrayBuffer>):
     const duration = totalElapsed ?? (endTime.getTime() - startTime.getTime()) / 1000
     const title = `${prettySport(exerciseType)} ${formatDuration(duration)}`
 
+    // 'other_workout' is FIT's catch-all for unmapped sports — surface as the
+    // generic 'exercise' activity_type rather than a misleadingly specific one.
+    const activityType: ExerciseTypeName | 'exercise' =
+      exerciseType === 'other_workout' ? 'exercise' : exerciseType
+
     return {
-      activity_type: 'exercise' as const,
+      activity_type: activityType,
       data: summaryData,
       end_time: endTime,
-      exercise_type: exerciseType,
       notes: undefined,
       start_time: startTime,
       timeSeries: records?.length ? extractTimeSeries(records) : [],

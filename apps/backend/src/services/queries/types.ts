@@ -2,7 +2,7 @@
  * Shared types and helpers for query services.
  */
 
-import type { ActivityComputedMetrics, DataSource, ExerciseTypeName } from '@aurboda/api-spec'
+import type { ActivityComputedMetrics, DataSource } from '@aurboda/api-spec'
 
 import type { MetricType } from '../../schema.ts'
 import type { HrZoneSecs } from '../settings.ts'
@@ -132,7 +132,6 @@ export interface SessionSummary {
   end_time?: string
   duration?: number // minutes
   title?: string
-  exercise_type?: ExerciseTypeName
   hr_zone_secs?: HrZoneSecs
 }
 
@@ -148,8 +147,9 @@ export interface ActivitySummary {
   start_time: string
   end_time?: string
   title?: string
+  notes?: string
+  data?: Record<string, unknown>
   comments?: CommentSummary[]
-  exercise_type?: ExerciseTypeName
   hr_zone_secs?: HrZoneSecs
   stress_zone_secs?: StressZoneSecs
   category_path?: string[]

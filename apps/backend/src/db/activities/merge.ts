@@ -385,13 +385,7 @@ export const mergeOverlappingActivities = (
   return absorbGenericExercises(result)
 }
 
-const GENERIC_EXERCISE_CODES = new Set([0, 2]) // UNKNOWN=0, OTHER_WORKOUT=2
-
-const isGenericExercise = (a: MergedActivity): boolean => {
-  if (a.activity_type !== 'exercise') return false
-  const code = a.data?.exerciseType
-  return typeof code !== 'number' || GENERIC_EXERCISE_CODES.has(code)
-}
+const isGenericExercise = (a: MergedActivity): boolean => a.activity_type === 'exercise'
 
 /** Check if generic's duration overlaps >50% with another activity. */
 const findAbsorbingActivity = (

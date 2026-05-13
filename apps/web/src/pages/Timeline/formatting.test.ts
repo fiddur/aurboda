@@ -45,18 +45,18 @@ describe('formatExerciseType', () => {
 })
 
 describe('getExerciseTypeName', () => {
-  it('returns title when no exercise data', () => {
-    const activity = { title: 'Morning Run' } as Activity
+  it('returns title when activity_type is generic exercise', () => {
+    const activity = { activity_type: 'exercise', title: 'Morning Run' } as Activity
     expect(getExerciseTypeName(activity)).toBe('Morning Run')
   })
 
-  it('returns Workout as fallback', () => {
-    const activity = {} as Activity
+  it('returns Workout when activity_type is generic exercise and no title', () => {
+    const activity = { activity_type: 'exercise' } as Activity
     expect(getExerciseTypeName(activity)).toBe('Workout')
   })
 
-  it('uses exerciseTypeName from data', () => {
-    const activity = { data: { exerciseTypeName: 'indoor_cycling' } } as unknown as Activity
+  it('formats specific activity_type', () => {
+    const activity = { activity_type: 'indoor_cycling' } as Activity
     expect(getExerciseTypeName(activity)).toBe('indoor cycling')
   })
 })

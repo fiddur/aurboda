@@ -27,6 +27,18 @@ const resolveExerciseActivityType = (data: Record<string, unknown>): string => {
   return getExerciseTypeName(exerciseType) ?? 'exercise'
 }
 
+/**
+ * Strip the HC exerciseType / exerciseTypeName keys before persisting to
+ * activities.data — activity_type now carries that information, so keeping
+ * them duplicates state and pollutes the daily-summary `data` passthrough.
+ * The raw HC record (preserved in raw_records) still holds the originals.
+ */
+const stripExerciseTypeFromData = (data: Record<string, unknown>): Record<string, unknown> => {
+  if (!('exerciseType' in data) && !('exerciseTypeName' in data)) return data
+  const { exerciseType: _et, exerciseTypeName: _etn, ...rest } = data
+  return rest
+}
+
 import { insertActivities, insertActivity } from './activities/index.ts'
 import { query } from './connection.ts'
 import { insertMeal } from './meals.ts'
@@ -93,7 +105,7 @@ export const processHealthConnectData = async (
       baseActivityType === 'exercise' ? resolveExerciseActivityType(data) : baseActivityType
     await insertActivity(user, {
       activity_type: activityType,
-      data,
+      data: stripExerciseTypeFromData(data),
       end_time: data.endTime ? new Date(data.endTime as string) : undefined,
       notes: data.notes as string | undefined,
       source: 'health_connect',
@@ -176,7 +188,7 @@ export const processHealthConnectBatch = async (
         baseActivityType === 'exercise' ? resolveExerciseActivityType(data) : baseActivityType
       activities.push({
         activity_type: resolvedType,
-        data,
+        data: stripExerciseTypeFromData(data),
         end_time: data.endTime ? new Date(data.endTime as string) : undefined,
         notes: data.notes as string | undefined,
         source: 'health_connect',
