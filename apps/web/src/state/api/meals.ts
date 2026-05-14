@@ -1,4 +1,5 @@
 import type {
+  AddFoodItemBody,
   AddMealBody,
   Meal as ApiMeal,
   FrequentFoodItem,
@@ -131,6 +132,20 @@ export const fetchFrequentFoodItemsApi = async (
     params: opts,
   })
   return response.data.data ?? []
+}
+
+export const addFoodItemApi = async (body: AddFoodItemBody): Promise<FoodItemEntity> => {
+  const { token } = auth.value
+  // Use the local FoodItemEntity shape on the response (matches the pattern
+  // in searchFoodItemsApi) — the api-spec FoodItemResponse has a boolean
+  // `is_composite` field that doesn't fit the local entity's index signature.
+  const response = await axios.post<{ data?: FoodItemEntity; error?: string; success: boolean }>(
+    `${API_URL}/food-items`,
+    body,
+    { headers: { Authorization: `Bearer ${token}` } },
+  )
+  if (!response.data.data) throw new Error(response.data.error ?? 'Failed to create food item')
+  return response.data.data
 }
 
 export const searchFoodItemsApi = async (q: string, limit = 10): Promise<FoodItemEntity[]> => {

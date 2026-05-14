@@ -4,7 +4,7 @@ import { useEffect, useState } from 'preact/hooks'
 
 import { ConfirmButton } from '../../components/ConfirmButton'
 import { MergeFoodItemDialog } from '../../components/MergeFoodItemDialog'
-import { searchFoodItemsApi } from '../../state/api'
+import { addFoodItemApi, searchFoodItemsApi } from '../../state/api'
 import { auth } from '../../state/auth'
 import './style.css'
 
@@ -17,18 +17,6 @@ const deleteFoodItemApi = async (id: string): Promise<void> => {
     method: 'DELETE',
   })
   if (!res.ok) throw new Error('Delete failed')
-}
-
-const createFoodItemApi = async (name: string): Promise<{ id: string }> => {
-  const { token } = auth.value
-  const res = await fetch(`${API_URL}/food-items`, {
-    body: JSON.stringify({ name }),
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    method: 'POST',
-  })
-  if (!res.ok) throw new Error('Failed to create food item')
-  const json = (await res.json()) as { data: { id: string } }
-  return json.data
 }
 
 export function FoodItems() {
@@ -59,7 +47,7 @@ export function FoodItems() {
   })
 
   const createMutation = useMutation({
-    mutationFn: createFoodItemApi,
+    mutationFn: (name: string) => addFoodItemApi({ name }),
     onSuccess: ({ id }) => {
       queryClient.invalidateQueries({ queryKey: ['foodItems'] })
       // Land on the detail page so the user can rename, set an icon, click
