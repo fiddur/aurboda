@@ -9,6 +9,7 @@ import { useEffect, useRef, useState } from 'preact/hooks'
 import { ConfirmButton } from '../../components/ConfirmButton'
 import { FoodItemAutocomplete } from '../../components/FoodItemAutocomplete'
 import {
+  addFoodItemApi,
   deleteMealApi,
   fetchMeal,
   fetchSensitivityFlags,
@@ -18,47 +19,10 @@ import {
 import { createDebouncedFlusher } from '../../utils/debouncedFlusher'
 import { LocationInfo, MEAL_LOCATION_WINDOW_MS } from '../EntityDetail/LocationInfo'
 import './MealDetail.css'
+import { editItemsToBody, type FoodItemEdit, mealItemsToEdit, scaleNutrient } from './mealItems'
 import { DEFAULT_CUSTOM_TYPE, MEAL_TYPES, resolveMealTypeChange } from './mealTypes'
 
 // ── Sub-components ───────────────────────────────────────────────────────────
-
-interface FoodItemRef {
-  quantity?: number
-  calories?: number
-  protein?: number
-  carbs?: number
-  fat?: number
-  fiber?: number
-}
-
-interface FoodItemEdit {
-  food_item_id?: string
-  name: string
-  quantity?: number
-  unit?: string
-  /**
-   * Reference values for live display scaling. Captured at row creation
-   * (autocomplete pick: canonical default_quantity + canonical nutrients;
-   * existing item edit: server snapshot quantity + snapshot nutrients).
-   * Stripped before save — the backend re-derives the snapshot from the
-   * canonical food item × quantity.
-   */
-  ref?: FoodItemRef
-}
-
-/** Linearly scale a reference nutrient value to the current quantity. */
-const scaleNutrient = (
-  ref: FoodItemRef | undefined,
-  field: keyof Omit<FoodItemRef, 'quantity'>,
-  currentQuantity: number | undefined,
-): number | undefined => {
-  if (!ref) return undefined
-  const baseValue = ref[field]
-  if (typeof baseValue !== 'number') return undefined
-  if (ref.quantity === undefined || ref.quantity === 0) return baseValue
-  if (currentQuantity === undefined) return baseValue
-  return Math.round(((baseValue * currentQuantity) / ref.quantity) * 10) / 10
-}
 
 function MealTypeEditor({
   value,
@@ -210,6 +174,7 @@ function FoodItemRow({
               },
             })
           }}
+          onCreate={(name) => addFoodItemApi({ name })}
         />
         <input
           type="number"
@@ -348,44 +313,6 @@ function SaveIndicator({
 // ── Main component ───────────────────────────────────────────────────────────
 
 const FOOD_ITEM_DEBOUNCE_MS = 600
-
-const mealItemsToEdit = (
-  items?: {
-    name: string
-    food_item_id?: string
-    quantity?: number
-    unit?: string
-    calories?: number
-    protein?: number
-    carbs?: number
-    fat?: number
-    fiber?: number
-  }[],
-): FoodItemEdit[] =>
-  (items ?? []).map((fi) => ({
-    food_item_id: fi.food_item_id,
-    name: fi.name,
-    quantity: fi.quantity,
-    ref: {
-      calories: fi.calories,
-      carbs: fi.carbs,
-      fat: fi.fat,
-      fiber: fi.fiber,
-      protein: fi.protein,
-      quantity: fi.quantity,
-    },
-    unit: fi.unit,
-  }))
-
-const editItemsToBody = (items: FoodItemEdit[]): UpdateMealBody['food_items'] =>
-  items
-    .filter((fi) => fi.name.trim())
-    .map((fi) => ({
-      food_item_id: fi.food_item_id,
-      name: fi.name,
-      quantity: fi.quantity,
-      unit: fi.unit,
-    }))
 
 // eslint-disable-next-line complexity -- detail page with many independently auto-saved fields
 export function MealDetail() {
