@@ -46,6 +46,7 @@ export const createAdminRouter = (
         stravaClientId,
         stravaClientSecret,
         ouraWebhookAvailable,
+        sentryDsn,
       ] = await Promise.all([
         centralDb.getSignupMode(),
         centralDb.getAdminCount(),
@@ -57,6 +58,7 @@ export const createAdminRouter = (
         centralDb.getServerSetting('strava_client_id'),
         centralDb.getServerSetting('strava_client_secret'),
         ouraWebhookManager ? ouraWebhookManager.canEnable() : Promise.resolve(false),
+        centralDb.getServerSetting('sentry_dsn'),
       ])
       res.json({
         admin_count: adminCount,
@@ -66,6 +68,7 @@ export const createAdminRouter = (
         oura_client_secret_set: !!ouraClientSecret,
         oura_webhook_available: ouraWebhookAvailable,
         oura_webhook_enabled: ouraWebhookEnabled,
+        sentry_dsn: sentryDsn || null,
         signup_mode: signupMode,
         strava_client_id_set: !!stravaClientId,
         strava_client_secret_set: !!stravaClientSecret,
@@ -87,6 +90,7 @@ export const createAdminRouter = (
         oura_client_id,
         oura_client_secret,
         oura_webhook_enabled,
+        sentry_dsn,
         signup_mode,
         strava_client_id,
         strava_client_secret,
@@ -122,6 +126,9 @@ export const createAdminRouter = (
       if (strava_client_secret !== undefined) {
         await centralDb.setServerSetting('strava_client_secret', strava_client_secret ?? '')
       }
+      if (sentry_dsn !== undefined) {
+        await centralDb.setServerSetting('sentry_dsn', sentry_dsn ?? '')
+      }
       const [
         currentMode,
         adminCount,
@@ -133,6 +140,7 @@ export const createAdminRouter = (
         currentStravaClientId,
         currentStravaClientSecret,
         ouraWebhookAvailable,
+        currentSentryDsn,
       ] = await Promise.all([
         centralDb.getSignupMode(),
         centralDb.getAdminCount(),
@@ -144,6 +152,7 @@ export const createAdminRouter = (
         centralDb.getServerSetting('strava_client_id'),
         centralDb.getServerSetting('strava_client_secret'),
         ouraWebhookManager ? ouraWebhookManager.canEnable() : Promise.resolve(false),
+        centralDb.getServerSetting('sentry_dsn'),
       ])
       res.json({
         admin_count: adminCount,
@@ -153,6 +162,7 @@ export const createAdminRouter = (
         oura_client_secret_set: !!currentOuraClientSecret,
         oura_webhook_available: ouraWebhookAvailable,
         oura_webhook_enabled: ouraWebhookEnabledValue,
+        sentry_dsn: currentSentryDsn || null,
         signup_mode: currentMode,
         strava_client_id_set: !!currentStravaClientId,
         strava_client_secret_set: !!currentStravaClientSecret,
