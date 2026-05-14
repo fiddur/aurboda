@@ -11,6 +11,7 @@ import {
   getOverlappingActivities,
   getOverrideForActivity,
   getSleepSessions,
+  insertActivities,
   insertActivity,
   insertOverride,
   markActivityDetailSynced,
@@ -130,6 +131,74 @@ describe('Activities Integration Tests', () => {
       // Should NOT need detail re-sync
       const needingDetail = await getActivitiesNeedingDetail(user)
       expect(needingDetail).toHaveLength(0)
+    })
+  })
+
+  describe('insertActivities batch dedupe', () => {
+    test('dedupes duplicate (source, external_id) within a single batch (last write wins)', async () => {
+      const user = getTestUser()
+
+      await insertActivities(user, [
+        {
+          activity_type: 'exercise',
+          data: { calories: 100 },
+          end_time: new Date('2026-05-05T10:30:00Z'),
+          external_id: 'hc-dup-1',
+          source: 'health_connect',
+          start_time: new Date('2026-05-05T10:00:00Z'),
+          title: 'First',
+        },
+        {
+          activity_type: 'exercise',
+          data: { calories: 200 },
+          end_time: new Date('2026-05-05T10:45:00Z'),
+          external_id: 'hc-dup-1',
+          source: 'health_connect',
+          start_time: new Date('2026-05-05T10:00:00Z'),
+          title: 'Second',
+        },
+      ])
+
+      const activities = await getActivities(
+        user,
+        'exercise',
+        new Date('2026-05-05T00:00:00Z'),
+        new Date('2026-05-05T23:59:59Z'),
+      )
+      expect(activities).toHaveLength(1)
+      expect(activities[0].title).toBe('Second')
+      expect(activities[0].data).toEqual({ calories: 200 })
+    })
+
+    test('dedupes duplicate (source, type, start_time) without external_id', async () => {
+      const user = getTestUser()
+
+      await insertActivities(user, [
+        {
+          activity_type: 'sleep',
+          end_time: new Date('2026-05-06T07:00:00Z'),
+          source: 'health_connect',
+          start_time: new Date('2026-05-05T23:00:00Z'),
+          title: 'A',
+        },
+        {
+          activity_type: 'sleep',
+          end_time: new Date('2026-05-06T07:30:00Z'),
+          source: 'health_connect',
+          start_time: new Date('2026-05-05T23:00:00Z'),
+          title: 'B',
+        },
+      ])
+
+      const activities = await getActivities(
+        user,
+        'sleep',
+        new Date('2026-05-05T00:00:00Z'),
+        new Date('2026-05-06T23:59:59Z'),
+      )
+      expect(activities).toHaveLength(1)
+      expect(activities[0].title).toBe('B')
+      expect(activities[0].end_time).toEqual(new Date('2026-05-06T07:30:00Z'))
     })
   })
 
