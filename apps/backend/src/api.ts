@@ -66,6 +66,7 @@ import { createGeocodeQueue } from './services/geocode-queue.ts'
 import { createInvitationAuth } from './services/invitation.ts'
 import { getPlaceVisits } from './services/locations.ts'
 import { createPgBoss } from './services/pg-boss.ts'
+import { initSentry, Sentry } from './services/sentry.ts'
 import { createStravaQueue, type StravaQueue } from './services/strava-queue.ts'
 import { createSyncProvider } from './services/sync-provider.ts'
 import { createWebAuthnService } from './services/webauthn.ts'
@@ -94,6 +95,10 @@ const main = async () => {
   // Initialize central database (server settings, admins)
   await initializeCentralDb()
   const centralDb = getCentralDb()
+
+  // Initialize Sentry as early as possible after centralDb is available.
+  // DSN is read from server_settings (configured via Admin Settings).
+  await initSentry(centralDb)
 
   const webHost = process.env.WEB_HOST ?? 'http://localhost:5173'
   const apiBaseUrl = process.env.API_BASE_URL ?? 'http://localhost:3000'
@@ -412,6 +417,10 @@ const main = async () => {
     webHost,
     wellKnown,
   })
+
+  // Sentry must be registered AFTER all controllers and BEFORE any other
+  // error middleware. No-op if Sentry was not initialized.
+  Sentry.setupExpressErrorHandler(httpd)
 
   // Centralized error handler
   httpd.use((err: Error, req: Request, res: Response, _next: NextFunction) => {

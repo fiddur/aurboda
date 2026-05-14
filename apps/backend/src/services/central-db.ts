@@ -41,6 +41,7 @@ export interface ServerSettings {
   oura_client_secret: string
   oura_webhook_enabled: boolean
   oura_webhook_verification_token: string
+  sentry_dsn: string
   signup_mode: SignupMode
   strava_client_id: string
   strava_client_secret: string
