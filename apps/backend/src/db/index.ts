@@ -285,6 +285,7 @@ export {
   getFrequentMeals,
   getMealById,
   getMealLogCompleted,
+  getMealLogCompletedInRange,
   getMeals,
   insertMeal,
   upsertMeal,

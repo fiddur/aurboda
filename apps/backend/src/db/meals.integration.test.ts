@@ -7,8 +7,10 @@ import {
   getFrequentFoodItems,
   getFrequentMeals,
   getMealById,
+  getMealLogCompletedInRange,
   getMeals,
   insertMeal,
+  setMealLogCompleted,
   updateMeal,
 } from './meals.ts'
 
@@ -483,6 +485,25 @@ describe('Meals Integration Tests', () => {
       // Without the filter both items are returned.
       const all = await getFrequentFoodItems(user, { limit: 10, since_days: 30 })
       expect(all.map((r) => r.food_item_id).sort()).toEqual([oats, soup].sort())
+    })
+  })
+
+  describe('getMealLogCompletedInRange', () => {
+    test('returns only completed dates within [start, end]', async () => {
+      const user = getTestUser()
+      await setMealLogCompleted(user, '2025-04-01')
+      await setMealLogCompleted(user, '2025-04-05')
+      await setMealLogCompleted(user, '2025-04-10')
+      await setMealLogCompleted(user, '2025-05-01')
+
+      const result = await getMealLogCompletedInRange(user, '2025-04-02', '2025-04-30')
+      expect(result.sort()).toEqual(['2025-04-05', '2025-04-10'])
+    })
+
+    test('returns empty when no dates match', async () => {
+      const user = getTestUser()
+      const result = await getMealLogCompletedInRange(user, '2025-01-01', '2025-01-31')
+      expect(result).toEqual([])
     })
   })
 

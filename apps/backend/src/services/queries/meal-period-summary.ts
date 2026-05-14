@@ -14,6 +14,7 @@ import { NUTRIENT_FIELD_NAMES } from '@aurboda/api-spec'
 import {
   getMeals,
   getMealFoodItemsBatch,
+  getMealLogCompletedInRange,
   getTimeSeriesBucketed,
   type MealFoodItemLink,
 } from '../../db/index.ts'
@@ -24,6 +25,8 @@ export interface MealPeriodSummaryInput {
   end: string // YYYY-MM-DD
   /** IANA tz used to bucket meals into local days; defaults to UTC. */
   tz?: string
+  /** When true, drop days that aren't marked log-completed before averaging. */
+  count_only_completed?: boolean
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -156,13 +159,24 @@ export const getMealPeriodSummary = async (
   const { end } = dateOnlyToRange(input.end, tz)
   const daysInRange = inclusiveDayCount(input.start, input.end)
 
-  const meals = await getMeals(user, { end, start })
+  const [meals, completedDates] = await Promise.all([
+    getMeals(user, { end, start }),
+    getMealLogCompletedInRange(user, input.start, input.end),
+  ])
   const junctionMap = await getMealFoodItemsBatch(
     user,
     meals.map((m) => m.id),
   )
 
   const dayTotals = accumulateDayTotals(meals, junctionMap, tz)
+
+  if (input.count_only_completed) {
+    const completedSet = new Set(completedDates)
+    for (const dayKey of dayTotals.keys()) {
+      if (!completedSet.has(dayKey)) dayTotals.delete(dayKey)
+    }
+  }
+
   const daysWithMeals = dayTotals.size
   const nutrients = computeNutrientStats(dayTotals, daysWithMeals)
   const calories_burned = await computeCaloriesBurned(user, start, end, tz)
@@ -172,6 +186,7 @@ export const getMealPeriodSummary = async (
     end: input.end,
     days_in_range: daysInRange,
     days_with_meals: daysWithMeals,
+    days_completed: completedDates.length,
     nutrients,
     calories_burned,
   }

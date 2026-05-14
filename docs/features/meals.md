@@ -91,7 +91,7 @@ Auth is read from `~/.config/aurboda/config`.
 - `DELETE /meals/:id` -- delete a meal
 - `PUT /meals/log-completed/:date` -- mark day as logging-complete
 - `DELETE /meals/log-completed/:date` -- unmark
-- `GET /meals/period-summary?start=&end=&tz=` -- daily-averaged nutrient intake + averaged calories_total burn
+- `GET /meals/period-summary?start=&end=&tz=&count_only_completed=` -- daily-averaged nutrient intake + averaged calories_total burn. When `count_only_completed=true`, only days marked as log-completed contribute to averages; the response always reports `days_completed` so the UI can show "avg from N completed".
 - `GET /nutrient-recommendations` -- effective merged list (NNR2023 + user overrides)
 - `PUT /nutrient-recommendations/:nutrient_name` -- upsert a user override (pass null on a bound to suppress the central default)
 - `DELETE /nutrient-recommendations/:nutrient_name` -- revert to central default

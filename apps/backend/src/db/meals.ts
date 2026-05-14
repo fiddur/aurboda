@@ -347,6 +347,28 @@ export const getMealLogCompleted = async (user: string, dates: string[]): Promis
 }
 
 /**
+ * Get all completed dates within an inclusive [start, end] YYYY-MM-DD range.
+ *
+ * Formats the date in SQL with TO_CHAR rather than `date.toISOString().slice(0,10)`
+ * — a DATE column comes back as a JS Date at midnight in the Node process's
+ * local tz, and toISOString then shifts to UTC, which can drop the date back
+ * a day in any env east of UTC.
+ */
+export const getMealLogCompletedInRange = async (
+  user: string,
+  start: string,
+  end: string,
+): Promise<string[]> => {
+  const result = await query(
+    user,
+    `SELECT TO_CHAR(date, 'YYYY-MM-DD') AS date FROM meal_log_completed
+       WHERE date >= $1 AND date <= $2`,
+    [start, end],
+  )
+  return result.rows.map((r) => r.date as string)
+}
+
+/**
  * Mark a date as completed.
  */
 export const setMealLogCompleted = async (user: string, date: string): Promise<void> => {
