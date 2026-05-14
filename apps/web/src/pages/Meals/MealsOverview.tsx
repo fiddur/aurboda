@@ -134,15 +134,20 @@ function OverviewColgroup() {
 function WindowHeaderCell({
   w,
   activeKey,
-  daysCompleted,
   countOnlyCompleted,
 }: {
   w: WindowData
   activeKey: WindowKey
-  daysCompleted: number | undefined
   countOnlyCompleted: boolean
 }) {
-  const showSub = w.window.days > 1 && daysCompleted !== undefined
+  // The actual avg denominator is `days_with_meals` (after the optional
+  // completed-day filter), not `days_completed` — a day marked complete with
+  // no meal logged doesn't contribute to the average, so showing the bare
+  // completed count would overstate it. `days_completed` is still useful as
+  // the "marked complete" hint when the filter is off.
+  const showSub = w.window.days > 1 && w.summary !== undefined
+  const denominator = w.summary?.days_with_meals
+  const completed = w.summary?.days_completed
   return (
     <th
       class="num window-col"
@@ -153,7 +158,9 @@ function WindowHeaderCell({
       <span class="window-tick" aria-hidden="true" data-window={w.window.key} />
       {showSub && (
         <span class="window-sub">
-          {countOnlyCompleted ? `avg from ${daysCompleted} completed` : `${daysCompleted} completed`}
+          {countOnlyCompleted
+            ? `avg from ${denominator} completed`
+            : `${completed} of ${denominator} completed`}
         </span>
       )}
     </th>
@@ -182,7 +189,6 @@ function OverviewThead({
             key={w.window.key}
             w={w}
             activeKey={activeKey}
-            daysCompleted={w.summary?.days_completed}
             countOnlyCompleted={countOnlyCompleted}
           />
         ))}

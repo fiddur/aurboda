@@ -7,6 +7,7 @@ import {
   getFrequentFoodItems,
   getFrequentMeals,
   getMealById,
+  getMealLogCompleted,
   getMealLogCompletedInRange,
   getMeals,
   insertMeal,
@@ -504,6 +505,17 @@ describe('Meals Integration Tests', () => {
       const user = getTestUser()
       const result = await getMealLogCompletedInRange(user, '2025-01-01', '2025-01-31')
       expect(result).toEqual([])
+    })
+  })
+
+  describe('getMealLogCompleted', () => {
+    test('returns only the input dates that are marked complete (TZ-safe)', async () => {
+      const user = getTestUser()
+      await setMealLogCompleted(user, '2025-06-01')
+      await setMealLogCompleted(user, '2025-06-15')
+
+      const result = await getMealLogCompleted(user, ['2025-06-01', '2025-06-02', '2025-06-15'])
+      expect(result.sort()).toEqual(['2025-06-01', '2025-06-15'])
     })
   })
 
