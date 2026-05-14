@@ -68,6 +68,8 @@ export const createAdminRouter = (
         oura_client_secret_set: !!ouraClientSecret,
         oura_webhook_available: ouraWebhookAvailable,
         oura_webhook_enabled: ouraWebhookEnabled,
+        // DSN is returned in full (not `_set` boolean like other secrets):
+        // Sentry DSNs are public values designed to be embedded in clients.
         sentry_dsn: sentryDsn || null,
         signup_mode: signupMode,
         strava_client_id_set: !!stravaClientId,

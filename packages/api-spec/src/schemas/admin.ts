@@ -192,10 +192,15 @@ export const updateAdminSettingsBodySchema = z
       .boolean()
       .optional()
       .meta({ description: 'Enable or disable Oura webhook push sync' }),
-    sentry_dsn: z.string().nullable().optional().meta({
-      description:
-        'Sentry DSN for backend error reporting (set to null to clear). Takes effect after the next backend restart.',
-    }),
+    sentry_dsn: z
+      .string()
+      .url()
+      .nullable()
+      .optional()
+      .meta({
+        description:
+          'Sentry DSN for backend error reporting (set to null to clear). Takes effect after the next backend restart.',
+      }),
     signup_mode: signupModeSchema.optional().meta({ description: 'New signup mode' }),
     strava_client_id: z
       .string()

@@ -13,6 +13,19 @@ configures a DSN in Admin Settings.
 When no DSN is configured, the Sentry SDK is not initialized and the express error
 handler is a no-op — no data leaves the server.
 
+### Scope: errors only, no tracing/auto-instrumentation
+
+`Sentry.init` runs inside `main()` after all module imports. `@sentry/node` v8+
+auto-instrumentation (OpenTelemetry HTTP/express/db tracing, automatic
+breadcrumbs) needs init *before* those modules are imported to patch them, so
+that side of the SDK is effectively inert here. Only the explicit
+`setupExpressErrorHandler` path captures errors.
+
+This is intentional given the admin-configured (DB-stored) DSN — we cannot
+initialize before module imports without an env-var bootstrap. To enable
+tracing later, run the backend with `node --import ./instrument.ts` and read
+the DSN from an env var in that file.
+
 ## Admin setup
 
 1. Create a project in Sentry (Node + Express).
