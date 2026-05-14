@@ -972,40 +972,13 @@ a.meal-name:hover {
   color: #374151;
 }
 
-/* Energy grid: label column + one column per window. On narrow the
-   media query below collapses to 2 columns (label + active window). */
-.energy-grid {
-  display: grid;
-  row-gap: 0.5rem;
-  column-gap: 1rem;
-  align-items: baseline;
-  grid-template-columns: minmax(120px, max-content) repeat(4, minmax(0, 1fr));
-}
-
-.energy-grid-header,
-.energy-grid-row {
-  display: contents;
-}
-
-.energy-col-label {
-  font-size: 0.75rem;
-  color: #6b7280;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  text-align: right;
-}
-
 .energy-row-label {
   font-size: 0.8rem;
   color: #6b7280;
 }
 
-.energy-grid-cell {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  text-align: right;
-  gap: 0.1rem;
+.overview-table .energy-cell {
+  vertical-align: baseline;
 }
 
 .energy-num {
@@ -1015,11 +988,11 @@ a.meal-name:hover {
   color: #111827;
 }
 
-.energy-grid-cell.positive .energy-num {
+.energy-cell.positive .energy-num {
   color: #b45309;
 }
 
-.energy-grid-cell.negative .energy-num {
+.energy-cell.negative .energy-num {
   color: #166534;
 }
 
@@ -1029,6 +1002,7 @@ a.meal-name:hover {
 }
 
 .energy-sub {
+  display: block;
   font-size: 0.7rem;
   color: #6b7280;
 }
@@ -1038,6 +1012,23 @@ a.meal-name:hover {
   display: none;
 }
 
+.overview-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1rem;
+}
+
+.overview-completed-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  color: #4b5563;
+  cursor: pointer;
+  user-select: none;
+}
+
 .overview-group h3 {
   margin: 0 0 0.5rem;
   font-size: 0.9rem;
@@ -1045,10 +1036,21 @@ a.meal-name:hover {
   color: #374151;
 }
 
+/* Shared layout so Energy, Macros, Extended, etc. share the same column
+   widths and the per-window numbers line up vertically across the page. */
 .overview-table {
   width: 100%;
   border-collapse: collapse;
+  table-layout: fixed;
   font-size: 0.9rem;
+}
+
+.overview-table col.col-window {
+  width: 13%;
+}
+
+.overview-table col.col-range {
+  width: 22%;
 }
 
 .overview-table th {
@@ -1059,6 +1061,7 @@ a.meal-name:hover {
   text-transform: uppercase;
   padding: 0.25rem 0.5rem;
   border-bottom: 1px solid #e5e7eb;
+  vertical-align: bottom;
 }
 
 .overview-table th.num,
@@ -1083,7 +1086,7 @@ a.meal-name:hover {
 }
 
 .overview-table .range-col {
-  min-width: 160px;
+  /* width comes from <col class="col-range"> */
 }
 
 .overview-table .nutrient-unit {
@@ -1095,7 +1098,76 @@ a.meal-name:hover {
   color: #c4c8cf;
 }
 
-/* Narrow: hide non-active per-window cells, show selector. */
+/* Header tick legend — thin line for 1d, progressively thicker for 7d/30d/90d.
+   Mirrors the marker thickness on the range bars so the user can match
+   markers to windows. The marker bars themselves also vary in width below. */
+.overview-table th.window-col {
+  position: relative;
+}
+
+.window-label {
+  display: inline-block;
+}
+
+.window-tick {
+  display: block;
+  margin: 0.15rem 0 0 auto;
+  height: 8px;
+  background: #6b7280;
+  border-radius: 1px;
+}
+
+.window-tick[data-window='1'] {
+  width: 2px;
+}
+
+.window-tick[data-window='7'] {
+  width: 3px;
+}
+
+.window-tick[data-window='30'] {
+  width: 4px;
+}
+
+.window-tick[data-window='90'] {
+  width: 5px;
+}
+
+.window-sub {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 0.65rem;
+  color: #9ca3af;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  white-space: normal;
+  line-height: 1.1;
+}
+
+/* Vary range-bar marker thickness so each window has a recognisable weight. */
+.ref-range-marker[data-window='1'] {
+  width: 2px;
+  transform: translateX(-1px);
+}
+
+.ref-range-marker[data-window='7'] {
+  width: 3px;
+  transform: translateX(-1.5px);
+}
+
+.ref-range-marker[data-window='30'] {
+  width: 4px;
+  transform: translateX(-2px);
+}
+
+.ref-range-marker[data-window='90'] {
+  width: 5px;
+  transform: translateX(-2.5px);
+}
+
+/* Narrow: hide non-active per-window cells, show selector, hide
+   non-active markers on the range bars too. */
 @media (max-width: 759px) {
   .overview-window-control {
     display: inline-flex;
@@ -1108,8 +1180,34 @@ a.meal-name:hover {
     display: none;
   }
 
-  .energy-grid {
-    grid-template-columns: minmax(120px, max-content) minmax(0, 1fr);
+  /* Toggle is meaningless on a 1-day window. */
+  .meals-overview[data-active='1'] .overview-completed-toggle[data-hide-when-active='1'] {
+    display: none;
+  }
+
+  .overview-table {
+    /* With only one window column visible, give it more room. */
+    table-layout: auto;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  .overview-energy {
+    background: #1f2937;
+    border-color: #374151;
+  }
+
+  .overview-energy h3,
+  .overview-group h3 {
+    color: #e5e7eb;
+  }
+
+  .energy-num {
+    color: #f3f4f6;
+  }
+
+  .window-tick {
+    background: #9ca3af;
   }
 }
 

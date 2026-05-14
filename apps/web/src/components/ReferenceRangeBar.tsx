@@ -7,6 +7,9 @@ export interface RangeMarker {
   flag?: ReportFlag
   /** Short label shown above the marker (e.g. "1d", "7d"). */
   label?: string
+  /** Identifier exposed as data-window on the marker so CSS can style or hide
+   * it based on the active selection. */
+  windowKey?: string
 }
 
 interface ReferenceRangeBarProps {
@@ -152,6 +155,7 @@ export function ReferenceRangeBar({
               key={m.label ?? i}
               class="ref-range-marker"
               data-marker-index={i}
+              data-window={m.windowKey}
               style={{ backgroundColor: color, left: `${pct}%` }}
               title={m.label ? `${m.label}: ${m.value}` : `${m.value}`}
             >

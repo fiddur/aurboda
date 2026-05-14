@@ -92,6 +92,7 @@ export const createMealsRouter = (authMiddleware: AnyMiddleware): TypedRouter =>
     validateQuery(nutrientPeriodSummaryQuerySchema),
     async (req, res) => {
       const data = await getMealPeriodSummary(req.user!, {
+        count_only_completed: req.query.count_only_completed,
         end: req.query.end,
         start: req.query.start,
         tz: req.query.tz,
