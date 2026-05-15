@@ -19,6 +19,7 @@ import {
   type MealFoodItemLink,
 } from '../../db/index.ts'
 import { dateOnlyToRange } from '../../mcp/tz-utils.ts'
+import { withDerivedNutrients } from '../derived-nutrients.ts'
 
 export interface MealPeriodSummaryInput {
   start: string // YYYY-MM-DD
@@ -70,8 +71,9 @@ const localDateKey = (d: Date, tz: string): string => getDateKeyFormatter(tz).fo
 const aggregateNutrientsFromLinks = (links: MealFoodItemLink[]): Map<string, number> => {
   const totals = new Map<string, number>()
   for (const link of links) {
+    const derived = withDerivedNutrients(link as Record<string, unknown>)
     for (const field of NUTRIENT_FIELD_NAMES) {
-      const v = link[field]
+      const v = derived[field]
       if (typeof v === 'number' && v > 0) {
         totals.set(field, (totals.get(field) ?? 0) + v)
       }
