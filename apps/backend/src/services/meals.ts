@@ -26,6 +26,7 @@ import {
   type Micros,
 } from '../db/index.ts'
 import { getCentralDb } from './central-db.ts'
+import { withDerivedNutrients } from './derived-nutrients.ts'
 import {
   cacheCompositeNutrients,
   createFoodItemsService,
@@ -192,12 +193,18 @@ const linksToFoodItems = (
     }
   })
 
-/** Aggregate all nutrient columns from junction links into a flat record. */
+/**
+ * Aggregate all nutrient columns from junction links into a flat record.
+ * Each link is run through `withDerivedNutrients` first so totals include
+ * vitamin A (RAE), niacin equivalents, salt/sodium cross-fill, etc. when
+ * the food item only carries the precursor fields.
+ */
 const aggregateNutrients = (links: MealFoodItemLink[]): Record<string, number> => {
   const totals: Record<string, number> = {}
   for (const link of links) {
+    const derived = withDerivedNutrients(link as Record<string, unknown>)
     for (const field of NUTRIENT_FIELD_NAMES) {
-      const val = link[field]
+      const val = derived[field]
       if (typeof val === 'number' && val > 0) {
         totals[field] = (totals[field] ?? 0) + val
       }

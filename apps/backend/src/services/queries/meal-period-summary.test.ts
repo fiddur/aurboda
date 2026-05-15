@@ -218,6 +218,40 @@ describe('getMealPeriodSummary', () => {
     expect(result.nutrients).toEqual({})
   })
 
+  test('derives vitamin_a, niacin_equivalents and salt from precursors across a period', async () => {
+    // One day, two food items: an LSV-style row carrying only precursors
+    // (vitamin_a/niacin_equivalents/sodium null) and an explicit row.
+    vi.mocked(db.getMeals).mockResolvedValue([mealAt('m1', '2025-04-10T12:00:00Z')])
+    vi.mocked(db.getMealFoodItemsBatch).mockResolvedValue(
+      new Map<string, MealFoodItemLink[]>([
+        [
+          'm1',
+          [
+            link('m1', {
+              calories: 200,
+              b3_niacin: 4,
+              beta_carotene: 6720,
+              retinol: 580,
+              salt: 5,
+              tryptophan: 0.3,
+            }),
+            link('m1', { calories: 100, vitamin_a: 50 }),
+          ],
+        ],
+      ]),
+    )
+
+    const result = await getMealPeriodSummary('user', { start: '2025-04-10', end: '2025-04-10' })
+
+    // 580 + 6720/12 = 1140 from precursors + 50 explicit = 1190 µg RAE
+    expect(result.nutrients.vitamin_a.total).toBeCloseTo(1190)
+    // 4 mg niacin + 0.3 g tryptophan × 1000 / 60 = 4 + 5 = 9 mg NE
+    expect(result.nutrients.niacin_equivalents.total).toBeCloseTo(9)
+    // 5 g salt → 2000 mg sodium
+    expect(result.nutrients.sodium.total).toBeCloseTo(2000)
+    expect(result.nutrients.salt.total).toBeCloseTo(5)
+  })
+
   test('returns empty nutrients map when there are no meals', async () => {
     vi.mocked(db.getMeals).mockResolvedValue([])
     vi.mocked(db.getMealFoodItemsBatch).mockResolvedValue(new Map())
