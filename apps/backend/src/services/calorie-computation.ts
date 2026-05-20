@@ -11,7 +11,7 @@
  * written so the daily sum naturally equals BMR + active.
  */
 
-import type { BiologicalSex, HrZoneThresholds } from '@aurboda/api-spec'
+import type { BiologicalSex } from '@aurboda/api-spec'
 
 import type { TimeSeriesPoint } from '../db/types.ts'
 
@@ -128,6 +128,9 @@ const invalidateTrainingLoadImpulses = async (user: string, fromTime: Date): Pro
   }
 }
 
+/** Default resting HR (bpm) when the user has no resting_heart_rate metric. */
+const DEFAULT_RESTING_HR = 60
+
 const skippedResult = (
   reason: string,
   bmrSource: 'lab' | 'mifflin_st_jeor' = 'mifflin_st_jeor',
@@ -174,24 +177,20 @@ const resolveBmr = async (
 /**
  * Resolve the zone-METs context for a user at a given point in time.
  * Picks the most-recent observed HR max (settings.training_load.observed_hr_max)
- * with a 220-age fallback. Falls back to derived zones if user has none set.
+ * with a 220-age fallback. Defers to `getEffectiveHrZones` for the
+ * custom → age-based → default zones priority, then applies one more
+ * post-hoc fallback if the resolved zones look unusable for this user
+ * (e.g. zone-1 start at or below resting HR).
  */
 const resolveZoneMetsContext = async (
   user: string,
-  beforeTime: Date,
+  _beforeTime: Date,
   age: number,
   restingHr: number,
 ): Promise<ZoneMetsContext> => {
   const settings = await getSettings(user)
   const observedMax = settings.training_load?.observed_hr_max ?? 220 - age
-  let zones: HrZoneThresholds
-  if (settings.hr_zone_start) {
-    zones = settings.hr_zone_start
-  } else {
-    const effective = await getEffectiveHrZones(user)
-    zones = effective.zones
-  }
-  // If zones look unusable (e.g. min < resting), fall back to HRR-derived.
+  let zones = (await getEffectiveHrZones(user)).zones
   if (zones[1] <= restingHr) zones = defaultHrZoneThresholds(restingHr, observedMax)
   return { observed_hr_max: observedMax, resting_hr: restingHr, zones }
 }
@@ -281,7 +280,7 @@ export const computeAndStoreCalories = async (
 
   // 5. Resting HR + zone-METs context
   const restingHrMetric = await getLatestMetricValue(user, 'resting_heart_rate', expandedEnd)
-  const restingHr = restingHrMetric ?? 60
+  const restingHr = restingHrMetric ?? DEFAULT_RESTING_HR
   const zoneCtx = await resolveZoneMetsContext(user, expandedEnd, age, restingHr)
 
   // 6. HR data for the full expanded range
