@@ -1,12 +1,17 @@
 /**
  * Service for automatic calorie computation from HR data.
  *
- * Triggered after HR data is ingested (from Health Connect or Oura).
- * Computes per-minute calories using the HR-based formula and stores them
- * as calories_active with source 'aurboda', plus queues outbound sync.
+ * Triggered after HR data is ingested (from Health Connect, Oura, Garmin).
+ * Computes per-minute calories using the zone-METs model (calibrated HR zones
+ * + lab/Mifflin-St Jeor BMR) and stores both `calories_active` and
+ * `calories_total` with source 'aurboda'. Outbound sync is queued so the
+ * mobile app can write `calories_active` back to Health Connect.
+ *
+ * For minutes without HR coverage in a covered day, a BMR/min floor point is
+ * written so the daily sum naturally equals BMR + active.
  */
 
-import type { BiologicalSex } from '@aurboda/api-spec'
+import type { BiologicalSex, HrZoneThresholds } from '@aurboda/api-spec'
 
 import type { TimeSeriesPoint } from '../db/types.ts'
 
@@ -16,19 +21,18 @@ import {
   deleteTimeSeriesBySource,
   getMetricTimeRange,
   getTimeSeries,
-  getTimeSeriesBySource,
-  getTimeSeriesWithSource,
   insertTimeSeries,
 } from '../db/time-series.ts'
 import { isHealthConnectSyncableMetric, metricToHealthConnectType } from '../schema.ts'
 import { auditError, auditInfo } from './audit-log.ts'
 import {
-  type CalorieDataPoint,
-  computeCaloriesPerMinute,
-  computeGapFillPoints,
-  getVo2MaxFallback,
+  computeCaloriesPerMinuteZoneMets,
+  defaultHrZoneThresholds,
+  estimateBmrMifflinStJeor,
+  type ZoneMetsCaloriePoint,
+  type ZoneMetsContext,
 } from './calories.ts'
-import { getSettings } from './settings.ts'
+import { getEffectiveHrZones, getSettings } from './settings.ts'
 
 /**
  * Calculate age from birth date string.
@@ -61,7 +65,7 @@ const getLatestMetricValue = async (
 }
 
 /**
- * Queue outbound sync entries for calorie data points (best-effort).
+ * Queue outbound sync entries for active-calorie data points (best-effort).
  *
  * When `skipSync` is true (used during full historical recomputes), no entries
  * are queued to avoid flooding the outbound queue with thousands of old data
@@ -72,7 +76,7 @@ const getLatestMetricValue = async (
  */
 export const enqueueCalorieSync = async (
   user: string,
-  points: { time: Date; end_time: Date; kcal: number }[],
+  points: { time: Date; end_time: Date; kcal_active: number }[],
 ): Promise<void> => {
   try {
     if (points.length === 0) return
@@ -91,7 +95,7 @@ export const enqueueCalorieSync = async (
           metric: 'calories_active',
           time: p.time.toISOString(),
           unit: 'kcal',
-          value: p.kcal,
+          value: p.kcal_active,
         },
       })
     }
@@ -126,27 +130,109 @@ const invalidateTrainingLoadImpulses = async (user: string, fromTime: Date): Pro
 
 const skippedResult = (
   reason: string,
-  vo2MaxSource: 'measured' | 'fallback' = 'fallback',
+  bmrSource: 'lab' | 'mifflin_st_jeor' = 'mifflin_st_jeor',
 ): CalorieComputationResult => ({
+  bmr_source: bmrSource,
   points_computed: 0,
   points_stored: 0,
   skipped_reason: reason,
-  vo2_max_source: vo2MaxSource,
 })
 
 export interface CalorieComputationResult {
   points_computed: number
   points_stored: number
-  vo2_max_source: 'measured' | 'fallback'
+  bmr_source: 'lab' | 'mifflin_st_jeor'
   skipped_reason?: string
+}
+
+/**
+ * Resolve the BMR (kcal/day) to use for calorie computation.
+ *
+ * Priority: latest `basal_metabolic_rate` metric (e.g. InBody lab measurement,
+ * looked back up to 2 years) → Mifflin-St Jeor fallback from weight/height/age/sex.
+ * Returns null if no usable inputs are available.
+ */
+const resolveBmr = async (
+  user: string,
+  beforeTime: Date,
+  inputs: {
+    sex: BiologicalSex
+    age: number
+    weight_kg: number
+    height_cm: number | null
+  },
+): Promise<{ value: number; source: 'lab' | 'mifflin_st_jeor' } | null> => {
+  const labBmr = await getLatestMetricValue(user, 'basal_metabolic_rate', beforeTime, 730)
+  if (labBmr !== null && labBmr > 0) return { source: 'lab', value: labBmr }
+  if (inputs.height_cm === null || inputs.height_cm <= 0) return null
+  return {
+    source: 'mifflin_st_jeor',
+    value: estimateBmrMifflinStJeor(inputs.weight_kg, inputs.height_cm, inputs.age, inputs.sex),
+  }
+}
+
+/**
+ * Resolve the zone-METs context for a user at a given point in time.
+ * Picks the most-recent observed HR max (settings.training_load.observed_hr_max)
+ * with a 220-age fallback. Falls back to derived zones if user has none set.
+ */
+const resolveZoneMetsContext = async (
+  user: string,
+  beforeTime: Date,
+  age: number,
+  restingHr: number,
+): Promise<ZoneMetsContext> => {
+  const settings = await getSettings(user)
+  const observedMax = settings.training_load?.observed_hr_max ?? 220 - age
+  let zones: HrZoneThresholds
+  if (settings.hr_zone_start) {
+    zones = settings.hr_zone_start
+  } else {
+    const effective = await getEffectiveHrZones(user)
+    zones = effective.zones
+  }
+  // If zones look unusable (e.g. min < resting), fall back to HRR-derived.
+  if (zones[1] <= restingHr) zones = defaultHrZoneThresholds(restingHr, observedMax)
+  return { observed_hr_max: observedMax, resting_hr: restingHr, zones }
+}
+
+/**
+ * Build per-minute time_series points covering every minute in [dayStart, dayEnd)
+ * for `calories_total` (BMR-floored) and `calories_active`, merging HR-derived
+ * points where present and BMR/min floors for uncovered minutes.
+ */
+const buildFullDayPoints = (
+  dayStartMs: number,
+  dayEndMs: number,
+  bmrPerMin: number,
+  hrPoints: ZoneMetsCaloriePoint[],
+): { total: TimeSeriesPoint[]; active: TimeSeriesPoint[] } => {
+  const hrByMinute = new Map<number, ZoneMetsCaloriePoint>()
+  for (const p of hrPoints) hrByMinute.set(Math.floor(p.time.getTime() / 60_000), p)
+
+  const total: TimeSeriesPoint[] = []
+  const active: TimeSeriesPoint[] = []
+  for (let ms = dayStartMs; ms < dayEndMs; ms += 60_000) {
+    const minuteKey = Math.floor(ms / 60_000)
+    const p = hrByMinute.get(minuteKey)
+    const totalKcal = p?.kcal_total ?? bmrPerMin
+    const activeKcal = p?.kcal_active ?? 0
+    const time = new Date(ms)
+    total.push({ metric: 'calories_total', source: 'aurboda', time, unit: 'kcal', value: totalKcal })
+    if (activeKcal > 0) {
+      active.push({ metric: 'calories_active', source: 'aurboda', time, unit: 'kcal', value: activeKcal })
+    }
+  }
+  return { active, total }
 }
 
 /**
  * Compute and store calories for a time range where HR data exists.
  *
- * This is the main entry point called after HR data ingestion.
- * It gathers all required inputs, computes per-minute calories,
- * stores them, and queues outbound sync.
+ * Uses the zone-METs model and writes per-minute `calories_total` and
+ * `calories_active` (source 'aurboda') for every minute in the affected
+ * day(s). HR-covered minutes get METs-scaled values; uncovered minutes get
+ * a BMR/min floor for `calories_total` (and 0 for `calories_active`).
  */
 export const computeAndStoreCalories = async (
   user: string,
@@ -154,248 +240,98 @@ export const computeAndStoreCalories = async (
   end: Date,
   options?: { force?: boolean; skipSync?: boolean },
 ): Promise<CalorieComputationResult> => {
-  // 1. Get user settings and validate required fields
+  // 1. Settings + required fields
   const settings = await getUserSettings(user)
   if (!settings) return skippedResult('no settings')
 
   const sex = settings.sex as BiologicalSex | undefined
   if (!sex) return skippedResult('sex not set')
   if (!settings.birth_date) return skippedResult('birth_date not set')
-
   const age = calculateAge(settings.birth_date)
 
-  // 2. Get latest weight
+  // 2. Weight + height for BMR fallback
   const weight = await getLatestMetricValue(user, 'weight', end)
   if (weight === null) return skippedResult('no weight data')
+  const height = await getLatestMetricValue(user, 'height', end, 3650)
 
-  // 3. Get VO2 max (measured or fallback) — use 2-year lookback since VO2 max is measured infrequently
-  const measuredVo2Max = await getLatestMetricValue(user, 'vo2_max', end, 730)
-  const vo2Max = measuredVo2Max ?? getVo2MaxFallback(sex, age)
-  const vo2MaxSource = measuredVo2Max !== null ? 'measured' : 'fallback'
+  // 3. BMR (lab metric → Mifflin-St Jeor fallback)
+  const bmr = await resolveBmr(user, end, { age, height_cm: height, sex, weight_kg: weight })
+  if (bmr === null) return skippedResult('no BMR and no height for fallback')
+  const bmrPerMin = bmr.value / 1440
 
-  // 4. Get resting HR (for baseline subtraction)
-  const restingHr = await getLatestMetricValue(user, 'resting_heart_rate', end)
+  // 4. Resting HR + zone-METs context
+  const restingHrMetric = await getLatestMetricValue(user, 'resting_heart_rate', end)
+  const restingHr = restingHrMetric ?? 60
+  const zoneCtx = await resolveZoneMetsContext(user, end, age, restingHr)
 
-  // 5. Get HR data for the time range
+  // 5. HR data for the range
   const hrData = await getTimeSeries(user, 'heart_rate', start, end)
-  if (hrData.length === 0) return skippedResult('no HR data', vo2MaxSource)
+  if (hrData.length === 0) return skippedResult('no HR data', bmr.source)
 
-  // 6. Delete existing aurboda calories if force-recomputing
+  // 6. Force-recompute: delete all existing aurboda calorie rows in range
   if (options?.force) {
     await deleteTimeSeriesBySource(user, 'calories_active', 'aurboda', start, end)
     await deleteTimeSeriesBySource(user, 'calories_active', 'aurboda_gap_fill', start, end)
+    await deleteTimeSeriesBySource(user, 'calories_total', 'aurboda', start, end)
   }
 
-  // 7. Check if aurboda calories already exist for this range to avoid recomputing
-  const existingCalories = await getTimeSeriesWithSource(user, 'calories_active', start, end)
-  const existingAurbodaMinutes = new Set(
-    existingCalories.filter((p) => p.source === 'aurboda').map((p) => Math.floor(p.time.getTime() / 60_000)),
-  )
-
-  // 8. Compute per-minute calories (active only, with baseline subtraction)
-  const caloriePoints = computeCaloriesPerMinute({
-    age_years: age,
+  // 7. HR-derived per-minute zone-METs points
+  const hrPoints = computeCaloriesPerMinuteZoneMets({
+    bmr_kcal_per_day: bmr.value,
     hr_samples: hrData,
-    resting_hr: restingHr ?? undefined,
-    sex,
-    vo2_max: vo2Max,
-    weight_kg: weight,
+    zone_context: zoneCtx,
   })
 
-  // 9. Filter out already-computed minutes
-  const newPoints = caloriePoints.filter(
-    (p) => !existingAurbodaMinutes.has(Math.floor(p.time.getTime() / 60_000)),
-  )
-
-  if (newPoints.length === 0) {
-    return {
-      points_computed: caloriePoints.length,
-      points_stored: 0,
-      skipped_reason: 'all minutes already computed',
-      vo2_max_source: vo2MaxSource,
-    }
+  if (hrPoints.length === 0) {
+    return { bmr_source: bmr.source, points_computed: 0, points_stored: 0, skipped_reason: 'no HR coverage' }
   }
 
-  // 10. Delete stale gap-fill points for minutes that now have HR-computed values
-  if (newPoints.length > 0) {
-    const rangeStart = newPoints[0].time
-    const rangeEnd = new Date(newPoints[newPoints.length - 1].time.getTime() + 60_000)
-    await deleteTimeSeriesBySource(user, 'calories_active', 'aurboda_gap_fill', rangeStart, rangeEnd)
-  }
+  // 8. Expand to full minutes for the affected range, BMR-floor for non-HR minutes.
+  //    Anchor to whole minutes from start..end (caller controls range; typically a day).
+  const rangeStartMs = Math.floor(start.getTime() / 60_000) * 60_000
+  const rangeEndMs = Math.ceil(end.getTime() / 60_000) * 60_000
+  const { total, active } = buildFullDayPoints(rangeStartMs, rangeEndMs, bmrPerMin, hrPoints)
 
-  // 11. Store as time_series
-  const timeSeriesPoints: TimeSeriesPoint[] = newPoints.map((p) => ({
-    metric: 'calories_active',
-    source: 'aurboda' as const,
-    time: p.time,
-    unit: 'kcal',
-    value: p.kcal,
-  }))
-  await insertTimeSeries(user, timeSeriesPoints)
+  // 9. Insert
+  await insertTimeSeries(user, [...total, ...active])
 
-  // 12. Queue outbound sync (best-effort, skipped during full historical recomputes)
+  // 10. Queue outbound sync of active calories (HR-covered minutes only)
   if (!options?.skipSync) {
-    await enqueueCalorieSync(user, newPoints)
+    await enqueueCalorieSync(user, hrPoints)
   }
 
-  // 13. Invalidate training load impulse buckets so they recompute from new calorie data
+  // 11. Invalidate training load impulses
   await invalidateTrainingLoadImpulses(user, start)
 
   return {
-    points_computed: caloriePoints.length,
-    points_stored: newPoints.length,
-    vo2_max_source: vo2MaxSource,
-  }
-}
-
-export interface GapFillDayResult {
-  gap_minutes: number
-  residual_kcal: number
-  points_stored: number
-}
-
-/**
- * Gap-fill calories for a single calendar day (UTC).
- *
- * After aurboda per-minute calories are computed from HR data, some minutes
- * may have no HR coverage (e.g., Oura wrist off, no HR monitor worn).
- * Oura/Health Connect may still capture movement-based calories for those periods.
- *
- * This function:
- * 1. Reads the HC aggregate for the day
- * 2. Deletes existing gap-fill points for the day (idempotent re-run)
- * 3. Reads existing HR-computed aurboda calorie points for the day
- * 4. Computes the residual (HC total - aurboda sum)
- * 5. Distributes it evenly across minutes without HR coverage
- * 6. Stores gap-fill points with source 'aurboda_gap_fill'
- */
-export const gapFillCaloriesForDay = async (user: string, dayStartUtc: Date): Promise<GapFillDayResult> => {
-  const dayEndUtc = new Date(dayStartUtc.getTime() + 24 * 60 * 60 * 1000 - 1)
-
-  // 1. Get HC aggregate for this day (stored at midnight UTC with source 'health_connect_aggregate')
-  const hcData = await getTimeSeriesBySource(
-    user,
-    'calories_active',
-    'health_connect_aggregate',
-    dayStartUtc,
-    dayEndUtc,
-  )
-  if (hcData.length === 0) return { gap_minutes: 0, points_stored: 0, residual_kcal: 0 }
-
-  const hcAggregateKcal = hcData.reduce((sum, [, value]) => sum + value, 0)
-
-  // 2. Delete existing gap-fill points for this day (makes re-runs idempotent)
-  await deleteTimeSeriesBySource(user, 'calories_active', 'aurboda_gap_fill', dayStartUtc, dayEndUtc)
-
-  // 3. Get existing HR-computed aurboda calorie points for this day
-  const existingData = await getTimeSeriesBySource(user, 'calories_active', 'aurboda', dayStartUtc, dayEndUtc)
-  const aurbodaPoints: CalorieDataPoint[] = existingData.map(([time, value]) => ({
-    end_time: new Date(time.getTime() + 60_000),
-    kcal: value,
-    time,
-  }))
-
-  // 4. Compute gap-fill points
-  const result = computeGapFillPoints({
-    aurboda_points: aurbodaPoints,
-    day_start: dayStartUtc,
-    hc_aggregate_kcal: hcAggregateKcal,
-  })
-
-  if (result.points.length === 0) return { gap_minutes: 0, points_stored: 0, residual_kcal: 0 }
-
-  // 5. Store gap-fill points with separate source for identification
-  const timeSeriesPoints: TimeSeriesPoint[] = result.points.map((p) => ({
-    metric: 'calories_active',
-    source: 'aurboda_gap_fill' as const,
-    time: p.time,
-    unit: 'kcal',
-    value: p.kcal,
-  }))
-  await insertTimeSeries(user, timeSeriesPoints)
-
-  // 6. Invalidate training load impulse buckets for this day
-  await invalidateTrainingLoadImpulses(user, dayStartUtc)
-
-  return {
-    gap_minutes: result.gap_minutes,
-    points_stored: result.points.length,
-    residual_kcal: result.residual_kcal,
+    bmr_source: bmr.source,
+    points_computed: hrPoints.length,
+    points_stored: total.length + active.length,
   }
 }
 
 /**
  * Get the user's device timezone from settings, or undefined if not set.
+ * Used by full-recompute to align day boundaries to local midnight.
  */
 const getDeviceTimezone = async (user: string): Promise<string | undefined> => {
   const settings = await getUserSettings(user)
   return (settings?.device_timezone as string) ?? undefined
 }
 
-/**
- * Get the local-timezone day start (as UTC) for a given UTC timestamp.
- * If no timezone is available, falls back to UTC day boundaries.
- */
 const getLocalDayStart = (utcTime: Date, timezone?: string): Date => {
   if (!timezone) {
     const dayMs = 24 * 60 * 60 * 1000
     return new Date(Math.floor(utcTime.getTime() / dayMs) * dayMs)
   }
-
-  // Use localMidnightToUtc with the date string in the target timezone
   const formatter = new Intl.DateTimeFormat('sv-SE', {
+    day: '2-digit',
+    month: '2-digit',
     timeZone: timezone,
     year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
   })
-  const localDateStr = formatter.format(utcTime) // "YYYY-MM-DD" format
+  const localDateStr = formatter.format(utcTime)
   return localMidnightToUtc(localDateStr, timezone)
-}
-
-/**
- * Gap-fill calories for all calendar days within a time range.
- * Uses the device timezone (from user settings) for day boundary alignment,
- * matching how the Android app computes daily aggregates.
- */
-export const gapFillCaloriesForRange = async (
-  user: string,
-  start: Date,
-  end: Date,
-): Promise<{
-  days_processed: number
-  total_gap_minutes: number
-  total_points_stored: number
-  total_residual_kcal: number
-}> => {
-  const timezone = await getDeviceTimezone(user)
-
-  // Get the local-timezone day boundaries
-  const dayMs = 24 * 60 * 60 * 1000
-  const firstDay = getLocalDayStart(start, timezone)
-  const lastDay = getLocalDayStart(end, timezone)
-
-  let daysProcessed = 0
-  let totalGapMinutes = 0
-  let totalPointsStored = 0
-  let totalResidualKcal = 0
-
-  for (let dayStart = firstDay.getTime(); dayStart <= lastDay.getTime(); dayStart += dayMs) {
-    const result = await gapFillCaloriesForDay(user, new Date(dayStart))
-    if (result.points_stored > 0) {
-      daysProcessed++
-      totalGapMinutes += result.gap_minutes
-      totalPointsStored += result.points_stored
-      totalResidualKcal += result.residual_kcal
-    }
-  }
-
-  return {
-    days_processed: daysProcessed,
-    total_gap_minutes: totalGapMinutes,
-    total_points_stored: totalPointsStored,
-    total_residual_kcal: totalResidualKcal,
-  }
 }
 
 /**
@@ -409,25 +345,29 @@ export const computeAndStoreCaloriesAll = async (
   const range = await getMetricTimeRange(user, 'heart_rate')
   if (!range) {
     return {
+      bmr_source: 'mifflin_st_jeor',
       days_processed: 0,
       points_computed: 0,
       points_stored: 0,
       skipped_reason: 'no HR data found',
-      vo2_max_source: 'fallback',
     }
   }
+
+  const timezone = await getDeviceTimezone(user)
+  const dayMs = 24 * 60 * 60 * 1000
 
   let totalComputed = 0
   let totalStored = 0
   let daysProcessed = 0
-  let vo2MaxSource: 'measured' | 'fallback' = 'fallback'
+  let bmrSource: 'lab' | 'mifflin_st_jeor' = 'mifflin_st_jeor'
 
-  // Process in daily chunks
-  const dayMs = 24 * 60 * 60 * 1000
-  let chunkStart = new Date(range.min)
+  // Walk local-midnight day boundaries from min..max so BMR-floor coverage
+  // aligns to the user's calendar days.
+  let chunkStart = getLocalDayStart(range.min, timezone)
+  const lastDay = getLocalDayStart(range.max, timezone)
 
-  while (chunkStart < range.max) {
-    const chunkEnd = new Date(Math.min(chunkStart.getTime() + dayMs, range.max.getTime() + 60_000))
+  while (chunkStart.getTime() <= lastDay.getTime()) {
+    const chunkEnd = new Date(chunkStart.getTime() + dayMs)
     const result = await computeAndStoreCalories(user, chunkStart, chunkEnd, {
       force: true,
       skipSync: true,
@@ -435,48 +375,34 @@ export const computeAndStoreCaloriesAll = async (
 
     totalComputed += result.points_computed
     totalStored += result.points_stored
-    if (result.vo2_max_source === 'measured') vo2MaxSource = 'measured'
+    if (result.bmr_source === 'lab') bmrSource = 'lab'
     daysProcessed++
 
     chunkStart = chunkEnd
   }
 
-  // Gap-fill from HC aggregate data for minutes without HR coverage
-  const gapFill = await gapFillCaloriesForRange(user, range.min, range.max)
-  totalStored += gapFill.total_points_stored
-
   auditInfo(user, 'data', `Full calorie recompute: ${totalStored} points across ${daysProcessed} days`, {
-    gap_filled: gapFill.total_points_stored,
-    vo2_max_source: vo2MaxSource,
+    bmr_source: bmrSource,
   })
 
   return {
+    bmr_source: bmrSource,
     days_processed: daysProcessed,
     points_computed: totalComputed,
     points_stored: totalStored,
-    vo2_max_source: vo2MaxSource,
   }
 }
 
 /**
  * Trigger calorie computation for a time range after HR data ingestion.
- * This is a best-effort operation that never throws.
- * Also runs gap-filling to distribute HC aggregate residual into uncovered minutes.
+ * Best-effort, never throws.
  */
 export const triggerCalorieComputation = async (user: string, start: Date, end: Date): Promise<void> => {
   try {
-    const result = await computeAndStoreCalories(user, start, end)
+    const result = await computeAndStoreCalories(user, start, end, { force: true })
     if (result.points_stored > 0) {
       auditInfo(user, 'data', `Computed ${result.points_stored} calorie points`, {
-        vo2_max_source: result.vo2_max_source,
-      })
-    }
-    // Gap-fill from HC aggregate for days in the range
-    const gapFill = await gapFillCaloriesForRange(user, start, end)
-    if (gapFill.total_points_stored > 0) {
-      auditInfo(user, 'data', `Gap-filled ${gapFill.total_points_stored} calorie points`, {
-        days: gapFill.days_processed,
-        residual_kcal: Math.round(gapFill.total_residual_kcal),
+        bmr_source: result.bmr_source,
       })
     }
   } catch (err) {
