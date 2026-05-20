@@ -227,18 +227,28 @@ const buildFullDayPoints = (
 }
 
 /**
- * Compute and store calories for a time range where HR data exists.
+ * Compute and store calories for the local day(s) overlapping a time range.
  *
- * Uses the zone-METs model and writes per-minute `calories_total` and
- * `calories_active` (source 'aurboda') for every minute in the affected
- * day(s). HR-covered minutes get METs-scaled values; uncovered minutes get
- * a BMR/min floor for `calories_total` (and 0 for `calories_active`).
+ * Because `calories_total` is sourced exclusively from aurboda per-minute
+ * data (no fallback to HC/Garmin daily aggregates), the BMR/min floor must
+ * cover every minute of every affected day — otherwise incremental HR
+ * ingestion would leave most of the day empty. This function therefore
+ * always expands the caller-provided [start, end) to full local-day
+ * boundaries before fetching HR / writing rows.
+ *
+ * Per affected day: HR-covered minutes get METs-scaled `calories_total`
+ * and `calories_active`; uncovered minutes get a BMR/min floor for
+ * `calories_total` (and no `calories_active` row).
+ *
+ * Idempotent: each call deletes any prior aurboda rows in the expanded
+ * range before writing. Subsequent ingestion windows that touch the same
+ * day re-write the day from scratch — safe under upsert semantics.
  */
 export const computeAndStoreCalories = async (
   user: string,
   start: Date,
   end: Date,
-  options?: { force?: boolean; skipSync?: boolean },
+  options?: { skipSync?: boolean },
 ): Promise<CalorieComputationResult> => {
   // 1. Settings + required fields
   const settings = await getUserSettings(user)
@@ -249,59 +259,70 @@ export const computeAndStoreCalories = async (
   if (!settings.birth_date) return skippedResult('birth_date not set')
   const age = calculateAge(settings.birth_date)
 
-  // 2. Weight + height for BMR fallback
-  const weight = await getLatestMetricValue(user, 'weight', end)
-  if (weight === null) return skippedResult('no weight data')
-  const height = await getLatestMetricValue(user, 'height', end, 3650)
+  // 2. Expand to local-day boundaries so the BMR/min floor covers full days,
+  //    not just the caller's HR-ingest window.
+  const timezone = await getDeviceTimezone(user)
+  const expandedStart = getLocalDayStart(start, timezone)
+  // end is treated as exclusive; bump just past the last touched minute,
+  // then snap to next local midnight (DST-safe via getLocalDayStart on +26h).
+  const lastTouched = new Date(Math.max(end.getTime() - 1, start.getTime()))
+  const lastDayStart = getLocalDayStart(lastTouched, timezone)
+  const expandedEnd = getLocalDayStart(new Date(lastDayStart.getTime() + 26 * 60 * 60 * 1000), timezone)
 
-  // 3. BMR (lab metric → Mifflin-St Jeor fallback)
-  const bmr = await resolveBmr(user, end, { age, height_cm: height, sex, weight_kg: weight })
+  // 3. Weight + height for BMR fallback
+  const weight = await getLatestMetricValue(user, 'weight', expandedEnd)
+  if (weight === null) return skippedResult('no weight data')
+  const height = await getLatestMetricValue(user, 'height', expandedEnd, 3650)
+
+  // 4. BMR (lab metric → Mifflin-St Jeor fallback)
+  const bmr = await resolveBmr(user, expandedEnd, { age, height_cm: height, sex, weight_kg: weight })
   if (bmr === null) return skippedResult('no BMR and no height for fallback')
   const bmrPerMin = bmr.value / 1440
 
-  // 4. Resting HR + zone-METs context
-  const restingHrMetric = await getLatestMetricValue(user, 'resting_heart_rate', end)
+  // 5. Resting HR + zone-METs context
+  const restingHrMetric = await getLatestMetricValue(user, 'resting_heart_rate', expandedEnd)
   const restingHr = restingHrMetric ?? 60
-  const zoneCtx = await resolveZoneMetsContext(user, end, age, restingHr)
+  const zoneCtx = await resolveZoneMetsContext(user, expandedEnd, age, restingHr)
 
-  // 5. HR data for the range
-  const hrData = await getTimeSeries(user, 'heart_rate', start, end)
-  if (hrData.length === 0) return skippedResult('no HR data', bmr.source)
+  // 6. HR data for the full expanded range
+  const hrData = await getTimeSeries(user, 'heart_rate', expandedStart, expandedEnd)
 
-  // 6. Force-recompute: delete all existing aurboda calorie rows in range
-  if (options?.force) {
-    await deleteTimeSeriesBySource(user, 'calories_active', 'aurboda', start, end)
-    await deleteTimeSeriesBySource(user, 'calories_active', 'aurboda_gap_fill', start, end)
-    await deleteTimeSeriesBySource(user, 'calories_total', 'aurboda', start, end)
-  }
+  // 7. Always wipe any prior aurboda rows for the expanded range so this run
+  //    becomes the new ground truth. (No 'force' option needed — every call
+  //    is authoritative for the day(s) it touches.)
+  await deleteTimeSeriesBySource(user, 'calories_active', 'aurboda', expandedStart, expandedEnd)
+  await deleteTimeSeriesBySource(user, 'calories_active', 'aurboda_gap_fill', expandedStart, expandedEnd)
+  await deleteTimeSeriesBySource(user, 'calories_total', 'aurboda', expandedStart, expandedEnd)
 
-  // 7. HR-derived per-minute zone-METs points
-  const hrPoints = computeCaloriesPerMinuteZoneMets({
-    bmr_kcal_per_day: bmr.value,
-    hr_samples: hrData,
-    zone_context: zoneCtx,
-  })
+  // 8. HR-derived per-minute zone-METs points (empty array is fine — every
+  //    minute still gets a BMR/min floor in step 9).
+  const hrPoints =
+    hrData.length === 0
+      ? []
+      : computeCaloriesPerMinuteZoneMets({
+          bmr_kcal_per_day: bmr.value,
+          hr_samples: hrData,
+          zone_context: zoneCtx,
+        })
 
-  if (hrPoints.length === 0) {
-    return { bmr_source: bmr.source, points_computed: 0, points_stored: 0, skipped_reason: 'no HR coverage' }
-  }
+  // 9. Build full-day points for the expanded range (BMR floor for non-HR mins)
+  const { total, active } = buildFullDayPoints(
+    expandedStart.getTime(),
+    expandedEnd.getTime(),
+    bmrPerMin,
+    hrPoints,
+  )
 
-  // 8. Expand to full minutes for the affected range, BMR-floor for non-HR minutes.
-  //    Anchor to whole minutes from start..end (caller controls range; typically a day).
-  const rangeStartMs = Math.floor(start.getTime() / 60_000) * 60_000
-  const rangeEndMs = Math.ceil(end.getTime() / 60_000) * 60_000
-  const { total, active } = buildFullDayPoints(rangeStartMs, rangeEndMs, bmrPerMin, hrPoints)
-
-  // 9. Insert
+  // 10. Insert
   await insertTimeSeries(user, [...total, ...active])
 
-  // 10. Queue outbound sync of active calories (HR-covered minutes only)
+  // 11. Queue outbound sync of active calories (HR-covered minutes only)
   if (!options?.skipSync) {
     await enqueueCalorieSync(user, hrPoints)
   }
 
-  // 11. Invalidate training load impulses
-  await invalidateTrainingLoadImpulses(user, start)
+  // 12. Invalidate training load impulses from the expanded start
+  await invalidateTrainingLoadImpulses(user, expandedStart)
 
   return {
     bmr_source: bmr.source,
@@ -354,22 +375,28 @@ export const computeAndStoreCaloriesAll = async (
   }
 
   const timezone = await getDeviceTimezone(user)
-  const dayMs = 24 * 60 * 60 * 1000
 
   let totalComputed = 0
   let totalStored = 0
   let daysProcessed = 0
   let bmrSource: 'lab' | 'mifflin_st_jeor' = 'mifflin_st_jeor'
 
-  // Walk local-midnight day boundaries from min..max so BMR-floor coverage
-  // aligns to the user's calendar days.
+  // Walk local-midnight day boundaries from min..max. Re-anchor each
+  // iteration via getLocalDayStart so DST transitions (23h / 25h days)
+  // stay aligned to local midnight rather than drifting by an hour for
+  // every chunk after the first DST event.
   let chunkStart = getLocalDayStart(range.min, timezone)
   const lastDay = getLocalDayStart(range.max, timezone)
 
   while (chunkStart.getTime() <= lastDay.getTime()) {
-    const chunkEnd = new Date(chunkStart.getTime() + dayMs)
-    const result = await computeAndStoreCalories(user, chunkStart, chunkEnd, {
-      force: true,
+    // Snap to next local midnight; +26h buffer handles spring-forward (23h
+    // days). getLocalDayStart truncates back to the local midnight, so a
+    // 23h or 25h day is handled correctly.
+    const nextChunkStart = getLocalDayStart(
+      new Date(chunkStart.getTime() + 26 * 60 * 60 * 1000),
+      timezone,
+    )
+    const result = await computeAndStoreCalories(user, chunkStart, nextChunkStart, {
       skipSync: true,
     })
 
@@ -378,7 +405,7 @@ export const computeAndStoreCaloriesAll = async (
     if (result.bmr_source === 'lab') bmrSource = 'lab'
     daysProcessed++
 
-    chunkStart = chunkEnd
+    chunkStart = nextChunkStart
   }
 
   auditInfo(user, 'data', `Full calorie recompute: ${totalStored} points across ${daysProcessed} days`, {
@@ -399,7 +426,7 @@ export const computeAndStoreCaloriesAll = async (
  */
 export const triggerCalorieComputation = async (user: string, start: Date, end: Date): Promise<void> => {
   try {
-    const result = await computeAndStoreCalories(user, start, end, { force: true })
+    const result = await computeAndStoreCalories(user, start, end)
     if (result.points_stored > 0) {
       auditInfo(user, 'data', `Computed ${result.points_stored} calorie points`, {
         bmr_source: result.bmr_source,

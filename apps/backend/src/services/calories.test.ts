@@ -553,10 +553,13 @@ describe('computeCaloriesPerMinuteZoneMets', () => {
       hr_samples: [[new Date('2024-01-15T03:00:00Z'), 50]],
       zone_context: sampleCtx,
     })
-    expect(result).toHaveLength(1)
-    expect(result[0].mets).toBe(1)
-    expect(result[0].kcal_total).toBeCloseTo(bmrPerMin, 4)
-    expect(result[0].kcal_active).toBe(0)
+    // Single sample is held forward for MAX_HOLD_MINUTES, so 5 buckets
+    expect(result).toHaveLength(MAX_HOLD_MINUTES)
+    for (const p of result) {
+      expect(p.mets).toBe(1)
+      expect(p.kcal_total).toBeCloseTo(bmrPerMin, 4)
+      expect(p.kcal_active).toBe(0)
+    }
   })
 
   test('produces MET-scaled kcal at zone boundaries', () => {
@@ -589,13 +592,27 @@ describe('computeCaloriesPerMinuteZoneMets', () => {
     expect(result[0].end_time).toEqual(new Date('2024-01-15T10:01:00Z'))
   })
 
+  test('single sample is held forward for MAX_HOLD_MINUTES', () => {
+    // One sample at 10:00 → 5 buckets (10:00..10:04), matching the documented
+    // hold-forward semantics. No special-cased single-sample collapse.
+    const result = computeCaloriesPerMinuteZoneMets({
+      bmr_kcal_per_day: bmrPerDay,
+      hr_samples: [[new Date('2024-01-15T10:00:00Z'), 120]],
+      zone_context: sampleCtx,
+    })
+    expect(result).toHaveLength(MAX_HOLD_MINUTES)
+    expect(result[0].time).toEqual(new Date('2024-01-15T10:00:00Z'))
+    expect(result[MAX_HOLD_MINUTES - 1].time).toEqual(new Date('2024-01-15T10:04:00Z'))
+  })
+
   test('total never falls below BMR/min', () => {
-    // Even hypothetical case: HR < resting still floors at BMR
+    // HR < resting still floors at BMR; single sample held forward for MAX_HOLD_MINUTES
     const result = computeCaloriesPerMinuteZoneMets({
       bmr_kcal_per_day: bmrPerDay,
       hr_samples: [[new Date('2024-01-15T03:00:00Z'), 30]],
       zone_context: sampleCtx,
     })
+    expect(result).toHaveLength(MAX_HOLD_MINUTES)
     expect(result[0].kcal_total).toBeCloseTo(bmrPerMin, 4)
     expect(result[0].kcal_active).toBe(0)
   })
@@ -609,8 +626,9 @@ describe('computeCaloriesPerMinuteZoneMets', () => {
       ],
       zone_context: sampleCtx,
     })
-    // First sample held for 5 minutes (10:00..10:04), second covers 10:05
-    expect(result).toHaveLength(6)
+    // First sample held forward 5 minutes (10:00..10:04), second held forward
+    // 5 minutes (10:05..10:09) = 10 buckets.
+    expect(result).toHaveLength(2 * MAX_HOLD_MINUTES)
     for (const p of result) {
       expect(p.kcal_total).toBeGreaterThan(bmrPerMin)
     }
@@ -625,8 +643,13 @@ describe('computeCaloriesPerMinuteZoneMets', () => {
       ],
       zone_context: sampleCtx,
     })
-    // First 5 buckets from first sample + 1 from second
-    expect(result).toHaveLength(MAX_HOLD_MINUTES + 1)
+    // First sample held forward MAX_HOLD_MINUTES (10:00..10:04), gap from
+    // 10:05..10:19 produces no buckets (stale), second sample held forward
+    // MAX_HOLD_MINUTES (10:20..10:24). Total = 2 * MAX_HOLD_MINUTES.
+    expect(result).toHaveLength(2 * MAX_HOLD_MINUTES)
+    expect(result[0].time).toEqual(new Date('2024-01-15T10:00:00Z'))
+    expect(result[MAX_HOLD_MINUTES - 1].time).toEqual(new Date('2024-01-15T10:04:00Z'))
+    expect(result[MAX_HOLD_MINUTES].time).toEqual(new Date('2024-01-15T10:20:00Z'))
   })
 
   test('intake-vs-burn sanity check at moderate HR matches simulator', () => {

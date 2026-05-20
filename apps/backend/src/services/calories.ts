@@ -413,12 +413,15 @@ export const computeCaloriesPerMinuteZoneMets = (params: ZoneMetsCaloriesParams)
 
   const bmrPerMin = bmr_kcal_per_day / 1440
 
+  // Walk from the first sample's minute up to MAX_HOLD_MINUTES past the last
+  // sample's minute. The maxHoldMs guard inside the loop drops minutes whose
+  // most-recent sample is stale, so single-sample and multi-sample inputs
+  // share the same hold-forward semantics.
   const firstTime = hr_samples[0][0].getTime()
   const lastTime = hr_samples[hr_samples.length - 1][0].getTime()
-  const endTime = hr_samples.length === 1 ? firstTime : lastTime
 
   const startMinute = Math.floor(firstTime / 60_000) * 60_000
-  const endMinute = Math.floor(endTime / 60_000) * 60_000
+  const endMinute = Math.floor(lastTime / 60_000) * 60_000 + (MAX_HOLD_MINUTES - 1) * 60_000
 
   const results: ZoneMetsCaloriePoint[] = []
   const maxHoldMs = MAX_HOLD_MINUTES * 60_000
