@@ -22,6 +22,7 @@ export const validMetrics = [
   'lean_body_mass',
   'body_water_mass',
   'height',
+  'basal_metabolic_rate',
   'steps',
   'distance',
   'floors_climbed',
@@ -227,6 +228,7 @@ export const dateOnlySchema = z.iso.date().meta({
 export const metricUnits: Record<MetricType, string> = {
   activity_impulse: 'impulse',
   basal_body_temperature: 'celsius',
+  basal_metabolic_rate: 'kcal',
   blood_glucose: 'mmol/L',
   blood_pressure_diastolic: 'mmHg',
   blood_pressure_systolic: 'mmHg',

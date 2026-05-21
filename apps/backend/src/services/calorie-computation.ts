@@ -13,7 +13,7 @@
 
 import type { BiologicalSex } from '@aurboda/api-spec'
 
-import type { TimeSeriesPoint } from '../db/types.ts'
+import type { TimeSeriesPoint, UserSettings } from '../db/types.ts'
 
 import { localMidnightToUtc } from '../db/health-connect.ts'
 import { enqueueOutboundSync, getUserSettings, upsertUserSettings } from '../db/index.ts'
@@ -175,7 +175,7 @@ const resolveBmr = async (
 }
 
 /**
- * Resolve the zone-METs context for a user at a given point in time.
+ * Resolve the zone-METs context for a user from already-loaded settings.
  * Picks the most-recent observed HR max (settings.training_load.observed_hr_max)
  * with a 220-age fallback. Defers to `getEffectiveHrZones` for the
  * custom → age-based → default zones priority, then applies one more
@@ -184,11 +184,10 @@ const resolveBmr = async (
  */
 const resolveZoneMetsContext = async (
   user: string,
-  _beforeTime: Date,
+  settings: UserSettings,
   age: number,
   restingHr: number,
 ): Promise<ZoneMetsContext> => {
-  const settings = await getSettings(user)
   const observedMax = settings.training_load?.observed_hr_max ?? 220 - age
   let zones = (await getEffectiveHrZones(user)).zones
   if (zones[1] <= restingHr) zones = defaultHrZoneThresholds(restingHr, observedMax)
@@ -249,7 +248,7 @@ export const computeAndStoreCalories = async (
   end: Date,
   options?: { skipSync?: boolean },
 ): Promise<CalorieComputationResult> => {
-  // 1. Settings + required fields
+  // 1. Settings + required fields (loaded once, threaded through helpers)
   const settings = await getUserSettings(user)
   if (!settings) return skippedResult('no settings')
 
@@ -257,10 +256,10 @@ export const computeAndStoreCalories = async (
   if (!sex) return skippedResult('sex not set')
   if (!settings.birth_date) return skippedResult('birth_date not set')
   const age = calculateAge(settings.birth_date)
+  const timezone = (settings.device_timezone as string | undefined) ?? undefined
 
   // 2. Expand to local-day boundaries so the BMR/min floor covers full days,
   //    not just the caller's HR-ingest window.
-  const timezone = await getDeviceTimezone(user)
   const expandedStart = getLocalDayStart(start, timezone)
   // end is treated as exclusive; bump just past the last touched minute,
   // then snap to next local midnight (DST-safe via getLocalDayStart on +26h).
@@ -281,7 +280,7 @@ export const computeAndStoreCalories = async (
   // 5. Resting HR + zone-METs context
   const restingHrMetric = await getLatestMetricValue(user, 'resting_heart_rate', expandedEnd)
   const restingHr = restingHrMetric ?? DEFAULT_RESTING_HR
-  const zoneCtx = await resolveZoneMetsContext(user, expandedEnd, age, restingHr)
+  const zoneCtx = await resolveZoneMetsContext(user, settings, age, restingHr)
 
   // 6. HR data for the full expanded range
   const hrData = await getTimeSeries(user, 'heart_rate', expandedStart, expandedEnd)
@@ -295,7 +294,7 @@ export const computeAndStoreCalories = async (
 
   // 8. HR-derived per-minute zone-METs points (empty array is fine — every
   //    minute still gets a BMR/min floor in step 9).
-  const hrPoints =
+  const allHrPoints =
     hrData.length === 0
       ? []
       : computeCaloriesPerMinuteZoneMets({
@@ -303,6 +302,14 @@ export const computeAndStoreCalories = async (
           hr_samples: hrData,
           zone_context: zoneCtx,
         })
+
+  // The hold-forward loop can extend up to MAX_HOLD_MINUTES-1 past the last
+  // HR sample's minute — those tail buckets may land outside the expanded
+  // local-day range. Clamp before writing/queueing so DB rows and outbound
+  // sync entries stay in lock-step.
+  const hrPoints = allHrPoints.filter(
+    (p) => p.time.getTime() >= expandedStart.getTime() && p.time.getTime() < expandedEnd.getTime(),
+  )
 
   // 9. Build full-day points for the expanded range (BMR floor for non-HR mins)
   const { total, active } = buildFullDayPoints(

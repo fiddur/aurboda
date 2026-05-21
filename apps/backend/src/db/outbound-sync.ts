@@ -43,8 +43,13 @@ export interface EnqueueOutboundSyncInput {
 /**
  * Add an entry to the outbound sync queue.
  *
- * For update/delete operations on the same entity, supersedes any existing
- * pending entries to avoid redundant syncs.
+ * Dedup behaviour by `(entity_type, entity_id)`:
+ * - `update` / `delete`: supersede (mark synced) any prior pending entries,
+ *   then enqueue this one.
+ * - `insert`: if a pending insert already exists for the same entity,
+ *   update its payload in place and return the existing id. Avoids the
+ *   duplicate-flood that otherwise occurs when the same per-minute entity
+ *   (e.g. `calories_active|<ts>`) is re-enqueued on every recompute.
  */
 export const enqueueOutboundSync = async (user: string, input: EnqueueOutboundSyncInput): Promise<string> => {
   // For update/delete: supersede any pending entries for the same entity
@@ -56,6 +61,22 @@ export const enqueueOutboundSync = async (user: string, input: EnqueueOutboundSy
        WHERE entity_type = $1 AND entity_id = $2 AND status = 'pending'`,
       [input.entity_type, input.entity_id],
     )
+  }
+
+  // For insert: if a pending insert for the same entity already exists,
+  // update its payload (latest value wins) and return the existing id.
+  if (input.operation === 'insert') {
+    const existing = await query(
+      user,
+      `UPDATE outbound_sync_queue
+       SET payload = $1, hc_record_type = $2
+       WHERE entity_type = $3 AND entity_id = $4 AND status = 'pending' AND operation = 'insert'
+       RETURNING id`,
+      [input.payload, input.hc_record_type, input.entity_type, input.entity_id],
+    )
+    if (existing.rowCount && existing.rowCount > 0) {
+      return existing.rows[0].id as string
+    }
   }
 
   const result = await query(

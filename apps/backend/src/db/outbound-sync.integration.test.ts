@@ -102,6 +102,43 @@ describe('Outbound Sync Queue Integration Tests', () => {
       expect(pending).toHaveLength(1)
       expect(pending[0].operation).toBe('delete')
     })
+
+    test('coalesces repeated inserts for the same entity (no duplicate flood)', async () => {
+      const user = getTestUser()
+
+      // Simulate the calorie-recompute path enqueueing the same per-minute
+      // insert many times — only the latest payload should remain pending.
+      const firstId = await enqueueOutboundSync(user, {
+        entity_id: 'calories_active|2026-05-19T10:00:00.000Z',
+        entity_type: 'time_series',
+        hc_record_type: 'ActiveCaloriesBurnedRecord',
+        operation: 'insert',
+        payload: { value: 1.2 },
+      })
+      const secondId = await enqueueOutboundSync(user, {
+        entity_id: 'calories_active|2026-05-19T10:00:00.000Z',
+        entity_type: 'time_series',
+        hc_record_type: 'ActiveCaloriesBurnedRecord',
+        operation: 'insert',
+        payload: { value: 1.5 },
+      })
+      const thirdId = await enqueueOutboundSync(user, {
+        entity_id: 'calories_active|2026-05-19T10:00:00.000Z',
+        entity_type: 'time_series',
+        hc_record_type: 'ActiveCaloriesBurnedRecord',
+        operation: 'insert',
+        payload: { value: 1.7 },
+      })
+
+      // All three calls should return the same row id — payload updates in place
+      expect(secondId).toBe(firstId)
+      expect(thirdId).toBe(firstId)
+
+      const { entries: pending } = await getPendingOutboundSync(user)
+      expect(pending).toHaveLength(1)
+      expect(pending[0].id).toBe(firstId)
+      expect((pending[0].payload as { value: number }).value).toBe(1.7)
+    })
   })
 
   describe('getPendingOutboundSync', () => {
