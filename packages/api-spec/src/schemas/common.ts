@@ -22,6 +22,7 @@ export const validMetrics = [
   'lean_body_mass',
   'body_water_mass',
   'height',
+  'basal_metabolic_rate',
   'steps',
   'distance',
   'floors_climbed',
@@ -227,6 +228,7 @@ export const dateOnlySchema = z.iso.date().meta({
 export const metricUnits: Record<MetricType, string> = {
   activity_impulse: 'impulse',
   basal_body_temperature: 'celsius',
+  basal_metabolic_rate: 'kcal',
   blood_glucose: 'mmol/L',
   blood_pressure_diastolic: 'mmHg',
   blood_pressure_systolic: 'mmHg',
@@ -413,19 +415,21 @@ export const cumulativeMetrics: MetricType[] = [
 export const cumulativeSources: DataSource[] = ['health_connect_aggregate', 'aurboda']
 
 /**
- * Metrics where aurboda-computed per-minute data should be used exclusively
- * instead of mixing with 'health_connect_aggregate' daily totals.
+ * Metrics where aurboda-computed per-minute data is authoritative — daily
+ * aggregates from other sources (Garmin direct, Health Connect) are excluded
+ * from queries to avoid double-counting against the per-minute series.
  *
- * When aurboda computes per-minute values (e.g., calories from HR data),
- * the daily aggregate from Health Connect is redundant and would produce
- * nonsense if AVG'd with per-minute values in the same bucket.
+ * Aurboda writes per-minute calories_total and calories_active using the
+ * user's calibrated HR zones, lab BMR, and HR data. After a full
+ * recalculate, these cover every minute of every day with HR data — a
+ * complete picture more accurate than any third-party daily total.
  */
-export const aurbodaOnlyMetrics: MetricType[] = ['calories_active']
+export const aurbodaOnlyMetrics: MetricType[] = ['calories_active', 'calories_total']
 
 /**
- * Sources used for aurboda-only metrics: HR-computed values and gap-fill estimates.
- * Gap-fill uses a separate source so HR computation can detect and replace gap-filled
- * minutes when real HR data arrives later.
+ * Sources used for aurboda-only metrics: HR-computed values and legacy gap-fill.
+ * Gap-fill is kept for back-compat with days not yet re-computed under the
+ * zone-METs model; recalculate-calories deletes it.
  */
 export const aurbodaOnlySources: DataSource[] = ['aurboda', 'aurboda_gap_fill']
 

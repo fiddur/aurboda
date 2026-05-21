@@ -1,128 +1,99 @@
-# Active Calorie Computation
+# Calorie Computation
 
-Active calories represent energy expenditure above resting metabolic rate. Aurboda computes per-minute active calories from heart rate data using a published formula, and supplements gaps in HR coverage with data from Health Connect's daily aggregate.
+Aurboda computes per-minute total and active calorie burn from heart-rate data using a zone-METs model anchored on the user's calibrated HR zones and lab-measured (or formula-estimated) BMR. Both `calories_total` and `calories_active` are written per-minute with source `aurboda`, and aurboda is the authoritative source for these metrics — Health Connect / Garmin daily aggregates are excluded from queries to avoid double-counting against the per-minute series.
 
-## Data Sources
+## Zone-METs Model
 
-| Source                   | DB `source` value          | Granularity     | Used in queries?      | Description                                                                                                 |
-| ------------------------ | -------------------------- | --------------- | --------------------- | ----------------------------------------------------------------------------------------------------------- |
-| HR-based computation     | `aurboda`                  | Per-minute      | Yes                   | Computed from heart rate data using the Omnicalculator HR-to-calories formula                               |
-| Gap-fill                 | `aurboda_gap_fill`         | Per-minute      | Yes                   | Residual from HC aggregate distributed across minutes without HR coverage                                   |
-| Health Connect records   | `health_connect`           | Arbitrary spans | No (filtered out)     | Raw `ActiveCaloriesBurnedRecord` from phone apps; stored but excluded from queries to avoid double-counting |
-| Health Connect aggregate | `health_connect_aggregate` | Daily           | No (used by gap-fill) | Deduplicated daily total from the phone's Health Connect layer                                              |
-| Garmin daily summary     | `garmin`                   | Daily           | No (filtered out)     | Single daily value from Garmin; stored but excluded from queries                                            |
+For each minute of HR data:
 
-### Source Filtering
+1. Look up METs at the average HR by linear interpolation between anchors placed at the user's HR zone boundaries:
 
-Queries for `calories_active` only return data from `aurboda` and `aurboda_gap_fill` sources. This is controlled by the `aurbodaOnlyMetrics` / `aurbodaOnlySources` constants in `packages/api-spec/src/schemas/common.ts`. The filtering prevents double-counting since raw Health Connect records, Garmin data, and the HC aggregate would overlap with aurboda's computed values.
+   | Boundary HR (bpm)   | METs |
+   | ------------------- | ---- |
+   | ≤ `resting_hr`      | 1.0  |
+   | `hr_zone_start[1]`  | 2.0  |
+   | `hr_zone_start[2]`  | 4.0  |
+   | `hr_zone_start[3]`  | 6.0  |
+   | `hr_zone_start[4]`  | 8.5  |
+   | `hr_zone_start[5]`  | 11.0 |
+   | ≥ `observed_hr_max` | 13.0 |
 
-## HR-Based Computation
+2. Convert METs to kcal/min by scaling against BMR/min: `kcal_total = max(BMR/min, METs × BMR/min)`. The `max` clamps very low HR readings to the BMR floor — at and below `resting_hr`, the user still burns BMR.
 
-### Formula
+3. `kcal_active = kcal_total − BMR/min`. Zero at rest, ramps with intensity.
 
-Uses the [Omnicalculator HR-to-calories formula](https://www.omnicalculator.com/sports/calories-burned-by-heart-rate):
+### Why not Keytel?
 
-- **Men:** `CB = T * (0.634*H + 0.404*V + 0.394*W + 0.271*A - 95.7735) / 4.184`
-- **Women:** `CB = T * (0.45*H + 0.380*V + 0.103*W + 0.274*A - 59.3954) / 4.184`
+Earlier versions used the [Omnicalculator/Keytel HR formula](https://www.omnicalculator.com/sports/calories-burned-by-heart-rate). That formula was empirically calibrated against steady-state exercise data (HR > ~60 % HRmax) and systematically overshoots at resting and light-activity HR — its implicit BMR is higher than reality for most users. Replaying 14 days of intake against a stable-weight user, Keytel + lab BMR + a `resting_hr × 1.2` baseline landed +21 % over intake; replacing that baseline with `BMR/min` (the "physiologically clean" variant) made it +92 %; the zone-METs model landed within +10 %. Zone-METs is anchored on the user's actual physiology rather than a population-fitted exercise formula, so it generalises better to all-day wear.
 
-Where: H = heart rate (bpm), V = VO2 max (mL/kg/min), W = weight (kg), A = age (years), T = 1 minute.
+## BMR Resolution
 
-### Required Inputs
+Priority order:
 
-Gathered from user settings and recent time-series data:
+1. **Lab measurement** — most recent `basal_metabolic_rate` metric within 2 years (e.g. from an InBody scan).
+2. **Mifflin-St Jeor estimate** — `10·weight + 6.25·height − 5·age + 5` (males) / `− 161` (females). Requires the `height` metric (looked back up to 10 years).
 
-| Input      | Source                                              | Lookback       |
-| ---------- | --------------------------------------------------- | -------------- |
-| Sex        | User settings (`sex`)                               | N/A (required) |
-| Birth date | User settings (`birth_date`)                        | N/A (required) |
-| Weight     | `weight` metric                                     | 90 days        |
-| VO2 max    | `vo2_max` metric, or population fallback by sex/age | 730 days       |
-| Resting HR | `resting_heart_rate` metric, defaults to 60 bpm     | 90 days        |
+If neither is available, computation is skipped with `skipped_reason: 'no BMR and no height for fallback'`. The response includes `bmr_source: 'lab' | 'mifflin_st_jeor'` so callers can distinguish.
 
-If sex, birth date, or weight are missing, computation is skipped entirely.
+## Other Required Inputs
 
-### Baseline Subtraction
+| Input               | Source                                                                  | Lookback             |
+| ------------------- | ----------------------------------------------------------------------- | -------------------- |
+| Sex                 | `sex` user setting                                                      | required             |
+| Birth date          | `birth_date` user setting                                               | required (for age)   |
+| Weight              | `weight` metric                                                         | 90 days              |
+| Height              | `height` metric (for BMR fallback only)                                 | 10 years             |
+| Resting HR          | `resting_heart_rate` metric (else 60 bpm)                               | 90 days              |
+| HR zone boundaries  | `hr_zone_start` setting (else age-based, then HRR-derived fallback)     | live                 |
+| Observed HR max     | `settings.training_load.observed_hr_max` (else `220 − age`)             | live                 |
 
-The formula computes **total** caloric burn including BMR. To isolate active-only calories:
+If the resolved zone-1 start lands at or below the resting HR (user has not set zones and the age-based default is too low for them), zones are re-derived from HRR percentages (50/60/70/80/90 % of `observed_hr_max − resting_hr` above resting).
 
-1. A baseline HR is computed as `resting_hr * 1.2` (the `BASELINE_HR_MULTIPLIER`)
-2. The formula is evaluated at this baseline HR to get `baselineKcal` per minute
-3. For each minute: `active_kcal = max(0, total_formula_output - baselineKcal)`
+## Hold-Last-Value Interpolation
 
-This naturally produces 0 active calories when HR is at or below the baseline (sleep, rest). The 1.2x multiplier was empirically validated: during actual sleep stages, HR stays at or below `resting_hr * 1.2`.
+For sparse HR data (e.g. Oura's 5-minute intervals), the last HR reading is held forward up to `MAX_HOLD_MINUTES = 5`. Beyond that gap, minutes get no per-minute HR data (and fall back to the BMR floor).
 
-### Hold-Last-Value Interpolation
+## Full-Day BMR Floor
 
-For sparse HR data (e.g., Oura's 5-minute intervals), the last HR reading is held forward for up to `MAX_HOLD_MINUTES = 5` minutes. Beyond that gap, minutes are skipped entirely (no stale data).
+Because aurboda is the only source counted for `calories_total`, the computation must produce a per-minute row for every minute of every affected day — otherwise daily sums would be missing BMR for the hours without HR coverage.
 
-### Computation Triggers
+`computeAndStoreCalories(user, start, end)` therefore expands `[start, end]` to local-day boundaries before any work, fetches HR for the expanded range, computes zone-METs minutes from HR, then walks every minute in the range:
 
-Calorie computation is triggered automatically when HR data is ingested:
+- HR-covered minutes get METs-scaled `calories_total` + `calories_active`.
+- Minutes without HR coverage get `calories_total = BMR/min` and no `calories_active` row.
 
-- **Health Connect sync** (`POST /sync/health-connect/HeartRateRecord`) -- triggered in `sync-router.ts`
-- **Oura sync** (sleep and session data types contain HR samples) -- triggered in `oura-sync.ts`
-- **Manual recompute** (`recalculate_calories` MCP tool or API) -- force-recomputes from all HR data
+DST is handled via `getLocalDayStart` (re-anchored each chunk iteration to local midnight, not by a constant 24 h step).
 
-### Incremental vs Force Computation
+## Storage
 
-- **Incremental** (default): Checks for existing `aurboda` calorie points in the time range and skips already-computed minutes. Only computes new minutes from fresh HR data.
-- **Force** (`recalculate_calories`): Deletes all existing `aurboda` and `aurboda_gap_fill` calorie points, then recomputes from scratch. Processes in daily chunks to avoid memory issues.
+Both metrics are stored in `time_series` with `source = 'aurboda'`. The `aurbodaOnlyMetrics` / `aurbodaOnlySources` filter in `packages/api-spec/src/schemas/common.ts` (applied via `getSourceFilter` in `apps/backend/src/db/time-series.ts`) listed `calories_active` and now also `calories_total` — so all bucketed / stats / daily-aggregate queries for these metrics use only aurboda's per-minute data. Any rows from `source = 'garmin'` (written by `apps/backend/src/integrations/garmin/process.ts` from the Garmin Connect daily summary) or `source = 'health_connect_aggregate'` (written from the phone's HC aggregate) are stored but filtered out at query time. The separate `cumulativeSources` list governs the non-aurboda-only cumulative metrics (e.g. steps, distance). See [docs/garmin.md](../garmin.md) for the Garmin-direct caveat.
 
-## Gap-Fill
+## Triggers
 
-### Motivation
+Calorie computation runs in three places:
 
-HR-based computation only covers minutes where heart rate data exists. Some periods may have no HR coverage (wrist off, no HR monitor worn, phone-only activity tracking). The Health Connect daily aggregate captures activity from all phone apps (step-based calorie estimates, etc.) and provides a deduplicated daily total.
+| Trigger                                                      | Range passed by caller     | Effective range after day-expansion |
+| ------------------------------------------------------------ | -------------------------- | ----------------------------------- |
+| Health Connect HR sync (`POST /sync/health-connect/...`)     | HR-batch window (≈ minutes) | The whole local day(s) it overlaps |
+| Oura sync (sleep / session HR samples)                       | Sample range               | Whole local day(s)                  |
+| Manual recompute (`recalculate_calories` MCP tool or REST)   | User-provided, or full     | Whole local day(s)                  |
 
-Gap-fill distributes the "residual" -- calories captured by the phone but not by HR computation -- across minutes without HR coverage.
+Each call is authoritative for the day(s) it touches: it deletes any prior aurboda rows in the expanded range and re-writes from scratch. There is no incremental "skip already-computed minutes" optimisation any more — the operation is fast enough at one day at a time and avoids the partial-day inconsistency the prior incremental path could create.
 
-### Algorithm
+## Outbound Sync to Health Connect
 
-For each calendar day:
+Per-minute `calories_active` rows (HR-derived only — minutes that fell back to the BMR floor have no active row) are queued for outbound sync to Health Connect as `ActiveCaloriesBurnedRecord`, so other phone apps see the same active-calorie estimate Aurboda uses. `calories_total` is not synced back — Health Connect derives its own total from `Active + Basal`.
 
-1. Read the HC daily aggregate for `calories_active` (source `health_connect_aggregate`)
-2. Read existing HR-computed calorie points (source `aurboda`) for the day
-3. Compute: `residual = hc_aggregate - sum(aurboda_points)`
-4. If `residual > 0`: distribute it evenly across gap minutes (minutes with no `aurboda` point)
-5. Store gap-fill points with source `aurboda_gap_fill`
+## Migration
 
-If the HR-based sum already exceeds the HC aggregate, no gap-fill is produced. This means the daily total naturally reflects `max(hc_aggregate, hr_based_sum)`.
-
-### Day Boundaries and Timezone
-
-The Android app aggregates daily calories using the device's local timezone. The backend stores the aggregate with the timezone from the payload, converting the local date to the correct UTC timestamp.
-
-Gap-fill uses the timezone from user settings (updated from the latest aggregate) to determine day boundaries, ensuring alignment between the aggregate's coverage window and the gap-fill distribution.
-
-### Idempotent Re-runs
-
-Gap-fill deletes existing `aurboda_gap_fill` points for the day before recomputing. This makes re-runs safe and prevents stale gap-fill from accumulating.
-
-### HR Computation Cleans Up Gap-Fill
-
-When new HR data arrives and calories are computed for previously gap-filled minutes, the stale gap-fill points for those minutes are deleted before the HR-computed values are inserted. This ensures HR-derived values always take precedence over gap-fill estimates.
-
-## Outbound Sync
-
-Only HR-computed calories (source `aurboda`) are synced back to Health Connect as `ActiveCaloriesBurnedRecord`. Gap-fill points are NOT synced back since they originate from the phone's aggregate data and writing them back would cause double-counting.
-
-## Daily Totals and Goals
-
-Goals for `calories_active` use `getDailyAggregateValue()` which reads from `cumulativeSources` (`health_connect_aggregate` or `aurboda`). This typically returns the HC aggregate value.
-
-The timeline's 1-day bucket view sums all `aurboda` + `aurboda_gap_fill` per-minute points, which after gap-fill should equal `max(hc_aggregate, hr_based_sum)`.
-
-## Known Limitations
-
-- **Goals vs timeline inconsistency**: Goals may show the HC aggregate value while the timeline shows the (potentially higher) HR-based sum. In practice, the HC aggregate is rarely lower than the HR computation since it includes contributions from all phone apps.
-- **Per-source calorie trust**: Currently, aurboda always recalculates from HR data regardless of whether the originating device (e.g., Withings Scanwatch 2) already computed accurate per-minute calories. A future setting could allow trusting a specific source's calorie values directly.
+After deploy, run a full recompute via the MCP tool `recalculate_calories` (or `POST /api/metrics/recalculate-calories` with empty body). It walks every day with HR data, deletes prior `aurboda` / `aurboda_gap_fill` rows for both metrics, and writes the new per-minute series. Older days without HR data are left untouched.
 
 ## Key Files
 
-| File                                               | Purpose                                                      |
-| -------------------------------------------------- | ------------------------------------------------------------ |
-| `apps/backend/src/services/calories.ts`            | Core formulas, gap-fill algorithm, constants                 |
-| `apps/backend/src/services/calorie-computation.ts` | Orchestration: gather inputs, compute, store, sync, gap-fill |
-| `apps/backend/src/db/time-series.ts`               | DB read/write, source filtering                              |
-| `apps/backend/src/db/cumulative-query.ts`          | Split queries by cumulative/aurbodaOnly/nonCumulative        |
-| `packages/api-spec/src/schemas/common.ts`          | Metric types, source constants, aurbodaOnlyMetrics           |
+| File                                                  | Purpose                                                       |
+| ----------------------------------------------------- | ------------------------------------------------------------- |
+| `apps/backend/src/services/calories.ts`               | Zone-METs formula, BMR estimator, MAX_HOLD_MINUTES, types     |
+| `apps/backend/src/services/calorie-computation.ts`    | Orchestration: BMR/zones resolution, day-aligned recompute    |
+| `apps/backend/src/db/time-series.ts`                  | DB read/write, source filtering for aurbodaOnly metrics       |
+| `apps/backend/src/db/cumulative-query.ts`             | Routes cumulative metrics to the aurbodaOnly source filter    |
+| `packages/api-spec/src/schemas/common.ts`             | `aurbodaOnlyMetrics`, `aurbodaOnlySources`, `cumulativeMetrics` |

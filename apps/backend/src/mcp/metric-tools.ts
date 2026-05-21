@@ -223,7 +223,7 @@ export const registerMetricTools = (server: McpServer, user: string) => {
           tz,
         )
       }
-      const result = await computeAndStoreCalories(user, new Date(start), new Date(end), { force: true })
+      const result = await computeAndStoreCalories(user, new Date(start), new Date(end))
       return tzJsonResponse({ ...result, success: true }, tz)
     },
   )

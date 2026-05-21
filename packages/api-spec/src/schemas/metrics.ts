@@ -394,10 +394,9 @@ export const recalculateCaloriesResponseSchema = baseResponseSchema
       .optional()
       .meta({ description: 'New points stored (excluding already-computed)' }),
     skipped_reason: z.string().optional().meta({ description: 'Reason computation was skipped, if any' }),
-    vo2_max_source: z
-      .enum(['measured', 'fallback'])
-      .optional()
-      .meta({ description: 'Whether measured VO2 max was used or age/sex fallback' }),
+    bmr_source: z.enum(['lab', 'mifflin_st_jeor']).optional().meta({
+      description: 'Source of BMR used: lab metric (basal_metabolic_rate) or Mifflin-St Jeor formula',
+    }),
   })
   .meta({ id: 'RecalculateCaloriesResponse' })
 
