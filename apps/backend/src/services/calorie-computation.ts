@@ -256,7 +256,7 @@ export const computeAndStoreCalories = async (
   if (!sex) return skippedResult('sex not set')
   if (!settings.birth_date) return skippedResult('birth_date not set')
   const age = calculateAge(settings.birth_date)
-  const timezone = (settings.device_timezone as string | undefined) ?? undefined
+  const timezone = settings.device_timezone
 
   // 2. Expand to local-day boundaries so the BMR/min floor covers full days,
   //    not just the caller's HR-ingest window.

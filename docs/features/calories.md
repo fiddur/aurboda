@@ -66,7 +66,7 @@ DST is handled via `getLocalDayStart` (re-anchored each chunk iteration to local
 
 ## Storage
 
-Both metrics are stored in `time_series` with `source = 'aurboda'`. The `cumulativeSources` filter in `packages/api-spec/src/schemas/common.ts` listed `calories_active` and now also `calories_total` in `aurbodaOnlyMetrics` — so all bucketed/stats/daily-aggregate queries for these metrics use only aurboda's per-minute data. Any rows from `source = 'garmin'` (written by `apps/backend/src/integrations/garmin/process.ts` from the Garmin Connect daily summary) or `source = 'health_connect_aggregate'` (written from the phone's HC aggregate) are stored but filtered out at query time. See [docs/garmin.md](../garmin.md) for the Garmin-direct caveat.
+Both metrics are stored in `time_series` with `source = 'aurboda'`. The `aurbodaOnlyMetrics` / `aurbodaOnlySources` filter in `packages/api-spec/src/schemas/common.ts` (applied via `getSourceFilter` in `apps/backend/src/db/time-series.ts`) listed `calories_active` and now also `calories_total` — so all bucketed / stats / daily-aggregate queries for these metrics use only aurboda's per-minute data. Any rows from `source = 'garmin'` (written by `apps/backend/src/integrations/garmin/process.ts` from the Garmin Connect daily summary) or `source = 'health_connect_aggregate'` (written from the phone's HC aggregate) are stored but filtered out at query time. The separate `cumulativeSources` list governs the non-aurboda-only cumulative metrics (e.g. steps, distance). See [docs/garmin.md](../garmin.md) for the Garmin-direct caveat.
 
 ## Triggers
 

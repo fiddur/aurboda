@@ -50,6 +50,14 @@ export interface EnqueueOutboundSyncInput {
  *   update its payload in place and return the existing id. Avoids the
  *   duplicate-flood that otherwise occurs when the same per-minute entity
  *   (e.g. `calories_active|<ts>`) is re-enqueued on every recompute.
+ *
+ * Note: the insert dedup is UPDATE…RETURNING followed by a conditional
+ * INSERT, which is not strictly atomic — two concurrent inserts for the
+ * same entity could both see no existing row and both INSERT. The calorie
+ * worker serialises per-user runs so this is unlikely in practice; if a
+ * hard guarantee is needed later, add a partial unique index on
+ * `(entity_type, entity_id) WHERE status = 'pending' AND operation = 'insert'`
+ * and switch the INSERT to `ON CONFLICT … DO UPDATE`.
  */
 export const enqueueOutboundSync = async (user: string, input: EnqueueOutboundSyncInput): Promise<string> => {
   // For update/delete: supersede any pending entries for the same entity
