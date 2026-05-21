@@ -32,7 +32,7 @@ import {
   type ZoneMetsCaloriePoint,
   type ZoneMetsContext,
 } from './calories.ts'
-import { getEffectiveHrZones, getSettings } from './settings.ts'
+import { calculateDefaultHrZones, getSettings } from './settings.ts'
 
 /**
  * Calculate age from birth date string.
@@ -182,14 +182,15 @@ const resolveBmr = async (
  * post-hoc fallback if the resolved zones look unusable for this user
  * (e.g. zone-1 start at or below resting HR).
  */
-const resolveZoneMetsContext = async (
-  user: string,
+const resolveZoneMetsContext = (
   settings: UserSettings,
   age: number,
   restingHr: number,
-): Promise<ZoneMetsContext> => {
+): ZoneMetsContext => {
   const observedMax = settings.training_load?.observed_hr_max ?? 220 - age
-  let zones = (await getEffectiveHrZones(user)).zones
+  // Mirror getEffectiveHrZones' priority without going back to the DB:
+  // custom (settings.hr_zone_start) → age-based (from birth_date) → default.
+  let zones = settings.hr_zone_start ?? calculateDefaultHrZones(settings.birth_date ?? null)
   if (zones[1] <= restingHr) zones = defaultHrZoneThresholds(restingHr, observedMax)
   return { observed_hr_max: observedMax, resting_hr: restingHr, zones }
 }
@@ -280,7 +281,7 @@ export const computeAndStoreCalories = async (
   // 5. Resting HR + zone-METs context
   const restingHrMetric = await getLatestMetricValue(user, 'resting_heart_rate', expandedEnd)
   const restingHr = restingHrMetric ?? DEFAULT_RESTING_HR
-  const zoneCtx = await resolveZoneMetsContext(user, settings, age, restingHr)
+  const zoneCtx = resolveZoneMetsContext(settings, age, restingHr)
 
   // 6. HR data for the full expanded range
   const hrData = await getTimeSeries(user, 'heart_rate', expandedStart, expandedEnd)
