@@ -397,6 +397,20 @@ export const deleteTimeSeriesMetric = async (user: string, metric: string): Prom
   return result.rowCount ?? 0
 }
 
+/**
+ * Hard-delete time_series rows in [start, end) for a given (metric, source).
+ *
+ * Used by "wipe and rewrite" rebuild paths (e.g. calorie recompute, training-
+ * load rebuild) where the caller will immediately re-insert fresh rows. We
+ * cannot soft-delete here: `insertTimeSeries`' ON CONFLICT clause has a
+ * `WHERE deleted_at IS NULL` filter (to preserve user-initiated tombstones
+ * against background re-syncs), which means a soft-deleted row would block
+ * the re-insert from writing the new value — the row stays invisible.
+ * A real DELETE removes the row so the subsequent INSERT lands cleanly.
+ *
+ * For single-row user-initiated deletes (e.g. `deleteMetric`), keep using
+ * soft-delete: that path's intent is to preserve the tombstone.
+ */
 export const deleteTimeSeriesBySource = async (
   user: string,
   metric: string,
@@ -406,7 +420,7 @@ export const deleteTimeSeriesBySource = async (
 ): Promise<number> => {
   const result = await query(
     user,
-    `UPDATE time_series SET deleted_at = NOW() WHERE metric = $1 AND source = $2 AND time >= $3 AND time < $4 AND deleted_at IS NULL`,
+    `DELETE FROM time_series WHERE metric = $1 AND source = $2 AND time >= $3 AND time < $4`,
     [metric, source, start, end],
   )
   return result.rowCount ?? 0
