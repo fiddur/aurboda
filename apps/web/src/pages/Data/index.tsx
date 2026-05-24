@@ -159,13 +159,15 @@ const metricsToItems = (
       const label = toDisplayName(metric)
       const parts: string[] = []
 
+      const measurements = `${stats.count} measurement${stats.count === 1 ? '' : 's'}`
+
       if (stats.sum !== undefined) {
         // Cumulative metric: emphasize daily total
         if (stats.count > 1) {
           parts.push(`${formatTime(first, multiDay)} – ${formatTime(last, multiDay)}`)
         }
         parts.push(`${formatMetricValue(stats.sum)}${unitSuffix}`)
-        parts.push(`${stats.count} measurements`)
+        parts.push(measurements)
       } else if (stats.count === 1) {
         parts.push(formatTime(first, multiDay))
         parts.push(`${formatMetricValue(stats.avg)}${unitSuffix}`)
@@ -176,7 +178,7 @@ const metricsToItems = (
         } else {
           parts.push(`${formatMetricValue(stats.min)}–${formatMetricValue(stats.max)}${unitSuffix}`)
         }
-        parts.push(`${stats.count} measurements`)
+        parts.push(measurements)
       }
 
       items.push({
