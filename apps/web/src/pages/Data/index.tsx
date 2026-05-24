@@ -1,4 +1,4 @@
-import { metricUnits, type QueryMetricsBucketedResponse } from '@aurboda/api-spec'
+import { getMetricUnit, type QueryMetricsBucketedResponse } from '@aurboda/api-spec'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { format, formatISO, subDays } from 'date-fns'
 import { useLocation } from 'preact-iso'
@@ -142,8 +142,6 @@ const formatMetricValue = (n: number): string => {
   return Number.isInteger(rounded) ? rounded.toString() : rounded.toFixed(1)
 }
 
-const metricUnit = (metric: string): string => (metricUnits as Record<string, string>)[metric] ?? ''
-
 /** Convert a bucketed metrics response into one DataItem per metric for the day. */
 const metricsToItems = (
   response: QueryMetricsBucketedResponse | undefined,
@@ -154,7 +152,7 @@ const metricsToItems = (
     for (const [metric, stats] of Object.entries(bucket.metrics)) {
       const first = new Date(stats.first_time)
       const last = new Date(stats.last_time)
-      const unit = metricUnit(metric)
+      const unit = getMetricUnit(metric) ?? ''
       const unitSuffix = unit ? ` ${unit}` : ''
       const label = toDisplayName(metric)
       const parts: string[] = []
@@ -165,6 +163,8 @@ const metricsToItems = (
         // Cumulative metric: emphasize daily total
         if (stats.count > 1) {
           parts.push(`${formatTime(first, multiDay)} – ${formatTime(last, multiDay)}`)
+        } else {
+          parts.push(formatTime(first, multiDay))
         }
         parts.push(`${formatMetricValue(stats.sum)}${unitSuffix}`)
         parts.push(measurements)
