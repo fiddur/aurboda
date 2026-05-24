@@ -1,3 +1,4 @@
+import { metricUnits, type QueryMetricsBucketedResponse } from '@aurboda/api-spec'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { format, formatISO, subDays } from 'date-fns'
 import { useLocation } from 'preact-iso'
@@ -6,6 +7,7 @@ import { useCallback, useEffect, useState } from 'preact/hooks'
 import { DateNav } from '../../components/DateNav'
 import {
   fetchActivities,
+  fetchBucketedMetrics,
   fetchMeals,
   fetchPlaces,
   fetchProductivity,
@@ -23,7 +25,7 @@ import './style.css'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
-type ItemType = 'activity' | 'location' | 'music' | 'meal' | 'report' | 'screentime'
+type ItemType = 'activity' | 'location' | 'music' | 'meal' | 'metric' | 'report' | 'screentime'
 
 interface DataItem {
   color: string
@@ -48,6 +50,7 @@ const ACTIVITY_COLORS: Record<string, string> = {
 const LOCATION_COLOR = '#6366f1'
 const MUSIC_COLOR = '#ec4899'
 const MEAL_COLOR = '#ef4444'
+const METRIC_COLOR = '#f59e0b'
 const REPORT_COLOR = '#14b8a6'
 const SCREENTIME_COLOR = '#8b5cf6'
 
@@ -133,6 +136,63 @@ const reportToItem = (r: Report, multiDay: boolean): DataItem => ({
   type: 'report',
 })
 
+/** Format a numeric value: integer if whole, otherwise 1 decimal. */
+const formatMetricValue = (n: number): string => {
+  const rounded = Math.round(n * 10) / 10
+  return Number.isInteger(rounded) ? rounded.toString() : rounded.toFixed(1)
+}
+
+const metricUnit = (metric: string): string => (metricUnits as Record<string, string>)[metric] ?? ''
+
+/** Convert a bucketed metrics response into one DataItem per metric for the day. */
+const metricsToItems = (
+  response: QueryMetricsBucketedResponse | undefined,
+  multiDay: boolean,
+): DataItem[] => {
+  const items: DataItem[] = []
+  for (const bucket of response?.buckets ?? []) {
+    for (const [metric, stats] of Object.entries(bucket.metrics)) {
+      const first = new Date(stats.first_time)
+      const last = new Date(stats.last_time)
+      const unit = metricUnit(metric)
+      const unitSuffix = unit ? ` ${unit}` : ''
+      const label = toDisplayName(metric)
+      const parts: string[] = []
+
+      if (stats.sum !== undefined) {
+        // Cumulative metric: emphasize daily total
+        if (stats.count > 1) {
+          parts.push(`${formatTime(first, multiDay)} – ${formatTime(last, multiDay)}`)
+        }
+        parts.push(`${formatMetricValue(stats.sum)}${unitSuffix}`)
+        parts.push(`${stats.count} measurements`)
+      } else if (stats.count === 1) {
+        parts.push(formatTime(first, multiDay))
+        parts.push(`${formatMetricValue(stats.avg)}${unitSuffix}`)
+      } else {
+        parts.push(`${formatTime(first, multiDay)} – ${formatTime(last, multiDay)}`)
+        if (stats.min === stats.max) {
+          parts.push(`${formatMetricValue(stats.avg)}${unitSuffix}`)
+        } else {
+          parts.push(`${formatMetricValue(stats.min)}–${formatMetricValue(stats.max)}${unitSuffix}`)
+        }
+        parts.push(`${stats.count} measurements`)
+      }
+
+      items.push({
+        color: METRIC_COLOR,
+        detail: parts.join(' · '),
+        end: stats.count > 1 ? last : undefined,
+        href: `/chart?source_type=metric&pattern=${encodeURIComponent(metric)}&lookback_days=1`,
+        label,
+        start: first,
+        type: 'metric',
+      })
+    }
+  }
+  return items
+}
+
 const productivityToItem = (p: ProductivityRecord, places: Place[], multiDay: boolean): DataItem => {
   const dur = Math.round(p.duration_sec / 60)
   const category = p.resolved_category?.join(' > ') ?? p.category ?? ''
@@ -153,12 +213,13 @@ const productivityToItem = (p: ProductivityRecord, places: Place[], multiDay: bo
 
 // ── Component ──────────────────────────────────────────────────────────────
 
-const ALL_TYPES: ItemType[] = ['activity', 'location', 'music', 'meal', 'report', 'screentime']
+const ALL_TYPES: ItemType[] = ['activity', 'location', 'music', 'meal', 'metric', 'report', 'screentime']
 
 const TYPE_LABELS: Record<ItemType, string> = {
   activity: 'Activities',
   location: 'Locations',
   meal: 'Meals',
+  metric: 'Metrics',
   music: 'Music',
   report: 'Reports',
   screentime: 'Screen Time',
@@ -168,6 +229,7 @@ const TYPE_COLORS: Record<ItemType, string> = {
   activity: ACTIVITY_COLORS.sleep!,
   location: LOCATION_COLOR,
   meal: MEAL_COLOR,
+  metric: METRIC_COLOR,
   music: MUSIC_COLOR,
   report: REPORT_COLOR,
   screentime: SCREENTIME_COLOR,
@@ -181,6 +243,7 @@ const buildItems = (
   meals: Meal[],
   reports: Report[],
   productivity: ProductivityRecord[],
+  metrics: QueryMetricsBucketedResponse | undefined,
   dateStr: string,
   multiDay: boolean,
 ): DataItem[] => {
@@ -204,6 +267,9 @@ const buildItems = (
   }
   if (activeTypes.has('meal')) {
     for (const m of meals) items.push(mealToItem(m, places, multiDay))
+  }
+  if (activeTypes.has('metric')) {
+    items.push(...metricsToItems(metrics, multiDay))
   }
   if (activeTypes.has('report')) {
     for (const r of reports) items.push(reportToItem(r, multiDay))
@@ -297,6 +363,7 @@ export const Data = () => {
       queryClient.cancelQueries({ queryKey: ['data-meals'] })
       queryClient.cancelQueries({ queryKey: ['data-reports'] })
       queryClient.cancelQueries({ queryKey: ['data-productivity'] })
+      queryClient.cancelQueries({ queryKey: ['data-metrics'] })
       setDateStr(newDate)
       setTimeFrom(undefined)
       setTimeTo(undefined)
@@ -358,12 +425,20 @@ export const Data = () => {
     staleTime: 5 * 60 * 1000,
   })
 
+  const metricsQuery = useQuery({
+    enabled: activeTypes.has('metric'),
+    queryFn: () => fetchBucketedMetrics(start, end, undefined, '1d'),
+    queryKey: ['data-metrics', dateStr, timeFrom, timeTo],
+    staleTime: 5 * 60 * 1000,
+  })
+
   // Only check loading/fetching for enabled queries
   const queries = [
     { enabled: activeTypes.has('activity'), query: activitiesQuery },
     { enabled: activeTypes.has('location'), query: placesQuery },
     { enabled: activeTypes.has('music'), query: scrobblesQuery },
     { enabled: activeTypes.has('meal'), query: mealsQuery },
+    { enabled: activeTypes.has('metric'), query: metricsQuery },
     { enabled: activeTypes.has('report'), query: reportsQuery },
     { enabled: activeTypes.has('screentime'), query: productivityQuery },
   ]
@@ -379,6 +454,11 @@ export const Data = () => {
       else next.add(t)
       return next
     })
+  }
+
+  const allOff = hiddenTypes.size === ALL_TYPES.length
+  const toggleAll = () => {
+    setHiddenTypes(allOff ? new Set() : new Set(ALL_TYPES))
   }
 
   // Auto-redirect to detail page when chart click leads to exactly 1 activity
@@ -399,6 +479,7 @@ export const Data = () => {
     mealsQuery.data?.meals ?? [],
     reportsQuery.data ?? [],
     productivityQuery.data?.records ?? [],
+    metricsQuery.data,
     dateStr,
     multiDay,
   )
@@ -430,6 +511,14 @@ export const Data = () => {
           </div>
         )}
         <div class="data-type-filters">
+          <button
+            class="data-type-btn data-type-btn-all"
+            onClick={toggleAll}
+            type="button"
+            title={allOff ? 'Show all data types' : 'Hide all so you can focus on one'}
+          >
+            {allOff ? 'All on' : 'All off'}
+          </button>
           {ALL_TYPES.map((t) => (
             <button
               key={t}

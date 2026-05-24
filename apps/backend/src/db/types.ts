@@ -69,6 +69,8 @@ export interface BucketedMetricData {
   max: number
   count: number
   sum: number
+  first_time: Date
+  last_time: Date
 }
 
 // ============================================================================

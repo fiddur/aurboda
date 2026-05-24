@@ -101,6 +101,8 @@ export interface BucketMetricStats {
   max: number
   count: number
   sum?: number
+  first_time: string
+  last_time: string
 }
 
 /**
