@@ -446,7 +446,9 @@ export const getTimeSeriesBucketed = async (
        MIN(value) as min,
        MAX(value) as max,
        SUM(value) as sum,
-       COUNT(*)::integer as count
+       COUNT(*)::integer as count,
+       MIN(time) as first_time,
+       MAX(time) as last_time
      FROM time_series
      WHERE metric = ANY($1) AND time >= $2 AND time < $3 AND deleted_at IS NULL${sourceFilter}
      GROUP BY bucket_start, metric
@@ -456,6 +458,8 @@ export const getTimeSeriesBucketed = async (
     avg: row.avg !== null ? Number(row.avg) : 0,
     bucket_start: new Date(row.bucket_start as string),
     count: row.count as number,
+    first_time: new Date(row.first_time as string),
+    last_time: new Date(row.last_time as string),
     max: row.max !== null ? Number(row.max) : 0,
     metric: parseMetricType(row.metric as string),
     min: row.min !== null ? Number(row.min) : 0,
