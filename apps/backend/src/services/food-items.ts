@@ -317,7 +317,14 @@ const applySharedOverrides = async (
   return items.map((item) => {
     const override = overrides.get(item.id)
     if (!override) return item
-    return { ...item, icon: override.icon ?? undefined }
+    // For default_portion_id, NULL on the override means "no override" — fall
+    // through to whatever the central row has (currently nothing). Only set
+    // the field when the user explicitly chose a portion.
+    return {
+      ...item,
+      icon: override.icon ?? undefined,
+      ...(override.default_portion_id ? { default_portion_id: override.default_portion_id } : {}),
+    }
   })
 }
 

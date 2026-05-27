@@ -22,6 +22,13 @@ export interface SharedFoodItemEntity {
   source_id?: string
   default_quantity?: number
   default_unit?: string
+  /**
+   * Central rows never carry this in storage — set at read-time by
+   * applySharedOverrides when the user has a per-user override pointing at
+   * one of the food's portions. Surfaced to the API as
+   * `FoodItemDetail.effective_default_portion_id`.
+   */
+  default_portion_id?: string
   icon?: string
   created_at: Date
   updated_at: Date

@@ -10,6 +10,8 @@ import { type FrequentFoodItem, type FrequentMeal, NUTRIENT_FIELD_NAMES } from '
 import {
   deleteMeal as dbDeleteMeal,
   findMealsContainingFoodItem,
+  type FoodItemPortionRow,
+  getFoodItemPortionById,
   getFoodItemSensitivityNamesBatch,
   getFrequentFoodItems as dbGetFrequentFoodItems,
   getFrequentMeals as dbGetFrequentMeals,
@@ -42,8 +44,14 @@ import {
 
 interface FoodItemInput {
   food_item_id?: string
+  /** When set, the row is logged as `portion_count` of this portion. */
+  food_item_portion_id?: string
+  /** Required when food_item_portion_id is set. */
+  portion_count?: number
   name: string
+  /** Legacy free-form quantity (when no portion is selected). */
   quantity?: number
+  /** Legacy free-form unit (when no portion is selected). */
   unit?: string
   icon?: string
 }
@@ -180,6 +188,8 @@ const linksToFoodItems = (
     const sensitivities = sensitivityMap.get(link.food_item_id) ?? []
     return {
       food_item_id: link.food_item_id,
+      food_item_portion_id: link.food_item_portion_id,
+      portion_count: link.portion_count,
       name: display?.name ?? link.legacy_food_item_name ?? '',
       icon: display?.icon ?? link.legacy_food_item_icon,
       quantity: link.quantity as number | undefined,
@@ -270,15 +280,29 @@ const attachFoodItems = async (user: string, meals: Meal[]): Promise<EnrichedMea
 }
 
 /**
- * Compute the scale factor between a request's quantity and the canonical
- * food item's default quantity. Same-unit assumption — if the request unit
- * differs from the canonical default, fall back to scale = 1 (use raw values).
+ * Compute the scale factor between a request and the canonical food item's
+ * default quantity. Two paths:
+ *
+ *   1. Portion path (preferred when `portion` is resolved): the request says
+ *      "log `portion_count` of this portion" and the portion encodes how much
+ *      of the base unit one entry equals. Scale becomes
+ *      `portion_count × portion.base_equivalent / canonical.default_quantity`.
+ *   2. Legacy path: free-form `quantity` + `unit`. Same-unit assumption — if
+ *      the request unit differs from the canonical default, fall back to
+ *      scale = 1 (use raw values).
  */
-const computeScale = (fi: FoodItemInput, canonical: MergedFoodItem): number => {
-  const reqQty = fi.quantity
+const computeScale = (
+  fi: FoodItemInput,
+  canonical: MergedFoodItem,
+  portion: FoodItemPortionRow | null,
+): number => {
   const defaultQty = canonical.default_quantity as number | undefined
-  if (reqQty === undefined || reqQty === null) return 1
   if (defaultQty === undefined || defaultQty === null || defaultQty === 0) return 1
+  if (portion && typeof fi.portion_count === 'number' && fi.portion_count > 0) {
+    return (fi.portion_count * portion.base_equivalent) / defaultQty
+  }
+  const reqQty = fi.quantity
+  if (reqQty === undefined || reqQty === null) return 1
   const canonicalUnit = canonical.default_unit as string | undefined
   if (fi.unit && canonicalUnit && fi.unit !== canonicalUnit) return 1
   return reqQty / defaultQty
@@ -296,19 +320,29 @@ const round2 = (n: number): number => Math.round(n * 100) / 100
  * Callers should compute it via `getEffectiveNutrients(detail)` so composite
  * recipes use derived totals (not the stale row columns) and reference-
  * enriched atomic items inherit micronutrients.
+ *
+ * When a `portion` is provided AND the input carries `portion_count`, the
+ * row is logged via the portion path: nutrients scale by
+ * `count × base_equivalent / default_quantity`, and the legacy `quantity` /
+ * `unit` columns are populated from the portion's label so display fallback
+ * keeps working even if the portion is later deleted.
  */
 export const buildScaledJunctionItem = (
   fi: FoodItemInput,
   canonical: MergedFoodItem,
   sortOrder: number,
   effectiveValues: Record<string, number>,
+  portion: FoodItemPortionRow | null = null,
 ): Record<string, unknown> => {
-  const scale = computeScale(fi, canonical)
+  const scale = computeScale(fi, canonical, portion)
+  const usingPortion = portion !== null && typeof fi.portion_count === 'number' && fi.portion_count > 0
   const junctionItem: Record<string, unknown> = {
     food_item_id: canonical.id,
-    quantity: fi.quantity,
+    quantity: usingPortion ? fi.portion_count! * portion!.label_quantity : fi.quantity,
     sort_order: sortOrder,
-    unit: fi.unit,
+    unit: usingPortion ? portion!.label_unit : fi.unit,
+    food_item_portion_id: usingPortion ? portion!.id : undefined,
+    portion_count: usingPortion ? fi.portion_count : undefined,
   }
   for (const field of NUTRIENT_FIELD_NAMES) {
     const v = effectiveValues[field]
@@ -345,6 +379,33 @@ const resolveCanonical = async (
   })
 }
 
+/**
+ * Resolve the portion attached to a meal-entry input, enforcing that the
+ * portion belongs to the food being logged. Returns null on the legacy path
+ * (no portion id provided); throws when the portion id doesn't resolve or
+ * targets a different food, so the route layer can 400 the request.
+ */
+const resolvePortionForInput = async (
+  user: string,
+  fi: FoodItemInput,
+  canonical: MergedFoodItem,
+): Promise<FoodItemPortionRow | null> => {
+  if (!fi.food_item_portion_id) return null
+  const portion = await getFoodItemPortionById(user, fi.food_item_portion_id)
+  if (!portion) {
+    throw new Error(`Portion not found: ${fi.food_item_portion_id}`)
+  }
+  if (portion.food_item_id !== canonical.id) {
+    throw new Error(
+      `Portion ${fi.food_item_portion_id} does not belong to food item ${canonical.id}`,
+    )
+  }
+  if (typeof fi.portion_count !== 'number' || fi.portion_count <= 0) {
+    throw new Error('portion_count must be a positive number when food_item_portion_id is set')
+  }
+  return portion
+}
+
 /** Write food items to the junction table for a meal. */
 const syncFoodItemsToJunction = async (
   user: string,
@@ -362,7 +423,8 @@ const syncFoodItemsToJunction = async (
     // nutrients. Falls back to the canonical row when no detail is available.
     const detail = await service.getDetail(user, canonical.id)
     const effective = detail ? getEffectiveNutrients(detail) : {}
-    junctionItems.push(buildScaledJunctionItem(fi, canonical, i, effective))
+    const portion = await resolvePortionForInput(user, fi, canonical)
+    junctionItems.push(buildScaledJunctionItem(fi, canonical, i, effective, portion))
   }
 
   await setMealFoodItems(user, mealId, junctionItems as Parameters<typeof setMealFoodItems>[2])
@@ -499,31 +561,43 @@ export async function resnapshotMealsForFoodItem(
   let rowsUpdated = 0
   for (const mealId of mealIds) {
     const links = await getMealFoodItems(user, mealId)
-    const updated = links.map((link) => {
-      if (link.food_item_id !== foodItemId) {
-        // Preserve other items' snapshots verbatim — this action only refreshes
-        // rows that point at the food item being re-snapshotted.
-        const passThrough: Record<string, unknown> = {
-          food_item_id: link.food_item_id,
-          quantity: link.quantity,
-          sort_order: link.sort_order,
-          unit: link.unit,
+    const updated = await Promise.all(
+      links.map(async (link) => {
+        if (link.food_item_id !== foodItemId) {
+          // Preserve other items' snapshots verbatim — this action only refreshes
+          // rows that point at the food item being re-snapshotted.
+          const passThrough: Record<string, unknown> = {
+            food_item_id: link.food_item_id,
+            quantity: link.quantity,
+            sort_order: link.sort_order,
+            unit: link.unit,
+            food_item_portion_id: link.food_item_portion_id,
+            portion_count: link.portion_count,
+          }
+          for (const field of NUTRIENT_FIELD_NAMES) {
+            const v = link[field]
+            if (typeof v === 'number') passThrough[field] = v
+          }
+          return passThrough
         }
-        for (const field of NUTRIENT_FIELD_NAMES) {
-          const v = link[field]
-          if (typeof v === 'number') passThrough[field] = v
+        rowsUpdated++
+        // Refetch the portion if the row was logged via the portion path.
+        // If it's been deleted since, fall back to legacy scaling — the
+        // recorded quantity/unit still encode the user's intent.
+        const portion = link.food_item_portion_id
+          ? await getFoodItemPortionById(user, link.food_item_portion_id)
+          : null
+        const fi: FoodItemInput = {
+          food_item_id: foodItemId,
+          food_item_portion_id: portion ? portion.id : undefined,
+          portion_count: portion ? (link.portion_count as number | undefined) : undefined,
+          name: canonical.name,
+          quantity: link.quantity as number | undefined,
+          unit: link.unit as string | undefined,
         }
-        return passThrough
-      }
-      rowsUpdated++
-      const fi: FoodItemInput = {
-        food_item_id: foodItemId,
-        name: canonical.name,
-        quantity: link.quantity as number | undefined,
-        unit: link.unit as string | undefined,
-      }
-      return buildScaledJunctionItem(fi, canonical, link.sort_order, effective)
-    })
+        return buildScaledJunctionItem(fi, canonical, link.sort_order, effective, portion)
+      }),
+    )
     await setMealFoodItems(user, mealId, updated as Parameters<typeof setMealFoodItems>[2])
     await recomputeMealMacros(user, mealId)
   }

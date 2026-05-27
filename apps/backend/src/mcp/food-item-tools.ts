@@ -272,7 +272,7 @@ export const registerFoodItemTools = (server: McpServer, user: string, centralDb
     async ({ id, ...input }) => {
       // The .refine on the body schema doesn't survive .shape destructuring,
       // so re-check the at-least-one-field invariant here.
-      if (input.icon === undefined) {
+      if (input.icon === undefined && input.default_portion_id === undefined) {
         return errorResponse(
           'At least one override field must be supplied; use clear_shared_food_item_override to revert',
         )

@@ -224,6 +224,8 @@ export const mealsTables: Record<string, string> = {
       food_item_icon  TEXT,
       quantity        DOUBLE PRECISION,
       unit            VARCHAR(100),
+      food_item_portion_id UUID,
+      portion_count   DOUBLE PRECISION,
       sort_order      INTEGER NOT NULL DEFAULT 0,
       calories        DOUBLE PRECISION,
       protein         DOUBLE PRECISION,
@@ -376,6 +378,7 @@ export const mealsTables: Record<string, string> = {
     CREATE TABLE IF NOT EXISTS shared_food_item_overrides (
       shared_food_item_id  UUID PRIMARY KEY,
       icon                 TEXT,
+      default_portion_id   UUID,
       created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )

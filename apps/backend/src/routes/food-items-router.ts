@@ -106,6 +106,10 @@ const serializeDetail = (detail: ServiceFoodItemDetail): FoodItemDetail => {
   const sensitivities = detail.sensitivities ?? []
   const portions = detail.portions?.map(serializePortion)
   const is_shared = detail.is_shared
+  // For per-user items default_portion_id is the column on the food row;
+  // for central items applySharedOverrides decorated it from the user's
+  // shared_food_item_overrides row (when the user picked a portion).
+  const effective_default_portion_id = (detail.item.default_portion_id as string | undefined) ?? undefined
   // Composite branch: ingredient list + derived totals.
   if (detail.ingredients) {
     return {
@@ -121,6 +125,7 @@ const serializeDetail = (detail: ServiceFoodItemDetail): FoodItemDetail => {
       })),
       is_shared,
       portions,
+      effective_default_portion_id,
       sensitivities,
     }
   }
@@ -139,7 +144,13 @@ const serializeDetail = (detail: ServiceFoodItemDetail): FoodItemDetail => {
       sensitivities,
     }
   }
-  return { ...base, is_shared, portions, sensitivities } as FoodItemDetail
+  return {
+    ...base,
+    is_shared,
+    portions,
+    effective_default_portion_id,
+    sensitivities,
+  } as FoodItemDetail
 }
 
 const serializePortion = (row: FoodItemPortionRow): FoodItemPortion => ({
@@ -156,6 +167,7 @@ const serializePortion = (row: FoodItemPortionRow): FoodItemPortion => ({
 const serializeOverride = (override: DbSharedFoodItemOverride): ApiSharedFoodItemOverride => ({
   shared_food_item_id: override.shared_food_item_id,
   icon: override.icon,
+  default_portion_id: override.default_portion_id,
   created_at: override.created_at.toISOString(),
   updated_at: override.updated_at.toISOString(),
 })

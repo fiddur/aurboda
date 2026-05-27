@@ -81,6 +81,14 @@ export const foodItemSchema = z
     fat: z.number().optional().meta({ description: 'Fat in grams' }),
     fiber: z.number().optional().meta({ description: 'Dietary fiber in grams' }),
     food_item_id: z.string().uuid().optional().meta({ description: 'Link to canonical food item entity' }),
+    food_item_portion_id: z.string().uuid().optional().meta({
+      description:
+        'When set, ties this row to a food_item_portions entry chosen at log time. `portion_count` then carries how many of that portion the user logged.',
+    }),
+    portion_count: z.number().positive().optional().meta({
+      description:
+        'How many of `food_item_portion_id` were logged (e.g. 3 for "3 ruta"). Required when `food_item_portion_id` is set.',
+    }),
     icon: z
       .string()
       .max(2048)
@@ -117,6 +125,14 @@ export const foodItemInputSchema = z
       description:
         'ID of a canonical food item (use the `id` returned by search_food_items). Preferred over `name` — binding by ID avoids creating per-user duplicates of items already in the shared library.',
     }),
+    food_item_portion_id: z.string().uuid().optional().meta({
+      description:
+        'Optional portion id (from food_item_portions). When set, nutrients are scaled by `portion_count × portion.base_equivalent / food.default_quantity` and the row\'s display label is derived from the portion. When omitted, falls back to the legacy `quantity` + `unit` scaling.',
+    }),
+    portion_count: z.number().positive().optional().meta({
+      description:
+        'Required when `food_item_portion_id` is set: how many of that portion were logged (e.g. 3 for "3 ruta").',
+    }),
     icon: z
       .string()
       .max(2048)
@@ -128,11 +144,11 @@ export const foodItemInputSchema = z
     }),
     quantity: z.number().optional().meta({
       description:
-        "Amount consumed, in `unit`. If unit matches the canonical food item's default_unit, the backend scales nutrients by quantity / default_quantity. If units differ, no scaling is applied (canonical values are used as-is).",
+        "Amount consumed, in `unit` — legacy path. Ignored when `food_item_portion_id` is provided. Otherwise: if unit matches the canonical food item's default_unit, the backend scales nutrients by quantity / default_quantity; if units differ, canonical values are used as-is.",
     }),
     unit: z.string().max(100).optional().meta({
       description:
-        'Unit for quantity (e.g., "g", "ml", "large slice", "full recipe"). For best scaling, use the canonical food item\'s default_unit (returned by search_food_items).',
+        'Unit for `quantity` (e.g., "g", "ml", "large slice", "full recipe"). Ignored when `food_item_portion_id` is provided.',
     }),
   })
   .meta({ description: 'Input shape for a food item in a meal request body', id: 'FoodItemInput' })
