@@ -154,18 +154,27 @@ export const getPortionsByFoodItemIds = async (
 }
 
 export const deleteFoodItemPortion = async (user: string, id: string): Promise<boolean> => {
-  // Clear the per-user food row's default pointer first so the FK-like
-  // invariant ("default_portion_id resolves") never points at a deleted row.
-  // Central-target portions have no default pointer to clear (the override
-  // table picks that up in PR2), so this UPDATE is a no-op for those.
-  await query(
-    user,
-    `UPDATE food_items SET default_portion_id = NULL, updated_at = NOW()
-       WHERE default_portion_id = $1`,
-    [id],
-  )
-  const result = await query(user, `DELETE FROM food_item_portions WHERE id = $1`, [id])
-  return (result.rowCount ?? 0) > 0
+  // Wrap in a transaction so the FK-like invariant
+  // ("food_items.default_portion_id always resolves") really holds: if the
+  // DELETE fails or the connection drops after the UPDATE succeeded, the
+  // food row's default pointer would be cleared while the portion is still
+  // present. Central-target portions have no default pointer to clear (the
+  // override table picks that up in PR2), so the UPDATE is a no-op for those.
+  try {
+    await query(user, 'BEGIN')
+    await query(
+      user,
+      `UPDATE food_items SET default_portion_id = NULL, updated_at = NOW()
+         WHERE default_portion_id = $1`,
+      [id],
+    )
+    const result = await query(user, `DELETE FROM food_item_portions WHERE id = $1`, [id])
+    await query(user, 'COMMIT')
+    return (result.rowCount ?? 0) > 0
+  } catch (err) {
+    await query(user, 'ROLLBACK').catch(() => {})
+    throw err
+  }
 }
 
 /** Cascade helper called when a per-user food item is deleted. */

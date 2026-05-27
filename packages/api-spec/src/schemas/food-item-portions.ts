@@ -26,9 +26,11 @@ export const foodItemPortionSchema = z
       description:
         'How much of the food item\'s base unit this whole portion entry equals. Example: a 100 g base with a "1 ruta = 3.4 g" portion stores 3.4 here.',
     }),
-    sort_order: z.number().int().optional().meta({ description: 'Display order' }),
-    created_at: z.string().optional().meta({ description: 'Creation timestamp' }),
-    updated_at: z.string().optional().meta({ description: 'Last update timestamp' }),
+    // sort_order, created_at, updated_at are always populated by the DB and
+    // emitted by the response serializer — clients can rely on them.
+    sort_order: z.number().int().meta({ description: 'Display order' }),
+    created_at: z.string().meta({ description: 'Creation timestamp' }),
+    updated_at: z.string().meta({ description: 'Last update timestamp' }),
   })
   .meta({ description: 'A named portion sizing for a food item', id: 'FoodItemPortion' })
 
@@ -73,3 +75,22 @@ export const deleteFoodItemPortionResponseSchema = baseResponseSchema.meta({
   id: 'DeleteFoodItemPortionResponse',
 })
 export type DeleteFoodItemPortionResponse = z.infer<typeof deleteFoodItemPortionResponseSchema>
+
+/**
+ * Body for `PUT /food-items/:id/default-portion` — set or clear the
+ * preselected portion. `portion_id: null` reverts to the food's base portion.
+ */
+export const setDefaultFoodItemPortionBodySchema = z
+  .object({
+    portion_id: z
+      .string()
+      .uuid()
+      .nullable()
+      .meta({ description: 'Portion id to preselect, or null to revert to the base portion' }),
+  })
+  .meta({
+    description: 'Set or clear the default portion for a food item',
+    id: 'SetDefaultFoodItemPortionBody',
+  })
+
+export type SetDefaultFoodItemPortionBody = z.infer<typeof setDefaultFoodItemPortionBodySchema>

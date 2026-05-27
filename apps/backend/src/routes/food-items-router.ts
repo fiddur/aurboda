@@ -30,6 +30,8 @@ import {
   mergeFoodItemsQuerySchema,
   type MergeFoodItemsResponse,
   type ResnapshotMealsResponse,
+  type SetDefaultFoodItemPortionBody,
+  setDefaultFoodItemPortionBodySchema,
   type SetFoodItemIngredientsBody,
   setFoodItemIngredientsBodySchema,
   type SetFoodItemReferenceBody,
@@ -583,9 +585,10 @@ export const createFoodItemsRouter = (authMiddleware: AnyMiddleware, centralDb: 
 
   // Set or clear the preselected portion for a per-user food item. Pass
   // `portion_id: null` to revert to the base portion.
-  router.put<{ id: string }, FoodItemDetailResponse, { portion_id: string | null }>(
+  router.put<{ id: string }, FoodItemDetailResponse, SetDefaultFoodItemPortionBody>(
     '/:id/default-portion',
     authMiddleware,
+    validateBody(setDefaultFoodItemPortionBodySchema),
     async (req, res) => {
       const user = req.user!
       const id = req.params.id
@@ -599,12 +602,8 @@ export const createFoodItemsRouter = (authMiddleware: AnyMiddleware, centralDb: 
           success: false,
         })
       }
-      const portionId = req.body?.portion_id ?? null
-      if (portionId !== null && typeof portionId !== 'string') {
-        return res.status(400).json({ error: 'portion_id must be a string UUID or null', success: false })
-      }
       try {
-        await setDefaultPortion(user, id, portionId)
+        await setDefaultPortion(user, id, req.body.portion_id)
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Failed to set default portion'
         return res.status(/not found|does not belong/i.test(message) ? 400 : 500).json({
