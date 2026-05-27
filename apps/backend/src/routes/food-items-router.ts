@@ -168,6 +168,7 @@ const serializePortion = (row: FoodItemPortionRow): FoodItemPortion => ({
 const serializeOverride = (override: DbSharedFoodItemOverride): ApiSharedFoodItemOverride => ({
   shared_food_item_id: override.shared_food_item_id,
   icon: override.icon,
+  icon_overridden: override.icon_overridden,
   default_portion_id: override.default_portion_id,
   created_at: override.created_at.toISOString(),
   updated_at: override.updated_at.toISOString(),
@@ -501,7 +502,13 @@ export const createFoodItemsRouter = (authMiddleware: AnyMiddleware, centralDb: 
       // clears the override and skips the check.
       if (req.body.default_portion_id) {
         const portion = await getFoodItemPortionById(user, req.body.default_portion_id)
-        if (!portion || portion.food_item_id !== id) {
+        if (!portion) {
+          return res.status(400).json({
+            error: `Portion not found: ${req.body.default_portion_id}`,
+            success: false,
+          })
+        }
+        if (portion.food_item_id !== id) {
           return res.status(400).json({
             error: 'default_portion_id does not belong to this food item',
             success: false,

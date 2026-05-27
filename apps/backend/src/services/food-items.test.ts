@@ -665,6 +665,7 @@ describe('createFoodItemsService — shared item overrides', () => {
             shared_food_item_id: 'c1',
             icon: '🥕',
             created_at: new Date(),
+            icon_overridden: true,
             default_portion_id: null,
             updated_at: new Date(),
           },
@@ -675,6 +676,39 @@ describe('createFoodItemsService — shared item overrides', () => {
 
     const results = await service.search('user', 'banan')
     expect(results.map((r) => r.icon)).toEqual(['🥕'])
+  })
+
+  test('default_portion_id-only override does NOT strip the central icon', async () => {
+    // Regression: PR2 introduced multiple override fields. A row created via
+    // PUT /override with only `{ default_portion_id: ... }` has icon=NULL
+    // at the column default. Without the icon_overridden discriminator the
+    // read path would treat that as "user-hid-central-icon" and the
+    // user-facing icon would silently disappear after setting a default
+    // portion. Fix: only apply icon when icon_overridden=true.
+    const lsv = sharedItem('c1', 'Banan')
+    lsv.icon = '🍌'
+    const central = fakeCentral()
+    vi.mocked(central.getSharedFoodItemById).mockResolvedValue(lsv)
+    vi.mocked(dbModule.getFoodItemById).mockResolvedValue(null)
+    vi.mocked(overridesModule.getSharedFoodItemOverridesByIds).mockResolvedValue(
+      new Map([
+        [
+          'c1',
+          {
+            shared_food_item_id: 'c1',
+            icon: null, // column default — NOT user-supplied
+            icon_overridden: false, // user only touched default_portion_id
+            default_portion_id: '11111111-1111-1111-1111-111111111111',
+            created_at: new Date(),
+            updated_at: new Date(),
+          },
+        ],
+      ]),
+    )
+    const service = createFoodItemsService(central)
+
+    const result = await service.getById('user', 'c1')
+    expect(result?.icon).toBe('🍌') // central icon preserved
   })
 
   test('null override icon hides the central icon', async () => {
@@ -691,6 +725,7 @@ describe('createFoodItemsService — shared item overrides', () => {
             shared_food_item_id: 'c1',
             icon: null,
             created_at: new Date(),
+            icon_overridden: true,
             default_portion_id: null,
             updated_at: new Date(),
           },
@@ -731,6 +766,7 @@ describe('createFoodItemsService — shared item overrides', () => {
             shared_food_item_id: 'u1',
             icon: '🚫',
             created_at: new Date(),
+            icon_overridden: true,
             default_portion_id: null,
             updated_at: new Date(),
           },
@@ -849,6 +885,7 @@ describe('resolveFoodItemDisplay', () => {
           'c1',
           {
             created_at: new Date(),
+            icon_overridden: true,
             default_portion_id: null,
             icon: '🍯',
             shared_food_item_id: 'c1',
@@ -875,6 +912,7 @@ describe('resolveFoodItemDisplay', () => {
           'c1',
           {
             created_at: new Date(),
+            icon_overridden: true,
             default_portion_id: null,
             icon: null,
             shared_food_item_id: 'c1',

@@ -520,6 +520,7 @@ describe('PUT /food-items/:id/override default_portion_id ownership guard', () =
     vi.mocked(overrides.setSharedFoodItemOverride).mockResolvedValue({
       shared_food_item_id: FOOD_ID,
       icon: null,
+      icon_overridden: false,
       default_portion_id: null,
       created_at: new Date(),
       updated_at: new Date(),

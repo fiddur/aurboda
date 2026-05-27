@@ -136,4 +136,21 @@ describe('shared_food_item_overrides integration', () => {
     const cleared = await setSharedFoodItemOverride(user, sharedId1, { default_portion_id: null })
     expect(cleared.default_portion_id).toBeNull()
   })
+
+  test('icon_overridden tracks whether the user supplied an icon value', async () => {
+    const user = getTestUser()
+    const portionId = '33333333-3333-3333-3333-333333333333'
+    // Only default_portion_id → icon_overridden stays false.
+    const a = await setSharedFoodItemOverride(user, sharedId1, { default_portion_id: portionId })
+    expect(a.icon_overridden).toBe(false)
+    expect(a.icon).toBeNull()
+    // Setting icon=null (explicit hide) → icon_overridden flips to true.
+    const b = await setSharedFoodItemOverride(user, sharedId1, { icon: null })
+    expect(b.icon_overridden).toBe(true)
+    expect(b.icon).toBeNull()
+    // Setting an icon string → icon_overridden stays true.
+    const c = await setSharedFoodItemOverride(user, sharedId1, { icon: '🥩' })
+    expect(c.icon_overridden).toBe(true)
+    expect(c.icon).toBe('🥩')
+  })
 })

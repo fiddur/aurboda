@@ -1128,6 +1128,21 @@ export const migrateSchema = async (user: string) => {
       db,
       `ALTER TABLE shared_food_item_overrides ADD COLUMN IF NOT EXISTS default_portion_id UUID`,
     )
+    // icon_overridden distinguishes "user explicitly chose icon" from "user
+    // never touched it" — required now that other override fields exist
+    // (a default_portion_id-only update would otherwise leave icon at the
+    // column default NULL and the read path would treat that as
+    // "user-hid-central-icon"). Backfill: every pre-existing row was
+    // created via the icon-only API and therefore did explicitly choose
+    // its icon value, so mark them all overridden.
+    await query(
+      db,
+      `ALTER TABLE shared_food_item_overrides ADD COLUMN IF NOT EXISTS icon_overridden BOOLEAN NOT NULL DEFAULT FALSE`,
+    )
+    await query(
+      db,
+      `UPDATE shared_food_item_overrides SET icon_overridden = TRUE WHERE icon_overridden = FALSE`,
+    )
   }
 
   // import_jobs and shared_food_items moved to the central database. If a

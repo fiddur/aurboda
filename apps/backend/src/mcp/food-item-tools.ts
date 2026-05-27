@@ -292,7 +292,8 @@ export const registerFoodItemTools = (server: McpServer, user: string, centralDb
       // clears and skips the check.
       if (input.default_portion_id) {
         const portion = await getFoodItemPortionById(user, input.default_portion_id)
-        if (!portion || portion.food_item_id !== id) {
+        if (!portion) return errorResponse(`Portion not found: ${input.default_portion_id}`)
+        if (portion.food_item_id !== id) {
           return errorResponse('default_portion_id does not belong to this food item')
         }
       }

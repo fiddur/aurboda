@@ -234,7 +234,12 @@ export const sharedFoodItemOverrideSchema = z
       .uuid()
       .meta({ description: 'ID of the central shared food item this override applies to' }),
     icon: z.string().max(2048).nullable().meta({
-      description: 'User-set icon for the central item; null means "no icon" (explicit override to empty).',
+      description:
+        'User-set icon — only meaningful when `icon_overridden` is true. Null then means "user explicitly chose no icon" (hide central). When `icon_overridden` is false, this field\'s value is incidental and clients must pass through the central icon untouched.',
+    }),
+    icon_overridden: z.boolean().meta({
+      description:
+        'Whether the user supplied an icon value (string OR explicit null). False means no icon override was set on this row.',
     }),
     default_portion_id: z.string().uuid().nullable().meta({
       description:
