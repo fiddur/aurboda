@@ -13,7 +13,7 @@ import { setIngredients } from '../db/food-item-ingredients.ts'
 import { insertFoodItemPortion } from '../db/food-item-portions.ts'
 import { updateFoodItem, upsertFoodItem } from '../db/food-items.ts'
 import { getMealFoodItemsBatch } from '../db/meal-food-items.ts'
-import { getMealById } from '../db/meals.ts'
+import { getMealById, getMeals as dbGetMeals } from '../db/meals.ts'
 import { insertSensitivityFlag, setFoodItemSensitivities } from '../db/sensitivities.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import { addMeal, getMeal, queryFrequentMeals, resnapshotMealsForFoodItem, updateMealById } from './meals.ts'
@@ -498,7 +498,7 @@ describe('Meals service integration tests', () => {
       expect(result.data!.calories).toBeCloseTo(51, 2)
     })
 
-    test('rejects portion that does not belong to the food', async () => {
+    test('rejects portion that does not belong to the food — returns failure, no orphan meal row', async () => {
       const user = getTestUser()
       const foodA = await upsertFoodItem(user, { name: 'A', default_quantity: 100, default_unit: 'g' })
       const foodB = await upsertFoodItem(user, { name: 'B', default_quantity: 100, default_unit: 'g' })
@@ -509,19 +509,27 @@ describe('Meals service integration tests', () => {
         base_equivalent: 1,
       })
 
-      await expect(
-        addMeal(user, {
-          food_items: [
-            {
-              food_item_id: foodB.id,
-              food_item_portion_id: portionA.id,
-              portion_count: 2,
-              name: 'B',
-            },
-          ],
-          time: '2026-04-26T15:00:00Z',
-        }),
-      ).rejects.toThrow(/does not belong/i)
+      const result = await addMeal(user, {
+        food_items: [
+          {
+            food_item_id: foodB.id,
+            food_item_portion_id: portionA.id,
+            portion_count: 2,
+            name: 'B',
+          },
+        ],
+        time: '2026-04-26T15:00:00Z',
+      })
+      expect(result.success).toBe(false)
+      expect(result.error).toMatch(/does not belong/i)
+      // Regression: addMeal used to throw mid-flight, AFTER the meal row was
+      // upserted — leaving an orphan meal with no items behind. The fix
+      // pre-validates portions before any DB write.
+      const allMeals = await dbGetMeals(user, {
+        start: new Date('2026-04-26T00:00:00Z'),
+        end: new Date('2026-04-27T00:00:00Z'),
+      })
+      expect(allMeals).toHaveLength(0)
     })
 
     test('rejects portion_count missing / non-positive when portion_id is set', async () => {
@@ -533,14 +541,12 @@ describe('Meals service integration tests', () => {
         label_unit: 'x',
         base_equivalent: 1,
       })
-      await expect(
-        addMeal(user, {
-          food_items: [
-            { food_item_id: food.id, food_item_portion_id: portion.id, name: 'F' },
-          ],
-          time: '2026-04-26T15:00:00Z',
-        }),
-      ).rejects.toThrow(/portion_count/i)
+      const result = await addMeal(user, {
+        food_items: [{ food_item_id: food.id, food_item_portion_id: portion.id, name: 'F' }],
+        time: '2026-04-26T15:00:00Z',
+      })
+      expect(result.success).toBe(false)
+      expect(result.error).toMatch(/portion_count/i)
     })
 
     test('resnapshot preserves portion link and rescales with current effective nutrients', async () => {

@@ -151,6 +151,13 @@ export const foodItemInputSchema = z
         'Unit for `quantity` (e.g., "g", "ml", "large slice", "full recipe"). Ignored when `food_item_portion_id` is provided.',
     }),
   })
+  .refine(
+    (body) => body.food_item_portion_id === undefined || typeof body.portion_count === 'number',
+    {
+      message: 'portion_count is required when food_item_portion_id is set',
+      path: ['portion_count'],
+    },
+  )
   .meta({ description: 'Input shape for a food item in a meal request body', id: 'FoodItemInput' })
 
 export type FoodItemInput = z.infer<typeof foodItemInputSchema>

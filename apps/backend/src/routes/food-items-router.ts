@@ -136,6 +136,7 @@ const serializeDetail = (detail: ServiceFoodItemDetail): FoodItemDetail => {
       ...base,
       is_shared,
       portions,
+      effective_default_portion_id,
       reference: {
         food: serializeFoodItem(detail.reference.food),
         unit_mismatch: detail.reference.unit_mismatch,
