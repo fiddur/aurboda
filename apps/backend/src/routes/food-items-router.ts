@@ -495,6 +495,19 @@ export const createFoodItemsRouter = (authMiddleware: AnyMiddleware, centralDb: 
           success: false,
         })
       }
+      // When the user sets default_portion_id, enforce the same ownership
+      // invariant as the per-user `set_default_food_item_portion` path:
+      // the portion must exist AND belong to this central food. A `null`
+      // clears the override and skips the check.
+      if (req.body.default_portion_id) {
+        const portion = await getFoodItemPortionById(user, req.body.default_portion_id)
+        if (!portion || portion.food_item_id !== id) {
+          return res.status(400).json({
+            error: 'default_portion_id does not belong to this food item',
+            success: false,
+          })
+        }
+      }
       const override = await setSharedFoodItemOverride(user, id, req.body)
       res.json({ data: serializeOverride(override), success: true })
     },

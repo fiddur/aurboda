@@ -25,6 +25,7 @@ import {
   clearIngredients,
   deleteFoodItem,
   getFoodItemById as getUserFoodItemById,
+  getFoodItemPortionById,
   listFoodItems,
   setFoodItemReference,
   setIngredients,
@@ -285,6 +286,15 @@ export const registerFoodItemTools = (server: McpServer, user: string, centralDb
             ? 'Per-user items have no override layer — edit them directly via update_food_item'
             : 'Food item not found',
         )
+      }
+      // Mirror the REST route's ownership guard on default_portion_id —
+      // refuse a portion that doesn't belong to this central food. null
+      // clears and skips the check.
+      if (input.default_portion_id) {
+        const portion = await getFoodItemPortionById(user, input.default_portion_id)
+        if (!portion || portion.food_item_id !== id) {
+          return errorResponse('default_portion_id does not belong to this food item')
+        }
       }
       const override = await setSharedFoodItemOverride(user, id, input)
       return jsonResponse({ data: override, success: true })

@@ -547,6 +547,39 @@ describe('Meals service integration tests', () => {
       })
       expect(result.success).toBe(false)
       expect(result.error).toMatch(/portion_count/i)
+      expect(result.errorCode).toBe('invalid')
+    })
+
+    test('updateMealById distinguishes not_found from invalid via errorCode', async () => {
+      const user = getTestUser()
+      // not_found: nothing exists at this id.
+      const notFound = await updateMealById(user, '00000000-0000-0000-0000-000000000001', {
+        food_items: [],
+      })
+      expect(notFound.success).toBe(false)
+      expect(notFound.errorCode).toBe('not_found')
+
+      // invalid: meal exists but portion targets a different food.
+      const foodA = await upsertFoodItem(user, { name: 'A', default_quantity: 100, default_unit: 'g' })
+      const foodB = await upsertFoodItem(user, { name: 'B', default_quantity: 100, default_unit: 'g' })
+      const portionA = await insertFoodItemPortion(user, {
+        food_item_id: foodA.id,
+        label_quantity: 1,
+        label_unit: 'x',
+        base_equivalent: 1,
+      })
+      const meal = await addMeal(user, {
+        food_items: [{ food_item_id: foodB.id, name: 'B', quantity: 100, unit: 'g' }],
+        time: '2026-04-26T15:00:00Z',
+      })
+      const bad = await updateMealById(user, meal.data!.id, {
+        food_items: [
+          { food_item_id: foodB.id, food_item_portion_id: portionA.id, portion_count: 1, name: 'B' },
+        ],
+      })
+      expect(bad.success).toBe(false)
+      expect(bad.errorCode).toBe('invalid')
+      expect(bad.error).toMatch(/does not belong/i)
     })
 
     test('resnapshot preserves portion link and rescales with current effective nutrients', async () => {

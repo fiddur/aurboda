@@ -32,6 +32,7 @@ vi.mock('../db/index.ts', () => ({
 }))
 
 const periodSvc = await import('../services/queries/meal-period-summary.ts')
+const mealsSvc = await import('../services/meals.ts')
 
 const buildApp = () => {
   const app = express()
@@ -144,6 +145,31 @@ describe('GET /meals/period-summary', () => {
 
   test('400 when end is missing', async () => {
     const res = await supertest(buildApp()).get('/meals/period-summary?start=2025-01-01')
+    expect(res.status).toBe(400)
+  })
+})
+
+describe('PATCH /meals/:id error code → status mapping', () => {
+  beforeEach(() => vi.clearAllMocks())
+  const MEAL_ID = '11111111-1111-4111-8111-111111111111'
+
+  test('errorCode=not_found → 404', async () => {
+    vi.mocked(mealsSvc.updateMealById).mockResolvedValue({
+      success: false,
+      error: 'Meal not found',
+      errorCode: 'not_found',
+    })
+    const res = await supertest(buildApp()).patch(`/meals/${MEAL_ID}`).send({ name: 'x' })
+    expect(res.status).toBe(404)
+  })
+
+  test('errorCode=invalid → 400', async () => {
+    vi.mocked(mealsSvc.updateMealById).mockResolvedValue({
+      success: false,
+      error: 'Portion abc does not belong to food item def',
+      errorCode: 'invalid',
+    })
+    const res = await supertest(buildApp()).patch(`/meals/${MEAL_ID}`).send({ name: 'x' })
     expect(res.status).toBe(400)
   })
 })

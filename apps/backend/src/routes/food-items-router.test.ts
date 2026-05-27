@@ -483,6 +483,55 @@ describe('DELETE /food-items/:id/portions/:portionId ownership guard', () => {
   })
 })
 
+describe('PUT /food-items/:id/override default_portion_id ownership guard', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  const PORTION_ID = '44444444-4444-4444-8444-444444444444'
+  const OTHER_FOOD_ID = '55555555-5555-4555-8555-555555555555'
+
+  test('400 when default_portion_id targets a different food', async () => {
+    setUserFoodItem(async () => null)
+    const central = fakeCentral()
+    vi.mocked(central.getSharedFoodItemById).mockResolvedValue(sharedItem(FOOD_ID))
+    vi.mocked(dbBarrel.getFoodItemPortionById).mockResolvedValue({
+      id: PORTION_ID,
+      food_item_id: OTHER_FOOD_ID,
+      label_quantity: 1,
+      label_unit: 'g',
+      base_equivalent: 1,
+      sort_order: 0,
+      created_at: new Date(),
+      updated_at: new Date(),
+    })
+    const res = await supertest(buildApp(central))
+      .put(`/food-items/${FOOD_ID}/override`)
+      .send({ default_portion_id: PORTION_ID })
+    expect(res.status).toBe(400)
+    expect(res.body.error).toMatch(/does not belong/i)
+  })
+
+  test('null default_portion_id skips the lookup and clears the override', async () => {
+    setUserFoodItem(async () => null)
+    const central = fakeCentral()
+    vi.mocked(central.getSharedFoodItemById).mockResolvedValue(sharedItem(FOOD_ID))
+    const overrides = await import('../db/shared-food-item-overrides.ts')
+    vi.mocked(overrides.setSharedFoodItemOverride).mockResolvedValue({
+      shared_food_item_id: FOOD_ID,
+      icon: null,
+      default_portion_id: null,
+      created_at: new Date(),
+      updated_at: new Date(),
+    })
+    const res = await supertest(buildApp(central))
+      .put(`/food-items/${FOOD_ID}/override`)
+      .send({ default_portion_id: null })
+    expect(res.status).toBe(200)
+    expect(dbBarrel.getFoodItemPortionById).not.toHaveBeenCalled()
+  })
+})
+
 describe('PATCH /food-items/:id default_portion_id is stripped from generic update', () => {
   beforeEach(() => {
     vi.clearAllMocks()

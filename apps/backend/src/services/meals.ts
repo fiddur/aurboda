@@ -109,10 +109,21 @@ interface MealResponse {
   created_at: string
 }
 
+/**
+ * Result discriminator the route layer maps to HTTP status:
+ *   - 'not_found' → 404 (the meal id doesn't resolve)
+ *   - 'invalid' → 400 (validation failure — bad portion id, missing
+ *     portion_count, etc.)
+ * Undefined `errorCode` on a successful response, or treated as 500 if
+ * `success: false` arrives without one.
+ */
+type MealResultErrorCode = 'not_found' | 'invalid'
+
 interface MealResult {
   success: boolean
   data?: MealResponse
   error?: string
+  errorCode?: MealResultErrorCode
 }
 
 interface MealsResult {
@@ -510,7 +521,11 @@ export async function addMeal(user: string, input: AddMealInput): Promise<MealRe
     try {
       prepared = await prepareFoodItems(user, input.food_items, input.source ?? 'manual')
     } catch (err) {
-      return { error: err instanceof Error ? err.message : 'Invalid food items', success: false }
+      return {
+        error: err instanceof Error ? err.message : 'Invalid food items',
+        errorCode: 'invalid',
+        success: false,
+      }
     }
   }
 
@@ -557,10 +572,14 @@ export async function updateMealById(user: string, id: string, input: UpdateMeal
       // Source on the existing meal is needed for canonical resolution
       // (auto-creates per-user items if not found). Look it up once.
       const existing = await dbGetMealById(user, id)
-      if (!existing) return { error: 'Meal not found', success: false }
+      if (!existing) return { error: 'Meal not found', errorCode: 'not_found', success: false }
       prepared = await prepareFoodItems(user, input.food_items!, existing.source)
     } catch (err) {
-      return { error: err instanceof Error ? err.message : 'Invalid food items', success: false }
+      return {
+        error: err instanceof Error ? err.message : 'Invalid food items',
+        errorCode: 'invalid',
+        success: false,
+      }
     }
   }
 
@@ -572,7 +591,7 @@ export async function updateMealById(user: string, id: string, input: UpdateMeal
   })
 
   if (!initialMeal) {
-    return { error: 'Meal not found', success: false }
+    return { error: 'Meal not found', errorCode: 'not_found', success: false }
   }
 
   let meal = initialMeal
@@ -660,7 +679,7 @@ export async function resnapshotMealsForFoodItem(
       const fi: FoodItemInput = {
         food_item_id: foodItemId,
         food_item_portion_id: portion ? portion.id : undefined,
-        portion_count: portion ? (link.portion_count as number | undefined) : undefined,
+        portion_count: portion ? link.portion_count : undefined,
         name: canonical.name,
         quantity: link.quantity as number | undefined,
         unit: link.unit as string | undefined,
@@ -679,7 +698,7 @@ export async function resnapshotMealsForFoodItem(
 export async function getMeal(user: string, id: string): Promise<MealResult> {
   const meal = await dbGetMealById(user, id)
   if (!meal) {
-    return { error: 'Meal not found', success: false }
+    return { error: 'Meal not found', errorCode: 'not_found', success: false }
   }
 
   // Populate food items from junction table
