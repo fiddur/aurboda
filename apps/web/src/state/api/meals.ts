@@ -2,7 +2,9 @@ import type {
   AddFoodItemBody,
   AddFoodItemPortionBody,
   AddMealBody,
+  FoodItemDetail as ApiFoodItemDetail,
   Meal as ApiMeal,
+  FoodItemDetailResponse,
   FoodItemPortion,
   FoodItemPortionResponse,
   FrequentFoodItem,
@@ -176,6 +178,15 @@ export const previewMergeFoodItemsApi = async (
     },
   )
   if (!response.data.data) throw new Error(response.data.error ?? 'Preview failed')
+  return response.data.data
+}
+
+export const fetchFoodItemDetailApi = async (id: string): Promise<ApiFoodItemDetail> => {
+  const { token } = auth.value
+  const response = await axios.get<FoodItemDetailResponse>(`${API_URL}/food-items/${id}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!response.data.data) throw new Error(response.data.error ?? 'Food item not found')
   return response.data.data
 }
 

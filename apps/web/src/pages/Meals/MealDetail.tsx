@@ -1,4 +1,4 @@
-import type { UpdateMealBody } from '@aurboda/api-spec'
+import type { FoodItemDetail as ApiFoodItemDetail, FoodItemPortion, UpdateMealBody } from '@aurboda/api-spec'
 
 import { NUTRIENT_FIELDS } from '@aurboda/api-spec'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -11,6 +11,7 @@ import { FoodItemAutocomplete } from '../../components/FoodItemAutocomplete'
 import {
   addFoodItemApi,
   deleteMealApi,
+  fetchFoodItemDetailApi,
   fetchMeal,
   fetchSensitivityFlags,
   type FoodItemEntity,
@@ -127,6 +128,110 @@ function MealFlagsEditor({
   )
 }
 
+const parseNum = (v: string) => (v === '' ? undefined : parseFloat(v))
+
+/**
+ * After a food is picked, auto-select its effective default portion exactly
+ * once per food id change. Skips when the row is already pinned (e.g.
+ * editing an existing meal where the portion was already chosen).
+ */
+const useAutoDefaultPortion = (
+  item: FoodItemEdit,
+  detail: ApiFoodItemDetail | undefined,
+  applyPortion: (p: FoodItemPortion) => void,
+): void => {
+  const lastAppliedFoodId = useRef<string | undefined>(undefined)
+  useEffect(() => {
+    if (!detail || !item.food_item_id) return
+    if (lastAppliedFoodId.current === item.food_item_id) return
+    lastAppliedFoodId.current = item.food_item_id
+    if (item.food_item_portion_id) return
+    const def = detail.effective_default_portion_id
+    if (!def) return
+    const p = detail.portions?.find((pp) => pp.id === def)
+    if (p) applyPortion(p)
+  }, [detail?.id, item.food_item_id])
+}
+
+function PortionPicker({
+  selectedId,
+  portions,
+  baseLabel,
+  onPick,
+}: {
+  selectedId: string | undefined
+  portions: FoodItemPortion[]
+  baseLabel: string
+  onPick: (portionId: string) => void
+}) {
+  if (portions.length === 0) return null
+  return (
+    <select
+      class="food-portion-picker"
+      value={selectedId ?? ''}
+      onChange={(e) => onPick((e.target as HTMLSelectElement).value)}
+    >
+      <option value="">Base ({baseLabel})</option>
+      {portions.map((p) => (
+        <option key={p.id} value={p.id}>
+          {p.label_quantity} {p.label_unit}
+        </option>
+      ))}
+    </select>
+  )
+}
+
+function QuantityInputs({
+  item,
+  onUpdate,
+}: {
+  item: FoodItemEdit
+  onUpdate: (patch: Partial<FoodItemEdit>) => void
+}) {
+  if (item.food_item_portion_id && item.portion) {
+    return (
+      <>
+        <input
+          type="number"
+          step="0.1"
+          value={item.portion_count ?? ''}
+          placeholder="Count"
+          class="food-num-input"
+          onInput={(e) => onUpdate({ portion_count: parseNum((e.target as HTMLInputElement).value) })}
+        />
+        <span class="food-portion-unit">
+          × {item.portion.label_quantity} {item.portion.label_unit}
+        </span>
+      </>
+    )
+  }
+  return (
+    <>
+      <input
+        type="number"
+        step="0.1"
+        value={item.quantity ?? ''}
+        placeholder="Qty"
+        class="food-num-input"
+        onInput={(e) => onUpdate({ quantity: parseNum((e.target as HTMLInputElement).value) })}
+      />
+      <input
+        type="text"
+        value={item.unit ?? ''}
+        placeholder="Unit"
+        class="food-unit-input"
+        onInput={(e) => onUpdate({ unit: (e.target as HTMLInputElement).value })}
+      />
+    </>
+  )
+}
+
+const portionToSnapshot = (p: FoodItemPortion) => ({
+  label_quantity: p.label_quantity,
+  label_unit: p.label_unit,
+  base_equivalent: p.base_equivalent,
+})
+
 function FoodItemRow({
   item,
   index,
@@ -140,15 +245,75 @@ function FoodItemRow({
   onRemove: (index: number) => void
   autoFocus?: boolean
 }) {
-  const update = (field: keyof FoodItemEdit, value: unknown) => onChange(index, { ...item, [field]: value })
-  const parseNum = (v: string) => (v === '' ? undefined : parseFloat(v))
+  const update = (patch: Partial<FoodItemEdit>) => onChange(index, { ...item, ...patch })
 
-  const kcal = scaleNutrient(item.ref, 'calories', item.quantity)
-  const prot = scaleNutrient(item.ref, 'protein', item.quantity)
-  const carbs = scaleNutrient(item.ref, 'carbs', item.quantity)
-  const fat = scaleNutrient(item.ref, 'fat', item.quantity)
-  const fiber = scaleNutrient(item.ref, 'fiber', item.quantity)
-  const hasMacros = [kcal, prot, carbs, fat, fiber].some((v) => typeof v === 'number')
+  // Detail (incl. portions + effective_default_portion_id) is cached by
+  // react-query keyed on food_item_id; re-renders don't re-fetch.
+  const { data: detail } = useQuery({
+    enabled: !!item.food_item_id,
+    queryFn: () => fetchFoodItemDetailApi(item.food_item_id!),
+    queryKey: ['foodItem', item.food_item_id],
+  })
+
+  useAutoDefaultPortion(item, detail, (p) =>
+    update({ food_item_portion_id: p.id, portion_count: 1, portion: portionToSnapshot(p) }),
+  )
+
+  const portionScale =
+    item.food_item_portion_id && item.portion && typeof item.portion_count === 'number'
+      ? { count: item.portion_count, base_equivalent: item.portion.base_equivalent }
+      : undefined
+
+  const macros = (['calories', 'protein', 'carbs', 'fat', 'fiber'] as const).map((f) => ({
+    field: f,
+    value: scaleNutrient(item.ref, f, item.quantity, portionScale),
+  }))
+  const hasMacros = macros.some((m) => typeof m.value === 'number')
+
+  const handleFoodPick = (fi: FoodItemEntity) =>
+    onChange(index, {
+      ...item,
+      food_item_id: fi.id,
+      // Reset portion state — previous food's portions don't apply; the
+      // useAutoDefaultPortion effect re-applies the default for the new food.
+      food_item_portion_id: undefined,
+      portion_count: undefined,
+      portion: undefined,
+      name: fi.name,
+      quantity: fi.default_quantity ?? 1,
+      unit: fi.default_unit ?? item.unit,
+      ref: {
+        calories: fi.calories,
+        carbs: fi.carbs,
+        fat: fi.fat,
+        fiber: fi.fiber,
+        protein: fi.protein,
+        quantity: fi.default_quantity,
+      },
+    })
+
+  const handlePortionPick = (portionId: string) => {
+    if (!portionId) {
+      update({
+        food_item_portion_id: undefined,
+        portion_count: undefined,
+        portion: undefined,
+        quantity: detail?.default_quantity ?? item.quantity,
+        unit: detail?.default_unit ?? item.unit,
+      })
+      return
+    }
+    const p = detail?.portions?.find((pp) => pp.id === portionId)
+    if (!p) return
+    update({
+      food_item_portion_id: p.id,
+      portion_count:
+        item.portion_count && item.food_item_portion_id ? item.portion_count : 1,
+      portion: portionToSnapshot(p),
+    })
+  }
+
+  const baseLabel = `${detail?.default_quantity ?? '?'} ${detail?.default_unit ?? ''}`.trim()
 
   return (
     <div class="food-item-edit-row">
@@ -156,52 +321,38 @@ function FoodItemRow({
         <FoodItemAutocomplete
           value={item.name}
           autoFocus={autoFocus}
-          onChange={(name) => update('name', name)}
-          onSelect={(fi: FoodItemEntity) => {
-            onChange(index, {
-              ...item,
-              food_item_id: fi.id,
-              name: fi.name,
-              quantity: fi.default_quantity ?? 1,
-              unit: fi.default_unit ?? item.unit,
-              ref: {
-                calories: fi.calories,
-                carbs: fi.carbs,
-                fat: fi.fat,
-                fiber: fi.fiber,
-                protein: fi.protein,
-                quantity: fi.default_quantity,
-              },
-            })
-          }}
+          onChange={(name) => update({ name })}
+          onSelect={handleFoodPick}
           onCreate={(name) => addFoodItemApi({ name })}
         />
-        <input
-          type="number"
-          step="0.1"
-          value={item.quantity ?? ''}
-          placeholder="Qty"
-          class="food-num-input"
-          onInput={(e) => update('quantity', parseNum((e.target as HTMLInputElement).value))}
+        <PortionPicker
+          selectedId={item.food_item_portion_id}
+          portions={detail?.portions ?? []}
+          baseLabel={baseLabel}
+          onPick={handlePortionPick}
         />
-        <input
-          type="text"
-          value={item.unit ?? ''}
-          placeholder="Unit"
-          class="food-unit-input"
-          onInput={(e) => update('unit', (e.target as HTMLInputElement).value)}
-        />
+        <QuantityInputs item={item} onUpdate={update} />
         <button type="button" class="btn-danger-small" onClick={() => onRemove(index)}>
           &times;
         </button>
       </div>
       {hasMacros && (
         <div class="food-row-macros-display">
-          {typeof kcal === 'number' && <span>{kcal} kcal</span>}
-          {typeof prot === 'number' && <span>P {prot}g</span>}
-          {typeof carbs === 'number' && <span>C {carbs}g</span>}
-          {typeof fat === 'number' && <span>F {fat}g</span>}
-          {typeof fiber === 'number' && <span>Fib {fiber}g</span>}
+          {macros.map((m) =>
+            typeof m.value === 'number' ? (
+              <span key={m.field}>
+                {m.field === 'calories'
+                  ? `${m.value} kcal`
+                  : m.field === 'protein'
+                    ? `P ${m.value}g`
+                    : m.field === 'carbs'
+                      ? `C ${m.value}g`
+                      : m.field === 'fat'
+                        ? `F ${m.value}g`
+                        : `Fib ${m.value}g`}
+              </span>
+            ) : null,
+          )}
         </div>
       )}
     </div>
