@@ -34,6 +34,16 @@ export interface FoodItemEdit {
    */
   portion?: { label_quantity: number; label_unit: string; base_equivalent: number }
   /**
+   * True for rows added this session via the "+" button (or autocomplete
+   * pick from scratch). Lets the auto-default-portion effect distinguish
+   * fresh rows — which should adopt the food's effective default portion —
+   * from existing meal rows loaded via mealItemsToEdit, where silently
+   * re-encoding a legacy `50 g` row as `1 × default portion` would
+   * silently change the meal's nutrients on open. Non-persisted; never
+   * sent to the backend.
+   */
+  _isNew?: boolean
+  /**
    * Reference values for live display scaling. Captured at row creation
    * (autocomplete pick: canonical default_quantity + canonical nutrients;
    * existing item edit: server snapshot quantity + snapshot nutrients).

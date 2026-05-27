@@ -163,6 +163,11 @@ const useAutoDefaultPortion = (
       if (p) applyPortion(p, /* keepCount */ true)
       return
     }
+    // Auto-default-portion only applies to rows added THIS session (`_isNew`).
+    // Without this gate we'd silently re-encode legacy server-loaded rows
+    // (e.g. "50 g chocolate") as `1 × default portion` on meal open,
+    // overwriting the user's recorded quantity.
+    if (!item._isNew) return
     const def = detail.effective_default_portion_id
     if (!def) return
     const p = detail.portions?.find((pp) => pp.id === def)
@@ -285,6 +290,10 @@ function FoodItemRow({
       food_item_portion_id: p.id,
       portion_count: keepCount ? (item.portion_count ?? 1) : 1,
       portion: portionToSnapshot(p),
+      // Clear the freshness flag — once applied, the row is no longer "new
+      // pending auto-default" and shouldn't re-trigger if anything else
+      // upstream resets the effect's gate.
+      _isNew: false,
       // For existing portion-pinned rows loaded via mealItemsToEdit, `ref`
       // holds the per-entry snapshot (ref.calories = already-scaled, ref.quantity
       // = portion_count × label_quantity), not the canonical (per default_quantity)
@@ -327,6 +336,11 @@ function FoodItemRow({
       food_item_portion_id: undefined,
       portion_count: undefined,
       portion: undefined,
+      // Re-flag as fresh-w.r.t.-this-food so the auto-default branch can
+      // adopt the new food's effective default portion. (handleFoodPick
+      // already resets the quantity to fi.default_quantity, so there's no
+      // user data to preserve here — distinct from the load-time case.)
+      _isNew: true,
       name: fi.name,
       quantity: fi.default_quantity ?? 1,
       unit: fi.default_unit ?? item.unit,
@@ -412,7 +426,11 @@ function FoodItemsEditor({
   const handleRemove = (index: number) => onChange(items.filter((_, i) => i !== index))
   const handleAdd = () => {
     setAutoFocusIndex(items.length)
-    onChange([...items, { name: '' }])
+    // _isNew flags this row as added this session so useAutoDefaultPortion
+    // can adopt the food's effective default portion on pick. Rows loaded
+    // from the server via mealItemsToEdit don't carry the flag and are
+    // never silently re-encoded by the auto-default branch.
+    onChange([...items, { name: '', _isNew: true }])
   }
 
   return (
@@ -639,15 +657,16 @@ export function MealDetail() {
 
   const commitItems = (next: FoodItemEdit[]) => {
     setItems(next)
-    // Skip the save when any row is in a transient portion-editing state
-    // (pinned to a portion but the count input is currently empty). Without
-    // this guard the row would fall through editItemsToBody's portion fork
-    // and briefly get re-saved as a legacy-quantity row, then re-pinned
-    // once the user finishes typing the new count.
-    if (next.some((fi) => fi.food_item_portion_id && !(typeof fi.portion_count === 'number' && fi.portion_count > 0))) {
-      return
-    }
-    const body = { food_items: editItemsToBody(next) }
+    // Filter rows that are mid-edit on a portion (pinned to a portion but
+    // the count input is currently empty/zero). Without this, such a row
+    // would fall through editItemsToBody's portion fork and briefly get
+    // re-saved as a legacy-quantity row, then re-pinned when the count
+    // refills. We skip the offending row only (not the whole save), so
+    // edits to other rows still flush.
+    const saveable = next.filter(
+      (fi) => !(fi.food_item_portion_id && !(typeof fi.portion_count === 'number' && fi.portion_count > 0)),
+    )
+    const body = { food_items: editItemsToBody(saveable) }
     // De-dupe consecutive identical bodies — useAutoDefaultPortion's
     // backfill on load propagates through here with the same
     // food_item_portion_id + portion_count the server already has, and
