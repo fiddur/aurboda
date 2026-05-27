@@ -249,6 +249,14 @@ const portionToSnapshot = (p: FoodItemPortion) => ({
   base_equivalent: p.base_equivalent,
 })
 
+const MACRO_LABELS: Record<'calories' | 'protein' | 'carbs' | 'fat' | 'fiber', (v: number) => string> = {
+  calories: (v) => `${v} kcal`,
+  protein: (v) => `P ${v}g`,
+  carbs: (v) => `C ${v}g`,
+  fat: (v) => `F ${v}g`,
+  fiber: (v) => `Fib ${v}g`,
+}
+
 function FoodItemRow({
   item,
   index,
@@ -277,6 +285,25 @@ function FoodItemRow({
       food_item_portion_id: p.id,
       portion_count: keepCount ? (item.portion_count ?? 1) : 1,
       portion: portionToSnapshot(p),
+      // For existing portion-pinned rows loaded via mealItemsToEdit, `ref`
+      // holds the per-entry snapshot (ref.calories = already-scaled, ref.quantity
+      // = portion_count × label_quantity), not the canonical (per default_quantity)
+      // values that scaleNutrient's portion-path formula requires. Refresh ref
+      // from the food's detail so the formula
+      //   nutrient × count × base_equivalent / ref.quantity
+      // evaluates correctly. (For freshly-picked foods, ref is already canonical
+      // from FoodItemEntity, and keepCount=false, so this branch is harmless.)
+      ref:
+        keepCount && detail
+          ? {
+              calories: detail.calories as number | undefined,
+              carbs: detail.carbs as number | undefined,
+              fat: detail.fat as number | undefined,
+              fiber: detail.fiber as number | undefined,
+              protein: detail.protein as number | undefined,
+              quantity: detail.default_quantity,
+            }
+          : item.ref,
     }),
   )
 
@@ -285,13 +312,6 @@ function FoodItemRow({
       ? { count: item.portion_count, base_equivalent: item.portion.base_equivalent }
       : undefined
 
-  const MACRO_LABELS: Record<'calories' | 'protein' | 'carbs' | 'fat' | 'fiber', (v: number) => string> = {
-    calories: (v) => `${v} kcal`,
-    protein: (v) => `P ${v}g`,
-    carbs: (v) => `C ${v}g`,
-    fat: (v) => `F ${v}g`,
-    fiber: (v) => `Fib ${v}g`,
-  }
   const macros = (['calories', 'protein', 'carbs', 'fat', 'fiber'] as const).map((f) => ({
     field: f,
     value: scaleNutrient(item.ref, f, item.quantity, portionScale),
