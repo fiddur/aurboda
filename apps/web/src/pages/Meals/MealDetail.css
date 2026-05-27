@@ -349,6 +349,33 @@
   width: 70px;
 }
 
+.food-portion-picker {
+  padding: 0.25rem 0.375rem;
+  font-size: 0.8rem;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  background: #fff;
+  color: #374151;
+  max-width: 8rem;
+}
+
+.food-portion-unit {
+  color: #6b7280;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+@media (prefers-color-scheme: dark) {
+  .food-portion-picker {
+    background: #1f2937;
+    border-color: #374151;
+    color: #e5e7eb;
+  }
+  .food-portion-unit {
+    color: #9ca3af;
+  }
+}
+
 .food-item-edit-row input {
   padding: 0.25rem 0.375rem;
   font-size: 0.8rem;
