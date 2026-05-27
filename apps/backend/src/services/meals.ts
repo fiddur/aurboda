@@ -577,8 +577,12 @@ export async function updateMealById(user: string, id: string, input: UpdateMeal
     input.food_items !== undefined && input.food_items !== null && input.food_items.length > 0
   if (replacingWithItems) {
     try {
-      // Source on the existing meal is needed for canonical resolution
-      // (auto-creates per-user items if not found). Look it up once.
+      // dbUpdateMeal below does its own existence check, but we need the
+      // meal's `source` here to drive canonical resolution for any
+      // findOrCreate calls in prepareFoodItems. A small TOCTOU window
+      // between this read and dbUpdateMeal is acceptable: a meal deleted
+      // between them just makes dbUpdateMeal return null below and we
+      // surface the 404 then.
       const existing = await dbGetMealById(user, id)
       if (!existing) return { error: 'Meal not found', errorCode: 'not_found', success: false }
       prepared = await prepareFoodItems(user, input.food_items!, existing.source)
