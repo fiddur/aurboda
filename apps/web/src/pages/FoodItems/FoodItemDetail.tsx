@@ -1,6 +1,7 @@
 import {
   type FoodItemDetail as ApiFoodItemDetail,
   type FoodItemIngredient,
+  type FoodItemPortion,
   NUTRIENT_FIELDS,
   type NutrientFieldDef,
 } from '@aurboda/api-spec'
@@ -12,6 +13,12 @@ import { ConfirmButton } from '../../components/ConfirmButton'
 import { FoodItemAutocomplete } from '../../components/FoodItemAutocomplete'
 import { IconInput } from '../../components/IconInput'
 import { type IngredientRow, IngredientList } from '../../components/IngredientList'
+import {
+  addFoodItemPortionApi,
+  deleteFoodItemPortionApi,
+  setDefaultPortionApi,
+  updateFoodItemPortionApi,
+} from '../../state/api/meals'
 import { auth } from '../../state/auth'
 import { isEmoji, isIconPath, isUrl } from '../../utils/emojiLookup'
 import './FoodItemDetail.css'
@@ -470,6 +477,8 @@ export function FoodItemDetail() {
         commitDefaultUnit={commitDefaultUnit}
       />
 
+      {!isShared && <PortionsSection item={item} foodItemId={id} />}
+
       <CompositeOrAtomicSection
         item={item}
         isShared={isShared}
@@ -565,6 +574,237 @@ function DefaultMetaRow({
         )}
       </span>
     </div>
+  )
+}
+
+function PortionsSection({ item, foodItemId }: { item: ApiFoodItemDetail; foodItemId: string }) {
+  const queryClient = useQueryClient()
+  const portions = item.portions ?? []
+  const baseUnit = item.default_unit ?? 'base unit'
+  const baseQty = item.default_quantity
+  const [draft, setDraft] = useState({ label_quantity: '', label_unit: '', base_equivalent: '' })
+  const [error, setError] = useState<string | null>(null)
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['foodItem', foodItemId] })
+
+  const addMutation = useMutation({
+    mutationFn: () => {
+      const lq = parseFloat(draft.label_quantity)
+      const be = parseFloat(draft.base_equivalent)
+      if (!draft.label_unit.trim() || !(lq > 0) || !(be > 0)) {
+        throw new Error('label_quantity, label_unit, and base_equivalent are all required and positive')
+      }
+      return addFoodItemPortionApi(foodItemId, {
+        label_quantity: lq,
+        label_unit: draft.label_unit.trim(),
+        base_equivalent: be,
+      })
+    },
+    onError: (err: Error) => setError(err.message),
+    onSuccess: () => {
+      setDraft({ label_quantity: '', label_unit: '', base_equivalent: '' })
+      setError(null)
+      invalidate()
+    },
+  })
+
+  const updateMutation = useMutation({
+    mutationFn: (input: { portionId: string; body: Partial<FoodItemPortion> }) =>
+      updateFoodItemPortionApi(foodItemId, input.portionId, {
+        label_quantity: input.body.label_quantity,
+        label_unit: input.body.label_unit,
+        base_equivalent: input.body.base_equivalent,
+      }),
+    onError: (err: Error) => setError(err.message),
+    onSuccess: () => {
+      setError(null)
+      invalidate()
+    },
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: (portionId: string) => deleteFoodItemPortionApi(foodItemId, portionId),
+    onError: (err: Error) => setError(err.message),
+    onSuccess: () => {
+      setError(null)
+      invalidate()
+    },
+  })
+
+  const defaultMutation = useMutation({
+    mutationFn: (portionId: string | null) => setDefaultPortionApi(foodItemId, portionId),
+    onError: (err: Error) => setError(err.message),
+    onSuccess: () => {
+      setError(null)
+      invalidate()
+    },
+  })
+
+  // Effective default is exposed by the server (resolves override layer for
+  // central items); for per-user items it mirrors the row column. UI only
+  // shows the radio when the food has portions to choose from.
+  const effectiveDefault = (item as ApiFoodItemDetail & { effective_default_portion_id?: string })
+    .effective_default_portion_id
+
+  return (
+    <section class="fi-portions">
+      <header class="fi-portions-header">
+        <h2>Portions</h2>
+        <p class="fi-portions-help">
+          Extra sizings for this food. Each portion is "label quantity label unit = base equivalent" where
+          base equivalent is measured in {baseUnit}
+          {baseQty !== undefined ? ` (the nutrient values are per ${baseQty} ${baseUnit})` : ''}.
+        </p>
+      </header>
+
+      <ul class="fi-portions-list">
+        <li class="fi-portion-row fi-portion-base">
+          <label class="fi-portion-default">
+            <input
+              type="radio"
+              name="default-portion"
+              checked={!effectiveDefault}
+              onChange={() => defaultMutation.mutate(null)}
+            />
+            Base
+          </label>
+          <span class="fi-portion-label">
+            {baseQty ?? '—'} {baseUnit}
+          </span>
+          <span class="fi-portion-eq">(nutrient density baseline)</span>
+        </li>
+        {portions.map((p) => (
+          <PortionRow
+            key={p.id}
+            portion={p}
+            baseUnit={baseUnit}
+            isDefault={effectiveDefault === p.id}
+            onSetDefault={() => defaultMutation.mutate(p.id)}
+            onUpdate={(body) => updateMutation.mutate({ portionId: p.id, body })}
+            onDelete={() => deleteMutation.mutate(p.id)}
+          />
+        ))}
+      </ul>
+
+      <div class="fi-portion-add">
+        <input
+          type="number"
+          step="0.1"
+          placeholder="Qty"
+          value={draft.label_quantity}
+          onInput={(e) =>
+            setDraft({ ...draft, label_quantity: (e.target as HTMLInputElement).value })
+          }
+        />
+        <input
+          type="text"
+          placeholder="Unit (e.g. ruta)"
+          value={draft.label_unit}
+          onInput={(e) => setDraft({ ...draft, label_unit: (e.target as HTMLInputElement).value })}
+        />
+        <span class="fi-portion-eq-sep">=</span>
+        <input
+          type="number"
+          step="0.01"
+          placeholder={`Amount in ${baseUnit}`}
+          value={draft.base_equivalent}
+          onInput={(e) =>
+            setDraft({ ...draft, base_equivalent: (e.target as HTMLInputElement).value })
+          }
+        />
+        <button
+          type="button"
+          class="btn-secondary"
+          onClick={() => addMutation.mutate()}
+          disabled={addMutation.isPending}
+        >
+          Add portion
+        </button>
+      </div>
+      {error && <p class="fi-portions-error">{error}</p>}
+    </section>
+  )
+}
+
+function PortionRow({
+  portion,
+  baseUnit,
+  isDefault,
+  onSetDefault,
+  onUpdate,
+  onDelete,
+}: {
+  portion: FoodItemPortion
+  baseUnit: string
+  isDefault: boolean
+  onSetDefault: () => void
+  onUpdate: (body: Partial<FoodItemPortion>) => void
+  onDelete: () => void
+}) {
+  // Auto-save on blur — mirrors the rest of FoodItemDetail's commit pattern.
+  // Local state lets the user edit without each keystroke racing to the API.
+  const [lq, setLq] = useState(String(portion.label_quantity))
+  const [lu, setLu] = useState(portion.label_unit)
+  const [be, setBe] = useState(String(portion.base_equivalent))
+
+  useEffect(() => {
+    setLq(String(portion.label_quantity))
+    setLu(portion.label_unit)
+    setBe(String(portion.base_equivalent))
+  }, [portion.id, portion.label_quantity, portion.label_unit, portion.base_equivalent])
+
+  const commit = (field: 'label_quantity' | 'label_unit' | 'base_equivalent') => () => {
+    if (field === 'label_unit') {
+      const trimmed = lu.trim()
+      if (!trimmed) {
+        setLu(portion.label_unit)
+        return
+      }
+      if (trimmed !== portion.label_unit) onUpdate({ label_unit: trimmed })
+      return
+    }
+    const raw = field === 'label_quantity' ? lq : be
+    const parsed = parseFloat(raw)
+    if (!(parsed > 0)) {
+      // Revert; the schema rejects non-positive values.
+      if (field === 'label_quantity') setLq(String(portion.label_quantity))
+      else setBe(String(portion.base_equivalent))
+      return
+    }
+    if (parsed !== portion[field]) onUpdate({ [field]: parsed })
+  }
+
+  return (
+    <li class="fi-portion-row">
+      <label class="fi-portion-default">
+        <input type="radio" name="default-portion" checked={isDefault} onChange={onSetDefault} />
+      </label>
+      <input
+        type="number"
+        step="0.1"
+        value={lq}
+        onInput={(e) => setLq((e.target as HTMLInputElement).value)}
+        onBlur={commit('label_quantity')}
+      />
+      <input
+        type="text"
+        value={lu}
+        onInput={(e) => setLu((e.target as HTMLInputElement).value)}
+        onBlur={commit('label_unit')}
+      />
+      <span class="fi-portion-eq-sep">=</span>
+      <input
+        type="number"
+        step="0.01"
+        value={be}
+        onInput={(e) => setBe((e.target as HTMLInputElement).value)}
+        onBlur={commit('base_equivalent')}
+      />
+      <span class="fi-portion-base-unit">{baseUnit}</span>
+      <button type="button" class="btn-link fi-portion-del" onClick={onDelete}>
+        Delete
+      </button>
+    </li>
   )
 }
 

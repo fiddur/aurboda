@@ -524,3 +524,117 @@
     background: #374151;
   }
 }
+
+/* ── Portions section ────────────────────────────────────────────── */
+
+.fi-portions {
+  margin-top: 1.5rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: #f9fafb;
+}
+
+.fi-portions-header h2 {
+  margin: 0 0 0.25rem;
+  font-size: 1.05rem;
+}
+
+.fi-portions-help {
+  margin: 0 0 0.5rem;
+  color: #6b7280;
+  font-size: 0.85rem;
+}
+
+.fi-portions-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 0.5rem;
+}
+
+.fi-portion-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.fi-portion-row:last-child {
+  border-bottom: none;
+}
+
+.fi-portion-base {
+  color: #6b7280;
+}
+
+.fi-portion-default {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.fi-portion-row input[type="number"] {
+  width: 5rem;
+}
+
+.fi-portion-row input[type="text"] {
+  width: 8rem;
+}
+
+.fi-portion-eq-sep {
+  color: #9ca3af;
+}
+
+.fi-portion-base-unit {
+  color: #6b7280;
+  font-size: 0.9rem;
+}
+
+.fi-portion-del {
+  margin-left: auto;
+}
+
+.fi-portion-add {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px dashed #d1d5db;
+}
+
+.fi-portion-add input[type="number"] {
+  width: 5rem;
+}
+
+.fi-portion-add input[type="text"] {
+  width: 8rem;
+}
+
+.fi-portions-error {
+  margin: 0.5rem 0 0;
+  color: #b91c1c;
+  font-size: 0.85rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  .fi-portions {
+    background: #111827;
+    border-color: #374151;
+  }
+  .fi-portions-help,
+  .fi-portion-base,
+  .fi-portion-base-unit {
+    color: #9ca3af;
+  }
+  .fi-portion-row {
+    border-color: #1f2937;
+  }
+  .fi-portion-add {
+    border-color: #374151;
+  }
+  .fi-portions-error {
+    color: #fca5a5;
+  }
+}
