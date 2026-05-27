@@ -131,25 +131,42 @@ function MealFlagsEditor({
 const parseNum = (v: string) => (v === '' ? undefined : parseFloat(v))
 
 /**
- * After a food is picked, auto-select its effective default portion exactly
- * once per food id change. Skips when the row is already pinned (e.g.
- * editing an existing meal where the portion was already chosen).
+ * Once the food's detail arrives, do two things (each at most once per food
+ * id):
+ *
+ *   1. If the row is already pinned to a portion (e.g. editing an existing
+ *      meal that was logged with `food_item_portion_id`), backfill the
+ *      `portion` snapshot from detail.portions — the meal response doesn't
+ *      include label_quantity/label_unit/base_equivalent, so without this
+ *      backfill the row would render via the legacy quantity+unit path even
+ *      though saves still go through the portion path.
+ *   2. Otherwise (fresh row, no portion yet) apply the food's effective
+ *      default portion if one is set.
  */
 const useAutoDefaultPortion = (
   item: FoodItemEdit,
   detail: ApiFoodItemDetail | undefined,
-  applyPortion: (p: FoodItemPortion) => void,
+  applyPortion: (p: FoodItemPortion, keepCount: boolean) => void,
 ): void => {
   const lastAppliedFoodId = useRef<string | undefined>(undefined)
   useEffect(() => {
     if (!detail || !item.food_item_id) return
     if (lastAppliedFoodId.current === item.food_item_id) return
     lastAppliedFoodId.current = item.food_item_id
-    if (item.food_item_portion_id) return
+    if (item.food_item_portion_id) {
+      // Already pinned. Backfill the snapshot if we're missing it (loading
+      // an existing meal). If the portion id no longer resolves (deleted
+      // since logging), leave the row alone — the user will see legacy
+      // qty/unit and can re-pick.
+      if (item.portion) return
+      const p = detail.portions?.find((pp) => pp.id === item.food_item_portion_id)
+      if (p) applyPortion(p, /* keepCount */ true)
+      return
+    }
     const def = detail.effective_default_portion_id
     if (!def) return
     const p = detail.portions?.find((pp) => pp.id === def)
-    if (p) applyPortion(p)
+    if (p) applyPortion(p, /* keepCount */ false)
   }, [detail?.id, item.food_item_id])
 }
 
@@ -255,8 +272,12 @@ function FoodItemRow({
     queryKey: ['foodItem', item.food_item_id],
   })
 
-  useAutoDefaultPortion(item, detail, (p) =>
-    update({ food_item_portion_id: p.id, portion_count: 1, portion: portionToSnapshot(p) }),
+  useAutoDefaultPortion(item, detail, (p, keepCount) =>
+    update({
+      food_item_portion_id: p.id,
+      portion_count: keepCount ? (item.portion_count ?? 1) : 1,
+      portion: portionToSnapshot(p),
+    }),
   )
 
   const portionScale =
@@ -264,6 +285,13 @@ function FoodItemRow({
       ? { count: item.portion_count, base_equivalent: item.portion.base_equivalent }
       : undefined
 
+  const MACRO_LABELS: Record<'calories' | 'protein' | 'carbs' | 'fat' | 'fiber', (v: number) => string> = {
+    calories: (v) => `${v} kcal`,
+    protein: (v) => `P ${v}g`,
+    carbs: (v) => `C ${v}g`,
+    fat: (v) => `F ${v}g`,
+    fiber: (v) => `Fib ${v}g`,
+  }
   const macros = (['calories', 'protein', 'carbs', 'fat', 'fiber'] as const).map((f) => ({
     field: f,
     value: scaleNutrient(item.ref, f, item.quantity, portionScale),
@@ -339,19 +367,7 @@ function FoodItemRow({
       {hasMacros && (
         <div class="food-row-macros-display">
           {macros.map((m) =>
-            typeof m.value === 'number' ? (
-              <span key={m.field}>
-                {m.field === 'calories'
-                  ? `${m.value} kcal`
-                  : m.field === 'protein'
-                    ? `P ${m.value}g`
-                    : m.field === 'carbs'
-                      ? `C ${m.value}g`
-                      : m.field === 'fat'
-                        ? `F ${m.value}g`
-                        : `Fib ${m.value}g`}
-              </span>
-            ) : null,
+            typeof m.value === 'number' ? <span key={m.field}>{MACRO_LABELS[m.field](m.value)}</span> : null,
           )}
         </div>
       )}
