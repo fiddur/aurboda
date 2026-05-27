@@ -297,14 +297,17 @@ export type AddFoodItemBody = z.infer<typeof addFoodItemBodySchema>
 
 /**
  * Update food item request body — all fields optional.
+ *
+ * `default_portion_id` is intentionally excluded: setting it requires a
+ * cross-validation step ("the portion must belong to this food") that the
+ * generic update path can't enforce without duplicating service logic.
+ * Use the dedicated `PUT /food-items/:id/default-portion` endpoint (or the
+ * `set_default_food_item_portion` MCP tool) instead.
  */
 export const updateFoodItemBodySchema = nutrientFieldsSchema
   .extend({
     default_quantity: z.number().nullable().optional(),
     default_unit: z.string().max(100).nullable().optional(),
-    default_portion_id: z.string().uuid().nullable().optional().meta({
-      description: 'Preselected portion id; null clears (revert to base portion).',
-    }),
     icon: z.string().max(2048).nullable().optional(),
     name: z.string().min(1).max(255).optional(),
   })

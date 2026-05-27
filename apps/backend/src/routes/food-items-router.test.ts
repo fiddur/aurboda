@@ -419,3 +419,87 @@ describe('PUT /food-items/:id/sensitivities', () => {
     expect(res.status).toBe(500)
   })
 })
+
+describe('PATCH /food-items/:id/portions/:portionId ownership guard', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  const PORTION_ID = '44444444-4444-4444-8444-444444444444'
+  const OTHER_FOOD_ID = '55555555-5555-4555-8555-555555555555'
+
+  test('does NOT mutate when portion belongs to a different food', async () => {
+    vi.mocked(dbBarrel.getFoodItemPortionById).mockResolvedValue({
+      id: PORTION_ID,
+      food_item_id: OTHER_FOOD_ID,
+      label_quantity: 1,
+      label_unit: 'g',
+      base_equivalent: 1,
+      sort_order: 0,
+      created_at: new Date(),
+      updated_at: new Date(),
+    })
+    const res = await supertest(buildApp(fakeCentral()))
+      .patch(`/food-items/${FOOD_ID}/portions/${PORTION_ID}`)
+      .send({ label_quantity: 999 })
+    expect(res.status).toBe(404)
+    expect(dbBarrel.updateFoodItemPortion).not.toHaveBeenCalled()
+  })
+
+  test('404 when portion does not exist', async () => {
+    vi.mocked(dbBarrel.getFoodItemPortionById).mockResolvedValue(null)
+    const res = await supertest(buildApp(fakeCentral()))
+      .patch(`/food-items/${FOOD_ID}/portions/${PORTION_ID}`)
+      .send({ label_quantity: 2 })
+    expect(res.status).toBe(404)
+    expect(dbBarrel.updateFoodItemPortion).not.toHaveBeenCalled()
+  })
+})
+
+describe('DELETE /food-items/:id/portions/:portionId ownership guard', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  const PORTION_ID = '44444444-4444-4444-8444-444444444444'
+  const OTHER_FOOD_ID = '55555555-5555-4555-8555-555555555555'
+
+  test('does NOT delete when portion belongs to a different food', async () => {
+    vi.mocked(dbBarrel.getFoodItemPortionById).mockResolvedValue({
+      id: PORTION_ID,
+      food_item_id: OTHER_FOOD_ID,
+      label_quantity: 1,
+      label_unit: 'g',
+      base_equivalent: 1,
+      sort_order: 0,
+      created_at: new Date(),
+      updated_at: new Date(),
+    })
+    const res = await supertest(buildApp(fakeCentral())).delete(
+      `/food-items/${FOOD_ID}/portions/${PORTION_ID}`,
+    )
+    expect(res.status).toBe(404)
+    expect(dbBarrel.deleteFoodItemPortion).not.toHaveBeenCalled()
+  })
+})
+
+describe('PATCH /food-items/:id default_portion_id is stripped from generic update', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  // Schema-level guard: setting default_portion_id requires the dedicated
+  // PUT /:id/default-portion endpoint (which enforces "portion belongs to
+  // this food"). The generic PATCH must not accept it as a passthrough.
+  test('default_portion_id in body is silently dropped — updateFoodItem receives a body without it', async () => {
+    setUserFoodItem(async (_u, id) => (id === FOOD_ID ? userItem(FOOD_ID) : null))
+    vi.mocked(dbBarrel.updateFoodItem).mockResolvedValue(userItem(FOOD_ID))
+    await supertest(buildApp(fakeCentral()))
+      .patch(`/food-items/${FOOD_ID}`)
+      .send({ name: 'Renamed', default_portion_id: '99999999-9999-4999-8999-999999999999' })
+    expect(dbBarrel.updateFoodItem).toHaveBeenCalledTimes(1)
+    const callArg = vi.mocked(dbBarrel.updateFoodItem).mock.calls[0][2] as Record<string, unknown>
+    expect(callArg.default_portion_id).toBeUndefined()
+    expect(callArg.name).toBe('Renamed')
+  })
+})

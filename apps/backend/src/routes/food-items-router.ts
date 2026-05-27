@@ -55,6 +55,7 @@ import {
   type FoodItemEntity as DbFoodItemEntity,
   type FoodItemPortionRow,
   getFoodItemById as getUserFoodItemById,
+  getFoodItemPortionById,
   listFoodItems,
   setFoodItemReference as dbSetFoodItemReference,
   setFoodItemSensitivities as dbSetFoodItemSensitivities,
@@ -546,11 +547,16 @@ export const createFoodItemsRouter = (authMiddleware: AnyMiddleware, centralDb: 
     authMiddleware,
     validateBody(updateFoodItemPortionBodySchema),
     async (req, res) => {
+      // Pre-update ownership guard: a caller passing the wrong `:id` must NOT
+      // mutate the row first and only then learn it didn't belong to that
+      // food. Look up the portion and verify its parent before delegating to
+      // updatePortion, which would otherwise persist the bad write.
+      const existing = await getFoodItemPortionById(req.user!, req.params.portionId)
+      if (!existing || existing.food_item_id !== req.params.id) {
+        return res.status(404).json({ error: 'Portion not found', success: false })
+      }
       try {
         const row = await updatePortion(req.user!, req.params.portionId, req.body)
-        if (row.food_item_id !== req.params.id) {
-          return res.status(404).json({ error: 'Portion does not belong to this food item', success: false })
-        }
         res.json({ data: serializePortion(row), success: true })
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Failed to update portion'
@@ -563,6 +569,12 @@ export const createFoodItemsRouter = (authMiddleware: AnyMiddleware, centralDb: 
     '/:id/portions/:portionId',
     authMiddleware,
     async (req, res) => {
+      // Same pre-mutation guard as PATCH above: never delete a portion whose
+      // parent doesn't match the URL — the URL is part of the contract.
+      const existing = await getFoodItemPortionById(req.user!, req.params.portionId)
+      if (!existing || existing.food_item_id !== req.params.id) {
+        return res.status(404).json({ error: 'Portion not found', success: false })
+      }
       const deleted = await deletePortion(req.user!, req.params.portionId)
       if (!deleted) return res.status(404).json({ error: 'Portion not found', success: false })
       res.json({ success: true })
