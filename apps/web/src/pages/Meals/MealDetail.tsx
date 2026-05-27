@@ -296,11 +296,11 @@ function FoodItemRow({
       ref:
         keepCount && detail
           ? {
-              calories: detail.calories as number | undefined,
-              carbs: detail.carbs as number | undefined,
-              fat: detail.fat as number | undefined,
-              fiber: detail.fiber as number | undefined,
-              protein: detail.protein as number | undefined,
+              calories: detail.calories,
+              carbs: detail.carbs,
+              fat: detail.fat,
+              fiber: detail.fiber,
+              protein: detail.protein,
               quantity: detail.default_quantity,
             }
           : item.ref,
