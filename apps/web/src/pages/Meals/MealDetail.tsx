@@ -541,6 +541,9 @@ export function MealDetail() {
   const itemsFlusherRef = useRef(
     createDebouncedFlusher<UpdateMealBody>(FOOD_ITEM_DEBOUNCE_MS, (body) => saveRef.current(body)),
   )
+  // Serialized last-saved food_items body — used by commitItems to de-dupe
+  // identical-payload schedules so on-load backfills don't trigger writes.
+  const lastItemsBodyRef = useRef<string | null>(null)
   const mealTypeFlusherRef = useRef(
     createDebouncedFlusher<string>(FOOD_ITEM_DEBOUNCE_MS, (v) => saveRef.current({ meal_type: v })),
   )
@@ -573,7 +576,11 @@ export function MealDetail() {
     // explicitly opted out of a slot, so treat it as a custom "other" rather
     // than silently defaulting to lunch.
     setMealType(meal.meal_type ?? DEFAULT_CUSTOM_TYPE)
-    setItems(mealItemsToEdit(meal.food_items))
+    const initialItems = mealItemsToEdit(meal.food_items)
+    setItems(initialItems)
+    // Seed the de-dupe ref so the first commitItems call (typically from
+    // useAutoDefaultPortion's backfill) doesn't fire a no-op write.
+    lastItemsBodyRef.current = JSON.stringify({ food_items: editItemsToBody(initialItems) })
     setFlags(meal.sensitivities ?? [])
     setMacros({
       calories: meal.calories,
@@ -632,7 +639,23 @@ export function MealDetail() {
 
   const commitItems = (next: FoodItemEdit[]) => {
     setItems(next)
-    itemsFlusherRef.current.schedule({ food_items: editItemsToBody(next) })
+    // Skip the save when any row is in a transient portion-editing state
+    // (pinned to a portion but the count input is currently empty). Without
+    // this guard the row would fall through editItemsToBody's portion fork
+    // and briefly get re-saved as a legacy-quantity row, then re-pinned
+    // once the user finishes typing the new count.
+    if (next.some((fi) => fi.food_item_portion_id && !(typeof fi.portion_count === 'number' && fi.portion_count > 0))) {
+      return
+    }
+    const body = { food_items: editItemsToBody(next) }
+    // De-dupe consecutive identical bodies — useAutoDefaultPortion's
+    // backfill on load propagates through here with the same
+    // food_item_portion_id + portion_count the server already has, and
+    // there's no reason to round-trip a no-op write per detail-page open.
+    const serialized = JSON.stringify(body)
+    if (serialized === lastItemsBodyRef.current) return
+    lastItemsBodyRef.current = serialized
+    itemsFlusherRef.current.schedule(body)
   }
 
   const commitName = () => {
