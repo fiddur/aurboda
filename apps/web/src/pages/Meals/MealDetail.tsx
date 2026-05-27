@@ -657,16 +657,22 @@ export function MealDetail() {
 
   const commitItems = (next: FoodItemEdit[]) => {
     setItems(next)
-    // Filter rows that are mid-edit on a portion (pinned to a portion but
-    // the count input is currently empty/zero). Without this, such a row
-    // would fall through editItemsToBody's portion fork and briefly get
-    // re-saved as a legacy-quantity row, then re-pinned when the count
-    // refills. We skip the offending row only (not the whole save), so
-    // edits to other rows still flush.
-    const saveable = next.filter(
-      (fi) => !(fi.food_item_portion_id && !(typeof fi.portion_count === 'number' && fi.portion_count > 0)),
-    )
-    const body = { food_items: editItemsToBody(saveable) }
+    // Skip the entire save when any row is in a transient portion-editing
+    // state (pinned to a portion but the count input is currently
+    // empty/zero). Filtering the offending row out of the body would let
+    // updateMealById's wholesale replace semantic silently delete the row
+    // server-side until the count refills — and `flush()` on unmount would
+    // commit the row-less body, losing the row entirely. Skipping the
+    // schedule means other-row edits wait for the offending row to be
+    // completed; preferable to silent server-side data loss.
+    if (
+      next.some(
+        (fi) => fi.food_item_portion_id && !(typeof fi.portion_count === 'number' && fi.portion_count > 0),
+      )
+    ) {
+      return
+    }
+    const body = { food_items: editItemsToBody(next) }
     // De-dupe consecutive identical bodies — useAutoDefaultPortion's
     // backfill on load propagates through here with the same
     // food_item_portion_id + portion_count the server already has, and
