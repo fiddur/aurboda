@@ -582,6 +582,48 @@ describe('Meals service integration tests', () => {
       expect(bad.error).toMatch(/does not belong/i)
     })
 
+    test('resnapshot preserves the snapshot when the portion has been deleted', async () => {
+      // Regression: if the portion was deleted since logging, the recorded
+      // (quantity, unit) on the link are portion-label values (e.g. 3 ruta)
+      // that don't match the canonical default_unit (g). Old behavior fell
+      // back to legacy scaling which returned scale=1 → row got overwritten
+      // with full per-100g values. Fix: skip recompute, preserve the frozen
+      // snapshot.
+      const user = getTestUser()
+      const food = await upsertFoodItem(user, {
+        calories: 500,
+        default_quantity: 100,
+        default_unit: 'g',
+        name: 'Choklad',
+      })
+      const ruta = await insertFoodItemPortion(user, {
+        food_item_id: food.id,
+        label_quantity: 1,
+        label_unit: 'ruta',
+        base_equivalent: 3.4,
+      })
+      const meal = await addMeal(user, {
+        food_items: [
+          { food_item_id: food.id, food_item_portion_id: ruta.id, portion_count: 3, name: 'Choklad' },
+        ],
+        time: '2026-04-26T15:00:00Z',
+      })
+      const originalCalories = meal.data!.food_items![0].calories!
+      expect(originalCalories).toBeCloseTo(51, 2) // 500 × 3 × 3.4 / 100
+
+      // Delete the portion that the link points at.
+      await import('../db/food-item-portions.ts').then((m) => m.deleteFoodItemPortion(user, ruta.id))
+
+      // Resnapshot must NOT clobber the row with full canonical values.
+      await resnapshotMealsForFoodItem(user, food.id)
+      const refreshed = await getMeal(user, meal.data!.id)
+      const after = refreshed.data!.food_items![0]
+      expect(after.calories).toBeCloseTo(originalCalories, 2)
+      // The legacy display fallback still works — the snapshot kept label + count.
+      expect(after.quantity).toBe(3)
+      expect(after.unit).toBe('ruta')
+    })
+
     test('resnapshot preserves portion link and rescales with current effective nutrients', async () => {
       const user = getTestUser()
       const food = await upsertFoodItem(user, {

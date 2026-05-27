@@ -439,11 +439,19 @@ const resolvePortionForInput = async (
 }
 
 /**
- * Pre-resolve every food item + portion BEFORE any DB writes, so a bad
- * portion id can't leave behind an orphan meal row. Canonical-resolution
+ * Pre-resolve every food item + portion BEFORE the meal row is written, so a
+ * bad portion id can't leave behind an orphan meal. Canonical-resolution
  * failures preserve legacy behavior (drop the input silently); portion
  * validation failures bubble out as Error so the caller returns
  * { success: false, error } and the route maps to 400.
+ *
+ * Caveat: `resolveCanonical` → `findOrCreate` can still side-effect a
+ * per-user food row by name BEFORE the portion check runs. So a request
+ * like `{ name: "BrandNewFood", food_item_portion_id: <bogus> }` does
+ * leave a freshly-created food behind even though the meal is rejected;
+ * on a retry findOrCreate sees the existing row. The meal-row guarantee
+ * is the load-bearing one here — orphan food rows are silent / self-
+ * healing — but worth knowing.
  */
 const prepareFoodItems = async (
   user: string,
@@ -643,12 +651,30 @@ export async function resnapshotMealsForFoodItem(
 
   // Pre-fetch every current portion for this food once, instead of one
   // round-trip per refreshed link. A link whose food_item_portion_id is
-  // absent from this map points at a portion that has since been deleted —
-  // we treat that as portion=null and fall back to legacy scaling against
-  // the recorded quantity/unit (which still encode the user's intent).
+  // present but absent from this map points at a portion that has since
+  // been deleted — handled below by preserving the existing snapshot.
   const portionsById = new Map(
     (await listPortionsForFoodItem(user, foodItemId)).map((p) => [p.id, p]),
   )
+
+  // Pass-through serialization used both for unrelated rows and for rows
+  // whose portion has been deleted (where rescaling would corrupt the
+  // snapshot — see below).
+  const passThroughLink = (link: MealFoodItemLink): Record<string, unknown> => {
+    const out: Record<string, unknown> = {
+      food_item_id: link.food_item_id,
+      quantity: link.quantity,
+      sort_order: link.sort_order,
+      unit: link.unit,
+      food_item_portion_id: link.food_item_portion_id,
+      portion_count: link.portion_count,
+    }
+    for (const field of NUTRIENT_FIELD_NAMES) {
+      const v = link[field]
+      if (typeof v === 'number') out[field] = v
+    }
+    return out
+  }
 
   const mealIds = await findMealsContainingFoodItem(user, foodItemId)
   let rowsUpdated = 0
@@ -658,19 +684,17 @@ export async function resnapshotMealsForFoodItem(
       if (link.food_item_id !== foodItemId) {
         // Preserve other items' snapshots verbatim — this action only refreshes
         // rows that point at the food item being re-snapshotted.
-        const passThrough: Record<string, unknown> = {
-          food_item_id: link.food_item_id,
-          quantity: link.quantity,
-          sort_order: link.sort_order,
-          unit: link.unit,
-          food_item_portion_id: link.food_item_portion_id,
-          portion_count: link.portion_count,
-        }
-        for (const field of NUTRIENT_FIELD_NAMES) {
-          const v = link[field]
-          if (typeof v === 'number') passThrough[field] = v
-        }
-        return passThrough
+        return passThroughLink(link)
+      }
+      // Portion was logged but has since been deleted: don't rescale. The
+      // recorded `quantity` is `count × portion.label_quantity` and `unit`
+      // is the portion's label (e.g. 'ruta'), which doesn't match the
+      // canonical default_unit (e.g. 'g') — running it through computeScale
+      // would fall back to scale=1 and overwrite the row with the full
+      // per-default-quantity nutrients, making it more wrong than before.
+      // Preserve the frozen snapshot instead.
+      if (link.food_item_portion_id && !portionsById.has(link.food_item_portion_id)) {
+        return passThroughLink(link)
       }
       rowsUpdated++
       const portion = link.food_item_portion_id
