@@ -431,6 +431,12 @@ export const createFoodItemsService = (centralDb: CentralDb): FoodItemsService =
     // central LSV item just as easily as one of their own. Portions share
     // the same soft-pointer design, so the same id resolves regardless of
     // which library the food itself lives in.
+    //
+    // Both lookups run unconditionally and in parallel; the no-portion
+    // case (likely common today) pays one extra empty SELECT to keep the
+    // detail path single-round-trip with no branching. If detail becomes
+    // hot, switch to a combined EXISTS query or denormalise a has_portions
+    // flag — but don't reintroduce serial latency by gating one on the other.
     const [sensitivityFlags, portionRows] = await Promise.all([
       getFoodItemSensitivities(user, id),
       listPortionsForFoodItem(user, id),

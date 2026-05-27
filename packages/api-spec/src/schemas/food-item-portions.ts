@@ -24,7 +24,7 @@ export const foodItemPortionSchema = z
     }),
     base_equivalent: z.number().positive().meta({
       description:
-        'How much of the food item\'s base unit this whole portion entry equals. Example: a 100 g base with a "1 ruta = 3.4 g" portion stores 3.4 here.',
+        'How much of the food item\'s base unit this whole portion entry equals — a count of base units, NOT a fraction of default_quantity. Example: a 100 g base with a "1 ruta = 3.4 g" portion stores 3.4 here. To scale nutrients when logging N of this portion: nutrient_value * N * base_equivalent / default_quantity.',
     }),
     // sort_order, created_at, updated_at are always populated by the DB and
     // emitted by the response serializer — clients can rely on them.

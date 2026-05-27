@@ -10,7 +10,7 @@ import {
   listPortionsForFoodItem,
   updateFoodItemPortion,
 } from './food-item-portions.ts'
-import { deleteFoodItem, getFoodItemById, upsertFoodItem } from './food-items.ts'
+import { deleteFoodItem, getFoodItemById, updateFoodItem, upsertFoodItem } from './food-items.ts'
 
 const CONTAINER_TIMEOUT = 120_000
 
@@ -79,9 +79,7 @@ describe('food_item_portions integration', () => {
       base_equivalent: 2,
     })
     // Set it as the food's default
-    await import('./food-items.ts').then((m) =>
-      m.updateFoodItem(user, food.id, { default_portion_id: portion.id }),
-    )
+    await updateFoodItem(user, food.id, { default_portion_id: portion.id })
     const before = await getFoodItemById(user, food.id)
     expect(before?.default_portion_id).toBe(portion.id)
 
