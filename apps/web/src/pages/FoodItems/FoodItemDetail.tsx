@@ -670,7 +670,12 @@ function PortionsSection({ item, foodItemId }: { item: ApiFoodItemDetail; foodIt
               type="radio"
               name="default-portion"
               checked={!effectiveDefault}
-              onChange={() => defaultMutation.mutate(null)}
+              onChange={() => {
+                // Short-circuit a redundant PUT when Base is already the
+                // effective default — radio onChange still fires on click
+                // even when `checked` is already true.
+                if (effectiveDefault) defaultMutation.mutate(null)
+              }}
             />
             Base
           </label>
