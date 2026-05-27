@@ -128,6 +128,7 @@ export const mealsTables: Record<string, string> = {
       source_id       VARCHAR(100),
       is_composite    BOOLEAN NOT NULL DEFAULT FALSE,
       reference_food_item_id UUID,
+      default_portion_id UUID,
       created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       CONSTRAINT unique_food_item_name UNIQUE (name_lower)
@@ -163,6 +164,35 @@ export const mealsTables: Record<string, string> = {
       ON food_item_ingredients (parent_food_item_id);
     CREATE INDEX IF NOT EXISTS idx_food_item_ingredients_ingredient
       ON food_item_ingredients (ingredient_food_item_id)
+  `,
+
+  // Additional portion sizings for a food item. The food item's own
+  // (default_quantity, default_unit) is the "base portion" the nutrient
+  // columns are measured per; these rows are extra (label_quantity label_unit)
+  // tuples the user can pick when logging — e.g. "1 wrap = 1 base wrap" plus
+  // "2 wrap = 2 base wrap", or "1 glas = 515 g" for a 100 g base.
+  //
+  // `food_item_id` is a soft pointer (no FK) so portions can target the
+  // per-user `food_items` table or a central `shared_food_items` row. Cascade
+  // on per-user food deletion is handled in app code (deleteFoodItem).
+  //
+  // `base_equivalent` is "this whole entry equals X units of the food's base
+  // unit" — direct conversion only, no chaining via other portions.
+  food_item_portions: `
+    CREATE TABLE IF NOT EXISTS food_item_portions (
+      id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      food_item_id      UUID NOT NULL,
+      label_quantity    DOUBLE PRECISION NOT NULL,
+      label_unit        VARCHAR(100) NOT NULL,
+      base_equivalent   DOUBLE PRECISION NOT NULL,
+      sort_order        INTEGER NOT NULL DEFAULT 0,
+      created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `,
+  food_item_portions_indexes: `
+    CREATE INDEX IF NOT EXISTS idx_food_item_portions_food
+      ON food_item_portions (food_item_id, sort_order, id)
   `,
 
   // Fuzzy/accent-insensitive search support: pg_trgm + unaccent extensions,

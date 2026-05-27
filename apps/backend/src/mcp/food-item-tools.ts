@@ -9,11 +9,13 @@
 
 import {
   addFoodItemBodySchema,
+  addFoodItemPortionBodySchema,
   foodItemsQuerySchema,
   setFoodItemIngredientsBodySchema,
   setFoodItemReferenceBodySchema,
   setSharedFoodItemOverrideBodySchema,
   updateFoodItemBodySchema,
+  updateFoodItemPortionBodySchema,
 } from '@aurboda/api-spec'
 import { z } from 'zod'
 
@@ -30,6 +32,13 @@ import {
   upsertFoodItem,
 } from '../db/index.ts'
 import { clearSharedFoodItemOverride, setSharedFoodItemOverride } from '../db/shared-food-item-overrides.ts'
+import {
+  addPortion,
+  deletePortion,
+  listPortions,
+  setDefaultPortion,
+  updatePortion,
+} from '../services/food-item-portions.ts'
 import {
   cacheCompositeNutrients,
   clearCompositeNutrientCache,
@@ -298,6 +307,91 @@ export const registerFoodItemTools = (server: McpServer, user: string, centralDb
       }
       const cleared = await clearSharedFoodItemOverride(user, id)
       return jsonResponse({ data: { cleared, shared_food_item_id: id }, success: true })
+    },
+  )
+
+  // ────────────────────────────────────────────────────────────────────────
+  // Portion sizings — additional (label_quantity, label_unit) entries per
+  // food item; each portion stores `base_equivalent` which is how much of
+  // the food's base unit the whole entry equals. Works for per-user OR
+  // central food items via the soft pointer on food_item_id.
+  // ────────────────────────────────────────────────────────────────────────
+
+  server.tool(
+    'list_food_item_portions',
+    'List extra portion sizings for a food item (e.g. "1 wrap", "1 ruta"). The food item\'s own default_quantity/default_unit is the implicit base portion and is NOT included in this list.',
+    { food_item_id: z.string().uuid().describe('Food item ID (per-user or central)') },
+    async ({ food_item_id }) => {
+      const userExists = await getUserFoodItemById(user, food_item_id)
+      const centralExists = userExists ? null : await centralDb.getSharedFoodItemById(food_item_id)
+      if (!userExists && !centralExists) return errorResponse('Food item not found')
+      const rows = await listPortions(user, food_item_id)
+      return jsonResponse({ data: rows, success: true })
+    },
+  )
+
+  server.tool(
+    'add_food_item_portion',
+    [
+      'Add a portion sizing to a food item. The portion expresses an equivalence "label_quantity label_unit = base_equivalent of the food\'s base unit".',
+      'Example: for a 100 g chocolate base, "1 ruta = 3.4 g" stores label_quantity=1, label_unit="ruta", base_equivalent=3.4.',
+      'Targets per-user OR central food items (soft pointer).',
+    ].join(' '),
+    {
+      food_item_id: z.string().uuid().describe('Food item this portion belongs to (per-user or central)'),
+      ...addFoodItemPortionBodySchema.shape,
+    },
+    async ({ food_item_id, ...input }) => {
+      try {
+        const row = await addPortion(user, food_item_id, input, centralDb)
+        return jsonResponse({ data: row, success: true })
+      } catch (err) {
+        return errorResponse(err instanceof Error ? err.message : 'Failed to add portion')
+      }
+    },
+  )
+
+  server.tool(
+    'update_food_item_portion',
+    'Update a portion sizing by id. Only provided fields are changed.',
+    { id: z.string().uuid().describe('Portion id'), ...updateFoodItemPortionBodySchema.shape },
+    async ({ id, ...input }) => {
+      try {
+        const row = await updatePortion(user, id, input)
+        return jsonResponse({ data: row, success: true })
+      } catch (err) {
+        return errorResponse(err instanceof Error ? err.message : 'Failed to update portion')
+      }
+    },
+  )
+
+  server.tool(
+    'delete_food_item_portion',
+    'Delete a portion sizing by id. If the parent food item had this portion set as default_portion_id, that pointer is cleared (reverts to the base portion).',
+    { id: z.string().uuid().describe('Portion id') },
+    async ({ id }) => {
+      const ok = await deletePortion(user, id)
+      if (!ok) return errorResponse('Portion not found')
+      return jsonResponse({ success: true })
+    },
+  )
+
+  server.tool(
+    'set_default_food_item_portion',
+    "Set or clear the preselected portion for a per-user food item. Pass `portion_id: null` to revert to the food's base portion. The chosen portion must belong to the food item. Central foods aren't editable here — use the override layer (coming).",
+    {
+      food_item_id: z.string().uuid().describe('Per-user food item id'),
+      portion_id: z.string().uuid().nullable().describe('Portion id, or null to clear'),
+    },
+    async ({ food_item_id, portion_id }) => {
+      try {
+        await setDefaultPortion(user, food_item_id, portion_id)
+      } catch (err) {
+        return errorResponse(err instanceof Error ? err.message : 'Failed to set default portion')
+      }
+      const detail = await foodItems.getDetail(user, food_item_id)
+      if (!detail) return errorResponse('Food item not found')
+      return jsonResponse({ data: detail, success: true })
     },
   )
 

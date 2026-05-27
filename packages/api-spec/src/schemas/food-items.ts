@@ -8,6 +8,7 @@
 import { z } from 'zod'
 
 import { baseResponseSchema, createDataArrayResponseSchema, createDataResponseSchema } from './common.ts'
+import { foodItemPortionSchema } from './food-item-portions.ts'
 import { nutrientFieldsSchema } from './nutrients.ts'
 
 // ============================================================================
@@ -39,6 +40,10 @@ export const foodItemEntitySchema = nutrientFieldsSchema
     reference_food_item_id: z.string().uuid().optional().meta({
       description:
         'Optional pointer to a richer canonical food item (typically a central library row, e.g. an LSV item) used to inherit empty micronutrient fields. Per-user atomic items only.',
+    }),
+    default_portion_id: z.string().uuid().optional().meta({
+      description:
+        'Portion (from food_item_portions) to preselect when this food is logged. NULL/absent means the base portion (default_quantity/default_unit) is preselected.',
     }),
     name: z.string().min(1).max(255).meta({ description: 'Food item name' }),
     source: z
@@ -161,6 +166,9 @@ export const foodItemDetailSchema = foodItemEntitySchema
     is_shared: z.boolean().optional().meta({
       description:
         'True when this row lives in the central shared library (e.g. Livsmedelsverket). Such rows are read-only — clients must use the `/food-items/:id/override` endpoints (or `set_shared_food_item_override` MCP tool) to customize fields like icon, and PATCH/DELETE on the row itself will 403.',
+    }),
+    portions: z.array(foodItemPortionSchema).optional().meta({
+      description: 'Extra portion sizings defined for this food item, sorted by sort_order.',
     }),
     ingredients: z.array(resolvedFoodItemIngredientSchema).optional(),
     derived_nutrients: z
@@ -289,6 +297,12 @@ export type AddFoodItemBody = z.infer<typeof addFoodItemBodySchema>
 
 /**
  * Update food item request body — all fields optional.
+ *
+ * `default_portion_id` is intentionally excluded: setting it requires a
+ * cross-validation step ("the portion must belong to this food") that the
+ * generic update path can't enforce without duplicating service logic.
+ * Use the dedicated `PUT /food-items/:id/default-portion` endpoint (or the
+ * `set_default_food_item_portion` MCP tool) instead.
  */
 export const updateFoodItemBodySchema = nutrientFieldsSchema
   .extend({
