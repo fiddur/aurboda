@@ -9,10 +9,16 @@
 import {
   type AddFoodItemBody,
   addFoodItemBodySchema,
+  type AddFoodItemPortionBody,
+  addFoodItemPortionBodySchema,
+  type DeleteFoodItemPortionResponse,
   type DeleteFoodItemResponse,
   type FoodItemDetail,
   type FoodItemDetailResponse,
   type FoodItemEntity,
+  type FoodItemPortion,
+  type FoodItemPortionResponse,
+  type FoodItemPortionsResponse,
   type FoodItemResponse,
   type FoodItemsQuery,
   type FoodItemsResponse,
@@ -36,6 +42,8 @@ import {
   type SharedFoodItemOverrideResponse,
   type UpdateFoodItemBody,
   updateFoodItemBodySchema,
+  type UpdateFoodItemPortionBody,
+  updateFoodItemPortionBodySchema,
 } from '@aurboda/api-spec'
 
 import type { CentralDb } from '../services/central-db.ts'
@@ -45,6 +53,7 @@ import {
   clearIngredients as dbClearIngredients,
   deleteFoodItem,
   type FoodItemEntity as DbFoodItemEntity,
+  type FoodItemPortionRow,
   getFoodItemById as getUserFoodItemById,
   listFoodItems,
   setFoodItemReference as dbSetFoodItemReference,
@@ -59,6 +68,13 @@ import {
   setSharedFoodItemOverride,
   type SharedFoodItemOverride as DbSharedFoodItemOverride,
 } from '../db/shared-food-item-overrides.ts'
+import {
+  addPortion,
+  deletePortion,
+  listPortions,
+  setDefaultPortion,
+  updatePortion,
+} from '../services/food-item-portions.ts'
 import {
   cacheCompositeNutrients,
   clearCompositeNutrientCache,
@@ -85,6 +101,7 @@ const serializeFoodItem = (
 const serializeDetail = (detail: ServiceFoodItemDetail): FoodItemDetail => {
   const base = serializeFoodItem(detail.item)
   const sensitivities = detail.sensitivities ?? []
+  const portions = detail.portions?.map(serializePortion)
   const is_shared = detail.is_shared
   // Composite branch: ingredient list + derived totals.
   if (detail.ingredients) {
@@ -100,6 +117,7 @@ const serializeDetail = (detail: ServiceFoodItemDetail): FoodItemDetail => {
         unit: ing.row.unit,
       })),
       is_shared,
+      portions,
       sensitivities,
     }
   }
@@ -109,6 +127,7 @@ const serializeDetail = (detail: ServiceFoodItemDetail): FoodItemDetail => {
     return {
       ...base,
       is_shared,
+      portions,
       reference: {
         food: serializeFoodItem(detail.reference.food),
         unit_mismatch: detail.reference.unit_mismatch,
@@ -117,8 +136,19 @@ const serializeDetail = (detail: ServiceFoodItemDetail): FoodItemDetail => {
       sensitivities,
     }
   }
-  return { ...base, is_shared, sensitivities } as FoodItemDetail
+  return { ...base, is_shared, portions, sensitivities } as FoodItemDetail
 }
+
+const serializePortion = (row: FoodItemPortionRow): FoodItemPortion => ({
+  id: row.id,
+  food_item_id: row.food_item_id,
+  label_quantity: row.label_quantity,
+  label_unit: row.label_unit,
+  base_equivalent: row.base_equivalent,
+  sort_order: row.sort_order,
+  created_at: row.created_at.toISOString(),
+  updated_at: row.updated_at.toISOString(),
+})
 
 const serializeOverride = (override: DbSharedFoodItemOverride): ApiSharedFoodItemOverride => ({
   shared_food_item_id: override.shared_food_item_id,
@@ -476,6 +506,103 @@ export const createFoodItemsRouter = (authMiddleware: AnyMiddleware, centralDb: 
       await clearSharedFoodItemOverride(user, id)
       // No `data` after clear — same shape as GET when no override exists.
       res.json({ success: true })
+    },
+  )
+
+  // ────────────────────────────────────────────────────────────────────────
+  // Portion sizings — additional (label_quantity, label_unit) tuples per
+  // food item with a base_equivalent that resolves the entry into the food's
+  // base unit. food_item_portions.food_item_id is a soft pointer (per-user
+  // OR central), so these endpoints accept either kind of id.
+  // ────────────────────────────────────────────────────────────────────────
+
+  router.get<{ id: string }, FoodItemPortionsResponse>('/:id/portions', authMiddleware, async (req, res) => {
+    const user = req.user!
+    const id = req.params.id
+    const exists =
+      (await getUserFoodItemById(user, id)) !== null || (await centralDb.getSharedFoodItemById(id)) !== null
+    if (!exists) return res.status(404).json({ error: 'Food item not found', success: false })
+    const rows = await listPortions(user, id)
+    res.json({ data: rows.map(serializePortion), success: true })
+  })
+
+  router.post<{ id: string }, FoodItemPortionResponse, AddFoodItemPortionBody>(
+    '/:id/portions',
+    authMiddleware,
+    validateBody(addFoodItemPortionBodySchema),
+    async (req, res) => {
+      try {
+        const row = await addPortion(req.user!, req.params.id, req.body, centralDb)
+        res.json({ data: serializePortion(row), success: true })
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Failed to add portion'
+        res.status(/not found/i.test(message) ? 404 : 500).json({ error: message, success: false })
+      }
+    },
+  )
+
+  router.patch<{ id: string; portionId: string }, FoodItemPortionResponse, UpdateFoodItemPortionBody>(
+    '/:id/portions/:portionId',
+    authMiddleware,
+    validateBody(updateFoodItemPortionBodySchema),
+    async (req, res) => {
+      try {
+        const row = await updatePortion(req.user!, req.params.portionId, req.body)
+        if (row.food_item_id !== req.params.id) {
+          return res.status(404).json({ error: 'Portion does not belong to this food item', success: false })
+        }
+        res.json({ data: serializePortion(row), success: true })
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Failed to update portion'
+        res.status(/not found/i.test(message) ? 404 : 500).json({ error: message, success: false })
+      }
+    },
+  )
+
+  router.delete<{ id: string; portionId: string }, DeleteFoodItemPortionResponse>(
+    '/:id/portions/:portionId',
+    authMiddleware,
+    async (req, res) => {
+      const deleted = await deletePortion(req.user!, req.params.portionId)
+      if (!deleted) return res.status(404).json({ error: 'Portion not found', success: false })
+      res.json({ success: true })
+    },
+  )
+
+  // Set or clear the preselected portion for a per-user food item. Pass
+  // `portion_id: null` to revert to the base portion.
+  router.put<{ id: string }, FoodItemDetailResponse, { portion_id: string | null }>(
+    '/:id/default-portion',
+    authMiddleware,
+    async (req, res) => {
+      const user = req.user!
+      const id = req.params.id
+      const userItem = await getUserFoodItemById(user, id)
+      if (!userItem) {
+        const fromCentral = await centralDb.getSharedFoodItemById(id)
+        return res.status(fromCentral ? 403 : 404).json({
+          error: fromCentral
+            ? 'Setting a default portion on a central item lives on the per-user override layer (use the override endpoint)'
+            : 'Food item not found',
+          success: false,
+        })
+      }
+      const portionId = req.body?.portion_id ?? null
+      if (portionId !== null && typeof portionId !== 'string') {
+        return res.status(400).json({ error: 'portion_id must be a string UUID or null', success: false })
+      }
+      try {
+        await setDefaultPortion(user, id, portionId)
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Failed to set default portion'
+        return res.status(/not found|does not belong/i.test(message) ? 400 : 500).json({
+          error: message,
+          success: false,
+        })
+      }
+      const detail = await service.getDetail(user, id)
+      if (!detail) return res.status(404).json({ error: 'Food item not found', success: false })
+      res.json({ data: serializeDetail(detail), success: true })
     },
   )
 

@@ -276,6 +276,20 @@ export {
   setIngredients,
 } from './food-item-ingredients.ts'
 
+// Food item portions (additional sizings)
+export {
+  deleteFoodItemPortion,
+  deletePortionsForFoodItem,
+  type FoodItemPortionRow,
+  getFoodItemPortionById,
+  getPortionsByFoodItemIds,
+  insertFoodItemPortion,
+  type InsertFoodItemPortionInput,
+  listPortionsForFoodItem,
+  type UpdateFoodItemPortionInput,
+  updateFoodItemPortion,
+} from './food-item-portions.ts'
+
 // Meals
 export {
   deleteMeal,

@@ -989,6 +989,7 @@ export const migrateSchema = async (user: string) => {
 
   if (existingTableNames.has('food_items')) {
     await query(db, `ALTER TABLE food_items ADD COLUMN IF NOT EXISTS icon TEXT`)
+    await query(db, `ALTER TABLE food_items ADD COLUMN IF NOT EXISTS default_portion_id UUID`)
   }
 
   if (existingTableNames.has('screentime_categories')) {

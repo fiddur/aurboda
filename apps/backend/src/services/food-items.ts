@@ -23,6 +23,7 @@ import {
   type FoodItemIngredientRow,
   getIngredients as dbGetIngredients,
 } from '../db/food-item-ingredients.ts'
+import { type FoodItemPortionRow, listPortionsForFoodItem } from '../db/food-item-portions.ts'
 import {
   findOrCreateFoodItem as findOrCreateUserFoodItem,
   getFoodItemById as getUserFoodItemById,
@@ -97,6 +98,8 @@ export interface FoodItemDetail {
   reference_enriched?: ReferenceEnrichedFields
   /** Sensitivity flags assigned to this food item via the food_item_sensitivities junction. Always populated (empty when no flags). */
   sensitivities?: Array<{ id: string; name: string; color?: string | null }>
+  /** Extra portion sizings defined for this food item, sorted by sort_order. */
+  portions?: FoodItemPortionRow[]
 }
 
 /**
@@ -425,9 +428,15 @@ export const createFoodItemsService = (centralDb: CentralDb): FoodItemsService =
   getDetail: async (user, id) => {
     // Sensitivity flags work for both per-user and central items — the
     // junction's food_item_id is a soft pointer, so a user can flag a
-    // central LSV item just as easily as one of their own.
-    const sensitivityFlags = await getFoodItemSensitivities(user, id)
+    // central LSV item just as easily as one of their own. Portions share
+    // the same soft-pointer design, so the same id resolves regardless of
+    // which library the food itself lives in.
+    const [sensitivityFlags, portionRows] = await Promise.all([
+      getFoodItemSensitivities(user, id),
+      listPortionsForFoodItem(user, id),
+    ])
     const sensitivities = sensitivityFlags.map((f) => ({ id: f.id, name: f.name, color: f.color ?? null }))
+    const portions = portionRows.length > 0 ? portionRows : undefined
 
     const fromUser = await getUserFoodItemById(user, id)
     if (fromUser) {
@@ -436,7 +445,7 @@ export const createFoodItemsService = (centralDb: CentralDb): FoodItemsService =
       // a reference would be ignored anyway.
       if (fromUser.is_composite) {
         const rows = await dbGetIngredients(user, id)
-        if (rows.length === 0) return { item: fromUser, is_shared: false, sensitivities }
+        if (rows.length === 0) return { item: fromUser, is_shared: false, portions, sensitivities }
         // Resolve each ingredient: prefer the per-user row, fall back to the
         // central library. Once we know which ingredients came from central,
         // batch the override lookup so a 10-ingredient recipe makes one
@@ -463,6 +472,7 @@ export const createFoodItemsService = (centralDb: CentralDb): FoodItemsService =
           ingredients: resolved,
           is_shared: false,
           item: fromUser,
+          portions,
           sensitivities,
         }
       }
@@ -479,13 +489,13 @@ export const createFoodItemsService = (centralDb: CentralDb): FoodItemsService =
           (await getUserFoodItemById(user, refId)) ??
           (await applySharedOverride(user, await centralDb.getSharedFoodItemById(refId)))
         if (refFood && !refFood.is_composite) {
-          return { ...enrichWithReference(fromUser, refFood), sensitivities }
+          return { ...enrichWithReference(fromUser, refFood), portions, sensitivities }
         }
       }
-      return { item: fromUser, is_shared: false, sensitivities }
+      return { item: fromUser, is_shared: false, portions, sensitivities }
     }
     const fromCentral = await applySharedOverride(user, await centralDb.getSharedFoodItemById(id))
-    return fromCentral ? { item: fromCentral, is_shared: true, sensitivities } : null
+    return fromCentral ? { item: fromCentral, is_shared: true, portions, sensitivities } : null
   },
 
   wouldCreateCycle: async (user, parentId, ingredientIds) => {

@@ -30,6 +30,10 @@ vi.mock('../db/sensitivities.ts', () => ({
   getFoodItemSensitivities: vi.fn().mockResolvedValue([]),
 }))
 
+vi.mock('../db/food-item-portions.ts', () => ({
+  listPortionsForFoodItem: vi.fn().mockResolvedValue([]),
+}))
+
 vi.mock('../db/shared-food-item-overrides.ts', () => ({
   getSharedFoodItemOverridesByIds: vi.fn().mockResolvedValue(new Map()),
 }))

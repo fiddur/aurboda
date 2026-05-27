@@ -8,6 +8,7 @@
 import { z } from 'zod'
 
 import { baseResponseSchema, createDataArrayResponseSchema, createDataResponseSchema } from './common.ts'
+import { foodItemPortionSchema } from './food-item-portions.ts'
 import { nutrientFieldsSchema } from './nutrients.ts'
 
 // ============================================================================
@@ -39,6 +40,10 @@ export const foodItemEntitySchema = nutrientFieldsSchema
     reference_food_item_id: z.string().uuid().optional().meta({
       description:
         'Optional pointer to a richer canonical food item (typically a central library row, e.g. an LSV item) used to inherit empty micronutrient fields. Per-user atomic items only.',
+    }),
+    default_portion_id: z.string().uuid().optional().meta({
+      description:
+        'Portion (from food_item_portions) to preselect when this food is logged. NULL/absent means the base portion (default_quantity/default_unit) is preselected.',
     }),
     name: z.string().min(1).max(255).meta({ description: 'Food item name' }),
     source: z
@@ -161,6 +166,9 @@ export const foodItemDetailSchema = foodItemEntitySchema
     is_shared: z.boolean().optional().meta({
       description:
         'True when this row lives in the central shared library (e.g. Livsmedelsverket). Such rows are read-only — clients must use the `/food-items/:id/override` endpoints (or `set_shared_food_item_override` MCP tool) to customize fields like icon, and PATCH/DELETE on the row itself will 403.',
+    }),
+    portions: z.array(foodItemPortionSchema).optional().meta({
+      description: 'Extra portion sizings defined for this food item, sorted by sort_order.',
     }),
     ingredients: z.array(resolvedFoodItemIngredientSchema).optional(),
     derived_nutrients: z
@@ -294,6 +302,9 @@ export const updateFoodItemBodySchema = nutrientFieldsSchema
   .extend({
     default_quantity: z.number().nullable().optional(),
     default_unit: z.string().max(100).nullable().optional(),
+    default_portion_id: z.string().uuid().nullable().optional().meta({
+      description: 'Preselected portion id; null clears (revert to base portion).',
+    }),
     icon: z.string().max(2048).nullable().optional(),
     name: z.string().min(1).max(255).optional(),
   })
