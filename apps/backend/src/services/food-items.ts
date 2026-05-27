@@ -317,7 +317,18 @@ const applySharedOverrides = async (
   return items.map((item) => {
     const override = overrides.get(item.id)
     if (!override) return item
-    return { ...item, icon: override.icon ?? undefined }
+    // Icon: pass through central UNLESS the user explicitly supplied a
+    // value (string OR null). icon_overridden carries that bit; it's
+    // false on rows where only other fields (e.g. default_portion_id)
+    // were set, so the column-default NULL doesn't accidentally hide
+    // the central icon.
+    // default_portion_id: NULL = no override, pass through central
+    // (currently no central default exists, but the semantic is clean).
+    return {
+      ...item,
+      ...(override.icon_overridden ? { icon: override.icon ?? undefined } : {}),
+      ...(override.default_portion_id ? { default_portion_id: override.default_portion_id } : {}),
+    }
   })
 }
 

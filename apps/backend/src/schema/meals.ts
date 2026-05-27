@@ -224,6 +224,8 @@ export const mealsTables: Record<string, string> = {
       food_item_icon  TEXT,
       quantity        DOUBLE PRECISION,
       unit            VARCHAR(100),
+      food_item_portion_id UUID,
+      portion_count   DOUBLE PRECISION,
       sort_order      INTEGER NOT NULL DEFAULT 0,
       calories        DOUBLE PRECISION,
       protein         DOUBLE PRECISION,
@@ -376,6 +378,17 @@ export const mealsTables: Record<string, string> = {
     CREATE TABLE IF NOT EXISTS shared_food_item_overrides (
       shared_food_item_id  UUID PRIMARY KEY,
       icon                 TEXT,
+      -- "user supplied an icon value (string OR explicit null)" — needed
+      -- because (icon IS NULL, icon_overridden FALSE) means "user never
+      -- touched icon, pass through central", whereas
+      -- (icon IS NULL, icon_overridden TRUE) means "user explicitly hid
+      -- the central icon". Pre-PR2 the body refine guaranteed icon was
+      -- always supplied so the column-default NULL was unambiguous, but
+      -- with multiple override fields a default_portion_id-only update
+      -- would otherwise leave icon at its column default and the read
+      -- path would silently hide the central icon.
+      icon_overridden      BOOLEAN NOT NULL DEFAULT FALSE,
+      default_portion_id   UUID,
       created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )

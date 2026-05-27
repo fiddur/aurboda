@@ -1112,6 +1112,37 @@ export const migrateSchema = async (user: string) => {
     // while the new instance is migrating, since the column would briefly
     // be in JUNCTION_COLUMNS but absent from the table.
     await query(db, `ALTER TABLE meal_food_items DROP COLUMN IF EXISTS sensitivities`)
+    // PR2 of the food-portions feature: per-row pointer at the portion the
+    // user selected, plus the count they logged. Both are nullable so
+    // legacy rows (logged before portions existed) keep working — meals.ts
+    // falls back to (quantity, unit) when food_item_portion_id is NULL.
+    await query(db, `ALTER TABLE meal_food_items ADD COLUMN IF NOT EXISTS food_item_portion_id UUID`)
+    await query(db, `ALTER TABLE meal_food_items ADD COLUMN IF NOT EXISTS portion_count DOUBLE PRECISION`)
+  }
+
+  // shared_food_item_overrides: per-user preselected portion for a central
+  // shared food item. NULL means "use the central row's default_portion_id"
+  // (which is itself usually NULL → use the base portion).
+  if (existingTableNames.has('shared_food_item_overrides')) {
+    await query(
+      db,
+      `ALTER TABLE shared_food_item_overrides ADD COLUMN IF NOT EXISTS default_portion_id UUID`,
+    )
+    // icon_overridden distinguishes "user explicitly chose icon" from "user
+    // never touched it" — required now that other override fields exist
+    // (a default_portion_id-only update would otherwise leave icon at the
+    // column default NULL and the read path would treat that as
+    // "user-hid-central-icon"). Backfill: every pre-existing row was
+    // created via the icon-only API and therefore did explicitly choose
+    // its icon value, so mark them all overridden.
+    await query(
+      db,
+      `ALTER TABLE shared_food_item_overrides ADD COLUMN IF NOT EXISTS icon_overridden BOOLEAN NOT NULL DEFAULT FALSE`,
+    )
+    await query(
+      db,
+      `UPDATE shared_food_item_overrides SET icon_overridden = TRUE WHERE icon_overridden = FALSE`,
+    )
   }
 
   // import_jobs and shared_food_items moved to the central database. If a

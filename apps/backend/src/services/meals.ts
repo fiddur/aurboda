@@ -10,7 +10,10 @@ import { type FrequentFoodItem, type FrequentMeal, NUTRIENT_FIELD_NAMES } from '
 import {
   deleteMeal as dbDeleteMeal,
   findMealsContainingFoodItem,
+  type FoodItemPortionRow,
+  getFoodItemPortionById,
   getFoodItemSensitivityNamesBatch,
+  listPortionsForFoodItem,
   getFrequentFoodItems as dbGetFrequentFoodItems,
   getFrequentMeals as dbGetFrequentMeals,
   getMealById as dbGetMealById,
@@ -42,8 +45,14 @@ import {
 
 interface FoodItemInput {
   food_item_id?: string
+  /** When set, the row is logged as `portion_count` of this portion. */
+  food_item_portion_id?: string
+  /** Required when food_item_portion_id is set. */
+  portion_count?: number
   name: string
+  /** Legacy free-form quantity (when no portion is selected). */
   quantity?: number
+  /** Legacy free-form unit (when no portion is selected). */
   unit?: string
   icon?: string
 }
@@ -100,10 +109,21 @@ interface MealResponse {
   created_at: string
 }
 
+/**
+ * Result discriminator the route layer maps to HTTP status:
+ *   - 'not_found' → 404 (the meal id doesn't resolve)
+ *   - 'invalid' → 400 (validation failure — bad portion id, missing
+ *     portion_count, etc.)
+ * Undefined `errorCode` on a successful response, or treated as 500 if
+ * `success: false` arrives without one.
+ */
+type MealResultErrorCode = 'not_found' | 'invalid'
+
 interface MealResult {
   success: boolean
   data?: MealResponse
   error?: string
+  errorCode?: MealResultErrorCode
 }
 
 interface MealsResult {
@@ -180,6 +200,8 @@ const linksToFoodItems = (
     const sensitivities = sensitivityMap.get(link.food_item_id) ?? []
     return {
       food_item_id: link.food_item_id,
+      food_item_portion_id: link.food_item_portion_id,
+      portion_count: link.portion_count,
       name: display?.name ?? link.legacy_food_item_name ?? '',
       icon: display?.icon ?? link.legacy_food_item_icon,
       quantity: link.quantity as number | undefined,
@@ -270,15 +292,35 @@ const attachFoodItems = async (user: string, meals: Meal[]): Promise<EnrichedMea
 }
 
 /**
- * Compute the scale factor between a request's quantity and the canonical
- * food item's default quantity. Same-unit assumption — if the request unit
- * differs from the canonical default, fall back to scale = 1 (use raw values).
+ * Compute the scale factor between a request and the canonical food item's
+ * default quantity. Two paths:
+ *
+ *   1. Portion path (preferred when `portion` is resolved): the request says
+ *      "log `portion_count` of this portion" and the portion encodes how much
+ *      of the base unit one entry equals. Scale becomes
+ *      `portion_count × portion.base_equivalent / canonical.default_quantity`.
+ *   2. Legacy path: free-form `quantity` + `unit`. Same-unit assumption — if
+ *      the request unit differs from the canonical default, fall back to
+ *      scale = 1 (use raw values).
  */
-const computeScale = (fi: FoodItemInput, canonical: MergedFoodItem): number => {
-  const reqQty = fi.quantity
+const isUsingPortion = (
+  fi: FoodItemInput,
+  portion: FoodItemPortionRow | null,
+): portion is FoodItemPortionRow =>
+  portion !== null && typeof fi.portion_count === 'number' && fi.portion_count > 0
+
+const computeScale = (
+  fi: FoodItemInput,
+  canonical: MergedFoodItem,
+  portion: FoodItemPortionRow | null,
+): number => {
   const defaultQty = canonical.default_quantity as number | undefined
-  if (reqQty === undefined || reqQty === null) return 1
   if (defaultQty === undefined || defaultQty === null || defaultQty === 0) return 1
+  if (isUsingPortion(fi, portion)) {
+    return (fi.portion_count! * portion.base_equivalent) / defaultQty
+  }
+  const reqQty = fi.quantity
+  if (reqQty === undefined || reqQty === null) return 1
   const canonicalUnit = canonical.default_unit as string | undefined
   if (fi.unit && canonicalUnit && fi.unit !== canonicalUnit) return 1
   return reqQty / defaultQty
@@ -296,19 +338,29 @@ const round2 = (n: number): number => Math.round(n * 100) / 100
  * Callers should compute it via `getEffectiveNutrients(detail)` so composite
  * recipes use derived totals (not the stale row columns) and reference-
  * enriched atomic items inherit micronutrients.
+ *
+ * When a `portion` is provided AND the input carries `portion_count`, the
+ * row is logged via the portion path: nutrients scale by
+ * `count × base_equivalent / default_quantity`, and the legacy `quantity` /
+ * `unit` columns are populated from the portion's label so display fallback
+ * keeps working even if the portion is later deleted.
  */
 export const buildScaledJunctionItem = (
   fi: FoodItemInput,
   canonical: MergedFoodItem,
   sortOrder: number,
   effectiveValues: Record<string, number>,
+  portion: FoodItemPortionRow | null = null,
 ): Record<string, unknown> => {
-  const scale = computeScale(fi, canonical)
+  const scale = computeScale(fi, canonical, portion)
+  const usingPortion = isUsingPortion(fi, portion)
   const junctionItem: Record<string, unknown> = {
     food_item_id: canonical.id,
-    quantity: fi.quantity,
+    quantity: usingPortion ? fi.portion_count! * portion.label_quantity : fi.quantity,
     sort_order: sortOrder,
-    unit: fi.unit,
+    unit: usingPortion ? portion.label_unit : fi.unit,
+    food_item_portion_id: usingPortion ? portion.id : undefined,
+    portion_count: usingPortion ? fi.portion_count : undefined,
   }
   for (const field of NUTRIENT_FIELD_NAMES) {
     const v = effectiveValues[field]
@@ -345,26 +397,89 @@ const resolveCanonical = async (
   })
 }
 
-/** Write food items to the junction table for a meal. */
-const syncFoodItemsToJunction = async (
+/**
+ * One food-item input resolved against the canonical library and (if the
+ * input carries a portion id) its portion row. Carries everything
+ * `setMealFoodItems` needs so the junction write is pure mapping — no
+ * further lookups that could fail mid-write.
+ */
+interface PreparedFoodItem {
+  fi: FoodItemInput
+  canonical: MergedFoodItem
+  /** Effective nutrient values: composite-derived / reference-enriched / atomic. */
+  effective: Record<string, number>
+  portion: FoodItemPortionRow | null
+}
+
+/**
+ * Resolve the portion attached to a meal-entry input, enforcing that the
+ * portion belongs to the food being logged. Returns null on the legacy path
+ * (no portion id provided); throws (caught by the caller) when the portion
+ * id doesn't resolve or targets a different food.
+ */
+const resolvePortionForInput = async (
   user: string,
-  mealId: string,
+  fi: FoodItemInput,
+  canonical: MergedFoodItem,
+): Promise<FoodItemPortionRow | null> => {
+  if (!fi.food_item_portion_id) return null
+  const portion = await getFoodItemPortionById(user, fi.food_item_portion_id)
+  if (!portion) {
+    throw new Error(`Portion not found: ${fi.food_item_portion_id}`)
+  }
+  if (portion.food_item_id !== canonical.id) {
+    throw new Error(
+      `Portion ${fi.food_item_portion_id} does not belong to food item ${canonical.id}`,
+    )
+  }
+  if (typeof fi.portion_count !== 'number' || fi.portion_count <= 0) {
+    throw new Error('portion_count must be a positive number when food_item_portion_id is set')
+  }
+  return portion
+}
+
+/**
+ * Pre-resolve every food item + portion BEFORE the meal row is written, so a
+ * bad portion id can't leave behind an orphan meal. Canonical-resolution
+ * failures preserve legacy behavior (drop the input silently); portion
+ * validation failures bubble out as Error so the caller returns
+ * { success: false, error } and the route maps to 400.
+ *
+ * Caveat: `resolveCanonical` → `findOrCreate` can still side-effect a
+ * per-user food row by name BEFORE the portion check runs. So a request
+ * like `{ name: "BrandNewFood", food_item_portion_id: <bogus> }` does
+ * leave a freshly-created food behind even though the meal is rejected;
+ * on a retry findOrCreate sees the existing row. The meal-row guarantee
+ * is the load-bearing one here — orphan food rows are silent / self-
+ * healing — but worth knowing.
+ */
+const prepareFoodItems = async (
+  user: string,
   foodItems: FoodItemInput[],
-  source = 'manual',
-): Promise<void> => {
+  source: string,
+): Promise<PreparedFoodItem[]> => {
   const service = createFoodItemsService(getCentralDb())
-  const junctionItems = []
-  for (let i = 0; i < foodItems.length; i++) {
-    const fi = foodItems[i]
+  const prepared: PreparedFoodItem[] = []
+  for (const fi of foodItems) {
     const canonical = await resolveCanonical(user, fi, source)
     if (!canonical) continue
-    // Fetch detail to pick up derived (composite) or enriched (reference)
-    // nutrients. Falls back to the canonical row when no detail is available.
     const detail = await service.getDetail(user, canonical.id)
     const effective = detail ? getEffectiveNutrients(detail) : {}
-    junctionItems.push(buildScaledJunctionItem(fi, canonical, i, effective))
+    const portion = await resolvePortionForInput(user, fi, canonical)
+    prepared.push({ fi, canonical, effective, portion })
   }
+  return prepared
+}
 
+/** Pure mapping over already-validated inputs — never throws. */
+const writePreparedToJunction = async (
+  user: string,
+  mealId: string,
+  prepared: PreparedFoodItem[],
+): Promise<void> => {
+  const junctionItems = prepared.map((p, i) =>
+    buildScaledJunctionItem(p.fi, p.canonical, i, p.effective, p.portion),
+  )
   await setMealFoodItems(user, mealId, junctionItems as Parameters<typeof setMealFoodItems>[2])
 }
 
@@ -405,6 +520,23 @@ const recomputeMealMacros = async (
 export async function addMeal(user: string, input: AddMealInput): Promise<MealResult> {
   const mealTime = new Date(input.time)
 
+  // Pre-validate every food-item input (canonical resolve + portion ownership)
+  // BEFORE writing the meal row. A bad portion id used to throw mid-flight
+  // and leave an orphan meal with no items behind; now we surface the error
+  // cleanly and the route maps it to a 400.
+  let prepared: PreparedFoodItem[] = []
+  if (input.food_items && input.food_items.length > 0) {
+    try {
+      prepared = await prepareFoodItems(user, input.food_items, input.source ?? 'manual')
+    } catch (err) {
+      return {
+        error: err instanceof Error ? err.message : 'Invalid food items',
+        errorCode: 'invalid',
+        success: false,
+      }
+    }
+  }
+
   const initialMeal = await dbUpsertMeal(user, {
     id: input.id,
     calories: input.calories,
@@ -423,8 +555,8 @@ export async function addMeal(user: string, input: AddMealInput): Promise<MealRe
   })
 
   let meal = initialMeal
-  if (input.food_items && input.food_items.length > 0) {
-    await syncFoodItemsToJunction(user, meal.id, input.food_items, input.source)
+  if (prepared.length > 0) {
+    await writePreparedToJunction(user, meal.id, prepared)
     const recomputed = await recomputeMealMacros(user, meal.id, pickExplicitMacros(input))
     if (recomputed) meal = recomputed
   }
@@ -437,6 +569,32 @@ export async function addMeal(user: string, input: AddMealInput): Promise<MealRe
  * Update an existing meal record.
  */
 export async function updateMealById(user: string, id: string, input: UpdateMealInput): Promise<MealResult> {
+  // Pre-validate food items (when provided) before any mutation, same as
+  // addMeal — protects against half-applied updates when a portion id is bad.
+  let prepared: PreparedFoodItem[] = []
+  const hasFoodItemsUpdate = input.food_items !== undefined
+  const replacingWithItems =
+    input.food_items !== undefined && input.food_items !== null && input.food_items.length > 0
+  if (replacingWithItems) {
+    try {
+      // dbUpdateMeal below does its own existence check, but we need the
+      // meal's `source` here to drive canonical resolution for any
+      // findOrCreate calls in prepareFoodItems. A small TOCTOU window
+      // between this read and dbUpdateMeal is acceptable: a meal deleted
+      // between them just makes dbUpdateMeal return null below and we
+      // surface the 404 then.
+      const existing = await dbGetMealById(user, id)
+      if (!existing) return { error: 'Meal not found', errorCode: 'not_found', success: false }
+      prepared = await prepareFoodItems(user, input.food_items!, existing.source)
+    } catch (err) {
+      return {
+        error: err instanceof Error ? err.message : 'Invalid food items',
+        errorCode: 'invalid',
+        success: false,
+      }
+    }
+  }
+
   const initialMeal = await dbUpdateMeal(user, id, {
     ...input,
     food_items: input.food_items === null ? null : input.food_items,
@@ -445,15 +603,15 @@ export async function updateMealById(user: string, id: string, input: UpdateMeal
   })
 
   if (!initialMeal) {
-    return { error: 'Meal not found', success: false }
+    return { error: 'Meal not found', errorCode: 'not_found', success: false }
   }
 
   let meal = initialMeal
-  if (input.food_items !== undefined) {
-    if (input.food_items === null || input.food_items.length === 0) {
+  if (hasFoodItemsUpdate) {
+    if (!replacingWithItems) {
       await setMealFoodItems(user, id, [])
     } else {
-      await syncFoodItemsToJunction(user, id, input.food_items, meal.source)
+      await writePreparedToJunction(user, id, prepared)
     }
     const recomputed = await recomputeMealMacros(user, id, pickExplicitMacros(input))
     if (recomputed) meal = recomputed
@@ -495,6 +653,33 @@ export async function resnapshotMealsForFoodItem(
   const canonical = detail.item
   const effective = getEffectiveNutrients(detail)
 
+  // Pre-fetch every current portion for this food once, instead of one
+  // round-trip per refreshed link. A link whose food_item_portion_id is
+  // present but absent from this map points at a portion that has since
+  // been deleted — handled below by preserving the existing snapshot.
+  const portionsById = new Map(
+    (await listPortionsForFoodItem(user, foodItemId)).map((p) => [p.id, p]),
+  )
+
+  // Pass-through serialization used both for unrelated rows and for rows
+  // whose portion has been deleted (where rescaling would corrupt the
+  // snapshot — see below).
+  const passThroughLink = (link: MealFoodItemLink): Record<string, unknown> => {
+    const out: Record<string, unknown> = {
+      food_item_id: link.food_item_id,
+      quantity: link.quantity,
+      sort_order: link.sort_order,
+      unit: link.unit,
+      food_item_portion_id: link.food_item_portion_id,
+      portion_count: link.portion_count,
+    }
+    for (const field of NUTRIENT_FIELD_NAMES) {
+      const v = link[field]
+      if (typeof v === 'number') out[field] = v
+    }
+    return out
+  }
+
   const mealIds = await findMealsContainingFoodItem(user, foodItemId)
   let rowsUpdated = 0
   for (const mealId of mealIds) {
@@ -503,26 +688,31 @@ export async function resnapshotMealsForFoodItem(
       if (link.food_item_id !== foodItemId) {
         // Preserve other items' snapshots verbatim — this action only refreshes
         // rows that point at the food item being re-snapshotted.
-        const passThrough: Record<string, unknown> = {
-          food_item_id: link.food_item_id,
-          quantity: link.quantity,
-          sort_order: link.sort_order,
-          unit: link.unit,
-        }
-        for (const field of NUTRIENT_FIELD_NAMES) {
-          const v = link[field]
-          if (typeof v === 'number') passThrough[field] = v
-        }
-        return passThrough
+        return passThroughLink(link)
+      }
+      // Portion was logged but has since been deleted: don't rescale. The
+      // recorded `quantity` is `count × portion.label_quantity` and `unit`
+      // is the portion's label (e.g. 'ruta'), which doesn't match the
+      // canonical default_unit (e.g. 'g') — running it through computeScale
+      // would fall back to scale=1 and overwrite the row with the full
+      // per-default-quantity nutrients, making it more wrong than before.
+      // Preserve the frozen snapshot instead.
+      if (link.food_item_portion_id && !portionsById.has(link.food_item_portion_id)) {
+        return passThroughLink(link)
       }
       rowsUpdated++
+      const portion = link.food_item_portion_id
+        ? (portionsById.get(link.food_item_portion_id) ?? null)
+        : null
       const fi: FoodItemInput = {
         food_item_id: foodItemId,
+        food_item_portion_id: portion ? portion.id : undefined,
+        portion_count: portion ? link.portion_count : undefined,
         name: canonical.name,
         quantity: link.quantity as number | undefined,
         unit: link.unit as string | undefined,
       }
-      return buildScaledJunctionItem(fi, canonical, link.sort_order, effective)
+      return buildScaledJunctionItem(fi, canonical, link.sort_order, effective, portion)
     })
     await setMealFoodItems(user, mealId, updated as Parameters<typeof setMealFoodItems>[2])
     await recomputeMealMacros(user, mealId)
@@ -536,7 +726,7 @@ export async function resnapshotMealsForFoodItem(
 export async function getMeal(user: string, id: string): Promise<MealResult> {
   const meal = await dbGetMealById(user, id)
   if (!meal) {
-    return { error: 'Meal not found', success: false }
+    return { error: 'Meal not found', errorCode: 'not_found', success: false }
   }
 
   // Populate food items from junction table

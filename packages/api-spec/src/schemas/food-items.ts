@@ -170,6 +170,10 @@ export const foodItemDetailSchema = foodItemEntitySchema
     portions: z.array(foodItemPortionSchema).optional().meta({
       description: 'Extra portion sizings defined for this food item, sorted by sort_order.',
     }),
+    effective_default_portion_id: z.string().uuid().optional().meta({
+      description:
+        'Resolved default portion id to preselect when logging this food. For per-user items this mirrors `default_portion_id` on the food row. For central items it falls back through `shared_food_item_overrides.default_portion_id` first, then the central row\'s own (currently absent) default. Absent when there is no default — the UI should preselect the implicit base portion.',
+    }),
     ingredients: z.array(resolvedFoodItemIngredientSchema).optional(),
     derived_nutrients: z
       .object({
@@ -230,7 +234,16 @@ export const sharedFoodItemOverrideSchema = z
       .uuid()
       .meta({ description: 'ID of the central shared food item this override applies to' }),
     icon: z.string().max(2048).nullable().meta({
-      description: 'User-set icon for the central item; null means "no icon" (explicit override to empty).',
+      description:
+        'User-set icon — only meaningful when `icon_overridden` is true. Null then means "user explicitly chose no icon" (hide central). When `icon_overridden` is false, this field\'s value is incidental and clients must pass through the central icon untouched.',
+    }),
+    icon_overridden: z.boolean().meta({
+      description:
+        'Whether the user supplied an icon value (string OR explicit null). False means no icon override was set on this row.',
+    }),
+    default_portion_id: z.string().uuid().nullable().meta({
+      description:
+        'User-preselected portion id for the central item; null means no override (fall through to the central row\'s own default_portion_id).',
     }),
     created_at: z.string().meta({ description: 'Override creation timestamp' }),
     updated_at: z.string().meta({ description: 'Override last-update timestamp' }),
@@ -259,8 +272,12 @@ export const setSharedFoodItemOverrideBodySchema = z
       description:
         'Override icon for the central item. String sets the icon, null hides the central icon, omitted leaves the column unchanged.',
     }),
+    default_portion_id: z.string().uuid().nullable().optional().meta({
+      description:
+        'Override preselected portion id. String sets the override, null clears any prior override (falls through to the central default), omitted leaves the column unchanged.',
+    }),
   })
-  .refine((body) => body.icon !== undefined, {
+  .refine((body) => body.icon !== undefined || body.default_portion_id !== undefined, {
     message: 'At least one override field must be supplied; clear via DELETE to revert to central',
   })
   .meta({

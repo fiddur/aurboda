@@ -28,8 +28,27 @@ import { query } from './connection.ts'
 
 export interface SharedFoodItemOverride {
   shared_food_item_id: string
-  /** User-set icon for the central item; null means "use no icon" (explicit override to empty). */
+  /**
+   * User-set icon for the central item — only meaningful when
+   * `icon_overridden` is true. `null` then means "user explicitly chose
+   * no icon" (hide the central icon); `string` is a user-supplied icon.
+   * When `icon_overridden` is false, this field's value is incidental and
+   * the read layer must pass through the central icon untouched.
+   */
   icon: string | null
+  /**
+   * Whether the user supplied an icon value (a string OR explicit null).
+   * Required because the column default is NULL — without this flag, a
+   * `default_portion_id`-only override row would have `icon = NULL` that
+   * the read path can't distinguish from "user-hid-central-icon".
+   */
+  icon_overridden: boolean
+  /**
+   * User-preselected portion id for the central item. NULL means "no
+   * override" — fall back to the central row's own default_portion_id (which
+   * is itself usually NULL → use the base portion).
+   */
+  default_portion_id: string | null
   created_at: Date
   updated_at: Date
 }
@@ -41,18 +60,27 @@ export interface SharedFoodItemOverrideInput {
    * first insert).
    */
   icon?: string | null
+  /**
+   * `string` sets the preselected portion id, `null` clears the override
+   * (revert to whatever the central row says — usually the base portion).
+   * `undefined` leaves the column unchanged.
+   */
+  default_portion_id?: string | null
 }
 
-const COLUMNS = 'shared_food_item_id, icon, created_at, updated_at'
+const COLUMNS =
+  'shared_food_item_id, icon, icon_overridden, default_portion_id, created_at, updated_at'
 
 const mapRow = (row: Record<string, unknown>): SharedFoodItemOverride => ({
   shared_food_item_id: row.shared_food_item_id as string,
   icon: row.icon as string | null,
+  icon_overridden: row.icon_overridden === true,
+  default_portion_id: (row.default_portion_id as string | null) ?? null,
   created_at: row.created_at as Date,
   updated_at: row.updated_at as Date,
 })
 
-const OVERRIDE_FIELDS = ['icon'] as const
+const OVERRIDE_FIELDS = ['icon', 'default_portion_id'] as const
 
 export const getSharedFoodItemOverride = async (
   user: string,
@@ -123,6 +151,16 @@ export const setSharedFoodItemOverride = async (
     throw new Error(
       'setSharedFoodItemOverride requires at least one override field; use clearSharedFoodItemOverride to revert',
     )
+  }
+
+  // Track "user supplied an icon value" so the read path can distinguish
+  // a fresh `default_portion_id`-only row (icon NULL by column default —
+  // pass central through) from an explicit icon hide (`icon: null` in
+  // input — replace central with no-icon).
+  if (input.icon !== undefined) {
+    insertFields.push('icon_overridden')
+    insertValues.push(true)
+    updateAssignments.push('icon_overridden = EXCLUDED.icon_overridden')
   }
 
   // Always bump updated_at on conflict so the row reflects the most recent

@@ -116,4 +116,41 @@ describe('shared_food_item_overrides integration', () => {
     const got = await getSharedFoodItemOverride(user, sharedId1)
     expect(got?.icon).toBe('🥩')
   })
+
+  test('default_portion_id override round-trips independently of icon', async () => {
+    const user = getTestUser()
+    const portionId = '33333333-3333-3333-3333-333333333333'
+    const set = await setSharedFoodItemOverride(user, sharedId1, { default_portion_id: portionId })
+    expect(set.default_portion_id).toBe(portionId)
+    expect(set.icon).toBeNull()
+    // Setting an icon later must leave default_portion_id alone.
+    const updated = await setSharedFoodItemOverride(user, sharedId1, { icon: '🥩' })
+    expect(updated.icon).toBe('🥩')
+    expect(updated.default_portion_id).toBe(portionId)
+  })
+
+  test('clearing default_portion_id (null) reverts to no override', async () => {
+    const user = getTestUser()
+    const portionId = '33333333-3333-3333-3333-333333333333'
+    await setSharedFoodItemOverride(user, sharedId1, { default_portion_id: portionId })
+    const cleared = await setSharedFoodItemOverride(user, sharedId1, { default_portion_id: null })
+    expect(cleared.default_portion_id).toBeNull()
+  })
+
+  test('icon_overridden tracks whether the user supplied an icon value', async () => {
+    const user = getTestUser()
+    const portionId = '33333333-3333-3333-3333-333333333333'
+    // Only default_portion_id → icon_overridden stays false.
+    const a = await setSharedFoodItemOverride(user, sharedId1, { default_portion_id: portionId })
+    expect(a.icon_overridden).toBe(false)
+    expect(a.icon).toBeNull()
+    // Setting icon=null (explicit hide) → icon_overridden flips to true.
+    const b = await setSharedFoodItemOverride(user, sharedId1, { icon: null })
+    expect(b.icon_overridden).toBe(true)
+    expect(b.icon).toBeNull()
+    // Setting an icon string → icon_overridden stays true.
+    const c = await setSharedFoodItemOverride(user, sharedId1, { icon: '🥩' })
+    expect(c.icon_overridden).toBe(true)
+    expect(c.icon).toBe('🥩')
+  })
 })

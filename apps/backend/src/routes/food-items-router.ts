@@ -106,6 +106,10 @@ const serializeDetail = (detail: ServiceFoodItemDetail): FoodItemDetail => {
   const sensitivities = detail.sensitivities ?? []
   const portions = detail.portions?.map(serializePortion)
   const is_shared = detail.is_shared
+  // For per-user items default_portion_id is the column on the food row;
+  // for central items applySharedOverrides decorated it from the user's
+  // shared_food_item_overrides row (when the user picked a portion).
+  const effective_default_portion_id = (detail.item.default_portion_id as string | undefined) ?? undefined
   // Composite branch: ingredient list + derived totals.
   if (detail.ingredients) {
     return {
@@ -121,6 +125,7 @@ const serializeDetail = (detail: ServiceFoodItemDetail): FoodItemDetail => {
       })),
       is_shared,
       portions,
+      effective_default_portion_id,
       sensitivities,
     }
   }
@@ -131,6 +136,7 @@ const serializeDetail = (detail: ServiceFoodItemDetail): FoodItemDetail => {
       ...base,
       is_shared,
       portions,
+      effective_default_portion_id,
       reference: {
         food: serializeFoodItem(detail.reference.food),
         unit_mismatch: detail.reference.unit_mismatch,
@@ -139,7 +145,13 @@ const serializeDetail = (detail: ServiceFoodItemDetail): FoodItemDetail => {
       sensitivities,
     }
   }
-  return { ...base, is_shared, portions, sensitivities } as FoodItemDetail
+  return {
+    ...base,
+    is_shared,
+    portions,
+    effective_default_portion_id,
+    sensitivities,
+  } as FoodItemDetail
 }
 
 const serializePortion = (row: FoodItemPortionRow): FoodItemPortion => ({
@@ -156,6 +168,8 @@ const serializePortion = (row: FoodItemPortionRow): FoodItemPortion => ({
 const serializeOverride = (override: DbSharedFoodItemOverride): ApiSharedFoodItemOverride => ({
   shared_food_item_id: override.shared_food_item_id,
   icon: override.icon,
+  icon_overridden: override.icon_overridden,
+  default_portion_id: override.default_portion_id,
   created_at: override.created_at.toISOString(),
   updated_at: override.updated_at.toISOString(),
 })
@@ -481,6 +495,25 @@ export const createFoodItemsRouter = (authMiddleware: AnyMiddleware, centralDb: 
             : 'Food item not found',
           success: false,
         })
+      }
+      // When the user sets default_portion_id, enforce the same ownership
+      // invariant as the per-user `set_default_food_item_portion` path:
+      // the portion must exist AND belong to this central food. A `null`
+      // clears the override and skips the check.
+      if (req.body.default_portion_id) {
+        const portion = await getFoodItemPortionById(user, req.body.default_portion_id)
+        if (!portion) {
+          return res.status(400).json({
+            error: `Portion not found: ${req.body.default_portion_id}`,
+            success: false,
+          })
+        }
+        if (portion.food_item_id !== id) {
+          return res.status(400).json({
+            error: 'default_portion_id does not belong to this food item',
+            success: false,
+          })
+        }
       }
       const override = await setSharedFoodItemOverride(user, id, req.body)
       res.json({ data: serializeOverride(override), success: true })

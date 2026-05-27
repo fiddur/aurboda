@@ -10,9 +10,10 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import { setIngredients } from '../db/food-item-ingredients.ts'
+import { insertFoodItemPortion } from '../db/food-item-portions.ts'
 import { updateFoodItem, upsertFoodItem } from '../db/food-items.ts'
 import { getMealFoodItemsBatch } from '../db/meal-food-items.ts'
-import { getMealById } from '../db/meals.ts'
+import { getMealById, getMeals as dbGetMeals } from '../db/meals.ts'
 import { insertSensitivityFlag, setFoodItemSensitivities } from '../db/sensitivities.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import { addMeal, getMeal, queryFrequentMeals, resnapshotMealsForFoodItem, updateMealById } from './meals.ts'
@@ -451,6 +452,207 @@ describe('Meals service integration tests', () => {
 
       const refreshed = await getMeal(user, meal.data!.id)
       expect(refreshed.data!.food_items?.[0].name).toBe('Banan')
+    })
+  })
+
+  describe('portion-based meal logging', () => {
+    test('scales nutrients via portion: 3 × ruta (3.4 g) on a 100 g chocolate base', async () => {
+      const user = getTestUser()
+      const choklad = await upsertFoodItem(user, {
+        calories: 500,
+        default_quantity: 100,
+        default_unit: 'g',
+        fat: 30,
+        name: 'Choklad',
+      })
+      const ruta = await insertFoodItemPortion(user, {
+        food_item_id: choklad.id,
+        label_quantity: 1,
+        label_unit: 'ruta',
+        base_equivalent: 3.4,
+      })
+
+      const result = await addMeal(user, {
+        food_items: [
+          {
+            food_item_id: choklad.id,
+            food_item_portion_id: ruta.id,
+            portion_count: 3,
+            name: 'Choklad',
+          },
+        ],
+        time: '2026-04-26T15:00:00Z',
+      })
+      expect(result.success).toBe(true)
+
+      const links = (await getMealFoodItemsBatch(user, [result.data!.id])).get(result.data!.id) ?? []
+      expect(links).toHaveLength(1)
+      // 3 × 3.4 / 100 = 0.102 scale; 500 kcal × 0.102 = 51 kcal; 30 fat × 0.102 = 3.06
+      expect(links[0].calories).toBeCloseTo(51, 2)
+      expect(links[0].fat).toBeCloseTo(3.06, 2)
+      // Display fallback: quantity is portion_count × label_quantity; unit is label_unit
+      expect(links[0].quantity).toBe(3)
+      expect(links[0].unit).toBe('ruta')
+      expect(links[0].food_item_portion_id).toBe(ruta.id)
+      expect(links[0].portion_count).toBe(3)
+      expect(result.data!.calories).toBeCloseTo(51, 2)
+    })
+
+    test('rejects portion that does not belong to the food — returns failure, no orphan meal row', async () => {
+      const user = getTestUser()
+      const foodA = await upsertFoodItem(user, { name: 'A', default_quantity: 100, default_unit: 'g' })
+      const foodB = await upsertFoodItem(user, { name: 'B', default_quantity: 100, default_unit: 'g' })
+      const portionA = await insertFoodItemPortion(user, {
+        food_item_id: foodA.id,
+        label_quantity: 1,
+        label_unit: 'x',
+        base_equivalent: 1,
+      })
+
+      const result = await addMeal(user, {
+        food_items: [
+          {
+            food_item_id: foodB.id,
+            food_item_portion_id: portionA.id,
+            portion_count: 2,
+            name: 'B',
+          },
+        ],
+        time: '2026-04-26T15:00:00Z',
+      })
+      expect(result.success).toBe(false)
+      expect(result.error).toMatch(/does not belong/i)
+      // Regression: addMeal used to throw mid-flight, AFTER the meal row was
+      // upserted — leaving an orphan meal with no items behind. The fix
+      // pre-validates portions before any DB write.
+      const allMeals = await dbGetMeals(user, {
+        start: new Date('2026-04-26T00:00:00Z'),
+        end: new Date('2026-04-27T00:00:00Z'),
+      })
+      expect(allMeals).toHaveLength(0)
+    })
+
+    test('rejects portion_count missing / non-positive when portion_id is set', async () => {
+      const user = getTestUser()
+      const food = await upsertFoodItem(user, { name: 'F', default_quantity: 100, default_unit: 'g' })
+      const portion = await insertFoodItemPortion(user, {
+        food_item_id: food.id,
+        label_quantity: 1,
+        label_unit: 'x',
+        base_equivalent: 1,
+      })
+      const result = await addMeal(user, {
+        food_items: [{ food_item_id: food.id, food_item_portion_id: portion.id, name: 'F' }],
+        time: '2026-04-26T15:00:00Z',
+      })
+      expect(result.success).toBe(false)
+      expect(result.error).toMatch(/portion_count/i)
+      expect(result.errorCode).toBe('invalid')
+    })
+
+    test('updateMealById distinguishes not_found from invalid via errorCode', async () => {
+      const user = getTestUser()
+      // not_found: nothing exists at this id.
+      const notFound = await updateMealById(user, '00000000-0000-0000-0000-000000000001', {
+        food_items: [],
+      })
+      expect(notFound.success).toBe(false)
+      expect(notFound.errorCode).toBe('not_found')
+
+      // invalid: meal exists but portion targets a different food.
+      const foodA = await upsertFoodItem(user, { name: 'A', default_quantity: 100, default_unit: 'g' })
+      const foodB = await upsertFoodItem(user, { name: 'B', default_quantity: 100, default_unit: 'g' })
+      const portionA = await insertFoodItemPortion(user, {
+        food_item_id: foodA.id,
+        label_quantity: 1,
+        label_unit: 'x',
+        base_equivalent: 1,
+      })
+      const meal = await addMeal(user, {
+        food_items: [{ food_item_id: foodB.id, name: 'B', quantity: 100, unit: 'g' }],
+        time: '2026-04-26T15:00:00Z',
+      })
+      const bad = await updateMealById(user, meal.data!.id, {
+        food_items: [
+          { food_item_id: foodB.id, food_item_portion_id: portionA.id, portion_count: 1, name: 'B' },
+        ],
+      })
+      expect(bad.success).toBe(false)
+      expect(bad.errorCode).toBe('invalid')
+      expect(bad.error).toMatch(/does not belong/i)
+    })
+
+    test('resnapshot preserves the snapshot when the portion has been deleted', async () => {
+      // Regression: if the portion was deleted since logging, the recorded
+      // (quantity, unit) on the link are portion-label values (e.g. 3 ruta)
+      // that don't match the canonical default_unit (g). Old behavior fell
+      // back to legacy scaling which returned scale=1 → row got overwritten
+      // with full per-100g values. Fix: skip recompute, preserve the frozen
+      // snapshot.
+      const user = getTestUser()
+      const food = await upsertFoodItem(user, {
+        calories: 500,
+        default_quantity: 100,
+        default_unit: 'g',
+        name: 'Choklad',
+      })
+      const ruta = await insertFoodItemPortion(user, {
+        food_item_id: food.id,
+        label_quantity: 1,
+        label_unit: 'ruta',
+        base_equivalent: 3.4,
+      })
+      const meal = await addMeal(user, {
+        food_items: [
+          { food_item_id: food.id, food_item_portion_id: ruta.id, portion_count: 3, name: 'Choklad' },
+        ],
+        time: '2026-04-26T15:00:00Z',
+      })
+      const originalCalories = meal.data!.food_items![0].calories!
+      expect(originalCalories).toBeCloseTo(51, 2) // 500 × 3 × 3.4 / 100
+
+      // Delete the portion that the link points at.
+      await import('../db/food-item-portions.ts').then((m) => m.deleteFoodItemPortion(user, ruta.id))
+
+      // Resnapshot must NOT clobber the row with full canonical values.
+      await resnapshotMealsForFoodItem(user, food.id)
+      const refreshed = await getMeal(user, meal.data!.id)
+      const after = refreshed.data!.food_items![0]
+      expect(after.calories).toBeCloseTo(originalCalories, 2)
+      // The legacy display fallback still works — the snapshot kept label + count.
+      expect(after.quantity).toBe(3)
+      expect(after.unit).toBe('ruta')
+    })
+
+    test('resnapshot preserves portion link and rescales with current effective nutrients', async () => {
+      const user = getTestUser()
+      const food = await upsertFoodItem(user, {
+        calories: 100,
+        default_quantity: 100,
+        default_unit: 'g',
+        name: 'Choklad',
+      })
+      const ruta = await insertFoodItemPortion(user, {
+        food_item_id: food.id,
+        label_quantity: 1,
+        label_unit: 'ruta',
+        base_equivalent: 5,
+      })
+      const meal = await addMeal(user, {
+        food_items: [
+          { food_item_id: food.id, food_item_portion_id: ruta.id, portion_count: 4, name: 'Choklad' },
+        ],
+        time: '2026-04-26T15:00:00Z',
+      })
+      // Bump per-100g calories from 100 → 200; resnapshot should rescale to
+      // 200 × 4 × 5 / 100 = 40.
+      await updateFoodItem(user, food.id, { calories: 200 })
+      const out = await resnapshotMealsForFoodItem(user, food.id)
+      expect(out.rows_updated).toBe(1)
+      const refreshed = await getMeal(user, meal.data!.id)
+      expect(refreshed.data!.food_items?.[0].calories).toBe(40)
+      expect(refreshed.data!.food_items?.[0].food_item_portion_id).toBe(ruta.id)
+      expect(refreshed.data!.food_items?.[0].portion_count).toBe(4)
     })
   })
 })
