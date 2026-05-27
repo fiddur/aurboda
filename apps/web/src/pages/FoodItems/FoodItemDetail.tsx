@@ -477,6 +477,9 @@ export function FoodItemDetail() {
         commitDefaultUnit={commitDefaultUnit}
       />
 
+      {/* TODO: portions section for shared/central items goes through the
+          override layer (shared_food_item_overrides.default_portion_id +
+          a future per-user portions-on-central pattern). Deferred. */}
       {!isShared && <PortionsSection item={item} foodItemId={id} />}
 
       <CompositeOrAtomicSection
@@ -583,7 +586,11 @@ function PortionsSection({ item, foodItemId }: { item: ApiFoodItemDetail; foodIt
   const baseUnit = item.default_unit ?? 'base unit'
   const baseQty = item.default_quantity
   const [draft, setDraft] = useState({ label_quantity: '', label_unit: '', base_equivalent: '' })
-  const [error, setError] = useState<string | null>(null)
+  // Keep the add-row error separate from row-level (update/delete/default)
+  // errors so an unrelated failure doesn't clear the message a user needs
+  // to see while they fix their draft inputs.
+  const [addError, setAddError] = useState<string | null>(null)
+  const [rowError, setRowError] = useState<string | null>(null)
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['foodItem', foodItemId] })
 
@@ -600,10 +607,10 @@ function PortionsSection({ item, foodItemId }: { item: ApiFoodItemDetail; foodIt
         base_equivalent: be,
       })
     },
-    onError: (err: Error) => setError(err.message),
+    onError: (err: Error) => setAddError(err.message),
     onSuccess: () => {
       setDraft({ label_quantity: '', label_unit: '', base_equivalent: '' })
-      setError(null)
+      setAddError(null)
       invalidate()
     },
   })
@@ -615,27 +622,27 @@ function PortionsSection({ item, foodItemId }: { item: ApiFoodItemDetail; foodIt
         label_unit: input.body.label_unit,
         base_equivalent: input.body.base_equivalent,
       }),
-    onError: (err: Error) => setError(err.message),
+    onError: (err: Error) => setRowError(err.message),
     onSuccess: () => {
-      setError(null)
+      setRowError(null)
       invalidate()
     },
   })
 
   const deleteMutation = useMutation({
     mutationFn: (portionId: string) => deleteFoodItemPortionApi(foodItemId, portionId),
-    onError: (err: Error) => setError(err.message),
+    onError: (err: Error) => setRowError(err.message),
     onSuccess: () => {
-      setError(null)
+      setRowError(null)
       invalidate()
     },
   })
 
   const defaultMutation = useMutation({
     mutationFn: (portionId: string | null) => setDefaultPortionApi(foodItemId, portionId),
-    onError: (err: Error) => setError(err.message),
+    onError: (err: Error) => setRowError(err.message),
     onSuccess: () => {
-      setError(null)
+      setRowError(null)
       invalidate()
     },
   })
@@ -643,8 +650,7 @@ function PortionsSection({ item, foodItemId }: { item: ApiFoodItemDetail; foodIt
   // Effective default is exposed by the server (resolves override layer for
   // central items); for per-user items it mirrors the row column. UI only
   // shows the radio when the food has portions to choose from.
-  const effectiveDefault = (item as ApiFoodItemDetail & { effective_default_portion_id?: string })
-    .effective_default_portion_id
+  const effectiveDefault = item.effective_default_portion_id
 
   return (
     <section class="fi-portions">
@@ -721,7 +727,8 @@ function PortionsSection({ item, foodItemId }: { item: ApiFoodItemDetail; foodIt
           Add portion
         </button>
       </div>
-      {error && <p class="fi-portions-error">{error}</p>}
+      {addError && <p class="fi-portions-error">{addError}</p>}
+      {rowError && <p class="fi-portions-error">{rowError}</p>}
     </section>
   )
 }
@@ -747,11 +754,19 @@ function PortionRow({
   const [lu, setLu] = useState(portion.label_unit)
   const [be, setBe] = useState(String(portion.base_equivalent))
 
+  // Three independent effects so a mutation/invalidate that refreshes the
+  // server-side value of one field doesn't clobber unsaved input on a
+  // sibling field (the previous combined effect dropped pending edits any
+  // time the user blurred a different field on the same row).
   useEffect(() => {
     setLq(String(portion.label_quantity))
+  }, [portion.id, portion.label_quantity])
+  useEffect(() => {
     setLu(portion.label_unit)
+  }, [portion.id, portion.label_unit])
+  useEffect(() => {
     setBe(String(portion.base_equivalent))
-  }, [portion.id, portion.label_quantity, portion.label_unit, portion.base_equivalent])
+  }, [portion.id, portion.base_equivalent])
 
   const commit = (field: 'label_quantity' | 'label_unit' | 'base_equivalent') => () => {
     if (field === 'label_unit') {
@@ -801,9 +816,12 @@ function PortionRow({
         onBlur={commit('base_equivalent')}
       />
       <span class="fi-portion-base-unit">{baseUnit}</span>
-      <button type="button" class="btn-link fi-portion-del" onClick={onDelete}>
-        Delete
-      </button>
+      <ConfirmButton
+        label="Delete"
+        confirmMessage={`Delete portion "${portion.label_quantity} ${portion.label_unit}"?`}
+        onConfirm={onDelete}
+        buttonClass="btn-link fi-portion-del"
+      />
     </li>
   )
 }
