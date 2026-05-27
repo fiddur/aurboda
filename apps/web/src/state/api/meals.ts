@@ -1,7 +1,10 @@
 import type {
   AddFoodItemBody,
+  AddFoodItemPortionBody,
   AddMealBody,
   Meal as ApiMeal,
+  FoodItemPortion,
+  FoodItemPortionResponse,
   FrequentFoodItem,
   FrequentFoodItemsResponse,
   FrequentMeal,
@@ -14,6 +17,7 @@ import type {
   MergeFoodItemsPreviewResponse,
   MergeFoodItemsResponse,
   MergeFoodItemsResult,
+  UpdateFoodItemPortionBody,
   UpdateMealBody,
 } from '@aurboda/api-spec'
 
@@ -173,6 +177,56 @@ export const previewMergeFoodItemsApi = async (
   )
   if (!response.data.data) throw new Error(response.data.error ?? 'Preview failed')
   return response.data.data
+}
+
+// ─── Food item portions ─────────────────────────────────────────────────────
+
+export const addFoodItemPortionApi = async (
+  foodItemId: string,
+  body: AddFoodItemPortionBody,
+): Promise<FoodItemPortion> => {
+  const { token } = auth.value
+  const response = await axios.post<FoodItemPortionResponse>(
+    `${API_URL}/food-items/${foodItemId}/portions`,
+    body,
+    { headers: { Authorization: `Bearer ${token}` } },
+  )
+  if (!response.data.data) throw new Error(response.data.error ?? 'Failed to add portion')
+  return response.data.data
+}
+
+export const updateFoodItemPortionApi = async (
+  foodItemId: string,
+  portionId: string,
+  body: UpdateFoodItemPortionBody,
+): Promise<FoodItemPortion> => {
+  const { token } = auth.value
+  const response = await axios.patch<FoodItemPortionResponse>(
+    `${API_URL}/food-items/${foodItemId}/portions/${portionId}`,
+    body,
+    { headers: { Authorization: `Bearer ${token}` } },
+  )
+  if (!response.data.data) throw new Error(response.data.error ?? 'Failed to update portion')
+  return response.data.data
+}
+
+export const deleteFoodItemPortionApi = async (foodItemId: string, portionId: string): Promise<void> => {
+  const { token } = auth.value
+  await axios.delete(`${API_URL}/food-items/${foodItemId}/portions/${portionId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export const setDefaultPortionApi = async (
+  foodItemId: string,
+  portionId: string | null,
+): Promise<void> => {
+  const { token } = auth.value
+  await axios.put(
+    `${API_URL}/food-items/${foodItemId}/default-portion`,
+    { portion_id: portionId },
+    { headers: { Authorization: `Bearer ${token}` } },
+  )
 }
 
 export const mergeFoodItemsApi = async (
