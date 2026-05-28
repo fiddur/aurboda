@@ -32,7 +32,7 @@ Each meal has:
 - `id` (UUID, client-generated for idempotent PUT)
 - `time`, `meal_type`, `name`, `source`
 - Macros: `calories`, `protein`, `carbs`, `fat`, `fiber`
-- `food_items[]` -- individual food items, each with name, quantity, unit, macros, and micronutrients
+- `food_items[]` -- individual food items, each with name, quantity, unit, macros, and micronutrients. A logged item may also carry `food_item_portion_id` + `portion_count` when logged via a portion (see [Food Items & Portions](#food-items--portions)).
 - `micros` -- meal-level micronutrients (aggregated from food items)
 - `meal flags[]` -- tagged meal flags
 - `notes`
@@ -51,6 +51,80 @@ Micronutrients use structured `{ value, unit }` objects for explicit unit tracki
 ```
 
 Legacy data (from Oura) uses plain numbers: `{ "iron": 3.2 }`.
+
+## Food Items & Portions
+
+Meals reference a **canonical food item** by `food_item_id` rather than embedding nutrition inline. The food item carries the nutrient values; the meal junction (`meal_food_items`) snapshots scaled values at log time so historical meals stay frozen even when the food item is later edited.
+
+A food item may be:
+
+- **Atomic** -- its own nutrient columns are authoritative.
+- **Composite (recipe)** -- nutrients are derived at read time by summing its ingredients (`food_item_ingredients`), each scaled by `quantity / default_quantity`.
+- **Reference-enriched** -- an atomic item with `reference_food_item_id` pointing at a richer canonical item (e.g. a Livsmedelsverket row) to inherit empty micronutrient fields, scaled by serving.
+
+Food items live in the per-user `food_items` table or the central, read-only `shared_food_items` library (see [Livsmedelsverket docs](../livsmedelsverket.md)). `food_item_id` is a soft pointer across both stores.
+
+### Base portion
+
+Every food item has a **base portion** -- its `default_quantity` + `default_unit` (e.g. `100 g`, `1 wrap`). This is the amount the nutrient columns are measured *per*. It is the implicit "1×" sizing.
+
+### Additional portions
+
+A food item can define extra **portions** in the `food_item_portions` table -- alternative sizings the user can pick when logging. Each portion encodes an equivalence:
+
+> `label_quantity` `label_unit` = `base_equivalent` of the food's base unit
+
+Examples (per food):
+
+| Food | Base | Portions (`label_quantity label_unit` → `base_equivalent`) |
+| --- | --- | --- |
+| Fylld tortilla | `1 wrap` | `2 wrap` → `2` (set as default) |
+| Lantmjölk | `100 g` | `515 g` → `515`; `1 glas` → `515` |
+| Choklad | `100 g` | `1 ruta` → `3.4`; `1 rad` → `13.6` |
+
+`base_equivalent` is a **count of base units, not a fraction of `default_quantity`**. To scale a nutrient when logging `N` of a portion:
+
+```
+nutrient_value × N × base_equivalent / default_quantity
+```
+
+So 3 `ruta` of a 100 g chocolate base at 500 kcal/100 g = `500 × 3 × 3.4 / 100` = 51 kcal.
+
+Conversions are **direct-to-base only** -- a portion never references another portion (no chaining).
+
+`food_item_portions.food_item_id` is a soft pointer, so portions can target a per-user food OR a central shared food. Deleting a per-user food cascades its portions (app-level); deleting a portion clears any `default_portion_id` that pointed at it.
+
+### Default portion
+
+A food's preselected portion when logging is resolved as **`effective_default_portion_id`** on the food-item detail response:
+
+- **Per-user food** -- `food_items.default_portion_id` (NULL ⇒ base portion is the default).
+- **Central shared food** -- the user's `shared_food_item_overrides.default_portion_id` (NULL ⇒ fall through to the central row's own default, which is currently always the base portion). This lets a user pin e.g. "1 cup" as their default on a read-only LSV milk row without forking it.
+
+### Logging with a portion
+
+When a meal item is logged with `food_item_portion_id` + `portion_count`:
+
+- Nutrients are snapshotted using the portion formula above.
+- The junction's legacy `quantity` / `unit` are populated from the portion's label (`portion_count × label_quantity` and `label_unit`) so a meal still renders "3 ruta" even if the portion is later deleted.
+- Re-snapshotting (`resnapshot_meals_for_food_item`) refetches the portion and rescales; if the portion was deleted since logging, the frozen snapshot is preserved rather than recomputed against a mismatched unit.
+
+Logging without a portion uses the legacy free-form `quantity` + `unit` path, unchanged.
+
+### Food-item REST endpoints
+
+- `GET /food-items?q=&limit=` -- search the merged (user + central) library
+- `GET /food-items/:id` -- detail; includes `portions[]`, `effective_default_portion_id`, composite ingredients/derived nutrients, reference enrichment, sensitivities
+- `POST /food-items` -- create a per-user food item
+- `PATCH /food-items/:id` -- update a per-user food item (does **not** accept `default_portion_id` -- use the dedicated endpoint below)
+- `DELETE /food-items/:id` -- delete a per-user food item
+- `GET /food-items/:id/portions` -- list portions
+- `POST /food-items/:id/portions` -- add a portion
+- `PATCH /food-items/:id/portions/:portionId` -- update a portion (404 if it doesn't belong to `:id`)
+- `DELETE /food-items/:id/portions/:portionId` -- delete a portion (404 if it doesn't belong to `:id`)
+- `PUT /food-items/:id/default-portion` -- set/clear the preselected portion; body `{ "portion_id": "<uuid>" | null }`
+- `PUT /food-items/:id/override` -- per-user override on a central item; accepts `icon` and/or `default_portion_id`
+- Composite/reference helpers: `PUT|DELETE /food-items/:id/ingredients`, `PUT|DELETE /food-items/:id/reference`, `POST /food-items/:id/resnapshot-meals`, merge endpoints
 
 ## Data Sources
 
@@ -98,12 +172,27 @@ Auth is read from `~/.config/aurboda/config`.
 
 ## MCP Tools
 
-- `add_meal` -- create/upsert a meal
+Meals:
+
+- `add_meal` -- create/upsert a meal. `food_items[*]` accept either the legacy `quantity` + `unit` or `food_item_portion_id` + `portion_count` (portion path)
 - `query_meals` -- query by date range and meal type
 - `get_meal` -- get by ID
 - `update_meal` -- update fields
 - `delete_meal` -- delete by ID
 - `query_meals_period_summary` -- daily-averaged nutrient intake + calories burned over a date range
+
+Food items & portions:
+
+- `search_food_items` / `get_food_item` -- search / fetch the merged library (detail includes `portions[]` + `effective_default_portion_id`)
+- `add_food_item` / `update_food_item` / `delete_food_item` -- per-user food item CRUD
+- `list_food_item_portions` -- list a food's portions
+- `add_food_item_portion` / `update_food_item_portion` / `delete_food_item_portion` -- portion CRUD (per-user OR central food, soft pointer)
+- `set_default_food_item_portion` -- set/clear a per-user food's preselected portion (`portion_id: null` reverts to base)
+- `set_shared_food_item_override` / `clear_shared_food_item_override` -- per-user overrides on a central item (`icon`, `default_portion_id`)
+- `set_food_item_ingredients` / `clear_food_item_ingredients` -- composite recipes; `set_food_item_reference` -- reference enrichment; `resnapshot_meals_for_food_item` -- refresh historical meal snapshots; `merge_food_items` / `preview_food_item_merge`
+
+Nutrient recommendations:
+
 - `get_nutrient_recommendations` -- effective merged list
 - `set_nutrient_recommendation` -- upsert a user override
 - `clear_nutrient_recommendation` -- revert to central default
