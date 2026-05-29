@@ -273,7 +273,11 @@ export const registerFoodItemTools = (server: McpServer, user: string, centralDb
     async ({ id, ...input }) => {
       // The .refine on the body schema doesn't survive .shape destructuring,
       // so re-check the at-least-one-field invariant here.
-      if (input.icon === undefined && input.default_portion_id === undefined) {
+      if (
+        input.icon === undefined &&
+        input.default_portion_id === undefined &&
+        input.default_log_quantity === undefined
+      ) {
         return errorResponse(
           'At least one override field must be supplied; use clear_shared_food_item_override to revert',
         )
@@ -322,10 +326,10 @@ export const registerFoodItemTools = (server: McpServer, user: string, centralDb
   )
 
   // ────────────────────────────────────────────────────────────────────────
-  // Portion sizings — additional (label_quantity, label_unit) entries per
-  // food item; each portion stores `base_equivalent` which is how much of
-  // the food's base unit the whole entry equals. Works for per-user OR
-  // central food items via the soft pointer on food_item_id.
+  // Portion sizings — extra units a food can be logged in, beyond its base
+  // unit. Each portion is a named unit (`label_unit`) plus `base_equivalent`:
+  // how many of the food's base unit ONE of this unit equals. Works for
+  // per-user OR central food items via the soft pointer on food_item_id.
   // ────────────────────────────────────────────────────────────────────────
 
   server.tool(
@@ -344,8 +348,8 @@ export const registerFoodItemTools = (server: McpServer, user: string, centralDb
   server.tool(
     'add_food_item_portion',
     [
-      'Add a portion sizing to a food item. The portion expresses an equivalence "label_quantity label_unit = base_equivalent of the food\'s base unit".',
-      'Example: for a 100 g chocolate base, "1 ruta = 3.4 g" stores label_quantity=1, label_unit="ruta", base_equivalent=3.4.',
+      'Add a unit a food item can be logged in. A portion expresses an equivalence "1 label_unit = base_equivalent of the food\'s base unit".',
+      'Example: for a 100 g chocolate base, "1 ruta = 3.4 g" stores label_unit="ruta", base_equivalent=3.4.',
       'Targets per-user OR central food items (soft pointer).',
     ].join(' '),
     {
@@ -389,14 +393,19 @@ export const registerFoodItemTools = (server: McpServer, user: string, centralDb
 
   server.tool(
     'set_default_food_item_portion',
-    "Set or clear the preselected portion for a per-user food item. Pass `portion_id: null` to revert to the food's base portion. The chosen portion must belong to the food item. Central foods aren't editable here — use the override layer (coming).",
+    'Set or clear the default logging amount for a per-user food item: which unit to preselect (`portion_id`, null = the base unit) and how much (`quantity`, null = the base quantity). The chosen portion must belong to the food item. Central foods use the override layer (set_shared_food_item_override) instead.',
     {
       food_item_id: z.string().uuid().describe('Per-user food item id'),
-      portion_id: z.string().uuid().nullable().describe('Portion id, or null to clear'),
+      portion_id: z.string().uuid().nullable().describe('Portion (unit) id, or null for the base unit'),
+      quantity: z
+        .number()
+        .positive()
+        .nullable()
+        .describe('Default quantity to prefill, or null for the base quantity'),
     },
-    async ({ food_item_id, portion_id }) => {
+    async ({ food_item_id, portion_id, quantity }) => {
       try {
-        await setDefaultPortion(user, food_item_id, portion_id)
+        await setDefaultPortion(user, food_item_id, portion_id, quantity)
       } catch (err) {
         return errorResponse(err instanceof Error ? err.message : 'Failed to set default portion')
       }

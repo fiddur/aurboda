@@ -340,10 +340,11 @@ const round2 = (n: number): number => Math.round(n * 100) / 100
  * enriched atomic items inherit micronutrients.
  *
  * When a `portion` is provided AND the input carries `portion_count`, the
- * row is logged via the portion path: nutrients scale by
- * `count × base_equivalent / default_quantity`, and the legacy `quantity` /
- * `unit` columns are populated from the portion's label so display fallback
- * keeps working even if the portion is later deleted.
+ * row is logged via the portion path: `portion_count` is the quantity in the
+ * portion's unit, nutrients scale by `portion_count × base_equivalent /
+ * default_quantity`, and the legacy `quantity` / `unit` columns store
+ * `portion_count` + the portion's `label_unit` so display fallback keeps
+ * working even if the portion is later deleted.
  */
 export const buildScaledJunctionItem = (
   fi: FoodItemInput,
@@ -356,7 +357,7 @@ export const buildScaledJunctionItem = (
   const usingPortion = isUsingPortion(fi, portion)
   const junctionItem: Record<string, unknown> = {
     food_item_id: canonical.id,
-    quantity: usingPortion ? fi.portion_count! * portion.label_quantity : fi.quantity,
+    quantity: usingPortion ? fi.portion_count! : fi.quantity,
     sort_order: sortOrder,
     unit: usingPortion ? portion.label_unit : fi.unit,
     food_item_portion_id: usingPortion ? portion.id : undefined,
@@ -428,9 +429,7 @@ const resolvePortionForInput = async (
     throw new Error(`Portion not found: ${fi.food_item_portion_id}`)
   }
   if (portion.food_item_id !== canonical.id) {
-    throw new Error(
-      `Portion ${fi.food_item_portion_id} does not belong to food item ${canonical.id}`,
-    )
+    throw new Error(`Portion ${fi.food_item_portion_id} does not belong to food item ${canonical.id}`)
   }
   if (typeof fi.portion_count !== 'number' || fi.portion_count <= 0) {
     throw new Error('portion_count must be a positive number when food_item_portion_id is set')
@@ -657,9 +656,7 @@ export async function resnapshotMealsForFoodItem(
   // round-trip per refreshed link. A link whose food_item_portion_id is
   // present but absent from this map points at a portion that has since
   // been deleted — handled below by preserving the existing snapshot.
-  const portionsById = new Map(
-    (await listPortionsForFoodItem(user, foodItemId)).map((p) => [p.id, p]),
-  )
+  const portionsById = new Map((await listPortionsForFoodItem(user, foodItemId)).map((p) => [p.id, p]))
 
   // Pass-through serialization used both for unrelated rows and for rows
   // whose portion has been deleted (where rescaling would corrupt the
@@ -691,9 +688,9 @@ export async function resnapshotMealsForFoodItem(
         return passThroughLink(link)
       }
       // Portion was logged but has since been deleted: don't rescale. The
-      // recorded `quantity` is `count × portion.label_quantity` and `unit`
-      // is the portion's label (e.g. 'ruta'), which doesn't match the
-      // canonical default_unit (e.g. 'g') — running it through computeScale
+      // recorded `quantity` is the entered count and `unit` is the portion's
+      // label (e.g. 'ruta'), which doesn't match the canonical default_unit
+      // (e.g. 'g') — running it through computeScale
       // would fall back to scale=1 and overwrite the row with the full
       // per-default-quantity nutrients, making it more wrong than before.
       // Preserve the frozen snapshot instead.
@@ -701,9 +698,7 @@ export async function resnapshotMealsForFoodItem(
         return passThroughLink(link)
       }
       rowsUpdated++
-      const portion = link.food_item_portion_id
-        ? (portionsById.get(link.food_item_portion_id) ?? null)
-        : null
+      const portion = link.food_item_portion_id ? (portionsById.get(link.food_item_portion_id) ?? null) : null
       const fi: FoodItemInput = {
         food_item_id: foodItemId,
         food_item_portion_id: portion ? portion.id : undefined,

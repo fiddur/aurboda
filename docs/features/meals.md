@@ -64,52 +64,56 @@ A food item may be:
 
 Food items live in the per-user `food_items` table or the central, read-only `shared_food_items` library (see [Livsmedelsverket docs](../livsmedelsverket.md)). `food_item_id` is a soft pointer across both stores.
 
-### Base portion
+### Base unit
 
-Every food item has a **base portion** -- its `default_quantity` + `default_unit` (e.g. `100 g`, `1 wrap`). This is the amount the nutrient columns are measured *per*. It is the implicit "1×" sizing.
+Every food item has a **base unit** -- its `default_quantity` + `default_unit` (e.g. `100 g`, `2 wrap`). This is the amount the nutrient columns are measured _per_. All foods have at least this one unit (a backfill ensures it: per-user foods missing one default to `1 portion`, central shared foods to `100 g`).
 
-### Additional portions
+### Additional units (portions)
 
-A food item can define extra **portions** in the `food_item_portions` table -- alternative sizings the user can pick when logging. Each portion encodes an equivalence:
+A food item can define extra **units** in the `food_item_portions` table -- alternative units the user can pick when logging. Each is a named unit plus its conversion to the base unit:
 
-> `label_quantity` `label_unit` = `base_equivalent` of the food's base unit
+> `1` `label_unit` = `base_equivalent` base units
+
+`label_unit` is shown bare -- it never contains a number. The number lives in the quantity the user enters when logging.
 
 Examples (per food):
 
-| Food | Base | Portions (`label_quantity label_unit` → `base_equivalent`) |
-| --- | --- | --- |
-| Fylld tortilla | `1 wrap` | `2 wrap` → `2` (set as default) |
-| Lantmjölk | `100 g` | `515 g` → `515`; `1 glas` → `515` |
-| Choklad | `100 g` | `1 ruta` → `3.4`; `1 rad` → `13.6` |
+| Food           | Base unit | Units (`1 label_unit` → `base_equivalent` base units) |
+| -------------- | --------- | ----------------------------------------------------- |
+| Fylld tortilla | `2 wrap`  | `1 wrap` → `1` (enter `1 wrap` ⇒ ×0.5)                |
+| Lantmjölk      | `100 g`   | `1 glas` → `515`                                       |
+| Choklad        | `100 g`   | `1 ruta` → `3.4`; `1 rad` → `13.6`                    |
 
-`base_equivalent` is a **count of base units, not a fraction of `default_quantity`**. To scale a nutrient when logging `N` of a portion:
+When logging, the user enters a **quantity in the chosen unit**. To scale a nutrient for quantity `Q` of a unit:
 
 ```
-nutrient_value × N × base_equivalent / default_quantity
+nutrient_value × Q × base_equivalent / default_quantity
 ```
 
-So 3 `ruta` of a 100 g chocolate base at 500 kcal/100 g = `500 × 3 × 3.4 / 100` = 51 kcal.
+So `3 ruta` of a 100 g chocolate base at 500 kcal/100 g = `500 × 3 × 3.4 / 100` = 51 kcal. The base unit itself is just the unit with `base_equivalent = 1` (entering `58 g` on a 100 g base ⇒ ×0.58; entering `1 wrap` on a `2 wrap` base ⇒ ×0.5).
 
-Conversions are **direct-to-base only** -- a portion never references another portion (no chaining).
+Conversions are **direct-to-base only** -- a unit never references another unit (no chaining).
 
-`food_item_portions.food_item_id` is a soft pointer, so portions can target a per-user food OR a central shared food. Deleting a per-user food cascades its portions (app-level); deleting a portion clears any `default_portion_id` that pointed at it.
+`food_item_portions.food_item_id` is a soft pointer, so units can target a per-user food OR a central shared food. Deleting a per-user food cascades its units (app-level); deleting a unit clears any `default_portion_id` that pointed at it.
 
-### Default portion
+### Default logging amount
 
-A food's preselected portion when logging is resolved as **`effective_default_portion_id`** on the food-item detail response:
+A food's preselected logging amount is a **unit + quantity** pair, resolved on the food-item detail response as `effective_default_portion_id` (the unit) and `effective_default_quantity` (the amount):
 
-- **Per-user food** -- `food_items.default_portion_id` (NULL ⇒ base portion is the default).
-- **Central shared food** -- the user's `shared_food_item_overrides.default_portion_id` (NULL ⇒ fall through to the central row's own default, which is currently always the base portion). This lets a user pin e.g. "1 cup" as their default on a read-only LSV milk row without forking it.
+- **Per-user food** -- `food_items.default_portion_id` + `food_items.default_log_quantity`. A NULL unit means the base unit; a NULL quantity falls back to `default_quantity` (the base quantity).
+- **Central shared food** -- the user's `shared_food_item_overrides.default_portion_id` + `default_log_quantity` (NULL ⇒ fall through to the central row's own default / base). This lets a user pin e.g. "2 dl" as their default on a read-only LSV milk row without forking it.
 
-### Logging with a portion
+The default amount can differ from the base sizing -- e.g. a base of `1 wrap` but a default of `2 wrap`.
 
-When a meal item is logged with `food_item_portion_id` + `portion_count`:
+### Logging with a unit
 
-- Nutrients are snapshotted using the portion formula above.
-- The junction's legacy `quantity` / `unit` are populated from the portion's label (`portion_count × label_quantity` and `label_unit`) so a meal still renders "3 ruta" even if the portion is later deleted.
-- Re-snapshotting (`resnapshot_meals_for_food_item`) refetches the portion and rescales; if the portion was deleted since logging, the frozen snapshot is preserved rather than recomputed against a mismatched unit.
+When a meal item is logged with `food_item_portion_id` + `portion_count` (the entered quantity in that unit):
 
-Logging without a portion uses the legacy free-form `quantity` + `unit` path, unchanged.
+- Nutrients are snapshotted using the formula above.
+- The junction's legacy `quantity` / `unit` are populated from the entered count + the unit's `label_unit` so a meal still renders "3 ruta" even if the unit is later deleted.
+- Re-snapshotting (`resnapshot_meals_for_food_item`) refetches the unit and rescales; if it was deleted since logging, the frozen snapshot is preserved rather than recomputed against a mismatched unit.
+
+Logging on the base unit uses the legacy free-form `quantity` + `unit` path, unchanged.
 
 ### Food-item REST endpoints
 
@@ -122,8 +126,8 @@ Logging without a portion uses the legacy free-form `quantity` + `unit` path, un
 - `POST /food-items/:id/portions` -- add a portion
 - `PATCH /food-items/:id/portions/:portionId` -- update a portion (404 if it doesn't belong to `:id`)
 - `DELETE /food-items/:id/portions/:portionId` -- delete a portion (404 if it doesn't belong to `:id`)
-- `PUT /food-items/:id/default-portion` -- set/clear the preselected portion; body `{ "portion_id": "<uuid>" | null }`
-- `PUT /food-items/:id/override` -- per-user override on a central item; accepts `icon` and/or `default_portion_id`
+- `PUT /food-items/:id/default-portion` -- set/clear the default logging amount; body `{ "portion_id": "<uuid>" | null, "quantity": <number> | null }` (`portion_id` null = base unit, `quantity` null = base quantity)
+- `PUT /food-items/:id/override` -- per-user override on a central item; accepts `icon`, `default_portion_id`, and/or `default_log_quantity`
 - Composite/reference helpers: `PUT|DELETE /food-items/:id/ingredients`, `PUT|DELETE /food-items/:id/reference`, `POST /food-items/:id/resnapshot-meals`, merge endpoints
 
 ## Data Sources
@@ -187,8 +191,8 @@ Food items & portions:
 - `add_food_item` / `update_food_item` / `delete_food_item` -- per-user food item CRUD
 - `list_food_item_portions` -- list a food's portions
 - `add_food_item_portion` / `update_food_item_portion` / `delete_food_item_portion` -- portion CRUD (per-user OR central food, soft pointer)
-- `set_default_food_item_portion` -- set/clear a per-user food's preselected portion (`portion_id: null` reverts to base)
-- `set_shared_food_item_override` / `clear_shared_food_item_override` -- per-user overrides on a central item (`icon`, `default_portion_id`)
+- `set_default_food_item_portion` -- set/clear a per-user food's default logging amount (`portion_id` + `quantity`; `portion_id: null` = base unit, `quantity: null` = base quantity)
+- `set_shared_food_item_override` / `clear_shared_food_item_override` -- per-user overrides on a central item (`icon`, `default_portion_id`, `default_log_quantity`)
 - `set_food_item_ingredients` / `clear_food_item_ingredients` -- composite recipes; `set_food_item_reference` -- reference enrichment; `resnapshot_meals_for_food_item` -- refresh historical meal snapshots; `merge_food_items` / `preview_food_item_merge`
 
 Nutrient recommendations:

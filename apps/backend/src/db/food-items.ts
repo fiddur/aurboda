@@ -19,6 +19,7 @@ const FOOD_ITEM_COLUMNS = [
   'default_quantity',
   'default_unit',
   'default_portion_id',
+  'default_log_quantity',
   ...NUTRIENT_FIELD_NAMES,
   'icon',
   'is_composite',
@@ -37,6 +38,7 @@ const mapFoodItemRow = (row: Record<string, unknown>): FoodItemEntity => {
     default_quantity: row.default_quantity ?? undefined,
     default_unit: row.default_unit ?? undefined,
     default_portion_id: (row.default_portion_id as string | null) ?? undefined,
+    default_log_quantity: (row.default_log_quantity as number | null) ?? undefined,
     icon: row.icon ?? undefined,
     is_composite: row.is_composite === true,
     reference_food_item_id: (row.reference_food_item_id as string | null) ?? undefined,
@@ -241,6 +243,10 @@ export const updateFoodItem = async (
   if (input.default_portion_id !== undefined) {
     setClauses.push(`default_portion_id = $${idx++}`)
     params.push(input.default_portion_id)
+  }
+  if (input.default_log_quantity !== undefined) {
+    setClauses.push(`default_log_quantity = $${idx++}`)
+    params.push(input.default_log_quantity)
   }
   if (input.icon !== undefined) {
     setClauses.push(`icon = $${idx++}`)

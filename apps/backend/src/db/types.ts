@@ -385,6 +385,8 @@ export interface FoodItemEntity {
   default_unit?: string
   /** Soft pointer to the preselected portion (food_item_portions.id) when logging. */
   default_portion_id?: string
+  /** Default quantity to prefill when logging, in the unit named by default_portion_id (or base). */
+  default_log_quantity?: number
   // ~65 nutrient fields are optional numbers, accessed dynamically via
   // NUTRIENT_FIELD_NAMES from api-spec. The index signature has to cover
   // every named field above too, hence the broad union — it loosens type

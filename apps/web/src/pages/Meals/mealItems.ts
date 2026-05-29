@@ -27,12 +27,12 @@ export interface FoodItemEdit {
   /** Count of `food_item_portion_id` portions logged. Required when portion_id is set. */
   portion_count?: number
   /**
-   * Snapshot of the chosen portion's label_quantity × label_unit and
-   * base_equivalent, kept on the edit row so display + live scaling don't
-   * have to re-look-up the food. Cleared when the user reverts to the
-   * base/free-form path.
+   * Snapshot of the chosen unit's label and its base_equivalent (how many
+   * base units one of this unit equals), kept on the edit row so display +
+   * live scaling don't have to re-look-up the food. Cleared when the user
+   * reverts to the base unit / free-form path.
    */
-  portion?: { label_quantity: number; label_unit: string; base_equivalent: number }
+  portion?: { label_unit: string; base_equivalent: number }
   /**
    * True for rows added this session via the "+" button (or autocomplete
    * pick from scratch). Lets the auto-default-portion effect distinguish

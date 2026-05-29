@@ -110,6 +110,12 @@ const serializeDetail = (detail: ServiceFoodItemDetail): FoodItemDetail => {
   // for central items applySharedOverrides decorated it from the user's
   // shared_food_item_overrides row (when the user picked a portion).
   const effective_default_portion_id = (detail.item.default_portion_id as string | undefined) ?? undefined
+  // Resolved default *quantity*: the per-user / override default_log_quantity
+  // when set, else the base default_quantity. applySharedOverrides decorates
+  // central items' default_log_quantity from the user's override row.
+  const effective_default_quantity =
+    (detail.item.default_log_quantity as number | undefined) ??
+    (detail.item.default_quantity as number | undefined)
   // Composite branch: ingredient list + derived totals.
   if (detail.ingredients) {
     return {
@@ -126,6 +132,7 @@ const serializeDetail = (detail: ServiceFoodItemDetail): FoodItemDetail => {
       is_shared,
       portions,
       effective_default_portion_id,
+      effective_default_quantity,
       sensitivities,
     }
   }
@@ -137,6 +144,7 @@ const serializeDetail = (detail: ServiceFoodItemDetail): FoodItemDetail => {
       is_shared,
       portions,
       effective_default_portion_id,
+      effective_default_quantity,
       reference: {
         food: serializeFoodItem(detail.reference.food),
         unit_mismatch: detail.reference.unit_mismatch,
@@ -150,6 +158,7 @@ const serializeDetail = (detail: ServiceFoodItemDetail): FoodItemDetail => {
     is_shared,
     portions,
     effective_default_portion_id,
+    effective_default_quantity,
     sensitivities,
   } as FoodItemDetail
 }
@@ -157,7 +166,6 @@ const serializeDetail = (detail: ServiceFoodItemDetail): FoodItemDetail => {
 const serializePortion = (row: FoodItemPortionRow): FoodItemPortion => ({
   id: row.id,
   food_item_id: row.food_item_id,
-  label_quantity: row.label_quantity,
   label_unit: row.label_unit,
   base_equivalent: row.base_equivalent,
   sort_order: row.sort_order,
@@ -170,6 +178,7 @@ const serializeOverride = (override: DbSharedFoodItemOverride): ApiSharedFoodIte
   icon: override.icon,
   icon_overridden: override.icon_overridden,
   default_portion_id: override.default_portion_id,
+  default_log_quantity: override.default_log_quantity,
   created_at: override.created_at.toISOString(),
   updated_at: override.updated_at.toISOString(),
 })
@@ -546,7 +555,7 @@ export const createFoodItemsRouter = (authMiddleware: AnyMiddleware, centralDb: 
   )
 
   // ────────────────────────────────────────────────────────────────────────
-  // Portion sizings — additional (label_quantity, label_unit) tuples per
+  // Portion sizings — extra named units (label_unit + base_equivalent) per
   // food item with a base_equivalent that resolves the entry into the food's
   // base unit. food_item_portions.food_item_id is a soft pointer (per-user
   // OR central), so these endpoints accept either kind of id.
@@ -636,7 +645,7 @@ export const createFoodItemsRouter = (authMiddleware: AnyMiddleware, centralDb: 
         })
       }
       try {
-        await setDefaultPortion(user, id, req.body.portion_id)
+        await setDefaultPortion(user, id, req.body.portion_id, req.body.quantity)
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Failed to set default portion'
         return res.status(/not found|does not belong/i.test(message) ? 400 : 500).json({

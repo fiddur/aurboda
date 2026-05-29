@@ -432,7 +432,6 @@ describe('PATCH /food-items/:id/portions/:portionId ownership guard', () => {
     vi.mocked(dbBarrel.getFoodItemPortionById).mockResolvedValue({
       id: PORTION_ID,
       food_item_id: OTHER_FOOD_ID,
-      label_quantity: 1,
       label_unit: 'g',
       base_equivalent: 1,
       sort_order: 0,
@@ -441,7 +440,7 @@ describe('PATCH /food-items/:id/portions/:portionId ownership guard', () => {
     })
     const res = await supertest(buildApp(fakeCentral()))
       .patch(`/food-items/${FOOD_ID}/portions/${PORTION_ID}`)
-      .send({ label_quantity: 999 })
+      .send({ base_equivalent: 999 })
     expect(res.status).toBe(404)
     expect(dbBarrel.updateFoodItemPortion).not.toHaveBeenCalled()
   })
@@ -450,7 +449,7 @@ describe('PATCH /food-items/:id/portions/:portionId ownership guard', () => {
     vi.mocked(dbBarrel.getFoodItemPortionById).mockResolvedValue(null)
     const res = await supertest(buildApp(fakeCentral()))
       .patch(`/food-items/${FOOD_ID}/portions/${PORTION_ID}`)
-      .send({ label_quantity: 2 })
+      .send({ base_equivalent: 2 })
     expect(res.status).toBe(404)
     expect(dbBarrel.updateFoodItemPortion).not.toHaveBeenCalled()
   })
@@ -468,7 +467,6 @@ describe('DELETE /food-items/:id/portions/:portionId ownership guard', () => {
     vi.mocked(dbBarrel.getFoodItemPortionById).mockResolvedValue({
       id: PORTION_ID,
       food_item_id: OTHER_FOOD_ID,
-      label_quantity: 1,
       label_unit: 'g',
       base_equivalent: 1,
       sort_order: 0,
@@ -498,7 +496,6 @@ describe('PUT /food-items/:id/override default_portion_id ownership guard', () =
     vi.mocked(dbBarrel.getFoodItemPortionById).mockResolvedValue({
       id: PORTION_ID,
       food_item_id: OTHER_FOOD_ID,
-      label_quantity: 1,
       label_unit: 'g',
       base_equivalent: 1,
       sort_order: 0,
@@ -522,6 +519,7 @@ describe('PUT /food-items/:id/override default_portion_id ownership guard', () =
       icon: null,
       icon_overridden: false,
       default_portion_id: null,
+      default_log_quantity: null,
       created_at: new Date(),
       updated_at: new Date(),
     })

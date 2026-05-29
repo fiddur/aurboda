@@ -315,6 +315,16 @@
   white-space: nowrap;
 }
 
+.food-row-item-link {
+  white-space: nowrap;
+  color: #2563eb;
+  text-decoration: none;
+}
+
+.food-row-item-link:hover {
+  text-decoration: underline;
+}
+
 .food-row-macros label {
   display: flex;
   flex-direction: column;

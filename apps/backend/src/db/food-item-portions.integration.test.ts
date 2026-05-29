@@ -33,14 +33,12 @@ describe('food_item_portions integration', () => {
 
     const rad = await insertFoodItemPortion(user, {
       food_item_id: food.id,
-      label_quantity: 1,
       label_unit: 'rad',
       base_equivalent: 13.6,
       sort_order: 1,
     })
     const ruta = await insertFoodItemPortion(user, {
       food_item_id: food.id,
-      label_quantity: 1,
       label_unit: 'ruta',
       base_equivalent: 3.4,
       sort_order: 0,
@@ -57,7 +55,6 @@ describe('food_item_portions integration', () => {
     const food = await upsertFoodItem(user, { name: 'Lantmjölk', default_quantity: 100, default_unit: 'g' })
     const inserted = await insertFoodItemPortion(user, {
       food_item_id: food.id,
-      label_quantity: 1,
       label_unit: 'glas',
       base_equivalent: 200,
     })
@@ -65,7 +62,6 @@ describe('food_item_portions integration', () => {
     const updated = await updateFoodItemPortion(user, inserted.id, { base_equivalent: 515 })
     expect(updated?.base_equivalent).toBe(515)
     expect(updated?.label_unit).toBe('glas')
-    expect(updated?.label_quantity).toBe(1)
     expect(updated?.updated_at.getTime()).toBeGreaterThanOrEqual(inserted.updated_at.getTime())
   })
 
@@ -74,7 +70,6 @@ describe('food_item_portions integration', () => {
     const food = await upsertFoodItem(user, { name: 'Wraps', default_quantity: 1, default_unit: 'wrap' })
     const portion = await insertFoodItemPortion(user, {
       food_item_id: food.id,
-      label_quantity: 2,
       label_unit: 'wrap',
       base_equivalent: 2,
     })
@@ -97,19 +92,16 @@ describe('food_item_portions integration', () => {
     const c = await upsertFoodItem(user, { name: 'C-no-portions' })
     await insertFoodItemPortion(user, {
       food_item_id: a.id,
-      label_quantity: 1,
       label_unit: 'x',
       base_equivalent: 1,
     })
     await insertFoodItemPortion(user, {
       food_item_id: b.id,
-      label_quantity: 1,
       label_unit: 'y',
       base_equivalent: 1,
     })
     await insertFoodItemPortion(user, {
       food_item_id: b.id,
-      label_quantity: 2,
       label_unit: 'y',
       base_equivalent: 2,
     })
@@ -125,7 +117,6 @@ describe('food_item_portions integration', () => {
     const food = await upsertFoodItem(user, { name: 'Doomed', default_quantity: 1, default_unit: 'unit' })
     await insertFoodItemPortion(user, {
       food_item_id: food.id,
-      label_quantity: 1,
       label_unit: 'big',
       base_equivalent: 2,
     })
@@ -141,13 +132,11 @@ describe('food_item_portions integration', () => {
     const food = await upsertFoodItem(user, { name: 'Bulk' })
     await insertFoodItemPortion(user, {
       food_item_id: food.id,
-      label_quantity: 1,
       label_unit: 'a',
       base_equivalent: 1,
     })
     await insertFoodItemPortion(user, {
       food_item_id: food.id,
-      label_quantity: 1,
       label_unit: 'b',
       base_equivalent: 2,
     })

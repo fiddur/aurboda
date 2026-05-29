@@ -666,6 +666,7 @@ describe('createFoodItemsService — shared item overrides', () => {
             icon: '🥕',
             created_at: new Date(),
             icon_overridden: true,
+            default_log_quantity: null,
             default_portion_id: null,
             updated_at: new Date(),
           },
@@ -698,6 +699,7 @@ describe('createFoodItemsService — shared item overrides', () => {
             shared_food_item_id: 'c1',
             icon: null, // column default — NOT user-supplied
             icon_overridden: false, // user only touched default_portion_id
+            default_log_quantity: null,
             default_portion_id: '11111111-1111-1111-1111-111111111111',
             created_at: new Date(),
             updated_at: new Date(),
@@ -726,6 +728,7 @@ describe('createFoodItemsService — shared item overrides', () => {
             icon: null,
             created_at: new Date(),
             icon_overridden: true,
+            default_log_quantity: null,
             default_portion_id: null,
             updated_at: new Date(),
           },
@@ -767,6 +770,7 @@ describe('createFoodItemsService — shared item overrides', () => {
             icon: '🚫',
             created_at: new Date(),
             icon_overridden: true,
+            default_log_quantity: null,
             default_portion_id: null,
             updated_at: new Date(),
           },
@@ -886,6 +890,7 @@ describe('resolveFoodItemDisplay', () => {
           {
             created_at: new Date(),
             icon_overridden: true,
+            default_log_quantity: null,
             default_portion_id: null,
             icon: '🍯',
             shared_food_item_id: 'c1',
@@ -913,6 +918,7 @@ describe('resolveFoodItemDisplay', () => {
           {
             created_at: new Date(),
             icon_overridden: true,
+            default_log_quantity: null,
             default_portion_id: null,
             icon: null,
             shared_food_item_id: 'c1',

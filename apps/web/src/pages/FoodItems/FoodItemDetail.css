@@ -574,11 +574,11 @@
   gap: 0.25rem;
 }
 
-.fi-portion-row input[type="number"] {
+.fi-portion-row input[type='number'] {
   width: 5rem;
 }
 
-.fi-portion-row input[type="text"] {
+.fi-portion-row input[type='text'] {
   width: 8rem;
 }
 
@@ -595,6 +595,26 @@
   margin-left: auto;
 }
 
+.fi-default-amount {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.fi-default-amount input {
+  width: 5rem;
+}
+
+.fi-default-amount-hint {
+  font-size: 0.8rem;
+  color: #6b7280;
+}
+
+.fi-portion-add-prefix {
+  color: #6b7280;
+}
+
 .fi-portion-add {
   display: flex;
   align-items: center;
@@ -604,11 +624,11 @@
   border-top: 1px dashed #d1d5db;
 }
 
-.fi-portion-add input[type="number"] {
+.fi-portion-add input[type='number'] {
   width: 5rem;
 }
 
-.fi-portion-add input[type="text"] {
+.fi-portion-add input[type='text'] {
   width: 8rem;
 }
 

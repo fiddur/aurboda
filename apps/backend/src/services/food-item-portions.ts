@@ -27,7 +27,6 @@ import {
 import { createFoodItemsService } from './food-items.ts'
 
 export interface PortionInput {
-  label_quantity: number
   label_unit: string
   base_equivalent: number
   sort_order?: number
@@ -73,16 +72,19 @@ export const deletePortion = async (user: string, portionId: string): Promise<bo
 }
 
 /**
- * Set or clear a per-user food's preselected portion. The chosen portion must
- * belong to the food (defence-in-depth: a stale portion id from a different
- * food would otherwise silently render the default as "missing portion").
- * Central foods aren't editable here — their preselected portion is per-user
- * and goes on the override table (later PR).
+ * Set or clear a per-user food's default logging amount — which unit to
+ * preselect (`portionId`, null = the base unit) and how much (`quantity`,
+ * null = fall back to the base quantity). The chosen portion must belong to
+ * the food (defence-in-depth: a stale portion id from a different food would
+ * otherwise silently render the default as "missing portion"). Central foods
+ * aren't editable here — their default amount is per-user and goes on the
+ * override table.
  */
 export const setDefaultPortion = async (
   user: string,
   foodItemId: string,
   portionId: string | null,
+  quantity: number | null = null,
 ): Promise<void> => {
   if (portionId !== null) {
     const portion = await getFoodItemPortionById(user, portionId)
@@ -91,7 +93,10 @@ export const setDefaultPortion = async (
       throw new Error(`Portion ${portionId} does not belong to food item ${foodItemId}`)
     }
   }
-  const updated = await dbUpdateFoodItem(user, foodItemId, { default_portion_id: portionId })
+  const updated = await dbUpdateFoodItem(user, foodItemId, {
+    default_portion_id: portionId,
+    default_log_quantity: quantity,
+  })
   if (!updated) {
     throw new Error(`Food item not found or not editable: ${foodItemId}`)
   }

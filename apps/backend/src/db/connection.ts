@@ -1085,6 +1085,43 @@ export const migrateSchema = async (user: string) => {
     for (const field of NUTRIENT_FIELD_NAMES) {
       await query(db, `ALTER TABLE food_items ADD COLUMN IF NOT EXISTS ${field} DOUBLE PRECISION`)
     }
+    // default_log_quantity: the default *amount* to prefill when logging, in
+    // the unit named by default_portion_id (or the base unit). Pairs with
+    // default_portion_id (portion unit-model).
+    await query(db, `ALTER TABLE food_items ADD COLUMN IF NOT EXISTS default_log_quantity DOUBLE PRECISION`)
+
+    // Portion unit-model reframe: a portion is now just a named unit + its
+    // per-unit conversion to the base unit (no more label_quantity). The old
+    // model stored `label_quantity label_unit = base_equivalent base_units`;
+    // the new one stores `1 label_unit = base_equivalent base_units`. So when
+    // dropping label_quantity we normalise base_equivalent to a per-unit value
+    // (base_equivalent / label_quantity). Guarded by a column-existence check
+    // so it's a no-op on databases created fresh from the new schema.
+    await query(
+      db,
+      `DO $$
+       BEGIN
+         IF EXISTS (
+           SELECT 1 FROM information_schema.columns
+           WHERE table_name = 'food_item_portions' AND column_name = 'label_quantity'
+         ) THEN
+           UPDATE food_item_portions
+             SET base_equivalent = base_equivalent / label_quantity
+             WHERE label_quantity IS NOT NULL AND label_quantity <> 0 AND label_quantity <> 1;
+           ALTER TABLE food_item_portions DROP COLUMN label_quantity;
+         END IF;
+       END $$`,
+    )
+
+    // Backfill a base unit for every per-user food that lacks one, so all
+    // foods have at least one (base) unit to log in. Independent per field:
+    // a missing quantity has no signal → 1; a missing unit has no signal →
+    // 'portion'. (Central shared_food_items get 100 g — see schema/system.ts.)
+    await query(db, `UPDATE food_items SET default_quantity = 1 WHERE default_quantity IS NULL`)
+    await query(
+      db,
+      `UPDATE food_items SET default_unit = 'portion' WHERE default_unit IS NULL OR default_unit = ''`,
+    )
   }
 
   // meal_food_items: drop the FK on food_item_id since the canonical row
@@ -1124,10 +1161,7 @@ export const migrateSchema = async (user: string) => {
   // shared food item. NULL means "use the central row's default_portion_id"
   // (which is itself usually NULL → use the base portion).
   if (existingTableNames.has('shared_food_item_overrides')) {
-    await query(
-      db,
-      `ALTER TABLE shared_food_item_overrides ADD COLUMN IF NOT EXISTS default_portion_id UUID`,
-    )
+    await query(db, `ALTER TABLE shared_food_item_overrides ADD COLUMN IF NOT EXISTS default_portion_id UUID`)
     // icon_overridden distinguishes "user explicitly chose icon" from "user
     // never touched it" — required now that other override fields exist
     // (a default_portion_id-only update would otherwise leave icon at the
@@ -1142,6 +1176,12 @@ export const migrateSchema = async (user: string) => {
     await query(
       db,
       `UPDATE shared_food_item_overrides SET icon_overridden = TRUE WHERE icon_overridden = FALSE`,
+    )
+    // Per-user override of the central food's default logging quantity, paired
+    // with default_portion_id (portion unit-model).
+    await query(
+      db,
+      `ALTER TABLE shared_food_item_overrides ADD COLUMN IF NOT EXISTS default_log_quantity DOUBLE PRECISION`,
     )
   }
 

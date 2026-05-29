@@ -44,11 +44,17 @@ export interface SharedFoodItemOverride {
    */
   icon_overridden: boolean
   /**
-   * User-preselected portion id for the central item. NULL means "no
+   * User-preselected portion id (unit) for the central item. NULL means "no
    * override" — fall back to the central row's own default_portion_id (which
    * is itself usually NULL → use the base portion).
    */
   default_portion_id: string | null
+  /**
+   * User-preselected default quantity for the central item, in the unit named
+   * by default_portion_id (or the base unit). NULL means "no override" — fall
+   * back to the base default_quantity.
+   */
+  default_log_quantity: number | null
   created_at: Date
   updated_at: Date
 }
@@ -61,26 +67,32 @@ export interface SharedFoodItemOverrideInput {
    */
   icon?: string | null
   /**
-   * `string` sets the preselected portion id, `null` clears the override
-   * (revert to whatever the central row says — usually the base portion).
-   * `undefined` leaves the column unchanged.
+   * `string` sets the preselected portion id (unit), `null` clears the
+   * override (revert to whatever the central row says — usually the base
+   * portion). `undefined` leaves the column unchanged.
    */
   default_portion_id?: string | null
+  /**
+   * `number` sets the default quantity, `null` clears the override (revert to
+   * the base quantity). `undefined` leaves the column unchanged.
+   */
+  default_log_quantity?: number | null
 }
 
 const COLUMNS =
-  'shared_food_item_id, icon, icon_overridden, default_portion_id, created_at, updated_at'
+  'shared_food_item_id, icon, icon_overridden, default_portion_id, default_log_quantity, created_at, updated_at'
 
 const mapRow = (row: Record<string, unknown>): SharedFoodItemOverride => ({
   shared_food_item_id: row.shared_food_item_id as string,
   icon: row.icon as string | null,
   icon_overridden: row.icon_overridden === true,
   default_portion_id: (row.default_portion_id as string | null) ?? null,
+  default_log_quantity: (row.default_log_quantity as number | null) ?? null,
   created_at: row.created_at as Date,
   updated_at: row.updated_at as Date,
 })
 
-const OVERRIDE_FIELDS = ['icon', 'default_portion_id'] as const
+const OVERRIDE_FIELDS = ['icon', 'default_portion_id', 'default_log_quantity'] as const
 
 export const getSharedFoodItemOverride = async (
   user: string,

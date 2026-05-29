@@ -137,6 +137,19 @@ describe('shared_food_item_overrides integration', () => {
     expect(cleared.default_portion_id).toBeNull()
   })
 
+  test('default_log_quantity override round-trips and clears via null', async () => {
+    const user = getTestUser()
+    const set = await setSharedFoodItemOverride(user, sharedId1, { default_log_quantity: 2 })
+    expect(set.default_log_quantity).toBe(2)
+    expect(set.icon_overridden).toBe(false)
+
+    const got = await getSharedFoodItemOverride(user, sharedId1)
+    expect(got?.default_log_quantity).toBe(2)
+
+    const cleared = await setSharedFoodItemOverride(user, sharedId1, { default_log_quantity: null })
+    expect(cleared.default_log_quantity).toBeNull()
+  })
+
   test('icon_overridden tracks whether the user supplied an icon value', async () => {
     const user = getTestUser()
     const portionId = '33333333-3333-3333-3333-333333333333'
