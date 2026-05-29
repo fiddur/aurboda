@@ -101,6 +101,19 @@ const serializeFoodItem = (
   return result as FoodItemEntity
 }
 
+/**
+ * Resolve the default logging quantity, expressed in the unit named by the
+ * effective default portion. Prefer an explicit `default_log_quantity`;
+ * otherwise fall back to the base `default_quantity` only for the base unit
+ * (no default portion) — for a non-base default unit fall back to 1 of that
+ * unit, never the base quantity (which would be a number in the wrong unit).
+ */
+export const resolveEffectiveDefaultQuantity = (
+  effectiveDefaultPortionId: string | undefined,
+  defaultLogQuantity: number | undefined,
+  baseQuantity: number | undefined,
+): number | undefined => defaultLogQuantity ?? (effectiveDefaultPortionId ? 1 : baseQuantity)
+
 const serializeDetail = (detail: ServiceFoodItemDetail): FoodItemDetail => {
   const base = serializeFoodItem(detail.item)
   const sensitivities = detail.sensitivities ?? []
@@ -110,12 +123,11 @@ const serializeDetail = (detail: ServiceFoodItemDetail): FoodItemDetail => {
   // for central items applySharedOverrides decorated it from the user's
   // shared_food_item_overrides row (when the user picked a portion).
   const effective_default_portion_id = (detail.item.default_portion_id as string | undefined) ?? undefined
-  // Resolved default *quantity*: the per-user / override default_log_quantity
-  // when set, else the base default_quantity. applySharedOverrides decorates
-  // central items' default_log_quantity from the user's override row.
-  const effective_default_quantity =
-    (detail.item.default_log_quantity as number | undefined) ??
-    (detail.item.default_quantity as number | undefined)
+  const effective_default_quantity = resolveEffectiveDefaultQuantity(
+    effective_default_portion_id,
+    detail.item.default_log_quantity as number | undefined,
+    detail.item.default_quantity as number | undefined,
+  )
   // Composite branch: ingredient list + derived totals.
   if (detail.ingredients) {
     return {
@@ -645,7 +657,7 @@ export const createFoodItemsRouter = (authMiddleware: AnyMiddleware, centralDb: 
         })
       }
       try {
-        await setDefaultPortion(user, id, req.body.portion_id, req.body.quantity)
+        await setDefaultPortion(user, id, req.body.portion_id, req.body.quantity ?? null)
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Failed to set default portion'
         return res.status(/not found|does not belong/i.test(message) ? 400 : 500).json({

@@ -401,11 +401,12 @@ export const registerFoodItemTools = (server: McpServer, user: string, centralDb
         .number()
         .positive()
         .nullable()
-        .describe('Default quantity to prefill, or null for the base quantity'),
+        .optional()
+        .describe('Default quantity to prefill, or null/omitted for the base quantity'),
     },
     async ({ food_item_id, portion_id, quantity }) => {
       try {
-        await setDefaultPortion(user, food_item_id, portion_id, quantity)
+        await setDefaultPortion(user, food_item_id, portion_id, quantity ?? null)
       } catch (err) {
         return errorResponse(err instanceof Error ? err.message : 'Failed to set default portion')
       }
