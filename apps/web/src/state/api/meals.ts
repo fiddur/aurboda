@@ -231,11 +231,12 @@ export const deleteFoodItemPortionApi = async (foodItemId: string, portionId: st
 export const setDefaultPortionApi = async (
   foodItemId: string,
   portionId: string | null,
+  quantity: number | null = null,
 ): Promise<void> => {
   const { token } = auth.value
   await axios.put(
     `${API_URL}/food-items/${foodItemId}/default-portion`,
-    { portion_id: portionId },
+    { portion_id: portionId, quantity },
     { headers: { Authorization: `Bearer ${token}` } },
   )
 }

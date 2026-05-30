@@ -328,6 +328,9 @@ const applySharedOverrides = async (
       ...item,
       ...(override.icon_overridden ? { icon: override.icon ?? undefined } : {}),
       ...(override.default_portion_id ? { default_portion_id: override.default_portion_id } : {}),
+      ...(override.default_log_quantity != null
+        ? { default_log_quantity: override.default_log_quantity }
+        : {}),
     }
   })
 }

@@ -129,6 +129,7 @@ export const mealsTables: Record<string, string> = {
       is_composite    BOOLEAN NOT NULL DEFAULT FALSE,
       reference_food_item_id UUID,
       default_portion_id UUID,
+      default_log_quantity DOUBLE PRECISION,
       created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       CONSTRAINT unique_food_item_name UNIQUE (name_lower)
@@ -166,23 +167,23 @@ export const mealsTables: Record<string, string> = {
       ON food_item_ingredients (ingredient_food_item_id)
   `,
 
-  // Additional portion sizings for a food item. The food item's own
-  // (default_quantity, default_unit) is the "base portion" the nutrient
-  // columns are measured per; these rows are extra (label_quantity label_unit)
-  // tuples the user can pick when logging — e.g. "1 wrap = 1 base wrap" plus
-  // "2 wrap = 2 base wrap", or "1 glas = 515 g" for a 100 g base.
+  // Additional units a food item can be logged in, beyond its "base" unit.
+  // The food item's own (default_quantity, default_unit) is the base the
+  // nutrient columns are measured per; each portion row is a named unit plus
+  // its conversion to that base — e.g. "1 glas = 515 g" for a 100 g base, or
+  // "1 ruta = 3.4 g". When logging, the user enters a quantity in the chosen
+  // unit; nutrients scale by `quantity × base_equivalent / default_quantity`.
   //
   // `food_item_id` is a soft pointer (no FK) so portions can target the
   // per-user `food_items` table or a central `shared_food_items` row. Cascade
   // on per-user food deletion is handled in app code (deleteFoodItem).
   //
-  // `base_equivalent` is "this whole entry equals X units of the food's base
-  // unit" — direct conversion only, no chaining via other portions.
+  // `base_equivalent` is "how many base units ONE of this unit equals" —
+  // direct conversion only, no chaining via other portions.
   food_item_portions: `
     CREATE TABLE IF NOT EXISTS food_item_portions (
       id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       food_item_id      UUID NOT NULL,
-      label_quantity    DOUBLE PRECISION NOT NULL,
       label_unit        VARCHAR(100) NOT NULL,
       base_equivalent   DOUBLE PRECISION NOT NULL,
       sort_order        INTEGER NOT NULL DEFAULT 0,
@@ -389,6 +390,7 @@ export const mealsTables: Record<string, string> = {
       -- path would silently hide the central icon.
       icon_overridden      BOOLEAN NOT NULL DEFAULT FALSE,
       default_portion_id   UUID,
+      default_log_quantity DOUBLE PRECISION,
       created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )

@@ -73,8 +73,8 @@ describe('scaleNutrient', () => {
   test('portion path ignores currentQuantity in favor of portion math', () => {
     // currentQuantity should be irrelevant when portionScale is supplied —
     // the bug this guards: pre-fix the formula used the row's `quantity`
-    // (which for portion-pinned rows is portion_count × label_quantity,
-    // not canonical default_quantity), causing wrong-scale display on load.
+    // (which for portion-pinned rows is the entered portion_count, not the
+    // canonical default_quantity), causing wrong-scale display on load.
     const canonicalRef = { calories: 500, quantity: 100 }
     const withQty = scaleNutrient(canonicalRef, 'calories', 9999, { count: 1, base_equivalent: 10 })
     const withoutQty = scaleNutrient(canonicalRef, 'calories', undefined, { count: 1, base_equivalent: 10 })
@@ -94,7 +94,7 @@ describe('mealItemsToEdit + editItemsToBody portion round-trip', () => {
         food_item_portion_id: 'portion-a',
         portion_count: 3,
         name: 'Choklad',
-        quantity: 3, // server stored count × label_quantity
+        quantity: 3, // server stored the entered count
         unit: 'ruta',
         calories: 51,
       },

@@ -49,7 +49,7 @@ describe('food-item-portions service integration', () => {
     const portion = await addPortion(
       user,
       food.id,
-      { label_quantity: 1, label_unit: 'ruta', base_equivalent: 3.4 },
+      { label_unit: 'ruta', base_equivalent: 3.4 },
       stubCentral(),
     )
     expect(portion.food_item_id).toBe(food.id)
@@ -65,7 +65,7 @@ describe('food-item-portions service integration', () => {
     const portion = await addPortion(
       user,
       central.id,
-      { label_quantity: 1, label_unit: 'cup', base_equivalent: 240 },
+      { label_unit: 'cup', base_equivalent: 240 },
       stubCentral({ [central.id]: central }),
     )
     expect(portion.food_item_id).toBe(central.id)
@@ -75,22 +75,16 @@ describe('food-item-portions service integration', () => {
     const user = getTestUser()
     const ghostId = '99999999-0000-0000-0000-000000000000'
     await expect(
-      addPortion(user, ghostId, { label_quantity: 1, label_unit: 'x', base_equivalent: 1 }, stubCentral()),
+      addPortion(user, ghostId, { label_unit: 'x', base_equivalent: 1 }, stubCentral()),
     ).rejects.toThrow(/not found/i)
   })
 
   test('updatePortion / deletePortion work end-to-end', async () => {
     const user = getTestUser()
     const food = await upsertFoodItem(user, { name: 'Wraps', default_quantity: 1, default_unit: 'wrap' })
-    const portion = await addPortion(
-      user,
-      food.id,
-      { label_quantity: 2, label_unit: 'wrap', base_equivalent: 2 },
-      stubCentral(),
-    )
+    const portion = await addPortion(user, food.id, { label_unit: 'wrap', base_equivalent: 2 }, stubCentral())
 
-    const updated = await updatePortion(user, portion.id, { label_quantity: 3, base_equivalent: 3 })
-    expect(updated.label_quantity).toBe(3)
+    const updated = await updatePortion(user, portion.id, { base_equivalent: 3 })
     expect(updated.base_equivalent).toBe(3)
 
     expect(await deletePortion(user, portion.id)).toBe(true)
@@ -104,7 +98,7 @@ describe('food-item-portions service integration', () => {
     const portionA = await addPortion(
       user,
       foodA.id,
-      { label_quantity: 1, label_unit: 'piece', base_equivalent: 50 },
+      { label_unit: 'piece', base_equivalent: 50 },
       stubCentral(),
     )
     await expect(setDefaultPortion(user, foodB.id, portionA.id)).rejects.toThrow(/does not belong/i)
@@ -116,7 +110,7 @@ describe('food-item-portions service integration', () => {
     const portion = await addPortion(
       user,
       food.id,
-      { label_quantity: 1, label_unit: 'rad', base_equivalent: 13.6 },
+      { label_unit: 'rad', base_equivalent: 13.6 },
       stubCentral(),
     )
 
@@ -127,13 +121,31 @@ describe('food-item-portions service integration', () => {
     expect((await getFoodItemById(user, food.id))?.default_portion_id).toBeUndefined()
   })
 
+  test('setDefaultPortion: persists the default quantity alongside the unit', async () => {
+    const user = getTestUser()
+    const food = await upsertFoodItem(user, { name: 'Wraps', default_quantity: 2, default_unit: 'wrap' })
+    const portion = await addPortion(user, food.id, { label_unit: 'wrap', base_equivalent: 1 }, stubCentral())
+
+    // Default to "1 wrap" even though the base is "2 wrap".
+    await setDefaultPortion(user, food.id, portion.id, 1)
+    const set = await getFoodItemById(user, food.id)
+    expect(set?.default_portion_id).toBe(portion.id)
+    expect(set?.default_log_quantity).toBe(1)
+
+    // Clearing the quantity (null) falls back to the base quantity.
+    await setDefaultPortion(user, food.id, null, null)
+    const cleared = await getFoodItemById(user, food.id)
+    expect(cleared?.default_portion_id).toBeUndefined()
+    expect(cleared?.default_log_quantity).toBeUndefined()
+  })
+
   test('setDefaultPortion: central food id is rejected as not-editable', async () => {
     const user = getTestUser()
     const central = { id: '22222222-3333-4444-5555-666666666666', name: 'LSV Choklad' }
     const portion = await addPortion(
       user,
       central.id,
-      { label_quantity: 1, label_unit: 'ruta', base_equivalent: 3.4 },
+      { label_unit: 'ruta', base_equivalent: 3.4 },
       stubCentral({ [central.id]: central }),
     )
     // updateFoodItem only touches the per-user table, so the central id won't

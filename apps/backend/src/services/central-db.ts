@@ -441,6 +441,19 @@ export const createCentralDb = (deps: CentralDbDeps): CentralDb => {
       for (const field of NUTRIENT_FIELD_NAMES) {
         await client.query(`ALTER TABLE shared_food_items ADD COLUMN IF NOT EXISTS ${field} DOUBLE PRECISION`)
       }
+      // Backfill a base unit for every shared food that lacks one, so all
+      // foods have at least one (base) unit to log in. Central rows are
+      // reference data measured per 100 g (e.g. Livsmedelsverket) — use 100 g
+      // where there's no other signal. (Per-user foods get 1 portion — see
+      // db/connection.ts.)
+      await client.query(
+        `ALTER TABLE shared_food_items ADD COLUMN IF NOT EXISTS default_quantity DOUBLE PRECISION`,
+      )
+      await client.query(`ALTER TABLE shared_food_items ADD COLUMN IF NOT EXISTS default_unit VARCHAR(100)`)
+      await client.query(`UPDATE shared_food_items SET default_quantity = 100 WHERE default_quantity IS NULL`)
+      await client.query(
+        `UPDATE shared_food_items SET default_unit = 'g' WHERE default_unit IS NULL OR default_unit = ''`,
+      )
       for (const stmt of CREATE_SHARED_FOOD_ITEMS_INDEXES) await client.query(stmt)
       await client.query(CREATE_IMPORT_JOBS_TABLE)
       for (const stmt of CREATE_IMPORT_JOBS_INDEXES) await client.query(stmt)

@@ -12,7 +12,6 @@ import { query } from './connection.ts'
 export interface FoodItemPortionRow {
   id: string
   food_item_id: string
-  label_quantity: number
   label_unit: string
   base_equivalent: number
   sort_order: number
@@ -22,26 +21,22 @@ export interface FoodItemPortionRow {
 
 export interface InsertFoodItemPortionInput {
   food_item_id: string
-  label_quantity: number
   label_unit: string
   base_equivalent: number
   sort_order?: number
 }
 
 export interface UpdateFoodItemPortionInput {
-  label_quantity?: number
   label_unit?: string
   base_equivalent?: number
   sort_order?: number
 }
 
-const COLUMNS =
-  'id, food_item_id, label_quantity, label_unit, base_equivalent, sort_order, created_at, updated_at'
+const COLUMNS = 'id, food_item_id, label_unit, base_equivalent, sort_order, created_at, updated_at'
 
 const mapRow = (row: Record<string, unknown>): FoodItemPortionRow => ({
   id: row.id as string,
   food_item_id: row.food_item_id as string,
-  label_quantity: row.label_quantity as number,
   label_unit: row.label_unit as string,
   base_equivalent: row.base_equivalent as number,
   sort_order: row.sort_order as number,
@@ -56,16 +51,10 @@ export const insertFoodItemPortion = async (
   const result = await query(
     user,
     `INSERT INTO food_item_portions
-       (food_item_id, label_quantity, label_unit, base_equivalent, sort_order)
-     VALUES ($1, $2, $3, $4, $5)
+       (food_item_id, label_unit, base_equivalent, sort_order)
+     VALUES ($1, $2, $3, $4)
      RETURNING ${COLUMNS}`,
-    [
-      input.food_item_id,
-      input.label_quantity,
-      input.label_unit,
-      input.base_equivalent,
-      input.sort_order ?? 0,
-    ],
+    [input.food_item_id, input.label_unit, input.base_equivalent, input.sort_order ?? 0],
   )
   return mapRow(result.rows[0])
 }
@@ -78,10 +67,6 @@ export const updateFoodItemPortion = async (
   const setClauses: string[] = []
   const params: unknown[] = []
   let idx = 1
-  if (input.label_quantity !== undefined) {
-    setClauses.push(`label_quantity = $${idx++}`)
-    params.push(input.label_quantity)
-  }
   if (input.label_unit !== undefined) {
     setClauses.push(`label_unit = $${idx++}`)
     params.push(input.label_unit)

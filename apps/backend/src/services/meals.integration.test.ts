@@ -467,7 +467,6 @@ describe('Meals service integration tests', () => {
       })
       const ruta = await insertFoodItemPortion(user, {
         food_item_id: choklad.id,
-        label_quantity: 1,
         label_unit: 'ruta',
         base_equivalent: 3.4,
       })
@@ -490,7 +489,7 @@ describe('Meals service integration tests', () => {
       // 3 × 3.4 / 100 = 0.102 scale; 500 kcal × 0.102 = 51 kcal; 30 fat × 0.102 = 3.06
       expect(links[0].calories).toBeCloseTo(51, 2)
       expect(links[0].fat).toBeCloseTo(3.06, 2)
-      // Display fallback: quantity is portion_count × label_quantity; unit is label_unit
+      // Display fallback: quantity is the entered portion_count; unit is label_unit
       expect(links[0].quantity).toBe(3)
       expect(links[0].unit).toBe('ruta')
       expect(links[0].food_item_portion_id).toBe(ruta.id)
@@ -504,7 +503,6 @@ describe('Meals service integration tests', () => {
       const foodB = await upsertFoodItem(user, { name: 'B', default_quantity: 100, default_unit: 'g' })
       const portionA = await insertFoodItemPortion(user, {
         food_item_id: foodA.id,
-        label_quantity: 1,
         label_unit: 'x',
         base_equivalent: 1,
       })
@@ -537,7 +535,6 @@ describe('Meals service integration tests', () => {
       const food = await upsertFoodItem(user, { name: 'F', default_quantity: 100, default_unit: 'g' })
       const portion = await insertFoodItemPortion(user, {
         food_item_id: food.id,
-        label_quantity: 1,
         label_unit: 'x',
         base_equivalent: 1,
       })
@@ -564,7 +561,6 @@ describe('Meals service integration tests', () => {
       const foodB = await upsertFoodItem(user, { name: 'B', default_quantity: 100, default_unit: 'g' })
       const portionA = await insertFoodItemPortion(user, {
         food_item_id: foodA.id,
-        label_quantity: 1,
         label_unit: 'x',
         base_equivalent: 1,
       })
@@ -598,7 +594,6 @@ describe('Meals service integration tests', () => {
       })
       const ruta = await insertFoodItemPortion(user, {
         food_item_id: food.id,
-        label_quantity: 1,
         label_unit: 'ruta',
         base_equivalent: 3.4,
       })
@@ -634,7 +629,6 @@ describe('Meals service integration tests', () => {
       })
       const ruta = await insertFoodItemPortion(user, {
         food_item_id: food.id,
-        label_quantity: 1,
         label_unit: 'ruta',
         base_equivalent: 5,
       })

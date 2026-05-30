@@ -6,7 +6,7 @@ import type { FoodItemEntity } from '../db/types.ts'
 import type { CentralDb } from '../services/central-db.ts'
 import type { SharedFoodItemEntity } from '../services/central-food-items.ts'
 
-import { createFoodItemsRouter } from './food-items-router.ts'
+import { createFoodItemsRouter, resolveEffectiveDefaultQuantity } from './food-items-router.ts'
 
 // The route imports from the barrel `../db/index.ts`; the food-items service
 // imports directly from `../db/food-items.ts`. Both have to be mocked, and the
@@ -432,7 +432,6 @@ describe('PATCH /food-items/:id/portions/:portionId ownership guard', () => {
     vi.mocked(dbBarrel.getFoodItemPortionById).mockResolvedValue({
       id: PORTION_ID,
       food_item_id: OTHER_FOOD_ID,
-      label_quantity: 1,
       label_unit: 'g',
       base_equivalent: 1,
       sort_order: 0,
@@ -441,7 +440,7 @@ describe('PATCH /food-items/:id/portions/:portionId ownership guard', () => {
     })
     const res = await supertest(buildApp(fakeCentral()))
       .patch(`/food-items/${FOOD_ID}/portions/${PORTION_ID}`)
-      .send({ label_quantity: 999 })
+      .send({ base_equivalent: 999 })
     expect(res.status).toBe(404)
     expect(dbBarrel.updateFoodItemPortion).not.toHaveBeenCalled()
   })
@@ -450,7 +449,7 @@ describe('PATCH /food-items/:id/portions/:portionId ownership guard', () => {
     vi.mocked(dbBarrel.getFoodItemPortionById).mockResolvedValue(null)
     const res = await supertest(buildApp(fakeCentral()))
       .patch(`/food-items/${FOOD_ID}/portions/${PORTION_ID}`)
-      .send({ label_quantity: 2 })
+      .send({ base_equivalent: 2 })
     expect(res.status).toBe(404)
     expect(dbBarrel.updateFoodItemPortion).not.toHaveBeenCalled()
   })
@@ -468,7 +467,6 @@ describe('DELETE /food-items/:id/portions/:portionId ownership guard', () => {
     vi.mocked(dbBarrel.getFoodItemPortionById).mockResolvedValue({
       id: PORTION_ID,
       food_item_id: OTHER_FOOD_ID,
-      label_quantity: 1,
       label_unit: 'g',
       base_equivalent: 1,
       sort_order: 0,
@@ -498,7 +496,6 @@ describe('PUT /food-items/:id/override default_portion_id ownership guard', () =
     vi.mocked(dbBarrel.getFoodItemPortionById).mockResolvedValue({
       id: PORTION_ID,
       food_item_id: OTHER_FOOD_ID,
-      label_quantity: 1,
       label_unit: 'g',
       base_equivalent: 1,
       sort_order: 0,
@@ -522,6 +519,7 @@ describe('PUT /food-items/:id/override default_portion_id ownership guard', () =
       icon: null,
       icon_overridden: false,
       default_portion_id: null,
+      default_log_quantity: null,
       created_at: new Date(),
       updated_at: new Date(),
     })
@@ -551,5 +549,26 @@ describe('PATCH /food-items/:id default_portion_id is stripped from generic upda
     const callArg = vi.mocked(dbBarrel.updateFoodItem).mock.calls[0][2] as Record<string, unknown>
     expect(callArg.default_portion_id).toBeUndefined()
     expect(callArg.name).toBe('Renamed')
+  })
+})
+
+describe('resolveEffectiveDefaultQuantity', () => {
+  test('uses default_log_quantity when set (regardless of unit)', () => {
+    expect(resolveEffectiveDefaultQuantity('portion-1', 2, 100)).toBe(2)
+    expect(resolveEffectiveDefaultQuantity(undefined, 58, 100)).toBe(58)
+  })
+
+  test('base unit (no default portion) falls back to the base default_quantity', () => {
+    expect(resolveEffectiveDefaultQuantity(undefined, undefined, 100)).toBe(100)
+  })
+
+  test('non-base default unit with no default_log_quantity defaults to 1 of that unit, not the base quantity', () => {
+    // Regression: previously fell back to default_quantity (100), prefilling
+    // e.g. "100 glas" instead of "1 glas" for a 100 g base with a glas default.
+    expect(resolveEffectiveDefaultQuantity('portion-glas', undefined, 100)).toBe(1)
+  })
+
+  test('absent everywhere → undefined (no prefill hint)', () => {
+    expect(resolveEffectiveDefaultQuantity(undefined, undefined, undefined)).toBeUndefined()
   })
 })

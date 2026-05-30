@@ -43,7 +43,11 @@ export const foodItemEntitySchema = nutrientFieldsSchema
     }),
     default_portion_id: z.string().uuid().optional().meta({
       description:
-        'Portion (from food_item_portions) to preselect when this food is logged. NULL/absent means the base portion (default_quantity/default_unit) is preselected.',
+        'Default *unit* to preselect when logging this food (a food_item_portions id). NULL/absent means the base unit (default_unit). Pairs with default_log_quantity to form the prefill.',
+    }),
+    default_log_quantity: z.number().positive().optional().meta({
+      description:
+        'Default *quantity* to prefill when logging this food, in the unit named by default_portion_id (or the base unit when that is null). NULL/absent falls back to default_quantity (the base quantity).',
     }),
     name: z.string().min(1).max(255).meta({ description: 'Food item name' }),
     source: z
@@ -172,7 +176,11 @@ export const foodItemDetailSchema = foodItemEntitySchema
     }),
     effective_default_portion_id: z.string().uuid().optional().meta({
       description:
-        'Resolved default portion id to preselect when logging this food. For per-user items this mirrors `default_portion_id` on the food row. For central items it falls back through `shared_food_item_overrides.default_portion_id` first, then the central row\'s own (currently absent) default. Absent when there is no default — the UI should preselect the implicit base portion.',
+        'Resolved default *unit* to preselect when logging this food. For per-user items this mirrors `default_portion_id`; for central items it resolves through `shared_food_item_overrides.default_portion_id`. Absent ⇒ preselect the base unit.',
+    }),
+    effective_default_quantity: z.number().positive().optional().meta({
+      description:
+        'Resolved default *quantity* to prefill, in the unit named by effective_default_portion_id (or the base unit). Resolves the per-user / override default_log_quantity, falling back to the base default_quantity. Absent ⇒ no prefill hint.',
     }),
     ingredients: z.array(resolvedFoodItemIngredientSchema).optional(),
     derived_nutrients: z
@@ -243,7 +251,11 @@ export const sharedFoodItemOverrideSchema = z
     }),
     default_portion_id: z.string().uuid().nullable().meta({
       description:
-        'User-preselected portion id for the central item; null means no override (fall through to the central row\'s own default_portion_id).',
+        "User-preselected portion id (unit) for the central item; null means no override (fall through to the central row's own default_portion_id).",
+    }),
+    default_log_quantity: z.number().positive().nullable().meta({
+      description:
+        'User-preselected default quantity for the central item, in the unit named by default_portion_id (or the base unit). Null means no override (fall through to the base default_quantity).',
     }),
     created_at: z.string().meta({ description: 'Override creation timestamp' }),
     updated_at: z.string().meta({ description: 'Override last-update timestamp' }),
@@ -274,12 +286,22 @@ export const setSharedFoodItemOverrideBodySchema = z
     }),
     default_portion_id: z.string().uuid().nullable().optional().meta({
       description:
-        'Override preselected portion id. String sets the override, null clears any prior override (falls through to the central default), omitted leaves the column unchanged.',
+        'Override preselected portion id (unit). String sets the override, null clears any prior override (falls through to the central default), omitted leaves the column unchanged.',
+    }),
+    default_log_quantity: z.number().positive().nullable().optional().meta({
+      description:
+        'Override default quantity, in the unit named by default_portion_id. Number sets the override, null clears it (falls through to the base quantity), omitted leaves the column unchanged.',
     }),
   })
-  .refine((body) => body.icon !== undefined || body.default_portion_id !== undefined, {
-    message: 'At least one override field must be supplied; clear via DELETE to revert to central',
-  })
+  .refine(
+    (body) =>
+      body.icon !== undefined ||
+      body.default_portion_id !== undefined ||
+      body.default_log_quantity !== undefined,
+    {
+      message: 'At least one override field must be supplied; clear via DELETE to revert to central',
+    },
+  )
   .meta({
     description: 'Upsert per-user override columns for a central shared food item',
     id: 'SetSharedFoodItemOverrideBody',

@@ -580,12 +580,54 @@ function DefaultMetaRow({
   )
 }
 
+function DefaultAmount({
+  effectiveQty,
+  baseQty,
+  onCommit,
+}: {
+  effectiveQty: number | undefined
+  baseQty: number | undefined
+  onCommit: (q: number | null) => void
+}) {
+  const [v, setV] = useState(effectiveQty !== undefined ? String(effectiveQty) : '')
+  useEffect(() => {
+    setV(effectiveQty !== undefined ? String(effectiveQty) : '')
+  }, [effectiveQty])
+  const commit = () => {
+    const t = v.trim()
+    if (t === '') {
+      if (effectiveQty !== undefined) onCommit(null)
+      return
+    }
+    const n = parseFloat(t)
+    if (!(n > 0)) {
+      setV(effectiveQty !== undefined ? String(effectiveQty) : '')
+      return
+    }
+    if (n !== effectiveQty) onCommit(n)
+  }
+  return (
+    <div class="fi-default-amount">
+      <label>Default amount</label>
+      <input
+        type="number"
+        step="0.1"
+        value={v}
+        placeholder={baseQty !== undefined ? String(baseQty) : 'Qty'}
+        onInput={(e) => setV((e.target as HTMLInputElement).value)}
+        onBlur={commit}
+      />
+      <span class="fi-default-amount-hint">in the selected default unit, prefilled when logging</span>
+    </div>
+  )
+}
+
 function PortionsSection({ item, foodItemId }: { item: ApiFoodItemDetail; foodItemId: string }) {
   const queryClient = useQueryClient()
   const portions = item.portions ?? []
   const baseUnit = item.default_unit ?? 'base unit'
   const baseQty = item.default_quantity
-  const [draft, setDraft] = useState({ label_quantity: '', label_unit: '', base_equivalent: '' })
+  const [draft, setDraft] = useState({ label_unit: '', base_equivalent: '' })
   // Keep the add-row error separate from row-level (update/delete/default)
   // errors so an unrelated failure doesn't clear the message a user needs
   // to see while they fix their draft inputs.
@@ -596,20 +638,18 @@ function PortionsSection({ item, foodItemId }: { item: ApiFoodItemDetail; foodIt
 
   const addMutation = useMutation({
     mutationFn: () => {
-      const lq = parseFloat(draft.label_quantity)
       const be = parseFloat(draft.base_equivalent)
-      if (!draft.label_unit.trim() || !(lq > 0) || !(be > 0)) {
-        throw new Error('label_quantity, label_unit, and base_equivalent are all required and positive')
+      if (!draft.label_unit.trim() || !(be > 0)) {
+        throw new Error('Unit and base-equivalent are required, and base-equivalent must be positive')
       }
       return addFoodItemPortionApi(foodItemId, {
-        label_quantity: lq,
         label_unit: draft.label_unit.trim(),
         base_equivalent: be,
       })
     },
     onError: (err: Error) => setAddError(err.message),
     onSuccess: () => {
-      setDraft({ label_quantity: '', label_unit: '', base_equivalent: '' })
+      setDraft({ label_unit: '', base_equivalent: '' })
       setAddError(null)
       invalidate()
     },
@@ -618,7 +658,6 @@ function PortionsSection({ item, foodItemId }: { item: ApiFoodItemDetail; foodIt
   const updateMutation = useMutation({
     mutationFn: (input: { portionId: string; body: Partial<FoodItemPortion> }) =>
       updateFoodItemPortionApi(foodItemId, input.portionId, {
-        label_quantity: input.body.label_quantity,
         label_unit: input.body.label_unit,
         base_equivalent: input.body.base_equivalent,
       }),
@@ -638,8 +677,11 @@ function PortionsSection({ item, foodItemId }: { item: ApiFoodItemDetail; foodIt
     },
   })
 
+  // Default logging amount: which unit (portion id, or null = base) and how
+  // much (quantity). The quantity carries across unit switches.
   const defaultMutation = useMutation({
-    mutationFn: (portionId: string | null) => setDefaultPortionApi(foodItemId, portionId),
+    mutationFn: (input: { portionId: string | null; quantity: number | null }) =>
+      setDefaultPortionApi(foodItemId, input.portionId, input.quantity),
     onError: (err: Error) => setRowError(err.message),
     onSuccess: () => {
       setRowError(null)
@@ -648,20 +690,26 @@ function PortionsSection({ item, foodItemId }: { item: ApiFoodItemDetail; foodIt
   })
 
   // Effective default is exposed by the server (resolves override layer for
-  // central items); for per-user items it mirrors the row column. UI only
-  // shows the radio when the food has portions to choose from.
+  // central items); for per-user items it mirrors the row column.
   const effectiveDefault = item.effective_default_portion_id
+  const effectiveQty = item.effective_default_quantity
 
   return (
     <section class="fi-portions">
       <header class="fi-portions-header">
-        <h2>Portions</h2>
+        <h2>Units</h2>
         <p class="fi-portions-help">
-          Extra sizings for this food. Each portion is "label quantity label unit = base equivalent" where
-          base equivalent is measured in {baseUnit}
-          {baseQty !== undefined ? ` (the nutrient values are per ${baseQty} ${baseUnit})` : ''}.
+          Extra units this food can be logged in. Each is "1 unit = amount in {baseUnit}"
+          {baseQty !== undefined ? ` (nutrient values are per ${baseQty} ${baseUnit})` : ''}. Pick the
+          default unit and amount to prefill when logging.
         </p>
       </header>
+
+      <DefaultAmount
+        effectiveQty={effectiveQty}
+        baseQty={baseQty}
+        onCommit={(q) => defaultMutation.mutate({ portionId: effectiveDefault ?? null, quantity: q })}
+      />
 
       <ul class="fi-portions-list">
         <li class="fi-portion-row fi-portion-base">
@@ -674,15 +722,15 @@ function PortionsSection({ item, foodItemId }: { item: ApiFoodItemDetail; foodIt
                 // Short-circuit a redundant PUT when Base is already the
                 // effective default — radio onChange still fires on click
                 // even when `checked` is already true.
-                if (effectiveDefault) defaultMutation.mutate(null)
+                if (effectiveDefault) defaultMutation.mutate({ portionId: null, quantity: effectiveQty ?? null })
               }}
             />
             Base
           </label>
-          <span class="fi-portion-label">
-            {baseQty ?? '—'} {baseUnit}
+          <span class="fi-portion-label">1 {baseUnit}</span>
+          <span class="fi-portion-eq">
+            (nutrient density baseline{baseQty !== undefined ? `: per ${baseQty} ${baseUnit}` : ''})
           </span>
-          <span class="fi-portion-eq">(nutrient density baseline)</span>
         </li>
         {portions.map((p) => (
           <PortionRow
@@ -690,7 +738,7 @@ function PortionsSection({ item, foodItemId }: { item: ApiFoodItemDetail; foodIt
             portion={p}
             baseUnit={baseUnit}
             isDefault={effectiveDefault === p.id}
-            onSetDefault={() => defaultMutation.mutate(p.id)}
+            onSetDefault={() => defaultMutation.mutate({ portionId: p.id, quantity: effectiveQty ?? null })}
             onUpdate={(body) => updateMutation.mutate({ portionId: p.id, body })}
             onDelete={() => deleteMutation.mutate(p.id)}
           />
@@ -698,15 +746,7 @@ function PortionsSection({ item, foodItemId }: { item: ApiFoodItemDetail; foodIt
       </ul>
 
       <div class="fi-portion-add">
-        <input
-          type="number"
-          step="0.1"
-          placeholder="Qty"
-          value={draft.label_quantity}
-          onInput={(e) =>
-            setDraft({ ...draft, label_quantity: (e.target as HTMLInputElement).value })
-          }
-        />
+        <span class="fi-portion-add-prefix">1</span>
         <input
           type="text"
           placeholder="Unit (e.g. ruta)"
@@ -719,17 +759,16 @@ function PortionsSection({ item, foodItemId }: { item: ApiFoodItemDetail; foodIt
           step="0.01"
           placeholder={`Amount in ${baseUnit}`}
           value={draft.base_equivalent}
-          onInput={(e) =>
-            setDraft({ ...draft, base_equivalent: (e.target as HTMLInputElement).value })
-          }
+          onInput={(e) => setDraft({ ...draft, base_equivalent: (e.target as HTMLInputElement).value })}
         />
+        <span class="fi-portion-base-unit">{baseUnit}</span>
         <button
           type="button"
           class="btn-secondary"
           onClick={() => addMutation.mutate()}
           disabled={addMutation.isPending}
         >
-          Add portion
+          Add unit
         </button>
       </div>
       {addError && <p class="fi-portions-error">{addError}</p>}
@@ -755,17 +794,13 @@ function PortionRow({
 }) {
   // Auto-save on blur — mirrors the rest of FoodItemDetail's commit pattern.
   // Local state lets the user edit without each keystroke racing to the API.
-  const [lq, setLq] = useState(String(portion.label_quantity))
   const [lu, setLu] = useState(portion.label_unit)
   const [be, setBe] = useState(String(portion.base_equivalent))
 
-  // Three independent effects so a mutation/invalidate that refreshes the
+  // Independent effects so a mutation/invalidate that refreshes the
   // server-side value of one field doesn't clobber unsaved input on a
   // sibling field (the previous combined effect dropped pending edits any
   // time the user blurred a different field on the same row).
-  useEffect(() => {
-    setLq(String(portion.label_quantity))
-  }, [portion.id, portion.label_quantity])
   useEffect(() => {
     setLu(portion.label_unit)
   }, [portion.id, portion.label_unit])
@@ -773,25 +808,22 @@ function PortionRow({
     setBe(String(portion.base_equivalent))
   }, [portion.id, portion.base_equivalent])
 
-  const commit = (field: 'label_quantity' | 'label_unit' | 'base_equivalent') => () => {
-    if (field === 'label_unit') {
-      const trimmed = lu.trim()
-      if (!trimmed) {
-        setLu(portion.label_unit)
-        return
-      }
-      if (trimmed !== portion.label_unit) onUpdate({ label_unit: trimmed })
+  const commitUnit = () => {
+    const trimmed = lu.trim()
+    if (!trimmed) {
+      setLu(portion.label_unit)
       return
     }
-    const raw = field === 'label_quantity' ? lq : be
-    const parsed = parseFloat(raw)
+    if (trimmed !== portion.label_unit) onUpdate({ label_unit: trimmed })
+  }
+  const commitBase = () => {
+    const parsed = parseFloat(be)
     if (!(parsed > 0)) {
       // Revert; the schema rejects non-positive values.
-      if (field === 'label_quantity') setLq(String(portion.label_quantity))
-      else setBe(String(portion.base_equivalent))
+      setBe(String(portion.base_equivalent))
       return
     }
-    if (parsed !== portion[field]) onUpdate({ [field]: parsed })
+    if (parsed !== portion.base_equivalent) onUpdate({ base_equivalent: parsed })
   }
 
   return (
@@ -799,18 +831,12 @@ function PortionRow({
       <label class="fi-portion-default">
         <input type="radio" name="default-portion" checked={isDefault} onChange={onSetDefault} />
       </label>
-      <input
-        type="number"
-        step="0.1"
-        value={lq}
-        onInput={(e) => setLq((e.target as HTMLInputElement).value)}
-        onBlur={commit('label_quantity')}
-      />
+      <span class="fi-portion-add-prefix">1</span>
       <input
         type="text"
         value={lu}
         onInput={(e) => setLu((e.target as HTMLInputElement).value)}
-        onBlur={commit('label_unit')}
+        onBlur={commitUnit}
       />
       <span class="fi-portion-eq-sep">=</span>
       <input
@@ -818,12 +844,12 @@ function PortionRow({
         step="0.01"
         value={be}
         onInput={(e) => setBe((e.target as HTMLInputElement).value)}
-        onBlur={commit('base_equivalent')}
+        onBlur={commitBase}
       />
       <span class="fi-portion-base-unit">{baseUnit}</span>
       <ConfirmButton
         label="Delete"
-        confirmMessage={`Delete portion "${portion.label_quantity} ${portion.label_unit}"?`}
+        confirmMessage={`Delete unit "${portion.label_unit}"?`}
         onConfirm={onDelete}
         buttonClass="btn-link fi-portion-del"
       />

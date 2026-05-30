@@ -137,16 +137,19 @@ const parseNum = (v: string) => (v === '' ? undefined : parseFloat(v))
  *   1. If the row is already pinned to a portion (e.g. editing an existing
  *      meal that was logged with `food_item_portion_id`), backfill the
  *      `portion` snapshot from detail.portions — the meal response doesn't
- *      include label_quantity/label_unit/base_equivalent, so without this
- *      backfill the row would render via the legacy quantity+unit path even
- *      though saves still go through the portion path.
- *   2. Otherwise (fresh row, no portion yet) apply the food's effective
- *      default portion if one is set.
+ *      include label_unit/base_equivalent, so without this backfill the row
+ *      would render via the legacy quantity+unit path even though saves still
+ *      go through the portion path.
+ *   2. Otherwise (fresh row) apply the food's effective default amount: the
+ *      default unit (portion or base) prefilled to the default quantity.
+ *
+ * `apply(p, count, isBackfill)` — `p` is the portion/unit (null = base unit),
+ * `count` the quantity to prefill, `isBackfill` true only for case 1.
  */
 const useAutoDefaultPortion = (
   item: FoodItemEdit,
   detail: ApiFoodItemDetail | undefined,
-  applyPortion: (p: FoodItemPortion, keepCount: boolean) => void,
+  apply: (p: FoodItemPortion | null, count: number, isBackfill: boolean) => void,
 ): void => {
   const lastAppliedFoodId = useRef<string | undefined>(undefined)
   useEffect(() => {
@@ -160,96 +163,83 @@ const useAutoDefaultPortion = (
       // qty/unit and can re-pick.
       if (item.portion) return
       const p = detail.portions?.find((pp) => pp.id === item.food_item_portion_id)
-      if (p) applyPortion(p, /* keepCount */ true)
+      if (p) apply(p, item.portion_count ?? 1, /* isBackfill */ true)
       return
     }
-    // Auto-default-portion only applies to rows added THIS session (`_isNew`).
+    // Auto-default only applies to rows added THIS session (`_isNew`).
     // Without this gate we'd silently re-encode legacy server-loaded rows
-    // (e.g. "50 g chocolate") as `1 × default portion` on meal open,
-    // overwriting the user's recorded quantity.
+    // (e.g. "50 g chocolate") on meal open, overwriting the recorded amount.
     if (!item._isNew) return
+    const count = detail.effective_default_quantity
     const def = detail.effective_default_portion_id
-    if (!def) return
-    const p = detail.portions?.find((pp) => pp.id === def)
-    if (p) applyPortion(p, /* keepCount */ false)
+    if (def) {
+      const p = detail.portions?.find((pp) => pp.id === def)
+      if (p) apply(p, count ?? 1, /* isBackfill */ false)
+      return
+    }
+    // Base unit is the default — prefill the quantity if the food carries one.
+    if (count !== undefined) apply(null, count, /* isBackfill */ false)
   }, [detail?.id, item.food_item_id])
 }
 
-function PortionPicker({
-  selectedId,
-  portions,
-  baseLabel,
-  onPick,
-}: {
-  selectedId: string | undefined
-  portions: FoodItemPortion[]
-  baseLabel: string
-  onPick: (portionId: string) => void
-}) {
-  if (portions.length === 0) return null
-  return (
-    <select
-      class="food-portion-picker"
-      value={selectedId ?? ''}
-      onChange={(e) => onPick((e.target as HTMLSelectElement).value)}
-    >
-      <option value="">Base ({baseLabel})</option>
-      {portions.map((p) => (
-        <option key={p.id} value={p.id}>
-          {p.label_quantity} {p.label_unit}
-        </option>
-      ))}
-    </select>
-  )
-}
-
-function QuantityInputs({
+// The number the user enters is the quantity in the selected unit. When a
+// portion (unit) is selected it's `portion_count`; on the base unit it's the
+// legacy `quantity`. Either way it's the same input — the unit dropdown picks
+// what the number is counted in.
+function QuantityInput({
   item,
   onUpdate,
 }: {
   item: FoodItemEdit
   onUpdate: (patch: Partial<FoodItemEdit>) => void
 }) {
-  if (item.food_item_portion_id && item.portion) {
-    return (
-      <>
-        <input
-          type="number"
-          step="0.1"
-          value={item.portion_count ?? ''}
-          placeholder="Count"
-          class="food-num-input"
-          onInput={(e) => onUpdate({ portion_count: parseNum((e.target as HTMLInputElement).value) })}
-        />
-        <span class="food-portion-unit">
-          × {item.portion.label_quantity} {item.portion.label_unit}
-        </span>
-      </>
-    )
-  }
+  const isPortion = !!item.food_item_portion_id
+  const value = isPortion ? item.portion_count : item.quantity
   return (
-    <>
-      <input
-        type="number"
-        step="0.1"
-        value={item.quantity ?? ''}
-        placeholder="Qty"
-        class="food-num-input"
-        onInput={(e) => onUpdate({ quantity: parseNum((e.target as HTMLInputElement).value) })}
-      />
-      <input
-        type="text"
-        value={item.unit ?? ''}
-        placeholder="Unit"
-        class="food-unit-input"
-        onInput={(e) => onUpdate({ unit: (e.target as HTMLInputElement).value })}
-      />
-    </>
+    <input
+      type="number"
+      step="0.1"
+      value={value ?? ''}
+      placeholder="Qty"
+      class="food-num-input"
+      onInput={(e) => {
+        const n = parseNum((e.target as HTMLInputElement).value)
+        onUpdate(isPortion ? { portion_count: n } : { quantity: n })
+      }}
+    />
+  )
+}
+
+// Unit dropdown. The base unit is itself an option (value ""); each portion
+// is a bare named unit (no leading number — the count lives in QuantityInput).
+function UnitPicker({
+  selectedId,
+  portions,
+  baseUnitLabel,
+  onPick,
+}: {
+  selectedId: string | undefined
+  portions: FoodItemPortion[]
+  baseUnitLabel: string
+  onPick: (portionId: string) => void
+}) {
+  return (
+    <select
+      class="food-portion-picker"
+      value={selectedId ?? ''}
+      onChange={(e) => onPick((e.target as HTMLSelectElement).value)}
+    >
+      <option value="">{baseUnitLabel}</option>
+      {portions.map((p) => (
+        <option key={p.id} value={p.id}>
+          {p.label_unit}
+        </option>
+      ))}
+    </select>
   )
 }
 
 const portionToSnapshot = (p: FoodItemPortion) => ({
-  label_quantity: p.label_quantity,
   label_unit: p.label_unit,
   base_equivalent: p.base_equivalent,
 })
@@ -285,10 +275,15 @@ function FoodItemRow({
     queryKey: ['foodItem', item.food_item_id],
   })
 
-  useAutoDefaultPortion(item, detail, (p, keepCount) =>
+  useAutoDefaultPortion(item, detail, (p, count, isBackfill) => {
+    if (!p) {
+      // Base unit is the default — just prefill the quantity.
+      update({ quantity: count, _isNew: false })
+      return
+    }
     update({
       food_item_portion_id: p.id,
-      portion_count: keepCount ? (item.portion_count ?? 1) : 1,
+      portion_count: count,
       portion: portionToSnapshot(p),
       // Clear the freshness flag — once applied, the row is no longer "new
       // pending auto-default" and shouldn't re-trigger if anything else
@@ -296,14 +291,14 @@ function FoodItemRow({
       _isNew: false,
       // For existing portion-pinned rows loaded via mealItemsToEdit, `ref`
       // holds the per-entry snapshot (ref.calories = already-scaled, ref.quantity
-      // = portion_count × label_quantity), not the canonical (per default_quantity)
-      // values that scaleNutrient's portion-path formula requires. Refresh ref
-      // from the food's detail so the formula
+      // = the entered count), not the canonical (per default_quantity) values
+      // that scaleNutrient's portion-path formula requires. Refresh ref from
+      // the food's detail so the formula
       //   nutrient × count × base_equivalent / ref.quantity
       // evaluates correctly. (For freshly-picked foods, ref is already canonical
-      // from FoodItemEntity, and keepCount=false, so this branch is harmless.)
+      // from FoodItemEntity and isBackfill=false, so this branch is harmless.)
       ref:
-        keepCount && detail
+        isBackfill && detail
           ? {
               calories: detail.calories,
               carbs: detail.carbs,
@@ -313,8 +308,8 @@ function FoodItemRow({
               quantity: detail.default_quantity,
             }
           : item.ref,
-    }),
-  )
+    })
+  })
 
   const portionScale =
     item.food_item_portion_id && item.portion && typeof item.portion_count === 'number'
@@ -355,12 +350,16 @@ function FoodItemRow({
     })
 
   const handlePortionPick = (portionId: string) => {
+    // The number the user already typed should follow them across unit
+    // switches — base→portion carries `quantity`, portion→portion carries
+    // `portion_count`.
+    const carried = item.portion_count ?? item.quantity
     if (!portionId) {
       update({
         food_item_portion_id: undefined,
         portion_count: undefined,
         portion: undefined,
-        quantity: detail?.default_quantity ?? item.quantity,
+        quantity: carried ?? detail?.default_quantity,
         unit: detail?.default_unit ?? item.unit,
       })
       return
@@ -369,13 +368,12 @@ function FoodItemRow({
     if (!p) return
     update({
       food_item_portion_id: p.id,
-      portion_count:
-        item.portion_count && item.food_item_portion_id ? item.portion_count : 1,
+      portion_count: carried ?? 1,
       portion: portionToSnapshot(p),
     })
   }
 
-  const baseLabel = `${detail?.default_quantity ?? '?'} ${detail?.default_unit ?? ''}`.trim()
+  const baseUnitLabel = detail?.default_unit || 'unit'
 
   return (
     <div class="food-item-edit-row">
@@ -387,21 +385,26 @@ function FoodItemRow({
           onSelect={handleFoodPick}
           onCreate={(name) => addFoodItemApi({ name })}
         />
-        <PortionPicker
+        <QuantityInput item={item} onUpdate={update} />
+        <UnitPicker
           selectedId={item.food_item_portion_id}
           portions={detail?.portions ?? []}
-          baseLabel={baseLabel}
+          baseUnitLabel={baseUnitLabel}
           onPick={handlePortionPick}
         />
-        <QuantityInputs item={item} onUpdate={update} />
         <button type="button" class="btn-danger-small" onClick={() => onRemove(index)}>
           &times;
         </button>
       </div>
-      {hasMacros && (
+      {(hasMacros || item.food_item_id) && (
         <div class="food-row-macros-display">
           {macros.map((m) =>
             typeof m.value === 'number' ? <span key={m.field}>{MACRO_LABELS[m.field](m.value)}</span> : null,
+          )}
+          {item.food_item_id && (
+            <a class="food-row-item-link" href={`/food-items/${item.food_item_id}`}>
+              item details
+            </a>
           )}
         </div>
       )}
