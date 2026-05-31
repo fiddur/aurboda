@@ -583,10 +583,8 @@ function DefaultMetaRow({
 // Default logging amount — number + unit dropdown, same shape as the meal
 // logger's row. The dropdown lists the base unit (value "") plus every named
 // unit; picking one sets default_portion_id, the number sets
-// default_log_quantity. Changing the unit clears the quantity (null) so the
-// server resolves a sensible default for that unit (1 of a named unit, or the
-// base quantity for the base unit) rather than carrying a base-unit amount
-// into a different unit.
+// default_log_quantity. Changing the unit keeps the current amount untouched
+// (the user may have typed/altered it first) — only the unit changes.
 function DefaultLoggingAmount({
   portions,
   baseUnit,
@@ -634,7 +632,12 @@ function DefaultLoggingAmount({
       <select
         class="fi-default-unit"
         value={effectiveDefault ?? ''}
-        onChange={(e) => onCommit((e.target as HTMLSelectElement).value || null, null)}
+        onChange={(e) => {
+          // Keep the current amount — only the unit changes.
+          const t = qty.trim()
+          const n = t === '' ? null : parseFloat(t)
+          onCommit((e.target as HTMLSelectElement).value || null, n !== null && n > 0 ? n : null)
+        }}
       >
         <option value="">{baseUnit}</option>
         {portions.map((p) => (
