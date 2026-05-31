@@ -633,10 +633,20 @@ function DefaultLoggingAmount({
         class="fi-default-unit"
         value={effectiveDefault ?? ''}
         onChange={(e) => {
-          // Keep the current amount — only the unit changes.
+          // Keep the current amount — only the unit changes. Empty = an
+          // intentional clear (null → base quantity). A transient/invalid
+          // value (e.g. mid-edit "abc" or a negative) must NOT wipe a saved
+          // amount, so fall back to the last effective quantity rather than
+          // committing null.
           const t = qty.trim()
-          const n = t === '' ? null : parseFloat(t)
-          onCommit((e.target as HTMLSelectElement).value || null, n !== null && n > 0 ? n : null)
+          let quantity: number | null
+          if (t === '') {
+            quantity = null
+          } else {
+            const n = parseFloat(t)
+            quantity = n > 0 ? n : (effectiveQty ?? null)
+          }
+          onCommit((e.target as HTMLSelectElement).value || null, quantity)
         }}
       >
         <option value="">{baseUnit}</option>
