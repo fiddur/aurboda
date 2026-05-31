@@ -606,6 +606,11 @@
   width: 5rem;
 }
 
+.fi-default-amount .fi-default-unit {
+  width: auto;
+  min-width: 6rem;
+}
+
 .fi-default-amount-hint {
   font-size: 0.8rem;
   color: #6b7280;
