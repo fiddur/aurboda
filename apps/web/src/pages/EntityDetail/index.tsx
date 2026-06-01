@@ -31,7 +31,7 @@ import { ActivityChart } from './ActivityChart'
 import { ActivityMap } from './ActivityMap'
 import { type ActivityDraft, EditableActivityFields } from './EditableActivityFields'
 import { EntityActions, type EntityType } from './EntityActions'
-import { formatDateTimeLocal, formatTime } from './format-utils'
+import { formatCadence, formatDateTimeLocal, formatDistance, formatPace, formatTime } from './format-utils'
 import { LocationInfo } from './LocationInfo'
 import { forceMergedSpanForOverride, mergedEditAction } from './mergedEdit'
 import { MergePanel } from './MergePanel'
@@ -181,6 +181,53 @@ const SleepMetricsCards = ({ metrics }: { metrics: Partial<Record<SleepMetricKey
   </div>
 )
 
+type ActivityStatRow = { label: string; value: string }
+
+const buildActivityStatRows = (
+  activity: Activity,
+  totalCalories: number | undefined,
+  sleepMinutes: number | undefined,
+): ActivityStatRow[] => {
+  const rows: ActivityStatRow[] = []
+  if (activity.distance !== undefined)
+    {rows.push({ label: 'Distance', value: formatDistance(activity.distance) })}
+  const pace = formatPace(activity.avg_pace, activity.avg_speed)
+  if (pace !== undefined) rows.push({ label: 'Avg Pace', value: pace })
+  if (activity.avg_cadence !== undefined)
+    {rows.push({ label: 'Avg Cadence', value: formatCadence(activity.avg_cadence) })}
+  if (activity.avg_hr !== undefined)
+    {rows.push({ label: 'Avg HR', value: `${Math.round(activity.avg_hr)} bpm` })}
+  if (activity.max_hr !== undefined)
+    {rows.push({ label: 'Max HR', value: `${Math.round(activity.max_hr)} bpm` })}
+  if (totalCalories !== undefined) rows.push({ label: 'Active Calories', value: `${totalCalories} kcal` })
+  if (sleepMinutes !== undefined) rows.push({ label: 'Asleep', value: formatMinutesAsHM(sleepMinutes) })
+  if (activity.avg_hrv !== undefined) rows.push({ label: 'Avg HRV', value: `${activity.avg_hrv} ms` })
+  return rows
+}
+
+const ActivityStats = ({
+  activity,
+  totalCalories,
+  sleepMinutes,
+}: {
+  activity: Activity
+  totalCalories: number | undefined
+  sleepMinutes: number | undefined
+}) => {
+  const rows = buildActivityStatRows(activity, totalCalories, sleepMinutes)
+  if (rows.length === 0) return null
+  return (
+    <div class="entity-fields">
+      {rows.map((row) => (
+        <div class="field-row" key={row.label}>
+          <span class="field-label">{row.label}</span>
+          <span class="field-value">{row.value}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 // ── Unified Activity Detail ──────────────────────────────────────────────────
 
 /** Data-driven activity detail: shows features based on what data exists, not display_category. */
@@ -328,30 +375,7 @@ const ActivityDetailContent = ({
         {/* Read-only stats — shown based on data presence, not activity type */}
         {!isEditing && (
           <>
-            {totalCalories !== undefined && (
-              <div class="entity-fields">
-                <div class="field-row">
-                  <span class="field-label">Active Calories</span>
-                  <span class="field-value">{totalCalories} kcal</span>
-                </div>
-              </div>
-            )}
-            {sleepMinutes !== undefined && (
-              <div class="entity-fields">
-                <div class="field-row">
-                  <span class="field-label">Asleep</span>
-                  <span class="field-value">{formatMinutesAsHM(sleepMinutes)}</span>
-                </div>
-              </div>
-            )}
-            {activity.avg_hrv !== undefined && (
-              <div class="entity-fields">
-                <div class="field-row">
-                  <span class="field-label">Avg HRV</span>
-                  <span class="field-value">{activity.avg_hrv} ms</span>
-                </div>
-              </div>
-            )}
+            <ActivityStats activity={activity} totalCalories={totalCalories} sleepMinutes={sleepMinutes} />
             {hasHrZones && <HrZoneBar zones={hrZoneSecs!} />}
           </>
         )}
