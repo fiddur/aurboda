@@ -29,9 +29,10 @@ import { toDisplayName } from '../../utils/displayName'
 import { resolveItemIcon } from '../../utils/emojiLookup'
 import { ActivityChart } from './ActivityChart'
 import { ActivityMap } from './ActivityMap'
+import { type BuildActivityStatRowsInput, buildActivityStatRows } from './activityStats'
 import { type ActivityDraft, EditableActivityFields } from './EditableActivityFields'
 import { EntityActions, type EntityType } from './EntityActions'
-import { formatCadence, formatDateTimeLocal, formatDistance, formatPace, formatTime } from './format-utils'
+import { formatDateTimeLocal, formatTime } from './format-utils'
 import { LocationInfo } from './LocationInfo'
 import { forceMergedSpanForOverride, mergedEditAction } from './mergedEdit'
 import { MergePanel } from './MergePanel'
@@ -43,7 +44,6 @@ import { activityRouteAfterSave } from './saveNavigation'
 import { SchemaDataFields } from './SchemaDataFields'
 import {
   computeSleepMinutesFromStages,
-  formatMinutesAsHM,
   SLEEP_METRIC_LABELS,
   SLEEP_METRIC_UNITS,
   SLEEP_METRICS,
@@ -181,50 +181,19 @@ const SleepMetricsCards = ({ metrics }: { metrics: Partial<Record<SleepMetricKey
   </div>
 )
 
-type ActivityStatRow = { label: string; value: string }
-
-const buildActivityStatRows = (
-  activity: Activity,
-  totalCalories: number | undefined,
-  sleepMinutes: number | undefined,
-): ActivityStatRow[] => {
-  const rows: ActivityStatRow[] = []
-  if (activity.distance !== undefined)
-    {rows.push({ label: 'Distance', value: formatDistance(activity.distance) })}
-  const pace = formatPace(activity.avg_pace, activity.avg_speed)
-  if (pace !== undefined) rows.push({ label: 'Avg Pace', value: pace })
-  if (activity.avg_cadence !== undefined)
-    {rows.push({ label: 'Avg Cadence', value: formatCadence(activity.avg_cadence) })}
-  if (activity.avg_hr !== undefined)
-    {rows.push({ label: 'Avg HR', value: `${Math.round(activity.avg_hr)} bpm` })}
-  if (activity.max_hr !== undefined)
-    {rows.push({ label: 'Max HR', value: `${Math.round(activity.max_hr)} bpm` })}
-  if (totalCalories !== undefined) rows.push({ label: 'Active Calories', value: `${totalCalories} kcal` })
-  if (sleepMinutes !== undefined) rows.push({ label: 'Asleep', value: formatMinutesAsHM(sleepMinutes) })
-  if (activity.avg_hrv !== undefined) rows.push({ label: 'Avg HRV', value: `${activity.avg_hrv} ms` })
-  return rows
-}
-
-const ActivityStats = ({
-  activity,
-  totalCalories,
-  sleepMinutes,
-}: {
-  activity: Activity
-  totalCalories: number | undefined
-  sleepMinutes: number | undefined
-}) => {
-  const rows = buildActivityStatRows(activity, totalCalories, sleepMinutes)
-  if (rows.length === 0) return null
+const ActivityStatsTable = (props: BuildActivityStatRowsInput) => {
+  const rows = buildActivityStatRows(props)
   return (
-    <div class="entity-fields">
-      {rows.map((row) => (
-        <div class="field-row" key={row.label}>
-          <span class="field-label">{row.label}</span>
-          <span class="field-value">{row.value}</span>
-        </div>
-      ))}
-    </div>
+    <table class="activity-stats-table">
+      <tbody>
+        {rows.map((row) => (
+          <tr key={row.label}>
+            <th scope="row">{row.label}</th>
+            <td>{row.value}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   )
 }
 
@@ -351,9 +320,6 @@ const ActivityDetailContent = ({
 
         <EditableActivityFields
           title={activity.title || exerciseDisplayName || typeDisplayName}
-          displayStart={displayStart}
-          displayEnd={realEnd}
-          notes={getUserNotesContent(activity)}
           isEditing={isEditing}
           draft={draft}
           onDraftChange={onDraftChange}
@@ -375,7 +341,15 @@ const ActivityDetailContent = ({
         {/* Read-only stats — shown based on data presence, not activity type */}
         {!isEditing && (
           <>
-            <ActivityStats activity={activity} totalCalories={totalCalories} sleepMinutes={sleepMinutes} />
+            <ActivityStatsTable
+              activity={activity}
+              displayStart={displayStart}
+              displayEnd={realEnd}
+              durationLabel={hasSleepStages ? 'In Bed' : 'Duration'}
+              totalCalories={totalCalories}
+              sleepMinutes={sleepMinutes}
+              notes={getUserNotesContent(activity)}
+            />
             {hasHrZones && <HrZoneBar zones={hrZoneSecs!} />}
           </>
         )}

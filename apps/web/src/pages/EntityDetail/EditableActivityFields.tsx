@@ -4,7 +4,7 @@
  */
 import { ActivityTypePicker } from '../../components/ActivityTypePicker'
 import { IconPreview } from '../../components/IconPreview'
-import { formatDateTime, formatDuration, formatTime } from './format-utils'
+import { formatDuration } from './format-utils'
 
 export interface ActivityDraft {
   activity_type: string
@@ -17,13 +17,10 @@ export interface ActivityDraft {
 
 interface EditableActivityFieldsProps {
   title: string
-  displayStart: Date
-  displayEnd?: Date
-  notes?: string
   isEditing: boolean
   draft: ActivityDraft
   onDraftChange: (draft: ActivityDraft) => void
-  /** Label for the duration row (e.g. "In Bed" for sleep). Defaults to "Duration". */
+  /** Label for the duration row in edit mode (e.g. "In Bed" for sleep). Defaults to "Duration". */
   durationLabel?: string
   /** Icon (emoji or URL) to display next to the title. */
   icon?: string
@@ -33,9 +30,6 @@ interface EditableActivityFieldsProps {
 
 export const EditableActivityFields = ({
   title,
-  displayStart,
-  displayEnd,
-  notes,
   isEditing,
   draft,
   onDraftChange,
@@ -152,35 +146,12 @@ export const EditableActivityFields = ({
     title
   )
 
+  // Read-only mode: render only the title. Parent renders the unified stats
+  // table (Time, Duration, Distance, etc.) and any Notes block.
   return (
-    <>
-      <h2 class="entity-title-with-icon">
-        {icon && <IconPreview icon={icon} size={28} />}
-        {titleContent}
-      </h2>
-
-      <div class="entity-fields">
-        <div class="field-row">
-          <span class="field-label">Time</span>
-          <span class="field-value">
-            {displayEnd
-              ? `${formatDateTime(displayStart)} – ${formatTime(displayEnd)}`
-              : formatDateTime(displayStart)}
-          </span>
-        </div>
-        {displayEnd && (
-          <div class="field-row">
-            <span class="field-label">{durationLabel}</span>
-            <span class="field-value">{formatDuration(displayStart, displayEnd)}</span>
-          </div>
-        )}
-        {notes && (
-          <div class="field-row">
-            <span class="field-label">Notes</span>
-            <span class="field-value">{notes}</span>
-          </div>
-        )}
-      </div>
-    </>
+    <h2 class="entity-title-with-icon">
+      {icon && <IconPreview icon={icon} size={28} />}
+      {titleContent}
+    </h2>
   )
 }
