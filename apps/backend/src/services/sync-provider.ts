@@ -5,10 +5,11 @@
  * functions to enable automatic data refresh before queries.
  */
 
-import { isBefore, subMinutes } from 'date-fns'
+import { isBefore, subDays, subMinutes } from 'date-fns'
 
 import type { GarminClient } from '../integrations/garmin/client.ts'
 import type { ouraClient } from '../integrations/oura/client.ts'
+import type { ActivityNotifier } from './deduction-queue.ts'
 import type { SyncProvider } from './queries/index.ts'
 
 import { getSyncState } from '../db/index.ts'
@@ -19,7 +20,7 @@ import {
   syncGarminDataType,
 } from '../integrations/garmin/sync.ts'
 import { syncAllCalendars } from '../integrations/ical/sync.ts'
-import { syncLastFmData } from '../integrations/lastfm/sync.ts'
+import { DEFAULT_SYNC_HISTORY_DAYS, syncLastFmData } from '../integrations/lastfm/sync.ts'
 import {
   isRateLimited as isOuraRateLimited,
   type OuraDataType,
@@ -45,6 +46,13 @@ export interface SyncProviderConfig {
   getLastFmApiKey?: () => Promise<string | null>
   /** Oura API client (optional - if not provided, Oura sync is disabled) */
   oura?: OuraClientType
+  /**
+   * Fired after a successful auto-sync that ingested new data, so deduction
+   * rules run over the freshly-synced window. Wired to the same
+   * ActivityNotifier the REST `/sync` routes use; when omitted (e.g. in tests),
+   * auto-sync still works but does not trigger deduction evaluation.
+   */
+  onActivitySynced?: ActivityNotifier
   /** Sync threshold in minutes (default: 30) */
   syncThresholdMinutes?: number
 }
@@ -122,13 +130,21 @@ export function createSyncProvider(config: SyncProviderConfig): SyncProvider {
         if (!apiKey) return
 
         const syncState = await getSyncState(user, 'lastfm', 'scrobbles')
-        const thresholdTime = subMinutes(new Date(), threshold)
+        const now = new Date()
+        const thresholdTime = subMinutes(now, threshold)
         if (syncState?.last_sync_time && isBefore(thresholdTime, syncState.last_sync_time)) {
           return
         }
 
         auditInfo(user, 'sync', 'Auto-syncing Last.fm scrobbles')
-        await syncLastFmData(user, apiKey, settings.lastfm_username)
+        // The sync fetches scrobbles from last_sync_time (or 30 days back on the
+        // first sync) up to now. Remember that window so deduction rules — e.g.
+        // scrobble-based auto-tagging — run over exactly the newly-ingested data.
+        const windowStart = syncState?.last_sync_time ?? subDays(now, DEFAULT_SYNC_HISTORY_DAYS)
+        const result = await syncLastFmData(user, apiKey, settings.lastfm_username)
+        if (result.status === 'success' && result.scrobbles_processed > 0) {
+          config.onActivitySynced?.(user, '*', windowStart, now)
+        }
       } catch (error) {
         auditError(user, 'sync', 'Failed to auto-sync Last.fm', { error: String(error) })
       }

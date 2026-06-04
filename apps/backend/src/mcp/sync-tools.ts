@@ -12,10 +12,12 @@ import {
   syncStravaBodySchema,
   tzSchema,
 } from '@aurboda/api-spec'
+import { subDays } from 'date-fns'
 import { z } from 'zod'
 
 import type { GarminClient } from '../integrations/garmin/client.ts'
 import type { ouraClient } from '../integrations/oura/client.ts'
+import type { ActivityNotifier } from '../services/deduction-queue.ts'
 import type { StravaQueue } from '../services/strava-queue.ts'
 
 import {
@@ -29,7 +31,7 @@ import {
 } from '../db/index.ts'
 import { type GarminDataType, syncAllGarminData } from '../integrations/garmin/sync.ts'
 import { syncAllCalendars } from '../integrations/ical/sync.ts'
-import { syncLastFmData } from '../integrations/lastfm/sync.ts'
+import { DEFAULT_SYNC_HISTORY_DAYS, syncLastFmData } from '../integrations/lastfm/sync.ts'
 import { syncAllOuraData } from '../integrations/oura/sync.ts'
 import { syncRescueTimeData } from '../integrations/rescuetime/sync.ts'
 import { syncStrava } from '../integrations/strava/sync.ts'
@@ -46,6 +48,7 @@ export const registerSyncTools = (
   oura?: OuraClient,
   garmin?: GarminClient,
   stravaQueue?: StravaQueue,
+  notifier?: ActivityNotifier,
 ) => {
   // Tool: sync_oura
   server.tool(
@@ -197,6 +200,18 @@ export const registerSyncTools = (
           fullResync: full_resync,
           startDate: start_date ? new Date(start_date) : undefined,
         })
+
+        // Run deduction rules (e.g. scrobble-based auto-tagging) over the synced
+        // window, matching the REST /sync/lastfm route.
+        if (result.status === 'success' && result.scrobbles_processed > 0) {
+          const now = new Date()
+          notifier?.(
+            user,
+            '*',
+            start_date ? new Date(start_date) : subDays(now, DEFAULT_SYNC_HISTORY_DAYS),
+            now,
+          )
+        }
 
         return jsonResponse({
           error: result.error,

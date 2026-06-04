@@ -186,16 +186,8 @@ const main = async () => {
       centralDb.upsertStravaAthleteMapping(stravaAthleteId, username),
   })
 
-  // Create sync provider for auto-syncing data before queries
-  const syncProvider = createSyncProvider({
-    garmin,
-    getLastFmApiKey: () => centralDb.getLastFmApiKey(),
-    oura,
-  })
-
-  // Initialize shared pg-boss instance and job queues (before MCP mount)
-  const boss = await createPgBoss()
-
+  // Deduction queue is assigned once pg-boss is up (below). The notifier closes
+  // over the variable, so it starts enqueuing as soon as the queue exists.
   let deductionQueue: DeductionQueue | null = null
   const activityNotifier: ActivityNotifier = (user, activityType, start, end, sourceRuleId) => {
     deductionQueue?.enqueueEvaluation({
@@ -206,6 +198,20 @@ const main = async () => {
       window_start: start.toISOString(),
     })
   }
+
+  // Create sync provider for auto-syncing data before queries. onActivitySynced
+  // lets background scrobble syncs trigger deduction rules (e.g. auto-tagging),
+  // matching what the REST /sync routes already do.
+  const syncProvider = createSyncProvider({
+    garmin,
+    getLastFmApiKey: () => centralDb.getLastFmApiKey(),
+    oura,
+    onActivitySynced: activityNotifier,
+  })
+
+  // Initialize shared pg-boss instance and job queues (before MCP mount)
+  const boss = await createPgBoss()
+
   const engineDeps = createDefaultEngineDeps(activityNotifier)
 
   if (boss) {

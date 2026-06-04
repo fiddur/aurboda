@@ -71,7 +71,7 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
   registerActivityTools(server, user, deps.onActivityMutated)
   registerActivityTypeTools(server, user)
   registerDeductionRuleTools(server, user, engineDeps, deps.deductionQueue)
-  registerSyncTools(server, user, deps.oura, deps.garmin, deps.stravaQueue)
+  registerSyncTools(server, user, deps.oura, deps.garmin, deps.stravaQueue, deps.onActivityMutated)
   registerSettingsTools(server, user)
   registerLocationTools(server, user)
   registerCorrelationTools(server, user, deps.sync)

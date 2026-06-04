@@ -19,7 +19,7 @@ import { getSyncState, insertActivities, insertRawRecord, upsertSyncState } from
 import { lastfmClient } from './client.ts'
 
 /** Default start date for historical sync (30 days back) */
-const DEFAULT_SYNC_HISTORY_DAYS = 30
+export const DEFAULT_SYNC_HISTORY_DAYS = 30
 
 /** Result of a sync operation */
 export interface LastFmSyncResult {
