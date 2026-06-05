@@ -93,6 +93,8 @@ Returns track name, artist, album, and timestamp for each scrobble in the time r
 
 Last.fm scrobbles are automatically synced when querying tags or the daily summary, if the last sync was more than 30 minutes ago. This ensures scrobble data stays current without manual intervention.
 
+Every sync path — automatic background sync, the `POST /api/sync/lastfm` REST route, and the `sync_lastfm` MCP tool — triggers evaluation of [deduction rules](features/deduction-rules.md) with `scrobble` conditions over the just-synced window. This means scrobble-based rules (e.g. a "Vocal Training" rule that matches vocal-exercise tracks) are applied automatically, without a separate manual step.
+
 ### Manual Sync
 
 - **REST:** `POST /api/sync/lastfm`
@@ -106,8 +108,7 @@ Options:
 ### Sync Process
 
 1. Fetch recent scrobbles from Last.fm API (paginated, 200 per page)
-2. Store each scrobble as a raw record
-3. Apply auto-tagging rules to each scrobble
-4. Create tags (or extend existing span tags) for matching rules
+2. Store each scrobble as a raw record and as a `music_scrobble` activity
+3. Evaluate [deduction rules](features/deduction-rules.md) with `scrobble` conditions over the synced window, creating or enriching activities from matching scrobbles
 
 Currently-playing tracks are skipped (no timestamp yet).
