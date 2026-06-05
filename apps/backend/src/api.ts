@@ -201,7 +201,7 @@ const main = async () => {
 
   // Create sync provider for auto-syncing data before queries. onActivitySynced
   // lets background scrobble syncs trigger deduction rules (e.g. auto-tagging),
-  // matching what the REST /sync routes already do.
+  // like the REST /sync routes — here fired only when a sync ingests new data.
   const syncProvider = createSyncProvider({
     garmin,
     getLastFmApiKey: () => centralDb.getLastFmApiKey(),

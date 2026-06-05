@@ -201,8 +201,9 @@ export const registerSyncTools = (
           startDate: start_date ? new Date(start_date) : undefined,
         })
 
-        // Run deduction rules (e.g. scrobble-based auto-tagging) over the synced
-        // window, matching the REST /sync/lastfm route.
+        // Trigger deduction rules (e.g. scrobble-based auto-tagging) over the
+        // synced window, like the REST /sync/lastfm route does — but only when
+        // the sync actually ingested new scrobbles.
         if (result.status === 'success' && result.scrobbles_processed > 0) {
           const now = new Date()
           notifier?.(
