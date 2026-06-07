@@ -24,15 +24,20 @@ const MEAL_MACRO_FIELDS = ['calories', 'protein', 'carbs', 'fat', 'fiber'] as co
 export const aggregateDayNutrients = (meals: Meal[]): Record<string, number> => {
   const totals: Record<string, number> = {}
   for (const meal of meals) {
-    if (!meal.nutrients) continue
-    for (const [key, val] of Object.entries(meal.nutrients)) {
-      if (typeof val === 'number' && val > 0) totals[key] = (totals[key] ?? 0) + val
+    const { nutrients } = meal
+    if (nutrients) {
+      for (const [key, val] of Object.entries(nutrients)) {
+        if (typeof val === 'number' && val > 0) totals[key] = (totals[key] ?? 0) + val
+      }
     }
-    // Swap in the meal-level macro where it differs from the aggregate.
+    // Swap in the meal-level macro where it differs from the aggregate — or
+    // add it outright when the meal has no `nutrients` object at all (a
+    // manually logged meal with no itemized food items still shows its
+    // calories on the card, so it must count toward the day total too).
     for (const key of MEAL_MACRO_FIELDS) {
       const mealVal = meal[key]
       if (typeof mealVal !== 'number') continue
-      const nutrientVal = meal.nutrients[key]
+      const nutrientVal = nutrients?.[key]
       if (mealVal === nutrientVal) continue
       totals[key] = (totals[key] ?? 0) - (typeof nutrientVal === 'number' ? nutrientVal : 0) + mealVal
     }

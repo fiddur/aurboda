@@ -62,8 +62,16 @@ describe('aggregateDayNutrients', () => {
     expect(aggregateDayNutrients(meals).calories).toBe(122.82)
   })
 
-  test('skips meals without nutrients', () => {
+  test('includes meals with a meal-level macro but no nutrients object', () => {
+    // A manually logged meal with no itemized food items has no `nutrients`
+    // (the backend only attaches it when junction links exist), but its
+    // calories show on the card and must count toward the day total.
     const meals = [makeMeal({ calories: 100 }), makeMeal({ calories: 50, nutrients: { calories: 50 } })]
+    expect(aggregateDayNutrients(meals).calories).toBe(150)
+  })
+
+  test('contributes nothing for a meal with neither nutrients nor meal-level macros', () => {
+    const meals = [makeMeal({}), makeMeal({ calories: 50, nutrients: { calories: 50 } })]
     expect(aggregateDayNutrients(meals).calories).toBe(50)
   })
 
