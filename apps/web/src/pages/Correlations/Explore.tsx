@@ -38,6 +38,23 @@ const runToken = signal(0)
 
 const NUTRIENTS: NutrientKey[] = ['calories', 'protein', 'carbs', 'fat', 'fiber']
 
+// Trigger kinds allowed per mode (event mode has no metric trigger).
+const EVENT_TRIGGER_KINDS: CorrelationSelector['kind'][] = [
+  'tag',
+  'activity',
+  'nutrition',
+  'productivity_category',
+  'productivity_app',
+]
+
+/** Switch mode, clamping the trigger to a kind valid in the new mode. */
+const setMode = (next: Mode) => {
+  mode.value = next
+  if (next === 'event' && !EVENT_TRIGGER_KINDS.includes(triggerSelector.value.kind)) {
+    triggerSelector.value = { kind: 'tag', pattern: '' }
+  }
+}
+
 const parseLagWindows = (raw: string): string[] =>
   raw
     .split(',')
@@ -318,12 +335,12 @@ export function ExploreTab() {
         <div class="explore-row">
           <label>Mode</label>
           <div class="explore-toggle">
-            <button class={mode.value === 'event' ? 'active' : ''} onClick={() => (mode.value = 'event')}>
+            <button class={mode.value === 'event' ? 'active' : ''} onClick={() => setMode('event')}>
               Event onset
             </button>
             <button
               class={mode.value === 'continuous' ? 'active' : ''}
-              onClick={() => (mode.value = 'continuous')}
+              onClick={() => setMode('continuous')}
             >
               Continuous
             </button>

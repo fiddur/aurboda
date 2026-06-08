@@ -106,4 +106,3 @@ Spearman coefficients plus the aligned series for plotting.
 
 Analysis is day-level with linear exposure sweeps, so multi-year regimes
 (2000+ days) run without timing out.
-```
