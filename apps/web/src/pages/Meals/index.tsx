@@ -24,6 +24,7 @@ import {
 } from '../../state/api'
 import { auth } from '../../state/auth'
 import { isEmoji, isIconPath, isUrl } from '../../utils/emojiLookup'
+import { aggregateDayNutrients } from './dayNutrients'
 import { MealsOverview } from './MealsOverview'
 import './style.css'
 
@@ -625,19 +626,6 @@ const NUTRIENT_CATEGORIES = [
   { key: 'mineral', label: 'Minerals' },
   { key: 'amino_acid', label: 'Amino Acids' },
 ] as const
-
-/** Aggregate nutrients from all meals for the day. */
-const aggregateDayNutrients = (meals: Meal[]): Record<string, number> => {
-  const totals: Record<string, number> = {}
-  for (const meal of meals) {
-    if (!meal.nutrients) continue
-    for (const [key, val] of Object.entries(meal.nutrients)) {
-      if (typeof val === 'number' && val > 0) totals[key] = (totals[key] ?? 0) + val
-    }
-  }
-  for (const key of Object.keys(totals)) totals[key] = Math.round(totals[key] * 100) / 100
-  return totals
-}
 
 function DayNutrientSummary({ meals }: { meals: Meal[] }) {
   const nutrients = aggregateDayNutrients(meals)
