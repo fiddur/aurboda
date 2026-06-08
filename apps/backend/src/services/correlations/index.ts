@@ -11,6 +11,17 @@ export { getBaseline } from './baseline.ts'
 export { getEventProbability } from './event-probability.ts'
 export { getGenericCorrelation } from './generic.ts'
 export { getHrvActivitiesCorrelation } from './hrv-activities.ts'
+export {
+  type ContinuousCorrelation,
+  type ContinuousParams,
+  type EventOutcomeCorrelation,
+  type EventOutcomeParams,
+  getContinuousCorrelation,
+  getEventOutcomeCorrelation,
+} from './explore.ts'
+export { computeEventOutcome, type EventOutcomeResult, type LagExposureResult } from './event-outcome.ts'
+export { computeContinuous, type ContinuousResult } from './continuous.ts'
+export { resolveSelector, type Selector, type ThresholdSpec } from './selectors.ts'
 export type {
   ActivityCorrelation,
   ActivityImpactResult,
