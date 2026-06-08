@@ -29,7 +29,8 @@ const eventOutcomeValue = signal('')
 const lagWindowsInput = signal('24h,48h,7d')
 const lagDaysInput = signal(0)
 const collapseGapDays = signal(3)
-const denominator = signal<'known' | 'all'>('known')
+// Defaults to 'all' since the default outcome source is a (presence-only) metric.
+const denominator = signal<'known' | 'all'>('all')
 const periodStart = signal('')
 const periodEnd = signal('')
 const periodDays = signal(365)
@@ -53,6 +54,17 @@ const setMode = (next: Mode) => {
   if (next === 'event' && !EVENT_TRIGGER_KINDS.includes(triggerSelector.value.kind)) {
     triggerSelector.value = { kind: 'tag', pattern: '' }
   }
+}
+
+/**
+ * Switch the event-outcome source, picking a sensible denominator default:
+ * presence-only metrics (rows only on "bad" days) need the whole-regime
+ * denominator, otherwise the known-day set collapses to the onsets themselves
+ * and the base-rate comparison is meaningless. Tags are fully known, so 'known'.
+ */
+const setEventOutcomeSource = (next: 'metric' | 'tag') => {
+  eventOutcomeSource.value = next
+  denominator.value = next === 'metric' ? 'all' : 'known'
 }
 
 const parseLagWindows = (raw: string): string[] =>
@@ -368,7 +380,7 @@ export function ExploreTab() {
               <select
                 value={eventOutcomeSource.value}
                 onChange={(e) =>
-                  (eventOutcomeSource.value = (e.target as HTMLSelectElement).value as 'metric' | 'tag')
+                  setEventOutcomeSource((e.target as HTMLSelectElement).value as 'metric' | 'tag')
                 }
               >
                 <option value="metric">metric</option>
@@ -432,6 +444,10 @@ export function ExploreTab() {
                   All days
                 </button>
               </div>
+              <span class="regime-hint">
+                Use <strong>All days</strong> for presence-only metrics (e.g. back_pain) that only log on
+                bad days; <strong>Known days</strong> for metrics that log explicit zeros.
+              </span>
             </div>
           </>
         ) : (
