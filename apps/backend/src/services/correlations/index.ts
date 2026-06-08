@@ -14,10 +14,8 @@ export { getHrvActivitiesCorrelation } from './hrv-activities.ts'
 export {
   type ContinuousCorrelation,
   type ContinuousParams,
-  type EventOutcomeCorrelation,
-  type EventOutcomeParams,
+  getCompoundEventOutcome,
   getContinuousCorrelation,
-  getEventOutcomeCorrelation,
 } from './explore.ts'
 export { computeEventOutcome, type EventOutcomeResult, type LagExposureResult } from './event-outcome.ts'
 export { computeContinuous, type ContinuousResult } from './continuous.ts'

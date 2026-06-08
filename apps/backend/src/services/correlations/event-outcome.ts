@@ -139,7 +139,10 @@ const countInRange = (sorted: number[], lo: number, hi: number): number => {
 export interface TriggerConditionDays {
   /** Event days (YYYY-MM-DD) for this condition. */
   eventDays: string[]
-  /** Minimum occurrences within the window (default 1). */
+  /**
+   * Minimum number of distinct event days required in the window (default 1).
+   * Day-granular: this counts event days, not raw same-day occurrences.
+   */
   minCount: number
   /** Rolling window in days (default 1). */
   windowDays: number
@@ -147,8 +150,8 @@ export interface TriggerConditionDays {
 
 /**
  * Days where ALL trigger conditions are satisfied. A condition is satisfied on
- * day D when at least `minCount` of its event days fall in [D-windowDays+1, D].
- * Returns the qualifying days as YYYY-MM-DD strings.
+ * day D when at least `minCount` of its event days fall in [D-windowDays+1, D]
+ * (counting distinct days, not occurrences). Returns qualifying YYYY-MM-DD days.
  */
 export const compoundTriggerDays = (
   conditions: TriggerConditionDays[],

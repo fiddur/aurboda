@@ -181,7 +181,10 @@ export interface TriggerCondition {
   nutrient?: NutrientKey
   /** Threshold turning a daily value into a trigger (default: value > 0). */
   threshold?: ThresholdSpec
-  /** Minimum count within the window (default: 1) */
+  /**
+   * Minimum count within the window (default: 1). In event-outcome mode this is
+   * day-granular: it counts distinct days with the event, not raw occurrences.
+   */
   min_count?: number
   /** Rolling window in days for counting (default: 1) */
   window_days?: number

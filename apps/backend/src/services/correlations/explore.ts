@@ -6,7 +6,6 @@
 
 import type { SyncProvider } from '../queries/index.ts'
 import type { ContinuousResult } from './continuous.ts'
-import type { EventOutcomeResult } from './event-outcome.ts'
 import type { Selector } from './selectors.ts'
 import type { EventOutcomeConfig, EventOutcomeBlock, TriggerCondition } from './types.ts'
 
@@ -14,27 +13,21 @@ import { computeContinuous } from './continuous.ts'
 import { compoundTriggerDays, computeEventOutcome } from './event-outcome.ts'
 import { resolveSelector } from './selectors.ts'
 
-/** Resolve the analysis window from an explicit regime or a trailing N days. */
+/**
+ * Resolve the analysis window from an explicit regime or a trailing N days.
+ * All boundaries are UTC so they align with the engine's UTC day-bucketing
+ * regardless of the server timezone.
+ */
 const resolveWindow = (params: {
   periodStart?: string
   periodEnd?: string
   periodDays?: number
 }): { start: Date; end: Date } => {
-  const end = params.periodEnd
-    ? new Date(`${params.periodEnd}T23:59:59.999Z`)
-    : (() => {
-        const d = new Date()
-        d.setHours(23, 59, 59, 999)
-        return d
-      })()
+  const endDay = params.periodEnd ?? new Date().toISOString().split('T')[0]
+  const end = new Date(`${endDay}T23:59:59.999Z`)
   const start = params.periodStart
     ? new Date(`${params.periodStart}T00:00:00.000Z`)
-    : (() => {
-        const d = new Date(end)
-        d.setDate(d.getDate() - (params.periodDays ?? 90))
-        d.setHours(0, 0, 0, 0)
-        return d
-      })()
+    : new Date(Date.parse(`${endDay}T00:00:00.000Z`) - (params.periodDays ?? 90) * MS_PER_DAY)
   return { start, end }
 }
 
@@ -44,72 +37,6 @@ const triggerSyncs = (sync: SyncProvider, user: string): Promise<unknown>[] => [
   sync.syncRescueTimeIfNeeded(user),
   sync.syncCalendarsIfNeeded(user),
 ]
-
-export interface EventOutcomeParams {
-  trigger: Selector
-  outcome: Selector
-  lagWindows?: string[]
-  periodStart?: string
-  periodEnd?: string
-  periodDays?: number
-  /** Consecutive outcome days within this gap collapse into one onset (default 3). */
-  collapseGapDays?: number
-  /** Denominator universe: known-status days only, or every day in range. */
-  denominator?: 'known' | 'all'
-}
-
-export interface EventOutcomeCorrelation extends EventOutcomeResult {
-  trigger: Selector
-  outcome: Selector
-  period: { start: string; end: string; days: number }
-  collapse_gap_days: number
-  denominator: 'known' | 'all'
-}
-
-/**
- * Event-outcome correlation with onset-collapsing and exposure correction
- * (issue #792). The trigger selector supplies event days; the outcome selector
- * supplies outcome days and the known-day denominator.
- */
-export const getEventOutcomeCorrelation = async (
-  user: string,
-  params: EventOutcomeParams,
-  sync?: SyncProvider,
-): Promise<EventOutcomeCorrelation> => {
-  if (sync) await Promise.all(triggerSyncs(sync, user))
-
-  const { start, end } = resolveWindow(params)
-  const lagWindows = params.lagWindows ?? ['24h', '48h', '7d']
-  const collapseGapDays = params.collapseGapDays ?? 3
-  const denominator = params.denominator ?? 'known'
-
-  const [triggerSeries, outcomeSeries] = await Promise.all([
-    resolveSelector(user, params.trigger, start, end),
-    resolveSelector(user, params.outcome, start, end),
-  ])
-
-  // With the 'all' denominator, every day in the window is a candidate (used
-  // when the outcome is reliably logged across the whole period).
-  const knownDays = denominator === 'all' ? enumerateDays(start, end) : outcomeSeries.knownDays
-
-  const result = computeEventOutcome({
-    triggerDays: triggerSeries.eventDays,
-    outcomeDays: outcomeSeries.eventDays,
-    knownDays,
-    lagWindows,
-    collapseGapDays,
-  })
-
-  const days = Math.round((end.getTime() - start.getTime()) / 86_400_000)
-  return {
-    ...result,
-    trigger: params.trigger,
-    outcome: params.outcome,
-    period: { start: start.toISOString(), end: end.toISOString(), days },
-    collapse_gap_days: collapseGapDays,
-    denominator,
-  }
-}
 
 export interface ContinuousParams {
   trigger: Selector

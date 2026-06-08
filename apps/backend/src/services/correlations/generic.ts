@@ -74,6 +74,12 @@ export async function getGenericCorrelation(
     return getGenericEventOutcome(user, triggers, outcome, lagWindows, periodDays, sync, options)
   }
 
+  // Nutrition triggers are only resolvable through the event-outcome path; the
+  // averaging path below has no nutrition case and would silently match nothing.
+  if (triggers.some((t) => t.type === 'nutrition')) {
+    throw new Error('Nutrition triggers are only supported with an "event" outcome')
+  }
+
   const end = new Date()
   end.setHours(23, 59, 59, 999)
   const start = new Date()

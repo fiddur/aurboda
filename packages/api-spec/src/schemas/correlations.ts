@@ -375,7 +375,8 @@ export type TriggerConditionType = z.infer<typeof triggerConditionTypeSchema>
 export const triggerConditionSchema = z
   .object({
     min_count: z.number().int().optional().meta({
-      description: 'Minimum occurrences within the window (default: 1)',
+      description:
+        'Minimum occurrences within the window (default: 1). In event-outcome mode (day-granular) this counts distinct days with the event, not raw occurrences.',
       example: 3,
     }),
     nutrient: nutrientKeySchema
