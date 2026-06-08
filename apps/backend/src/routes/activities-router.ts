@@ -50,6 +50,7 @@ import {
 import {
   computeActivityDetailMetrics,
   getActivityFullDetail,
+  getCommentsMap,
   parseActivityId,
   parseMetricsParam,
   queryActivities,
@@ -111,9 +112,21 @@ const buildMergedResponse = async (
     })
   }
 
+  // Collect user notes/comments across every merged source (deduped by id) so
+  // the detail page's Notes row reflects the real note (#794).
+  const commentLookupIds = overlapping.map((a) => a.id).filter((id): id is string => Boolean(id))
+  const commentsMap = await getCommentsMap(user, 'activity', commentLookupIds)
+  type CommentEntry = NonNullable<ReturnType<typeof commentsMap.get>>[number]
+  const seenComments = new Map<string, CommentEntry>()
+  for (const id of commentLookupIds) {
+    for (const c of commentsMap.get(id) ?? []) seenComments.set(c.id, c)
+  }
+  const comments = [...seenComments.values()]
+
   return {
     ...metrics,
     activity_type: activity.activity_type,
+    comments,
     data: Object.keys(mergedData).length > 0 ? mergedData : activity.data,
     end_time: activity.end_time?.toISOString(),
     id: activity.id,
@@ -468,11 +481,16 @@ export const createActivitiesRouter = (
       }
     }
 
+    // Attach user notes/comments so the detail page's Notes row and edit-mode
+    // notes textarea reflect the real note (#794).
+    const commentsMap = await getCommentsMap(user, 'activity', [realId])
+
     // Plain UUID: return raw single activity (no overlap lookup)
     res.json({
       data: {
         ...activityMetrics,
         activity_type: activity.activity_type,
+        comments: commentsMap.get(realId) ?? [],
         data: activity.data,
         deleted_at: activity.deleted_at?.toISOString(),
         end_time: activity.end_time?.toISOString(),

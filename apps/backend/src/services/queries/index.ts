@@ -13,6 +13,7 @@ export {
   type CategoryInfo,
   type CommentSummary,
   type DailySummaryResult,
+  getCommentsMap,
   type HeartRateStats,
   type MealSummary,
   type MetricBucket,
