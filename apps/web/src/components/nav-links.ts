@@ -7,6 +7,7 @@ export const NAV_LINKS = [
   { href: '/reports', label: 'Reports', icon: '📝' },
   { href: '/add', label: '+ Add', icon: '➕' },
   { href: '/chart', label: 'Chart', icon: '📈' },
+  { href: '/correlations', label: 'Analyze', icon: '🔬' },
   { href: '/places', label: 'Places', icon: '📍' },
   { href: '/activity-types', label: 'Types', icon: '🏷' },
   { href: '/deduction-rules', label: 'Rules', icon: '🔗' },
