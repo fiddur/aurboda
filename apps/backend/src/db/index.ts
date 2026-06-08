@@ -292,9 +292,11 @@ export {
 
 // Meals
 export {
+  type DailyNutrientTotal,
   deleteMeal,
   type FrequentFoodItemRow,
   type FrequentMealRow,
+  getDailyNutrientTotals,
   getFrequentFoodItems,
   getFrequentMeals,
   getMealById,
@@ -302,6 +304,8 @@ export {
   getMealLogCompletedInRange,
   getMeals,
   insertMeal,
+  type NutrientKey,
+  NUTRIENT_KEYS,
   upsertMeal,
   setMealLogCompleted,
   unsetMealLogCompleted,
