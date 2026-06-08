@@ -18,7 +18,7 @@ import {
   SUMMARY_METRICS,
   type SummaryMetricSeries,
 } from './activity-summary-metrics.ts'
-import { buildCategoryMap, getCommentsMap } from './types.ts'
+import { buildCategoryMap, dedupeCommentsForIds, getCommentsMap } from './types.ts'
 
 type TimeSeriesPoint = [Date, number]
 
@@ -85,13 +85,9 @@ function enrichActivity(
   // For merged rows, collect comments anchored to the winner and to any
   // sibling source row that was folded in, deduping by note id.
   const commentLookupIds = a.id ? [a.id, ...(a.source_ids ?? [])] : []
-  const seen = new Map<string, CommentSummary>()
-  for (const lid of commentLookupIds) {
-    for (const c of ctx.commentsMap.get(lid) ?? []) seen.set(c.id, c)
-  }
   const result: ActivityResult = {
     activity_type: a.activity_type,
-    comments: [...seen.values()],
+    comments: dedupeCommentsForIds(ctx.commentsMap, commentLookupIds),
     data: a.data,
     duration: a.end_time
       ? Math.round((a.end_time.getTime() - a.start_time.getTime()) / 1000 / 60)
