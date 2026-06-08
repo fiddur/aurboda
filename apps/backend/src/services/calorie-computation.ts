@@ -271,10 +271,13 @@ export const computeAndStoreCalories = async (
   // 3. Weight + height for BMR fallback
   const weight = await getLatestMetricValue(user, 'weight', expandedEnd)
   if (weight === null) return skippedResult('no weight data')
-  const height = await getLatestMetricValue(user, 'height', expandedEnd, 3650)
+  // The `height` metric is stored in metres (canonical unit 'm'); Mifflin-St Jeor
+  // needs centimetres, so convert before passing it in.
+  const heightMeters = await getLatestMetricValue(user, 'height', expandedEnd, 3650)
+  const heightCm = heightMeters !== null ? heightMeters * 100 : null
 
   // 4. BMR (lab metric → Mifflin-St Jeor fallback)
-  const bmr = await resolveBmr(user, expandedEnd, { age, height_cm: height, sex, weight_kg: weight })
+  const bmr = await resolveBmr(user, expandedEnd, { age, height_cm: heightCm, sex, weight_kg: weight })
   if (bmr === null) return skippedResult('no BMR and no height for fallback')
   const bmrPerMin = bmr.value / 1440
 
