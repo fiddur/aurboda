@@ -6,6 +6,7 @@ import format from 'pg-format'
 import type { RawRecord } from './types.ts'
 
 import { query } from './connection.ts'
+import { dedupeLastWins } from './dedupe.ts'
 
 export const insertRawRecord = async (user: string, record: RawRecord) => {
   await query(
@@ -22,7 +23,15 @@ export const insertRawRecord = async (user: string, record: RawRecord) => {
 export const insertRawRecords = async (user: string, records: RawRecord[]) => {
   if (records.length === 0) return
 
-  const values = records.map((r) => [r.source, r.record_type, r.external_id, r.recorded_at, r.data])
+  // Collapse duplicate (source, record_type, external_id) within the batch so the
+  // upsert never tries to touch the same row twice (21000). Rows with a NULL
+  // external_id are distinct in the unique index, so they never collide — keep
+  // them all. Mirrors the dedupe insertActivities does (#770).
+  const deduped = dedupeLastWins(records, (r) =>
+    r.external_id == null ? null : `${r.source}|${r.record_type}|${r.external_id}`,
+  )
+
+  const values = deduped.map((r) => [r.source, r.record_type, r.external_id, r.recorded_at, r.data])
 
   await query(
     user,
