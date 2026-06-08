@@ -13,6 +13,7 @@ export {
   type CategoryInfo,
   type CommentSummary,
   type DailySummaryResult,
+  dedupeCommentsForIds,
   getCommentsMap,
   type HeartRateStats,
   type MealSummary,

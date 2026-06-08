@@ -13,6 +13,7 @@ vi.mock('../db/index.ts', () => ({
 
 vi.mock('../services/queries/index.ts', () => ({
   computeActivityDetailMetrics: vi.fn().mockResolvedValue({}),
+  dedupeCommentsForIds: vi.fn(),
   getActivityFullDetail: vi.fn(),
   getCommentsMap: vi.fn(),
   parseActivityId: vi.fn(),

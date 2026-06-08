@@ -53,6 +53,24 @@ export const getCommentsMap = async (
   return result
 }
 
+/**
+ * Collect comments for the given entity ids, deduped by note id. Merged
+ * activities anchor the same note to multiple source rows, so the winner plus
+ * its siblings can surface duplicates — this keeps one entry per note. Shared by
+ * the activity list path and the merged activity-detail response so they can't
+ * drift.
+ */
+export const dedupeCommentsForIds = (
+  commentsMap: Map<string, CommentSummary[]>,
+  ids: string[],
+): CommentSummary[] => {
+  const seen = new Map<string, CommentSummary>()
+  for (const id of ids) {
+    for (const c of commentsMap.get(id) ?? []) seen.set(c.id, c)
+  }
+  return [...seen.values()]
+}
+
 // ============================================================================
 // Types
 // ============================================================================

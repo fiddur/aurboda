@@ -49,6 +49,7 @@ import {
 } from '../services/mutations.ts'
 import {
   computeActivityDetailMetrics,
+  dedupeCommentsForIds,
   getActivityFullDetail,
   getCommentsMap,
   parseActivityId,
@@ -116,12 +117,7 @@ const buildMergedResponse = async (
   // the detail page's Notes row reflects the real note (#794).
   const commentLookupIds = overlapping.map((a) => a.id).filter((id): id is string => Boolean(id))
   const commentsMap = await getCommentsMap(user, 'activity', commentLookupIds)
-  type CommentEntry = NonNullable<ReturnType<typeof commentsMap.get>>[number]
-  const seenComments = new Map<string, CommentEntry>()
-  for (const id of commentLookupIds) {
-    for (const c of commentsMap.get(id) ?? []) seenComments.set(c.id, c)
-  }
-  const comments = [...seenComments.values()]
+  const comments = dedupeCommentsForIds(commentsMap, commentLookupIds)
 
   return {
     ...metrics,
