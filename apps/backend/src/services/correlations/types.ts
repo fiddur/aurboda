@@ -2,6 +2,8 @@
  * Type definitions for correlation analysis services.
  */
 
+import type { LagExposureResult } from './event-outcome.ts'
+
 /** HRV statistics for a context/activity */
 export interface HrvStats {
   mean_hrv: number | null
@@ -161,10 +163,24 @@ export interface EventProbabilityResult {
 // Generic Correlation Types
 // ============================================================================
 
+/** Nutrient keys with authoritative per-day meal totals. */
+export type NutrientKey = 'calories' | 'protein' | 'carbs' | 'fat' | 'fiber'
+
+/** Threshold turning a numeric value into a discrete event. */
+export interface ThresholdSpec {
+  op: 'gt' | 'gte' | 'lt' | 'lte'
+  value: number
+}
+
 /** Trigger condition for generic correlation */
 export interface TriggerCondition {
-  type: 'activity' | 'tag' | 'productivity_category' | 'productivity_app'
-  pattern: string
+  type: 'activity' | 'tag' | 'productivity_category' | 'productivity_app' | 'nutrition'
+  /** Pattern to match (omitted for nutrition triggers). */
+  pattern?: string
+  /** Nutrient to use when type is 'nutrition'. */
+  nutrient?: NutrientKey
+  /** Threshold turning a daily value into a trigger (default: value > 0). */
+  threshold?: ThresholdSpec
   /** Minimum count within the window (default: 1) */
   min_count?: number
   /** Rolling window in days for counting (default: 1) */
@@ -195,7 +211,21 @@ export interface ProductivityOutcome {
   app?: string
 }
 
-export type OutcomeConfig = TagOutcome | MetricOutcome | ProductivityOutcome
+/** Event outcome configuration (presence-only / discrete onset analysis). */
+export interface EventOutcomeConfig {
+  type: 'event'
+  source: 'metric' | 'tag'
+  /** Metric name when source is 'metric'. */
+  metric?: string
+  /** Regex for the outcome tag when source is 'tag'. */
+  pattern?: string
+  /** Threshold defining an event (default: value > 0). */
+  threshold?: ThresholdSpec
+  /** Consecutive event days within this gap collapse into one onset (default: 3). */
+  collapse_gap_days?: number
+}
+
+export type OutcomeConfig = TagOutcome | MetricOutcome | ProductivityOutcome | EventOutcomeConfig
 
 /** Result for tag outcomes in lag windows */
 export interface TagLagResult {
@@ -242,6 +272,27 @@ export interface TagBaseline {
 
 export type BaselineStats = MetricBaseline | ProductivityBaseline | TagBaseline
 
+/** Options for the generic correlation event-outcome mode and regime scoping. */
+export interface GenericCorrelationOptions {
+  /** Inclusive regime start (YYYY-MM-DD); overrides periodDays when set. */
+  periodStart?: string
+  /** Inclusive regime end (YYYY-MM-DD); defaults to today. */
+  periodEnd?: string
+  /** Denominator universe for event outcomes (default: 'known'). */
+  denominator?: 'known' | 'all'
+}
+
+/** Event-outcome analysis attached to a generic correlation result. */
+export interface EventOutcomeBlock {
+  denominator: 'known' | 'all'
+  collapse_gap_days: number
+  trigger_days: number
+  outcome_days: number
+  onsets: number
+  known_days: number
+  per_lag: LagExposureResult[]
+}
+
 /** Generic correlation result */
 export interface GenericCorrelationResult {
   triggers: TriggerCondition[]
@@ -257,6 +308,8 @@ export interface GenericCorrelationResult {
   baseline: BaselineStats
   /** Results for each lag window */
   post_trigger: Record<string, LagResult>
+  /** Exposure-corrected analysis (present when outcome.type === 'event'). */
+  event_outcome?: EventOutcomeBlock
   statistical_significance: {
     chi_squared: number | null
     p_value: number | null

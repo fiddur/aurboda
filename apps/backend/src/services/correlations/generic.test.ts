@@ -310,4 +310,49 @@ describe('getGenericCorrelation', () => {
       expect(lag7d.delta_from_baseline).toBeDefined()
     })
   })
+
+  describe('event outcome (presence-only metric)', () => {
+    test('routes to the exposure-corrected engine with collapsed onsets', async () => {
+      // Scoped regime; back_pain is presence-only so use denominator 'all'.
+      const day = (iso: string) => new Date(`${iso}T08:00:00Z`)
+
+      // Tag "leak" triggers, some the day before a flare.
+      vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([
+        { source: 'manual', start_time: day('2024-01-09'), activity_type: 'leak' },
+        { source: 'manual', start_time: day('2024-01-19'), activity_type: 'leak' },
+        { source: 'manual', start_time: day('2024-01-05'), activity_type: 'leak' },
+      ] as unknown as Awaited<ReturnType<typeof db.getAllActivitiesInRange>>)
+      vi.mocked(db.getProductivity).mockResolvedValue([])
+      // back_pain flares: a 3-day episode from the 10th, plus a single on the 20th.
+      vi.mocked(db.getTimeSeries).mockResolvedValue([
+        [day('2024-01-10'), 5],
+        [day('2024-01-11'), 5],
+        [day('2024-01-12'), 5],
+        [day('2024-01-20'), 5],
+      ])
+
+      const result = await getGenericCorrelation(
+        'testuser',
+        [{ pattern: 'leak', type: 'tag' }],
+        { collapse_gap_days: 3, metric: 'back_pain', source: 'metric', type: 'event' },
+        ['48h'],
+        90,
+        undefined,
+        { denominator: 'all', periodEnd: '2024-01-31', periodStart: '2024-01-01' },
+      )
+
+      expect(result.event_outcome).toBeDefined()
+      // The 3-day episode collapses to one onset, plus the single flare = 2.
+      expect(result.event_outcome!.onsets).toBe(2)
+      expect(result.event_outcome!.outcome_days).toBe(4)
+      expect(result.event_outcome!.denominator).toBe('all')
+      expect(result.event_outcome!.known_days).toBe(31)
+      const lag = result.event_outcome!.per_lag[0]
+      // Both onsets had a leak the day before -> both exposed.
+      expect(lag.onsets_exposed).toBe(2)
+      expect(lag.reverse_conditional).toBe(1)
+      // Legacy averaging fields are empty in event mode.
+      expect(result.post_trigger).toEqual({})
+    })
+  })
 })

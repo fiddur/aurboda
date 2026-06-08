@@ -114,6 +114,65 @@ export const collapseOnsets = (dayNumbers: number[], gapDays: number): number[] 
   return onsets
 }
 
+/** Count how many of the sorted day-numbers fall in the inclusive [lo, hi] range. */
+const countInRange = (sorted: number[], lo: number, hi: number): number => {
+  // First index >= lo.
+  let a = 0
+  let b = sorted.length
+  while (a < b) {
+    const mid = (a + b) >>> 1
+    if (sorted[mid] < lo) a = mid + 1
+    else b = mid
+  }
+  const startIdx = a
+  // First index > hi.
+  b = sorted.length
+  while (a < b) {
+    const mid = (a + b) >>> 1
+    if (sorted[mid] <= hi) a = mid + 1
+    else b = mid
+  }
+  return a - startIdx
+}
+
+/** A single trigger condition for compound (AND) trigger-day computation. */
+export interface TriggerConditionDays {
+  /** Event days (YYYY-MM-DD) for this condition. */
+  eventDays: string[]
+  /** Minimum occurrences within the window (default 1). */
+  minCount: number
+  /** Rolling window in days (default 1). */
+  windowDays: number
+}
+
+/**
+ * Days where ALL trigger conditions are satisfied. A condition is satisfied on
+ * day D when at least `minCount` of its event days fall in [D-windowDays+1, D].
+ * Returns the qualifying days as YYYY-MM-DD strings.
+ */
+export const compoundTriggerDays = (
+  conditions: TriggerConditionDays[],
+  candidateDays: string[],
+): string[] => {
+  if (conditions.length === 0) return []
+  const sortedPerCondition = conditions.map((c) => c.eventDays.map(dayNumber).sort((a, b) => a - b))
+  const result: string[] = []
+  for (const day of candidateDays) {
+    const d = dayNumber(day)
+    let allMet = true
+    for (let i = 0; i < conditions.length; i++) {
+      const windowDays = Math.max(1, conditions[i].windowDays)
+      const count = countInRange(sortedPerCondition[i], d - windowDays + 1, d)
+      if (count < Math.max(1, conditions[i].minCount)) {
+        allMet = false
+        break
+      }
+    }
+    if (allMet) result.push(day)
+  }
+  return result
+}
+
 /** True when any trigger day falls in the lag window [day - lagDays + 1, day]. */
 const isExposed = (day: number, sortedTriggers: number[], lagDays: number): boolean => {
   const windowStart = day - lagDays + 1

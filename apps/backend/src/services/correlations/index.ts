@@ -22,6 +22,7 @@ export {
 export { computeEventOutcome, type EventOutcomeResult, type LagExposureResult } from './event-outcome.ts'
 export { computeContinuous, type ContinuousResult } from './continuous.ts'
 export { resolveSelector, type Selector, type ThresholdSpec } from './selectors.ts'
+export { getCorrelationSelectors } from './discovery.ts'
 export type {
   ActivityCorrelation,
   ActivityImpactResult,

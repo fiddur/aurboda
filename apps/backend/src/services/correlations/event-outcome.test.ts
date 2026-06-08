@@ -5,9 +5,7 @@ import { collapseOnsets, computeEventOutcome, parseLagDays } from './event-outco
 /** Build an inclusive range of YYYY-MM-DD day strings. */
 const dayRange = (start: string, count: number): string[] => {
   const base = Date.parse(`${start}T00:00:00Z`)
-  return Array.from({ length: count }, (_, i) =>
-    new Date(base + i * 86_400_000).toISOString().split('T')[0],
-  )
+  return Array.from({ length: count }, (_, i) => new Date(base + i * 86_400_000).toISOString().split('T')[0])
 }
 
 describe('parseLagDays', () => {
@@ -77,9 +75,7 @@ describe('computeEventOutcome', () => {
     // 100 known days. 10 onsets, 8 of which have a trigger the day before.
     // Triggers are otherwise rare, so the base rate of exposure is low.
     const known = dayRange('2024-01-01', 100)
-    const onsetDays = [10, 20, 30, 40, 50, 60, 70, 80, 90, 95].map(
-      (d) => known[d],
-    )
+    const onsetDays = [10, 20, 30, 40, 50, 60, 70, 80, 90, 95].map((d) => known[d])
     // Trigger one day before 8 of the onsets; 2 onsets are unexposed.
     const triggerDays = [9, 19, 29, 39, 49, 59, 69, 79].map((d) => known[d])
 

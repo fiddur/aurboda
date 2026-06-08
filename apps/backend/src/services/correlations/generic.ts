@@ -7,6 +7,7 @@ import type { MetricType } from '@aurboda/api-spec'
 import type { SyncProvider } from '../queries/index.ts'
 import type {
   BaselineStats,
+  GenericCorrelationOptions,
   GenericCorrelationResult,
   LagResult,
   OutcomeConfig,
@@ -15,6 +16,7 @@ import type {
 } from './types.ts'
 
 import { getAllActivitiesInRange, getProductivity, getTimeSeries } from '../../db/index.ts'
+import { getCompoundEventOutcome } from './explore.ts'
 import { chiSquaredTest, mean, stddev } from './utils.ts'
 
 /** Parse lag window string (e.g., "24h", "7d") to milliseconds */
@@ -65,7 +67,13 @@ export async function getGenericCorrelation(
   lagWindows: string[] = ['24h', '48h', '7d'],
   periodDays: number = 90,
   sync?: SyncProvider,
+  options: GenericCorrelationOptions = {},
 ): Promise<GenericCorrelationResult> {
+  // Event outcomes use the exposure-corrected onset engine instead of averaging.
+  if (outcome.type === 'event') {
+    return getGenericEventOutcome(user, triggers, outcome, lagWindows, periodDays, sync, options)
+  }
+
   const end = new Date()
   end.setHours(23, 59, 59, 999)
   const start = new Date()
@@ -105,7 +113,7 @@ export async function getGenericCorrelation(
   for (const trigger of triggers) {
     if (trigger.type === 'activity') {
       for (const act of activities) {
-        if (matchesPattern(act.activity_type, trigger.pattern)) {
+        if (matchesPattern(act.activity_type, trigger.pattern ?? '')) {
           triggerEvents.push({
             time: act.start_time,
             type: 'activity',
@@ -116,7 +124,7 @@ export async function getGenericCorrelation(
     } else if (trigger.type === 'tag') {
       // Tags are now activities — match by activity_type
       for (const act of activities) {
-        if (matchesPattern(act.activity_type, trigger.pattern)) {
+        if (matchesPattern(act.activity_type, trigger.pattern ?? '')) {
           triggerEvents.push({
             time: act.start_time,
             type: 'tag',
@@ -128,7 +136,7 @@ export async function getGenericCorrelation(
       for (const prod of productivity) {
         const resolvedCatStr = prod.resolved_category?.join(' > ')
         const catStr = resolvedCatStr || prod.category
-        if (catStr && matchesPattern(catStr, trigger.pattern)) {
+        if (catStr && matchesPattern(catStr, trigger.pattern ?? '')) {
           triggerEvents.push({
             time: prod.start_time,
             type: 'productivity_category',
@@ -138,7 +146,7 @@ export async function getGenericCorrelation(
       }
     } else if (trigger.type === 'productivity_app') {
       for (const prod of productivity) {
-        if (matchesPattern(prod.activity, trigger.pattern)) {
+        if (matchesPattern(prod.activity, trigger.pattern ?? '')) {
           triggerEvents.push({
             time: prod.start_time,
             type: 'productivity_app',
@@ -162,7 +170,7 @@ export async function getGenericCorrelation(
     // Simple case: use actual trigger event times
     const trigger = triggers[0]
     const matchingEvents = triggerEvents.filter(
-      (e) => e.type === trigger.type && matchesPattern(e.value, trigger.pattern),
+      (e) => e.type === trigger.type && matchesPattern(e.value, trigger.pattern ?? ''),
     )
 
     // Use each trigger event time as a matched window
@@ -202,7 +210,7 @@ export async function getGenericCorrelation(
         // Count events matching this trigger in the window
         const count = triggerEvents.filter((e) => {
           if (e.type !== trigger.type) return false
-          if (!matchesPattern(e.value, trigger.pattern)) return false
+          if (!matchesPattern(e.value, trigger.pattern ?? '')) return false
           return e.time >= windowStart && e.time <= windowEnd
         }).length
 
@@ -438,5 +446,61 @@ export async function getGenericCorrelation(
     },
     triggers,
     windows_matched: matchedWindowEnds.length,
+  }
+}
+
+/**
+ * Event-outcome path for getGenericCorrelation: delegates to the exposure-
+ * corrected onset engine and packages it into a GenericCorrelationResult under
+ * the `event_outcome` block. The legacy fields (post_trigger, averaged
+ * baseline) are not meaningful here and are left empty.
+ */
+async function getGenericEventOutcome(
+  user: string,
+  triggers: TriggerCondition[],
+  outcome: Extract<OutcomeConfig, { type: 'event' }>,
+  lagWindows: string[],
+  periodDays: number,
+  sync: SyncProvider | undefined,
+  options: GenericCorrelationOptions,
+): Promise<GenericCorrelationResult> {
+  if (sync) {
+    await Promise.all([
+      sync.syncOuraIfNeeded(user, 'tags'),
+      sync.syncOuraIfNeeded(user, 'sessions'),
+      sync.syncRescueTimeIfNeeded(user),
+      sync.syncCalendarsIfNeeded(user),
+    ])
+  }
+
+  const eventOutcome = await getCompoundEventOutcome(user, triggers, outcome, lagWindows, {
+    denominator: options.denominator,
+    periodDays,
+    periodEnd: options.periodEnd,
+    periodStart: options.periodStart,
+  })
+
+  const primaryLag = eventOutcome.per_lag[0]
+
+  return {
+    baseline: { description: 'Event-outcome mode — see event_outcome block', probability: 0 },
+    event_outcome: {
+      collapse_gap_days: eventOutcome.collapse_gap_days,
+      denominator: eventOutcome.denominator,
+      known_days: eventOutcome.known_days,
+      onsets: eventOutcome.onsets,
+      outcome_days: eventOutcome.outcome_days,
+      per_lag: eventOutcome.per_lag,
+      trigger_days: eventOutcome.trigger_days,
+    },
+    outcome,
+    period: eventOutcome.period,
+    post_trigger: {},
+    statistical_significance: {
+      chi_squared: primaryLag?.chi_squared ?? null,
+      p_value: primaryLag?.p_value ?? null,
+    },
+    triggers,
+    windows_matched: eventOutcome.trigger_days,
   }
 }

@@ -575,9 +575,7 @@ describe('Meals Integration Tests', () => {
         new Date('2025-03-02T23:59:59Z'),
       )
 
-      const carbsByDay = new Map(
-        totals.filter((t) => t.nutrient === 'carbs').map((t) => [t.date, t.total]),
-      )
+      const carbsByDay = new Map(totals.filter((t) => t.nutrient === 'carbs').map((t) => [t.date, t.total]))
       const caloriesByDay = new Map(
         totals.filter((t) => t.nutrient === 'calories').map((t) => [t.date, t.total]),
       )

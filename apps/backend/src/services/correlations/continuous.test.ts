@@ -91,8 +91,9 @@ describe('computeContinuous', () => {
   })
 
   test('caps the returned series', () => {
-    const days = Array.from({ length: 50 }, (_, i) =>
-      new Date(Date.parse('2024-01-01T00:00:00Z') + i * 86_400_000).toISOString().split('T')[0],
+    const days = Array.from(
+      { length: 50 },
+      (_, i) => new Date(Date.parse('2024-01-01T00:00:00Z') + i * 86_400_000).toISOString().split('T')[0],
     )
     const trigger = seriesMap(days.map((d, i) => [d, i]))
     const outcome = seriesMap(days.map((d, i) => [d, i]))
