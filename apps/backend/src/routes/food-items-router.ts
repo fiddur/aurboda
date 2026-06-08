@@ -117,7 +117,8 @@ export const resolveEffectiveDefaultQuantity = (
 const serializeDetail = (detail: ServiceFoodItemDetail): FoodItemDetail => {
   const base = serializeFoodItem(detail.item)
   const sensitivities = detail.sensitivities ?? []
-  const portions = detail.portions?.map(serializePortion)
+  // Always an array so the response is `portions: []`, never null/absent (#780).
+  const portions = (detail.portions ?? []).map(serializePortion)
   const is_shared = detail.is_shared
   // For per-user items default_portion_id is the column on the food row;
   // for central items applySharedOverrides decorated it from the user's

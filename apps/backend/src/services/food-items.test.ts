@@ -212,6 +212,17 @@ describe('createFoodItemsService.getById', () => {
   })
 })
 
+describe('createFoodItemsService.getDetail portions', () => {
+  test('returns [] (not null/undefined) when the item has no portions', async () => {
+    vi.mocked(dbModule.getFoodItemById).mockResolvedValue(userItem('u1', 'Apple'))
+    // listPortionsForFoodItem is mocked to [] by default.
+    const service = createFoodItemsService(fakeCentral())
+
+    const detail = await service.getDetail('user', 'u1')
+    expect(detail?.portions).toEqual([])
+  })
+})
+
 describe('createFoodItemsService.findOrCreate', () => {
   test('prefers central canonical entry over creating a per-user duplicate', async () => {
     const central = fakeCentral()

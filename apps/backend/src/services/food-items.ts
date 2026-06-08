@@ -456,7 +456,10 @@ export const createFoodItemsService = (centralDb: CentralDb): FoodItemsService =
       listPortionsForFoodItem(user, id),
     ])
     const sensitivities = sensitivityFlags.map((f) => ({ id: f.id, name: f.name, color: f.color ?? null }))
-    const portions = portionRows.length > 0 ? portionRows : undefined
+    // Always an array (empty when the item has no portions) so the detail
+    // contract is `portions: FoodItemPortion[]` on every path — consumers can
+    // rely on `.map`/`.length` without a null check (#780).
+    const portions = portionRows
 
     const fromUser = await getUserFoodItemById(user, id)
     if (fromUser) {
