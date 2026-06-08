@@ -4,6 +4,7 @@ import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-te
 import { setMealFoodItems } from './meal-food-items.ts'
 import {
   deleteMeal,
+  getDailyNutrientTotals,
   getFrequentFoodItems,
   getFrequentMeals,
   getMealById,
@@ -555,6 +556,64 @@ describe('Meals Integration Tests', () => {
 
       const found = await getMealById(user, meal.id)
       expect(found!.micros).toEqual(micros)
+    })
+  })
+
+  describe('getDailyNutrientTotals', () => {
+    test('sums meal-level macros per day for requested nutrients', async () => {
+      const user = getTestUser()
+
+      // Two meals on day 1, one on day 2.
+      await insertMeal(user, { calories: 600, carbs: 80, time: new Date('2025-03-01T08:00:00Z') })
+      await insertMeal(user, { calories: 400, carbs: 20, time: new Date('2025-03-01T19:00:00Z') })
+      await insertMeal(user, { calories: 700, carbs: 50, time: new Date('2025-03-02T12:00:00Z') })
+
+      const totals = await getDailyNutrientTotals(
+        user,
+        ['carbs', 'calories'],
+        new Date('2025-03-01T00:00:00Z'),
+        new Date('2025-03-02T23:59:59Z'),
+      )
+
+      const carbsByDay = new Map(totals.filter((t) => t.nutrient === 'carbs').map((t) => [t.date, t.total]))
+      const caloriesByDay = new Map(
+        totals.filter((t) => t.nutrient === 'calories').map((t) => [t.date, t.total]),
+      )
+
+      expect(carbsByDay.get('2025-03-01')).toBe(100)
+      expect(carbsByDay.get('2025-03-02')).toBe(50)
+      expect(caloriesByDay.get('2025-03-01')).toBe(1000)
+      expect(caloriesByDay.get('2025-03-02')).toBe(700)
+    })
+
+    test('omits days without meals and treats missing macros as zero', async () => {
+      const user = getTestUser()
+
+      // Meal with no carbs logged (NULL) -> COALESCE to 0.
+      await insertMeal(user, { calories: 300, time: new Date('2025-04-10T08:00:00Z') })
+
+      const totals = await getDailyNutrientTotals(
+        user,
+        ['carbs'],
+        new Date('2025-04-09T00:00:00Z'),
+        new Date('2025-04-11T23:59:59Z'),
+      )
+
+      // Only the one day with a meal appears.
+      expect(totals).toEqual([{ date: '2025-04-10', nutrient: 'carbs', total: 0 }])
+    })
+
+    test('returns empty when no nutrients requested', async () => {
+      const user = getTestUser()
+      await insertMeal(user, { calories: 300, time: new Date('2025-04-10T08:00:00Z') })
+
+      const totals = await getDailyNutrientTotals(
+        user,
+        [],
+        new Date('2025-04-09T00:00:00Z'),
+        new Date('2025-04-11T23:59:59Z'),
+      )
+      expect(totals).toEqual([])
     })
   })
 })

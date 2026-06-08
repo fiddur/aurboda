@@ -5,6 +5,14 @@ import type {
   ActivityImpactType,
   BaselineData,
   BaselineResponse,
+  ContinuousCorrelationBody,
+  ContinuousCorrelationData,
+  ContinuousCorrelationResponse,
+  CorrelationSelectorsData,
+  CorrelationSelectorsResponse,
+  GenericCorrelationBody,
+  GenericCorrelationData,
+  GenericCorrelationResponse,
   HrvActivitiesData,
   HrvActivitiesResponse,
 } from '@aurboda/api-spec'
@@ -57,6 +65,42 @@ export const fetchActivityImpact = async (
       headers: { Authorization: `Bearer ${token}` },
       params,
     },
+  )
+
+  return response.data.data!
+}
+
+// Fetch the data dimensions available to correlate (populates explore pickers)
+export const fetchCorrelationSelectors = async (): Promise<CorrelationSelectorsData> => {
+  const { token } = auth.value
+  const response = await axios.get<CorrelationSelectorsResponse>(`${API_URL}/correlations/selectors`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+
+  return response.data.data!
+}
+
+// Run a generic correlation (supports the event-outcome exposure mode)
+export const fetchGenericCorrelation = async (
+  body: GenericCorrelationBody,
+): Promise<GenericCorrelationData> => {
+  const { token } = auth.value
+  const response = await axios.post<GenericCorrelationResponse>(`${API_URL}/correlations/generic`, body, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+
+  return response.data.data!
+}
+
+// Run a continuous daily correlation (Pearson/Spearman with optional lag)
+export const fetchContinuousCorrelation = async (
+  body: ContinuousCorrelationBody,
+): Promise<ContinuousCorrelationData> => {
+  const { token } = auth.value
+  const response = await axios.post<ContinuousCorrelationResponse>(
+    `${API_URL}/correlations/continuous`,
+    body,
+    { headers: { Authorization: `Bearer ${token}` } },
   )
 
   return response.data.data!

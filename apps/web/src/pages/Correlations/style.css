@@ -368,3 +368,130 @@
     padding: 0.5rem 0.25rem;
   }
 }
+
+/* --- Analyze tabs + Explore --- */
+.analyze-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid #e5e7eb;
+}
+.analyze-tabs button {
+  background: none;
+  border: none;
+  padding: 8px 16px;
+  font-size: 0.95rem;
+  cursor: pointer;
+  color: #6b7280;
+  border-bottom: 2px solid transparent;
+}
+.analyze-tabs button.active {
+  color: #673ab8;
+  border-bottom-color: #673ab8;
+  font-weight: 600;
+}
+
+.explore-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 720px;
+  margin-bottom: 20px;
+}
+.explore-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.explore-row > label {
+  width: 130px;
+  flex-shrink: 0;
+  font-weight: 600;
+  color: #374151;
+}
+.selector-picker {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.selector-picker select,
+.selector-picker input,
+.explore-regime input,
+.explore-row > input {
+  padding: 6px 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 0.9rem;
+}
+.explore-toggle {
+  display: inline-flex;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  overflow: hidden;
+}
+.explore-toggle button {
+  background: #fff;
+  border: none;
+  padding: 6px 14px;
+  cursor: pointer;
+  color: #6b7280;
+}
+.explore-toggle button.active {
+  background: #673ab8;
+  color: #fff;
+}
+.explore-regime {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.regime-hint {
+  color: #6b7280;
+  font-size: 0.85rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.period-days-input {
+  width: 70px;
+}
+.explore-run {
+  background: #673ab8;
+  color: #fff;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 6px;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+.explore-run:hover {
+  background: #5a32a3;
+}
+.explore-summary {
+  color: #4b5563;
+  font-size: 0.9rem;
+  margin: 8px 0;
+}
+.explore-error {
+  color: #ef4444;
+  padding: 8px 0;
+}
+.explore-results .ci {
+  color: #6b7280;
+  font-size: 0.85em;
+}
+.explore-results .test-tag {
+  color: #9ca3af;
+  font-size: 0.8em;
+}
+.correlations-table tr.sig-row {
+  background: rgba(16, 185, 129, 0.08);
+}
+.scatter {
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: #fff;
+}
