@@ -311,6 +311,30 @@ describe('getGenericCorrelation', () => {
     })
   })
 
+  describe('regime scoping (averaging path)', () => {
+    test('honors period_start/period_end for a tag outcome', async () => {
+      vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([])
+      vi.mocked(db.getProductivity).mockResolvedValue([])
+      vi.mocked(db.getTimeSeries).mockResolvedValue([])
+
+      const result = await getGenericCorrelation(
+        'testuser',
+        [{ pattern: 'meditation', type: 'tag' }],
+        { pattern: 'headache', type: 'tag' },
+        ['24h'],
+        90,
+        undefined,
+        { periodEnd: '2024-01-31', periodStart: '2024-01-01' },
+      )
+
+      // Regime window is used instead of the trailing 90 days.
+      expect(result.period.start).toBe('2024-01-01T00:00:00.000Z')
+      expect(result.period.end).toBe('2024-01-31T23:59:59.999Z')
+      // 31 inclusive days in January.
+      expect(result.period.days).toBe(31)
+    })
+  })
+
   describe('event outcome (presence-only metric)', () => {
     test('routes to the exposure-corrected engine with collapsed onsets', async () => {
       // Scoped regime; back_pain is presence-only so use denominator 'all'.

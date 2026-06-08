@@ -80,11 +80,26 @@ export async function getGenericCorrelation(
     throw new Error('Nutrition triggers are only supported with an "event" outcome')
   }
 
-  const end = new Date()
-  end.setHours(23, 59, 59, 999)
-  const start = new Date()
-  start.setDate(start.getDate() - periodDays)
-  start.setHours(0, 0, 0, 0)
+  // Window: an explicit regime (UTC) overrides the trailing periodDays window.
+  // `analysisDays` is the number of days iterated/used as the day denominator.
+  let start: Date
+  let end: Date
+  let analysisDays: number
+  if (options.periodStart || options.periodEnd) {
+    const endDay = options.periodEnd ?? new Date().toISOString().split('T')[0]
+    end = new Date(`${endDay}T23:59:59.999Z`)
+    start = options.periodStart
+      ? new Date(`${options.periodStart}T00:00:00.000Z`)
+      : new Date(Date.parse(`${endDay}T00:00:00.000Z`) - periodDays * 86_400_000)
+    analysisDays = Math.max(1, Math.round((end.getTime() - start.getTime()) / 86_400_000))
+  } else {
+    end = new Date()
+    end.setHours(23, 59, 59, 999)
+    start = new Date()
+    start.setDate(start.getDate() - periodDays)
+    start.setHours(0, 0, 0, 0)
+    analysisDays = periodDays
+  }
 
   // Auto-sync if provider available
   if (sync) {
@@ -188,7 +203,7 @@ export async function getGenericCorrelation(
 
     // Track days without triggers for baseline
     const daysWithTriggers = new Set(matchingEvents.map((e) => getDayString(e.time)))
-    for (let dayOffset = 0; dayOffset < periodDays; dayOffset++) {
+    for (let dayOffset = 0; dayOffset < analysisDays; dayOffset++) {
       const day = new Date(start)
       day.setDate(day.getDate() + dayOffset)
       const dayStr = getDayString(day)
@@ -198,7 +213,7 @@ export async function getGenericCorrelation(
     }
   } else {
     // Compound case: iterate through each day and check if all conditions are met
-    for (let dayOffset = 0; dayOffset < periodDays; dayOffset++) {
+    for (let dayOffset = 0; dayOffset < analysisDays; dayOffset++) {
       const windowEnd = new Date(start)
       windowEnd.setDate(windowEnd.getDate() + dayOffset)
       windowEnd.setHours(23, 59, 59, 999)
@@ -370,7 +385,7 @@ export async function getGenericCorrelation(
 
   if (outcome.type === 'tag') {
     const daysWithOutcome = new Set(outcomeTagEvents.map(getDayString))
-    const probability = periodDays > 0 ? daysWithOutcome.size / periodDays : 0
+    const probability = analysisDays > 0 ? daysWithOutcome.size / analysisDays : 0
 
     baseline = {
       description: 'P(outcome on any given day)',
@@ -437,7 +452,7 @@ export async function getGenericCorrelation(
     baseline,
     outcome,
     period: {
-      days: periodDays,
+      days: analysisDays,
       end: end.toISOString(),
       start: start.toISOString(),
     },

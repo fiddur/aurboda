@@ -48,6 +48,9 @@ const EVENT_TRIGGER_KINDS: CorrelationSelector['kind'][] = [
   'productivity_app',
 ]
 
+// Every selector kind (continuous mode allows a metric on either side).
+const ALL_SELECTOR_KINDS: CorrelationSelector['kind'][] = ['metric', ...EVENT_TRIGGER_KINDS]
+
 /** Switch mode, clamping the trigger to a kind valid in the new mode. */
 const setMode = (next: Mode) => {
   mode.value = next
@@ -365,11 +368,7 @@ export function ExploreTab() {
             value={triggerSelector.value}
             onChange={(s) => (triggerSelector.value = s)}
             selectors={selectors}
-            allowedKinds={
-              mode.value === 'event'
-                ? ['tag', 'activity', 'nutrition', 'productivity_category', 'productivity_app']
-                : ['metric', 'nutrition', 'tag', 'activity', 'productivity_category', 'productivity_app']
-            }
+            allowedKinds={mode.value === 'event' ? EVENT_TRIGGER_KINDS : ALL_SELECTOR_KINDS}
           />
         </div>
 
@@ -403,7 +402,7 @@ export function ExploreTab() {
               value={outcomeSelector.value}
               onChange={(s) => (outcomeSelector.value = s)}
               selectors={selectors}
-              allowedKinds={['metric', 'nutrition', 'tag', 'activity', 'productivity_category']}
+              allowedKinds={ALL_SELECTOR_KINDS}
             />
           )}
         </div>
