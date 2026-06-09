@@ -4,6 +4,7 @@ import type {
   CorrelationSelectorsData,
   EventOutcome,
   GenericCorrelationData,
+  GroupComparison,
   LagExposureResultData,
   NutrientKey,
   TriggerCondition,
@@ -17,7 +18,14 @@ import {
   fetchCorrelationSelectors,
   fetchGenericCorrelation,
 } from '../../state/api'
-import { eventOutcomeLooksContinuous, MODE_HELP, TOOLTIPS } from './exploreGuidance'
+import {
+  describeCorrelationStrength,
+  describeEffectSize,
+  eventOutcomeLooksContinuous,
+  MODE_HELP,
+  sampleCaution,
+  TOOLTIPS,
+} from './exploreGuidance'
 
 type Mode = 'event' | 'continuous'
 
@@ -82,6 +90,9 @@ const fmt = (value: number | null | undefined, digits = 2): string =>
 
 const fmtPct = (value: number | null | undefined): string =>
   value === null || value === undefined ? '—' : `${(value * 100).toFixed(0)}%`
+
+const fmtP = (value: number | null | undefined): string =>
+  value === null || value === undefined ? '—' : value < 0.001 ? '<0.001' : value.toFixed(3)
 
 /** Whether the current event-mode form would misuse a continuous outcome. */
 const outcomeLooksContinuous = (): boolean =>
@@ -294,6 +305,30 @@ function EventOutcomeResults({ data }: { data: GenericCorrelationData }) {
   )
 }
 
+// --- Results: present-vs-absent group comparison for a binary trigger ---
+function GroupComparisonPanel({ gc }: { gc: GroupComparison }) {
+  const better =
+    gc.difference === null ? '' : gc.difference > 0 ? 'higher when present' : 'lower when present'
+  return (
+    <div class="group-comparison">
+      <p class="explore-verdict">
+        With trigger: <strong>{fmt(gc.mean_with, 1)}</strong> (n={gc.n_with}) · Without:{' '}
+        <strong>{fmt(gc.mean_without, 1)}</strong> (n={gc.n_without}) · Difference{' '}
+        <strong>
+          {gc.difference !== null && gc.difference > 0 ? '+' : ''}
+          {fmt(gc.difference, 1)}
+        </strong>{' '}
+        {better}
+      </p>
+      <p class="explore-verdict-sub">
+        Effect size: {describeEffectSize(gc.cohens_d)} (Cohen's d {fmt(gc.cohens_d)})
+        {gc.welch && <> · Welch t-test p={fmtP(gc.welch.p_value)}</>}
+        {gc.mann_whitney && <> · Mann–Whitney p={fmtP(gc.mann_whitney.p_value)}</>}
+      </p>
+    </div>
+  )
+}
+
 // --- Results: continuous scatter ---
 function ContinuousResults({ data }: { data: ContinuousCorrelationData }) {
   const points = data.series
@@ -309,11 +344,33 @@ function ContinuousResults({ data }: { data: ContinuousCorrelationData }) {
   const sx = (x: number) => pad + ((x - xMin) / (xMax - xMin || 1)) * (w - 2 * pad)
   const sy = (y: number) => h - pad - ((y - yMin) / (yMax - yMin || 1)) * (h - 2 * pad)
 
+  const gc = data.group_comparison
+  // A Pearson r on a binary/presence trigger is misleading, so when the trigger
+  // is binary the group comparison is the headline rather than the correlation.
+  const showGroupAsHeadline = gc !== null && gc.trigger_is_binary
+  const caution = sampleCaution(data.n)
+
   return (
     <div class="explore-results">
       <p class="explore-summary">
         n={data.n} · Pearson r={fmt(data.pearson)} · Spearman ρ={fmt(data.spearman)} · lag {data.lag_days}d
       </p>
+      {!showGroupAsHeadline && (
+        <p class="explore-verdict">
+          {describeCorrelationStrength(data.pearson)} correlation
+          {caution && <span class="explore-caution"> · {caution}</span>}
+        </p>
+      )}
+      {gc && (
+        <>
+          {showGroupAsHeadline && (
+            <p class="explore-help">
+              The trigger is binary, so a correlation coefficient is misleading — compare the groups instead:
+            </p>
+          )}
+          <GroupComparisonPanel gc={gc} />
+        </>
+      )}
       <svg width={w} height={h} class="scatter">
         <line x1={pad} y1={h - pad} x2={w - pad} y2={h - pad} stroke="#ccc" />
         <line x1={pad} y1={pad} x2={pad} y2={h - pad} stroke="#ccc" />

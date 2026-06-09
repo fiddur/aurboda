@@ -90,6 +90,51 @@ describe('computeContinuous', () => {
     expect(day2?.trigger).toBe(0)
   })
 
+  test('binary trigger yields a present-vs-absent group comparison', () => {
+    const days = Array.from(
+      { length: 8 },
+      (_, i) => new Date(Date.parse('2024-01-01T00:00:00Z') + i * 86_400_000).toISOString().split('T')[0],
+    )
+    // Trigger present (1) on the first four days, absent on the rest. Outcome is
+    // clearly higher on present days (with within-group variance so the t-test
+    // is estimable), and the groups don't overlap.
+    const presentOutcomes = [78, 80, 82, 80]
+    const absentOutcomes = [69, 71, 70, 70]
+    const trigger = seriesMap(days.map((d, i) => [d, i < 4 ? 1 : 0]))
+    const outcome = seriesMap(days.map((d, i) => [d, i < 4 ? presentOutcomes[i] : absentOutcomes[i - 4]]))
+
+    const result = computeContinuous({
+      triggerDaily: trigger,
+      outcomeDaily: outcome,
+      triggerKnown: days,
+      outcomeKnown: days,
+      lagDays: 0,
+    })
+
+    const gc = result.group_comparison
+    expect(gc).not.toBeNull()
+    expect(gc!.trigger_is_binary).toBe(true)
+    expect(gc!.n_with).toBe(4)
+    expect(gc!.n_without).toBe(4)
+    expect(gc!.mean_with).toBeCloseTo(80, 6)
+    expect(gc!.mean_without).toBeCloseTo(70, 6)
+    expect(gc!.difference).toBeCloseTo(10, 6)
+    expect(gc!.welch).not.toBeNull()
+    expect(gc!.mann_whitney!.rank_biserial).toBeCloseTo(1, 6)
+  })
+
+  test('no group comparison when the trigger is present every day', () => {
+    const days = ['2024-01-01', '2024-01-02', '2024-01-03']
+    const result = computeContinuous({
+      triggerDaily: seriesMap(days.map((d) => [d, 5])),
+      outcomeDaily: seriesMap(days.map((d, i) => [d, i])),
+      triggerKnown: days,
+      outcomeKnown: days,
+      lagDays: 0,
+    })
+    expect(result.group_comparison).toBeNull()
+  })
+
   test('caps the returned series', () => {
     const days = Array.from(
       { length: 50 },
