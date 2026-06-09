@@ -27,6 +27,32 @@ export const MODE_HELP =
   'days (back_pain, fissure_pain) → Event onset. Value-every-day metrics ' +
   '(sleep_score, hrv_rmssd, weight) → Continuous.'
 
+/**
+ * Plain-language strength label for a correlation coefficient, so a small r
+ * isn't over-read. Includes direction once the magnitude is non-negligible.
+ */
+export const describeCorrelationStrength = (r: number | null): string => {
+  if (r === null) return 'not enough data'
+  const a = Math.abs(r)
+  if (a < 0.1) return 'negligible'
+  const strength = a < 0.3 ? 'weak' : a < 0.5 ? 'moderate' : a < 0.7 ? 'strong' : 'very strong'
+  return `${strength} ${r > 0 ? 'positive' : 'negative'}`
+}
+
+/** Plain-language label for a Cohen's d effect size (standard conventions). */
+export const describeEffectSize = (d: number | null): string => {
+  if (d === null) return 'not estimable'
+  const a = Math.abs(d)
+  return a < 0.2 ? 'negligible' : a < 0.5 ? 'small' : a < 0.8 ? 'medium' : 'large'
+}
+
+/** A caution string when the sample is too small to trust, otherwise null. */
+export const sampleCaution = (n: number): string | null => {
+  if (n < 10) return 'very small sample — treat as anecdotal'
+  if (n < 30) return 'small sample — interpret with caution'
+  return null
+}
+
 /** Tooltip copy for the controls users most often misread. */
 export const TOOLTIPS = {
   collapseGap: 'Consecutive bad-days within this gap count as ONE onset (a 6-day flare = 1 event).',

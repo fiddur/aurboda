@@ -3,12 +3,18 @@ import { describe, expect, test } from 'vitest'
 import {
   chiSquared2x2,
   chiSquaredPValue1df,
+  cohensD,
   erfc,
   fisherExact2x2,
+  mannWhitneyU,
   pearson,
+  regularizedIncompleteBeta,
   riskRatio,
   significance2x2,
   spearman,
+  studentTTwoSidedP,
+  twoGroupComparison,
+  welchTTest,
 } from './stats.ts'
 
 describe('erfc', () => {
@@ -115,5 +121,103 @@ describe('spearman', () => {
     const result = spearman([1, 2, 2, 3], [1, 2, 3, 4])
     expect(result).not.toBeNull()
     expect(result!).toBeGreaterThan(0.8)
+  })
+})
+
+describe('regularizedIncompleteBeta', () => {
+  test('symmetric I_0.5(a, a) = 0.5', () => {
+    expect(regularizedIncompleteBeta(0.5, 2, 2)).toBeCloseTo(0.5, 6)
+    expect(regularizedIncompleteBeta(0.5, 1, 1)).toBeCloseTo(0.5, 6)
+  })
+
+  test('saturates at the bounds', () => {
+    expect(regularizedIncompleteBeta(0, 2, 3)).toBe(0)
+    expect(regularizedIncompleteBeta(1, 2, 3)).toBe(1)
+  })
+})
+
+describe('studentTTwoSidedP', () => {
+  test('t = 0 gives p = 1', () => {
+    expect(studentTTwoSidedP(0, 10)).toBeCloseTo(1, 6)
+  })
+
+  test('matches t-table critical values (df=10, t=2.228 -> 0.05)', () => {
+    expect(studentTTwoSidedP(2.228, 10)).toBeCloseTo(0.05, 3)
+  })
+
+  test('approaches the normal 1.96 -> 0.05 at high df', () => {
+    expect(studentTTwoSidedP(1.96, 100000)).toBeCloseTo(0.05, 3)
+  })
+})
+
+describe('welchTTest', () => {
+  test('clearly separated groups: t and df match the hand calculation', () => {
+    // A mean 3, B mean 8, both sample var 2.5, n=5 -> t=-5, df=8.
+    const result = welchTTest([1, 2, 3, 4, 5], [6, 7, 8, 9, 10])
+    expect(result).not.toBeNull()
+    expect(result!.t).toBeCloseTo(-5, 5)
+    expect(result!.df).toBeCloseTo(8, 5)
+    expect(result!.p_value).toBeLessThan(0.01)
+  })
+
+  test('identical groups give t ~= 0 and p ~= 1', () => {
+    const result = welchTTest([4, 5, 6, 7], [4, 5, 6, 7])
+    expect(result!.t).toBeCloseTo(0, 6)
+    expect(result!.p_value).toBeCloseTo(1, 6)
+  })
+
+  test('null when a group has fewer than two values', () => {
+    expect(welchTTest([1], [2, 3, 4])).toBeNull()
+  })
+})
+
+describe('mannWhitneyU', () => {
+  test('fully separated (A below B) gives U=0 and rank-biserial -1', () => {
+    const result = mannWhitneyU([1, 2, 3], [4, 5, 6])
+    expect(result!.u).toBe(0)
+    expect(result!.rank_biserial).toBeCloseTo(-1, 6)
+  })
+
+  test('fully separated (A above B) gives rank-biserial +1', () => {
+    const result = mannWhitneyU([4, 5, 6], [1, 2, 3])
+    expect(result!.u).toBe(9)
+    expect(result!.rank_biserial).toBeCloseTo(1, 6)
+  })
+
+  test('null when a group is empty', () => {
+    expect(mannWhitneyU([], [1, 2])).toBeNull()
+  })
+})
+
+describe('cohensD', () => {
+  test('matches the hand calculation', () => {
+    // means 3 vs 8, pooled var 2.5 -> d = -5/sqrt(2.5) = -3.162.
+    expect(cohensD([1, 2, 3, 4, 5], [6, 7, 8, 9, 10])).toBeCloseTo(-3.1623, 3)
+  })
+
+  test('null when not estimable', () => {
+    expect(cohensD([1], [2, 3])).toBeNull()
+  })
+})
+
+describe('twoGroupComparison', () => {
+  test('reports means, difference and effect sizes', () => {
+    const result = twoGroupComparison([10, 11, 12], [1, 2, 3])
+    expect(result.n_with).toBe(3)
+    expect(result.n_without).toBe(3)
+    expect(result.mean_with).toBeCloseTo(11, 6)
+    expect(result.mean_without).toBeCloseTo(2, 6)
+    expect(result.difference).toBeCloseTo(9, 6)
+    expect(result.cohens_d!).toBeGreaterThan(2)
+    expect(result.welch!.t).toBeGreaterThan(0)
+    expect(result.mann_whitney!.rank_biserial).toBeCloseTo(1, 6)
+  })
+
+  test('handles empty groups without throwing', () => {
+    const result = twoGroupComparison([], [1, 2, 3])
+    expect(result.mean_with).toBeNull()
+    expect(result.difference).toBeNull()
+    expect(result.welch).toBeNull()
+    expect(result.mann_whitney).toBeNull()
   })
 })

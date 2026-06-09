@@ -379,9 +379,7 @@ export const triggerConditionSchema = z
         'Minimum occurrences within the window (default: 1). In event-outcome mode (day-granular) this counts distinct days with the event, not raw occurrences.',
       example: 3,
     }),
-    nutrient: nutrientKeySchema
-      .optional()
-      .meta({ description: 'Nutrient to use when type is "nutrition"' }),
+    nutrient: nutrientKeySchema.optional().meta({ description: 'Nutrient to use when type is "nutrition"' }),
     pattern: z.string().optional().meta({
       description:
         'Pattern to match (regex for tags, exact match for activity types). Omit for nutrition triggers.',
@@ -807,9 +805,54 @@ export const alignedPointSchema = z
   })
   .meta({ id: 'AlignedPoint' })
 
+/** Welch two-sample t-test result. */
+export const welchResultSchema = z
+  .object({
+    df: z.number().meta({ description: 'Welch–Satterthwaite degrees of freedom' }),
+    p_value: z.number().meta({ description: 'Two-sided p-value' }),
+    t: z.number().meta({ description: 't statistic (positive when present-group mean is higher)' }),
+  })
+  .meta({ id: 'WelchResult' })
+
+/** Mann–Whitney U test result. */
+export const mannWhitneyResultSchema = z
+  .object({
+    p_value: z.number().meta({ description: 'Two-sided p-value (normal approximation)' }),
+    rank_biserial: z.number().meta({
+      description: 'Rank-biserial effect size in [-1, 1] (positive when present tends to exceed absent)',
+    }),
+    u: z.number().meta({ description: 'U statistic for the present group' }),
+  })
+  .meta({ id: 'MannWhitneyResult' })
+
+/**
+ * Present-vs-absent comparison of a continuous outcome for a binary/presence
+ * trigger — group means, their difference, effect size and group-difference
+ * tests. Answers "how much does X change Y?" where a Pearson r on a 0/1 trigger
+ * would mislead.
+ */
+export const groupComparisonSchema = z
+  .object({
+    cohens_d: z.number().nullable().meta({ description: "Cohen's d (pooled SD)" }),
+    difference: z.number().nullable().meta({ description: 'mean_with − mean_without' }),
+    mann_whitney: mannWhitneyResultSchema.nullable(),
+    mean_with: z.number().nullable().meta({ description: 'Mean outcome on days the trigger was present' }),
+    mean_without: z.number().nullable().meta({ description: 'Mean outcome on days the trigger was absent' }),
+    n_with: z.number().int().meta({ description: 'Days the trigger was present (value > 0)' }),
+    n_without: z.number().int().meta({ description: 'Days the trigger was absent (value 0)' }),
+    trigger_is_binary: z.boolean().meta({ description: 'True when every aligned trigger value is 0 or 1' }),
+    welch: welchResultSchema.nullable(),
+  })
+  .meta({ id: 'GroupComparison' })
+
+export type GroupComparison = z.infer<typeof groupComparisonSchema>
+
 /** Continuous correlation result data */
 export const continuousCorrelationDataSchema = z
   .object({
+    group_comparison: groupComparisonSchema
+      .nullable()
+      .meta({ description: 'Present-vs-absent group comparison; null when there is no split to compare' }),
     lag_days: z.number().int(),
     n: z.number().int().meta({ description: 'Number of aligned day pairs' }),
     outcome: selectorSchema,

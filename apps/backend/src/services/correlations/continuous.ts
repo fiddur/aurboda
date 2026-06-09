@@ -4,7 +4,17 @@
  * questions like "how does carb intake affect my sleep the next day?" work.
  */
 
-import { pearson, spearman } from './stats.ts'
+import { type TwoGroupComparison, pearson, spearman, twoGroupComparison } from './stats.ts'
+
+/**
+ * Group comparison for a binary/presence trigger: how the continuous outcome
+ * differs between days the trigger was present vs absent. A Pearson r on a 0/1
+ * trigger is misleading, so this answers "how much does X change Y?" directly.
+ */
+export interface GroupComparison extends TwoGroupComparison {
+  /** True when every aligned trigger value is exactly 0 or 1. */
+  trigger_is_binary: boolean
+}
 
 export interface AlignedPoint {
   /** Trigger day (YYYY-MM-DD). */
@@ -26,6 +36,11 @@ export interface ContinuousResult {
   spearman: number | null
   /** Aligned series (for plotting); capped to avoid huge payloads. */
   series: AlignedPoint[]
+  /**
+   * Present-vs-absent group comparison of the outcome. Null when the trigger is
+   * never present or always present (no split to compare).
+   */
+  group_comparison: GroupComparison | null
 }
 
 export interface ContinuousInput {
@@ -74,5 +89,25 @@ export const computeContinuous = (input: ContinuousInput): ContinuousResult => {
     pearson: pearson(triggerValues, outcomeValues),
     spearman: spearman(triggerValues, outcomeValues),
     series,
+    group_comparison: computeGroupComparison(triggerValues, outcomeValues),
+  }
+}
+
+/**
+ * Split the outcome by whether the trigger was present (value > 0) on the same
+ * aligned day and compare the two groups. Returns null when there is nothing to
+ * compare (the trigger is present on every day or on none).
+ */
+const computeGroupComparison = (triggerValues: number[], outcomeValues: number[]): GroupComparison | null => {
+  const withValues: number[] = []
+  const withoutValues: number[] = []
+  for (let i = 0; i < triggerValues.length; i++) {
+    if (triggerValues[i] > 0) withValues.push(outcomeValues[i])
+    else withoutValues.push(outcomeValues[i])
+  }
+  if (withValues.length === 0 || withoutValues.length === 0) return null
+  return {
+    ...twoGroupComparison(withValues, withoutValues),
+    trigger_is_binary: triggerValues.every((v) => v === 0 || v === 1),
   }
 }

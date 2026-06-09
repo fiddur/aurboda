@@ -272,3 +272,169 @@ export const spearman = (x: number[], y: number[]): number | null => {
   if (x.length !== y.length || x.length < 3) return null
   return pearson(toRanks(x), toRanks(y))
 }
+
+/** Sample variance (n-1 denominator), or null when fewer than 2 values. */
+const sampleVariance = (values: number[]): number | null => {
+  const sd = stddev(values)
+  return sd === null ? null : sd * sd
+}
+
+/** Continued fraction for the incomplete beta function (Numerical Recipes betacf). */
+const betacf = (x: number, a: number, b: number): number => {
+  const MAX_ITER = 200
+  const EPS = 3e-12
+  const FPMIN = 1e-300
+  const qab = a + b
+  const qap = a + 1
+  const qam = a - 1
+  let c = 1
+  let d = 1 - (qab * x) / qap
+  if (Math.abs(d) < FPMIN) d = FPMIN
+  d = 1 / d
+  let h = d
+  for (let m = 1; m <= MAX_ITER; m++) {
+    const m2 = 2 * m
+    let aa = (m * (b - m) * x) / ((qam + m2) * (a + m2))
+    d = 1 + aa * d
+    if (Math.abs(d) < FPMIN) d = FPMIN
+    c = 1 + aa / c
+    if (Math.abs(c) < FPMIN) c = FPMIN
+    d = 1 / d
+    h *= d * c
+    aa = (-(a + m) * (qab + m) * x) / ((a + m2) * (qap + m2))
+    d = 1 + aa * d
+    if (Math.abs(d) < FPMIN) d = FPMIN
+    c = 1 + aa / c
+    if (Math.abs(c) < FPMIN) c = FPMIN
+    d = 1 / d
+    const del = d * c
+    h *= del
+    if (Math.abs(del - 1) < EPS) break
+  }
+  return h
+}
+
+/** Regularized incomplete beta function I_x(a, b). */
+export const regularizedIncompleteBeta = (x: number, a: number, b: number): number => {
+  if (x <= 0) return 0
+  if (x >= 1) return 1
+  const logBeta = logGamma(a + b) - logGamma(a) - logGamma(b)
+  const front = Math.exp(logBeta + a * Math.log(x) + b * Math.log(1 - x))
+  return x < (a + 1) / (a + b + 2) ? (front * betacf(x, a, b)) / a : 1 - (front * betacf(1 - x, b, a)) / b
+}
+
+/**
+ * Two-sided p-value for a Student's t statistic with `df` degrees of freedom,
+ * via P(|T| > |t|) = I_{df/(df+t²)}(df/2, 1/2).
+ */
+export const studentTTwoSidedP = (t: number, df: number): number => {
+  if (df <= 0 || !Number.isFinite(t)) return 1
+  return Math.min(1, regularizedIncompleteBeta(df / (df + t * t), df / 2, 0.5))
+}
+
+/** Welch's two-sample t-test (unequal variances). */
+export interface WelchResult {
+  /** t statistic (positive when group A's mean is higher). */
+  t: number
+  /** Welch–Satterthwaite degrees of freedom. */
+  df: number
+  /** Two-sided p-value. */
+  p_value: number
+}
+
+/** Welch's t-test, or null when either group has fewer than 2 values / no variance. */
+export const welchTTest = (groupA: number[], groupB: number[]): WelchResult | null => {
+  if (groupA.length < 2 || groupB.length < 2) return null
+  const varA = sampleVariance(groupA)!
+  const varB = sampleVariance(groupB)!
+  const na = groupA.length
+  const nb = groupB.length
+  const seA = varA / na
+  const seB = varB / nb
+  const seTotal = seA + seB
+  if (seTotal === 0) return null
+  const t = (mean(groupA)! - mean(groupB)!) / Math.sqrt(seTotal)
+  const df = (seTotal * seTotal) / ((seA * seA) / (na - 1) + (seB * seB) / (nb - 1))
+  return { t, df, p_value: studentTTwoSidedP(t, df) }
+}
+
+/** Mann–Whitney U test (normal approximation with tie correction). */
+export interface MannWhitneyResult {
+  /** U statistic for group A. */
+  u: number
+  /** Two-sided p-value. */
+  p_value: number
+  /** Rank-biserial effect size in [-1, 1] (positive when A tends to exceed B). */
+  rank_biserial: number
+}
+
+/** Mann–Whitney U comparing groupA vs groupB, or null when either group is empty. */
+export const mannWhitneyU = (groupA: number[], groupB: number[]): MannWhitneyResult | null => {
+  const na = groupA.length
+  const nb = groupB.length
+  if (na === 0 || nb === 0) return null
+  const combined = [...groupA, ...groupB]
+  const ranks = toRanks(combined)
+  let rankSumA = 0
+  for (let i = 0; i < na; i++) rankSumA += ranks[i]
+  const uA = rankSumA - (na * (na + 1)) / 2
+  const rankBiserial = (2 * uA) / (na * nb) - 1
+
+  const n = na + nb
+  const mu = (na * nb) / 2
+  const counts = new Map<number, number>()
+  for (const v of combined) counts.set(v, (counts.get(v) ?? 0) + 1)
+  let tieTerm = 0
+  for (const t of counts.values()) tieTerm += t ** 3 - t
+  const sigmaSq = ((na * nb) / 12) * (n + 1 - tieTerm / (n * (n - 1)))
+  if (sigmaSq <= 0) return { u: uA, p_value: 1, rank_biserial: rankBiserial }
+  const z = (uA - mu) / Math.sqrt(sigmaSq)
+  return { u: uA, p_value: Math.min(1, erfc(Math.abs(z) / Math.SQRT2)), rank_biserial: rankBiserial }
+}
+
+/** Cohen's d (pooled standard deviation), or null when not estimable. */
+export const cohensD = (groupA: number[], groupB: number[]): number | null => {
+  if (groupA.length < 2 || groupB.length < 2) return null
+  const na = groupA.length
+  const nb = groupB.length
+  const varA = sampleVariance(groupA)!
+  const varB = sampleVariance(groupB)!
+  const pooledVar = ((na - 1) * varA + (nb - 1) * varB) / (na + nb - 2)
+  if (pooledVar <= 0) return null
+  return (mean(groupA)! - mean(groupB)!) / Math.sqrt(pooledVar)
+}
+
+/** Comparison of a continuous outcome split into two groups (e.g. by a binary trigger). */
+export interface TwoGroupComparison {
+  n_with: number
+  n_without: number
+  mean_with: number | null
+  mean_without: number | null
+  /** mean_with − mean_without. */
+  difference: number | null
+  /** Cohen's d (pooled). */
+  cohens_d: number | null
+  welch: WelchResult | null
+  mann_whitney: MannWhitneyResult | null
+}
+
+/**
+ * Compare a continuous outcome between the "trigger present" and "trigger
+ * absent" groups: group means, their difference, Cohen's d, a Welch t-test and
+ * a Mann–Whitney U test. This answers "how much does X change Y?" — the
+ * question a Pearson r on a binary trigger can't.
+ */
+export const twoGroupComparison = (withValues: number[], withoutValues: number[]): TwoGroupComparison => {
+  const meanWith = mean(withValues)
+  const meanWithout = mean(withoutValues)
+  return {
+    n_with: withValues.length,
+    n_without: withoutValues.length,
+    mean_with: meanWith,
+    mean_without: meanWithout,
+    difference: meanWith !== null && meanWithout !== null ? meanWith - meanWithout : null,
+    cohens_d: cohensD(withValues, withoutValues),
+    welch: welchTTest(withValues, withoutValues),
+    mann_whitney: mannWhitneyU(withValues, withoutValues),
+  }
+}

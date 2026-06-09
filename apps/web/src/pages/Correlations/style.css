@@ -489,6 +489,26 @@
   font-size: 0.88rem;
   margin: 0 0 4px;
 }
+.group-comparison {
+  background: #f6f5fb;
+  border: 1px solid #e3def2;
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin: 6px 0;
+}
+.explore-verdict {
+  color: #374151;
+  font-size: 0.92rem;
+  margin: 4px 0;
+}
+.explore-verdict-sub {
+  color: #6b7280;
+  font-size: 0.85rem;
+  margin: 4px 0 0;
+}
+.explore-caution {
+  color: #9a3412;
+}
 .explore-run {
   background: #673ab8;
   color: #fff;

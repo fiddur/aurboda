@@ -93,6 +93,27 @@ value on a known day defaults to 0, e.g. a meal-log-complete day with no carbs),
 optionally shifting the outcome forward by `lag_days`, and returns Pearson and
 Spearman coefficients plus the aligned series for plotting.
 
+### Binary/presence trigger — `group_comparison`
+
+A Pearson r on a **binary or presence** trigger (e.g. `hot_bath` → `sleep_score`,
+where the trigger is 0/1 each day) is misleading — every point sits at x=0 or
+x=1. So the response also includes a `group_comparison` that answers the question
+users actually mean, *"how much does X change Y?"*, by splitting the outcome into
+the days the trigger was **present** (value > 0) vs **absent** (value 0):
+
+- `mean_with` / `mean_without` and their `difference`;
+- `cohens_d` (pooled effect size);
+- a `welch` two-sample t-test (`t`, `df`, `p_value`);
+- a `mann_whitney` U test (`u`, `p_value`, `rank_biserial` effect size);
+- `n_with` / `n_without`, and `trigger_is_binary` (true when every aligned
+  trigger value is exactly 0 or 1).
+
+`group_comparison` is `null` when there is no split to compare (the trigger is
+present on every aligned day or on none). The web UI makes the group comparison
+the **headline** when `trigger_is_binary` (and flags the correlation coefficient
+as misleading there), and otherwise shows it beside the correlation along with a
+plain-language strength verdict and a small-sample caution.
+
 ## Statistics notes
 
 - Chi-squared p-values are exact for 1 degree of freedom (`erfc(√(χ²/2))`). A
@@ -101,6 +122,10 @@ Spearman coefficients plus the aligned series for plotting.
   counts.
 - Relative-risk CIs use the Wald log-RR standard error; they are omitted when an
   outcome cell count is zero.
+- The Welch t-test p-value uses the two-sided Student-t distribution
+  (`I_{df/(df+t²)}(df/2, ½)` via the regularized incomplete beta); Mann–Whitney
+  U uses a tie-corrected normal approximation. Both are omitted (`null`) when a
+  group has fewer than two values or no variance.
 
 ## Performance
 
