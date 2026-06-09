@@ -151,6 +151,7 @@ export type {
   Goal,
   GoalProgress,
   HrvActivitiesData,
+  HrvContextMetric,
   HrvStats,
   HrvStatsWithDelta,
   HrZoneThresholds,

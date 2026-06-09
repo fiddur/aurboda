@@ -66,11 +66,11 @@ export const createCorrelationsRouter = (
     authMiddleware,
     validateQuery(hrvActivitiesQuerySchema),
     async (req, res) => {
-      const { period_days } = req.query
+      const { period_days, context_metric } = req.query
       const user = req.user!
 
       const periodDays = period_days ? parseInt(period_days, 10) : 30
-      const correlations = await getHrvActivitiesCorrelation(user, periodDays, syncProvider)
+      const correlations = await getHrvActivitiesCorrelation(user, periodDays, syncProvider, context_metric)
       res.json({ data: correlations, success: true })
     },
   )

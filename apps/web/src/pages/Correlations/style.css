@@ -51,6 +51,12 @@
   border-color: #673ab8;
 }
 
+.correlations-page .hrv-controls {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .correlations-page .loading {
   text-align: center;
   padding: 2rem;

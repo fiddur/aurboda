@@ -11,6 +11,7 @@ import {
   type ActivityImpactData,
   type ActivityImpactType,
   type BaselineData,
+  type HrvContextMetric,
   type HrvStatsWithDelta,
   type LocationCorrelation,
   type ProductivityCorrelation,
@@ -20,6 +21,16 @@ import './style.css'
 
 // Period signal
 const periodDays = signal(30)
+
+// Which autonomic metric drives the productivity correlation. Not everyone has
+// continuous HRV, so heart rate / stress can be a denser context.
+const contextMetric = signal<HrvContextMetric>('hrv_rmssd')
+
+const CONTEXT_METRIC_LABELS: Record<HrvContextMetric, string> = {
+  heart_rate: 'Heart rate',
+  hrv_rmssd: 'HRV',
+  stress_level: 'Stress',
+}
 
 // Active tab
 const activeTab = signal<'hrv' | 'explore'>('hrv')
@@ -317,8 +328,8 @@ export function Correlations() {
 
   // Fetch HRV-activities correlations
   const correlationsQuery = useQuery({
-    queryFn: () => fetchHrvActivitiesCorrelation(periodDays.value),
-    queryKey: ['hrvActivitiesCorrelation', periodDays.value],
+    queryFn: () => fetchHrvActivitiesCorrelation(periodDays.value, contextMetric.value),
+    queryKey: ['hrvActivitiesCorrelation', periodDays.value, contextMetric.value],
     staleTime: 5 * 60 * 1000,
   })
 
@@ -356,12 +367,26 @@ export function Correlations() {
       <div class="correlations-header">
         <h1>Analyze</h1>
         {activeTab.value === 'hrv' && (
-          <select value={periodDays.value} onChange={handlePeriodChange} class="period-select">
-            <option value={14}>Last 14 days</option>
-            <option value={30}>Last 30 days</option>
-            <option value={60}>Last 60 days</option>
-            <option value={90}>Last 90 days</option>
-          </select>
+          <div class="hrv-controls">
+            <select
+              value={contextMetric.value}
+              onChange={(e) =>
+                (contextMetric.value = (e.target as HTMLSelectElement).value as HrvContextMetric)
+              }
+              class="period-select"
+              title="Which autonomic metric the productivity correlation is computed against"
+            >
+              <option value="hrv_rmssd">Context: HRV</option>
+              <option value="heart_rate">Context: Heart rate</option>
+              <option value="stress_level">Context: Stress</option>
+            </select>
+            <select value={periodDays.value} onChange={handlePeriodChange} class="period-select">
+              <option value={14}>Last 14 days</option>
+              <option value={30}>Last 30 days</option>
+              <option value={60}>Last 60 days</option>
+              <option value={90}>Last 90 days</option>
+            </select>
+          </div>
         )}
       </div>
 
@@ -580,7 +605,9 @@ export function Correlations() {
               </li>
               <li>
                 <strong>Correlation coefficient (r):</strong> For productivity, this shows how the
-                productivity score correlates with HRV (-1 to 1).
+                productivity score correlates with{' '}
+                {CONTEXT_METRIC_LABELS[correlations?.context_metric ?? contextMetric.value]} (-1 to 1). Pick a
+                different <em>context</em> metric above if you don't have continuous HRV.
               </li>
             </ul>
           </section>

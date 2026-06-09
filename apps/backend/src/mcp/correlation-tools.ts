@@ -46,11 +46,11 @@ export const registerCorrelationTools = (server: McpServer, user: string, sync?:
   // Tool: get_hrv_activities_correlation
   server.tool(
     'get_hrv_activities_correlation',
-    'Get HRV correlations with various activities. Returns Pearson correlation coefficients between HRV and productivity, locations, and activity types.',
+    'Get autonomic-context correlations with activities, locations and productivity. Returns mean HRV, heart rate and stress per item (with baseline deltas). The productivity correlation is computed against context_metric — hrv_rmssd (default), heart_rate, or stress_level — so it stays meaningful when continuous HRV is sparse.',
     { ...hrvCorrelationInputSchema.shape, tz: tzSchema },
-    async ({ period_days, tz }) => {
+    async ({ context_metric, period_days, tz }) => {
       const periodDays = period_days ?? 30
-      const correlations = await getHrvActivitiesCorrelation(user, periodDays, sync)
+      const correlations = await getHrvActivitiesCorrelation(user, periodDays, sync, context_metric)
       return tzJsonResponse({ data: correlations, success: true }, tz)
     },
   )
