@@ -607,7 +607,10 @@ export function Correlations() {
                 <strong>Correlation coefficient (r):</strong> For productivity, this shows how the
                 productivity score correlates with{' '}
                 {CONTEXT_METRIC_LABELS[correlations?.context_metric ?? contextMetric.value]} (-1 to 1). Pick a
-                different <em>context</em> metric above if you don't have continuous HRV.
+                different <em>context</em> metric above if you don't have continuous HRV. The HRV / HR /
+                Stress columns are each metric's own mean (— when that metric wasn't recorded), independent of
+                the chosen context — so a row can show a blank HRV yet still have an r from the context
+                metric.
               </li>
             </ul>
           </section>
