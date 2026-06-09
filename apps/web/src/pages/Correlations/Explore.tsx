@@ -17,6 +17,7 @@ import {
   fetchCorrelationSelectors,
   fetchGenericCorrelation,
 } from '../../state/api'
+import { eventOutcomeLooksContinuous, MODE_HELP, TOOLTIPS } from './exploreGuidance'
 
 type Mode = 'event' | 'continuous'
 
@@ -81,6 +82,40 @@ const fmt = (value: number | null | undefined, digits = 2): string =>
 
 const fmtPct = (value: number | null | undefined): string =>
   value === null || value === undefined ? '—' : `${(value * 100).toFixed(0)}%`
+
+/** Whether the current event-mode form would misuse a continuous outcome. */
+const outcomeLooksContinuous = (): boolean =>
+  eventOutcomeLooksContinuous(mode.value, eventOutcomeSource.value, eventOutcomeValue.value)
+
+/** Apply a back-pain-onset event preset for the given trigger tag. */
+const applyEventPreset = (pattern: string) => {
+  setMode('event')
+  triggerSelector.value = { kind: 'tag', pattern }
+  setEventOutcomeSource('metric')
+  eventOutcomeValue.value = 'back_pain'
+  lagWindowsInput.value = '24h,48h,72h,7d'
+  collapseGapDays.value = 3
+  periodStart.value = '2019-09-28'
+  periodEnd.value = ''
+}
+
+/** Worked examples that teach the modes by populating the whole form. */
+const PRESETS: { label: string; apply: () => void }[] = [
+  {
+    apply: () => {
+      setMode('continuous')
+      triggerSelector.value = { kind: 'nutrition', nutrient: 'carbs' }
+      outcomeSelector.value = { kind: 'metric', metric: 'sleep_score' }
+      lagDaysInput.value = 1
+      periodStart.value = ''
+      periodEnd.value = ''
+      periodDays.value = 365
+    },
+    label: 'Carbs → sleep (Continuous)',
+  },
+  { apply: () => applyEventPreset('ejaculation'), label: 'Ejaculation → back-pain onset (Event)' },
+  { apply: () => applyEventPreset('sauna'), label: 'Sauna → back-pain onset (Event)' },
+]
 
 /** Build the request body for whichever mode is active. */
 const buildRequest = () => {
@@ -348,19 +383,28 @@ export function ExploreTab() {
 
       <div class="explore-form">
         <div class="explore-row">
+          <label>Presets</label>
+          <div class="explore-presets">
+            {PRESETS.map((preset) => (
+              <button class="explore-preset" onClick={preset.apply}>
+                {preset.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div class="explore-row">
           <label>Mode</label>
           <div class="explore-toggle">
             <button class={mode.value === 'event' ? 'active' : ''} onClick={() => setMode('event')}>
               Event onset
             </button>
-            <button
-              class={mode.value === 'continuous' ? 'active' : ''}
-              onClick={() => setMode('continuous')}
-            >
+            <button class={mode.value === 'continuous' ? 'active' : ''} onClick={() => setMode('continuous')}>
               Continuous
             </button>
           </div>
         </div>
+        <p class="explore-help">{MODE_HELP}</p>
 
         <div class="explore-row">
           <label>Trigger</label>
@@ -407,18 +451,26 @@ export function ExploreTab() {
           )}
         </div>
 
+        {outcomeLooksContinuous() && (
+          <p class="explore-warning">
+            ⚠ This outcome looks continuous (it has a value most days). Event-onset may not be meaningful here
+            — consider <strong>Continuous</strong> mode.
+          </p>
+        )}
+
         {mode.value === 'event' ? (
           <>
             <div class="explore-row">
-              <label>Lag windows</label>
+              <label title={TOOLTIPS.lagWindows}>Lag windows</label>
               <input
                 value={lagWindowsInput.value}
                 onInput={(e) => (lagWindowsInput.value = (e.target as HTMLInputElement).value)}
                 placeholder="24h,48h,7d"
+                title={TOOLTIPS.lagWindows}
               />
             </div>
             <div class="explore-row">
-              <label>Collapse gap (days)</label>
+              <label title={TOOLTIPS.collapseGap}>Collapse gap (days)</label>
               <input
                 type="number"
                 value={collapseGapDays.value}
@@ -428,7 +480,7 @@ export function ExploreTab() {
               />
             </div>
             <div class="explore-row">
-              <label>Denominator</label>
+              <label title={TOOLTIPS.denominator}>Denominator</label>
               <div class="explore-toggle">
                 <button
                   class={denominator.value === 'known' ? 'active' : ''}
@@ -444,8 +496,8 @@ export function ExploreTab() {
                 </button>
               </div>
               <span class="regime-hint">
-                Use <strong>All days</strong> for presence-only metrics (e.g. back_pain) that only log on
-                bad days; <strong>Known days</strong> for metrics that log explicit zeros.
+                Use <strong>All days</strong> for presence-only metrics (e.g. back_pain) that only log on bad
+                days; <strong>Known days</strong> for metrics that log explicit zeros.
               </span>
             </div>
           </>
@@ -461,7 +513,7 @@ export function ExploreTab() {
         )}
 
         <div class="explore-row">
-          <label>Regime</label>
+          <label title={TOOLTIPS.regime}>Regime</label>
           <div class="explore-regime">
             <input
               type="date"

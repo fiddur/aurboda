@@ -458,6 +458,37 @@
 .period-days-input {
   width: 70px;
 }
+.explore-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.explore-preset {
+  background: #f3f0fa;
+  color: #5a32a3;
+  border: 1px solid #d6ccec;
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.explore-preset:hover {
+  background: #e9e2f7;
+}
+.explore-help {
+  color: #6b7280;
+  font-size: 0.85rem;
+  margin: -4px 0 4px;
+}
+.explore-warning {
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  color: #9a3412;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 0.88rem;
+  margin: 0 0 4px;
+}
 .explore-run {
   background: #673ab8;
   color: #fff;
