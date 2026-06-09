@@ -26,6 +26,12 @@ series, and the set of days where its status is _known_:
 `GET /correlations/selectors` (MCP: `list_correlation_selectors`) lists the
 available metrics, tags, activity types, nutrients and productivity categories.
 
+`tag` and `activity` both match `activity_type` by regex and behave identically —
+tags were long ago merged into activities. The API still accepts both for
+backward compatibility, but the web picker only offers **activity / tag** (one
+option) to avoid the confusing duplicate; it autocompletes from every
+`activity_type`, including former tags.
+
 ## Event-outcome mode
 
 Surfaced through `get_generic_correlation` / `POST /correlations/generic` with an
