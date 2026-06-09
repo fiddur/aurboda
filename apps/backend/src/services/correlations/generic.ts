@@ -16,6 +16,7 @@ import type {
 } from './types.ts'
 
 import { getAllActivitiesInRange, getProductivity, getTimeSeries } from '../../db/index.ts'
+import { triggerCorrelationSyncs } from './background-sync.ts'
 import { getCompoundEventOutcome } from './explore.ts'
 import { chiSquaredTest, mean, stddev } from './utils.ts'
 
@@ -101,15 +102,8 @@ export async function getGenericCorrelation(
     analysisDays = periodDays
   }
 
-  // Auto-sync if provider available
-  if (sync) {
-    await Promise.all([
-      sync.syncOuraIfNeeded(user, 'tags'),
-      sync.syncOuraIfNeeded(user, 'sessions'),
-      sync.syncRescueTimeIfNeeded(user),
-      sync.syncCalendarsIfNeeded(user),
-    ])
-  }
+  // Fire-and-forget: never block the analysis on live external syncs.
+  triggerCorrelationSyncs(sync, user)
 
   // Determine which data we need based on triggers and outcome
   const needsActivities =
@@ -485,14 +479,8 @@ async function getGenericEventOutcome(
   sync: SyncProvider | undefined,
   options: GenericCorrelationOptions,
 ): Promise<GenericCorrelationResult> {
-  if (sync) {
-    await Promise.all([
-      sync.syncOuraIfNeeded(user, 'tags'),
-      sync.syncOuraIfNeeded(user, 'sessions'),
-      sync.syncRescueTimeIfNeeded(user),
-      sync.syncCalendarsIfNeeded(user),
-    ])
-  }
+  // Fire-and-forget: never block the analysis on live external syncs.
+  triggerCorrelationSyncs(sync, user)
 
   const eventOutcome = await getCompoundEventOutcome(user, triggers, outcome, lagWindows, {
     denominator: options.denominator,
