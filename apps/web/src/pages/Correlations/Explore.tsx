@@ -356,10 +356,7 @@ function ContinuousResults({ data }: { data: ContinuousCorrelationData }) {
         n={data.n} · Pearson r={fmt(data.pearson)} · Spearman ρ={fmt(data.spearman)} · lag {data.lag_days}d
       </p>
       {!showGroupAsHeadline && (
-        <p class="explore-verdict">
-          {describeCorrelationStrength(data.pearson)} correlation
-          {caution && <span class="explore-caution"> · {caution}</span>}
-        </p>
+        <p class="explore-verdict">{describeCorrelationStrength(data.pearson)} correlation</p>
       )}
       {gc && (
         <>
@@ -371,6 +368,8 @@ function ContinuousResults({ data }: { data: ContinuousCorrelationData }) {
           <GroupComparisonPanel gc={gc} />
         </>
       )}
+      {/* Shown in both modes: a small-n caution matters most for a present-vs-absent split. */}
+      {caution && <p class="explore-verdict explore-caution">⚠ {caution}</p>}
       <svg width={w} height={h} class="scatter">
         <line x1={pad} y1={h - pad} x2={w - pad} y2={h - pad} stroke="#ccc" />
         <line x1={pad} y1={pad} x2={pad} y2={h - pad} stroke="#ccc" />
