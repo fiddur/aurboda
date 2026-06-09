@@ -5,8 +5,10 @@
  * block the response on live external syncs (Oura/RescueTime/calendars). A first
  * or stale sync can take many seconds — long enough to blow the MCP/HTTP request
  * timeout even for a tiny analysis window. We trigger the syncs in the
- * background so data is fresh for the *next* request, mirroring the pattern in
- * services/queries/productivity.ts.
+ * background so data is fresh for the *next* request, as the query layer
+ * already does (see services/queries/tags.ts and daily-summary.ts). We go one
+ * step further and use Promise.allSettled so a rejected sync can never surface
+ * as an unhandled rejection (those callers use a bare `void Promise.all`).
  */
 
 import type { SyncProvider } from '../queries/index.ts'
