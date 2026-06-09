@@ -114,6 +114,22 @@ the **headline** when `trigger_is_binary` (and flags the correlation coefficient
 as misleading there), and otherwise shows it beside the correlation along with a
 plain-language strength verdict and a small-sample caution.
 
+### Nutrition completeness
+
+Nutrition days come in two flavours: **nutrition-complete** days (at least one
+meal with real macros — a non-null `calories`) and **flag-only** days (a meal
+logged with no macros, which sums to 0 and otherwise reads as a noisy zero).
+When either side of a continuous correlation is a `nutrition` selector:
+
+- the response always reports `n_complete` — of the `n` aligned pairs, how many
+  are nutrition-complete on every nutrition side (null when no side is
+  nutrition), so the UI can show "n=104 (47 with full nutrition)";
+- `nutrition_completeness: "complete_only"` (request body, default `"all"`)
+  drops the flag-only pairs entirely so they don't dilute the correlation.
+
+Completeness is independent of the event-mode `denominator` knob (which governs
+known-vs-all days for presence-only *outcomes*).
+
 ## Statistics notes
 
 - Chi-squared p-values are exact for 1 degree of freedom (`erfc(√(χ²/2))`). A

@@ -38,6 +38,8 @@ const eventOutcomeValue = signal('')
 const lagWindowsInput = signal('24h,48h,7d')
 const lagDaysInput = signal(0)
 const collapseGapDays = signal(3)
+// Continuous mode: drop nutrition days lacking real macros (flag-only) when set.
+const nutritionCompleteness = signal<'all' | 'complete_only'>('all')
 // Defaults to 'all' since the default outcome source is a (presence-only) metric.
 const denominator = signal<'known' | 'all'>('all')
 const periodStart = signal('')
@@ -353,7 +355,9 @@ function ContinuousResults({ data }: { data: ContinuousCorrelationData }) {
   return (
     <div class="explore-results">
       <p class="explore-summary">
-        n={data.n} · Pearson r={fmt(data.pearson)} · Spearman ρ={fmt(data.spearman)} · lag {data.lag_days}d
+        n={data.n}
+        {data.n_complete !== null && ` (${data.n_complete} with full nutrition)`} · Pearson r=
+        {fmt(data.pearson)} · Spearman ρ={fmt(data.spearman)} · lag {data.lag_days}d
       </p>
       {!showGroupAsHeadline && (
         <p class="explore-verdict">{describeCorrelationStrength(data.pearson)} correlation</p>
@@ -406,11 +410,16 @@ const runExplore = async (): Promise<ExploreResult> => {
   const data = await fetchContinuousCorrelation({
     ...period,
     lag_days: lagDaysInput.value,
+    nutrition_completeness: nutritionCompleteness.value,
     outcome: outcomeSelector.value,
     trigger: triggerSelector.value,
   })
   return { kind: 'continuous', data }
 }
+
+/** Continuous mode: is either side a nutrition dimension (so completeness applies)? */
+const continuousHasNutrition = (): boolean =>
+  triggerSelector.value.kind === 'nutrition' || outcomeSelector.value.kind === 'nutrition'
 
 // eslint-disable-next-line complexity -- form render branches on mode/selector kind
 export function ExploreTab() {
@@ -560,14 +569,43 @@ export function ExploreTab() {
             </div>
           </>
         ) : (
-          <div class="explore-row">
-            <label>Outcome lag (days)</label>
-            <input
-              type="number"
-              value={lagDaysInput.value}
-              onInput={(e) => (lagDaysInput.value = parseInt((e.target as HTMLInputElement).value, 10) || 0)}
-            />
-          </div>
+          <>
+            <div class="explore-row">
+              <label>Outcome lag (days)</label>
+              <input
+                type="number"
+                value={lagDaysInput.value}
+                onInput={(e) =>
+                  (lagDaysInput.value = parseInt((e.target as HTMLInputElement).value, 10) || 0)
+                }
+              />
+            </div>
+            {continuousHasNutrition() && (
+              <div class="explore-row">
+                <label title="Flag-only days (a meal logged with no macros) read as noisy zeros.">
+                  Nutrition days
+                </label>
+                <div class="explore-toggle">
+                  <button
+                    class={nutritionCompleteness.value === 'all' ? 'active' : ''}
+                    onClick={() => (nutritionCompleteness.value = 'all')}
+                  >
+                    All
+                  </button>
+                  <button
+                    class={nutritionCompleteness.value === 'complete_only' ? 'active' : ''}
+                    onClick={() => (nutritionCompleteness.value = 'complete_only')}
+                  >
+                    Full macros only
+                  </button>
+                </div>
+                <span class="regime-hint">
+                  Exclude days logged without real macros (flag-only). The result shows how many aligned days
+                  had full nutrition either way.
+                </span>
+              </div>
+            )}
+          </>
         )}
 
         <div class="explore-row">

@@ -303,6 +303,7 @@ export {
   getMealLogCompleted,
   getMealLogCompletedInRange,
   getMeals,
+  getNutritionCompleteDaysInRange,
   insertMeal,
   type NutrientKey,
   NUTRIENT_KEYS,

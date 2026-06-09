@@ -180,6 +180,31 @@ export const getDailyNutrientTotals = async (
   return totals
 }
 
+/**
+ * UTC days in the inclusive [start, end] range that have *real* nutrition
+ * logged — at least one meal with a non-null `calories` value.
+ *
+ * Distinguishes nutrition-complete days from flag-only days (a meal logged with
+ * no macros), which otherwise sum to 0 in getDailyNutrientTotals and contaminate
+ * nutrient correlations by inflating n with noisy zeros. Bucketed by UTC date to
+ * match the correlation daily matrix.
+ */
+export const getNutritionCompleteDaysInRange = async (
+  user: string,
+  start: Date,
+  end: Date,
+): Promise<string[]> => {
+  const result = await query(
+    user,
+    `SELECT DISTINCT TO_CHAR((time AT TIME ZONE 'UTC')::date, 'YYYY-MM-DD') AS date
+       FROM meals
+       WHERE time >= $1 AND time <= $2 AND calories IS NOT NULL
+       ORDER BY date`,
+    [start, end],
+  )
+  return result.rows.map((r) => r.date as string)
+}
+
 export interface UpdateMealInput {
   meal_type?: string
   name?: string | null

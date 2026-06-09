@@ -11,6 +11,7 @@ import {
   getMealLogCompleted,
   getMealLogCompletedInRange,
   getMeals,
+  getNutritionCompleteDaysInRange,
   insertMeal,
   setMealLogCompleted,
   updateMeal,
@@ -517,6 +518,50 @@ describe('Meals Integration Tests', () => {
 
       const result = await getMealLogCompleted(user, ['2025-06-01', '2025-06-02', '2025-06-15'])
       expect(result.sort()).toEqual(['2025-06-01', '2025-06-15'])
+    })
+  })
+
+  describe('getNutritionCompleteDaysInRange', () => {
+    test('returns only days with a meal that has real macros (non-null calories)', async () => {
+      const user = getTestUser()
+      // Complete days: meals carrying calories.
+      await insertMeal(user, { calories: 500, time: new Date('2025-07-01T08:00:00Z') })
+      await insertMeal(user, { calories: 300, time: new Date('2025-07-03T19:00:00Z') })
+      // Flag-only day: a meal logged with no macros (calories NULL).
+      await insertMeal(user, { time: new Date('2025-07-02T12:00:00Z') })
+
+      const result = await getNutritionCompleteDaysInRange(
+        user,
+        new Date('2025-07-01T00:00:00Z'),
+        new Date('2025-07-31T23:59:59Z'),
+      )
+      expect(result).toEqual(['2025-07-01', '2025-07-03'])
+    })
+
+    test('counts a day complete if any of its meals has calories', async () => {
+      const user = getTestUser()
+      await insertMeal(user, { time: new Date('2025-07-05T08:00:00Z') }) // flag-only
+      await insertMeal(user, { calories: 120, time: new Date('2025-07-05T13:00:00Z') }) // real
+
+      const result = await getNutritionCompleteDaysInRange(
+        user,
+        new Date('2025-07-01T00:00:00Z'),
+        new Date('2025-07-31T23:59:59Z'),
+      )
+      expect(result).toEqual(['2025-07-05'])
+    })
+
+    test('respects the [start, end] range', async () => {
+      const user = getTestUser()
+      await insertMeal(user, { calories: 100, time: new Date('2025-08-01T08:00:00Z') })
+      await insertMeal(user, { calories: 100, time: new Date('2025-08-20T08:00:00Z') })
+
+      const result = await getNutritionCompleteDaysInRange(
+        user,
+        new Date('2025-08-10T00:00:00Z'),
+        new Date('2025-08-31T23:59:59Z'),
+      )
+      expect(result).toEqual(['2025-08-20'])
     })
   })
 

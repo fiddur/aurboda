@@ -40,6 +40,12 @@ export interface ContinuousParams {
   periodStart?: string
   periodEnd?: string
   periodDays?: number
+  /**
+   * How to treat partially-logged nutrition days. 'all' (default) keeps every
+   * known day; 'complete_only' drops days that lack real macros (flag-only),
+   * which otherwise read as noisy zeros. n_complete is reported either way.
+   */
+  nutritionCompleteness?: 'all' | 'complete_only'
 }
 
 export interface ContinuousCorrelation extends ContinuousResult {
@@ -74,6 +80,9 @@ export const getContinuousCorrelation = async (
     triggerKnown: triggerSeries.knownDays,
     outcomeKnown: outcomeSeries.knownDays,
     lagDays,
+    triggerCompleteDays: triggerSeries.completeDays,
+    outcomeCompleteDays: outcomeSeries.completeDays,
+    requireComplete: params.nutritionCompleteness === 'complete_only',
   })
 
   const days = Math.round((end.getTime() - start.getTime()) / 86_400_000)

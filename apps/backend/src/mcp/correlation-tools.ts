@@ -122,11 +122,21 @@ are known.
 Example: "How does carb intake affect my sleep score the next day?"
 -> trigger: {kind:"nutrition", nutrient:"carbs"}, outcome: {kind:"metric", metric:"sleep_score"}, lag_days: 1`,
     { ...continuousCorrelationBodySchema.shape, tz: tzSchema },
-    async ({ lag_days, outcome, period_days, period_end, period_start, trigger, tz }) => {
+    async ({
+      lag_days,
+      nutrition_completeness,
+      outcome,
+      period_days,
+      period_end,
+      period_start,
+      trigger,
+      tz,
+    }) => {
       const result = await getContinuousCorrelation(
         user,
         {
           lagDays: lag_days,
+          nutritionCompleteness: nutrition_completeness,
           outcome: outcome as Selector,
           periodDays: period_days,
           periodEnd: period_end,

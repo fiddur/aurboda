@@ -145,13 +145,15 @@ export const createCorrelationsRouter = (
     authMiddleware,
     validateBody(continuousCorrelationBodySchema),
     async (req, res) => {
-      const { trigger, outcome, lag_days, period_days, period_start, period_end } = req.body
+      const { trigger, outcome, lag_days, period_days, period_start, period_end, nutrition_completeness } =
+        req.body
       const user = req.user!
 
       const result = await getContinuousCorrelation(
         user,
         {
           lagDays: lag_days,
+          nutritionCompleteness: nutrition_completeness,
           outcome,
           periodDays: period_days,
           periodEnd: period_end,

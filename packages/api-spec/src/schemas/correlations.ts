@@ -779,6 +779,15 @@ export const selectorSchema = z
 
 export type CorrelationSelector = z.infer<typeof selectorSchema>
 
+/** How partially-logged nutrition days are treated in continuous correlation. */
+export const nutritionCompletenessSchema = z.enum(['all', 'complete_only']).meta({
+  description:
+    "How to treat partial nutrition days: 'all' keeps every known day; 'complete_only' drops days without real macros (flag-only). n_complete is reported either way.",
+  id: 'NutritionCompleteness',
+})
+
+export type NutritionCompleteness = z.infer<typeof nutritionCompletenessSchema>
+
 /** Continuous correlation request body */
 export const continuousCorrelationBodySchema = z
   .object({
@@ -786,6 +795,9 @@ export const continuousCorrelationBodySchema = z
       description: 'Days the outcome lags the trigger (default: 0)',
       example: 1,
     }),
+    nutrition_completeness: nutritionCompletenessSchema
+      .optional()
+      .meta({ description: 'Filter for partial nutrition days (default: all)' }),
     outcome: selectorSchema.meta({ description: 'Outcome dimension' }),
     period_days: z.number().int().optional().meta({ description: 'Days to analyze (default: 90)' }),
     period_end: z.string().optional().meta({ description: 'Inclusive regime end (YYYY-MM-DD)' }),
@@ -855,6 +867,10 @@ export const continuousCorrelationDataSchema = z
       .meta({ description: 'Present-vs-absent group comparison; null when there is no split to compare' }),
     lag_days: z.number().int(),
     n: z.number().int().meta({ description: 'Number of aligned day pairs' }),
+    n_complete: z.number().int().nullable().meta({
+      description:
+        'Of the n aligned pairs, how many have complete nutrition on every nutrition side; null when no side is nutrition',
+    }),
     outcome: selectorSchema,
     pearson: z.number().nullable().meta({ description: 'Pearson correlation (-1..1)' }),
     period: z.object({ days: z.number().int(), end: z.string(), start: z.string() }),

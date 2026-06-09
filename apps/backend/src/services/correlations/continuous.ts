@@ -41,6 +41,13 @@ export interface ContinuousResult {
    * never present or always present (no split to compare).
    */
   group_comparison: GroupComparison | null
+  /**
+   * Of the `n` aligned pairs, how many have *complete* nutrition on every
+   * nutrition side. Null when neither side is a nutrition dimension (the notion
+   * doesn't apply). Lets the UI surface `n_complete` beside `n` so flag-only
+   * days don't quietly inflate confidence.
+   */
+  n_complete: number | null
 }
 
 export interface ContinuousInput {
@@ -51,6 +58,12 @@ export interface ContinuousInput {
   lagDays: number
   /** Max points returned in `series` (default 1000). */
   maxSeriesPoints?: number
+  /** Days the trigger is nutrition-complete (only when the trigger is nutrition). */
+  triggerCompleteDays?: string[]
+  /** Days the outcome is nutrition-complete (only when the outcome is nutrition). */
+  outcomeCompleteDays?: string[]
+  /** When true, drop aligned pairs that aren't nutrition-complete on every nutrition side. */
+  requireComplete?: boolean
 }
 
 const MS_PER_DAY = 86_400_000
@@ -59,6 +72,19 @@ const MS_PER_DAY = 86_400_000
 const shiftDay = (day: string, days: number): string =>
   new Date(Date.parse(`${day}T00:00:00Z`) + days * MS_PER_DAY).toISOString().split('T')[0]
 
+/** A nutrition-side day-set: null means "every day is complete" for that side. */
+type CompleteSet = Set<string> | null
+
+/** A pair is complete when every nutrition side present is complete on its day. */
+const pairIsComplete = (
+  day: string,
+  outcomeDay: string,
+  triggerComplete: CompleteSet,
+  outcomeComplete: CompleteSet,
+): boolean =>
+  (triggerComplete === null || triggerComplete.has(day)) &&
+  (outcomeComplete === null || outcomeComplete.has(outcomeDay))
+
 /**
  * Pure continuous correlation. A day pair (d, d+lag) is used only when the
  * trigger is known on d and the outcome is known on d+lag. Missing values on a
@@ -66,20 +92,31 @@ const shiftDay = (day: string, days: number): string =>
  */
 export const computeContinuous = (input: ContinuousInput): ContinuousResult => {
   const outcomeKnownSet = new Set(input.outcomeKnown)
+  const triggerCompleteSet: CompleteSet = input.triggerCompleteDays
+    ? new Set(input.triggerCompleteDays)
+    : null
+  const outcomeCompleteSet: CompleteSet = input.outcomeCompleteDays
+    ? new Set(input.outcomeCompleteDays)
+    : null
+  const tracksCompleteness = triggerCompleteSet !== null || outcomeCompleteSet !== null
   const triggerValues: number[] = []
   const outcomeValues: number[] = []
   const series: AlignedPoint[] = []
   const cap = input.maxSeriesPoints ?? 1000
+  let nComplete = 0
 
   // Iterate trigger-known days in chronological order for a tidy series.
   const triggerKnownSorted = [...input.triggerKnown].sort()
   for (const day of triggerKnownSorted) {
     const outcomeDay = shiftDay(day, input.lagDays)
     if (!outcomeKnownSet.has(outcomeDay)) continue
+    const pairComplete = pairIsComplete(day, outcomeDay, triggerCompleteSet, outcomeCompleteSet)
+    if (input.requireComplete && !pairComplete) continue
     const triggerValue = input.triggerDaily.get(day) ?? 0
     const outcomeValue = input.outcomeDaily.get(outcomeDay) ?? 0
     triggerValues.push(triggerValue)
     outcomeValues.push(outcomeValue)
+    if (pairComplete) nComplete++
     if (series.length < cap) series.push({ date: day, trigger: triggerValue, outcome: outcomeValue })
   }
 
@@ -90,6 +127,7 @@ export const computeContinuous = (input: ContinuousInput): ContinuousResult => {
     spearman: spearman(triggerValues, outcomeValues),
     series,
     group_comparison: computeGroupComparison(triggerValues, outcomeValues),
+    n_complete: tracksCompleteness ? nComplete : null,
   }
 }
 
