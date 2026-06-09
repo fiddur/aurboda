@@ -123,6 +123,52 @@ describe('computeContinuous', () => {
     expect(gc!.mann_whitney!.rank_biserial).toBeCloseTo(1, 6)
   })
 
+  test('counts and (optionally) filters incomplete nutrition days', () => {
+    const days = ['2024-01-01', '2024-01-02', '2024-01-03', '2024-01-04']
+    const trigger = seriesMap(days.map((d, i) => [d, i + 1]))
+    const outcome = seriesMap(days.map((d, i) => [d, 10 + i]))
+    // Only the 1st and 3rd days have complete nutrition on the trigger side.
+    const triggerCompleteDays = ['2024-01-01', '2024-01-03']
+
+    // 'all': keep every aligned pair but report how many were complete.
+    const all = computeContinuous({
+      triggerDaily: trigger,
+      outcomeDaily: outcome,
+      triggerKnown: days,
+      outcomeKnown: days,
+      lagDays: 0,
+      triggerCompleteDays,
+    })
+    expect(all.n).toBe(4)
+    expect(all.n_complete).toBe(2)
+
+    // 'complete_only': drop the incomplete pairs entirely.
+    const filtered = computeContinuous({
+      triggerDaily: trigger,
+      outcomeDaily: outcome,
+      triggerKnown: days,
+      outcomeKnown: days,
+      lagDays: 0,
+      triggerCompleteDays,
+      requireComplete: true,
+    })
+    expect(filtered.n).toBe(2)
+    expect(filtered.n_complete).toBe(2)
+    expect(filtered.series.map((p) => p.date)).toEqual(['2024-01-01', '2024-01-03'])
+  })
+
+  test('n_complete is null when no completeness set is provided', () => {
+    const days = ['2024-01-01', '2024-01-02', '2024-01-03']
+    const result = computeContinuous({
+      triggerDaily: seriesMap(days.map((d, i) => [d, i])),
+      outcomeDaily: seriesMap(days.map((d, i) => [d, i])),
+      triggerKnown: days,
+      outcomeKnown: days,
+      lagDays: 0,
+    })
+    expect(result.n_complete).toBeNull()
+  })
+
   test('no group comparison when the trigger is present every day', () => {
     const days = ['2024-01-01', '2024-01-02', '2024-01-03']
     const result = computeContinuous({

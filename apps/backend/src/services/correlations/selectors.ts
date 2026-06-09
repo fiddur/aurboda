@@ -16,6 +16,7 @@ import {
   getAllActivitiesInRange,
   getDailyNutrientTotals,
   getMealLogCompletedInRange,
+  getNutritionCompleteDaysInRange,
   getProductivity,
   getTimeSeries,
 } from '../../db/index.ts'
@@ -75,6 +76,12 @@ export interface ResolvedSeries {
   daily: Map<string, number>
   /** Days where the dimension's status is known (the denominator universe). */
   knownDays: string[]
+  /**
+   * Days with *complete* data, when the dimension distinguishes complete from
+   * partial logging. Only nutrition populates this (days with real macros, vs
+   * flag-only days); undefined for dimensions where every known day is complete.
+   */
+  completeDays?: string[]
 }
 
 const MS_PER_DAY = 86_400_000
@@ -195,9 +202,10 @@ const resolveNutrition = async (
   start: Date,
   end: Date,
 ): Promise<ResolvedSeries> => {
-  const [totals, completed] = await Promise.all([
+  const [totals, completed, completeDays] = await Promise.all([
     getDailyNutrientTotals(user, [selector.nutrient], start, end),
     getMealLogCompletedInRange(user, toUtcDay(start), toUtcDay(end)),
+    getNutritionCompleteDaysInRange(user, selector.nutrient, start, end),
   ])
 
   const daily = new Map<string, number>()
@@ -208,7 +216,9 @@ const resolveNutrition = async (
   const knownSet = new Set<string>([...daily.keys(), ...completed])
   for (const day of completed) if (!daily.has(day)) daily.set(day, 0)
 
-  return fromDailyValues(daily, [...knownSet], selector.threshold)
+  // Complete = days with a real logged value for *this* nutrient, so callers can
+  // exclude or count flag-only days that otherwise read as noisy zeros.
+  return { ...fromDailyValues(daily, [...knownSet], selector.threshold), completeDays }
 }
 
 /** Productivity minutes per day for a matching category or app. */

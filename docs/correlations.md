@@ -13,15 +13,15 @@ API, and the MCP tools. All analysis is bucketed by **UTC calendar day**.
 
 ## Selectors
 
-A *selector* names any data dimension and resolves to event days, a daily value
-series, and the set of days where its status is *known*:
+A _selector_ names any data dimension and resolves to event days, a daily value
+series, and the set of days where its status is _known_:
 
-| kind | resolves from | known days |
-| --- | --- | --- |
-| `tag` / `activity` | activities matched by `activity_type` (regex) | every day in range (absence = no event) |
-| `metric` | `time_series` entries (avg/sum per day) | days with ≥1 entry (incl. explicit 0s) |
-| `nutrition` | per-day meal totals (calories/protein/carbs/fat/fiber) | days with a meal **or** marked meal-log-complete |
-| `productivity_category` / `productivity_app` | productivity minutes matched by category/app | every day in range |
+| kind                                         | resolves from                                          | known days                                       |
+| -------------------------------------------- | ------------------------------------------------------ | ------------------------------------------------ |
+| `tag` / `activity`                           | activities matched by `activity_type` (regex)          | every day in range (absence = no event)          |
+| `metric`                                     | `time_series` entries (avg/sum per day)                | days with ≥1 entry (incl. explicit 0s)           |
+| `nutrition`                                  | per-day meal totals (calories/protein/carbs/fat/fiber) | days with a meal **or** marked meal-log-complete |
+| `productivity_category` / `productivity_app` | productivity minutes matched by category/app           | every day in range                               |
 
 `GET /correlations/selectors` (MCP: `list_correlation_selectors`) lists the
 available metrics, tags, activity types, nutrients and productivity categories.
@@ -34,24 +34,29 @@ Surfaced through `get_generic_correlation` / `POST /correlations/generic` with a
 ```jsonc
 {
   "triggers": [{ "type": "tag", "pattern": "ejaculation" }],
-  "outcome": { "type": "event", "source": "metric", "metric": "back_pain",
-               "threshold": { "op": "gt", "value": 0 }, "collapse_gap_days": 3 },
+  "outcome": {
+    "type": "event",
+    "source": "metric",
+    "metric": "back_pain",
+    "threshold": { "op": "gt", "value": 0 },
+    "collapse_gap_days": 3,
+  },
   "lag_windows": ["24h", "48h", "7d"],
-  "period_start": "2019-09-28",       // regime scoping (optional)
-  "denominator": "all"                 // see below
+  "period_start": "2019-09-28", // regime scoping (optional)
+  "denominator": "all", // see below
 }
 ```
 
 How it works:
 
 - **Onset-collapsing.** Consecutive outcome days no more than `collapse_gap_days`
-  apart (default 3) collapse into a single *onset*, so a 6-day flare counts once
+  apart (default 3) collapse into a single _onset_, so a 6-day flare counts once
   instead of six times.
-- **Exposure.** A known day is *exposed* when a trigger occurred within the lag
+- **Exposure.** A known day is _exposed_ when a trigger occurred within the lag
   window ending on that day (e.g. `48h` = the day itself plus the day before).
 - **Effect.** Over the known-day denominator, the engine builds a 2×2 table of
   {onset, non-onset} × {exposed, unexposed} and reports, per lag window:
-  - **`reverse_conditional`** — P(recent trigger | onset). *This is the headline*
+  - **`reverse_conditional`** — P(recent trigger | onset). _This is the headline_
     — the user's actual question ("when my back flares, how often had I recently
     leaked?").
   - **`base_rate`** — P(a known day is exposed), for comparison.
@@ -83,8 +88,8 @@ Surfaced through `get_metric_correlation` / `POST /correlations/continuous`:
 {
   "trigger": { "kind": "nutrition", "nutrient": "carbs" },
   "outcome": { "kind": "metric", "metric": "sleep_score" },
-  "lag_days": 1,            // outcome measured 1 day after the trigger
-  "period_days": 180
+  "lag_days": 1, // outcome measured 1 day after the trigger
+  "period_days": 180,
 }
 ```
 
@@ -98,7 +103,7 @@ Spearman coefficients plus the aligned series for plotting.
 A Pearson r on a **binary or presence** trigger (e.g. `hot_bath` → `sleep_score`,
 where the trigger is 0/1 each day) is misleading — every point sits at x=0 or
 x=1. So the response also includes a `group_comparison` that answers the question
-users actually mean, *"how much does X change Y?"*, by splitting the outcome into
+users actually mean, _"how much does X change Y?"_, by splitting the outcome into
 the days the trigger was **present** (value > 0) vs **absent** (value 0):
 
 - `mean_with` / `mean_without` and their `difference`;
@@ -113,6 +118,24 @@ present on every aligned day or on none). The web UI makes the group comparison
 the **headline** when `trigger_is_binary` (and flags the correlation coefficient
 as misleading there), and otherwise shows it beside the correlation along with a
 plain-language strength verdict and a small-sample caution.
+
+### Nutrition completeness
+
+Nutrition days come in two flavours: **nutrition-complete** days (at least one
+meal with a real logged value for the nutrient being correlated) and
+**flag-only** days (a meal logged with no macros, which sums to 0 and otherwise
+reads as a noisy zero). Completeness is keyed per-nutrient — a day that logged
+calories but never tracked fiber is complete for `calories` but not for `fiber`.
+When either side of a continuous correlation is a `nutrition` selector:
+
+- the response always reports `n_complete` — of the `n` aligned pairs, how many
+  are nutrition-complete on every nutrition side (null when no side is
+  nutrition), so the UI can show "n=104 (47 with full nutrition)";
+- `nutrition_completeness: "complete_only"` (request body, default `"all"`)
+  drops the flag-only pairs entirely so they don't dilute the correlation.
+
+Completeness is independent of the event-mode `denominator` knob (which governs
+known-vs-all days for presence-only _outcomes_).
 
 ## Statistics notes
 

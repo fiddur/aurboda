@@ -7,6 +7,7 @@ vi.mock('../../db', () => ({
   getAllActivitiesInRange: vi.fn(),
   getDailyNutrientTotals: vi.fn(),
   getMealLogCompletedInRange: vi.fn(),
+  getNutritionCompleteDaysInRange: vi.fn(),
   getProductivity: vi.fn(),
   getTimeSeries: vi.fn(),
 }))
@@ -19,6 +20,7 @@ beforeEach(() => {
   vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([])
   vi.mocked(db.getDailyNutrientTotals).mockResolvedValue([])
   vi.mocked(db.getMealLogCompletedInRange).mockResolvedValue([])
+  vi.mocked(db.getNutritionCompleteDaysInRange).mockResolvedValue([])
   vi.mocked(db.getProductivity).mockResolvedValue([])
   vi.mocked(db.getTimeSeries).mockResolvedValue([])
 })
