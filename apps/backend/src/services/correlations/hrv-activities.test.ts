@@ -91,37 +91,67 @@ describe('getHrvActivitiesCorrelation', () => {
     expect(hr.context_metric).toBe('heart_rate')
   })
 
-  test('correlates productivity against the chosen context metric', async () => {
+  test('derives the productivity correlation from the chosen context series', async () => {
     const t = (minsAgo: number) => new Date(Date.now() - minsAgo * 60_000)
-    // One productivity window; productivity score is constant so r is null, but
-    // the point is that the *chosen* metric's series feeds the correlation.
+    // Two windows in the same category with different productivity scores, so the
+    // correlation is computable and its sign depends on which series is used.
     vi.mocked(db.getProductivity).mockResolvedValue([
       {
         activity: 'vscode',
         category: 'Dev',
-        duration_sec: 3600,
-        end_time: t(0),
-        productivity: 2,
+        duration_sec: 1800,
+        end_time: t(90),
+        productivity: 1,
+        start_time: t(120),
+      },
+      {
+        activity: 'vscode',
+        category: 'Dev',
+        duration_sec: 1800,
+        end_time: t(30),
+        productivity: 3,
         start_time: t(60),
       },
     ])
     vi.mocked(locations.getPlaceVisits).mockResolvedValue([])
     vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([])
-    // Distinct series per metric so we can tell which one was used for the means.
+    // HRV rises with the score (positive r); HR falls with it (negative r).
     vi.mocked(db.getTimeSeries).mockImplementation(async (_u: string, metric: string) => {
-      const at = [t(50), t(40), t(30)]
-      if (metric === 'heart_rate') return at.map((d) => [d, 62] as [Date, number])
-      if (metric === 'stress_level') return at.map((d) => [d, 20] as [Date, number])
-      return at.map((d) => [d, 45] as [Date, number]) // hrv_rmssd
+      const pts: [Date, number][] =
+        metric === 'heart_rate'
+          ? [
+              [t(115), 70],
+              [t(105), 72],
+              [t(55), 50],
+              [t(45), 52],
+            ]
+          : metric === 'stress_level'
+            ? [
+                [t(115), 20],
+                [t(105), 20],
+                [t(55), 20],
+                [t(45), 20],
+              ]
+            : [
+                [t(115), 40],
+                [t(105), 42],
+                [t(55), 60],
+                [t(45), 62],
+              ] // hrv_rmssd
+      return pts
     })
 
-    const result = await getHrvActivitiesCorrelation('testuser', 7, undefined, 'heart_rate')
-    expect(result.context_metric).toBe('heart_rate')
-    // All three metric means are still populated for the table.
-    const dev = result.correlations.productivity.find((p) => p.category === 'Dev')
-    expect(dev?.mean_hr).toBe(62)
-    expect(dev?.mean_hrv).toBe(45)
-    expect(dev?.mean_stress).toBe(20)
+    const hrv = await getHrvActivitiesCorrelation('testuser', 7, undefined, 'hrv_rmssd')
+    const hr = await getHrvActivitiesCorrelation('testuser', 7, undefined, 'heart_rate')
+    const hrvDev = hrv.correlations.productivity.find((p) => p.category === 'Dev')
+    const hrDev = hr.correlations.productivity.find((p) => p.category === 'Dev')
+
+    // The coefficient flips sign with the context metric, proving it uses the
+    // selected series. Means stay populated for all three either way.
+    expect(hrvDev?.correlation_coefficient).toBeGreaterThan(0.9)
+    expect(hrDev?.correlation_coefficient).toBeLessThan(-0.9)
+    expect(hrvDev?.mean_hr).toBe(61)
+    expect(hrvDev?.mean_hrv).toBe(51)
   })
 
   test('calls sync provider when provided', async () => {
