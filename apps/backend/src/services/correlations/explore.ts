@@ -9,6 +9,7 @@ import type { ContinuousResult } from './continuous.ts'
 import type { Selector } from './selectors.ts'
 import type { EventOutcomeConfig, EventOutcomeBlock, TriggerCondition } from './types.ts'
 
+import { triggerCorrelationSyncs } from './background-sync.ts'
 import { computeContinuous } from './continuous.ts'
 import { compoundTriggerDays, computeEventOutcome } from './event-outcome.ts'
 import { resolveSelector } from './selectors.ts'
@@ -30,13 +31,6 @@ const resolveWindow = (params: {
     : new Date(Date.parse(`${endDay}T00:00:00.000Z`) - (params.periodDays ?? 90) * MS_PER_DAY)
   return { start, end }
 }
-
-const triggerSyncs = (sync: SyncProvider, user: string): Promise<unknown>[] => [
-  sync.syncOuraIfNeeded(user, 'tags'),
-  sync.syncOuraIfNeeded(user, 'sessions'),
-  sync.syncRescueTimeIfNeeded(user),
-  sync.syncCalendarsIfNeeded(user),
-]
 
 export interface ContinuousParams {
   trigger: Selector
@@ -63,7 +57,8 @@ export const getContinuousCorrelation = async (
   params: ContinuousParams,
   sync?: SyncProvider,
 ): Promise<ContinuousCorrelation> => {
-  if (sync) await Promise.all(triggerSyncs(sync, user))
+  // Fire-and-forget: never block the analysis on live external syncs.
+  triggerCorrelationSyncs(sync, user)
 
   const { start, end } = resolveWindow(params)
   const lagDays = params.lagDays ?? 0
