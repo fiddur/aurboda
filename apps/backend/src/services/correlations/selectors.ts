@@ -205,7 +205,7 @@ const resolveNutrition = async (
   const [totals, completed, completeDays] = await Promise.all([
     getDailyNutrientTotals(user, [selector.nutrient], start, end),
     getMealLogCompletedInRange(user, toUtcDay(start), toUtcDay(end)),
-    getNutritionCompleteDaysInRange(user, start, end),
+    getNutritionCompleteDaysInRange(user, selector.nutrient, start, end),
   ])
 
   const daily = new Map<string, number>()
@@ -216,7 +216,7 @@ const resolveNutrition = async (
   const knownSet = new Set<string>([...daily.keys(), ...completed])
   for (const day of completed) if (!daily.has(day)) daily.set(day, 0)
 
-  // Complete = days with real macros (a non-null calories meal), so callers can
+  // Complete = days with a real logged value for *this* nutrient, so callers can
   // exclude or count flag-only days that otherwise read as noisy zeros.
   return { ...fromDailyValues(daily, [...knownSet], selector.threshold), completeDays }
 }

@@ -181,24 +181,30 @@ export const getDailyNutrientTotals = async (
 }
 
 /**
- * UTC days in the inclusive [start, end] range that have *real* nutrition
- * logged — at least one meal with a non-null `calories` value.
+ * UTC days in the inclusive [start, end] range that have a *real* logged value
+ * for `nutrient` — at least one meal whose `nutrient` column is non-null.
  *
- * Distinguishes nutrition-complete days from flag-only days (a meal logged with
- * no macros), which otherwise sum to 0 in getDailyNutrientTotals and contaminate
- * nutrient correlations by inflating n with noisy zeros. Bucketed by UTC date to
- * match the correlation daily matrix.
+ * Keyed on the specific nutrient (not a single calories proxy) so completeness
+ * matches what's being correlated: a day that logged calories but never tracked
+ * fiber is complete for `calories` but not for `fiber`. Distinguishes
+ * nutrition-complete days from flag-only days (a meal logged with no macros),
+ * which otherwise sum to 0 in getDailyNutrientTotals and contaminate nutrient
+ * correlations by inflating n with noisy zeros. Bucketed by UTC date to match
+ * the correlation daily matrix.
  */
 export const getNutritionCompleteDaysInRange = async (
   user: string,
+  nutrient: NutrientKey,
   start: Date,
   end: Date,
 ): Promise<string[]> => {
+  // Column name comes from the fixed NUTRIENT_KEYS whitelist, so interpolation is safe.
+  const column = NUTRIENT_KEYS.includes(nutrient) ? nutrient : 'calories'
   const result = await query(
     user,
     `SELECT DISTINCT TO_CHAR((time AT TIME ZONE 'UTC')::date, 'YYYY-MM-DD') AS date
        FROM meals
-       WHERE time >= $1 AND time <= $2 AND calories IS NOT NULL
+       WHERE time >= $1 AND time <= $2 AND ${column} IS NOT NULL
        ORDER BY date`,
     [start, end],
   )

@@ -522,7 +522,7 @@ describe('Meals Integration Tests', () => {
   })
 
   describe('getNutritionCompleteDaysInRange', () => {
-    test('returns only days with a meal that has real macros (non-null calories)', async () => {
+    test('returns only days with a meal that has a non-null value for the nutrient', async () => {
       const user = getTestUser()
       // Complete days: meals carrying calories.
       await insertMeal(user, { calories: 500, time: new Date('2025-07-01T08:00:00Z') })
@@ -532,23 +532,48 @@ describe('Meals Integration Tests', () => {
 
       const result = await getNutritionCompleteDaysInRange(
         user,
+        'calories',
         new Date('2025-07-01T00:00:00Z'),
         new Date('2025-07-31T23:59:59Z'),
       )
       expect(result).toEqual(['2025-07-01', '2025-07-03'])
     })
 
-    test('counts a day complete if any of its meals has calories', async () => {
+    test('counts a day complete if any of its meals has the nutrient', async () => {
       const user = getTestUser()
       await insertMeal(user, { time: new Date('2025-07-05T08:00:00Z') }) // flag-only
       await insertMeal(user, { calories: 120, time: new Date('2025-07-05T13:00:00Z') }) // real
 
       const result = await getNutritionCompleteDaysInRange(
         user,
+        'calories',
         new Date('2025-07-01T00:00:00Z'),
         new Date('2025-07-31T23:59:59Z'),
       )
       expect(result).toEqual(['2025-07-05'])
+    })
+
+    test('is keyed per-nutrient: a calorie-only day is incomplete for fiber', async () => {
+      const user = getTestUser()
+      // Calories logged but fiber never tracked.
+      await insertMeal(user, { calories: 400, time: new Date('2025-07-08T08:00:00Z') })
+      // Fiber explicitly logged on another day.
+      await insertMeal(user, { calories: 200, fiber: 6, time: new Date('2025-07-09T08:00:00Z') })
+
+      const calorieDays = await getNutritionCompleteDaysInRange(
+        user,
+        'calories',
+        new Date('2025-07-01T00:00:00Z'),
+        new Date('2025-07-31T23:59:59Z'),
+      )
+      const fiberDays = await getNutritionCompleteDaysInRange(
+        user,
+        'fiber',
+        new Date('2025-07-01T00:00:00Z'),
+        new Date('2025-07-31T23:59:59Z'),
+      )
+      expect(calorieDays).toEqual(['2025-07-08', '2025-07-09'])
+      expect(fiberDays).toEqual(['2025-07-09'])
     })
 
     test('respects the [start, end] range', async () => {
@@ -558,6 +583,7 @@ describe('Meals Integration Tests', () => {
 
       const result = await getNutritionCompleteDaysInRange(
         user,
+        'calories',
         new Date('2025-08-10T00:00:00Z'),
         new Date('2025-08-31T23:59:59Z'),
       )
