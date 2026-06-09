@@ -20,7 +20,40 @@ describe('computeContinuous', () => {
 
     expect(result.n).toBe(4)
     expect(result.pearson).toBeCloseTo(1, 5)
+    expect(result.pearson_p).toBe(0) // perfect correlation
     expect(result.spearman).toBeCloseTo(1, 5)
+  })
+
+  test('reports a Pearson p-value for a noisy correlation', () => {
+    const days = Array.from(
+      { length: 20 },
+      (_, i) => new Date(Date.parse('2024-01-01T00:00:00Z') + i * 86_400_000).toISOString().split('T')[0],
+    )
+    // Weak/none relationship -> p should be a real probability in (0, 1].
+    const trigger = seriesMap(days.map((d, i) => [d, i % 5]))
+    const outcome = seriesMap(days.map((d, i) => [d, (i * 7) % 3]))
+    const result = computeContinuous({
+      triggerDaily: trigger,
+      outcomeDaily: outcome,
+      triggerKnown: days,
+      outcomeKnown: days,
+      lagDays: 0,
+    })
+    expect(result.pearson_p).not.toBeNull()
+    expect(result.pearson_p!).toBeGreaterThan(0)
+    expect(result.pearson_p!).toBeLessThanOrEqual(1)
+  })
+
+  test('pearson_p is null with too few pairs', () => {
+    const days = ['2024-01-01', '2024-01-02']
+    const result = computeContinuous({
+      triggerDaily: seriesMap(days.map((d, i) => [d, i])),
+      outcomeDaily: seriesMap(days.map((d, i) => [d, i])),
+      triggerKnown: days,
+      outcomeKnown: days,
+      lagDays: 0,
+    })
+    expect(result.pearson_p).toBeNull()
   })
 
   test('lag shifts the outcome forward by N days', () => {

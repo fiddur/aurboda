@@ -509,6 +509,19 @@
 .explore-caution {
   color: #9a3412;
 }
+.axis-label {
+  fill: #6b7280;
+  font-size: 0.72rem;
+}
+.plot-annot {
+  fill: #374151;
+  font-size: 0.72rem;
+}
+.boxplot,
+.rr-bars {
+  display: block;
+  margin-top: 6px;
+}
 .explore-run {
   background: #673ab8;
   color: #fff;
