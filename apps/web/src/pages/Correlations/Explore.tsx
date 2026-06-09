@@ -95,6 +95,8 @@ const applyEventPreset = (pattern: string) => {
   eventOutcomeValue.value = 'back_pain'
   lagWindowsInput.value = '24h,48h,72h,7d'
   collapseGapDays.value = 3
+  // Scope to the behavioural regime the #792 worked example uses (the date the
+  // relevant protocol/era began); a leak is rare and meaningful only from here.
   periodStart.value = '2019-09-28'
   periodEnd.value = ''
 }
