@@ -32,7 +32,7 @@ type Mode = 'event' | 'continuous'
 
 // --- Form state (module signals, mirroring the rest of this page) ---
 const mode = signal<Mode>('event')
-const triggerSelector = signal<CorrelationSelector>({ kind: 'tag', pattern: '' })
+const triggerSelector = signal<CorrelationSelector>({ kind: 'activity', pattern: '' })
 const outcomeSelector = signal<CorrelationSelector>({ kind: 'metric', metric: '' })
 const eventOutcomeSource = signal<'metric' | 'tag'>('metric')
 const eventOutcomeValue = signal('')
@@ -51,9 +51,11 @@ const runToken = signal(0)
 
 const NUTRIENTS: NutrientKey[] = ['calories', 'protein', 'carbs', 'fat', 'fiber']
 
-// Trigger kinds allowed per mode (event mode has no metric trigger).
+// Trigger kinds offered in the picker (event mode has no metric trigger). The
+// legacy 'tag' kind is intentionally omitted — tags were merged into activities,
+// so 'activity' already matches them (and its picker autocompletes every
+// activity_type). The backend still accepts 'tag' for older callers.
 const EVENT_TRIGGER_KINDS: CorrelationSelector['kind'][] = [
-  'tag',
   'activity',
   'nutrition',
   'productivity_category',
@@ -63,11 +65,18 @@ const EVENT_TRIGGER_KINDS: CorrelationSelector['kind'][] = [
 // Every selector kind (continuous mode allows a metric on either side).
 const ALL_SELECTOR_KINDS: CorrelationSelector['kind'][] = ['metric', ...EVENT_TRIGGER_KINDS]
 
+/** Human labels for selector kinds (the raw kind is opaque in a dropdown). */
+const KIND_LABELS: Partial<Record<CorrelationSelector['kind'], string>> = {
+  activity: 'activity / tag',
+  productivity_app: 'productivity app',
+  productivity_category: 'productivity category',
+}
+
 /** Switch mode, clamping the trigger to a kind valid in the new mode. */
 const setMode = (next: Mode) => {
   mode.value = next
   if (next === 'event' && !EVENT_TRIGGER_KINDS.includes(triggerSelector.value.kind)) {
-    triggerSelector.value = { kind: 'tag', pattern: '' }
+    triggerSelector.value = { kind: 'activity', pattern: '' }
   }
 }
 
@@ -101,10 +110,10 @@ const fmtP = (value: number | null | undefined): string =>
 const outcomeLooksContinuous = (): boolean =>
   eventOutcomeLooksContinuous(mode.value, eventOutcomeSource.value, eventOutcomeValue.value)
 
-/** Apply a back-pain-onset event preset for the given trigger tag. */
+/** Apply a back-pain-onset event preset for the given trigger activity/tag. */
 const applyEventPreset = (pattern: string) => {
   setMode('event')
-  triggerSelector.value = { kind: 'tag', pattern }
+  triggerSelector.value = { kind: 'activity', pattern }
   setEventOutcomeSource('metric')
   eventOutcomeValue.value = 'back_pain'
   lagWindowsInput.value = '24h,48h,72h,7d'
@@ -141,7 +150,7 @@ const buildRequest = () => {
       trigger.kind === 'nutrition'
         ? { nutrient: trigger.nutrient, type: 'nutrition' }
         : trigger.kind === 'metric'
-          ? { pattern: '', type: 'tag' } // metric not valid as a trigger; fall back to empty tag
+          ? { pattern: '', type: 'activity' } // metric not valid as a trigger; fall back to empty activity
           : {
               pattern: 'pattern' in trigger ? trigger.pattern : '',
               type: trigger.kind === 'activity' ? 'activity' : (trigger.kind as TriggerCondition['type']),
@@ -179,7 +188,7 @@ function SelectorPicker({
       case 'productivity_app':
         return onChange({ kind, pattern: '' })
       default:
-        return onChange({ kind: 'tag', pattern: '' })
+        return onChange({ kind: 'activity', pattern: '' })
     }
   }
 
@@ -190,7 +199,7 @@ function SelectorPicker({
         onChange={(e) => setKind((e.target as HTMLSelectElement).value as CorrelationSelector['kind'])}
       >
         {allowedKinds.map((k) => (
-          <option value={k}>{k}</option>
+          <option value={k}>{KIND_LABELS[k] ?? k}</option>
         ))}
       </select>
 
@@ -661,11 +670,13 @@ export function ExploreTab() {
                 }
               >
                 <option value="metric">metric</option>
-                <option value="tag">tag</option>
+                <option value="tag">activity / tag</option>
               </select>
               <input
                 list="metric-options"
-                placeholder={eventOutcomeSource.value === 'metric' ? 'metric (e.g. back_pain)' : 'tag regex'}
+                placeholder={
+                  eventOutcomeSource.value === 'metric' ? 'metric (e.g. back_pain)' : 'activity_type regex'
+                }
                 value={eventOutcomeValue.value}
                 onInput={(e) => (eventOutcomeValue.value = (e.target as HTMLInputElement).value)}
               />
