@@ -2,6 +2,8 @@
  * Type definitions for correlation analysis services.
  */
 
+import type { HrvContextMetric } from '@aurboda/api-spec'
+
 import type { LagExposureResult } from './event-outcome.ts'
 
 /** HRV statistics for a context/activity */
@@ -78,6 +80,8 @@ export interface HrvActivitiesResult {
     end: string
     days: number
   }
+  /** The autonomic metric the productivity correlation_coefficient is computed against. */
+  context_metric: HrvContextMetric
   baseline: HrvStats
   correlations: {
     productivity: ProductivityCorrelation[]

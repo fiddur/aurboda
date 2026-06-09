@@ -94,9 +94,23 @@ export type BaselineResponse = z.infer<typeof baselineResponseSchema>
 // HRV-Activities endpoint
 // ============================================================================
 
+/**
+ * The autonomic metric the HRV-context analysis correlates against. HRV is the
+ * default, but not everyone has continuous HRV — heart rate and stress are
+ * denser and let the analysis still produce a meaningful productivity
+ * correlation.
+ */
+export const hrvContextMetricSchema = z.enum(['hrv_rmssd', 'heart_rate', 'stress_level']).meta({
+  description: 'Autonomic metric to correlate against (default: hrv_rmssd)',
+  id: 'HrvContextMetric',
+})
+
+export type HrvContextMetric = z.infer<typeof hrvContextMetricSchema>
+
 /** HRV-Activities query parameters */
 export const hrvActivitiesQuerySchema = z
   .object({
+    context_metric: hrvContextMetricSchema.optional().meta({ description: 'Metric to correlate against' }),
     period_days: z
       .string()
       .optional()
@@ -144,6 +158,9 @@ export type ActivityCorrelation = z.infer<typeof activityCorrelationSchema>
 export const hrvActivitiesDataSchema = z
   .object({
     baseline: hrvStatsSchema,
+    context_metric: hrvContextMetricSchema.meta({
+      description: 'The metric the correlation_coefficient was computed against',
+    }),
     correlations: z.object({
       activities: z.array(activityCorrelationSchema),
       locations: z.array(locationCorrelationSchema),
@@ -730,6 +747,9 @@ export type EventProbabilityInput = z.infer<typeof eventProbabilityInputSchema>
 /** HRV correlation MCP input schema */
 export const hrvCorrelationInputSchema = z
   .object({
+    context_metric: hrvContextMetricSchema
+      .optional()
+      .meta({ description: 'Autonomic metric to correlate against (default: hrv_rmssd)' }),
     period_days: z
       .number()
       .int()

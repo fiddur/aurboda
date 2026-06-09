@@ -142,6 +142,20 @@ When either side of a continuous correlation is a `nutrition` selector:
 Completeness is independent of the event-mode `denominator` knob (which governs
 known-vs-all days for presence-only _outcomes_).
 
+## HRV context
+
+`get_hrv_activities_correlation` / `GET /correlations/hrv-activities` summarises
+the autonomic context (mean HRV, heart rate and stress, with baseline deltas)
+around each activity, location and productivity category, and correlates the
+productivity score against an autonomic metric.
+
+That metric is selectable via `context_metric` — `hrv_rmssd` (default),
+`heart_rate` or `stress_level`. Not everyone records continuous HRV throughout
+the day, so heart rate or stress (which are denser) keep the productivity
+`correlation_coefficient` meaningful. The chosen metric is echoed back as
+`context_metric`; all three means stay in the response regardless. The web
+"HRV context" tab exposes this as a **Context** dropdown.
+
 ## Statistics notes
 
 - Chi-squared p-values are exact for 1 degree of freedom (`erfc(√(χ²/2))`). A
