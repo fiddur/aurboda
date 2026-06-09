@@ -106,3 +106,11 @@ Spearman coefficients plus the aligned series for plotting.
 
 Analysis is day-level with linear exposure sweeps, so multi-year regimes
 (2000+ days) run without timing out.
+
+External data syncs (Oura, RescueTime, calendars) are triggered
+**fire-and-forget** before the analysis rather than awaited — a first or stale
+sync makes live HTTP calls that can take many seconds, long enough to blow the
+request timeout regardless of how small the analysis window is. The triggering
+request therefore reads from data already in the database (so it may miss the
+most recent few minutes); the sync warms the data for the next request. This is
+the same pattern the rest of the query layer uses.
