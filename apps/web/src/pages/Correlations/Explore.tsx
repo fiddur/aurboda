@@ -673,7 +673,7 @@ export function ExploreTab() {
                 <option value="tag">activity / tag</option>
               </select>
               <input
-                list="metric-options"
+                list={eventOutcomeSource.value === 'metric' ? 'metric-options' : 'activity-type-options'}
                 placeholder={
                   eventOutcomeSource.value === 'metric' ? 'metric (e.g. back_pain)' : 'activity_type regex'
                 }
@@ -683,6 +683,11 @@ export function ExploreTab() {
               <datalist id="metric-options">
                 {selectors?.metrics.map((m) => (
                   <option value={m.value}>{m.label}</option>
+                ))}
+              </datalist>
+              <datalist id="activity-type-options">
+                {selectors?.activity_types.map((a) => (
+                  <option value={a.value}>{a.label}</option>
                 ))}
               </datalist>
             </div>
