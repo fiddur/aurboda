@@ -95,8 +95,13 @@ Surfaced through `get_metric_correlation` / `POST /correlations/continuous`:
 
 It aligns the two daily series on days where **both** sides are known (a missing
 value on a known day defaults to 0, e.g. a meal-log-complete day with no carbs),
-optionally shifting the outcome forward by `lag_days`, and returns Pearson and
-Spearman coefficients plus the aligned series for plotting.
+optionally shifting the outcome forward by `lag_days`, and returns Pearson
+(`pearson`, with a two-sided `pearson_p`) and Spearman coefficients plus the
+aligned series for plotting. The web UI draws a scatter with a regression-line
+overlay, axis labels with units, and the `r / ρ / n / p` annotation; for a binary
+trigger it switches to a present-vs-absent **box plot** (a scatter would collapse
+to two vertical lines). The event-onset table is accompanied by a per-lag
+**relative-risk chart** with 95% CI whiskers and an RR=1 reference line.
 
 ### Binary/presence trigger — `group_comparison`
 
@@ -149,6 +154,9 @@ known-vs-all days for presence-only _outcomes_).
   (`I_{df/(df+t²)}(df/2, ½)` via the regularized incomplete beta); Mann–Whitney
   U uses a tie-corrected normal approximation. Both are omitted (`null`) when a
   group has fewer than two values or no variance.
+- `pearson_p` is the two-sided significance of the Pearson r via the t-transform
+  `t = r·√((n−2)/(1−r²))` on `n−2` df; null with fewer than 3 pairs, 0 for a
+  perfect correlation.
 
 ## Performance
 

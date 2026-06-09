@@ -4,7 +4,7 @@
  * questions like "how does carb intake affect my sleep the next day?" work.
  */
 
-import { type TwoGroupComparison, pearson, spearman, twoGroupComparison } from './stats.ts'
+import { type TwoGroupComparison, pearson, spearman, studentTTwoSidedP, twoGroupComparison } from './stats.ts'
 
 /**
  * Group comparison for a binary/presence trigger: how the continuous outcome
@@ -32,6 +32,8 @@ export interface ContinuousResult {
   lag_days: number
   /** Pearson correlation, or null when fewer than 3 pairs / no variance. */
   pearson: number | null
+  /** Two-sided p-value for the Pearson correlation, or null when not estimable. */
+  pearson_p: number | null
   /** Spearman rank correlation, or null when fewer than 3 pairs. */
   spearman: number | null
   /** Aligned series (for plotting); capped to avoid huge payloads. */
@@ -120,15 +122,29 @@ export const computeContinuous = (input: ContinuousInput): ContinuousResult => {
     if (series.length < cap) series.push({ date: day, trigger: triggerValue, outcome: outcomeValue })
   }
 
+  const pearsonR = pearson(triggerValues, outcomeValues)
   return {
     n: triggerValues.length,
     lag_days: input.lagDays,
-    pearson: pearson(triggerValues, outcomeValues),
+    pearson: pearsonR,
+    pearson_p: pearsonPValue(pearsonR, triggerValues.length),
     spearman: spearman(triggerValues, outcomeValues),
     series,
     group_comparison: computeGroupComparison(triggerValues, outcomeValues),
     n_complete: tracksCompleteness ? nComplete : null,
   }
+}
+
+/**
+ * Two-sided significance of a Pearson r via the t-transform
+ * t = r·√((n−2)/(1−r²)) on n−2 degrees of freedom. Null when fewer than 3 pairs;
+ * 0 for a perfect correlation (where the transform diverges).
+ */
+const pearsonPValue = (r: number | null, n: number): number | null => {
+  if (r === null || n < 3) return null
+  if (Math.abs(r) >= 1) return 0
+  const t = r * Math.sqrt((n - 2) / (1 - r * r))
+  return studentTTwoSidedP(t, n - 2)
 }
 
 /**

@@ -873,6 +873,10 @@ export const continuousCorrelationDataSchema = z
     }),
     outcome: selectorSchema,
     pearson: z.number().nullable().meta({ description: 'Pearson correlation (-1..1)' }),
+    pearson_p: z
+      .number()
+      .nullable()
+      .meta({ description: 'Two-sided p-value for the Pearson correlation (null when not estimable)' }),
     period: z.object({ days: z.number().int(), end: z.string(), start: z.string() }),
     series: z.array(alignedPointSchema).meta({ description: 'Aligned daily points for plotting' }),
     spearman: z.number().nullable().meta({ description: 'Spearman rank correlation (-1..1)' }),

@@ -18,6 +18,7 @@ import {
   fetchCorrelationSelectors,
   fetchGenericCorrelation,
 } from '../../state/api'
+import { describeSelectorAxis, fiveNumberSummary, linearRegression } from './exploreCharts'
 import {
   describeCorrelationStrength,
   describeEffectSize,
@@ -249,6 +250,46 @@ function SelectorPicker({
   )
 }
 
+// --- Results: per-lag relative-risk bars with 95% CI whiskers ---
+function RrBars({ perLag }: { perLag: LagExposureResultData[] }) {
+  const items = perLag.filter((l) => l.relative_risk !== null)
+  if (items.length === 0) return null
+  const w = 340
+  const h = 200
+  const pad = { bottom: 26, left: 40, right: 12, top: 16 }
+  const maxRr = Math.max(2, ...items.map((l) => l.ci_high ?? l.relative_risk!))
+  const sy = (v: number) => h - pad.bottom - (v / maxRr) * (h - pad.top - pad.bottom)
+  const band = (w - pad.left - pad.right) / items.length
+
+  return (
+    <svg width={w} height={h} class="rr-bars">
+      <text x={pad.left} y={pad.top - 4} class="axis-label">
+        Relative risk (95% CI)
+      </text>
+      {/* RR=1 reference line — no effect / base rate */}
+      <line x1={pad.left} y1={sy(1)} x2={w - pad.right} y2={sy(1)} stroke="#999" stroke-dasharray="4 3" />
+      <text x={w - pad.right} y={sy(1) - 3} text-anchor="end" class="axis-label">
+        RR=1
+      </text>
+      {items.map((l, i) => {
+        const cx = pad.left + band * (i + 0.5)
+        const sig = l.p_value < 0.05
+        return (
+          <g>
+            {l.ci_low !== null && l.ci_high !== null && (
+              <line x1={cx} y1={sy(l.ci_low)} x2={cx} y2={sy(l.ci_high)} stroke="#555" />
+            )}
+            <circle cx={cx} cy={sy(l.relative_risk!)} r={4} fill={sig ? '#2e7d32' : '#673ab8'} />
+            <text x={cx} y={h - 10} text-anchor="middle" class="axis-label">
+              {l.lag}
+            </text>
+          </g>
+        )
+      })}
+    </svg>
+  )
+}
+
 // --- Results: event-outcome table ---
 function EventOutcomeResults({ data }: { data: GenericCorrelationData }) {
   const eo = data.event_outcome
@@ -303,6 +344,7 @@ function EventOutcomeResults({ data }: { data: GenericCorrelationData }) {
           </tbody>
         </table>
       </div>
+      <RrBars perLag={eo.per_lag} />
     </div>
   )
 }
@@ -331,21 +373,152 @@ function GroupComparisonPanel({ gc }: { gc: GroupComparison }) {
   )
 }
 
-// --- Results: continuous scatter ---
-function ContinuousResults({ data }: { data: ContinuousCorrelationData }) {
+const CHART_W = 340
+const CHART_H = 240
+const CHART_PAD = { bottom: 38, left: 46, right: 12, top: 14 }
+
+/** Rotated y-axis label + horizontal x-axis label for a chart. */
+function AxisLabels({ x, y }: { x: string; y: string }) {
+  const midX = (CHART_PAD.left + (CHART_W - CHART_PAD.right)) / 2
+  const midY = (CHART_PAD.top + (CHART_H - CHART_PAD.bottom)) / 2
+  return (
+    <>
+      <text x={midX} y={CHART_H - 4} text-anchor="middle" class="axis-label">
+        {x}
+      </text>
+      <text x={12} y={midY} text-anchor="middle" class="axis-label" transform={`rotate(-90 12 ${midY})`}>
+        {y}
+      </text>
+    </>
+  )
+}
+
+// --- Results: continuous scatter with regression line + annotation ---
+function ScatterPlot({ data }: { data: ContinuousCorrelationData }) {
   const points = data.series
   const xs = points.map((p) => p.trigger)
   const ys = points.map((p) => p.outcome)
-  const xMin = Math.min(...xs, 0)
-  const xMax = Math.max(...xs, 1)
-  const yMin = Math.min(...ys, 0)
-  const yMax = Math.max(...ys, 1)
-  const w = 320
-  const h = 220
-  const pad = 30
-  const sx = (x: number) => pad + ((x - xMin) / (xMax - xMin || 1)) * (w - 2 * pad)
-  const sy = (y: number) => h - pad - ((y - yMin) / (yMax - yMin || 1)) * (h - 2 * pad)
+  const xMin = Math.min(...xs)
+  const xMax = Math.max(...xs)
+  const yMin = Math.min(...ys)
+  const yMax = Math.max(...ys)
+  const sx = (x: number) =>
+    CHART_PAD.left + ((x - xMin) / (xMax - xMin || 1)) * (CHART_W - CHART_PAD.left - CHART_PAD.right)
+  const sy = (y: number) =>
+    CHART_H -
+    CHART_PAD.bottom -
+    ((y - yMin) / (yMax - yMin || 1)) * (CHART_H - CHART_PAD.top - CHART_PAD.bottom)
+  const reg = linearRegression(xs, ys)
 
+  return (
+    <svg width={CHART_W} height={CHART_H} class="scatter">
+      <line
+        x1={CHART_PAD.left}
+        y1={CHART_H - CHART_PAD.bottom}
+        x2={CHART_W - CHART_PAD.right}
+        y2={CHART_H - CHART_PAD.bottom}
+        stroke="#ccc"
+      />
+      <line
+        x1={CHART_PAD.left}
+        y1={CHART_PAD.top}
+        x2={CHART_PAD.left}
+        y2={CHART_H - CHART_PAD.bottom}
+        stroke="#ccc"
+      />
+      {points.map((p) => (
+        <circle cx={sx(p.trigger)} cy={sy(p.outcome)} r={3} fill="#673ab8" opacity={0.45} />
+      ))}
+      {reg && (
+        <line
+          x1={sx(xMin)}
+          y1={sy(reg.slope * xMin + reg.intercept)}
+          x2={sx(xMax)}
+          y2={sy(reg.slope * xMax + reg.intercept)}
+          stroke="#e0457b"
+          stroke-width={2}
+        />
+      )}
+      <text x={CHART_PAD.left + 6} y={CHART_PAD.top + 10} class="plot-annot">
+        r={fmt(data.pearson)} · ρ={fmt(data.spearman)} · n={data.n} · p={fmtP(data.pearson_p)}
+      </text>
+      <AxisLabels x={describeSelectorAxis(data.trigger)} y={describeSelectorAxis(data.outcome)} />
+    </svg>
+  )
+}
+
+// --- Results: present-vs-absent box plot for a binary trigger ---
+function BoxPlot({ data }: { data: ContinuousCorrelationData }) {
+  const withVals = data.series.filter((p) => p.trigger > 0).map((p) => p.outcome)
+  const withoutVals = data.series.filter((p) => p.trigger === 0).map((p) => p.outcome)
+  const absent = fiveNumberSummary(withoutVals)
+  const present = fiveNumberSummary(withVals)
+  if (!absent || !present) return null
+  const all = [...withVals, ...withoutVals]
+  const yMin = Math.min(...all)
+  const yMax = Math.max(...all)
+  const sy = (y: number) =>
+    CHART_H -
+    CHART_PAD.bottom -
+    ((y - yMin) / (yMax - yMin || 1)) * (CHART_H - CHART_PAD.top - CHART_PAD.bottom)
+  const gc = data.group_comparison
+  const boxes = [
+    {
+      color: '#9aa0a6',
+      label: `Absent (n=${gc?.n_without ?? withoutVals.length})`,
+      s: absent,
+      x: CHART_W * 0.34,
+    },
+    {
+      color: '#673ab8',
+      label: `Present (n=${gc?.n_with ?? withVals.length})`,
+      s: present,
+      x: CHART_W * 0.68,
+    },
+  ]
+  const bw = 46
+
+  return (
+    <svg width={CHART_W} height={CHART_H} class="boxplot">
+      <line
+        x1={CHART_PAD.left}
+        y1={CHART_PAD.top}
+        x2={CHART_PAD.left}
+        y2={CHART_H - CHART_PAD.bottom}
+        stroke="#ccc"
+      />
+      {boxes.map((g) => (
+        <g>
+          <line x1={g.x} y1={sy(g.s.min)} x2={g.x} y2={sy(g.s.max)} stroke={g.color} />
+          <rect
+            x={g.x - bw / 2}
+            y={sy(g.s.q3)}
+            width={bw}
+            height={Math.max(1, sy(g.s.q1) - sy(g.s.q3))}
+            fill={g.color}
+            opacity={0.25}
+            stroke={g.color}
+          />
+          <line
+            x1={g.x - bw / 2}
+            y1={sy(g.s.median)}
+            x2={g.x + bw / 2}
+            y2={sy(g.s.median)}
+            stroke={g.color}
+            stroke-width={2}
+          />
+          <text x={g.x} y={CHART_H - 22} text-anchor="middle" class="axis-label">
+            {g.label}
+          </text>
+        </g>
+      ))}
+      <AxisLabels x="trigger present?" y={describeSelectorAxis(data.outcome)} />
+    </svg>
+  )
+}
+
+// --- Results: continuous mode (scatter or box plot, with verdicts) ---
+function ContinuousResults({ data }: { data: ContinuousCorrelationData }) {
   const gc = data.group_comparison
   // A Pearson r on a binary/presence trigger is misleading, so when the trigger
   // is binary the group comparison is the headline rather than the correlation.
@@ -374,13 +547,7 @@ function ContinuousResults({ data }: { data: ContinuousCorrelationData }) {
       )}
       {/* Shown in both modes: a small-n caution matters most for a present-vs-absent split. */}
       {caution && <p class="explore-verdict explore-caution">⚠ {caution}</p>}
-      <svg width={w} height={h} class="scatter">
-        <line x1={pad} y1={h - pad} x2={w - pad} y2={h - pad} stroke="#ccc" />
-        <line x1={pad} y1={pad} x2={pad} y2={h - pad} stroke="#ccc" />
-        {points.map((p) => (
-          <circle cx={sx(p.trigger)} cy={sy(p.outcome)} r={3} fill="#673ab8" opacity={0.5} />
-        ))}
-      </svg>
+      {showGroupAsHeadline ? <BoxPlot data={data} /> : <ScatterPlot data={data} />}
     </div>
   )
 }
