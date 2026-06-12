@@ -46,9 +46,15 @@ export function FoodItems() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['foodItems'] }),
   })
 
+  // Surfaces a failed row-action (duplicate) — the list page navigates away on
+  // success, so without this a network/500 error would silently do nothing.
+  const [actionError, setActionError] = useState<string | null>(null)
+
   const duplicateMutation = useMutation({
     mutationFn: (sourceId: string) => duplicateFoodItemApi(sourceId),
+    onError: (err: Error) => setActionError(err.message || 'Duplicate failed'),
     onSuccess: (copy) => {
+      setActionError(null)
       queryClient.invalidateQueries({ queryKey: ['foodItems'] })
       // Land on the new copy so the user can immediately edit it.
       route(`/food-items/${copy.id}`)
@@ -107,6 +113,15 @@ export function FoodItems() {
           {createMutation.isPending ? 'Creating…' : '+ New'}
         </button>
       </div>
+
+      {actionError && (
+        <p class="fi-error" role="alert">
+          {actionError}
+          <button type="button" class="btn-link" onClick={() => setActionError(null)}>
+            Dismiss
+          </button>
+        </p>
+      )}
 
       {!hasQuery ? (
         <p class="fi-help">Type to search the food library.</p>
