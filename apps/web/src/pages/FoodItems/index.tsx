@@ -160,7 +160,9 @@ export function FoodItems() {
                     type="button"
                     class="btn-secondary"
                     onClick={() => duplicateMutation.mutate(item.id)}
-                    disabled={duplicateMutation.isPending}
+                    // Disable only the row being duplicated, not every row, by
+                    // matching the in-flight mutation's source id.
+                    disabled={duplicateMutation.isPending && duplicateMutation.variables === item.id}
                     title={`Duplicate ${item.name} into an editable copy`}
                   >
                     Duplicate

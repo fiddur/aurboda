@@ -640,6 +640,13 @@ export const clearCompositeNutrientCache = async (
  * with — and thus silently overwrites via the name_lower upsert conflict — an
  * existing item. Only the per-user library is checked; central names live in
  * a separate database and never conflict with per-user inserts.
+ *
+ * The check is best-effort against concurrency: two duplicate calls racing on
+ * the same source could each see the same name free, and the second's upsert
+ * (ON CONFLICT (name_lower) DO UPDATE) would then overwrite the first's row
+ * rather than insert a new one. Per-user, single-actor DBs make this vanishingly
+ * rare — same as the concurrent-setIngredients note above — so we don't pay for
+ * a fail-and-retry insert path here.
  */
 const findAvailableCopyName = async (user: string, baseName: string): Promise<string> => {
   const first = `${baseName} (copy)`
