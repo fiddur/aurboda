@@ -182,11 +182,7 @@ const resolveBmr = async (
  * post-hoc fallback if the resolved zones look unusable for this user
  * (e.g. zone-1 start at or below resting HR).
  */
-const resolveZoneMetsContext = (
-  settings: UserSettings,
-  age: number,
-  restingHr: number,
-): ZoneMetsContext => {
+const resolveZoneMetsContext = (settings: UserSettings, age: number, restingHr: number): ZoneMetsContext => {
   const observedMax = settings.training_load?.observed_hr_max ?? 220 - age
   // Mirror getEffectiveHrZones' priority without going back to the DB:
   // custom (settings.hr_zone_start) → age-based (from birth_date) → default.
@@ -402,10 +398,7 @@ export const computeAndStoreCaloriesAll = async (
     // Snap to next local midnight; +26h buffer handles spring-forward (23h
     // days). getLocalDayStart truncates back to the local midnight, so a
     // 23h or 25h day is handled correctly.
-    const nextChunkStart = getLocalDayStart(
-      new Date(chunkStart.getTime() + 26 * 60 * 60 * 1000),
-      timezone,
-    )
+    const nextChunkStart = getLocalDayStart(new Date(chunkStart.getTime() + 26 * 60 * 60 * 1000), timezone)
     const result = await computeAndStoreCalories(user, chunkStart, nextChunkStart, {
       skipSync: true,
     })
