@@ -924,22 +924,34 @@ function CompositeOrAtomicSection({
 
   if (isComposite) {
     const initial: IngredientRow[] = (item.ingredients ?? []).map((ing) => ({
+      food_item_portion_id: ing.food_item_portion_id,
       icon: ing.icon,
       ingredient_food_item_id: ing.ingredient_food_item_id,
       name: ing.name,
-      quantity: ing.quantity,
+      portion_count: ing.portion_count,
+      quantity: ing.quantity ?? 0,
       sort_order: ing.sort_order ?? 0,
       unit: ing.unit,
     }))
 
     const persist = (rows: IngredientRow[]) => {
       ingredientsMutation.mutate(
-        rows.map((r) => ({
-          ingredient_food_item_id: r.ingredient_food_item_id,
-          quantity: r.quantity,
-          sort_order: r.sort_order,
-          unit: r.unit,
-        })),
+        rows.map((r) =>
+          // Portion path: send the portion + count. Legacy path: quantity + unit.
+          r.food_item_portion_id && typeof r.portion_count === 'number'
+            ? {
+                food_item_portion_id: r.food_item_portion_id,
+                ingredient_food_item_id: r.ingredient_food_item_id,
+                portion_count: r.portion_count,
+                sort_order: r.sort_order,
+              }
+            : {
+                ingredient_food_item_id: r.ingredient_food_item_id,
+                quantity: r.quantity,
+                sort_order: r.sort_order,
+                unit: r.unit,
+              },
+        ),
       )
     }
 

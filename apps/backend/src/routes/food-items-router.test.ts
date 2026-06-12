@@ -78,6 +78,8 @@ vi.mock('../db/shared-food-item-overrides.ts', () => ({
 
 const dbBarrel = await import('../db/index.ts')
 const dbFoodItems = await import('../db/food-items.ts')
+const dbIngredients = await import('../db/food-item-ingredients.ts')
+const dbPortions = await import('../db/food-item-portions.ts')
 
 /** Set the mock return for both barrel and direct getFoodItemById lookups. */
 const setUserFoodItem = (impl: (user: string, id: string) => Promise<FoodItemEntity | null>) => {
@@ -627,5 +629,66 @@ describe('POST /food-items/:id/duplicate', () => {
       'tester',
       expect.objectContaining({ calories: 52, name: 'Apple (copy)', source: 'manual' }),
     )
+  })
+})
+
+describe('PUT /food-items/:id/ingredients — portions', () => {
+  const PARENT = '11111111-1111-4111-8111-111111111111'
+  const INGREDIENT = '22222222-2222-4222-8222-222222222222'
+  const PORTION = '33333333-3333-4333-8333-333333333333'
+
+  const portionRow = (foodItemId: string) => ({
+    base_equivalent: 35,
+    created_at: new Date(),
+    food_item_id: foodItemId,
+    id: PORTION,
+    label_unit: 'brödkaka',
+    sort_order: 0,
+    updated_at: new Date(),
+  })
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    // wouldCreateCycle walks the ingredient graph — no existing ingredients.
+    vi.mocked(dbIngredients.getIngredients).mockResolvedValue([])
+    setUserFoodItem(async (_u, id) => (id === PARENT ? userItem(PARENT, { is_composite: true }) : null))
+  })
+
+  test('400 when the portion does not belong to the ingredient food', async () => {
+    // Portion belongs to some OTHER food, not INGREDIENT.
+    vi.mocked(dbPortions.getFoodItemPortionById).mockResolvedValue(
+      portionRow('99999999-9999-4999-8999-999999999999'),
+    )
+    const res = await supertest(buildApp(fakeCentral()))
+      .put(`/food-items/${PARENT}/ingredients`)
+      .send({
+        ingredients: [
+          { ingredient_food_item_id: INGREDIENT, food_item_portion_id: PORTION, portion_count: 2 },
+        ],
+      })
+    expect(res.status).toBe(400)
+    expect(res.body.error).toMatch(/does not belong/i)
+    expect(dbBarrel.setIngredients).not.toHaveBeenCalled()
+  })
+
+  test('200 persists the portion ingredient with display columns filled from the portion', async () => {
+    vi.mocked(dbPortions.getFoodItemPortionById).mockResolvedValue(portionRow(INGREDIENT))
+    const res = await supertest(buildApp(fakeCentral()))
+      .put(`/food-items/${PARENT}/ingredients`)
+      .send({
+        ingredients: [
+          { ingredient_food_item_id: INGREDIENT, food_item_portion_id: PORTION, portion_count: 2 },
+        ],
+      })
+    expect(res.status).toBe(200)
+    expect(dbBarrel.setIngredients).toHaveBeenCalledWith('tester', PARENT, [
+      expect.objectContaining({
+        food_item_portion_id: PORTION,
+        ingredient_food_item_id: INGREDIENT,
+        portion_count: 2,
+        quantity: 2,
+        unit: 'brödkaka',
+      }),
+    ])
   })
 })

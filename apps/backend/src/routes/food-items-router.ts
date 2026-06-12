@@ -86,6 +86,7 @@ import {
   duplicateFoodItem,
   type FoodItemDetail as ServiceFoodItemDetail,
   type MergedFoodItem,
+  prepareIngredientInputs,
 } from '../services/food-items.ts'
 import { resnapshotMealsForFoodItem } from '../services/meals.ts'
 import { type AnyMiddleware, type TypedRouter, typedRouter } from '../typed-router.ts'
@@ -136,9 +137,11 @@ const serializeDetail = (detail: ServiceFoodItemDetail): FoodItemDetail => {
       ...base,
       derived_nutrients: detail.derived_nutrients ?? { nutrient_data_incomplete: false, values: {} },
       ingredients: detail.ingredients.map((ing) => ({
+        food_item_portion_id: ing.row.food_item_portion_id,
         icon: (ing.food?.icon as string | undefined) ?? null,
         ingredient_food_item_id: ing.row.ingredient_food_item_id,
         name: ing.food ? (ing.food.name as string) : null,
+        portion_count: ing.row.portion_count,
         quantity: ing.row.quantity,
         sort_order: ing.row.sort_order,
         unit: ing.row.unit,
@@ -303,7 +306,18 @@ export const createFoodItemsRouter = (authMiddleware: AnyMiddleware, centralDb: 
           success: false,
         })
       }
-      await dbSetIngredients(user, id, ingredients)
+      // Validate + normalise portions (must belong to the ingredient food) and
+      // fill display columns before persisting.
+      let prepared
+      try {
+        prepared = await prepareIngredientInputs(user, ingredients)
+      } catch (err) {
+        return res.status(400).json({
+          error: err instanceof Error ? err.message : 'Invalid ingredient portion',
+          success: false,
+        })
+      }
+      await dbSetIngredients(user, id, prepared)
       // Refresh the cached derived nutrients on this row + every parent
       // recipe that uses this item — keeps search results, frequent-meal
       // cards, and outer-recipe totals in sync without lazy recomputation.

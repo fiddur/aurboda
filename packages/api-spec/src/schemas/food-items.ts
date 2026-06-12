@@ -72,23 +72,48 @@ export type FoodItemEntity = z.infer<typeof foodItemEntitySchema>
 
 /**
  * One ingredient line in a composite food item — points at another food
- * (per-user or central), with quantity + unit. The pointed-at food's
- * nutrients are scaled by quantity/default_quantity at read time to
- * contribute to the parent's totals.
+ * (per-user or central). The pointed-at food's nutrients are scaled by
+ * quantity/default_quantity (legacy) or, when a `food_item_portion_id` is set,
+ * by portion_count × portion.base_equivalent / default_quantity, to contribute
+ * to the parent's totals.
+ *
+ * Base fields are kept as a bare object so both `.refine()` (for the request
+ * schema's cross-field rules) and `.extend()` (for the resolved response
+ * schema with name/icon) are available.
  */
+const foodItemIngredientFields = {
+  ingredient_food_item_id: z
+    .string()
+    .uuid()
+    .meta({ description: 'ID of the food item used as an ingredient (per-user OR central library)' }),
+  quantity: z.number().optional().meta({
+    description:
+      'Amount used, in `unit` — legacy path. Ignored when `food_item_portion_id` is set (the backend stores `portion_count` here for display). Either `quantity` or (`food_item_portion_id` + `portion_count`) must be provided.',
+  }),
+  unit: z.string().max(100).optional().meta({ description: 'Unit for quantity (legacy free-form path)' }),
+  food_item_portion_id: z.string().uuid().optional().meta({
+    description:
+      'Optional portion id (a food_item_portions row belonging to the ingredient food). When set, the ingredient\'s contribution is scaled by `portion_count × portion.base_equivalent / ingredient.default_quantity`, mirroring meals. Lets a recipe say e.g. "2 brödkaka".',
+  }),
+  portion_count: z.number().positive().optional().meta({
+    description: 'Required when `food_item_portion_id` is set: how many of that portion the recipe uses.',
+  }),
+  sort_order: z
+    .number()
+    .int()
+    .optional()
+    .meta({ description: 'Display order; defaults to position in the input array' }),
+}
+
 export const foodItemIngredientSchema = z
-  .object({
-    ingredient_food_item_id: z
-      .string()
-      .uuid()
-      .meta({ description: 'ID of the food item used as an ingredient (per-user OR central library)' }),
-    quantity: z.number().meta({ description: 'Amount used, in `unit`' }),
-    unit: z.string().max(100).optional().meta({ description: 'Unit for quantity' }),
-    sort_order: z
-      .number()
-      .int()
-      .optional()
-      .meta({ description: 'Display order; defaults to position in the input array' }),
+  .object(foodItemIngredientFields)
+  .refine((body) => body.food_item_portion_id === undefined || typeof body.portion_count === 'number', {
+    message: 'portion_count is required when food_item_portion_id is set',
+    path: ['portion_count'],
+  })
+  .refine((body) => body.food_item_portion_id !== undefined || typeof body.quantity === 'number', {
+    message: 'quantity is required when no food_item_portion_id is set',
+    path: ['quantity'],
   })
   .meta({ description: 'One ingredient of a composite food item', id: 'FoodItemIngredient' })
 
@@ -112,8 +137,9 @@ export type SetFoodItemIngredientsBody = z.infer<typeof setFoodItemIngredientsBo
  * junction row plus a snapshot of the ingredient food item's name/icon
  * for display.
  */
-export const resolvedFoodItemIngredientSchema = foodItemIngredientSchema
-  .extend({
+export const resolvedFoodItemIngredientSchema = z
+  .object({
+    ...foodItemIngredientFields,
     name: z.string().nullable().meta({
       description: 'Ingredient food name (null if the pointed-at item was deleted)',
     }),

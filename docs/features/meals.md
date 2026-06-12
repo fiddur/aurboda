@@ -59,7 +59,7 @@ Meals reference a **canonical food item** by `food_item_id` rather than embeddin
 A food item may be:
 
 - **Atomic** -- its own nutrient columns are authoritative.
-- **Composite (recipe)** -- nutrients are derived at read time by summing its ingredients (`food_item_ingredients`), each scaled by `quantity / default_quantity`.
+- **Composite (recipe)** -- nutrients are derived at read time by summing its ingredients (`food_item_ingredients`), each scaled by `quantity / default_quantity`. Like meal items, an ingredient can be measured in a **portion** of the ingredient food instead of a free-form quantity/unit: set `food_item_portion_id` (a portion of that food) + `portion_count` and it scales by `portion_count × portion.base_equivalent / default_quantity` -- e.g. "2 brödkaka". The portion must belong to the ingredient food; the request stores `portion_count` + the portion's `label_unit` in the legacy `quantity`/`unit` columns for display fallback.
 - **Reference-enriched** -- an atomic item with `reference_food_item_id` pointing at a richer canonical item (e.g. a Livsmedelsverket row) to inherit empty micronutrient fields, scaled by serving.
 
 Food items live in the per-user `food_items` table or the central, read-only `shared_food_items` library (see [Livsmedelsverket docs](../livsmedelsverket.md)). `food_item_id` is a soft pointer across both stores.
@@ -195,7 +195,7 @@ Food items & portions:
 - `add_food_item_portion` / `update_food_item_portion` / `delete_food_item_portion` -- portion CRUD (per-user OR central food, soft pointer)
 - `set_default_food_item_portion` -- set/clear a per-user food's default logging amount (`portion_id` + `quantity`; `portion_id: null` = base unit, `quantity: null` = base quantity)
 - `set_shared_food_item_override` / `clear_shared_food_item_override` -- per-user overrides on a central item (`icon`, `default_portion_id`, `default_log_quantity`)
-- `set_food_item_ingredients` / `clear_food_item_ingredients` -- composite recipes; `set_food_item_reference` -- reference enrichment; `resnapshot_meals_for_food_item` -- refresh historical meal snapshots; `merge_food_items` / `preview_food_item_merge`
+- `set_food_item_ingredients` / `clear_food_item_ingredients` -- composite recipes (ingredients accept `quantity`+`unit` **or** `food_item_portion_id`+`portion_count`, like meal items); `set_food_item_reference` -- reference enrichment; `resnapshot_meals_for_food_item` -- refresh historical meal snapshots; `merge_food_items` / `preview_food_item_merge`
 
 Nutrient recommendations:
 
