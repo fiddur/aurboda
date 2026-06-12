@@ -11,7 +11,7 @@
  * collide; we don't need a namespace prefix on IDs.
  */
 
-import { getFoodItemQualityTier, NUTRIENT_FIELD_NAMES } from '@aurboda/api-spec'
+import { type FoodItemIngredient, getFoodItemQualityTier, NUTRIENT_FIELD_NAMES } from '@aurboda/api-spec'
 
 import type { FoodItemEntity } from '../db/types.ts'
 import type { CentralDb } from './central-db.ts'
@@ -20,12 +20,14 @@ import type { SharedFoodItemEntity } from './central-food-items.ts'
 import { query } from '../db/connection.ts'
 import {
   findCompositeParentsOfIngredient,
+  type FoodItemIngredientInput,
   type FoodItemIngredientRow,
   getIngredients as dbGetIngredients,
   setIngredients as dbSetIngredients,
 } from '../db/food-item-ingredients.ts'
 import {
   type FoodItemPortionRow,
+  getFoodItemPortionById,
   insertFoodItemPortion,
   listPortionsForFoodItem,
 } from '../db/food-item-portions.ts'
@@ -60,6 +62,12 @@ export interface ResolvedIngredient {
   row: FoodItemIngredientRow
   /** The actual ingredient food item, resolved across user + central. */
   food: MergedFoodItem | null
+  /**
+   * The portion (unit) the ingredient is measured in, when `row.food_item_portion_id`
+   * is set and resolves. Null/absent on the legacy quantity/unit path or when the
+   * portion was deleted (scaling then falls back / flags incomplete).
+   */
+  portion?: FoodItemPortionRow | null
 }
 
 export interface DerivedNutrients {
@@ -188,28 +196,37 @@ interface ScaleResult {
 }
 
 /**
- * Compute the scale factor between an ingredient's quantity and its
- * canonical default_quantity. Same units → straight ratio. Different but
- * dimensionally-compatible units (e.g. dl ↔ ml) → convert. Anything else
- * (mismatched dimension, missing default_quantity) → scale = 1 + incomplete
- * flag so the user knows totals can't be trusted.
+ * Compute the scale factor for one resolved ingredient against its canonical
+ * default_quantity.
+ *
+ * - Portion path (row.food_item_portion_id set + portion resolved): the count
+ *   is in the portion's unit, so scale = `portion_count × base_equivalent /
+ *   default_quantity` — mirrors the meal portion formula. A portion id that no
+ *   longer resolves flips `incomplete` (the unit it referenced is gone).
+ * - Legacy path: same units → straight ratio; dimensionally-compatible units
+ *   (e.g. dl ↔ ml) → convert; anything else (mismatched dimension, missing
+ *   default_quantity) → scale = 1 + incomplete flag.
  */
-const computeIngredientScale = (
-  ingredientQuantity: number,
-  ingredientUnit: string | undefined,
-  food: MergedFoodItem,
-): ScaleResult => {
+const computeIngredientScale = (ingredient: ResolvedIngredient): ScaleResult => {
+  const { row, food, portion } = ingredient
+  if (!food) return { incomplete: true, scale: 1 }
   const defaultQty = food.default_quantity as number | undefined
   if (defaultQty === undefined || defaultQty === null || defaultQty === 0) {
     return { incomplete: true, scale: 1 }
   }
+  // Portion path.
+  if (row.food_item_portion_id) {
+    if (!portion || typeof row.portion_count !== 'number') return { incomplete: true, scale: 1 }
+    return { incomplete: false, scale: (row.portion_count * portion.base_equivalent) / defaultQty }
+  }
+  // Legacy quantity/unit path.
   const defaultUnit = food.default_unit as string | undefined
-  if (ingredientUnit && defaultUnit && ingredientUnit !== defaultUnit) {
-    const converted = convertUnit(ingredientQuantity, ingredientUnit, defaultUnit)
+  if (row.unit && defaultUnit && row.unit !== defaultUnit) {
+    const converted = convertUnit(row.quantity, row.unit, defaultUnit)
     if (converted === undefined) return { incomplete: true, scale: 1 }
     return { incomplete: false, scale: converted / defaultQty }
   }
-  return { incomplete: false, scale: ingredientQuantity / defaultQty }
+  return { incomplete: false, scale: row.quantity / defaultQty }
 }
 
 /**
@@ -285,13 +302,14 @@ const enrichWithReference = (self: MergedFoodItem, ref: MergedFoodItem): FoodIte
 export const aggregateNutrientsFromIngredients = (ingredients: ResolvedIngredient[]): DerivedNutrients => {
   const values: Record<string, number> = {}
   let incomplete = false
-  for (const { row, food } of ingredients) {
+  for (const ingredient of ingredients) {
+    const { food } = ingredient
     if (!food) {
       incomplete = true
       continue
     }
     if (typeof food.calories !== 'number') incomplete = true
-    const { scale, incomplete: scaleIncomplete } = computeIngredientScale(row.quantity, row.unit, food)
+    const { scale, incomplete: scaleIncomplete } = computeIngredientScale(ingredient)
     if (scaleIncomplete) incomplete = true
     for (const field of NUTRIENT_FIELD_NAMES) {
       const v = food[field]
@@ -496,8 +514,20 @@ export const createFoodItemsService = (centralDb: CentralDb): FoodItemsService =
           .filter((f): f is SharedFoodItemEntity => f !== null)
         const decoratedCentral = await applySharedOverrides(user, centralFoods)
         const decoratedById = new Map(decoratedCentral.map((f) => [f.id, f]))
+        // Resolve the portion (unit) for ingredients logged via a portion, so
+        // scaling can use its base_equivalent. Batch the distinct ids.
+        const portionIds = Array.from(
+          new Set(rows.map((r) => r.food_item_portion_id).filter((p): p is string => !!p)),
+        )
+        const portionEntries = await Promise.all(
+          portionIds.map(async (pid) => [pid, await getFoodItemPortionById(user, pid)] as const),
+        )
+        const portionById = new Map(
+          portionEntries.filter((e): e is [string, FoodItemPortionRow] => e[1] !== null),
+        )
         const resolved: ResolvedIngredient[] = resolutions.map(({ row, userFood, centralFood }) => ({
           food: userFood ?? (centralFood ? (decoratedById.get(centralFood.id) ?? null) : null),
+          portion: row.food_item_portion_id ? (portionById.get(row.food_item_portion_id) ?? null) : null,
           row,
         }))
         return {
@@ -554,6 +584,59 @@ export const createFoodItemsService = (centralDb: CentralDb): FoodItemsService =
     return false
   },
 })
+
+/**
+ * Validate + normalise ingredient inputs before persisting, mirroring the meal
+ * portion path (resolvePortionForInput + buildScaledJunctionItem):
+ *
+ * - For a portion-based ingredient, the portion must exist AND belong to the
+ *   ingredient food item, and portion_count must be positive. The display
+ *   columns are filled from the portion (`quantity = portion_count`,
+ *   `unit = portion.label_unit`) so the row renders "2 brödkaka" even without
+ *   re-fetching the portion, while scaling re-derives live from the portion id.
+ * - For a legacy ingredient, quantity is required (the schema enforces this;
+ *   we guard anyway).
+ *
+ * Throws on invalid portion references — callers surface it as a 400.
+ */
+export const prepareIngredientInputs = async (
+  user: string,
+  ingredients: FoodItemIngredient[],
+): Promise<FoodItemIngredientInput[]> =>
+  Promise.all(
+    ingredients.map(async (ing, i): Promise<FoodItemIngredientInput> => {
+      const sort_order = ing.sort_order ?? i
+      if (ing.food_item_portion_id) {
+        const portion = await getFoodItemPortionById(user, ing.food_item_portion_id)
+        if (!portion) throw new Error(`Portion not found: ${ing.food_item_portion_id}`)
+        if (portion.food_item_id !== ing.ingredient_food_item_id) {
+          throw new Error(
+            `Portion ${ing.food_item_portion_id} does not belong to food item ${ing.ingredient_food_item_id}`,
+          )
+        }
+        if (typeof ing.portion_count !== 'number' || ing.portion_count <= 0) {
+          throw new Error('portion_count must be a positive number when food_item_portion_id is set')
+        }
+        return {
+          food_item_portion_id: ing.food_item_portion_id,
+          ingredient_food_item_id: ing.ingredient_food_item_id,
+          portion_count: ing.portion_count,
+          quantity: ing.portion_count,
+          sort_order,
+          unit: portion.label_unit,
+        }
+      }
+      if (typeof ing.quantity !== 'number') {
+        throw new Error('quantity is required when no food_item_portion_id is set')
+      }
+      return {
+        ingredient_food_item_id: ing.ingredient_food_item_id,
+        quantity: ing.quantity,
+        sort_order,
+        unit: ing.unit,
+      }
+    }),
+  )
 
 // ============================================================================
 // Composite nutrient cache
@@ -765,10 +848,12 @@ export const duplicateFoodItem = async (
       user,
       newId,
       ingredients.map((ing) => ({
+        food_item_portion_id: ing.row.food_item_portion_id,
         ingredient_food_item_id: ing.row.ingredient_food_item_id,
+        portion_count: ing.row.portion_count,
         quantity: ing.row.quantity,
-        unit: ing.row.unit,
         sort_order: ing.row.sort_order,
+        unit: ing.row.unit,
       })),
     )
     await cacheCompositeNutrients(user, centralDb, newId)
