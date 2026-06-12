@@ -45,6 +45,7 @@ import {
   clearCompositeNutrientCache,
   createFoodItemsMergeService,
   createFoodItemsService,
+  duplicateFoodItem,
 } from '../services/food-items.ts'
 import { resnapshotMealsForFoodItem } from '../services/meals.ts'
 import { errorResponse, jsonResponse, type McpServer } from './helpers.ts'
@@ -114,6 +115,17 @@ export const registerFoodItemTools = (server: McpServer, user: string, centralDb
         return errorResponse(fromCentral ? 'Cannot delete shared library item' : 'Food item not found')
       }
       return jsonResponse({ success: true })
+    },
+  )
+
+  server.tool(
+    'duplicate_food_item',
+    'Duplicate a food item into a fresh per-user copy named "<name> (copy)" and return the new copy\'s detail. Copies nutrients, default quantity/unit/icon, composite ingredients, portions, reference pointer, and sensitivity flags. The source may be one of the user\'s own items OR a central shared-library item — duplicating a shared item yields an editable per-user fork. Use this to base a new recipe on an existing one and then change a single ingredient.',
+    { id: z.string().uuid().describe('ID of the food item to duplicate (per-user or central)') },
+    async ({ id }) => {
+      const detail = await duplicateFoodItem(user, centralDb, id)
+      if (!detail) return errorResponse('Food item not found')
+      return jsonResponse({ data: detail, success: true })
     },
   )
 

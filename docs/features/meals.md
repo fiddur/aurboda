@@ -81,7 +81,7 @@ Examples (per food):
 | Food           | Base unit | Units (`1 label_unit` → `base_equivalent` base units) |
 | -------------- | --------- | ----------------------------------------------------- |
 | Fylld tortilla | `2 wrap`  | `1 wrap` → `1` (enter `1 wrap` ⇒ ×0.5)                |
-| Lantmjölk      | `100 g`   | `1 glas` → `515`                                       |
+| Lantmjölk      | `100 g`   | `1 glas` → `515`                                      |
 | Choklad        | `100 g`   | `1 ruta` → `3.4`; `1 rad` → `13.6`                    |
 
 When logging, the user enters a **quantity in the chosen unit**. To scale a nutrient for quantity `Q` of a unit:
@@ -122,6 +122,7 @@ Logging on the base unit uses the legacy free-form `quantity` + `unit` path, unc
 - `POST /food-items` -- create a per-user food item
 - `PATCH /food-items/:id` -- update a per-user food item (does **not** accept `default_portion_id` -- use the dedicated endpoint below)
 - `DELETE /food-items/:id` -- delete a per-user food item
+- `POST /food-items/:id/duplicate` -- duplicate into a fresh per-user copy named `"<name> (copy)"` (deduped); copies nutrients, defaults, composite ingredients, portions, reference, and sensitivities. Works on per-user **and** central items (a central copy becomes an editable per-user fork). Returns the new copy's detail.
 - `GET /food-items/:id/portions` -- list portions
 - `POST /food-items/:id/portions` -- add a portion
 - `PATCH /food-items/:id/portions/:portionId` -- update a portion (404 if it doesn't belong to `:id`)
@@ -189,6 +190,7 @@ Food items & portions:
 
 - `search_food_items` / `get_food_item` -- search / fetch the merged library (detail includes `portions[]` + `effective_default_portion_id`)
 - `add_food_item` / `update_food_item` / `delete_food_item` -- per-user food item CRUD
+- `duplicate_food_item` -- copy a food item (per-user or central) into a fresh editable per-user `"<name> (copy)"`, including ingredients, portions, reference, and sensitivities
 - `list_food_item_portions` -- list a food's portions
 - `add_food_item_portion` / `update_food_item_portion` / `delete_food_item_portion` -- portion CRUD (per-user OR central food, soft pointer)
 - `set_default_food_item_portion` -- set/clear a per-user food's default logging amount (`portion_id` + `quantity`; `portion_id: null` = base unit, `quantity: null` = base quantity)

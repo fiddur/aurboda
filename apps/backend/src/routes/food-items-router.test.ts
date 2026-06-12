@@ -60,6 +60,9 @@ vi.mock('../db/food-items.ts', () => ({
   getFoodItemByName: vi.fn(),
   mergeFoodItems: vi.fn(),
   searchFoodItems: vi.fn(),
+  setFoodItemReference: vi.fn(),
+  updateFoodItem: vi.fn(),
+  upsertFoodItem: vi.fn(),
 }))
 
 vi.mock('../services/meals.ts', () => ({
@@ -570,5 +573,59 @@ describe('resolveEffectiveDefaultQuantity', () => {
 
   test('absent everywhere → undefined (no prefill hint)', () => {
     expect(resolveEffectiveDefaultQuantity(undefined, undefined, undefined)).toBeUndefined()
+  })
+})
+
+describe('POST /food-items/:id/duplicate', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  test('404 when the source resolves nowhere', async () => {
+    setUserFoodItem(async () => null)
+    const central = fakeCentral()
+    vi.mocked(central.getSharedFoodItemById).mockResolvedValue(null)
+    const res = await supertest(buildApp(central)).post(
+      '/food-items/11111111-1111-4111-8111-111111111111/duplicate',
+    )
+    expect(res.status).toBe(404)
+    expect(res.body.error).toMatch(/not found/i)
+  })
+
+  test('200 creates a "(copy)" manual item and returns its detail', async () => {
+    const sourceId = '11111111-1111-4111-8111-111111111111'
+    const copyId = '22222222-2222-4222-8222-222222222222'
+    const source = userItem(sourceId, {
+      calories: 52,
+      default_quantity: 100,
+      default_unit: 'g',
+      name: 'Apple',
+    })
+    const copy = userItem(copyId, {
+      calories: 52,
+      default_quantity: 100,
+      default_unit: 'g',
+      name: 'Apple (copy)',
+      source: 'manual',
+    })
+    setUserFoodItem(async (_u, fid) => {
+      if (fid === sourceId) return source
+      if (fid === copyId) return copy
+      return null
+    })
+    // Name is available; the upsert returns the freshly created copy row.
+    vi.mocked(dbFoodItems.getFoodItemByName).mockResolvedValue(null)
+    vi.mocked(dbFoodItems.upsertFoodItem).mockResolvedValue(copy)
+
+    const res = await supertest(buildApp(fakeCentral())).post(`/food-items/${sourceId}/duplicate`)
+
+    expect(res.status).toBe(200)
+    expect(res.body.success).toBe(true)
+    expect(res.body.data.name).toBe('Apple (copy)')
+    expect(res.body.data.source).toBe('manual')
+    expect(dbFoodItems.upsertFoodItem).toHaveBeenCalledWith(
+      'tester',
+      expect.objectContaining({ calories: 52, name: 'Apple (copy)', source: 'manual' }),
+    )
   })
 })

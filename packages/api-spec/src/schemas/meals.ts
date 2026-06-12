@@ -127,7 +127,7 @@ export const foodItemInputSchema = z
     }),
     food_item_portion_id: z.string().uuid().optional().meta({
       description:
-        'Optional portion id (from food_item_portions). When set, nutrients are scaled by `portion_count × portion.base_equivalent / food.default_quantity` and the row\'s display label is derived from the portion. When omitted, falls back to the legacy `quantity` + `unit` scaling.',
+        "Optional portion id (from food_item_portions). When set, nutrients are scaled by `portion_count × portion.base_equivalent / food.default_quantity` and the row's display label is derived from the portion. When omitted, falls back to the legacy `quantity` + `unit` scaling.",
     }),
     portion_count: z.number().positive().optional().meta({
       description:
@@ -151,13 +151,10 @@ export const foodItemInputSchema = z
         'Unit for `quantity` (e.g., "g", "ml", "large slice", "full recipe"). Ignored when `food_item_portion_id` is provided.',
     }),
   })
-  .refine(
-    (body) => body.food_item_portion_id === undefined || typeof body.portion_count === 'number',
-    {
-      message: 'portion_count is required when food_item_portion_id is set',
-      path: ['portion_count'],
-    },
-  )
+  .refine((body) => body.food_item_portion_id === undefined || typeof body.portion_count === 'number', {
+    message: 'portion_count is required when food_item_portion_id is set',
+    path: ['portion_count'],
+  })
   .meta({ description: 'Input shape for a food item in a meal request body', id: 'FoodItemInput' })
 
 export type FoodItemInput = z.infer<typeof foodItemInputSchema>

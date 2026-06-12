@@ -17,7 +17,7 @@ handler is a no-op — no data leaves the server.
 
 `Sentry.init` runs inside `main()` after all module imports. `@sentry/node` v8+
 auto-instrumentation (OpenTelemetry HTTP/express/db tracing, automatic
-breadcrumbs) needs init *before* those modules are imported to patch them, so
+breadcrumbs) needs init _before_ those modules are imported to patch them, so
 that side of the SDK is effectively inert here. Only the explicit
 `setupExpressErrorHandler` path captures errors.
 

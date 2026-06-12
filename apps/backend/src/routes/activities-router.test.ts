@@ -65,9 +65,9 @@ describe('GET /activities/:id', () => {
 
   test('includes the user notes as comments (#794)', async () => {
     vi.mocked(queries.getCommentsMap).mockResolvedValue(
-      new Map([
-        [ACTIVITY_ID, [{ content: 'Tempo run — felt strong', id: 'note-1' }]],
-      ]) as Awaited<ReturnType<typeof queries.getCommentsMap>>,
+      new Map([[ACTIVITY_ID, [{ content: 'Tempo run — felt strong', id: 'note-1' }]]]) as Awaited<
+        ReturnType<typeof queries.getCommentsMap>
+      >,
     )
 
     const res = await supertest(buildApp()).get(`/activities/${ACTIVITY_ID}`)

@@ -83,6 +83,7 @@ import {
   clearCompositeNutrientCache,
   createFoodItemsMergeService,
   createFoodItemsService,
+  duplicateFoodItem,
   type FoodItemDetail as ServiceFoodItemDetail,
   type MergedFoodItem,
 } from '../services/food-items.ts'
@@ -266,6 +267,15 @@ export const createFoodItemsRouter = (authMiddleware: AnyMiddleware, centralDb: 
       })
     }
     res.json({ success: true })
+  })
+
+  // Duplicate a food item into a fresh per-user copy ("<name> (copy)") and
+  // return the new copy's detail. The source may be per-user OR central — a
+  // copy of a central item becomes an editable per-user fork.
+  router.post<{ id: string }, FoodItemDetailResponse>('/:id/duplicate', authMiddleware, async (req, res) => {
+    const detail = await duplicateFoodItem(req.user!, centralDb, req.params.id)
+    if (!detail) return res.status(404).json({ error: 'Food item not found', success: false })
+    res.json({ data: serializeDetail(detail), success: true })
   })
 
   // Replace the full ingredient list of a composite food item. Per-user

@@ -37,15 +37,15 @@ If neither is available, computation is skipped with `skipped_reason: 'no BMR an
 
 ## Other Required Inputs
 
-| Input               | Source                                                                  | Lookback             |
-| ------------------- | ----------------------------------------------------------------------- | -------------------- |
-| Sex                 | `sex` user setting                                                      | required             |
-| Birth date          | `birth_date` user setting                                               | required (for age)   |
-| Weight              | `weight` metric                                                         | 90 days              |
-| Height              | `height` metric (for BMR fallback only)                                 | 10 years             |
-| Resting HR          | `resting_heart_rate` metric (else 60 bpm)                               | 90 days              |
-| HR zone boundaries  | `hr_zone_start` setting (else age-based, then HRR-derived fallback)     | live                 |
-| Observed HR max     | `settings.training_load.observed_hr_max` (else `220 − age`)             | live                 |
+| Input              | Source                                                              | Lookback           |
+| ------------------ | ------------------------------------------------------------------- | ------------------ |
+| Sex                | `sex` user setting                                                  | required           |
+| Birth date         | `birth_date` user setting                                           | required (for age) |
+| Weight             | `weight` metric                                                     | 90 days            |
+| Height             | `height` metric (for BMR fallback only)                             | 10 years           |
+| Resting HR         | `resting_heart_rate` metric (else 60 bpm)                           | 90 days            |
+| HR zone boundaries | `hr_zone_start` setting (else age-based, then HRR-derived fallback) | live               |
+| Observed HR max    | `settings.training_load.observed_hr_max` (else `220 − age`)         | live               |
 
 If the resolved zone-1 start lands at or below the resting HR (user has not set zones and the age-based default is too low for them), zones are re-derived from HRR percentages (50/60/70/80/90 % of `observed_hr_max − resting_hr` above resting).
 
@@ -72,11 +72,11 @@ Both metrics are stored in `time_series` with `source = 'aurboda'`. The `aurboda
 
 Calorie computation runs in three places:
 
-| Trigger                                                      | Range passed by caller     | Effective range after day-expansion |
-| ------------------------------------------------------------ | -------------------------- | ----------------------------------- |
-| Health Connect HR sync (`POST /sync/health-connect/...`)     | HR-batch window (≈ minutes) | The whole local day(s) it overlaps |
-| Oura sync (sleep / session HR samples)                       | Sample range               | Whole local day(s)                  |
-| Manual recompute (`recalculate_calories` MCP tool or REST)   | User-provided, or full     | Whole local day(s)                  |
+| Trigger                                                    | Range passed by caller      | Effective range after day-expansion |
+| ---------------------------------------------------------- | --------------------------- | ----------------------------------- |
+| Health Connect HR sync (`POST /sync/health-connect/...`)   | HR-batch window (≈ minutes) | The whole local day(s) it overlaps  |
+| Oura sync (sleep / session HR samples)                     | Sample range                | Whole local day(s)                  |
+| Manual recompute (`recalculate_calories` MCP tool or REST) | User-provided, or full      | Whole local day(s)                  |
 
 Each call is authoritative for the day(s) it touches: it deletes any prior aurboda rows in the expanded range and re-writes from scratch. There is no incremental "skip already-computed minutes" optimisation any more — the operation is fast enough at one day at a time and avoids the partial-day inconsistency the prior incremental path could create.
 
@@ -90,10 +90,10 @@ After deploy, run a full recompute via the MCP tool `recalculate_calories` (or `
 
 ## Key Files
 
-| File                                                  | Purpose                                                       |
-| ----------------------------------------------------- | ------------------------------------------------------------- |
-| `apps/backend/src/services/calories.ts`               | Zone-METs formula, BMR estimator, MAX_HOLD_MINUTES, types     |
-| `apps/backend/src/services/calorie-computation.ts`    | Orchestration: BMR/zones resolution, day-aligned recompute    |
-| `apps/backend/src/db/time-series.ts`                  | DB read/write, source filtering for aurbodaOnly metrics       |
-| `apps/backend/src/db/cumulative-query.ts`             | Routes cumulative metrics to the aurbodaOnly source filter    |
-| `packages/api-spec/src/schemas/common.ts`             | `aurbodaOnlyMetrics`, `aurbodaOnlySources`, `cumulativeMetrics` |
+| File                                               | Purpose                                                         |
+| -------------------------------------------------- | --------------------------------------------------------------- |
+| `apps/backend/src/services/calories.ts`            | Zone-METs formula, BMR estimator, MAX_HOLD_MINUTES, types       |
+| `apps/backend/src/services/calorie-computation.ts` | Orchestration: BMR/zones resolution, day-aligned recompute      |
+| `apps/backend/src/db/time-series.ts`               | DB read/write, source filtering for aurbodaOnly metrics         |
+| `apps/backend/src/db/cumulative-query.ts`          | Routes cumulative metrics to the aurbodaOnly source filter      |
+| `packages/api-spec/src/schemas/common.ts`          | `aurbodaOnlyMetrics`, `aurbodaOnlySources`, `cumulativeMetrics` |

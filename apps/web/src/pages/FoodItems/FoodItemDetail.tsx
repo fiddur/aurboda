@@ -16,6 +16,7 @@ import { type IngredientRow, IngredientList } from '../../components/IngredientL
 import {
   addFoodItemPortionApi,
   deleteFoodItemPortionApi,
+  duplicateFoodItemApi,
   setDefaultPortionApi,
   updateFoodItemPortionApi,
 } from '../../state/api/meals'
@@ -296,6 +297,19 @@ export function FoodItemDetail() {
     },
   })
 
+  const duplicateMutation = useMutation({
+    mutationFn: () => duplicateFoodItemApi(id),
+    onError: (err: Error) => setSaveError(err.message ?? 'Duplicate failed'),
+    onSuccess: (copy) => {
+      // Seed the new copy's detail so its page renders without a refetch, then
+      // navigate there so the user can immediately tweak the one ingredient
+      // they wanted to change.
+      queryClient.setQueryData(['foodItem', copy.id], copy)
+      queryClient.invalidateQueries({ queryKey: ['foodItems'] })
+      route(`/food-items/${copy.id}`)
+    },
+  })
+
   const [resnapshotResult, setResnapshotResult] = useState<{
     meals_updated: number
     rows_updated: number
@@ -431,6 +445,19 @@ export function FoodItemDetail() {
             isPending={resnapshotMutation.isPending}
             buttonClass="btn-secondary"
           />
+          <button
+            type="button"
+            class="btn-secondary"
+            onClick={() => duplicateMutation.mutate()}
+            disabled={duplicateMutation.isPending}
+            title={
+              isShared
+                ? `Create an editable personal copy of ${item.name}`
+                : `Create a copy of ${item.name} to edit`
+            }
+          >
+            {duplicateMutation.isPending ? 'Duplicating…' : 'Duplicate'}
+          </button>
           {!isShared && (
             <ConfirmButton
               label="Delete"

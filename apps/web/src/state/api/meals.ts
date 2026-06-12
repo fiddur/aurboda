@@ -190,6 +190,15 @@ export const fetchFoodItemDetailApi = async (id: string): Promise<ApiFoodItemDet
   return response.data.data
 }
 
+export const duplicateFoodItemApi = async (id: string): Promise<ApiFoodItemDetail> => {
+  const { token } = auth.value
+  const response = await axios.post<FoodItemDetailResponse>(`${API_URL}/food-items/${id}/duplicate`, null, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!response.data.data) throw new Error(response.data.error ?? 'Duplicate failed')
+  return response.data.data
+}
+
 // ─── Food item portions ─────────────────────────────────────────────────────
 
 export const addFoodItemPortionApi = async (
