@@ -284,4 +284,59 @@ describe('mergeShortUnknownVisits', () => {
     expect(result[0].name).toBe('Home')
     expect(result[0].duration_minutes).toBe(68) // extended
   })
+
+  // Space/time gating (issue #811): a short unknown must be genuinely
+  // contiguous with a neighbour to be absorbed, otherwise it is dropped —
+  // so travel fragments can't keep extending a real stay.
+  const makeVisitAt = (
+    name: string,
+    source: PlaceVisit['source'],
+    startMinutes: number,
+    durationMinutes: number,
+    lat: number,
+    lon: number,
+  ): PlaceVisit => {
+    const startTime = new Date(Date.UTC(2024, 0, 15, 10, startMinutes, 0))
+    return {
+      duration_minutes: durationMinutes,
+      end_time: new Date(startTime.getTime() + durationMinutes * 60 * 1000),
+      lat,
+      lon,
+      name,
+      source,
+      start_time: startTime,
+    }
+  }
+
+  test('drops a short unknown that is spatially far from both neighbours (travel)', () => {
+    // ~30 km east of the stays — a travel fix, not a glitch at the stay.
+    const visits = [
+      makeVisitAt('Home', 'named', 0, 60, 57.66, 12.6),
+      makeVisitAt('Somewhere', 'unknown', 60, 2, 57.72, 12.92),
+      makeVisitAt('Home', 'named', 62, 60, 57.66, 12.6),
+    ]
+
+    const result = mergeShortUnknownVisits(visits)
+
+    // The travel fragment is dropped; neither Home is stretched over it.
+    expect(result).toHaveLength(2)
+    expect(result[0].duration_minutes).toBe(60)
+    expect(result[1].duration_minutes).toBe(60)
+  })
+
+  test('does not bridge a stay across a long time gap', () => {
+    // Same coordinate, but the unknown blip is ~3h after the stay ended.
+    const visits = [
+      makeVisitAt('Home', 'named', 0, 60, 57.66, 12.6),
+      makeVisitAt('Somewhere', 'unknown', 240, 2, 57.66, 12.6),
+      makeVisitAt('Office', 'named', 300, 60, 59.33, 18.07),
+    ]
+
+    const result = mergeShortUnknownVisits(visits)
+
+    expect(result).toHaveLength(2)
+    expect(result[0].name).toBe('Home')
+    expect(result[0].duration_minutes).toBe(60) // NOT stretched to 242
+    expect(result[1].name).toBe('Office')
+  })
 })
