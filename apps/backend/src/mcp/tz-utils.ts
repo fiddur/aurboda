@@ -3,7 +3,6 @@
  *
  * Uses Temporal API for DST-correct timezone conversion.
  */
-import { Temporal } from '@js-temporal/polyfill'
 
 /**
  * Format a UTC Date as an ISO 8601 string with the correct offset for the given timezone.
