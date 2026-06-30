@@ -34,6 +34,13 @@ vi.mock('../db', () => ({
   getCustomMetricByName: vi.fn(),
   getCustomMetricDefinitions: vi.fn().mockResolvedValue([]),
   getOverrideForActivity: vi.fn().mockResolvedValue(null),
+  getSourceFilter: vi.fn((metric: string) =>
+    ['calories_active', 'calories_total'].includes(metric)
+      ? ['aurboda', 'aurboda_gap_fill']
+      : ['steps', 'distance', 'floors_climbed', 'calories_active', 'calories_total'].includes(metric)
+        ? ['health_connect_aggregate', 'aurboda']
+        : null,
+  ),
   getUserNotesJoined: vi.fn().mockResolvedValue(undefined),
   getUserSettings: vi.fn(),
   insertCustomMetricDefinition: vi.fn(),
@@ -649,6 +656,41 @@ describe('bulkAddMetrics', () => {
     expect(result.inserted).toBe(0)
     expect(result.errors).toHaveLength(2)
     expect(db.insertTimeSeries).not.toHaveBeenCalled()
+  })
+
+  test('rejects cumulative metrics written from an unqueryable source (#802)', async () => {
+    vi.mocked(db.insertTimeSeries).mockResolvedValue(undefined)
+    vi.mocked(db.getCustomMetricDefinitions).mockResolvedValue([])
+
+    const result = await bulkAddMetrics('testuser', [
+      // steps from an arbitrary source would never be queryable → rejected.
+      { metric: 'steps', source: 'tryout', time: new Date('2026-05-27T00:00:00Z'), value: 5000 },
+      // resting_heart_rate is unrestricted → accepted from any source.
+      { metric: 'resting_heart_rate', source: 'tryout', time: new Date('2026-05-27T00:00:00Z'), value: 55 },
+    ])
+
+    expect(result.inserted).toBe(1)
+    expect(result.errors).toHaveLength(1)
+    expect(result.errors[0].index).toBe(0)
+    expect(result.errors[0].error).toContain('cumulative/derived')
+    // Only the RHR point reaches the DB.
+    expect(db.insertTimeSeries).toHaveBeenCalledWith('testuser', [
+      expect.objectContaining({ metric: 'resting_heart_rate', source: 'tryout' }),
+    ])
+  })
+
+  test('accepts cumulative metrics from an allowed source', async () => {
+    vi.mocked(db.insertTimeSeries).mockResolvedValue(undefined)
+    vi.mocked(db.getCustomMetricDefinitions).mockResolvedValue([])
+
+    const result = await bulkAddMetrics('testuser', [
+      // Default source 'aurboda' is allowed for cumulative metrics.
+      { metric: 'steps', time: new Date('2026-05-27T00:00:00Z'), value: 5000 },
+      { metric: 'steps', source: 'health_connect_aggregate', time: new Date('2026-05-28T00:00:00Z'), value: 6000 },
+    ])
+
+    expect(result.inserted).toBe(2)
+    expect(result.errors).toHaveLength(0)
   })
 
   test('calls getCustomMetricDefinitions only once for the entire batch', async () => {

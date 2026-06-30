@@ -17,8 +17,13 @@ import { query } from './connection.ts'
 import { querySplitByCumulative } from './cumulative-query.ts'
 import { parseMetricType } from './row-mappers.ts'
 
-/** Get the source filter for a single metric: aurboda-only, cumulative sources, or all sources (null). */
-const getSourceFilter = (metric: string): string[] | null => {
+/**
+ * Get the source filter for a single metric: aurboda-only, cumulative sources,
+ * or all sources (null). Reads of cumulative/derived metrics are restricted to
+ * these sources, so a write from any other source would be unqueryable — write
+ * paths reuse this to reject such writes (see #802).
+ */
+export const getSourceFilter = (metric: string): string[] | null => {
   if (aurbodaOnlyMetrics.includes(metric as MetricType)) return aurbodaOnlySources
   if (cumulativeMetrics.includes(metric as MetricType)) return cumulativeSources
   return null
