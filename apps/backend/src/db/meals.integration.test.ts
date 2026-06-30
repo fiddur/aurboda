@@ -4,12 +4,14 @@ import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-te
 import { setMealFoodItems } from './meal-food-items.ts'
 import {
   deleteMeal,
+  getDailyNutrientTotals,
   getFrequentFoodItems,
   getFrequentMeals,
   getMealById,
   getMealLogCompleted,
   getMealLogCompletedInRange,
   getMeals,
+  getNutritionCompleteDaysInRange,
   insertMeal,
   setMealLogCompleted,
   updateMeal,
@@ -519,6 +521,76 @@ describe('Meals Integration Tests', () => {
     })
   })
 
+  describe('getNutritionCompleteDaysInRange', () => {
+    test('returns only days with a meal that has a non-null value for the nutrient', async () => {
+      const user = getTestUser()
+      // Complete days: meals carrying calories.
+      await insertMeal(user, { calories: 500, time: new Date('2025-07-01T08:00:00Z') })
+      await insertMeal(user, { calories: 300, time: new Date('2025-07-03T19:00:00Z') })
+      // Flag-only day: a meal logged with no macros (calories NULL).
+      await insertMeal(user, { time: new Date('2025-07-02T12:00:00Z') })
+
+      const result = await getNutritionCompleteDaysInRange(
+        user,
+        'calories',
+        new Date('2025-07-01T00:00:00Z'),
+        new Date('2025-07-31T23:59:59Z'),
+      )
+      expect(result).toEqual(['2025-07-01', '2025-07-03'])
+    })
+
+    test('counts a day complete if any of its meals has the nutrient', async () => {
+      const user = getTestUser()
+      await insertMeal(user, { time: new Date('2025-07-05T08:00:00Z') }) // flag-only
+      await insertMeal(user, { calories: 120, time: new Date('2025-07-05T13:00:00Z') }) // real
+
+      const result = await getNutritionCompleteDaysInRange(
+        user,
+        'calories',
+        new Date('2025-07-01T00:00:00Z'),
+        new Date('2025-07-31T23:59:59Z'),
+      )
+      expect(result).toEqual(['2025-07-05'])
+    })
+
+    test('is keyed per-nutrient: a calorie-only day is incomplete for fiber', async () => {
+      const user = getTestUser()
+      // Calories logged but fiber never tracked.
+      await insertMeal(user, { calories: 400, time: new Date('2025-07-08T08:00:00Z') })
+      // Fiber explicitly logged on another day.
+      await insertMeal(user, { calories: 200, fiber: 6, time: new Date('2025-07-09T08:00:00Z') })
+
+      const calorieDays = await getNutritionCompleteDaysInRange(
+        user,
+        'calories',
+        new Date('2025-07-01T00:00:00Z'),
+        new Date('2025-07-31T23:59:59Z'),
+      )
+      const fiberDays = await getNutritionCompleteDaysInRange(
+        user,
+        'fiber',
+        new Date('2025-07-01T00:00:00Z'),
+        new Date('2025-07-31T23:59:59Z'),
+      )
+      expect(calorieDays).toEqual(['2025-07-08', '2025-07-09'])
+      expect(fiberDays).toEqual(['2025-07-09'])
+    })
+
+    test('respects the [start, end] range', async () => {
+      const user = getTestUser()
+      await insertMeal(user, { calories: 100, time: new Date('2025-08-01T08:00:00Z') })
+      await insertMeal(user, { calories: 100, time: new Date('2025-08-20T08:00:00Z') })
+
+      const result = await getNutritionCompleteDaysInRange(
+        user,
+        'calories',
+        new Date('2025-08-10T00:00:00Z'),
+        new Date('2025-08-31T23:59:59Z'),
+      )
+      expect(result).toEqual(['2025-08-20'])
+    })
+  })
+
   describe('JSONB storage', () => {
     test('round-trips food_items through JSONB', async () => {
       const user = getTestUser()
@@ -555,6 +627,64 @@ describe('Meals Integration Tests', () => {
 
       const found = await getMealById(user, meal.id)
       expect(found!.micros).toEqual(micros)
+    })
+  })
+
+  describe('getDailyNutrientTotals', () => {
+    test('sums meal-level macros per day for requested nutrients', async () => {
+      const user = getTestUser()
+
+      // Two meals on day 1, one on day 2.
+      await insertMeal(user, { calories: 600, carbs: 80, time: new Date('2025-03-01T08:00:00Z') })
+      await insertMeal(user, { calories: 400, carbs: 20, time: new Date('2025-03-01T19:00:00Z') })
+      await insertMeal(user, { calories: 700, carbs: 50, time: new Date('2025-03-02T12:00:00Z') })
+
+      const totals = await getDailyNutrientTotals(
+        user,
+        ['carbs', 'calories'],
+        new Date('2025-03-01T00:00:00Z'),
+        new Date('2025-03-02T23:59:59Z'),
+      )
+
+      const carbsByDay = new Map(totals.filter((t) => t.nutrient === 'carbs').map((t) => [t.date, t.total]))
+      const caloriesByDay = new Map(
+        totals.filter((t) => t.nutrient === 'calories').map((t) => [t.date, t.total]),
+      )
+
+      expect(carbsByDay.get('2025-03-01')).toBe(100)
+      expect(carbsByDay.get('2025-03-02')).toBe(50)
+      expect(caloriesByDay.get('2025-03-01')).toBe(1000)
+      expect(caloriesByDay.get('2025-03-02')).toBe(700)
+    })
+
+    test('omits days without meals and treats missing macros as zero', async () => {
+      const user = getTestUser()
+
+      // Meal with no carbs logged (NULL) -> COALESCE to 0.
+      await insertMeal(user, { calories: 300, time: new Date('2025-04-10T08:00:00Z') })
+
+      const totals = await getDailyNutrientTotals(
+        user,
+        ['carbs'],
+        new Date('2025-04-09T00:00:00Z'),
+        new Date('2025-04-11T23:59:59Z'),
+      )
+
+      // Only the one day with a meal appears.
+      expect(totals).toEqual([{ date: '2025-04-10', nutrient: 'carbs', total: 0 }])
+    })
+
+    test('returns empty when no nutrients requested', async () => {
+      const user = getTestUser()
+      await insertMeal(user, { calories: 300, time: new Date('2025-04-10T08:00:00Z') })
+
+      const totals = await getDailyNutrientTotals(
+        user,
+        [],
+        new Date('2025-04-09T00:00:00Z'),
+        new Date('2025-04-11T23:59:59Z'),
+      )
+      expect(totals).toEqual([])
     })
   })
 })

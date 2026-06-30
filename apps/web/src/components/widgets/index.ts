@@ -2,11 +2,14 @@
  * Widget components for customizable dashboard.
  */
 
-export { ActivitySummaryWidget } from './ActivitySummaryWidget'
-export { BarChartWidget } from './BarChartWidget'
-export { CorrelationWidget } from './CorrelationWidget'
-export { MetricCardWidget } from './MetricCardWidget'
-export { QuickLinkWidget } from './QuickLinkWidget'
-export { SparklineCardWidget } from './SparklineCardWidget'
-export { TrendChartWidget } from './TrendChartWidget'
+export { ActivitySummaryView, ActivitySummaryWidget } from './ActivitySummaryWidget'
+export { BarChartView, BarChartWidget } from './BarChartWidget'
+export { CorrelationView, CorrelationWidget } from './CorrelationWidget'
+export { GoalProgressView, GoalProgressWidget } from './GoalProgressWidget'
+export { HrZonesView, HrZonesWidget } from './HrZonesWidget'
+export { MetricCardView, MetricCardWidget } from './MetricCardWidget'
+export { PublicWidgetRenderer } from './PublicWidgetRenderer'
+export { QuickLinkView, QuickLinkWidget } from './QuickLinkWidget'
+export { SparklineCardView, SparklineCardWidget } from './SparklineCardWidget'
+export { TrendChartView, TrendChartWidget } from './TrendChartWidget'
 export { WidgetRenderer } from './WidgetRenderer'

@@ -45,6 +45,8 @@ import {
   clearCompositeNutrientCache,
   createFoodItemsMergeService,
   createFoodItemsService,
+  duplicateFoodItem,
+  prepareIngredientInputs,
 } from '../services/food-items.ts'
 import { resnapshotMealsForFoodItem } from '../services/meals.ts'
 import { errorResponse, jsonResponse, type McpServer } from './helpers.ts'
@@ -118,6 +120,17 @@ export const registerFoodItemTools = (server: McpServer, user: string, centralDb
   )
 
   server.tool(
+    'duplicate_food_item',
+    'Duplicate a food item into a fresh per-user copy named "<name> (copy)" and return the new copy\'s detail. Copies nutrients, default quantity/unit/icon, composite ingredients, portions, reference pointer, and sensitivity flags. The source may be one of the user\'s own items OR a central shared-library item — duplicating a shared item yields an editable per-user fork. Use this to base a new recipe on an existing one and then change a single ingredient.',
+    { id: z.string().uuid().describe('ID of the food item to duplicate (per-user or central)') },
+    async ({ id }) => {
+      const detail = await duplicateFoodItem(user, centralDb, id)
+      if (!detail) return errorResponse('Food item not found')
+      return jsonResponse({ data: detail, success: true })
+    },
+  )
+
+  server.tool(
     'get_food_item',
     'Get a food item by ID — checks the user library first, then the central shared library. For composite (recipe) items, the response includes the resolved ingredients and derived nutrient totals.',
     { id: z.string().uuid().describe('Food item ID') },
@@ -131,8 +144,8 @@ export const registerFoodItemTools = (server: McpServer, user: string, centralDb
   server.tool(
     'set_food_item_ingredients',
     [
-      "Mark a per-user food item as composite (a recipe) and replace its full ingredient list. The item's nutrient values become derived: at read time we sum each ingredient's value × quantity / default_quantity (when units match).",
-      'Each ingredient points at another food item by `ingredient_food_item_id` — may be a per-user food OR a central library item. Cycles (A → B → A) are rejected.',
+      "Mark a per-user food item as composite (a recipe) and replace its full ingredient list. The item's nutrient values become derived: at read time we sum each ingredient's contribution, scaled by quantity / default_quantity (legacy) or, when a `food_item_portion_id` is given, by portion_count × portion.base_equivalent / default_quantity.",
+      'Each ingredient points at another food item by `ingredient_food_item_id` — may be a per-user food OR a central library item. Provide either `quantity` (+ optional `unit`) or a `food_item_portion_id` of that food plus `portion_count` (e.g. "2 brödkaka"). Cycles (A → B → A) are rejected.',
       'Only per-user items can be made composite; central shared-library rows return an error.',
     ].join(' '),
     {
@@ -151,7 +164,13 @@ export const registerFoodItemTools = (server: McpServer, user: string, centralDb
       if (await foodItems.wouldCreateCycle(user, id, ingredientIds)) {
         return errorResponse('Setting these ingredients would create a cycle in the recipe graph')
       }
-      await setIngredients(user, id, ingredients)
+      let prepared
+      try {
+        prepared = await prepareIngredientInputs(user, ingredients)
+      } catch (err) {
+        return errorResponse(err instanceof Error ? err.message : 'Invalid ingredient portion')
+      }
+      await setIngredients(user, id, prepared)
       await cacheCompositeNutrients(user, centralDb, id)
       const detail = await foodItems.getDetail(user, id)
       if (!detail) return errorResponse('Food item not found')

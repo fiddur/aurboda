@@ -12,6 +12,10 @@ import {
   type BaselineQuery,
   baselineQuerySchema,
   type BaselineResponse,
+  type ContinuousCorrelationBody,
+  continuousCorrelationBodySchema,
+  type ContinuousCorrelationResponse,
+  type CorrelationSelectorsResponse,
   type EventProbabilityBody,
   eventProbabilityBodySchema,
   type EventProbabilityResponse,
@@ -28,6 +32,8 @@ import type { SyncProvider } from '../services/queries/index.ts'
 import {
   getActivityImpact,
   getBaseline,
+  getContinuousCorrelation,
+  getCorrelationSelectors,
   getEventProbability,
   getGenericCorrelation,
   getHrvActivitiesCorrelation,
@@ -60,11 +66,11 @@ export const createCorrelationsRouter = (
     authMiddleware,
     validateQuery(hrvActivitiesQuerySchema),
     async (req, res) => {
-      const { period_days } = req.query
+      const { period_days, context_metric } = req.query
       const user = req.user!
 
       const periodDays = period_days ? parseInt(period_days, 10) : 30
-      const correlations = await getHrvActivitiesCorrelation(user, periodDays, syncProvider)
+      const correlations = await getHrvActivitiesCorrelation(user, periodDays, syncProvider, context_metric)
       res.json({ data: correlations, success: true })
     },
   )
@@ -118,7 +124,7 @@ export const createCorrelationsRouter = (
     authMiddleware,
     validateBody(genericCorrelationBodySchema),
     async (req, res) => {
-      const { triggers, outcome, lag_windows, period_days } = req.body
+      const { triggers, outcome, lag_windows, period_days, period_start, period_end, denominator } = req.body
       const user = req.user!
 
       const result = await getGenericCorrelation(
@@ -128,8 +134,44 @@ export const createCorrelationsRouter = (
         lag_windows ?? ['24h', '48h', '7d'],
         period_days ?? 90,
         syncProvider,
+        { denominator, periodEnd: period_end, periodStart: period_start },
       )
       res.json({ data: result, success: true })
+    },
+  )
+
+  router.post<Record<string, never>, ContinuousCorrelationResponse, ContinuousCorrelationBody>(
+    '/continuous',
+    authMiddleware,
+    validateBody(continuousCorrelationBodySchema),
+    async (req, res) => {
+      const { trigger, outcome, lag_days, period_days, period_start, period_end, nutrition_completeness } =
+        req.body
+      const user = req.user!
+
+      const result = await getContinuousCorrelation(
+        user,
+        {
+          lagDays: lag_days,
+          nutritionCompleteness: nutrition_completeness,
+          outcome,
+          periodDays: period_days,
+          periodEnd: period_end,
+          periodStart: period_start,
+          trigger,
+        },
+        syncProvider,
+      )
+      res.json({ data: result, success: true })
+    },
+  )
+
+  router.get<Record<string, never>, CorrelationSelectorsResponse>(
+    '/selectors',
+    authMiddleware,
+    async (req, res) => {
+      const data = await getCorrelationSelectors(req.user!)
+      res.json({ data, success: true })
     },
   )
 

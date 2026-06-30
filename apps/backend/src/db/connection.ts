@@ -1124,6 +1124,18 @@ export const migrateSchema = async (user: string) => {
     )
   }
 
+  // food_item_ingredients: per-ingredient portion selection, mirroring
+  // meal_food_items. Both nullable so legacy ingredients (logged with free-form
+  // quantity + unit before portions existed) keep working — the scaling falls
+  // back to (quantity, unit) when food_item_portion_id is NULL.
+  if (existingTableNames.has('food_item_ingredients')) {
+    await query(db, `ALTER TABLE food_item_ingredients ADD COLUMN IF NOT EXISTS food_item_portion_id UUID`)
+    await query(
+      db,
+      `ALTER TABLE food_item_ingredients ADD COLUMN IF NOT EXISTS portion_count DOUBLE PRECISION`,
+    )
+  }
+
   // meal_food_items: drop the FK on food_item_id since the canonical row
   // may now live in the central shared_food_items table (different
   // database). The food_item_name + food_item_icon columns existed in

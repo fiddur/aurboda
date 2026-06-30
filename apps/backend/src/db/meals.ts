@@ -122,6 +122,95 @@ export const getMeals = async (user: string, filter: QueryMealsFilter): Promise<
   return result.rows.map(mapMealRow)
 }
 
+/** Nutrient keys that have authoritative meal-level total columns. */
+export const NUTRIENT_KEYS = ['calories', 'protein', 'carbs', 'fat', 'fiber'] as const
+
+export type NutrientKey = (typeof NUTRIENT_KEYS)[number]
+
+/** Per-day total for a single nutrient. */
+export interface DailyNutrientTotal {
+  date: string
+  nutrient: NutrientKey
+  total: number
+}
+
+/**
+ * Sum meal-level nutrient totals per day over an inclusive [start, end] range.
+ *
+ * Uses the authoritative meal-level macro columns (calories/protein/carbs/fat/
+ * fiber), which are kept in sync with the food-item junction (auto-filled from
+ * the junction sum unless the caller supplied explicit meal-level macros). Only
+ * days that have at least one meal appear in the result; the caller combines
+ * this with `meal_log_completed` to know which zero days are true zeros.
+ *
+ * Days are bucketed by the UTC calendar date (deterministic regardless of the
+ * DB session timezone), matching the UTC day-bucketing the correlation daily
+ * matrix uses so nutrients align with metrics and events.
+ */
+export const getDailyNutrientTotals = async (
+  user: string,
+  nutrients: NutrientKey[],
+  start: Date,
+  end: Date,
+): Promise<DailyNutrientTotal[]> => {
+  const requested = nutrients.filter((n) => NUTRIENT_KEYS.includes(n))
+  if (requested.length === 0) return []
+
+  // Column names come from the fixed NUTRIENT_KEYS whitelist, so interpolation is safe.
+  const sums = requested.map((n) => `COALESCE(SUM(${n}), 0) AS ${n}`).join(', ')
+  // TO_CHAR keeps the date as a string so the Node process timezone can't shift
+  // it; AT TIME ZONE 'UTC' makes the day boundary the UTC midnight.
+  const result = await query(
+    user,
+    `SELECT TO_CHAR((time AT TIME ZONE 'UTC')::date, 'YYYY-MM-DD') AS date, ${sums}
+       FROM meals
+       WHERE time >= $1 AND time <= $2
+       GROUP BY (time AT TIME ZONE 'UTC')::date
+       ORDER BY (time AT TIME ZONE 'UTC')::date`,
+    [start, end],
+  )
+
+  const totals: DailyNutrientTotal[] = []
+  for (const row of result.rows) {
+    const date = row.date as string
+    for (const nutrient of requested) {
+      totals.push({ date, nutrient, total: Number(row[nutrient]) })
+    }
+  }
+  return totals
+}
+
+/**
+ * UTC days in the inclusive [start, end] range that have a *real* logged value
+ * for `nutrient` — at least one meal whose `nutrient` column is non-null.
+ *
+ * Keyed on the specific nutrient (not a single calories proxy) so completeness
+ * matches what's being correlated: a day that logged calories but never tracked
+ * fiber is complete for `calories` but not for `fiber`. Distinguishes
+ * nutrition-complete days from flag-only days (a meal logged with no macros),
+ * which otherwise sum to 0 in getDailyNutrientTotals and contaminate nutrient
+ * correlations by inflating n with noisy zeros. Bucketed by UTC date to match
+ * the correlation daily matrix.
+ */
+export const getNutritionCompleteDaysInRange = async (
+  user: string,
+  nutrient: NutrientKey,
+  start: Date,
+  end: Date,
+): Promise<string[]> => {
+  // Column name comes from the fixed NUTRIENT_KEYS whitelist, so interpolation is safe.
+  const column = NUTRIENT_KEYS.includes(nutrient) ? nutrient : 'calories'
+  const result = await query(
+    user,
+    `SELECT DISTINCT TO_CHAR((time AT TIME ZONE 'UTC')::date, 'YYYY-MM-DD') AS date
+       FROM meals
+       WHERE time >= $1 AND time <= $2 AND ${column} IS NOT NULL
+       ORDER BY date`,
+    [start, end],
+  )
+  return result.rows.map((r) => r.date as string)
+}
+
 export interface UpdateMealInput {
   meal_type?: string
   name?: string | null

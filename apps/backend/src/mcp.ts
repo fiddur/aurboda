@@ -38,6 +38,7 @@ import { registerReportTools } from './mcp/report-tools.ts'
 import { registerScreentimeCategoryTools } from './mcp/screentime-category-tools.ts'
 import { registerSensitivityTools } from './mcp/sensitivity-tools.ts'
 import { registerSettingsTools } from './mcp/settings-tools.ts'
+import { registerSharedDashboardTools } from './mcp/shared-dashboard-tools.ts'
 import { registerSyncTools } from './mcp/sync-tools.ts'
 // tag-tools removed: tags are now activities
 import { registerTrainingLoadTools } from './mcp/training-load-tools.ts'
@@ -87,6 +88,7 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
     registerImportTools(server, user, deps.centralDb)
   }
   registerReportTools(server, user)
+  registerSharedDashboardTools(server, user)
   registerScreentimeCategoryTools(server, user)
   registerDebugTools(server, user)
 

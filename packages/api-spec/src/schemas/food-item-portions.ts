@@ -88,15 +88,10 @@ export const setDefaultFoodItemPortionBodySchema = z
       .uuid()
       .nullable()
       .meta({ description: 'Portion (unit) id to preselect, or null for the base unit' }),
-    quantity: z
-      .number()
-      .positive()
-      .nullable()
-      .optional()
-      .meta({
-        description:
-          'Default quantity to prefill, or null to fall back to the base quantity. Omitting it is treated as null (back-compat for callers that send only portion_id).',
-      }),
+    quantity: z.number().positive().nullable().optional().meta({
+      description:
+        'Default quantity to prefill, or null to fall back to the base quantity. Omitting it is treated as null (back-compat for callers that send only portion_id).',
+    }),
   })
   .meta({
     description: 'Set or clear the default logging amount (unit + quantity) for a food item',

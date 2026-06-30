@@ -1,14 +1,52 @@
 /**
  * TrendChartWidget - Displays EMA trend visualization using the shared TrendLineChart.
+ *
+ * Split into a presentational `TrendChartView` and a fetching container. The
+ * view links to the full chart page only when an `href` is supplied (the home
+ * dashboard); the public renderer omits it.
  */
 
-import type { TrendChartConfig } from '@aurboda/api-spec'
+import type { TrendChartConfig, TrendChartData } from '@aurboda/api-spec'
 
 import { useQuery } from '@tanstack/react-query'
 
 import { fetchTrend } from '../../state/api'
 import { buildChartUrl } from '../../utils/chart-url'
 import { TrendLineChart } from '../charts/TrendLineChart'
+
+interface TrendChartViewProps {
+  config: TrendChartConfig
+  data: TrendChartData | null
+  /** Optional link to the full chart page (home dashboard only). */
+  href?: string
+}
+
+export function TrendChartView({ config, data, href }: TrendChartViewProps) {
+  const { pattern, title, display_period = 'monthly' } = config
+  const displayTitle = title ?? `${pattern} trend`
+
+  const body = (
+    <>
+      <div class="chart-widget-header">
+        <h4>{displayTitle}</h4>
+        {data && (
+          <span class="chart-widget-value">
+            {data.current_value.toFixed(1)} / {display_period}
+          </span>
+        )}
+      </div>
+      <TrendLineChart data={data?.history ?? []} color="#673ab8" height={150} compact />
+    </>
+  )
+
+  return href ? (
+    <a href={href} class="chart-widget chart-widget-link">
+      {body}
+    </a>
+  ) : (
+    <div class="chart-widget">{body}</div>
+  )
+}
 
 interface TrendChartWidgetProps {
   config: TrendChartConfig
@@ -69,15 +107,10 @@ export function TrendChartWidget({ config }: TrendChartWidgetProps) {
     )
   }
 
-  return (
-    <a href={chartUrl} class="chart-widget chart-widget-link">
-      <div class="chart-widget-header">
-        <h4>{displayTitle}</h4>
-        <span class="chart-widget-value">
-          {trendQuery.data.current_value.toFixed(1)} / {display_period}
-        </span>
-      </div>
-      <TrendLineChart data={trendQuery.data.history} color="#673ab8" height={150} compact />
-    </a>
-  )
+  const data: TrendChartData = {
+    current_value: trendQuery.data.current_value,
+    history: trendQuery.data.history,
+  }
+
+  return <TrendChartView config={config} data={data} href={chartUrl} />
 }

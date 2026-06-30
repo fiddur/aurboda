@@ -3,6 +3,7 @@
  */
 import {
   activityImpactInputSchema,
+  continuousCorrelationBodySchema,
   dateOnlySchema,
   eventProbabilityInputSchema,
   genericCorrelationBodySchema,
@@ -13,10 +14,13 @@ import {
 import {
   getActivityImpact,
   getBaseline,
+  getContinuousCorrelation,
+  getCorrelationSelectors,
   getEventProbability,
   getGenericCorrelation,
   getHrvActivitiesCorrelation,
   type OutcomeConfig,
+  type Selector,
   type TriggerCondition,
 } from '../services/correlations/index.ts'
 import { type McpServer, type SyncProvider, tzJsonResponse } from './helpers.ts'
@@ -42,11 +46,11 @@ export const registerCorrelationTools = (server: McpServer, user: string, sync?:
   // Tool: get_hrv_activities_correlation
   server.tool(
     'get_hrv_activities_correlation',
-    'Get HRV correlations with various activities. Returns Pearson correlation coefficients between HRV and productivity, locations, and activity types.',
+    'Get autonomic-context correlations with activities, locations and productivity. Returns mean HRV, heart rate and stress per item (with baseline deltas). The productivity correlation is computed against context_metric — hrv_rmssd (default), heart_rate, or stress_level — so it stays meaningful when continuous HRV is sparse.',
     { ...hrvCorrelationInputSchema.shape, tz: tzSchema },
-    async ({ period_days, tz }) => {
+    async ({ context_metric, period_days, tz }) => {
       const periodDays = period_days ?? 30
-      const correlations = await getHrvActivitiesCorrelation(user, periodDays, sync)
+      const correlations = await getHrvActivitiesCorrelation(user, periodDays, sync, context_metric)
       return tzJsonResponse({ data: correlations, success: true }, tz)
     },
   )
@@ -94,7 +98,7 @@ Examples:
 - "Does meditation correlate with more productive time?" -> trigger: activity type "meditation", outcome: productivity
 - "When I exercise 3x and do fatcoffee 5x in a week, does my weight change?" -> compound triggers, metric outcome`,
     { ...genericCorrelationBodySchema.shape, tz: tzSchema },
-    async ({ lag_windows, outcome, period_days, triggers, tz }) => {
+    async ({ denominator, lag_windows, outcome, period_days, period_end, period_start, triggers, tz }) => {
       const result = await getGenericCorrelation(
         user,
         triggers as TriggerCondition[],
@@ -102,8 +106,57 @@ Examples:
         lag_windows ?? ['24h', '48h', '7d'],
         period_days ?? 90,
         sync,
+        { denominator, periodEnd: period_end, periodStart: period_start },
       )
       return tzJsonResponse({ data: result, success: true }, tz)
+    },
+  )
+
+  // Tool: get_metric_correlation (continuous daily correlation)
+  server.tool(
+    'get_metric_correlation',
+    `Correlate two daily data dimensions with Pearson + Spearman and an optional day lag.
+Dimensions (selectors) can be a metric, nutrition (carbs/protein/fat/calories/fiber),
+a tag/activity, or a productivity category/app. Aligns only on days where both sides
+are known.
+Example: "How does carb intake affect my sleep score the next day?"
+-> trigger: {kind:"nutrition", nutrient:"carbs"}, outcome: {kind:"metric", metric:"sleep_score"}, lag_days: 1`,
+    { ...continuousCorrelationBodySchema.shape, tz: tzSchema },
+    async ({
+      lag_days,
+      nutrition_completeness,
+      outcome,
+      period_days,
+      period_end,
+      period_start,
+      trigger,
+      tz,
+    }) => {
+      const result = await getContinuousCorrelation(
+        user,
+        {
+          lagDays: lag_days,
+          nutritionCompleteness: nutrition_completeness,
+          outcome: outcome as Selector,
+          periodDays: period_days,
+          periodEnd: period_end,
+          periodStart: period_start,
+          trigger: trigger as Selector,
+        },
+        sync,
+      )
+      return tzJsonResponse({ data: result, success: true }, tz)
+    },
+  )
+
+  // Tool: list_correlation_selectors
+  server.tool(
+    'list_correlation_selectors',
+    'List the data dimensions available to correlate: metrics, tags, activity types, nutrients, and productivity categories. Use to discover valid selector values before calling get_generic_correlation or get_metric_correlation.',
+    { tz: tzSchema },
+    async ({ tz }) => {
+      const data = await getCorrelationSelectors(user)
+      return tzJsonResponse({ data, success: true }, tz)
     },
   )
 }

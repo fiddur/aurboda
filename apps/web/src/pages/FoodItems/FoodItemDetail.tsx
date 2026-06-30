@@ -16,6 +16,7 @@ import { type IngredientRow, IngredientList } from '../../components/IngredientL
 import {
   addFoodItemPortionApi,
   deleteFoodItemPortionApi,
+  duplicateFoodItemApi,
   setDefaultPortionApi,
   updateFoodItemPortionApi,
 } from '../../state/api/meals'
@@ -296,6 +297,19 @@ export function FoodItemDetail() {
     },
   })
 
+  const duplicateMutation = useMutation({
+    mutationFn: () => duplicateFoodItemApi(id),
+    onError: (err: Error) => setSaveError(err.message ?? 'Duplicate failed'),
+    onSuccess: (copy) => {
+      // Seed the new copy's detail so its page renders without a refetch, then
+      // navigate there so the user can immediately tweak the one ingredient
+      // they wanted to change.
+      queryClient.setQueryData(['foodItem', copy.id], copy)
+      queryClient.invalidateQueries({ queryKey: ['foodItems'] })
+      route(`/food-items/${copy.id}`)
+    },
+  })
+
   const [resnapshotResult, setResnapshotResult] = useState<{
     meals_updated: number
     rows_updated: number
@@ -431,6 +445,19 @@ export function FoodItemDetail() {
             isPending={resnapshotMutation.isPending}
             buttonClass="btn-secondary"
           />
+          <button
+            type="button"
+            class="btn-secondary"
+            onClick={() => duplicateMutation.mutate()}
+            disabled={duplicateMutation.isPending}
+            title={
+              isShared
+                ? `Create an editable personal copy of ${item.name}`
+                : `Create a copy of ${item.name} to edit`
+            }
+          >
+            {duplicateMutation.isPending ? 'Duplicating…' : 'Duplicate'}
+          </button>
           {!isShared && (
             <ConfirmButton
               label="Delete"
@@ -897,22 +924,34 @@ function CompositeOrAtomicSection({
 
   if (isComposite) {
     const initial: IngredientRow[] = (item.ingredients ?? []).map((ing) => ({
+      food_item_portion_id: ing.food_item_portion_id,
       icon: ing.icon,
       ingredient_food_item_id: ing.ingredient_food_item_id,
       name: ing.name,
-      quantity: ing.quantity,
+      portion_count: ing.portion_count,
+      quantity: ing.quantity ?? 0,
       sort_order: ing.sort_order ?? 0,
       unit: ing.unit,
     }))
 
     const persist = (rows: IngredientRow[]) => {
       ingredientsMutation.mutate(
-        rows.map((r) => ({
-          ingredient_food_item_id: r.ingredient_food_item_id,
-          quantity: r.quantity,
-          sort_order: r.sort_order,
-          unit: r.unit,
-        })),
+        rows.map((r) =>
+          // Portion path: send the portion + count. Legacy path: quantity + unit.
+          r.food_item_portion_id && typeof r.portion_count === 'number'
+            ? {
+                food_item_portion_id: r.food_item_portion_id,
+                ingredient_food_item_id: r.ingredient_food_item_id,
+                portion_count: r.portion_count,
+                sort_order: r.sort_order,
+              }
+            : {
+                ingredient_food_item_id: r.ingredient_food_item_id,
+                quantity: r.quantity,
+                sort_order: r.sort_order,
+                unit: r.unit,
+              },
+        ),
       )
     }
 

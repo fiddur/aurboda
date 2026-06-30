@@ -225,6 +225,20 @@ export {
   upsertSyncedNote,
 } from './notes.ts'
 
+// Shared dashboards
+export {
+  createSharedDashboard,
+  deleteSharedDashboard,
+  getSharedDashboardById,
+  getSharedDashboardBySlug,
+  listPublicSharedDashboards,
+  listSharedDashboards,
+  type SharedDashboardInput,
+  type SharedDashboardPatch,
+  type SharedDashboardRecord,
+  updateSharedDashboard,
+} from './shared-dashboards.ts'
+
 // Food Items
 export {
   deleteFoodItem,
@@ -292,16 +306,21 @@ export {
 
 // Meals
 export {
+  type DailyNutrientTotal,
   deleteMeal,
   type FrequentFoodItemRow,
   type FrequentMealRow,
+  getDailyNutrientTotals,
   getFrequentFoodItems,
   getFrequentMeals,
   getMealById,
   getMealLogCompleted,
   getMealLogCompletedInRange,
   getMeals,
+  getNutritionCompleteDaysInRange,
   insertMeal,
+  type NutrientKey,
+  NUTRIENT_KEYS,
   upsertMeal,
   setMealLogCompleted,
   unsetMealLogCompleted,
