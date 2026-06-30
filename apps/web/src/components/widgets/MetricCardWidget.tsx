@@ -74,7 +74,8 @@ const computeDisplay = (
         dynamicSubtitle: max !== null ? `Max: ${Math.round(max).toLocaleString()}` : undefined,
       }
     case 'zone2_weekly':
-      return { display: value !== null ? String(Math.round((value * 7) / 60)) : null }
+      // Preserve the original numeric formatting (`.toFixed(1)`, e.g. "5.0").
+      return { display: value !== null ? Math.round((value * 7) / 60).toFixed(1) : null }
     default:
       return {
         display: value !== null ? value.toFixed(1) : null,
