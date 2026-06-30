@@ -24,7 +24,27 @@ vi.mock('../integrations/lastfm/sync.ts', () => ({
   syncLastFmData: vi.fn(),
 }))
 
+vi.mock('../integrations/garmin/sync.ts', () => ({
+  isRateLimited: vi.fn().mockReturnValue(false),
+  syncActivityDetails: vi.fn().mockResolvedValue(undefined),
+  syncGarminDataType: vi.fn(),
+}))
+
+vi.mock('../integrations/oura/sync.ts', () => ({
+  isRateLimited: vi.fn().mockReturnValue(false),
+  syncOuraDataType: vi.fn(),
+}))
+
+vi.mock('../integrations/rescuetime/sync.ts', () => ({
+  isRateLimited: vi.fn().mockReturnValue(false),
+  needsSync: vi.fn().mockReturnValue(true),
+  syncRescueTimeData: vi.fn(),
+}))
+
+import { syncGarminDataType } from '../integrations/garmin/sync.ts'
 import { syncLastFmData } from '../integrations/lastfm/sync.ts'
+import { syncOuraDataType } from '../integrations/oura/sync.ts'
+import { syncRescueTimeData } from '../integrations/rescuetime/sync.ts'
 import { getSettings } from './settings.ts'
 import { createSyncProvider } from './sync-provider.ts'
 
@@ -87,6 +107,138 @@ describe('createSyncProvider › syncLastFmIfNeeded', () => {
     await provider.syncLastFmIfNeeded('alice')
 
     expect(syncLastFmData).not.toHaveBeenCalled()
+    expect(onActivitySynced).not.toHaveBeenCalled()
+  })
+})
+
+describe('createSyncProvider › syncGarminIfNeeded', () => {
+  const lastSync = new Date('2026-06-01T00:00:00Z')
+  const garmin = {} as never // only handed to the mocked syncGarminDataType
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(getSettings).mockResolvedValue({} as never) // no disabled data types
+    vi.mocked(dbIndex.getSyncState).mockResolvedValue({ last_sync_time: lastSync } as never)
+  })
+
+  const build = () => {
+    const onActivitySynced = vi.fn()
+    return { onActivitySynced, provider: createSyncProvider({ garmin, onActivitySynced }) }
+  }
+
+  test('triggers deduction over the synced window after a successful sync with new records', async () => {
+    vi.mocked(syncGarminDataType).mockResolvedValue({
+      data_type: 'sleep',
+      records_processed: 4,
+      status: 'success',
+    } as never)
+    const { onActivitySynced, provider } = build()
+
+    await provider.syncGarminIfNeeded('alice', 'sleep')
+
+    expect(onActivitySynced).toHaveBeenCalledTimes(1)
+    const [user, activityType, start] = onActivitySynced.mock.calls[0]
+    expect(user).toBe('alice')
+    expect(activityType).toBe('*')
+    expect(start).toEqual(lastSync)
+  })
+
+  test('does not trigger deduction when no new records were processed', async () => {
+    vi.mocked(syncGarminDataType).mockResolvedValue({
+      data_type: 'sleep',
+      records_processed: 0,
+      status: 'success',
+    } as never)
+    const { onActivitySynced, provider } = build()
+
+    await provider.syncGarminIfNeeded('alice', 'sleep')
+
+    expect(onActivitySynced).not.toHaveBeenCalled()
+  })
+
+  test('does not trigger deduction when the sync errored', async () => {
+    vi.mocked(syncGarminDataType).mockResolvedValue({
+      data_type: 'sleep',
+      records_processed: 0,
+      status: 'error',
+    } as never)
+    const { onActivitySynced, provider } = build()
+
+    await provider.syncGarminIfNeeded('alice', 'sleep')
+
+    expect(onActivitySynced).not.toHaveBeenCalled()
+  })
+
+  test('skips entirely when the data type is disabled', async () => {
+    vi.mocked(getSettings).mockResolvedValue({ garmin_disabled_data_types: ['sleep'] } as never)
+    const { onActivitySynced, provider } = build()
+
+    await provider.syncGarminIfNeeded('alice', 'sleep')
+
+    expect(syncGarminDataType).not.toHaveBeenCalled()
+    expect(onActivitySynced).not.toHaveBeenCalled()
+  })
+})
+
+describe('createSyncProvider › syncOuraIfNeeded', () => {
+  const lastSync = new Date('2026-06-01T00:00:00Z')
+  const oura = { getAccessToken: vi.fn().mockResolvedValue('token') } as never
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(getSettings).mockResolvedValue({} as never)
+    vi.mocked(dbIndex.getSyncState).mockResolvedValue({ last_sync_time: lastSync } as never)
+  })
+
+  test('triggers deduction over the synced window after a successful sync with new records', async () => {
+    vi.mocked(syncOuraDataType).mockResolvedValue({ records_processed: 2, status: 'success' } as never)
+    const onActivitySynced = vi.fn()
+    const provider = createSyncProvider({ oura, onActivitySynced })
+
+    await provider.syncOuraIfNeeded('alice', 'sessions')
+
+    expect(onActivitySynced).toHaveBeenCalledWith('alice', '*', lastSync, expect.any(Date))
+  })
+
+  test('does not trigger deduction when no new records were processed', async () => {
+    vi.mocked(syncOuraDataType).mockResolvedValue({ records_processed: 0, status: 'success' } as never)
+    const onActivitySynced = vi.fn()
+    const provider = createSyncProvider({ oura, onActivitySynced })
+
+    await provider.syncOuraIfNeeded('alice', 'sessions')
+
+    expect(onActivitySynced).not.toHaveBeenCalled()
+  })
+})
+
+describe('createSyncProvider › syncRescueTimeIfNeeded', () => {
+  const lastSync = new Date('2026-06-01T00:00:00Z')
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(getSettings).mockResolvedValue({ rescue_time_key: 'rt-key' } as never)
+    vi.mocked(dbIndex.getSyncState).mockResolvedValue({ last_sync_time: lastSync } as never)
+  })
+
+  test('triggers deduction over the synced window after a successful sync with new records', async () => {
+    vi.mocked(syncRescueTimeData).mockResolvedValue({ records_processed: 7, status: 'success' } as never)
+    const onActivitySynced = vi.fn()
+    const provider = createSyncProvider({ onActivitySynced })
+
+    await provider.syncRescueTimeIfNeeded('alice')
+
+    expect(onActivitySynced).toHaveBeenCalledWith('alice', '*', lastSync, expect.any(Date))
+  })
+
+  test('skips when no RescueTime key is configured', async () => {
+    vi.mocked(getSettings).mockResolvedValue({} as never)
+    vi.mocked(syncRescueTimeData).mockResolvedValue({ records_processed: 7, status: 'success' } as never)
+    const onActivitySynced = vi.fn()
+    const provider = createSyncProvider({ onActivitySynced })
+
+    await provider.syncRescueTimeIfNeeded('alice')
+
+    expect(syncRescueTimeData).not.toHaveBeenCalled()
     expect(onActivitySynced).not.toHaveBeenCalled()
   })
 })

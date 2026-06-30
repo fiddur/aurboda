@@ -7,6 +7,7 @@
 
 import { isBefore, subDays, subMinutes } from 'date-fns'
 
+import type { SyncState } from '../db/types.ts'
 import type { GarminClient } from '../integrations/garmin/client.ts'
 import type { ouraClient } from '../integrations/oura/client.ts'
 import type { ActivityNotifier } from './deduction-queue.ts'
@@ -64,6 +65,23 @@ export interface SyncProviderConfig {
 export function createSyncProvider(config: SyncProviderConfig): SyncProvider {
   const threshold = config.syncThresholdMinutes ?? DEFAULT_SYNC_THRESHOLD_MINUTES
 
+  // Fire deduction evaluation over the window a sync just ingested, so rules
+  // (activity / screentime / etc. conditions) run on freshly-synced data —
+  // closing the same trigger gap the Last.fm path had. Only fires when the sync
+  // succeeded and brought in new records. The window starts at the prior
+  // last_sync_time (what this sync fetched) or, on a first sync, falls back to a
+  // 30-day lookback matching the REST /sync routes.
+  const triggerDeductionAfterSync = (
+    user: string,
+    priorSyncState: SyncState | null,
+    result: { records_processed: number; status: string },
+  ): void => {
+    if (result.status !== 'success' || result.records_processed === 0) return
+    const end = new Date()
+    const start = priorSyncState?.last_sync_time ?? subDays(end, DEFAULT_SYNC_HISTORY_DAYS)
+    config.onActivitySynced?.(user, '*', start, end)
+  }
+
   return {
     syncCalendarsIfNeeded: async (user: string): Promise<void> => {
       try {
@@ -108,12 +126,14 @@ export function createSyncProvider(config: SyncProviderConfig): SyncProvider {
         }
 
         auditInfo(user, 'sync', `Auto-syncing Garmin ${dataType}`)
-        await syncGarminDataType(user, config.garmin, dataType as GarminDataType)
+        const result = await syncGarminDataType(user, config.garmin, dataType as GarminDataType)
 
         // After syncing activities, also fetch per-second detail data (GPS, HR, etc.)
         if (dataType === 'activities') {
           await syncActivityDetails(user, config.garmin)
         }
+
+        triggerDeductionAfterSync(user, syncState, result)
       } catch (error) {
         auditError(user, 'sync', `Failed to auto-sync Garmin ${dataType}`, { error: String(error) })
       }
@@ -173,7 +193,8 @@ export function createSyncProvider(config: SyncProviderConfig): SyncProvider {
 
         auditInfo(user, 'sync', `Auto-syncing Oura ${dataType}`)
         const accessToken = await config.oura.getAccessToken(user)
-        await syncOuraDataType(user, config.oura, ouraDataType, accessToken)
+        const result = await syncOuraDataType(user, config.oura, ouraDataType, accessToken)
+        triggerDeductionAfterSync(user, syncState, result)
       } catch (error) {
         auditError(user, 'sync', `Failed to auto-sync Oura ${dataType}`, { error: String(error) })
       }
@@ -190,7 +211,8 @@ export function createSyncProvider(config: SyncProviderConfig): SyncProvider {
         if (!rescueTimeNeedsSync(syncState, threshold)) return
 
         auditInfo(user, 'sync', 'Auto-syncing RescueTime productivity')
-        await syncRescueTimeData(user, settings.rescue_time_key)
+        const result = await syncRescueTimeData(user, settings.rescue_time_key)
+        triggerDeductionAfterSync(user, syncState, result)
       } catch (error) {
         auditError(user, 'sync', 'Failed to auto-sync RescueTime', { error: String(error) })
       }
