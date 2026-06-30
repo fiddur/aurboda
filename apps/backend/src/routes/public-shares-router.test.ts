@@ -7,30 +7,31 @@ import type { DashboardConfig } from '@aurboda/api-spec'
 
 import { describe, expect, test } from 'vitest'
 
-import { isValidPublicUsername, sanitizeConfig } from './public-shares-router.ts'
+import { isValidUsername } from '../api/auth-routes.ts'
+import { sanitizeConfig } from './public-shares-router.ts'
 
-describe('isValidPublicUsername', () => {
+describe('isValidUsername (public DB-selecting gate)', () => {
   test('accepts valid usernames', () => {
-    expect(isValidPublicUsername('fiddur')).toBe(true)
-    expect(isValidPublicUsername('abc')).toBe(true)
-    expect(isValidPublicUsername('a_b_2')).toBe(true)
+    expect(isValidUsername('fiddur')).toBe(true)
+    expect(isValidUsername('abc')).toBe(true)
+    expect(isValidUsername('a_b_2')).toBe(true)
   })
 
   test('rejects reserved usernames', () => {
-    expect(isValidPublicUsername('public')).toBe(false)
-    expect(isValidPublicUsername('admin')).toBe(false)
-    expect(isValidPublicUsername('postgres')).toBe(false)
+    expect(isValidUsername('public')).toBe(false)
+    expect(isValidUsername('admin')).toBe(false)
+    expect(isValidUsername('postgres')).toBe(false)
   })
 
   test('rejects malformed / injection-shaped input', () => {
-    expect(isValidPublicUsername('AB')).toBe(false) // uppercase
-    expect(isValidPublicUsername('1abc')).toBe(false) // leading digit
-    expect(isValidPublicUsername('ab')).toBe(false) // too short
-    expect(isValidPublicUsername('a'.repeat(40))).toBe(false) // too long
-    expect(isValidPublicUsername('a-b')).toBe(false) // hyphen
-    expect(isValidPublicUsername('a;drop')).toBe(false) // semicolon
-    expect(isValidPublicUsername('a b')).toBe(false) // space
-    expect(isValidPublicUsername('')).toBe(false)
+    expect(isValidUsername('AB')).toBe(false) // uppercase
+    expect(isValidUsername('1abc')).toBe(false) // leading digit
+    expect(isValidUsername('ab')).toBe(false) // too short
+    expect(isValidUsername('a'.repeat(40))).toBe(false) // too long
+    expect(isValidUsername('a-b')).toBe(false) // hyphen
+    expect(isValidUsername('a;drop')).toBe(false) // semicolon
+    expect(isValidUsername('a b')).toBe(false) // space
+    expect(isValidUsername('')).toBe(false)
   })
 })
 

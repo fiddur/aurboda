@@ -13,17 +13,11 @@
  */
 import type { DashboardConfig, PublicProfileResponse, PublicSharedDashboardResponse } from '@aurboda/api-spec'
 
-import { RESERVED_USERNAMES } from '../api/auth-routes.ts'
+import { isValidUsername } from '../api/auth-routes.ts'
 import { getSharedDashboardBySlug, listPublicSharedDashboards } from '../db/index.ts'
 import { buildProfileUrl, buildShareUrl } from '../services/share-urls.ts'
 import { resolveDashboardData } from '../services/shared-dashboard-data.ts'
 import { type TypedRouter, typedRouter } from '../typed-router.ts'
-
-const USERNAME_RE = /^[a-z][a-z0-9_]{2,30}$/
-
-/** Same validity rules as signup: a valid Postgres role name, not reserved. */
-export const isValidPublicUsername = (username: string): boolean =>
-  USERNAME_RE.test(username) && !RESERVED_USERNAMES.includes(username)
 
 /** Connecting to a non-existent user database fails with invalid_catalog_name. */
 const isMissingDatabase = (error: unknown): boolean =>
@@ -50,11 +44,12 @@ export const createPublicSharesRouter = (webHost: string): TypedRouter => {
     '/public/:username/dashboards',
     async (req, res) => {
       const { username } = req.params
-      if (!isValidPublicUsername(username)) {
+      if (!isValidUsername(username)) {
         return res.status(404).json({ error: 'Profile not found', success: false })
       }
       try {
         const records = await listPublicSharedDashboards(username)
+        res.setHeader('Cache-Control', 'public, max-age=60')
         res.json({
           dashboards: records.map((r) => ({
             name: r.name,
@@ -78,7 +73,7 @@ export const createPublicSharesRouter = (webHost: string): TypedRouter => {
     '/public/:username/:slug',
     async (req, res) => {
       const { slug, username } = req.params
-      if (!isValidPublicUsername(username)) {
+      if (!isValidUsername(username)) {
         return res.status(404).json({ error: 'Dashboard not found', success: false })
       }
       try {
@@ -87,7 +82,8 @@ export const createPublicSharesRouter = (webHost: string): TypedRouter => {
           return res.status(404).json({ error: 'Dashboard not found', success: false })
         }
         const widgetData = await resolveDashboardData(username, record.config)
-        res.setHeader('Cache-Control', 'private, max-age=60')
+        // Public/anonymous content — allow shared (CDN) caches to absorb load.
+        res.setHeader('Cache-Control', 'public, max-age=60')
         res.json({
           config: sanitizeConfig(record.config),
           name: record.name,

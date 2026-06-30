@@ -211,8 +211,11 @@ const resolveActivitySummary = async (
   }
 }
 
-const resolveHrZones = async (user: string): Promise<WidgetData> => {
-  const { end, start } = lookbackRange(7)
+const resolveHrZones = async (
+  user: string,
+  config: Extract<DashboardWidget, { type: 'hr_zones' }>['config'],
+): Promise<WidgetData> => {
+  const { end, start } = lookbackRange(config.lookback_days ?? 7)
   const [summary, hr] = await Promise.all([
     getPeriodSummary(user, [...hrZoneMetrics], start, end),
     getEffectiveHrZones(user),
@@ -246,7 +249,7 @@ const resolveWidget = async (user: string, widget: DashboardWidget): Promise<Wid
     case 'activity_summary':
       return resolveActivitySummary(user, widget.config)
     case 'hr_zones':
-      return resolveHrZones(user)
+      return resolveHrZones(user, widget.config)
     case 'goal_progress':
       return resolveGoalProgress(user)
     case 'quick_link':
