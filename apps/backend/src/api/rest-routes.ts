@@ -37,11 +37,13 @@ import { createMetricsRouter } from '../routes/metrics-router.ts'
 import { createNotesRouter } from '../routes/notes-router.ts'
 import { createNutrientRecommendationsRouter } from '../routes/nutrient-recommendations-router.ts'
 import { createProductivityRouter } from '../routes/productivity-router.ts'
+import { createPublicSharesRouter } from '../routes/public-shares-router.ts'
 import { createRawRecordsRouter } from '../routes/raw-records-router.ts'
 import { createReportsRouter } from '../routes/reports-router.ts'
 import { createScreentimeCategoriesRouter } from '../routes/screentime-categories-router.ts'
 import { createSensitivityFlagsRouter } from '../routes/sensitivity-flags-router.ts'
 import { createSettingsRouter } from '../routes/settings-router.ts'
+import { createSharedDashboardsRouter } from '../routes/shared-dashboards-router.ts'
 import { createTrainingLoadRouter } from '../routes/training-load-router.ts'
 import { createTrendsRouter } from '../routes/trends-router.ts'
 import { createWebAuthnRouter } from '../routes/webauthn-router.ts'
@@ -117,6 +119,8 @@ export const mountRestRouters = ({
   httpd.use(createAuditLogRouter(authMiddleware))
   httpd.use(createRawRecordsRouter(authMiddleware))
   httpd.use('/dashboard', createDashboardRouter(authMiddleware))
+  httpd.use('/shared-dashboards', createSharedDashboardsRouter(authMiddleware, webHost))
+  httpd.use(createPublicSharesRouter(webHost))
   httpd.use('/correlations', createCorrelationsRouter(authMiddleware, syncProvider))
   httpd.use('/training-load', createTrainingLoadRouter(authMiddleware))
   httpd.use('/trends', createTrendsRouter(authMiddleware))

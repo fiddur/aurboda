@@ -108,6 +108,14 @@ The dashboard works with whatever data sources you have connected. Widgets grace
 | Trend charts                 | Depends on what you're trending (tags, metrics) |
 | Correlation impact           | HRV data + the activity/tag you're analyzing    |
 
+## Sharing
+
+You can publish read-only copies of a dashboard under your public namespace
+(`/u/<username>/<slug>`), either publicly listed or unlisted-by-link. See
+[Sharing & Public Pages](./sharing.md) for the visibility model, URLs, and the
+backend security guarantee that limits a viewer to exactly the data the dashboard's
+widgets render.
+
 ## Known Limitations
 
 - Widgets cannot be moved between sections -- only reordered within a section.

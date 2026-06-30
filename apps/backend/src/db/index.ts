@@ -225,6 +225,20 @@ export {
   upsertSyncedNote,
 } from './notes.ts'
 
+// Shared dashboards
+export {
+  createSharedDashboard,
+  deleteSharedDashboard,
+  getSharedDashboardById,
+  getSharedDashboardBySlug,
+  listPublicSharedDashboards,
+  listSharedDashboards,
+  type SharedDashboardInput,
+  type SharedDashboardPatch,
+  type SharedDashboardRecord,
+  updateSharedDashboard,
+} from './shared-dashboards.ts'
+
 // Food Items
 export {
   deleteFoodItem,
