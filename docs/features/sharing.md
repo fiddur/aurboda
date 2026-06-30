@@ -74,7 +74,7 @@ Public (unauthenticated):
 | `GET /public/:username/dashboards`     | List a user's **public** shared dashboards |
 | `GET /public/:username/:slug`          | View one shared dashboard + resolved data |
 
-The same CRUD capability is available over MCP as `list_shared_dashboard`,
+The same CRUD capability is available over MCP as `list_shared_dashboards`,
 `create_shared_dashboard`, `update_shared_dashboard`, and `delete_shared_dashboard`.
 Public viewing is web-only.
 

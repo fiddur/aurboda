@@ -12,7 +12,7 @@
  */
 import type { DashboardConfig, DashboardWidget, WidgetData, WidgetDataMap } from '@aurboda/api-spec'
 
-import { hrZoneMetrics } from '@aurboda/api-spec'
+import { hrZoneMetrics, isExerciseActivityType } from '@aurboda/api-spec'
 
 import { getAllActivityTypeNames } from '../db/index.ts'
 import { getChartData } from './chart-data.ts'
@@ -89,6 +89,7 @@ const resolveSparklineCard = async (
   const hasData = stats !== undefined && stats.count > 0
   return {
     data: {
+      count: stats?.count ?? null,
       series: series.data.map((p) => ({ time: p.time, value: p.value })),
       trend_percent: stats?.change_from_previous_period_percent ?? null,
       value: hasData ? stats.avg : null,
@@ -161,16 +162,50 @@ const resolveActivitySummary = async (
   user: string,
   config: Extract<DashboardWidget, { type: 'activity_summary' }>['config'],
 ): Promise<WidgetData> => {
+  const showWorkouts = config.show_workouts ?? true
+  const showSleep = config.show_sleep ?? true
+  const showMeditation = config.show_meditation ?? true
+
+  // Nothing visible → emit nothing (no DB read, no exposure).
+  if (!showWorkouts && !showSleep && !showMeditation) {
+    return { data: { exercise: null, meditation: null, sleep: null }, type: 'activity_summary' }
+  }
+
   const { end, start } = lookbackRange(config.lookback_days ?? 7)
   const types = await getAllActivityTypeNames(user)
   const activities = await queryActivities(user, types, start, end)
+
+  // Aggregate to exactly the figures the widget renders — never the raw list.
+  const durationMinutes = (a: { start_time: string; end_time?: string }): number =>
+    a.end_time ? (new Date(a.end_time).getTime() - new Date(a.start_time).getTime()) / 60000 : 0
+
+  const exercise = activities.filter((a) => isExerciseActivityType(a.activity_type))
+  const sleep = activities.filter((a) => a.activity_type === 'sleep')
+  const meditation = activities.filter((a) => a.activity_type === 'meditation')
+
   return {
     data: {
-      activities: activities.map((a) => ({
-        activity_type: a.activity_type,
-        end_time: a.end_time,
-        start_time: a.start_time,
-      })),
+      exercise: showWorkouts
+        ? {
+            count: exercise.length,
+            total_minutes: exercise.reduce((sum, a) => sum + durationMinutes(a), 0),
+          }
+        : null,
+      meditation: showMeditation
+        ? {
+            count: meditation.length,
+            total_minutes: meditation.reduce((sum, a) => sum + durationMinutes(a), 0),
+          }
+        : null,
+      sleep: showSleep
+        ? {
+            avg_hours:
+              sleep.length > 0
+                ? sleep.reduce((sum, a) => sum + durationMinutes(a) / 60, 0) / sleep.length
+                : null,
+            count: sleep.length,
+          }
+        : null,
     },
     type: 'activity_summary',
   }
@@ -244,12 +279,26 @@ const nullData = (type: DashboardWidget['type']): WidgetData => {
 }
 
 /**
+ * Upper bound on widgets resolved for a single public dashboard. Bounds the
+ * fan-out of unauthenticated, cached public requests against the owner's
+ * per-user DB. Real dashboards are far smaller; excess widgets are dropped with
+ * a logged warning rather than silently.
+ */
+const MAX_RESOLVED_WIDGETS = 60
+
+/**
  * Resolve all widget data for a stored dashboard config, keyed by widget id.
  * Each widget resolves independently; a failure yields a null-data entry rather
  * than failing the whole dashboard.
  */
 export const resolveDashboardData = async (user: string, config: DashboardConfig): Promise<WidgetDataMap> => {
-  const widgets = config.sections.flatMap((section) => section.widgets)
+  const allWidgets = config.sections.flatMap((section) => section.widgets)
+  if (allWidgets.length > MAX_RESOLVED_WIDGETS) {
+    console.warn(
+      `Dashboard for ${user} has ${allWidgets.length} widgets; resolving only the first ${MAX_RESOLVED_WIDGETS}.`,
+    )
+  }
+  const widgets = allWidgets.slice(0, MAX_RESOLVED_WIDGETS)
   const entries = await Promise.all(
     widgets.map(async (widget): Promise<[string, WidgetData]> => {
       try {
