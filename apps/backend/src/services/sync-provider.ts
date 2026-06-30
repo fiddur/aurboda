@@ -38,6 +38,16 @@ import { getSettings } from './settings.ts'
 /** Default sync threshold - sync if last sync was more than 30 minutes ago */
 const DEFAULT_SYNC_THRESHOLD_MINUTES = 30
 
+/**
+ * First-sync fallback for the deduction window when there's no prior
+ * last_sync_time. Set to the longest provider backfill (Garmin and Oura import
+ * 90 days on a first sync; RescueTime and Last.fm import 30), so first-sync
+ * deduction evaluation covers all freshly-imported data rather than just the
+ * most recent month. Over-covering a provider that backfills less is harmless —
+ * the extra days simply have no new data and evaluation is idempotent.
+ */
+const FIRST_SYNC_FALLBACK_DAYS = 90
+
 type OuraClientType = ReturnType<typeof ouraClient>
 
 export interface SyncProviderConfig {
@@ -69,8 +79,9 @@ export function createSyncProvider(config: SyncProviderConfig): SyncProvider {
   // (activity / screentime / etc. conditions) run on freshly-synced data —
   // closing the same trigger gap the Last.fm path had. Only fires when the sync
   // succeeded and brought in new records. The window starts at the prior
-  // last_sync_time (what this sync fetched) or, on a first sync, falls back to a
-  // 30-day lookback matching the REST /sync routes.
+  // last_sync_time (what an incremental sync fetched) or, on a first sync,
+  // falls back far enough to cover the provider's full backfill (see
+  // FIRST_SYNC_FALLBACK_DAYS).
   const triggerDeductionAfterSync = (
     user: string,
     priorSyncState: SyncState | null,
@@ -78,7 +89,7 @@ export function createSyncProvider(config: SyncProviderConfig): SyncProvider {
   ): void => {
     if (result.status !== 'success' || result.records_processed === 0) return
     const end = new Date()
-    const start = priorSyncState?.last_sync_time ?? subDays(end, DEFAULT_SYNC_HISTORY_DAYS)
+    const start = priorSyncState?.last_sync_time ?? subDays(end, FIRST_SYNC_FALLBACK_DAYS)
     config.onActivitySynced?.(user, '*', start, end)
   }
 

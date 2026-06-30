@@ -169,6 +169,24 @@ describe('createSyncProvider › syncGarminIfNeeded', () => {
     expect(onActivitySynced).not.toHaveBeenCalled()
   })
 
+  test('covers the full backfill window on a first sync (no prior sync state)', async () => {
+    vi.mocked(dbIndex.getSyncState).mockResolvedValue(null)
+    vi.mocked(syncGarminDataType).mockResolvedValue({
+      data_type: 'sleep',
+      records_processed: 4,
+      status: 'success',
+    } as never)
+    const { onActivitySynced, provider } = build()
+
+    await provider.syncGarminIfNeeded('alice', 'sleep')
+
+    expect(onActivitySynced).toHaveBeenCalledTimes(1)
+    const [, , start, end] = onActivitySynced.mock.calls[0]
+    const daysBack = ((end as Date).getTime() - (start as Date).getTime()) / 86_400_000
+    expect(daysBack).toBeGreaterThan(89.5) // 90-day fallback, not the Last.fm 30
+    expect(daysBack).toBeLessThan(90.5)
+  })
+
   test('skips entirely when the data type is disabled', async () => {
     vi.mocked(getSettings).mockResolvedValue({ garmin_disabled_data_types: ['sleep'] } as never)
     const { onActivitySynced, provider } = build()
