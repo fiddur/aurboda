@@ -55,6 +55,17 @@ render — never the owner's broader data API. This is enforced server-side:
 So even a crafted request with extra query parameters cannot widen the exposed data
 beyond the saved widgets.
 
+## Using it in the web app
+
+- **Manage** your shared dashboards at `/shared-dashboards` (the "Share" item in
+  the sidebar): create a copy from your current home dashboard (or a blank one),
+  rename it, toggle public/unlisted, copy its link, or delete it.
+- **View** a shared dashboard at `/u/<username>/<slug>` and a profile at
+  `/u/<username>`. These pages are public, render without the app chrome
+  (header/sidebar/footer), and fetch nothing per widget — they render from the
+  server-resolved data. Per-widget editing of a shared dashboard (beyond seeding
+  from the home dashboard) is a planned follow-up.
+
 ## API
 
 Owner-facing CRUD (authenticated, scoped to the caller):

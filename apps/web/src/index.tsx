@@ -1,7 +1,7 @@
 import { QueryClientProvider } from '@tanstack/react-query'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import { render } from 'preact'
-import { LocationProvider, Route, Router } from 'preact-iso'
+import { LocationProvider, Route, Router, useLocation } from 'preact-iso'
 
 import { Footer } from './components/Footer.jsx'
 import { Header } from './components/Header.jsx'
@@ -41,12 +41,15 @@ import { MealTypeMeta } from './pages/MealTypeMeta/index.jsx'
 import { MetricMeta } from './pages/MetricMeta/index.jsx'
 import { Places } from './pages/Places/index.jsx'
 import { Privacy } from './pages/Privacy/index.jsx'
+import { PublicDashboard } from './pages/PublicDashboard/index.jsx'
+import { PublicProfile } from './pages/PublicProfile/index.jsx'
 import { AddReport } from './pages/Reports/AddReport.jsx'
 import { Reports } from './pages/Reports/index.jsx'
 import { ReportDetail } from './pages/Reports/ReportDetail.jsx'
 import { CategoryDetail } from './pages/ScreentimeCategories/CategoryDetail.jsx'
 import { ScreentimeCategories } from './pages/ScreentimeCategories/index.jsx'
 import { Settings } from './pages/Settings/index.jsx'
+import { SharedDashboards } from './pages/SharedDashboards/index.jsx'
 import { Signup } from './pages/Signup/index.jsx'
 import { Sleep } from './pages/Sleep/index.jsx'
 import { Terms } from './pages/Terms/index.jsx'
@@ -54,16 +57,23 @@ import { Timeline } from './pages/Timeline/index.jsx'
 import { queryClient } from './state/queryClient.js'
 import './style.css'
 
-export function App() {
+function AppShell() {
+  // Public sharing pages (/u/...) render without the app chrome so anonymous
+  // visitors get a clean, standalone page.
+  const { path } = useLocation()
+  const isPublic = path.startsWith('/u/')
+
   return (
-    <QueryClientProvider client={queryClient}>
-      <LocationProvider>
-        <Header />
-        <Sidebar />
-        <div class="app-content">
-          <main>
-            <Router>
-              <Route path="/" component={Home} />
+    <>
+      {!isPublic && <Header />}
+      {!isPublic && <Sidebar />}
+      <div class="app-content">
+        <main>
+          <Router>
+            <Route path="/u/:username/:slug" component={PublicDashboard} />
+            <Route path="/u/:username" component={PublicProfile} />
+            <Route path="/shared-dashboards" component={SharedDashboards} />
+            <Route path="/" component={Home} />
               <Route path="/login" component={Login} />
               <Route path="/signup" component={Signup} />
               <Route path="/privacy" component={Privacy} />
@@ -111,8 +121,17 @@ export function App() {
               <Route default component={NotFound} />
             </Router>
           </main>
-          <Footer />
+          {!isPublic && <Footer />}
         </div>
+      </>
+  )
+}
+
+export function App() {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <LocationProvider>
+        <AppShell />
         <ReactQueryDevtools initialIsOpen={false} />
       </LocationProvider>
     </QueryClientProvider>

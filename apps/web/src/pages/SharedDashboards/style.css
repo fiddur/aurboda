@@ -1,0 +1,91 @@
+.shared-dashboards {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 1.5rem;
+}
+
+.shared-dashboards-intro {
+  color: #6b7280;
+  margin: 0 0 1.25rem;
+}
+
+.shared-dashboards-create {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.shared-dashboards-create input {
+  flex: 1 1 220px;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 0.9rem;
+}
+
+.shared-dashboards-empty {
+  color: #6b7280;
+}
+
+.shared-dashboards-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.shared-dashboard-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+}
+
+.shared-dashboard-name {
+  flex: 1 1 200px;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  font-size: 1rem;
+  font-weight: 600;
+  background: transparent;
+}
+
+.shared-dashboard-name:hover,
+.shared-dashboard-name:focus {
+  border-color: #d1d5db;
+  background: #fff;
+}
+
+.shared-dashboard-public {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: #374151;
+  font-size: 0.9rem;
+}
+
+.shared-dashboard-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.shared-dashboard-actions .btn-danger {
+  background: #fef2f2;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  padding: 0.375rem 0.75rem;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.shared-dashboard-actions .btn-danger:hover {
+  background: #fee2e2;
+}
