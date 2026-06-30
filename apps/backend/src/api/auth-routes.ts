@@ -82,9 +82,12 @@ export const registerAuthRoutes = ({
   httpd.get<Record<string, never>, ServerStatusResponse>('/status', async (_req, res) => {
     const signupMode = await centralDb.getSignupMode()
     res.json({
+      federation: true,
+      product: 'aurboda',
       signup_allowed: signupMode === 'open',
       signup_mode: signupMode,
       success: true,
+      version: process.env.BUILD_SHA ?? 'dev',
     })
   })
 

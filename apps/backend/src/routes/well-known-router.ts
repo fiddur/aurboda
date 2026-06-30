@@ -7,6 +7,8 @@
  *   signing fingerprints (e.g. for a custom-built APK) via the
  *   `ANDROID_APP_FINGERPRINTS` env var.
  */
+import type { WellKnownAurboda } from '@aurboda/api-spec'
+
 import type { TypedRouter } from '../typed-router.ts'
 
 import { typedRouter } from '../typed-router.ts'
@@ -14,6 +16,8 @@ import { typedRouter } from '../typed-router.ts'
 export interface WellKnownConfig {
   androidPackageName: string
   androidFingerprints: string[]
+  apiBaseUrl: string
+  version: string
 }
 
 interface AssetLinksTarget {
@@ -48,6 +52,19 @@ export const createWellKnownRouter = (config: WellKnownConfig): TypedRouter => {
   router.get<Record<string, never>, AssetLinksStatement[]>('/.well-known/assetlinks.json', (_req, res) => {
     res.setHeader('Cache-Control', 'public, max-age=3600')
     res.json(assetLinks)
+  })
+
+  // Federation discovery: lets another instance verify this is an Aurboda host
+  // and locate its API base. Must be reachable at the web base URL — see
+  // docs/features/challenges.md for the reverse-proxy note.
+  router.get<Record<string, never>, WellKnownAurboda>('/.well-known/aurboda', (_req, res) => {
+    res.setHeader('Cache-Control', 'public, max-age=3600')
+    res.json({
+      api_base: config.apiBaseUrl,
+      federation: true,
+      product: 'aurboda',
+      version: config.version,
+    })
   })
 
   return router

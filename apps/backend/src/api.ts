@@ -132,7 +132,12 @@ const main = async () => {
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean)
-  const wellKnown = { androidFingerprints, androidPackageName }
+  const wellKnown = {
+    androidFingerprints,
+    androidPackageName,
+    apiBaseUrl,
+    version: process.env.BUILD_SHA ?? 'dev',
+  }
 
   // Migrate legacy OURA_CLIENT/OURA_SECRET env vars into server_settings if DB empty
   const envOuraClientId = process.env.OURA_CLIENT
@@ -295,6 +300,7 @@ const main = async () => {
   httpd.use(
     '/mcp',
     createMcpRouter(auth, {
+      apiBaseUrl,
       centralDb,
       deductionQueue: deductionQueue ?? undefined,
       engineDeps,
@@ -303,6 +309,7 @@ const main = async () => {
       oura,
       stravaQueue: stravaQueue ?? undefined,
       sync: syncProvider,
+      webHost,
     }),
   )
 
@@ -408,6 +415,7 @@ const main = async () => {
   mountRestRouters({
     activityNotifier,
     adminMiddleware,
+    apiBaseUrl,
     auth,
     authMiddleware,
     centralDb,
