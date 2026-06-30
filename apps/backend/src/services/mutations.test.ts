@@ -1,3 +1,5 @@
+import type * as TimeSeriesModule from '../db/time-series.ts'
+
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 import * as db from '../db/index.ts'
@@ -18,7 +20,7 @@ import {
 } from './mutations.ts'
 
 // Mock the db module
-vi.mock('../db', () => ({
+vi.mock('../db', async () => ({
   activityTypeExists: vi.fn().mockResolvedValue(true),
   checkActivityConflict: vi.fn().mockResolvedValue(false),
   getActivityTypeDefinition: vi.fn().mockResolvedValue(null),
@@ -34,13 +36,8 @@ vi.mock('../db', () => ({
   getCustomMetricByName: vi.fn(),
   getCustomMetricDefinitions: vi.fn().mockResolvedValue([]),
   getOverrideForActivity: vi.fn().mockResolvedValue(null),
-  getSourceFilter: vi.fn((metric: string) =>
-    ['calories_active', 'calories_total'].includes(metric)
-      ? ['aurboda', 'aurboda_gap_fill']
-      : ['steps', 'distance', 'floors_climbed', 'calories_active', 'calories_total'].includes(metric)
-        ? ['health_connect_aggregate', 'aurboda']
-        : null,
-  ),
+  // Pull the real source-filter rules through so the test can't drift from production.
+  getSourceFilter: (await vi.importActual<typeof TimeSeriesModule>('../db/time-series.ts')).getSourceFilter,
   getUserNotesJoined: vi.fn().mockResolvedValue(undefined),
   getUserSettings: vi.fn(),
   insertCustomMetricDefinition: vi.fn(),
