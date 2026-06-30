@@ -36,6 +36,9 @@ import { resolveDashboardData } from '../services/shared-dashboard-data.ts'
 import { type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody } from '../validation.ts'
 
+/** Upper bound on members a challenge can accept via unauthenticated register-back. */
+const MAX_CHALLENGE_MEMBERS = 200
+
 /** Connecting to a non-existent user database fails with invalid_catalog_name. */
 const isMissingDatabase = (error: unknown): boolean =>
   error instanceof Error && (error as Error & { code?: string }).code === '3D000'
@@ -144,6 +147,13 @@ export const createPublicSharesRouter = (webHost: string): TypedRouter => {
         )
         if (existing && existing.kind === 'local') {
           return res.status(409).json({ error: 'That identity is already a local member', success: false })
+        }
+        // Bound unauthenticated member growth (re-registering an existing member is fine).
+        if (!existing) {
+          const members = await listChallengeMembers(username, challenge.id)
+          if (members.length >= MAX_CHALLENGE_MEMBERS) {
+            return res.status(409).json({ error: 'Challenge is full', success: false })
+          }
         }
         // Probe the member's data endpoint before accepting them (SSRF-guarded).
         try {

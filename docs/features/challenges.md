@@ -89,7 +89,15 @@ the backend directly need no extra config.
 `DELETE /challenges/participations/:id`. The same CRUD + join is available over MCP
 (`create/list/update/delete_challenge`, `join_challenge`).
 
-## Out of scope (v1)
+## Out of scope (v1) / future hardening
 
-Background polling, timezone-local bucketing, goals/consistency/teams, signed
-instance-key auth.
+- Background polling, timezone-local bucketing, goals/consistency/teams.
+- **Signed instance-to-instance requests** (instance keypairs) — would bind a
+  registering member's identity to the instance that vouches for it, closing the
+  register-back gaps below.
+- Register-back is capped per challenge (`MAX_CHALLENGE_MEMBERS`) to bound growth,
+  but within the v1 trust model a slug+`join_token` holder can still re-register an
+  existing *remote* member (overwriting its data-endpoint URL). Accepted for now.
+- Standings has no in-flight de-duplication, so concurrent requests on a cold/expired
+  cache each fan out to every remote member (thundering herd, bounded by the TTL +
+  8s per-fetch timeout). A shared in-flight promise per challenge would remove it.
