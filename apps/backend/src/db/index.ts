@@ -78,6 +78,7 @@ export {
   getDailyAggregates,
   getDistinctMetrics,
   getRawDailySum,
+  getSourceFilter,
   getLatestMetricValuesMulti,
   getTimeSeries,
   getTimeSeriesBucketed,
