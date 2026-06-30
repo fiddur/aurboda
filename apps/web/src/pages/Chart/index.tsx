@@ -31,8 +31,10 @@ import {
   fetchTrend,
   type FetchTrendParams,
   fetchUserSettings,
+  listSharedDashboards,
   saveDashboard,
   type TrendDisplayPeriod,
+  updateSharedDashboard,
   updateUserSettings,
 } from '../../state/api'
 import { auth } from '../../state/auth'
@@ -582,6 +584,7 @@ function buildWidgetFromState(state: ChartState, title: string): DashboardWidget
 function AddToDashboardModal({ state, onClose }: { state: ChartState; onClose: () => void }) {
   const queryClient = useQueryClient()
   const [title, setTitle] = useState('')
+  const [targetId, setTargetId] = useState('home') // 'home' or a shared dashboard id
   const [selectedSectionId, setSelectedSectionId] = useState('')
   const [newSectionTitle, setNewSectionTitle] = useState('')
   const [saved, setSaved] = useState(false)
@@ -592,23 +595,47 @@ function AddToDashboardModal({ state, onClose }: { state: ChartState; onClose: (
     staleTime: 5 * 60 * 1000,
   })
 
+  const sharedQuery = useQuery({
+    queryFn: listSharedDashboards,
+    queryKey: ['sharedDashboards'],
+    staleTime: 60 * 1000,
+  })
+
   const saveMutation = useMutation({
-    mutationFn: saveDashboard,
-    onSuccess: (data) => {
-      queryClient.setQueryData(['dashboard'], data)
+    mutationFn: async (next: { targetId: string; config: DashboardConfig }) => {
+      if (next.targetId === 'home') {
+        await saveDashboard(next.config)
+      } else {
+        await updateSharedDashboard(next.targetId, { config: next.config })
+      }
+    },
+    onError: () => alert('Failed to add the widget. Please try again.'),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+      void queryClient.invalidateQueries({ queryKey: ['sharedDashboards'] })
       setSaved(true)
     },
   })
 
-  const dashboard: DashboardConfig | undefined = dashboardQuery.data
-  const chartsSections = dashboard?.sections.filter((s) => s.type === 'charts') ?? []
+  const sharedDashboards = sharedQuery.data ?? []
+  // The config of the currently selected target (home or a shared dashboard).
+  const targetConfig: DashboardConfig | undefined =
+    targetId === 'home' ? dashboardQuery.data : sharedDashboards.find((d) => d.id === targetId)?.config
+  const chartsSections = targetConfig?.sections.filter((s) => s.type === 'charts') ?? []
+
+  // Reset the section choice when the target dashboard changes.
+  const handleTargetChange = (id: string) => {
+    setTargetId(id)
+    setSelectedSectionId('')
+    setNewSectionTitle('')
+  }
 
   const handleSave = () => {
-    if (!dashboard) return
+    if (!targetConfig) return
 
     const widget = buildWidgetFromState(state, title)
 
-    let newDashboard: DashboardConfig
+    let newConfig: DashboardConfig
     if (selectedSectionId === '__new__') {
       const sectionTitle = newSectionTitle.trim() || 'Charts'
       const newSection: DashboardSection = {
@@ -617,21 +644,22 @@ function AddToDashboardModal({ state, onClose }: { state: ChartState; onClose: (
         type: 'charts' as SectionType,
         widgets: [widget],
       }
-      newDashboard = { ...dashboard, sections: [...dashboard.sections, newSection] }
+      newConfig = { ...targetConfig, sections: [...targetConfig.sections, newSection] }
     } else {
-      newDashboard = {
-        ...dashboard,
-        sections: dashboard.sections.map((section) =>
+      newConfig = {
+        ...targetConfig,
+        sections: targetConfig.sections.map((section) =>
           section.id === selectedSectionId ? { ...section, widgets: [...section.widgets, widget] } : section,
         ),
       }
     }
 
-    saveMutation.mutate(newDashboard)
+    saveMutation.mutate({ config: newConfig, targetId })
   }
 
   const canSave =
     !saveMutation.isPending &&
+    !!targetConfig &&
     (selectedSectionId === '__new__' ? newSectionTitle.trim().length > 0 : selectedSectionId.length > 0)
 
   return (
@@ -666,6 +694,18 @@ function AddToDashboardModal({ state, onClose }: { state: ChartState; onClose: (
                   onInput={(e) => setTitle((e.target as HTMLInputElement).value)}
                   placeholder={state.pattern || 'Chart title'}
                 />
+              </div>
+
+              <div class="form-group">
+                <label>Dashboard</label>
+                <select value={targetId} onChange={(e) => handleTargetChange((e.target as HTMLSelectElement).value)}>
+                  <option value="home">My dashboard (home)</option>
+                  {sharedDashboards.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.name} (shared)
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div class="form-group">

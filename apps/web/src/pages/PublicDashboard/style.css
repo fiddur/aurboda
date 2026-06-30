@@ -1,0 +1,40 @@
+.public-dashboard {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 1.5rem;
+}
+
+.public-dashboard .public-attribution {
+  color: #6b7280;
+  text-decoration: none;
+  font-size: 0.95rem;
+}
+
+.public-dashboard .public-attribution:hover {
+  color: #8b5cf6;
+}
+
+.public-dashboard .public-muted {
+  color: #6b7280;
+}
+
+.public-dashboard .public-loading {
+  color: #6b7280;
+  padding: 2rem 0;
+}
+
+/* Public quick-link tiles are static (non-navigational). */
+.public-dashboard .quick-link-static {
+  cursor: default;
+}
+
+@media (prefers-color-scheme: dark) {
+  .public-dashboard .public-muted,
+  .public-dashboard .public-loading {
+    color: #9ca3af;
+  }
+
+  .public-dashboard .public-attribution {
+    color: #9ca3af;
+  }
+}
