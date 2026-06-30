@@ -2,6 +2,8 @@
  * ActivitySummaryWidget - Displays workout/sleep/meditation stats.
  *
  * Split into a presentational `ActivitySummaryView` and a fetching container.
+ * The view renders from pre-aggregated category figures; a null category means
+ * it is hidden (the visibility toggle is off), so it is not rendered.
  */
 
 import type { ActivitySummaryConfig, ActivitySummaryData } from '@aurboda/api-spec'
@@ -19,7 +21,7 @@ interface ActivitySummaryViewProps {
 }
 
 export function ActivitySummaryView({ config, data, loading = false }: ActivitySummaryViewProps) {
-  const { lookback_days = 7, show_workouts = true, show_sleep = true, show_meditation = true } = config
+  const { lookback_days = 7 } = config
 
   if (loading) {
     return (
@@ -32,26 +34,11 @@ export function ActivitySummaryView({ config, data, loading = false }: ActivityS
     )
   }
 
-  const {
-    avgSleepHours,
-    exerciseCount,
-    meditationCount,
-    sleepCount,
-    totalExerciseMinutes,
-    totalMeditationMinutes,
-  } = summarizeActivities(
-    (data?.activities ?? []).map((a) => ({
-      activity_type: a.activity_type,
-      end_time: a.end_time ? new Date(a.end_time) : undefined,
-      start_time: new Date(a.start_time),
-    })),
-  )
-
   return (
     <div class="activity-summary">
       <h3>Last {lookback_days} Days</h3>
       <div class="activity-grid">
-        {show_workouts && (
+        {data?.exercise && (
           <div class="activity-item">
             <span class="activity-icon exercise-icon">
               <svg
@@ -67,14 +54,14 @@ export function ActivitySummaryView({ config, data, loading = false }: ActivityS
               </svg>
             </span>
             <div class="activity-details">
-              <span class="activity-value">{exerciseCount}</span>
+              <span class="activity-value">{data.exercise.count}</span>
               <span class="activity-label">Workouts</span>
             </div>
-            <div class="activity-sub">{Math.round(totalExerciseMinutes)} min total</div>
+            <div class="activity-sub">{Math.round(data.exercise.total_minutes)} min total</div>
           </div>
         )}
 
-        {show_sleep && (
+        {data?.sleep && (
           <div class="activity-item">
             <span class="activity-icon sleep-icon">
               <svg
@@ -89,14 +76,16 @@ export function ActivitySummaryView({ config, data, loading = false }: ActivityS
               </svg>
             </span>
             <div class="activity-details">
-              <span class="activity-value">{avgSleepHours !== null ? avgSleepHours.toFixed(1) : '--'}</span>
+              <span class="activity-value">
+                {data.sleep.avg_hours !== null ? data.sleep.avg_hours.toFixed(1) : '--'}
+              </span>
               <span class="activity-label">Avg Sleep (hrs)</span>
             </div>
-            <div class="activity-sub">{sleepCount} nights tracked</div>
+            <div class="activity-sub">{data.sleep.count} nights tracked</div>
           </div>
         )}
 
-        {show_meditation && (
+        {data?.meditation && (
           <div class="activity-item">
             <span class="activity-icon meditation-icon">
               <svg
@@ -112,10 +101,10 @@ export function ActivitySummaryView({ config, data, loading = false }: ActivityS
               </svg>
             </span>
             <div class="activity-details">
-              <span class="activity-value">{meditationCount}</span>
+              <span class="activity-value">{data.meditation.count}</span>
               <span class="activity-label">Meditations</span>
             </div>
-            <div class="activity-sub">{Math.round(totalMeditationMinutes)} min total</div>
+            <div class="activity-sub">{Math.round(data.meditation.total_minutes)} min total</div>
           </div>
         )}
       </div>
@@ -128,7 +117,7 @@ interface ActivitySummaryWidgetProps {
 }
 
 export function ActivitySummaryWidget({ config }: ActivitySummaryWidgetProps) {
-  const { lookback_days = 7 } = config
+  const { lookback_days = 7, show_workouts = true, show_sleep = true, show_meditation = true } = config
 
   const end = endOfDay(new Date())
   const start = startOfDay(subDays(new Date(), lookback_days))
@@ -139,12 +128,16 @@ export function ActivitySummaryWidget({ config }: ActivitySummaryWidgetProps) {
     staleTime: 5 * 60 * 1000,
   })
 
+  const summary = summarizeActivities(activitiesQuery.data ?? [])
+
   const data: ActivitySummaryData = {
-    activities: (activitiesQuery.data ?? []).map((a) => ({
-      activity_type: a.activity_type,
-      end_time: a.end_time?.toISOString(),
-      start_time: a.start_time.toISOString(),
-    })),
+    exercise: show_workouts
+      ? { count: summary.exerciseCount, total_minutes: summary.totalExerciseMinutes }
+      : null,
+    meditation: show_meditation
+      ? { count: summary.meditationCount, total_minutes: summary.totalMeditationMinutes }
+      : null,
+    sleep: show_sleep ? { avg_hours: summary.avgSleepHours, count: summary.sleepCount } : null,
   }
 
   return <ActivitySummaryView config={config} data={data} loading={activitiesQuery.isLoading} />
