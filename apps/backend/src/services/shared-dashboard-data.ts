@@ -89,6 +89,7 @@ const resolveSparklineCard = async (
   const hasData = stats !== undefined && stats.count > 0
   return {
     data: {
+      count: stats?.count ?? null,
       series: series.data.map((p) => ({ time: p.time, value: p.value })),
       trend_percent: stats?.change_from_previous_period_percent ?? null,
       value: hasData ? stats.avg : null,

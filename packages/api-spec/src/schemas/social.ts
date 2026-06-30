@@ -110,6 +110,7 @@ export const metricCardDataSchema = z
 
 export const sparklineCardDataSchema = z
   .object({
+    count: z.number().nullable().meta({ description: 'Number of contributing days, if applicable' }),
     series: z.array(metricSeriesPointSchema).meta({ description: 'Sparkline time series' }),
     trend_percent: z.number().nullable().meta({ description: 'Trend vs previous period (percent)' }),
     value: z.number().nullable().meta({ description: 'Headline value' }),
@@ -196,6 +197,15 @@ export const widgetDataSchema = z
   .meta({ id: 'WidgetData' })
 
 export type WidgetData = z.infer<typeof widgetDataSchema>
+
+export type MetricCardData = z.infer<typeof metricCardDataSchema>
+export type SparklineCardData = z.infer<typeof sparklineCardDataSchema>
+export type TrendChartData = z.infer<typeof trendChartDataSchema>
+export type BarChartData = z.infer<typeof barChartDataSchema>
+export type CorrelationData = z.infer<typeof correlationDataSchema>
+export type ActivitySummaryData = z.infer<typeof activitySummaryDataSchema>
+export type HrZonesData = z.infer<typeof hrZonesDataSchema>
+export type GoalProgressData = z.infer<typeof goalProgressDataSchema>
 
 /** Map of widget id → resolved widget data. */
 export const widgetDataMapSchema = z

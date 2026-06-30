@@ -1,8 +1,10 @@
 /**
  * ActivitySummaryWidget - Displays workout/sleep/meditation stats.
+ *
+ * Split into a presentational `ActivitySummaryView` and a fetching container.
  */
 
-import type { ActivitySummaryConfig } from '@aurboda/api-spec'
+import type { ActivitySummaryConfig, ActivitySummaryData } from '@aurboda/api-spec'
 
 import { useQuery } from '@tanstack/react-query'
 import { endOfDay, formatISO, startOfDay, subDays } from 'date-fns'
@@ -10,34 +12,16 @@ import { endOfDay, formatISO, startOfDay, subDays } from 'date-fns'
 import { fetchActivities } from '../../state/api'
 import { summarizeActivities } from './activitySummary'
 
-interface ActivitySummaryWidgetProps {
+interface ActivitySummaryViewProps {
   config: ActivitySummaryConfig
+  data: ActivitySummaryData | null
+  loading?: boolean
 }
 
-export function ActivitySummaryWidget({ config }: ActivitySummaryWidgetProps) {
+export function ActivitySummaryView({ config, data, loading = false }: ActivitySummaryViewProps) {
   const { lookback_days = 7, show_workouts = true, show_sleep = true, show_meditation = true } = config
 
-  const end = endOfDay(new Date())
-  const start = startOfDay(subDays(new Date(), lookback_days))
-
-  const activitiesQuery = useQuery({
-    queryFn: () => fetchActivities(start, end),
-    queryKey: ['activities', formatISO(start, { representation: 'date' })],
-    staleTime: 5 * 60 * 1000,
-  })
-
-  const activities = activitiesQuery.data ?? []
-
-  const {
-    avgSleepHours,
-    exerciseCount,
-    meditationCount,
-    sleepCount,
-    totalExerciseMinutes,
-    totalMeditationMinutes,
-  } = summarizeActivities(activities)
-
-  if (activitiesQuery.isLoading) {
+  if (loading) {
     return (
       <div class="activity-summary">
         <h3>Last {lookback_days} Days</h3>
@@ -47,6 +31,21 @@ export function ActivitySummaryWidget({ config }: ActivitySummaryWidgetProps) {
       </div>
     )
   }
+
+  const {
+    avgSleepHours,
+    exerciseCount,
+    meditationCount,
+    sleepCount,
+    totalExerciseMinutes,
+    totalMeditationMinutes,
+  } = summarizeActivities(
+    (data?.activities ?? []).map((a) => ({
+      activity_type: a.activity_type,
+      end_time: a.end_time ? new Date(a.end_time) : undefined,
+      start_time: new Date(a.start_time),
+    })),
+  )
 
   return (
     <div class="activity-summary">
@@ -122,4 +121,31 @@ export function ActivitySummaryWidget({ config }: ActivitySummaryWidgetProps) {
       </div>
     </div>
   )
+}
+
+interface ActivitySummaryWidgetProps {
+  config: ActivitySummaryConfig
+}
+
+export function ActivitySummaryWidget({ config }: ActivitySummaryWidgetProps) {
+  const { lookback_days = 7 } = config
+
+  const end = endOfDay(new Date())
+  const start = startOfDay(subDays(new Date(), lookback_days))
+
+  const activitiesQuery = useQuery({
+    queryFn: () => fetchActivities(start, end),
+    queryKey: ['activities', formatISO(start, { representation: 'date' })],
+    staleTime: 5 * 60 * 1000,
+  })
+
+  const data: ActivitySummaryData = {
+    activities: (activitiesQuery.data ?? []).map((a) => ({
+      activity_type: a.activity_type,
+      end_time: a.end_time?.toISOString(),
+      start_time: a.start_time.toISOString(),
+    })),
+  }
+
+  return <ActivitySummaryView config={config} data={data} loading={activitiesQuery.isLoading} />
 }
