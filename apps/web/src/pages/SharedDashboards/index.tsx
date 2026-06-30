@@ -6,9 +6,8 @@
  * Per-widget editing of a shared dashboard is a follow-up; today a share is
  * seeded from the home dashboard's current layout.
  */
-import type { SharedDashboard } from '@aurboda/api-spec'
+import type { DashboardConfig, SharedDashboard } from '@aurboda/api-spec'
 
-import { defaultDashboardConfig } from '@aurboda/api-spec'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'preact/hooks'
 
@@ -110,7 +109,8 @@ export function SharedDashboards() {
 
   const createMutation = useMutation({
     mutationFn: async (seedFromHome: boolean) => {
-      const config = seedFromHome ? await fetchDashboard() : defaultDashboardConfig
+      const emptyConfig: DashboardConfig = { sections: [], version: 1 }
+      const config = seedFromHome ? await fetchDashboard() : emptyConfig
       return createSharedDashboard({ config, is_public: false, name: name.trim() || 'Shared dashboard' })
     },
     onError: () => alert('Failed to create the shared dashboard. Please try again.'),

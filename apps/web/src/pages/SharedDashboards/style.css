@@ -55,12 +55,14 @@
   font-size: 1rem;
   font-weight: 600;
   background: transparent;
+  color: #111827;
 }
 
 .shared-dashboard-name:hover,
 .shared-dashboard-name:focus {
   border-color: #d1d5db;
   background: #fff;
+  color: #111827;
 }
 
 .shared-dashboard-public {
@@ -88,4 +90,51 @@
 
 .shared-dashboard-actions .btn-danger:hover {
   background: #fee2e2;
+}
+
+@media (prefers-color-scheme: dark) {
+  .shared-dashboards h1 {
+    color: #f3f4f6;
+  }
+
+  .shared-dashboards-intro,
+  .shared-dashboards-empty {
+    color: #9ca3af;
+  }
+
+  .shared-dashboards-create input {
+    background: #111827;
+    border-color: #374151;
+    color: #f3f4f6;
+  }
+
+  .shared-dashboard-row {
+    border-color: #374151;
+    background: #1f2937;
+  }
+
+  .shared-dashboard-name {
+    color: #f3f4f6;
+  }
+
+  .shared-dashboard-name:hover,
+  .shared-dashboard-name:focus {
+    background: #111827;
+    border-color: #4b5563;
+    color: #f3f4f6;
+  }
+
+  .shared-dashboard-public {
+    color: #d1d5db;
+  }
+
+  .shared-dashboard-actions .btn-danger {
+    background: #3f1d1d;
+    border-color: #7f1d1d;
+    color: #fca5a5;
+  }
+
+  .shared-dashboard-actions .btn-danger:hover {
+    background: #4c1d1d;
+  }
 }
