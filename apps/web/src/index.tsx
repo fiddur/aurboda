@@ -74,56 +74,56 @@ function AppShell() {
             <Route path="/u/:username" component={PublicProfile} />
             <Route path="/shared-dashboards" component={SharedDashboards} />
             <Route path="/" component={Home} />
-              <Route path="/login" component={Login} />
-              <Route path="/signup" component={Signup} />
-              <Route path="/privacy" component={Privacy} />
-              <Route path="/terms" component={Terms} />
-              <Route path="/goals" component={Goals} />
-              <Route path="/timeline" component={Timeline} />
-              <Route path="/data" component={Data} />
-              <Route path="/add" component={AddData} />
-              <Route path="/food-items/:id" component={FoodItemDetail} />
-              <Route path="/food-items" component={FoodItems} />
-              <Route path="/meals/:id" component={MealDetail} />
-              <Route path="/meals" component={Meals} />
-              <Route path="/meal-type/:name" component={MealTypeMeta} />
-              <Route path="/reports/add" component={AddReport} />
-              <Route path="/reports/:id" component={ReportDetail} />
-              <Route path="/reports" component={Reports} />
-              <Route path="/detail/:type/:id" component={EntityDetail} />
-              <Route path="/activity-type/:name" component={ActivityTypeMeta} />
-              <Route path="/metric/:metricName" component={MetricMeta} />
-              <Route path="/sleep" component={Sleep} />
-              <Route path="/correlations" component={Correlations} />
-              <Route path="/chart" component={Chart} />
-              <Route path="/places" component={Places} />
-              <Route path="/data-sources" component={DataSources} />
-              <Route path="/data-sources/aurboda" component={AurbodaSource} />
-              <Route path="/data-sources/android-app" component={AndroidAppSource} />
-              <Route path="/data-sources/oura" component={OuraSource} />
-              <Route path="/data-sources/garmin" component={GarminSource} />
-              <Route path="/data-sources/strava" component={StravaSource} />
-              <Route path="/data-sources/activitywatch-desktop" component={ActivityWatchDesktopSource} />
-              <Route path="/data-sources/activitywatch-android" component={ActivityWatchAndroidSource} />
-              <Route path="/data-sources/rescue-time" component={RescueTimeSource} />
-              <Route path="/data-sources/lastfm" component={LastFmSource} />
-              <Route path="/data-sources/owntracks" component={OwnTracksSource} />
-              <Route path="/data-sources/calendars" component={CalendarsSource} />
-              <Route path="/activity-types" component={ActivityTypes} />
-              <Route path="/deduction-rules/:id" component={DeductionRuleDetail} />
-              <Route path="/deduction-rules" component={DeductionRules} />
-              <Route path="/screentime-categories/:id" component={CategoryDetail} />
-              <Route path="/screentime-categories" component={ScreentimeCategories} />
-              <Route path="/settings" component={Settings} />
-              <Route path="/audit-log" component={AuditLog} />
-              <Route path="/admin" component={AdminSettings} />
-              <Route path="/help" component={DataSources} />
-              <Route default component={NotFound} />
-            </Router>
-          </main>
-          {!isPublic && <Footer />}
-        </div>
-      </>
+            <Route path="/login" component={Login} />
+            <Route path="/signup" component={Signup} />
+            <Route path="/privacy" component={Privacy} />
+            <Route path="/terms" component={Terms} />
+            <Route path="/goals" component={Goals} />
+            <Route path="/timeline" component={Timeline} />
+            <Route path="/data" component={Data} />
+            <Route path="/add" component={AddData} />
+            <Route path="/food-items/:id" component={FoodItemDetail} />
+            <Route path="/food-items" component={FoodItems} />
+            <Route path="/meals/:id" component={MealDetail} />
+            <Route path="/meals" component={Meals} />
+            <Route path="/meal-type/:name" component={MealTypeMeta} />
+            <Route path="/reports/add" component={AddReport} />
+            <Route path="/reports/:id" component={ReportDetail} />
+            <Route path="/reports" component={Reports} />
+            <Route path="/detail/:type/:id" component={EntityDetail} />
+            <Route path="/activity-type/:name" component={ActivityTypeMeta} />
+            <Route path="/metric/:metricName" component={MetricMeta} />
+            <Route path="/sleep" component={Sleep} />
+            <Route path="/correlations" component={Correlations} />
+            <Route path="/chart" component={Chart} />
+            <Route path="/places" component={Places} />
+            <Route path="/data-sources" component={DataSources} />
+            <Route path="/data-sources/aurboda" component={AurbodaSource} />
+            <Route path="/data-sources/android-app" component={AndroidAppSource} />
+            <Route path="/data-sources/oura" component={OuraSource} />
+            <Route path="/data-sources/garmin" component={GarminSource} />
+            <Route path="/data-sources/strava" component={StravaSource} />
+            <Route path="/data-sources/activitywatch-desktop" component={ActivityWatchDesktopSource} />
+            <Route path="/data-sources/activitywatch-android" component={ActivityWatchAndroidSource} />
+            <Route path="/data-sources/rescue-time" component={RescueTimeSource} />
+            <Route path="/data-sources/lastfm" component={LastFmSource} />
+            <Route path="/data-sources/owntracks" component={OwnTracksSource} />
+            <Route path="/data-sources/calendars" component={CalendarsSource} />
+            <Route path="/activity-types" component={ActivityTypes} />
+            <Route path="/deduction-rules/:id" component={DeductionRuleDetail} />
+            <Route path="/deduction-rules" component={DeductionRules} />
+            <Route path="/screentime-categories/:id" component={CategoryDetail} />
+            <Route path="/screentime-categories" component={ScreentimeCategories} />
+            <Route path="/settings" component={Settings} />
+            <Route path="/audit-log" component={AuditLog} />
+            <Route path="/admin" component={AdminSettings} />
+            <Route path="/help" component={DataSources} />
+            <Route default component={NotFound} />
+          </Router>
+        </main>
+        {!isPublic && <Footer />}
+      </div>
+    </>
   )
 }
 

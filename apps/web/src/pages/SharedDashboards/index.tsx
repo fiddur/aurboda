@@ -29,11 +29,13 @@ function SharedDashboardRow({ dashboard }: { dashboard: SharedDashboard }) {
 
   const updateMutation = useMutation({
     mutationFn: (body: { name?: string; is_public?: boolean }) => updateSharedDashboard(dashboard.id, body),
+    onError: () => alert('Failed to update the shared dashboard. Please try again.'),
     onSuccess: invalidate,
   })
 
   const deleteMutation = useMutation({
     mutationFn: () => deleteSharedDashboard(dashboard.id),
+    onError: () => alert('Failed to delete the shared dashboard. Please try again.'),
     onSuccess: invalidate,
   })
 
@@ -43,9 +45,19 @@ function SharedDashboardRow({ dashboard }: { dashboard: SharedDashboard }) {
   }
 
   const handleCopy = async () => {
-    await navigator.clipboard.writeText(dashboard.share_url)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 1500)
+    // navigator.clipboard is only available in secure contexts; instances may be
+    // served over plain http, so guard and fall back to a manual prompt.
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(dashboard.share_url)
+        setCopied(true)
+        setTimeout(() => setCopied(false), 1500)
+      } else {
+        window.prompt('Copy this link:', dashboard.share_url)
+      }
+    } catch {
+      window.prompt('Copy this link:', dashboard.share_url)
+    }
   }
 
   const handleDelete = () => {
@@ -101,6 +113,7 @@ export function SharedDashboards() {
       const config = seedFromHome ? await fetchDashboard() : defaultDashboardConfig
       return createSharedDashboard({ config, is_public: false, name: name.trim() || 'Shared dashboard' })
     },
+    onError: () => alert('Failed to create the shared dashboard. Please try again.'),
     onSuccess: () => {
       setName('')
       queryClient.invalidateQueries({ queryKey: ['sharedDashboards'] })
