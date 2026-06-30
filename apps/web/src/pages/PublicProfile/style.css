@@ -39,3 +39,25 @@
   border-color: #8b5cf6;
   background: #faf5ff;
 }
+
+@media (prefers-color-scheme: dark) {
+  .public-profile h1 {
+    color: #f3f4f6;
+  }
+
+  .public-profile .public-muted,
+  .public-profile .public-loading {
+    color: #9ca3af;
+  }
+
+  .public-dashboard-list a {
+    border-color: #374151;
+    background: #1f2937;
+    color: #f3f4f6;
+  }
+
+  .public-dashboard-list a:hover {
+    border-color: #8b5cf6;
+    background: #1e1b4b;
+  }
+}

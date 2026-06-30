@@ -27,3 +27,14 @@
 .public-dashboard .quick-link-static {
   cursor: default;
 }
+
+@media (prefers-color-scheme: dark) {
+  .public-dashboard .public-muted,
+  .public-dashboard .public-loading {
+    color: #9ca3af;
+  }
+
+  .public-dashboard .public-attribution {
+    color: #9ca3af;
+  }
+}
