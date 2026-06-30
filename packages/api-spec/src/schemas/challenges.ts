@@ -43,14 +43,13 @@ export const challengeSpecSchema = z
       .string()
       .uuid()
       .optional()
-      .meta({ description: 'Activity type definition ID (for activity_type source)' }),
+      .meta({ description: 'Reserved for future use; v1 measurement is driven entirely by `pattern`' }),
     aggregation: challengeAggregationSchema,
     bucket_size: z.enum(['1d', '1w', '1M']).default('1d').meta({ description: 'Chart bucket size' }),
     pattern: z
       .string()
       .min(1)
-      .optional()
-      .meta({ description: 'Metric name, or activity-type pattern/regex' }),
+      .meta({ description: 'Metric name, or activity-type name/regex — what is measured' }),
     source_type: challengeSourceTypeSchema,
     unit: z.string().min(1).meta({ description: 'Display unit (e.g. "steps", "hours")' }),
   })

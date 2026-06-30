@@ -10,8 +10,12 @@ import {
   createChallenge,
   createChallengeParticipation,
   deleteChallenge,
+  deleteChallengeParticipation,
+  getChallengeById,
   getChallengeBySlug,
+  getChallengeMemberByIdentity,
   getParticipationByToken,
+  getParticipationByUrl,
   listChallengeMembers,
   listChallengeParticipations,
   listChallenges,
@@ -173,6 +177,47 @@ describe('Challenges integration', () => {
     })
     await deleteChallenge(user, c.id)
     expect((await listChallengeMembers(user, c.id)).length).toBe(0)
+  })
+
+  test('gets a challenge by id and reports missing ones', async () => {
+    const user = getTestUser()
+    const c = await createChallenge(user, sampleInput('byid'))
+    expect((await getChallengeById(user, c.id))?.slug).toBe(c.slug)
+    expect(await getChallengeById(user, '00000000-0000-0000-0000-000000000000')).toBeNull()
+  })
+
+  test('finds a member by identity (for the register-back hijack guard)', async () => {
+    const user = getTestUser()
+    const c = await createChallenge(user, sampleInput('byidentity'))
+    await upsertChallengeMember(user, c.id, {
+      display_name: 'alice',
+      identity_base_url: 'https://aurboda.net/u/alice',
+      kind: 'local',
+      local_user: 'alice',
+    })
+    const found = await getChallengeMemberByIdentity(user, c.id, 'https://aurboda.net/u/alice')
+    expect(found?.kind).toBe('local')
+    expect(await getChallengeMemberByIdentity(user, c.id, 'https://other/u/x')).toBeNull()
+  })
+
+  test('looks up + deletes a participation by url (join idempotency support)', async () => {
+    const user = getTestUser()
+    const url = 'https://aurboda.net/u/alice/byurl1'
+    const p = await createChallengeParticipation(user, {
+      challenge_url: url,
+      end_ts: new Date('2026-06-08T00:00:00Z'),
+      host_identity: 'https://aurboda.net/u/alice',
+      name: 'C',
+      spec,
+      start_ts: new Date('2026-06-01T00:00:00Z'),
+      timezone: 'UTC',
+    })
+    expect((await getParticipationByUrl(user, url))?.id).toBe(p.id)
+    expect(await getParticipationByUrl(user, 'https://aurboda.net/u/alice/nope')).toBeNull()
+
+    expect(await deleteChallengeParticipation(user, p.id)).toBe(true)
+    expect(await getParticipationByUrl(user, url)).toBeNull()
+    expect(await deleteChallengeParticipation(user, p.id)).toBe(false)
   })
 
   test('creates a participation with a data token and looks it up', async () => {

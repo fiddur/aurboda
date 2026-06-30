@@ -26,7 +26,7 @@ import { errorResponse, jsonResponse, type McpServer } from './helpers.ts'
 
 const toSpecFields = (spec: {
   source_type: 'metric' | 'activity_type'
-  pattern?: string
+  pattern: string
   activity_type_id?: string
   aggregation: 'sum' | 'count'
   unit: string
@@ -35,7 +35,7 @@ const toSpecFields = (spec: {
   activity_type_id: spec.activity_type_id ?? null,
   aggregation: spec.aggregation,
   bucket_size: spec.bucket_size,
-  pattern: spec.pattern ?? null,
+  pattern: spec.pattern,
   source_type: spec.source_type,
   unit: spec.unit,
 })
@@ -128,8 +128,9 @@ export const registerChallengeTools = (
     'Join a challenge by its URL (e.g. https://aurboda.net/u/alice/abc123). Works for challenges on this or another Aurboda instance.',
     { ...joinChallengeBodySchema.shape },
     async ({ challenge_url }) => {
-      if (!deps.webHost || !deps.apiBaseUrl)
-        {return errorResponse('Federation is not configured on this server')}
+      if (!deps.webHost || !deps.apiBaseUrl) {
+        return errorResponse('Federation is not configured on this server')
+      }
       try {
         const participation = await joinChallenge({
           apiBaseUrl: deps.apiBaseUrl,

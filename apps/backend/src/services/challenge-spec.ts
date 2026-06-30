@@ -13,10 +13,10 @@ import { getChartData } from './chart-data.ts'
 export const specToApi = (spec: ChallengeSpecFields): ChallengeSpec => ({
   aggregation: spec.aggregation,
   bucket_size: spec.bucket_size,
+  pattern: spec.pattern,
   source_type: spec.source_type,
   unit: spec.unit,
   ...(spec.activity_type_id !== null ? { activity_type_id: spec.activity_type_id } : {}),
-  ...(spec.pattern !== null ? { pattern: spec.pattern } : {}),
 })
 
 export interface MemberSeries {

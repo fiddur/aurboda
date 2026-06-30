@@ -255,6 +255,7 @@ export {
   deleteChallengeParticipation,
   getChallengeById,
   getChallengeBySlug,
+  getChallengeMemberByIdentity,
   getParticipationByToken,
   getParticipationByUrl,
   listChallengeMembers,

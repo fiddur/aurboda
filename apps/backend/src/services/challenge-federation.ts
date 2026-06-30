@@ -17,16 +17,17 @@ import {
   type WellKnownAurboda,
   wellKnownAurbodaSchema,
 } from '@aurboda/api-spec'
-import axios from 'axios'
 
 import {
   type ChallengeParticipationRecord,
   createChallengeParticipation,
   deleteChallengeParticipation,
   getChallengeBySlug,
+  getParticipationByUrl,
   upsertChallengeMember,
 } from '../db/index.ts'
-import { buildProfileUrl, buildShareUrl } from './share-urls.ts'
+import { safeFetchGet, safeFetchPost } from './safe-fetch.ts'
+import { buildProfileUrl } from './share-urls.ts'
 
 export type JoinChallengeErrorKind = 'invalid_url' | 'not_found' | 'federation'
 
@@ -40,8 +41,6 @@ export class JoinChallengeError extends Error {
     this.kind = kind
   }
 }
-
-const HTTP_TIMEOUT_MS = 8000
 
 const trimSlashes = (s: string): string => s.replace(/\/+$/, '')
 const joinUrl = (base: string, path: string): string => `${trimSlashes(base)}/${path.replace(/^\/+/, '')}`
@@ -68,7 +67,7 @@ export const parseChallengeUrl = (url: string): ParsedChallengeUrl | null => {
 
 /** Discover an instance's federation metadata from its base URL. */
 export const discoverInstance = async (base: string): Promise<WellKnownAurboda> => {
-  const res = await axios.get(joinUrl(base, '.well-known/aurboda'), { timeout: HTTP_TIMEOUT_MS })
+  const res = await safeFetchGet(joinUrl(base, '.well-known/aurboda'))
   const wellKnown = wellKnownAurbodaSchema.parse(res.data)
   if (wellKnown.product !== 'aurboda' || !wellKnown.federation) {
     throw new Error('Host does not support Aurboda federation')
@@ -82,11 +81,8 @@ export const fetchChallengeSpec = async (
   username: string,
   slug: string,
 ): Promise<PublicChallenge> => {
-  const res = await axios.get(
+  const res = await safeFetchGet(
     joinUrl(apiBase, `public/${encodeURIComponent(username)}/${encodeURIComponent(slug)}`),
-    {
-      timeout: HTTP_TIMEOUT_MS,
-    },
   )
   const parsed = publicChallengeResponseSchema.safeParse(res.data)
   if (!parsed.success || parsed.data.type !== 'challenge' || !parsed.data.challenge) {
@@ -102,19 +98,18 @@ export const registerMemberWithHost = async (
   slug: string,
   body: { identity_base_url: string; display_name: string; data_endpoint_url: string; join_token: string },
 ): Promise<void> => {
-  const res = await axios.post(
+  const res = await safeFetchPost<{ success?: boolean; error?: string }>(
     joinUrl(apiBase, `public/${encodeURIComponent(username)}/${encodeURIComponent(slug)}/members`),
     body,
-    { timeout: HTTP_TIMEOUT_MS },
   )
   if (res.data?.success === false) {
     throw new Error(typeof res.data.error === 'string' ? res.data.error : 'Host rejected the join')
   }
 }
 
-/** Fetch a remote member's data endpoint. */
+/** Fetch a remote member's data endpoint (SSRF-guarded). */
 export const fetchMemberData = async (dataEndpointUrl: string): Promise<ChallengeDataResponse> => {
-  const res = await axios.get(dataEndpointUrl, { timeout: HTTP_TIMEOUT_MS })
+  const res = await safeFetchGet(dataEndpointUrl)
   return challengeDataResponseSchema.parse(res.data)
 }
 
@@ -198,6 +193,12 @@ export const joinChallenge = async ({
   const parsed = parseChallengeUrl(challengeUrl)
   if (!parsed) throw new JoinChallengeError('Not a valid challenge URL', 'invalid_url')
 
+  // Idempotent: joining the same challenge again returns the existing record
+  // instead of creating a duplicate participation (with a second data token).
+  const normalizedUrl = trimSlashes(challengeUrl)
+  const existing = await getParticipationByUrl(user, normalizedUrl).catch(() => null)
+  if (existing) return existing
+
   // Local shortcut: the host is this instance.
   if (parsed.base === trimSlashes(webHost)) {
     const challenge = await getChallengeBySlug(parsed.username, parsed.slug).catch(() => null)
@@ -209,7 +210,7 @@ export const joinChallenge = async ({
       local_user: user,
     })
     return createChallengeParticipation(user, {
-      challenge_url: buildShareUrl(webHost, parsed.username, parsed.slug),
+      challenge_url: normalizedUrl,
       end_ts: challenge.end_ts,
       host_identity: buildProfileUrl(webHost, parsed.username),
       name: challenge.name,
@@ -221,7 +222,7 @@ export const joinChallenge = async ({
 
   try {
     return await joinRemoteChallenge({
-      challengeUrl,
+      challengeUrl: normalizedUrl,
       ourApiBase: apiBaseUrl,
       ourWebHost: webHost,
       parsed,

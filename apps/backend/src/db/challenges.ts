@@ -17,7 +17,7 @@ export type ChallengeBucketSize = '1d' | '1w' | '1M'
 
 export interface ChallengeSpecFields {
   source_type: ChallengeSourceType
-  pattern: string | null
+  pattern: string
   activity_type_id: string | null
   aggregation: ChallengeAggregation
   unit: string
@@ -119,7 +119,7 @@ interface ChallengeRow {
   name: string
   is_public: boolean
   source_type: ChallengeSourceType
-  pattern: string | null
+  pattern: string
   activity_type_id: string | null
   aggregation: ChallengeAggregation
   unit: string
@@ -167,7 +167,7 @@ interface ParticipationRow {
   host_identity: string
   name: string
   source_type: ChallengeSourceType
-  pattern: string | null
+  pattern: string
   activity_type_id: string | null
   aggregation: ChallengeAggregation
   unit: string
@@ -337,6 +337,19 @@ export const listChallengeMembers = async (
     [challengeId],
   )
   return result.rows.map(mapMember)
+}
+
+export const getChallengeMemberByIdentity = async (
+  user: string,
+  challengeId: string,
+  identityBaseUrl: string,
+): Promise<ChallengeMemberRecord | null> => {
+  const result = await query<MemberRow>(
+    user,
+    `SELECT ${MEMBER_COLUMNS} FROM challenge_members WHERE challenge_id = $1 AND identity_base_url = $2`,
+    [challengeId, identityBaseUrl],
+  )
+  return result.rows.length ? mapMember(result.rows[0]) : null
 }
 
 /** Insert or update a member by (challenge, identity). */

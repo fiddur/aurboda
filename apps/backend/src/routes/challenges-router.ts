@@ -100,7 +100,7 @@ export const createChallengesRouter = (
           activity_type_id: req.body.spec.activity_type_id ?? null,
           aggregation: req.body.spec.aggregation,
           bucket_size: req.body.spec.bucket_size,
-          pattern: req.body.spec.pattern ?? null,
+          pattern: req.body.spec.pattern,
           source_type: req.body.spec.source_type,
           unit: req.body.spec.unit,
         },
@@ -141,7 +141,7 @@ export const createChallengesRouter = (
               activity_type_id: b.spec.activity_type_id ?? null,
               aggregation: b.spec.aggregation,
               bucket_size: b.spec.bucket_size,
-              pattern: b.spec.pattern ?? null,
+              pattern: b.spec.pattern,
               source_type: b.spec.source_type,
               unit: b.spec.unit,
             }

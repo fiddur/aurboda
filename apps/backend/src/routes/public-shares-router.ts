@@ -21,6 +21,7 @@ import {
 import { isValidUsername } from '../api/auth-routes.ts'
 import {
   getChallengeBySlug,
+  getChallengeMemberByIdentity,
   getSharedDashboardBySlug,
   listChallengeMembers,
   listPublicChallenges,
@@ -104,9 +105,10 @@ export const createPublicSharesRouter = (webHost: string): TypedRouter => {
       try {
         const challenge = await getChallengeBySlug(username, slug)
         if (!challenge) return res.status(404).json({ error: 'Challenge not found', success: false })
-        const members = await getChallengeStandings(username, challenge, {
-          refresh: req.query.refresh === '1',
-        })
+        // No `refresh` here: this endpoint is unauthenticated, so honoring it would
+        // let anyone force N parallel outbound fetches. The TTL cache still keeps
+        // standings reasonably fresh; the owner can force-refresh via the authed route.
+        const members = await getChallengeStandings(username, challenge)
         res.setHeader('Cache-Control', 'public, max-age=60')
         res.json({ members, success: true })
       } catch (error) {
@@ -133,7 +135,17 @@ export const createPublicSharesRouter = (webHost: string): TypedRouter => {
         if (req.body.join_token !== challenge.join_token) {
           return res.status(403).json({ error: 'Invalid join token', success: false })
         }
-        // Probe the member's data endpoint before accepting them.
+        // Don't let an unauthenticated caller overwrite a local member (the host
+        // or any same-instance member) by claiming their identity URL.
+        const existing = await getChallengeMemberByIdentity(
+          username,
+          challenge.id,
+          req.body.identity_base_url,
+        )
+        if (existing && existing.kind === 'local') {
+          return res.status(409).json({ error: 'That identity is already a local member', success: false })
+        }
+        // Probe the member's data endpoint before accepting them (SSRF-guarded).
         try {
           await fetchMemberData(req.body.data_endpoint_url)
         } catch {
