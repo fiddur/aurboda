@@ -14,6 +14,7 @@ import { mealsTables } from './schema/meals.ts'
 import { metricsTables } from './schema/metrics.ts'
 import { productivityTables } from './schema/productivity.ts'
 import { reportsTables } from './schema/reports.ts'
+import { socialTables } from './schema/social.ts'
 import { systemTables } from './schema/system.ts'
 
 // Re-export common types from shared api-spec package
@@ -53,6 +54,7 @@ export const createTableStatements: Record<string, string> = {
   ...metricsTables,
   ...productivityTables,
   ...reportsTables,
+  ...socialTables,
   ...systemTables,
 }
 
@@ -131,6 +133,8 @@ export const tableCreationOrder = [
   'audit_log_indexes',
   'notes',
   'notes_indexes',
+  'shared_dashboards',
+  'shared_dashboards_indexes',
   'mcp_sessions',
   'mcp_sessions_indexes',
   'outbound_sync_queue',
