@@ -1,8 +1,11 @@
 /**
  * BarChartWidget - Displays bucketed bar chart visualization on the dashboard.
+ *
+ * Split into a presentational `BarChartView` and a fetching container. The view
+ * links to the full chart page only when an `href` is supplied (home dashboard).
  */
 
-import type { BarChartConfig } from '@aurboda/api-spec'
+import type { BarChartConfig, BarChartData } from '@aurboda/api-spec'
 
 import { useQuery } from '@tanstack/react-query'
 
@@ -10,16 +13,43 @@ import { fetchChartData } from '../../state/api'
 import { buildChartUrl } from '../../utils/chart-url'
 import { BarChart } from '../charts/BarChart'
 
-interface BarChartWidgetProps {
-  config: BarChartConfig
-}
-
 /** Compute start/end ISO strings from lookback_days. */
 function lookbackToRange(lookbackDays: number): { start: string; end: string } {
   const end = new Date()
   const start = new Date()
   start.setDate(start.getDate() - lookbackDays)
   return { end: end.toISOString(), start: start.toISOString() }
+}
+
+interface BarChartViewProps {
+  config: BarChartConfig
+  data: BarChartData | null
+  /** Optional link to the full chart page (home dashboard only). */
+  href?: string
+}
+
+export function BarChartView({ config, data, href }: BarChartViewProps) {
+  const { pattern, title, bucket_size } = config
+  const displayTitle = title ?? `${pattern ?? 'chart'} (${bucket_size})`
+
+  const body = (
+    <>
+      <h4>{displayTitle}</h4>
+      <BarChart data={data?.buckets ?? []} color="#8b5cf6" height={200} />
+    </>
+  )
+
+  return href ? (
+    <a href={href} class="chart-widget chart-widget-link">
+      {body}
+    </a>
+  ) : (
+    <div class="chart-widget">{body}</div>
+  )
+}
+
+interface BarChartWidgetProps {
+  config: BarChartConfig
 }
 
 export function BarChartWidget({ config }: BarChartWidgetProps) {
@@ -80,10 +110,7 @@ export function BarChartWidget({ config }: BarChartWidgetProps) {
     )
   }
 
-  return (
-    <a href={chartUrl} class="chart-widget chart-widget-link">
-      <h4>{displayTitle}</h4>
-      <BarChart data={chartQuery.data.buckets} color="#8b5cf6" height={200} />
-    </a>
-  )
+  const data: BarChartData = { buckets: chartQuery.data.buckets }
+
+  return <BarChartView config={config} data={data} href={chartUrl} />
 }
