@@ -103,6 +103,12 @@ the `shared_dashboards` table. The `slug` is unique per database; the `username`
 the URL disambiguates globally, so no central slug index is needed. Deleting a
 shared dashboard immediately makes its slug return 404.
 
+## Related
+
+[Challenges](./challenges.md) build on this foundation (same `/u/:username/:slug`
+namespace, base-URL identity, capability tokens) and add real cross-instance
+federation.
+
 ## Forward-compatibility
 
 Resolved widget data is keyed by each widget's stable `id`, and the public response

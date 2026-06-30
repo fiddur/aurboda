@@ -2,11 +2,11 @@ import express from 'express'
 import supertest from 'supertest'
 import { describe, expect, test } from 'vitest'
 
-import { createWellKnownRouter } from './well-known-router.ts'
+import { createWellKnownRouter, type WellKnownConfig } from './well-known-router.ts'
 
-const buildApp = (config: { androidPackageName: string; androidFingerprints: string[] }) => {
+const buildApp = (config: Pick<WellKnownConfig, 'androidPackageName' | 'androidFingerprints'>) => {
   const app = express()
-  app.use(createWellKnownRouter(config))
+  app.use(createWellKnownRouter({ apiBaseUrl: 'http://localhost:3000', version: 'test', ...config }))
   return app
 }
 

@@ -570,6 +570,9 @@ export const baseResponseSchema = z.object({
   success: successSchema,
 })
 
+export type BaseResponse = z.infer<typeof baseResponseSchema>
+export const baseResponseSchemaMeta = baseResponseSchema.meta({ id: 'BaseResponse' })
+
 /**
  * Create a data response schema wrapping an array of items.
  */
