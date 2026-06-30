@@ -47,12 +47,15 @@ export const getChallengeStandings = async (
         return { ...base, buckets, last_updated: new Date().toISOString(), stale: false, total }
       }
 
-      // Remote member: use the TTL cache unless stale or refresh requested.
+      // Remote member: use the TTL cache unless refresh requested. We short-circuit
+      // on freshness alone (not on cached_buckets) so a *failed* fetch is also cached
+      // for the TTL — otherwise a member whose endpoint hangs (cached_buckets stays
+      // null) would be re-fetched on every unauthenticated standings call.
       const fresh = member.last_fetched_at !== null && now - member.last_fetched_at.getTime() < CACHE_TTL_MS
-      if (!options.refresh && fresh && member.cached_buckets) {
+      if (!options.refresh && fresh) {
         return {
           ...base,
-          buckets: member.cached_buckets,
+          buckets: member.cached_buckets ?? [],
           last_updated: member.last_fetched_at?.toISOString() ?? null,
           stale: member.last_error !== null,
           total: member.cached_total ?? 0,

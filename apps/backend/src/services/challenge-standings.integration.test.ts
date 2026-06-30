@@ -104,4 +104,41 @@ describe('getChallengeStandings integration', () => {
     expect(again.find((s) => s.display_name === 'remote-bob')?.total).toBe(300)
     expect(vi.mocked(fetchMemberData)).toHaveBeenCalledTimes(1)
   })
+
+  test('caches a failed remote fetch for the TTL (no per-call re-fetch storm)', async () => {
+    const user = getTestUser()
+    const challenge = await createChallenge(user, {
+      end_ts: new Date('2026-06-03T00:00:00Z'),
+      is_public: true,
+      name: 'Flaky',
+      spec: {
+        activity_type_id: null,
+        aggregation: 'sum',
+        bucket_size: '1d',
+        pattern: 'steps',
+        source_type: 'metric',
+        unit: 'steps',
+      },
+      start_ts: new Date('2026-06-01T00:00:00Z'),
+      timezone: 'UTC',
+    })
+    await upsertChallengeMember(user, challenge.id, {
+      data_endpoint_url: 'https://remote.example/challenge-data/u/tok',
+      display_name: 'hangs',
+      identity_base_url: 'https://remote.example/u/hangs',
+      kind: 'remote',
+    })
+
+    // Endpoint always fails — it must still be cached so the TTL bounds fan-out.
+    vi.mocked(fetchMemberData).mockRejectedValue(new Error('timeout'))
+
+    const first = await getChallengeStandings(user, challenge)
+    expect(first[0].stale).toBe(true)
+    expect(first[0].total).toBe(0)
+    expect(vi.mocked(fetchMemberData)).toHaveBeenCalledTimes(1)
+
+    // Within the TTL the failed member is NOT re-fetched (the bug this guards).
+    await getChallengeStandings(user, challenge)
+    expect(vi.mocked(fetchMemberData)).toHaveBeenCalledTimes(1)
+  })
 })

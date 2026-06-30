@@ -18,6 +18,7 @@ import {
   wellKnownAurbodaSchema,
 } from '@aurboda/api-spec'
 
+import { isValidUsername } from '../api/auth-routes.ts'
 import {
   type ChallengeParticipationRecord,
   createChallengeParticipation,
@@ -191,7 +192,10 @@ export const joinChallenge = async ({
   apiBaseUrl,
 }: JoinChallengeDeps): Promise<ChallengeParticipationRecord> => {
   const parsed = parseChallengeUrl(challengeUrl)
-  if (!parsed) throw new JoinChallengeError('Not a valid challenge URL', 'invalid_url')
+  // Validate the username at this username→DB boundary, matching every other one.
+  if (!parsed || !isValidUsername(parsed.username)) {
+    throw new JoinChallengeError('Not a valid challenge URL', 'invalid_url')
+  }
 
   // Idempotent: joining the same challenge again returns the existing record
   // instead of creating a duplicate participation (with a second data token).
