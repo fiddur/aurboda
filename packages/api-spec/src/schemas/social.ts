@@ -139,17 +139,43 @@ export const correlationDataSchema = z
   })
   .meta({ id: 'CorrelationData' })
 
-export const activitySummaryItemSchema = z
+/**
+ * Aggregated activity stats — exactly the figures the ActivitySummary widget
+ * renders. Each category is null when its visibility toggle is off, so a public
+ * viewer never receives data for a hidden category, nor the raw activity list.
+ */
+export const activitySummaryExerciseSchema = z
   .object({
-    activity_type: z.string().meta({ description: 'Activity type' }),
-    end_time: z.string().optional().meta({ description: 'End time (ISO 8601)' }),
-    start_time: z.string().meta({ description: 'Start time (ISO 8601)' }),
+    count: z.number().meta({ description: 'Number of workout sessions' }),
+    total_minutes: z.number().meta({ description: 'Total workout minutes' }),
   })
-  .meta({ id: 'ActivitySummaryItem' })
+  .meta({ id: 'ActivitySummaryExercise' })
+
+export const activitySummarySleepSchema = z
+  .object({
+    avg_hours: z.number().nullable().meta({ description: 'Average sleep hours per night' }),
+    count: z.number().meta({ description: 'Number of nights tracked' }),
+  })
+  .meta({ id: 'ActivitySummarySleep' })
+
+export const activitySummaryMeditationSchema = z
+  .object({
+    count: z.number().meta({ description: 'Number of meditation sessions' }),
+    total_minutes: z.number().meta({ description: 'Total meditation minutes' }),
+  })
+  .meta({ id: 'ActivitySummaryMeditation' })
 
 export const activitySummaryDataSchema = z
   .object({
-    activities: z.array(activitySummaryItemSchema).meta({ description: 'Activities in the window' }),
+    exercise: activitySummaryExerciseSchema
+      .nullable()
+      .meta({ description: 'Workout aggregates, or null when hidden' }),
+    meditation: activitySummaryMeditationSchema
+      .nullable()
+      .meta({ description: 'Meditation aggregates, or null when hidden' }),
+    sleep: activitySummarySleepSchema
+      .nullable()
+      .meta({ description: 'Sleep aggregates, or null when hidden' }),
   })
   .meta({ id: 'ActivitySummaryData' })
 

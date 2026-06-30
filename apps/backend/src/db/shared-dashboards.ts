@@ -120,12 +120,11 @@ export const createSharedDashboard = async (
       )
       return mapRow(result.rows[0])
     } catch (error) {
-      // Retry only on slug collision; rethrow anything else.
-      if (isUniqueViolation(error) && attempt < maxAttempts - 1) continue
-      throw error
+      // Retry on slug collision; rethrow anything else immediately.
+      if (!isUniqueViolation(error)) throw error
     }
   }
-  throw new Error('Failed to generate a unique shared dashboard slug')
+  throw new Error(`Failed to generate a unique shared dashboard slug after ${maxAttempts} attempts`)
 }
 
 export const updateSharedDashboard = async (

@@ -22,7 +22,7 @@ import { type TypedRouter, typedRouter } from '../typed-router.ts'
 const USERNAME_RE = /^[a-z][a-z0-9_]{2,30}$/
 
 /** Same validity rules as signup: a valid Postgres role name, not reserved. */
-const isValidPublicUsername = (username: string): boolean =>
+export const isValidPublicUsername = (username: string): boolean =>
   USERNAME_RE.test(username) && !RESERVED_USERNAMES.includes(username)
 
 /** Connecting to a non-existent user database fails with invalid_catalog_name. */
@@ -33,7 +33,7 @@ const isMissingDatabase = (error: unknown): boolean =>
  * Strip viewer-useless / internal fields from a config before exposing it.
  * Quick links point into the owner's private app, so neutralize their hrefs.
  */
-const sanitizeConfig = (config: DashboardConfig): DashboardConfig => ({
+export const sanitizeConfig = (config: DashboardConfig): DashboardConfig => ({
   sections: config.sections.map((section) => ({
     ...section,
     widgets: section.widgets.map((widget) =>

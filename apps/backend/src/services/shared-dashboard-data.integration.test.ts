@@ -91,16 +91,20 @@ describe('resolveDashboardData integration', () => {
     expect(data['ql']).toEqual({ data: null, type: 'quick_link' })
   })
 
-  test('emits minimal projections (no raw activity fields beyond type/times)', async () => {
+  test('activity_summary emits only aggregates (never the raw activity list)', async () => {
     const user = getTestUser()
     const data = await resolveDashboardData(user, everyWidgetConfig)
 
     const actsum = data['actsum']
     expect(actsum.type).toBe('activity_summary')
     if (actsum.type === 'activity_summary' && actsum.data) {
-      for (const item of actsum.data.activities) {
-        expect(Object.keys(item).sort()).toEqual(['activity_type', 'end_time', 'start_time'])
-      }
+      // Only the three aggregate categories — no `activities` array.
+      expect(Object.keys(actsum.data).sort()).toEqual(['exercise', 'meditation', 'sleep'])
+      expect('activities' in actsum.data).toBe(false)
+      // All categories shown by default → aggregate objects, not null.
+      expect(actsum.data.exercise).toEqual({ count: 0, total_minutes: 0 })
+      expect(actsum.data.meditation).toEqual({ count: 0, total_minutes: 0 })
+      expect(actsum.data.sleep).toEqual({ avg_hours: null, count: 0 })
     }
 
     const bar = data['bar']
@@ -108,6 +112,33 @@ describe('resolveDashboardData integration', () => {
       for (const bucket of bar.data.buckets) {
         expect(Object.keys(bucket).sort()).toEqual(['bucket_start', 'value'])
       }
+    }
+  })
+
+  test('activity_summary respects visibility toggles (hidden categories omitted)', async () => {
+    const user = getTestUser()
+    const data = await resolveDashboardData(user, {
+      sections: [
+        {
+          id: 's',
+          title: 'x',
+          type: 'charts',
+          widgets: [
+            {
+              config: { lookback_days: 7, show_meditation: false, show_sleep: false, show_workouts: true },
+              id: 'a',
+              type: 'activity_summary',
+            },
+          ],
+        },
+      ],
+      version: 1,
+    })
+    const a = data['a']
+    if (a.type === 'activity_summary' && a.data) {
+      expect(a.data.exercise).not.toBeNull()
+      expect(a.data.sleep).toBeNull()
+      expect(a.data.meditation).toBeNull()
     }
   })
 })
