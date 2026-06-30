@@ -55,6 +55,7 @@ export const createPublicSharesRouter = (webHost: string): TypedRouter => {
       }
       try {
         const records = await listPublicSharedDashboards(username)
+        res.setHeader('Cache-Control', 'public, max-age=60')
         res.json({
           dashboards: records.map((r) => ({
             name: r.name,
@@ -87,7 +88,8 @@ export const createPublicSharesRouter = (webHost: string): TypedRouter => {
           return res.status(404).json({ error: 'Dashboard not found', success: false })
         }
         const widgetData = await resolveDashboardData(username, record.config)
-        res.setHeader('Cache-Control', 'private, max-age=60')
+        // Public/anonymous content — allow shared (CDN) caches to absorb load.
+        res.setHeader('Cache-Control', 'public, max-age=60')
         res.json({
           config: sanitizeConfig(record.config),
           name: record.name,
