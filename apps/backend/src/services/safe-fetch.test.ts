@@ -19,6 +19,8 @@ describe('assertPublicUrl', () => {
       'http://[fe80::1]/x',
       'http://[fd00::1]/x',
       'http://[::ffff:127.0.0.1]/x', // IPv4-mapped loopback
+      'http://[::7f00:1]/x', // IPv4-compatible loopback (::127.0.0.1)
+      'http://[64:ff9b::1]/x', // NAT64
     ]
     for (const url of blocked) {
       await expect(assertPublicUrl(url), url).rejects.toThrow()

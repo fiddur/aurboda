@@ -33,10 +33,12 @@ const isBlockedIPv4 = (ip: string): boolean => {
 
 const isBlockedIPv6 = (raw: string): boolean => {
   const ip = raw.toLowerCase()
-  // Block all IPv4-mapped addresses (::ffff:… in dotted or compressed-hex form).
-  // Real hosts resolve to plain v4/v6; a literal mapped address is an edge/attack.
-  if (ip.startsWith('::ffff:')) return true
-  if (ip === '::1' || ip === '::') return true // loopback / unspecified
+  // Any address whose high bits are all zero (starts with `::`) is special-use:
+  // unspecified (::), loopback (::1), IPv4-mapped (::ffff:x), or IPv4-compatible
+  // (::x / ::7f00:1). Global unicast is 2000::/3 and never starts with `::`, so
+  // real hosts are unaffected while embedded-IPv4 tricks are all blocked.
+  if (ip.startsWith('::')) return true
+  if (ip.startsWith('64:ff9b:')) return true // NAT64 (embeds an IPv4 in the low bits)
   if (ip.startsWith('fe8') || ip.startsWith('fe9') || ip.startsWith('fea') || ip.startsWith('feb'))
     {return true} // fe80::/10 link-local
   if (ip.startsWith('fc') || ip.startsWith('fd')) return true // fc00::/7 unique-local
