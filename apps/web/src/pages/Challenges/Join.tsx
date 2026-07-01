@@ -19,7 +19,8 @@ export function ChallengeJoin() {
   const joinMutation = useMutation({
     mutationFn: () => joinChallengeByUrl(challengeUrl),
     onSuccess: () => {
-      window.location.href = challengeUrl
+      // Only follow http(s) targets (defense-in-depth; the join already validated it).
+      window.location.href = /^https?:\/\//.test(challengeUrl) ? challengeUrl : '/challenges'
     },
   })
 
