@@ -4,6 +4,20 @@ import type { LineSeriesData } from '../../components/charts/TrendLineChart'
 
 type BucketSize = ChallengeSpec['bucket_size']
 
+/**
+ * Format an ISO instant as a date in the given IANA timezone, falling back to the
+ * viewer's locale timezone if it is invalid. The backend only validates `timezone` as
+ * a non-empty string, so a crafted challenge could carry garbage — without this guard
+ * `toLocaleDateString` throws `RangeError` and takes down the whole public render.
+ */
+export const formatDateInZone = (iso: string, timeZone: string): string => {
+  try {
+    return new Date(iso).toLocaleDateString(undefined, { timeZone })
+  } catch {
+    return new Date(iso).toLocaleDateString()
+  }
+}
+
 /** Advance an ISO instant by one bucket, returning that bucket's exclusive end. */
 export const bucketEnd = (bucketStartIso: string, bucketSize: BucketSize): string => {
   const d = new Date(bucketStartIso)

@@ -2,7 +2,7 @@ import type { ChallengeStanding } from '@aurboda/api-spec'
 
 import { describe, expect, test } from 'vitest'
 
-import { bucketEnd, toCumulativeSeries } from './race-series'
+import { bucketEnd, formatDateInZone, toCumulativeSeries } from './race-series'
 
 const standing = (buckets: { bucket_start: string; value: number }[]): ChallengeStanding => ({
   buckets,
@@ -12,6 +12,24 @@ const standing = (buckets: { bucket_start: string; value: number }[]): Challenge
   stale: false,
   status: 'active',
   total: buckets.reduce((s, b) => s + b.value, 0),
+})
+
+describe('formatDateInZone', () => {
+  test('formats the instant in the given IANA timezone', () => {
+    // 2026-06-30T22:00Z is 2026-07-01 in Europe/Stockholm (UTC+2) but 2026-06-30 in UTC,
+    // so honoring the zone must yield a different calendar day than UTC.
+    const iso = '2026-06-30T22:00:00.000Z'
+    expect(formatDateInZone(iso, 'Europe/Stockholm')).toBe(
+      new Date(iso).toLocaleDateString(undefined, { timeZone: 'Europe/Stockholm' }),
+    )
+    expect(formatDateInZone(iso, 'Europe/Stockholm')).not.toBe(formatDateInZone(iso, 'UTC'))
+  })
+
+  test('falls back to the viewer locale (does not throw) on an invalid timezone', () => {
+    const iso = '2026-07-01T12:00:00.000Z'
+    expect(() => formatDateInZone(iso, 'Not/AZone')).not.toThrow()
+    expect(formatDateInZone(iso, 'Not/AZone')).toBe(new Date(iso).toLocaleDateString())
+  })
 })
 
 describe('bucketEnd', () => {

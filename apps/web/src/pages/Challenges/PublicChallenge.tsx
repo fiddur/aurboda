@@ -11,7 +11,7 @@ import { useState } from 'preact/hooks'
 import { TrendLineChart } from '../../components/charts/TrendLineChart'
 import { fetchPublicChallengeStandings, joinChallengeByUrl } from '../../state/api'
 import { auth } from '../../state/auth'
-import { toCumulativeSeries } from './race-series'
+import { formatDateInZone, toCumulativeSeries } from './race-series'
 import './style.css'
 
 const COLORS = ['#8b5cf6', '#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#ec4899', '#14b8a6', '#a855f7']
@@ -83,12 +83,10 @@ export function PublicChallenge({
         {challenge.spec.pattern} · {challenge.spec.aggregation} ({challenge.spec.unit}) ·{' '}
         {/* Render both dates in the timezone the range was chosen in, so they read
             exactly as entered regardless of the viewer's browser locale/timezone. */}
-        {new Date(challenge.start_ts).toLocaleDateString(undefined, { timeZone: challenge.timezone })} –{' '}
+        {formatDateInZone(challenge.start_ts, challenge.timezone)} –{' '}
         {/* end_ts is the exclusive window end (midnight after the last day); step back
             one ms to render the inclusive last competing day. */}
-        {new Date(new Date(challenge.end_ts).getTime() - 1).toLocaleDateString(undefined, {
-          timeZone: challenge.timezone,
-        })}
+        {formatDateInZone(new Date(new Date(challenge.end_ts).getTime() - 1).toISOString(), challenge.timezone)}
       </p>
 
       <div class="challenge-view-actions">
