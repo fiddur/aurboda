@@ -1,8 +1,8 @@
-import type { ChallengeSpec, ChallengeStanding } from '@aurboda/api-spec'
+import type { ChallengeEffectiveBucketSize, ChallengeStanding } from '@aurboda/api-spec'
 
 import type { LineSeriesData } from '../../components/charts/TrendLineChart'
 
-type BucketSize = ChallengeSpec['bucket_size']
+type BucketSize = ChallengeEffectiveBucketSize
 
 /**
  * Format an ISO instant as a date in the given IANA timezone, falling back to the
@@ -21,9 +21,25 @@ export const formatDateInZone = (iso: string, timeZone: string): string => {
 /** Advance an ISO instant by one bucket, returning that bucket's exclusive end. */
 export const bucketEnd = (bucketStartIso: string, bucketSize: BucketSize): string => {
   const d = new Date(bucketStartIso)
-  if (bucketSize === '1M') d.setUTCMonth(d.getUTCMonth() + 1)
-  else if (bucketSize === '1w') d.setUTCDate(d.getUTCDate() + 7)
-  else d.setUTCDate(d.getUTCDate() + 1)
+  switch (bucketSize) {
+    case '15m':
+      d.setUTCMinutes(d.getUTCMinutes() + 15)
+      break
+    case '1M':
+      d.setUTCMonth(d.getUTCMonth() + 1)
+      break
+    case '1h':
+      d.setUTCHours(d.getUTCHours() + 1)
+      break
+    case '1w':
+      d.setUTCDate(d.getUTCDate() + 7)
+      break
+    case '5m':
+      d.setUTCMinutes(d.getUTCMinutes() + 5)
+      break
+    default: // '1d'
+      d.setUTCDate(d.getUTCDate() + 1)
+  }
   return d.toISOString()
 }
 

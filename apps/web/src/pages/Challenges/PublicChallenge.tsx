@@ -66,7 +66,9 @@ export function PublicChallenge({
 
   const standings = (standingsQuery.data ?? []).filter((s) => s.status === 'active')
   const series = standings
-    .map((s, i) => toCumulativeSeries(s, COLORS[i % COLORS.length], challenge.start_ts, challenge.spec.bucket_size))
+    .map((s, i) =>
+      toCumulativeSeries(s, COLORS[i % COLORS.length], challenge.start_ts, challenge.effective_bucket_size),
+    )
     // Keep members with at least one real bucket (the start-line point alone is length 1).
     .filter((s) => s.data.length > 1)
 

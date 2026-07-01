@@ -37,6 +37,29 @@ export const challengeAggregationSchema = z.enum(['sum', 'count']).meta({
 
 export type ChallengeAggregation = z.infer<typeof challengeAggregationSchema>
 
+/**
+ * Chart bucket granularity the creator picks. `auto` adapts to the challenge window
+ * (fine buckets for short challenges, coarse for long ones); a fixed coarser size can
+ * be chosen for very long challenges where coarse points are preferred.
+ */
+export const challengeBucketSizeSchema = z.enum(['auto', '1d', '1w', '1M']).meta({
+  description: 'Chart bucket granularity: "auto" adapts to the window, or a fixed coarser size',
+  id: 'ChallengeBucketSize',
+})
+
+export type ChallengeBucketSizeChoice = z.infer<typeof challengeBucketSizeSchema>
+
+/**
+ * Concrete bucket size the race chart is actually rendered with, resolved from
+ * `bucket_size` + the challenge window.
+ */
+export const challengeEffectiveBucketSizeSchema = z.enum(['5m', '15m', '1h', '1d', '1w', '1M']).meta({
+  description: 'Resolved chart bucket size (from bucket_size + window) the race chart is rendered with',
+  id: 'ChallengeEffectiveBucketSize',
+})
+
+export type ChallengeEffectiveBucketSize = z.infer<typeof challengeEffectiveBucketSizeSchema>
+
 export const challengeSpecSchema = z
   .object({
     activity_type_id: z
@@ -45,7 +68,7 @@ export const challengeSpecSchema = z
       .optional()
       .meta({ description: 'Reserved for future use; v1 measurement is driven entirely by `pattern`' }),
     aggregation: challengeAggregationSchema,
-    bucket_size: z.enum(['1d', '1w', '1M']).default('1d').meta({ description: 'Chart bucket size' }),
+    bucket_size: challengeBucketSizeSchema.default('auto'),
     pattern: z
       .string()
       .min(1)
@@ -174,6 +197,9 @@ export type RegisterChallengeMemberBody = z.infer<typeof registerChallengeMember
 
 export const publicChallengeSchema = z
   .object({
+    effective_bucket_size: challengeEffectiveBucketSizeSchema.meta({
+      description: 'Concrete bucket size the race chart is rendered with (resolved from spec.bucket_size + window)',
+    }),
     end_ts: z.string(),
     host_identity: z.string().meta({ description: 'Host public profile base URL' }),
     is_public: z.boolean(),
