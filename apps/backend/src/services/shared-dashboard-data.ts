@@ -111,8 +111,18 @@ const resolveTrendChart = async (
     lookback_days: config.lookback_days ?? 90,
     pattern: config.pattern,
     source_type: config.source_type,
+    ...(config.breakdown_fields?.length ? { breakdown_fields: config.breakdown_fields } : {}),
   })
-  return { data: { current_value: result.current_value, history: result.history }, type: 'trend_chart' }
+  return {
+    data: {
+      current_value: result.current_value,
+      history: result.history,
+      ...(result.breakdown_series?.length
+        ? { breakdown_histories: result.breakdown_histories, breakdown_series: result.breakdown_series }
+        : {}),
+    },
+    type: 'trend_chart',
+  }
 }
 
 const resolveBarChart = async (
@@ -128,8 +138,19 @@ const resolveBarChart = async (
     pattern: config.pattern,
     source_type: config.source_type,
     start: start.toISOString(),
+    ...(config.breakdown_fields?.length ? { breakdown_fields: config.breakdown_fields } : {}),
   })
-  // Drop breakdown buckets — bar widgets only render simple {bucket_start, value}.
+
+  if (result.breakdown_series?.length) {
+    const breakdown_buckets = result.buckets.flatMap((b) =>
+      'series' in b ? [{ bucket_start: b.bucket_start, series: b.series }] : [],
+    )
+    return {
+      data: { breakdown_buckets, breakdown_series: result.breakdown_series, buckets: [] },
+      type: 'bar_chart',
+    }
+  }
+
   const buckets = result.buckets.flatMap((b) =>
     'value' in b ? [{ bucket_start: b.bucket_start, value: b.value }] : [],
   )

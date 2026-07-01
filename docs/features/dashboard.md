@@ -99,6 +99,11 @@ _&lt;section&gt;_"** at the bottom to replace that widget in place with the new 
 (and optionally give it a new title). On save you are taken straight back to that
 dashboard. This works for both your home dashboard and any shared dashboard you own.
 
+Chart widgets preserve a **breakdown** (splitting an activity type into series by a
+categorical field, e.g. by partner or intensity): the breakdown is saved with the
+widget and rendered as multiple coloured series with a legend, both on your own
+dashboards and on public shared boards.
+
 ### Metric Picker
 
 When adding a Metric Card or Sparkline Card, the metric picker shows a searchable dropdown of all available metrics grouped into "Built-in" (HRV, resting HR, sleep score, steps, zones, weight, etc.) and "Custom" (any user-defined metrics). You can filter by typing, and both the friendly label and the raw metric key are shown.

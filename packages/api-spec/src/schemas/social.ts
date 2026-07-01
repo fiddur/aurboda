@@ -15,7 +15,7 @@
 
 import { z } from 'zod'
 
-import { chartDataBucketSchema } from './chart-data.ts'
+import { chartDataBreakdownBucketSchema, chartDataBucketSchema } from './chart-data.ts'
 import { baseResponseSchema } from './common.ts'
 import { dashboardConfigSchema } from './dashboard.ts'
 import { goalProgressSchema } from './goals.ts'
@@ -119,6 +119,14 @@ export const sparklineCardDataSchema = z
 
 export const trendChartDataSchema = z
   .object({
+    breakdown_histories: z
+      .record(z.string(), z.array(trendHistoryPointSchema))
+      .optional()
+      .meta({ description: 'Per-series trend histories keyed by series name, when broken down' }),
+    breakdown_series: z
+      .array(z.string())
+      .optional()
+      .meta({ description: 'Distinct series names when broken down' }),
     current_value: z.number().meta({ description: 'Current trend value' }),
     history: z.array(trendHistoryPointSchema).meta({ description: 'Historical trend values' }),
   })
@@ -126,6 +134,14 @@ export const trendChartDataSchema = z
 
 export const barChartDataSchema = z
   .object({
+    breakdown_buckets: z
+      .array(chartDataBreakdownBucketSchema)
+      .optional()
+      .meta({ description: 'Bucketed values per series, when broken down' }),
+    breakdown_series: z
+      .array(z.string())
+      .optional()
+      .meta({ description: 'Distinct series names when broken down' }),
     buckets: z.array(chartDataBucketSchema).meta({ description: 'Bucketed chart values' }),
   })
   .meta({ id: 'BarChartData' })

@@ -30,6 +30,30 @@ describe('buildChartUrl', () => {
     expect(p.has('widget_id')).toBe(false)
   })
 
+  test('carries breakdown_fields as a comma-separated list', () => {
+    const p = params(
+      buildChartUrl({
+        breakdown_fields: ['partner', 'mood'],
+        chart_type: 'trend',
+        pattern: 'intimacy',
+        source_type: 'activity_type',
+      }),
+    )
+    expect(p.get('breakdown_fields')).toBe('partner,mood')
+  })
+
+  test('omits breakdown_fields when empty', () => {
+    const p = params(
+      buildChartUrl({
+        breakdown_fields: [],
+        chart_type: 'trend',
+        pattern: 'intimacy',
+        source_type: 'activity_type',
+      }),
+    )
+    expect(p.has('breakdown_fields')).toBe(false)
+  })
+
   test('carries the board-chart origin when provided', () => {
     const p = params(
       buildChartUrl({
