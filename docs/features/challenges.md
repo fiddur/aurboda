@@ -81,6 +81,20 @@ gives out (e.g. `https://aurboda.net/.well-known/aurboda`). Route `/.well-known/
 to the backend in the reverse proxy (standard for federation). Dev instances that hit
 the backend directly need no extra config.
 
+## Using it in the web app
+
+- **Manage** at `/challenges` (sidebar "Challenges"): create a challenge (name,
+  metric or activity type, sum/count, unit, date range with This-week/This-month
+  quick-sets, public/unlisted), copy its link, delete it; see challenges you've
+  joined; and **join by URL** (paste any challenge link — local or remote).
+- **View** at `/u/<username>/<slug>`: a cumulative **race chart** (one line per
+  member) + a **leaderboard** (rank, `@member · host`, total, freshness). This is
+  the same `/u/:username/:slug` page as shared dashboards — the server returns a
+  `type` and the page renders the right view.
+- **Join buttons:** logged-in users on the host instance get a one-click **Join**;
+  anyone can **Join from another instance** (enter your Aurboda host → you're sent
+  to your own instance's `/challenges/join`, which does the federated join).
+
 ## API surface (authed, owner/joiner)
 
 `/challenges` — `GET` (list hosted), `POST` (create), `GET/PUT/DELETE /:id`,

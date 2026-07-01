@@ -1,0 +1,106 @@
+import type {
+  Challenge,
+  ChallengeParticipation,
+  ChallengeParticipationResponse,
+  ChallengeParticipationsResponse,
+  ChallengeResponse,
+  ChallengesResponse,
+  ChallengeStanding,
+  ChallengeStandingsResponse,
+  CreateChallengeBody,
+  PublicChallengeResponse,
+  PublicSharedDashboardResponse,
+  UpdateChallengeBody,
+} from '@aurboda/api-spec'
+
+import axios from 'axios'
+
+import { API_URL } from '../../config'
+import { auth } from '../auth'
+
+const authHeaders = () => ({ Authorization: `Bearer ${auth.value.token}` })
+
+// ===========================================================================
+// Owner / joiner (authenticated)
+// ===========================================================================
+
+export const listChallenges = async (): Promise<Challenge[]> => {
+  const res = await axios.get<ChallengesResponse>(`${API_URL}/challenges`, { headers: authHeaders() })
+  return res.data.challenges
+}
+
+export const createChallenge = async (body: CreateChallengeBody): Promise<Challenge> => {
+  const res = await axios.post<ChallengeResponse>(`${API_URL}/challenges`, body, { headers: authHeaders() })
+  if (!res.data.challenge) throw new Error(res.data.error ?? 'Failed to create challenge')
+  return res.data.challenge
+}
+
+export const updateChallenge = async (id: string, body: UpdateChallengeBody): Promise<Challenge> => {
+  const res = await axios.put<ChallengeResponse>(`${API_URL}/challenges/${id}`, body, {
+    headers: authHeaders(),
+  })
+  if (!res.data.challenge) throw new Error(res.data.error ?? 'Failed to update challenge')
+  return res.data.challenge
+}
+
+export const deleteChallenge = async (id: string): Promise<void> => {
+  await axios.delete(`${API_URL}/challenges/${id}`, { headers: authHeaders() })
+}
+
+export const listMyChallengeParticipations = async (): Promise<ChallengeParticipation[]> => {
+  const res = await axios.get<ChallengeParticipationsResponse>(`${API_URL}/challenges/participations/mine`, {
+    headers: authHeaders(),
+  })
+  return res.data.participations
+}
+
+export const joinChallengeByUrl = async (challengeUrl: string): Promise<ChallengeParticipation> => {
+  const res = await axios.post<ChallengeParticipationResponse>(
+    `${API_URL}/challenges/join`,
+    { challenge_url: challengeUrl },
+    { headers: authHeaders() },
+  )
+  if (!res.data.participation) throw new Error(res.data.error ?? 'Failed to join challenge')
+  return res.data.participation
+}
+
+export const leaveChallenge = async (participationId: string): Promise<void> => {
+  await axios.delete(`${API_URL}/challenges/participations/${participationId}`, { headers: authHeaders() })
+}
+
+/** Owner-only standings (can force a refresh). */
+export const fetchOwnerChallengeStandings = async (
+  id: string,
+  refresh = false,
+): Promise<ChallengeStanding[]> => {
+  const res = await axios.get<ChallengeStandingsResponse>(`${API_URL}/challenges/${id}/standings`, {
+    headers: authHeaders(),
+    params: refresh ? { refresh: '1' } : {},
+  })
+  return res.data.members ?? []
+}
+
+// ===========================================================================
+// Public viewing (unauthenticated — no Authorization header)
+// ===========================================================================
+
+/** Resolve a `/u/:username/:slug` resource — either a shared dashboard or a challenge. */
+export const fetchPublicResource = async (
+  username: string,
+  slug: string,
+): Promise<PublicSharedDashboardResponse | PublicChallengeResponse> => {
+  const res = await axios.get<PublicSharedDashboardResponse | PublicChallengeResponse>(
+    `${API_URL}/public/${encodeURIComponent(username)}/${encodeURIComponent(slug)}`,
+  )
+  return res.data
+}
+
+export const fetchPublicChallengeStandings = async (
+  username: string,
+  slug: string,
+): Promise<ChallengeStanding[]> => {
+  const res = await axios.get<ChallengeStandingsResponse>(
+    `${API_URL}/public/${encodeURIComponent(username)}/${encodeURIComponent(slug)}/standings`,
+  )
+  return res.data.members ?? []
+}
