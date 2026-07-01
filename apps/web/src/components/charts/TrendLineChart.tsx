@@ -336,7 +336,16 @@ function attachMultiSeriesTooltip(
         lines.push(`${s.name}: ${nearest.value.toFixed(1)}`)
       }
 
-      tooltip.innerHTML = `<strong>${dateLabel}</strong><br/>${lines.join('<br/>')}`
+      // Build with text nodes, not innerHTML: series names can be untrusted,
+      // federated data (e.g. a remote challenge member's display_name), so this
+      // must not become an HTML-injection sink.
+      tooltip.replaceChildren()
+      const heading = document.createElement('strong')
+      heading.textContent = dateLabel
+      tooltip.append(heading)
+      for (const line of lines) {
+        tooltip.append(document.createElement('br'), document.createTextNode(line))
+      }
       tooltip.style.display = 'block'
 
       const containerRect = container.getBoundingClientRect()

@@ -1,15 +1,13 @@
 /**
- * PublicDashboard - a shared dashboard at /u/:username/:slug.
+ * PublicResource - resolves `/u/:username/:slug` to either a shared dashboard or
+ * a challenge and renders the appropriate view. Rendered without app chrome.
  *
- * - When the logged-in user is the owner (their token is present and the
- *   profile username matches), it renders the live, editable dashboard (same
- *   controls as the home dashboard) and saves edits via `updateSharedDashboard`.
- * - Otherwise it renders read-only from the server-resolved `widget_data` via
- *   `PublicWidgetRenderer` (no per-widget fetching).
- *
- * Rendered without app chrome (see index.tsx).
+ * - Dashboard, owner viewing their own: live, editable dashboard (own controls),
+ *   saved via `updateSharedDashboard`.
+ * - Dashboard, anyone else: read-only from server-resolved `widget_data`.
+ * - Challenge: the race-chart + leaderboard view.
  */
-import type { DashboardConfig, SectionType } from '@aurboda/api-spec'
+import type { DashboardConfig, SectionType, WidgetDataMap } from '@aurboda/api-spec'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRoute } from 'preact-iso'
@@ -17,7 +15,8 @@ import { useState } from 'preact/hooks'
 
 import { EditableDashboard } from '../../components/EditableDashboard'
 import { PublicWidgetRenderer } from '../../components/widgets'
-import { fetchPublicSharedDashboard, listSharedDashboards, updateSharedDashboard } from '../../state/api'
+import { PublicChallenge } from '../Challenges/PublicChallenge'
+import { fetchPublicResource, listSharedDashboards, updateSharedDashboard } from '../../state/api'
 import { auth } from '../../state/auth'
 import '../Dashboard/style.css'
 import './style.css'
@@ -56,8 +55,14 @@ function OwnerSharedDashboard({ username, slug }: { username: string; slug: stri
   }
 
   const share = listQuery.data?.find((d) => d.slug === slug)
-  // Owner is logged in but this slug isn't one of theirs — show the public view.
-  if (!share) return <ReadOnlyPublicDashboard username={username} slug={slug} />
+  if (!share) {
+    return (
+      <div class="public-dashboard">
+        <h1>Dashboard not found</h1>
+        <p class="public-muted">This shared dashboard does not exist or is no longer available.</p>
+      </div>
+    )
+  }
 
   return (
     <div class="dashboard public-dashboard">
@@ -73,14 +78,7 @@ function OwnerSharedDashboard({ username, slug }: { username: string; slug: stri
             </button>
           ) : (
             <button class="btn-edit" onClick={() => setIsEditing(true)} title="Edit dashboard">
-              <svg
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-              >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
                 <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
               </svg>
@@ -99,34 +97,18 @@ function OwnerSharedDashboard({ username, slug }: { username: string; slug: stri
   )
 }
 
-/** Read-only view rendered from the server-resolved widget data. */
-function ReadOnlyPublicDashboard({ username, slug }: { username: string; slug: string }) {
-  const query = useQuery({
-    queryFn: () => fetchPublicSharedDashboard(username, slug),
-    queryKey: ['publicSharedDashboard', username, slug],
-    retry: false,
-    staleTime: 60 * 1000,
-  })
-
-  if (query.isLoading) {
-    return (
-      <div class="public-dashboard">
-        <div class="public-loading">Loading…</div>
-      </div>
-    )
-  }
-
-  if (query.isError || !query.data?.success || !query.data.config) {
-    return (
-      <div class="public-dashboard">
-        <h1>Dashboard not found</h1>
-        <p class="public-muted">This shared dashboard does not exist or is no longer available.</p>
-      </div>
-    )
-  }
-
-  const { config, name, widget_data } = query.data
-
+/** Read-only dashboard rendered from already-fetched server data. */
+function ReadOnlyDashboard({
+  username,
+  name,
+  config,
+  widgetData,
+}: {
+  username: string
+  name: string
+  config: DashboardConfig
+  widgetData: WidgetDataMap | undefined
+}) {
   return (
     <div class="dashboard public-dashboard">
       <div class="dashboard-header">
@@ -144,7 +126,7 @@ function ReadOnlyPublicDashboard({ username, slug }: { username: string; slug: s
             </div>
             <div class={gridClass(section.type)}>
               {section.widgets.map((widget) => (
-                <PublicWidgetRenderer key={widget.id} widget={widget} data={widget_data?.[widget.id]} />
+                <PublicWidgetRenderer key={widget.id} widget={widget} data={widgetData?.[widget.id]} />
               ))}
             </div>
           </section>
@@ -154,16 +136,60 @@ function ReadOnlyPublicDashboard({ username, slug }: { username: string; slug: s
   )
 }
 
-export function PublicDashboard() {
+export function PublicResource() {
   const { params } = useRoute()
   const username = params.username
   const slug = params.slug
-
   const isOwner = Boolean(auth.value.token) && auth.value.user === username
 
-  return isOwner ? (
-    <OwnerSharedDashboard username={username} slug={slug} />
-  ) : (
-    <ReadOnlyPublicDashboard username={username} slug={slug} />
+  const query = useQuery({
+    queryFn: () => fetchPublicResource(username, slug),
+    queryKey: ['publicResource', username, slug],
+    retry: false,
+    staleTime: 60 * 1000,
+  })
+
+  if (query.isLoading) {
+    return (
+      <div class="public-dashboard">
+        <div class="public-loading">Loading…</div>
+      </div>
+    )
+  }
+
+  const data = query.data
+
+  // Challenge — same view for everyone (from a successful public fetch).
+  if (data?.success && data.type === 'challenge' && data.challenge) {
+    return <PublicChallenge username={username} slug={slug} challenge={data.challenge} />
+  }
+
+  // Owner of this profile → their live, editable dashboard, independent of the
+  // (unauthenticated, retry:false) public fetch — so a transient failure of that
+  // fetch doesn't strip the owner of their editable view.
+  if (isOwner) return <OwnerSharedDashboard username={username} slug={slug} />
+
+  if (query.isError || !data?.success) return <NotFound />
+
+  // Non-owner dashboard. `'config' in data` narrows the union (no cast).
+  if ('config' in data && data.config) {
+    return (
+      <ReadOnlyDashboard
+        username={username}
+        name={data.name ?? 'Dashboard'}
+        config={data.config}
+        widgetData={data.widget_data}
+      />
+    )
+  }
+  return <NotFound />
+}
+
+function NotFound() {
+  return (
+    <div class="public-dashboard">
+      <h1>Not found</h1>
+      <p class="public-muted">This page does not exist or is no longer available.</p>
+    </div>
   )
 }

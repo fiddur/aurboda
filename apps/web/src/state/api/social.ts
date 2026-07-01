@@ -1,7 +1,6 @@
 import type {
   CreateSharedDashboardBody,
   PublicProfileResponse,
-  PublicSharedDashboardResponse,
   SharedDashboard,
   SharedDashboardResponse,
   SharedDashboardsResponse,
@@ -56,16 +55,6 @@ export const deleteSharedDashboard = async (id: string): Promise<void> => {
 export const fetchPublicProfile = async (username: string): Promise<PublicProfileResponse> => {
   const response = await axios.get<PublicProfileResponse>(
     `${API_URL}/public/${encodeURIComponent(username)}/dashboards`,
-  )
-  return response.data
-}
-
-export const fetchPublicSharedDashboard = async (
-  username: string,
-  slug: string,
-): Promise<PublicSharedDashboardResponse> => {
-  const response = await axios.get<PublicSharedDashboardResponse>(
-    `${API_URL}/public/${encodeURIComponent(username)}/${encodeURIComponent(slug)}`,
   )
   return response.data
 }
