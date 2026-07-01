@@ -104,6 +104,13 @@ categorical field, e.g. by partner or intensity): the breakdown is saved with th
 widget and rendered as multiple coloured series with a legend, both on your own
 dashboards and on public shared boards.
 
+When adding or updating a chart on a board, you can **mask** individual breakdown
+fields for public viewers: in the Add-to-dashboard / Update-chart form, tick the
+fields to hide under "Mask on public boards". Masked field values are replaced with
+stable positional labels (A, B, C…) — the breakdown structure and volumes still show,
+but the real values (e.g. partner names) never leave the server for a public viewer.
+You always see the real values on your own live view.
+
 ### Metric Picker
 
 When adding a Metric Card or Sparkline Card, the metric picker shows a searchable dropdown of all available metrics grouped into "Built-in" (HRV, resting HR, sleep score, steps, zones, weight, etc.) and "Custom" (any user-defined metrics). You can filter by typing, and both the friendly label and the raw metric key are shown.

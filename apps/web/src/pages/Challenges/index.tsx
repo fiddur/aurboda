@@ -5,7 +5,12 @@
  * unlisted), copy its link, delete it; join a challenge by URL (local or on
  * another Aurboda instance). Federation happens server-side.
  */
-import type { Challenge, ChallengeParticipation, CreateChallengeBody } from '@aurboda/api-spec'
+import type {
+  Challenge,
+  ChallengeBucketSizeChoice,
+  ChallengeParticipation,
+  CreateChallengeBody,
+} from '@aurboda/api-spec'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'preact/hooks'
@@ -39,6 +44,7 @@ function CreateChallengeForm({ onCreated }: { onCreated: () => void }) {
   const [unit, setUnit] = useState('')
   const [startDate, setStartDate] = useState(initialRange.start)
   const [endDate, setEndDate] = useState(initialRange.end)
+  const [bucketSize, setBucketSize] = useState<ChallengeBucketSizeChoice>('auto')
   const [isPublic, setIsPublic] = useState(false)
 
   const createMutation = useMutation({
@@ -68,7 +74,7 @@ function CreateChallengeForm({ onCreated }: { onCreated: () => void }) {
       name: name.trim(),
       spec: {
         aggregation,
-        bucket_size: '1d',
+        bucket_size: bucketSize,
         pattern: pattern.trim(),
         source_type: sourceType,
         unit: unit.trim(),
@@ -149,6 +155,19 @@ function CreateChallengeForm({ onCreated }: { onCreated: () => void }) {
           This month
         </button>
       </div>
+
+      <label>
+        Chart detail
+        <select
+          value={bucketSize}
+          onChange={(e) => setBucketSize((e.target as HTMLSelectElement).value as ChallengeBucketSizeChoice)}
+        >
+          <option value="auto">Auto (adapts to the date range)</option>
+          <option value="1d">Daily</option>
+          <option value="1w">Weekly</option>
+          <option value="1M">Monthly</option>
+        </select>
+      </label>
 
       <label class="challenge-public-toggle">
         <input type="checkbox" checked={isPublic} onChange={(e) => setIsPublic((e.target as HTMLInputElement).checked)} />

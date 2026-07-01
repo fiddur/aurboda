@@ -13,7 +13,7 @@ import { randomBytes } from 'node:crypto'
 import { query } from './connection.ts'
 import { getSharedDashboardBySlug } from './shared-dashboards.ts'
 
-export type ChallengeBucketSize = '1d' | '1w' | '1M'
+export type ChallengeBucketSize = 'auto' | '1d' | '1w' | '1M'
 
 export interface ChallengeSpecFields {
   source_type: ChallengeSourceType
