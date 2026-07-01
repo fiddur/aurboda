@@ -40,7 +40,7 @@ import {
   updateUserSettings,
 } from '../../state/api'
 import { auth } from '../../state/auth'
-import { chartWidgetTitle, parseChartOrigin, replaceWidgetInConfig } from './updateWidget'
+import { boardReturnPath, chartWidgetTitle, parseChartOrigin, replaceWidgetInConfig } from './updateWidget'
 import './style.css'
 
 type SourceType = 'metric' | 'productivity_category' | 'activity_type'
@@ -785,10 +785,10 @@ function AddToDashboardModal({ state, onClose }: { state: ChartState; onClose: (
  */
 function UpdateChartOnBoard({ state, origin }: { state: ChartState; origin: ChartOrigin }) {
   const queryClient = useQueryClient()
+  const { route } = useLocation()
   const isHome = origin.board_id === 'home'
   const [expanded, setExpanded] = useState(false)
   const [title, setTitle] = useState('')
-  const [saved, setSaved] = useState(false)
 
   const dashboardQuery = useQuery({
     enabled: isHome,
@@ -810,6 +810,9 @@ function UpdateChartOnBoard({ state, origin }: { state: ChartState; origin: Char
   const section = targetConfig?.sections.find((s) => s.id === origin.section_id)
   const existingWidget = section?.widgets.find((w) => w.id === origin.widget_id)
 
+  // Where to send the user after a successful update: the board they came from.
+  const destination = boardReturnPath(origin, auth.value.user, shared?.slug)
+
   const updateMutation = useMutation({
     mutationFn: async () => {
       if (!targetConfig) return
@@ -822,7 +825,7 @@ function UpdateChartOnBoard({ state, origin }: { state: ChartState; origin: Char
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['dashboard'] })
       void queryClient.invalidateQueries({ queryKey: ['sharedDashboards'] })
-      setSaved(true)
+      route(destination)
     },
   })
 
@@ -838,7 +841,6 @@ function UpdateChartOnBoard({ state, origin }: { state: ChartState; origin: Char
           class="btn-add-to-dashboard"
           onClick={() => {
             setTitle(chartWidgetTitle(existingWidget) ?? '')
-            setSaved(false)
             setExpanded(true)
           }}
         >
@@ -855,46 +857,30 @@ function UpdateChartOnBoard({ state, origin }: { state: ChartState; origin: Char
   return (
     <div class="chart-goal-form">
       <h3>{label}</h3>
-      {saved ? (
-        <>
-          <div class="add-to-dash-success">Chart updated!</div>
-          <div class="goal-form-actions">
-            <button class="btn-save" onClick={() => setExpanded(false)}>
-              Done
-            </button>
-          </div>
-        </>
-      ) : (
-        <>
-          <p class="goal-form-description">
-            Replace this chart on <strong>{boardName}</strong> with the current configuration.
-          </p>
-          <div class="goal-form-fields">
-            <label style={{ flex: 1 }}>
-              Title (optional)
-              <input
-                class="chart-update-title"
-                type="text"
-                value={title}
-                onInput={(e) => setTitle((e.target as HTMLInputElement).value)}
-                placeholder={state.pattern || 'Chart title'}
-              />
-            </label>
-          </div>
-          <div class="goal-form-actions">
-            <button class="btn-cancel" onClick={() => setExpanded(false)}>
-              Cancel
-            </button>
-            <button
-              class="btn-save"
-              disabled={updateMutation.isPending}
-              onClick={() => updateMutation.mutate()}
-            >
-              {updateMutation.isPending ? 'Updating...' : 'Update Chart'}
-            </button>
-          </div>
-        </>
-      )}
+      <p class="goal-form-description">
+        Replace this chart on <strong>{boardName}</strong> with the current configuration. You'll be taken
+        back to the dashboard.
+      </p>
+      <div class="goal-form-fields">
+        <label style={{ flex: 1 }}>
+          Title (optional)
+          <input
+            class="chart-update-title"
+            type="text"
+            value={title}
+            onInput={(e) => setTitle((e.target as HTMLInputElement).value)}
+            placeholder={state.pattern || 'Chart title'}
+          />
+        </label>
+      </div>
+      <div class="goal-form-actions">
+        <button class="btn-cancel" onClick={() => setExpanded(false)}>
+          Cancel
+        </button>
+        <button class="btn-save" disabled={updateMutation.isPending} onClick={() => updateMutation.mutate()}>
+          {updateMutation.isPending ? 'Updating...' : 'Update Chart'}
+        </button>
+      </div>
     </div>
   )
 }

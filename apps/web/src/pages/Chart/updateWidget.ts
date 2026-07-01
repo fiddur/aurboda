@@ -13,6 +13,19 @@ export function parseChartOrigin(query: Record<string, string>): ChartOrigin | n
   return { board_id, section_id, widget_id }
 }
 
+/**
+ * App path of the board a chart update should return to: the home dashboard at
+ * `/`, or the owner's shared dashboard at `/u/<username>/<slug>`.
+ */
+export function boardReturnPath(
+  origin: ChartOrigin,
+  username: string | undefined,
+  slug: string | undefined,
+): string {
+  if (origin.board_id === 'home') return '/'
+  return `/u/${encodeURIComponent(username ?? '')}/${slug ?? ''}`
+}
+
 /** Existing display title of a chart widget, if any (used to pre-fill the update form). */
 export function chartWidgetTitle(widget: DashboardWidget): string | undefined {
   if (widget.type === 'trend_chart' || widget.type === 'bar_chart') return widget.config.title
