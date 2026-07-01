@@ -18,6 +18,8 @@ import {
   wellKnownAurbodaSchema,
 } from '@aurboda/api-spec'
 
+import { isAxiosError } from 'axios'
+
 import { isValidUsername } from '../api/auth-routes.ts'
 import {
   type ChallengeParticipationRecord,
@@ -99,12 +101,19 @@ export const registerMemberWithHost = async (
   slug: string,
   body: { identity_base_url: string; display_name: string; data_endpoint_url: string; join_token: string },
 ): Promise<void> => {
-  const res = await safeFetchPost<{ success?: boolean; error?: string }>(
-    joinUrl(apiBase, `public/${encodeURIComponent(username)}/${encodeURIComponent(slug)}/members`),
-    body,
-  )
-  if (res.data?.success === false) {
-    throw new Error(typeof res.data.error === 'string' ? res.data.error : 'Host rejected the join')
+  try {
+    await safeFetchPost(
+      joinUrl(apiBase, `public/${encodeURIComponent(username)}/${encodeURIComponent(slug)}/members`),
+      body,
+    )
+  } catch (error) {
+    // The host signals rejection with a non-2xx status (axios throws). Surface the
+    // host's own message (e.g. "Challenge is full") rather than a generic status.
+    if (isAxiosError(error)) {
+      const hostError = (error.response?.data as { error?: string } | undefined)?.error
+      throw new Error(hostError ?? 'Host rejected the join')
+    }
+    throw error
   }
 }
 
