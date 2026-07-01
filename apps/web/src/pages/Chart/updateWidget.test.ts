@@ -46,9 +46,9 @@ describe('boardReturnPath', () => {
     )
   })
 
-  test('url-encodes the username', () => {
-    expect(boardReturnPath({ board_id: 'sd-1', section_id: 's', widget_id: 'w' }, 'a b', 'abc')).toBe(
-      '/u/a%20b/abc',
+  test('url-encodes both the username and the slug', () => {
+    expect(boardReturnPath({ board_id: 'sd-1', section_id: 's', widget_id: 'w' }, 'a b', 'a/b')).toBe(
+      '/u/a%20b/a%2Fb',
     )
   })
 })

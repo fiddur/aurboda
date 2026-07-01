@@ -23,7 +23,7 @@ export function boardReturnPath(
   slug: string | undefined,
 ): string {
   if (origin.board_id === 'home') return '/'
-  return `/u/${encodeURIComponent(username ?? '')}/${slug ?? ''}`
+  return `/u/${encodeURIComponent(username ?? '')}/${encodeURIComponent(slug ?? '')}`
 }
 
 /** Existing display title of a chart widget, if any (used to pre-fill the update form). */
