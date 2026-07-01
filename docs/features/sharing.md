@@ -110,7 +110,8 @@ shared dashboard immediately makes its slug return 404.
 
 [Challenges](./challenges.md) build on this foundation (same `/u/:username/:slug`
 namespace, base-URL identity, capability tokens) and add real cross-instance
-federation.
+federation. The [activity feed](./feed.md) reuses the same identity to publish
+individual activities with a per-post, privacy-conservative metric selection.
 
 ## Forward-compatibility
 

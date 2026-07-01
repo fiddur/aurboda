@@ -23,6 +23,7 @@ import {
   getChallengeBySlug,
   getChallengeMemberByIdentity,
   getSharedDashboardBySlug,
+  isMissingDatabase,
   listChallengeMembers,
   listPublicChallenges,
   listPublicSharedDashboards,
@@ -38,10 +39,6 @@ import { validateBody } from '../validation.ts'
 
 /** Upper bound on members a challenge can accept via unauthenticated register-back. */
 const MAX_CHALLENGE_MEMBERS = 200
-
-/** Connecting to a non-existent user database fails with invalid_catalog_name. */
-const isMissingDatabase = (error: unknown): boolean =>
-  error instanceof Error && (error as Error & { code?: string }).code === '3D000'
 
 /**
  * Strip viewer-useless / internal fields from a config before exposing it.

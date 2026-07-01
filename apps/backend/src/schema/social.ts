@@ -95,4 +95,32 @@ export const socialTables: Record<string, string> = {
   challenge_participations_indexes: `
     CREATE INDEX IF NOT EXISTS idx_challenge_participations_url ON challenge_participations (challenge_url)
   `,
+
+  // Federated feed posts: activities the user published to their public feed.
+  // `included_metrics` is the shared scalar-summary set; `series_metrics` is the
+  // explicit high-resolution opt-in that authorizes the public `/series`
+  // endpoint. `activity_id` is a soft reference (no FK): activities are
+  // soft-deleted, and the series endpoint re-checks `deleted_at` at query time,
+  // so a removed activity simply stops resolving.
+  feed_posts: `
+    CREATE TABLE IF NOT EXISTS feed_posts (
+      id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      activity_id       UUID,
+      included_metrics  TEXT[] NOT NULL DEFAULT '{}',
+      series_metrics    TEXT[] NOT NULL DEFAULT '{}',
+      visibility        VARCHAR(12) NOT NULL DEFAULT 'public',
+      include_map       BOOLEAN NOT NULL DEFAULT false,
+      include_chart     BOOLEAN NOT NULL DEFAULT false,
+      created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `,
+  feed_posts_created_index: `
+    CREATE INDEX IF NOT EXISTS idx_feed_posts_created ON feed_posts (created_at DESC)
+  `,
+  // GIN index over the shared-series set — the hot path for the public series
+  // endpoint's `metric = ANY(series_metrics)` authorization check.
+  feed_posts_series_index: `
+    CREATE INDEX IF NOT EXISTS idx_feed_posts_series ON feed_posts USING GIN (series_metrics)
+  `,
 }

@@ -11,12 +11,9 @@
 import type { ChallengeDataResponse } from '@aurboda/api-spec'
 
 import { isValidUsername } from '../api/auth-routes.ts'
-import { getParticipationByToken } from '../db/index.ts'
+import { getParticipationByToken, isMissingDatabase } from '../db/index.ts'
 import { resolveMemberSeries } from '../services/challenge-spec.ts'
 import { type TypedRouter, typedRouter } from '../typed-router.ts'
-
-const isMissingDatabase = (error: unknown): boolean =>
-  error instanceof Error && (error as Error & { code?: string }).code === '3D000'
 
 export const createChallengeDataRouter = (): TypedRouter => {
   const router = typedRouter()
