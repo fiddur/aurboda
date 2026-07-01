@@ -17,7 +17,16 @@
   padding: 2rem 0;
 }
 
-.public-dashboard-list {
+.public-section {
+  margin-top: 2rem;
+}
+
+.public-section h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1.1rem;
+}
+
+.public-item-list {
   list-style: none;
   padding: 0;
   margin: 0;
@@ -26,7 +35,7 @@
   gap: 0.5rem;
 }
 
-.public-dashboard-list a {
+.public-item-list a {
   display: block;
   padding: 0.75rem 1rem;
   border: 1px solid #e5e7eb;
@@ -35,7 +44,7 @@
   color: #111827;
 }
 
-.public-dashboard-list a:hover {
+.public-item-list a:hover {
   border-color: #8b5cf6;
   background: #faf5ff;
 }
@@ -50,13 +59,17 @@
     color: #9ca3af;
   }
 
-  .public-dashboard-list a {
+  .public-section h2 {
+    color: #f3f4f6;
+  }
+
+  .public-item-list a {
     border-color: #374151;
     background: #1f2937;
     color: #f3f4f6;
   }
 
-  .public-dashboard-list a:hover {
+  .public-item-list a:hover {
     border-color: #8b5cf6;
     background: #1e1b4b;
   }
