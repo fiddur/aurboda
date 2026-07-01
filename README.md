@@ -71,11 +71,7 @@ More in the [Timeline docs](docs/features/timeline.md).
 
 ## Dashboard
 
-Your home page is a customizable grid of widgets -- baseline HRV/resting-HR cards, metric sparklines, trend arrows, goal progress, and quick links -- organized into sections. Rearrange, add, or remove widgets to surface what matters to you.
-
-<p align="center">
-  <img src="apps/web/public/screenshots/dashboard.jpg" alt="Customizable dashboard with baseline cards, sparklines, and trend widgets" width="800" />
-</p>
+Your home page is a customizable grid of widgets -- baseline HRV/resting-HR cards, metric sparklines, trend arrows, goal progress, and quick links -- organized into sections. Rearrange, add, or remove widgets to surface what matters to you, then optionally publish a read-only version (see [Sharing & Challenges](#sharing--challenges) below).
 
 More in the [Dashboard docs](docs/features/dashboard.md).
 
@@ -160,11 +156,13 @@ More in the [Correlation docs](docs/features/correlations.md).
 
 ## Sharing & Challenges
 
-Publish read-only **shared dashboards** under your own public namespace (`/u/:username/:slug`) so anyone can view a curated set of charts without signing in. **Challenges** build on the same foundation: host a cumulative-metric or activity competition over a date span, let others join -- even from a different Aurboda instance -- and watch a live race chart and leaderboard of everyone's running total.
+Publish read-only **shared dashboards** under your own public namespace (`/u/:username/:slug`) so anyone can view a curated set of charts without signing in -- no private home dashboard required.
 
 <p align="center">
-  <img src="apps/web/public/screenshots/challenge.jpg" alt="Federated challenge with cumulative race chart and leaderboard" width="800" />
+  <img src="apps/web/public/screenshots/shared-dashboard.jpg" alt="Public shared dashboard with strength-training, running, VO2 max, and sleep-score charts" width="800" />
 </p>
+
+**Challenges** build on the same foundation: host a cumulative-metric or activity competition over a date span, let others join -- even from a different Aurboda instance -- and watch a live race chart and leaderboard of everyone's running total.
 
 More in the [Sharing](docs/features/sharing.md) and [Challenges](docs/features/challenges.md) docs.
 
