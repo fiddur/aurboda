@@ -81,10 +81,14 @@ export function PublicChallenge({
 
       <p class="challenge-view-meta">
         {challenge.spec.pattern} · {challenge.spec.aggregation} ({challenge.spec.unit}) ·{' '}
-        {new Date(challenge.start_ts).toLocaleDateString()} –{' '}
+        {/* Render both dates in the timezone the range was chosen in, so they read
+            exactly as entered regardless of the viewer's browser locale/timezone. */}
+        {new Date(challenge.start_ts).toLocaleDateString(undefined, { timeZone: challenge.timezone })} –{' '}
         {/* end_ts is the exclusive window end (midnight after the last day); step back
             one ms to render the inclusive last competing day. */}
-        {new Date(new Date(challenge.end_ts).getTime() - 1).toLocaleDateString()}
+        {new Date(new Date(challenge.end_ts).getTime() - 1).toLocaleDateString(undefined, {
+          timeZone: challenge.timezone,
+        })}
       </p>
 
       <div class="challenge-view-actions">
