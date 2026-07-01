@@ -82,7 +82,9 @@ export const createFeedPost = async (user: string, input: FeedPostInput): Promis
 export const listFeedPosts = async (user: string): Promise<FeedPostRecord[]> => {
   const result = await query<FeedPostRow>(
     user,
-    `SELECT ${FEED_POST_COLUMNS} FROM feed_posts ORDER BY created_at DESC`,
+    // `id` tiebreaker keeps ordering deterministic when two posts share a
+    // `created_at` (microsecond collision on rapid inserts).
+    `SELECT ${FEED_POST_COLUMNS} FROM feed_posts ORDER BY created_at DESC, id DESC`,
   )
   return result.rows.map(mapFeedPost)
 }

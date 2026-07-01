@@ -115,12 +115,10 @@ export const socialTables: Record<string, string> = {
       updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `,
-  feed_posts_created_index: `
-    CREATE INDEX IF NOT EXISTS idx_feed_posts_created ON feed_posts (created_at DESC)
-  `,
-  // GIN index over the shared-series set — the hot path for the public series
-  // endpoint's `metric = ANY(series_metrics)` authorization check.
-  feed_posts_series_index: `
+  // `idx_feed_posts_series` is a GIN index over the shared-series set — the hot
+  // path for the public series endpoint's `metric = ANY(series_metrics)` check.
+  feed_posts_indexes: `
+    CREATE INDEX IF NOT EXISTS idx_feed_posts_created ON feed_posts (created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_feed_posts_series ON feed_posts USING GIN (series_metrics)
   `,
 }
