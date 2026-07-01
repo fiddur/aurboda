@@ -105,6 +105,13 @@ export const trendChartConfigSchema = z
       .array(z.string())
       .optional()
       .meta({ description: 'Categorical data fields to break the series down by' }),
+    masked_breakdown_fields: z
+      .array(z.string())
+      .optional()
+      .meta({
+        description:
+          'Subset of breakdown_fields whose values are masked (shown as A, B, C…) to public viewers of a shared board',
+      }),
     display_period: z
       .enum(['daily', 'weekly', 'monthly'])
       .optional()
@@ -132,6 +139,13 @@ export const barChartConfigSchema = z
       .array(z.string())
       .optional()
       .meta({ description: 'Categorical data fields to break the series down by' }),
+    masked_breakdown_fields: z
+      .array(z.string())
+      .optional()
+      .meta({
+        description:
+          'Subset of breakdown_fields whose values are masked (shown as A, B, C…) to public viewers of a shared board',
+      }),
     bucket_size: z
       .enum(['1m', '5m', '15m', '1h', '1d', '1w', '1M'])
       .meta({ description: 'Time bucket size' }),

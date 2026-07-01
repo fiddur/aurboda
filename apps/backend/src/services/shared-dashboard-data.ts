@@ -10,11 +10,18 @@
  * The result is keyed by widget id so a public viewer (and, later, a single
  * embeddable chart) can match data to the widget it belongs to.
  */
-import type { DashboardConfig, DashboardWidget, WidgetData, WidgetDataMap } from '@aurboda/api-spec'
+import type {
+  DashboardConfig,
+  DashboardWidget,
+  TrendHistoryPoint,
+  WidgetData,
+  WidgetDataMap,
+} from '@aurboda/api-spec'
 
 import { hrZoneMetrics, isExerciseActivityType } from '@aurboda/api-spec'
 
 import { getAllActivityTypeNames } from '../db/index.ts'
+import { maskBreakdownNames } from './breakdown-mask.ts'
 import { getChartData } from './chart-data.ts'
 import { getActivityImpact } from './correlations/activity-impact.ts'
 import { getBaseline } from './correlations/baseline.ts'
@@ -113,14 +120,30 @@ const resolveTrendChart = async (
     source_type: config.source_type,
     ...(config.breakdown_fields?.length ? { breakdown_fields: config.breakdown_fields } : {}),
   })
+  if (result.breakdown_series?.length) {
+    const nameFor = maskBreakdownNames(
+      result.breakdown_series,
+      config.breakdown_fields ?? [],
+      config.masked_breakdown_fields ?? [],
+    )
+    const mask = (name: string) => nameFor.get(name) ?? name
+    const breakdown_histories: Record<string, TrendHistoryPoint[]> = {}
+    for (const name of result.breakdown_series) {
+      breakdown_histories[mask(name)] = result.breakdown_histories?.[name] ?? []
+    }
+    return {
+      data: {
+        breakdown_histories,
+        breakdown_series: result.breakdown_series.map(mask),
+        current_value: result.current_value,
+        history: result.history,
+      },
+      type: 'trend_chart',
+    }
+  }
+
   return {
-    data: {
-      current_value: result.current_value,
-      history: result.history,
-      ...(result.breakdown_series?.length
-        ? { breakdown_histories: result.breakdown_histories, breakdown_series: result.breakdown_series }
-        : {}),
-    },
+    data: { current_value: result.current_value, history: result.history },
     type: 'trend_chart',
   }
 }
@@ -142,11 +165,24 @@ const resolveBarChart = async (
   })
 
   if (result.breakdown_series?.length) {
+    const nameFor = maskBreakdownNames(
+      result.breakdown_series,
+      config.breakdown_fields ?? [],
+      config.masked_breakdown_fields ?? [],
+    )
+    const mask = (name: string) => nameFor.get(name) ?? name
     const breakdown_buckets = result.buckets.flatMap((b) =>
-      'series' in b ? [{ bucket_start: b.bucket_start, series: b.series }] : [],
+      'series' in b
+        ? [
+            {
+              bucket_start: b.bucket_start,
+              series: Object.fromEntries(Object.entries(b.series).map(([name, value]) => [mask(name), value])),
+            },
+          ]
+        : [],
     )
     return {
-      data: { breakdown_buckets, breakdown_series: result.breakdown_series, buckets: [] },
+      data: { breakdown_buckets, breakdown_series: result.breakdown_series.map(mask), buckets: [] },
       type: 'bar_chart',
     }
   }
