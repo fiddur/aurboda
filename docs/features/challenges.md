@@ -63,6 +63,14 @@ funnel into this. When B === A, steps 1–5 collapse to a direct local membershi
 persisted per member; a failed fetch falls back to last-known data flagged `stale`)
 and computes local members in-process.
 
+Each standing carries a **`last_updated`** — the timestamp of that member's most
+recent *contributing* data point within the challenge window (`MAX(time)` of the
+measured metric/activity, using the same source filter as the total). A member with
+no data yet reports `null` (rendered as "—"), never the request time — so members on
+0 don't all share a bogus "just now". Remote members report their own `last_updated`;
+the host persists it (distinct from `last_fetched_at`, which is when the host fetched)
+and surfaces it in standings.
+
 ## Security & trust
 
 - The unguessable slug + capability tokens are the gates; data endpoints are

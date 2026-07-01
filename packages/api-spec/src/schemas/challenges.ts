@@ -139,7 +139,10 @@ export const challengeStandingSchema = z
     buckets: z.array(chartDataBucketSchema).meta({ description: 'Per-bucket values over the window' }),
     display_name: z.string(),
     identity_base_url: z.string(),
-    last_updated: z.string().nullable().meta({ description: 'When this member data was last fetched' }),
+    last_updated: z.string().nullable().meta({
+      description:
+        "Timestamp of this member's most recent contributing data point in the window, or null if they have no data yet",
+    }),
     stale: z.boolean().meta({ description: 'True if the latest fetch failed (showing last-known data)' }),
     status: z.enum(['active', 'withdrawn']),
     total: z.number().meta({ description: 'Cumulative total over the window' }),
@@ -207,7 +210,10 @@ export const challengeDataResponseSchema = baseResponseSchema
   .extend({
     buckets: z.array(chartDataBucketSchema).optional(),
     display_name: z.string().optional(),
-    last_updated: z.string().nullable().optional(),
+    last_updated: z.string().nullable().optional().meta({
+      description:
+        'Timestamp of the most recent contributing data point in the window, or null if there is no data yet',
+    }),
     total: z.number().optional(),
     unit: z.string().optional(),
   })

@@ -33,7 +33,7 @@ export const createChallengeDataRouter = (): TypedRouter => {
         if (!participation || participation.status === 'withdrawn') {
           return res.status(404).json({ error: 'Not found', success: false })
         }
-        const { buckets, total } = await resolveMemberSeries(
+        const { buckets, last_updated, total } = await resolveMemberSeries(
           username,
           participation.spec,
           participation.start_ts,
@@ -43,7 +43,7 @@ export const createChallengeDataRouter = (): TypedRouter => {
         res.json({
           buckets,
           display_name: username,
-          last_updated: new Date().toISOString(),
+          last_updated,
           success: true,
           total,
           unit: participation.spec.unit,
