@@ -68,7 +68,12 @@ export function PublicChallenge({
   const series = standings
     // Falls back to daily if a cross-version host omits the resolved bucket size.
     .map((s, i) =>
-      toCumulativeSeries(s, COLORS[i % COLORS.length], challenge.start_ts, challenge.effective_bucket_size ?? '1d'),
+      toCumulativeSeries(
+        s,
+        COLORS[i % COLORS.length],
+        challenge.start_ts,
+        challenge.effective_bucket_size ?? '1d',
+      ),
     )
     // Keep members with at least one real bucket (the start-line point alone is length 1).
     .filter((s) => s.data.length > 1)
@@ -89,7 +94,10 @@ export function PublicChallenge({
         {formatDateInZone(challenge.start_ts, challenge.timezone)} –{' '}
         {/* end_ts is the exclusive window end (midnight after the last day); step back
             one ms to render the inclusive last competing day. */}
-        {formatDateInZone(new Date(new Date(challenge.end_ts).getTime() - 1).toISOString(), challenge.timezone)}
+        {formatDateInZone(
+          new Date(new Date(challenge.end_ts).getTime() - 1).toISOString(),
+          challenge.timezone,
+        )}
       </p>
 
       <div class="challenge-view-actions">
@@ -113,7 +121,19 @@ export function PublicChallenge({
         {standingsQuery.isLoading ? (
           <div class="public-loading">Loading standings…</div>
         ) : series.length > 0 ? (
-          <TrendLineChart data={[]} color={COLORS[0]} multiSeries={series} height={280} />
+          <TrendLineChart
+            data={[]}
+            color={COLORS[0]}
+            multiSeries={series}
+            height={280}
+            // end_ts is the exclusive window end (midnight after the last day); step back
+            // one ms so the axis ends on the inclusive last competing day (matching the
+            // header) rather than drawing a trailing tick on the day after.
+            xDomain={[
+              new Date(challenge.start_ts),
+              new Date(new Date(challenge.end_ts).getTime() - 1),
+            ]}
+          />
         ) : (
           <p class="public-muted">No data yet.</p>
         )}
