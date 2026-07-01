@@ -8,6 +8,7 @@
 import * as d3 from 'd3'
 import { useEffect, useRef } from 'preact/hooks'
 
+import { daySpanTickStep } from './chart-ticks'
 import './TrendLineChart.css'
 
 export interface LineSeriesData {
@@ -64,11 +65,12 @@ function renderAxes(
   const [start, end] = x.domain()
   const spanDays = (end.getTime() - start.getTime()) / 86_400_000
   const xAxis = d3.axisBottom(x).tickFormat((d) => dateFormat(d as Date))
-  // For short spans, place ~one tick per day so labels stay distinct instead of
-  // repeating the same day across sub-day ticks (e.g. a 3-day challenge).
-  const dayStep =
-    spanDays > 0 && spanDays <= 31 ? d3.timeDay.every(Math.max(1, Math.ceil(spanDays / 8))) : null
-  if (dayStep) xAxis.ticks(dayStep)
+  // For short spans, place ticks on day boundaries so labels stay distinct
+  // instead of repeating the same day across sub-day ticks (e.g. a 3-day
+  // challenge). Capped at ~6 ticks so compact widgets aren't crowded.
+  const step = daySpanTickStep(spanDays)
+  const dayInterval = step === null ? null : d3.timeDay.every(step)
+  if (dayInterval) xAxis.ticks(dayInterval)
   else xAxis.ticks(6)
 
   g.append('g')

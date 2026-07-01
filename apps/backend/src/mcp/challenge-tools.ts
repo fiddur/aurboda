@@ -2,6 +2,8 @@
  * MCP challenge tools — create/list/update/delete a hosted challenge and join
  * one by URL (local or federated). Mirrors the REST `/challenges` capability.
  */
+import type { ChallengeSpec } from '@aurboda/api-spec'
+
 import {
   createChallengeBodySchema,
   joinChallengeBodySchema,
@@ -24,14 +26,7 @@ import { specToApi } from '../services/challenge-spec.ts'
 import { buildProfileUrl, buildShareUrl } from '../services/share-urls.ts'
 import { errorResponse, jsonResponse, type McpServer } from './helpers.ts'
 
-const toSpecFields = (spec: {
-  source_type: 'metric' | 'activity_type'
-  pattern: string
-  activity_type_id?: string
-  aggregation: 'sum' | 'count'
-  unit: string
-  bucket_size: '1d' | '1w' | '1M'
-}): ChallengeSpecFields => ({
+const toSpecFields = (spec: ChallengeSpec): ChallengeSpecFields => ({
   activity_type_id: spec.activity_type_id ?? null,
   aggregation: spec.aggregation,
   bucket_size: spec.bucket_size,

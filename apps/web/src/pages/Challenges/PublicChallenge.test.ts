@@ -38,6 +38,12 @@ describe('bucketEnd', () => {
     expect(bucketEnd('2026-07-01T00:00:00.000Z', '1w')).toBe('2026-07-08T00:00:00.000Z')
     expect(bucketEnd('2026-07-01T00:00:00.000Z', '1M')).toBe('2026-08-01T00:00:00.000Z')
   })
+
+  test('advances by sub-day buckets (5m / 15m / 1h)', () => {
+    expect(bucketEnd('2026-07-01T08:00:00.000Z', '5m')).toBe('2026-07-01T08:05:00.000Z')
+    expect(bucketEnd('2026-07-01T08:00:00.000Z', '15m')).toBe('2026-07-01T08:15:00.000Z')
+    expect(bucketEnd('2026-07-01T08:00:00.000Z', '1h')).toBe('2026-07-01T09:00:00.000Z')
+  })
 })
 
 describe('toCumulativeSeries', () => {

@@ -66,8 +66,14 @@ export function PublicChallenge({
 
   const standings = (standingsQuery.data ?? []).filter((s) => s.status === 'active')
   const series = standings
+    // Falls back to daily if a cross-version host omits the resolved bucket size.
     .map((s, i) =>
-      toCumulativeSeries(s, COLORS[i % COLORS.length], challenge.start_ts, challenge.spec.bucket_size),
+      toCumulativeSeries(
+        s,
+        COLORS[i % COLORS.length],
+        challenge.start_ts,
+        challenge.effective_bucket_size ?? '1d',
+      ),
     )
     // Keep members with at least one real bucket (the start-line point alone is length 1).
     .filter((s) => s.data.length > 1)
