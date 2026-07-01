@@ -41,7 +41,13 @@ import {
   updateUserSettings,
 } from '../../state/api'
 import { auth } from '../../state/auth'
-import { boardReturnPath, chartWidgetTitle, parseChartOrigin, replaceWidgetInConfig } from './updateWidget'
+import {
+  boardReturnPath,
+  chartWidgetMaskedFields,
+  chartWidgetTitle,
+  parseChartOrigin,
+  replaceWidgetInConfig,
+} from './updateWidget'
 import './style.css'
 
 type SourceType = 'metric' | 'productivity_category' | 'activity_type'
@@ -545,12 +551,20 @@ function buildWidgetFromState(
   state: ChartState,
   title: string,
   id: string = generateId('widget'),
+  maskedBreakdownFields: string[] = [],
 ): DashboardWidget {
+  // Only mask fields that are actually part of the breakdown.
+  const masked = maskedBreakdownFields.filter((f) => state.breakdown_fields.includes(f))
+  const breakdownConfig = {
+    ...(state.breakdown_fields.length ? { breakdown_fields: state.breakdown_fields } : {}),
+    ...(masked.length ? { masked_breakdown_fields: masked } : {}),
+  }
+
   if (state.chart_type === 'bar') {
     return {
       config: {
         aggregation: state.aggregation,
-        ...(state.breakdown_fields.length ? { breakdown_fields: state.breakdown_fields } : {}),
+        ...breakdownConfig,
         bucket_size: state.bucket_size,
         lookback_days: state.lookback_days,
         ...(state.pattern ? { pattern: state.pattern } : {}),
@@ -566,7 +580,7 @@ function buildWidgetFromState(
   return {
     config: {
       aggregation: state.aggregation,
-      ...(state.breakdown_fields.length ? { breakdown_fields: state.breakdown_fields } : {}),
+      ...breakdownConfig,
       display_period: state.display_period,
       half_life_days: state.half_life_days,
       lookback_days: state.lookback_days,
@@ -583,6 +597,33 @@ function buildWidgetFromState(
   } as DashboardWidget
 }
 
+/** Per-field toggle to mask breakdown values (shown as A, B, C…) on public boards. */
+function BreakdownMaskPicker({
+  fields,
+  masked,
+  onToggle,
+}: {
+  fields: string[]
+  masked: string[]
+  onToggle: (field: string) => void
+}) {
+  if (fields.length === 0) return null
+  return (
+    <div class="form-group">
+      <label>Mask on public boards</label>
+      <div class="mask-fields">
+        {fields.map((field) => (
+          <label key={field} class="mask-field-checkbox">
+            <input type="checkbox" checked={masked.includes(field)} onChange={() => onToggle(field)} />
+            {field}
+          </label>
+        ))}
+      </div>
+      <p class="mask-hint">Masked field values are shown as A, B, C… to public viewers.</p>
+    </div>
+  )
+}
+
 /** Modal for adding the current chart to a dashboard section. */
 function AddToDashboardModal({ state, onClose }: { state: ChartState; onClose: () => void }) {
   const queryClient = useQueryClient()
@@ -590,7 +631,11 @@ function AddToDashboardModal({ state, onClose }: { state: ChartState; onClose: (
   const [targetId, setTargetId] = useState('home') // 'home' or a shared dashboard id
   const [selectedSectionId, setSelectedSectionId] = useState('')
   const [newSectionTitle, setNewSectionTitle] = useState('')
+  const [masked, setMasked] = useState<string[]>([])
   const [saved, setSaved] = useState(false)
+
+  const toggleMasked = (field: string) =>
+    setMasked((prev) => (prev.includes(field) ? prev.filter((f) => f !== field) : [...prev, field]))
 
   const dashboardQuery = useQuery({
     queryFn: fetchDashboard,
@@ -636,7 +681,7 @@ function AddToDashboardModal({ state, onClose }: { state: ChartState; onClose: (
   const handleSave = () => {
     if (!targetConfig) return
 
-    const widget = buildWidgetFromState(state, title)
+    const widget = buildWidgetFromState(state, title, undefined, masked)
 
     let newConfig: DashboardConfig
     if (selectedSectionId === '__new__') {
@@ -741,6 +786,8 @@ function AddToDashboardModal({ state, onClose }: { state: ChartState; onClose: (
                   />
                 </div>
               )}
+
+              <BreakdownMaskPicker fields={state.breakdown_fields} masked={masked} onToggle={toggleMasked} />
             </div>
           )}
         </div>
@@ -777,6 +824,10 @@ function UpdateChartOnBoard({ state, origin }: { state: ChartState; origin: Char
   const isHome = origin.board_id === 'home'
   const [expanded, setExpanded] = useState(false)
   const [title, setTitle] = useState('')
+  const [masked, setMasked] = useState<string[]>([])
+
+  const toggleMasked = (field: string) =>
+    setMasked((prev) => (prev.includes(field) ? prev.filter((f) => f !== field) : [...prev, field]))
 
   const dashboardQuery = useQuery({
     enabled: isHome,
@@ -804,7 +855,7 @@ function UpdateChartOnBoard({ state, origin }: { state: ChartState; origin: Char
   const updateMutation = useMutation({
     mutationFn: async () => {
       if (!targetConfig) return
-      const widget = buildWidgetFromState(state, title.trim(), origin.widget_id)
+      const widget = buildWidgetFromState(state, title.trim(), origin.widget_id, masked)
       const nextConfig = replaceWidgetInConfig(targetConfig, origin.section_id, origin.widget_id, widget)
       if (isHome) await saveDashboard(nextConfig)
       else await updateSharedDashboard(origin.board_id, { config: nextConfig })
@@ -829,6 +880,7 @@ function UpdateChartOnBoard({ state, origin }: { state: ChartState; origin: Char
           class="btn-add-to-dashboard"
           onClick={() => {
             setTitle(chartWidgetTitle(existingWidget) ?? '')
+            setMasked(chartWidgetMaskedFields(existingWidget))
             setExpanded(true)
           }}
         >
@@ -861,6 +913,7 @@ function UpdateChartOnBoard({ state, origin }: { state: ChartState; origin: Char
           />
         </label>
       </div>
+      <BreakdownMaskPicker fields={state.breakdown_fields} masked={masked} onToggle={toggleMasked} />
       <div class="goal-form-actions">
         <button class="btn-cancel" onClick={() => setExpanded(false)}>
           Cancel

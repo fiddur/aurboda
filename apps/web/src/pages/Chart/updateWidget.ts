@@ -32,6 +32,14 @@ export function chartWidgetTitle(widget: DashboardWidget): string | undefined {
   return undefined
 }
 
+/** Breakdown fields the widget currently masks on public boards (used to pre-fill the update form). */
+export function chartWidgetMaskedFields(widget: DashboardWidget): string[] {
+  if (widget.type === 'trend_chart' || widget.type === 'bar_chart') {
+    return widget.config.masked_breakdown_fields ?? []
+  }
+  return []
+}
+
 /**
  * Return a new config with the widget matching `widgetId` in section `sectionId`
  * replaced by `widget`. Other sections and widgets are left untouched.
