@@ -7,7 +7,7 @@
 
 import type { ChartDataBreakdownBucket, ChartDataBucket, ChartDataSourceType } from '@aurboda/api-spec'
 
-import { expandActivityTypes, query } from '../db/index.ts'
+import { expandActivityTypes, getSourceFilter, query } from '../db/index.ts'
 
 /** Map bucket_size parameter to PostgreSQL date_trunc interval name (day and above). */
 const bucketToTrunc: Record<string, string> = {
@@ -136,16 +136,32 @@ const queryMetricBuckets = async (
 ): Promise<ChartDataBucket[]> => {
   const aggFn = aggregation === 'mean' ? 'AVG(value)' : aggregation === 'sum' ? 'SUM(value)' : 'COUNT(*)'
   const bucket = buildBucketExpr(bucketSize, 'time', 1)
+  const p = bucket.params.length
+  const params: unknown[] = [...bucket.params, metric, start, end]
+
+  // Cumulative/derived metrics (steps, distance, calories, …) are stored from
+  // multiple sources (raw per-minute + deduplicated daily aggregates + …), so
+  // summing across all sources multiply-counts them. Restrict to the trusted
+  // source(s) — the same rule the metric/period-summary read paths use — so the
+  // chart (and challenges, which share this path) matches the real totals.
+  const sourceFilter = getSourceFilter(metric)
+  let sourceClause = ''
+  if (sourceFilter !== null) {
+    params.push(sourceFilter)
+    sourceClause = ` AND source = ANY($${params.length})`
+  }
+
   const result = await query(
     user,
     `SELECT ${bucket.expr} AS bucket_start,
             ${aggFn} AS value
        FROM time_series
-      WHERE metric = $${bucket.params.length + 1}
-        AND time BETWEEN $${bucket.params.length + 2} AND $${bucket.params.length + 3}
+      WHERE metric = $${p + 1}
+        AND time BETWEEN $${p + 2} AND $${p + 3}
+        AND deleted_at IS NULL${sourceClause}
       GROUP BY 1
       ORDER BY 1`,
-    [...bucket.params, metric, start, end],
+    params,
   )
   return result.rows.map((row) => ({
     bucket_start: row.bucket_start.toISOString(),
