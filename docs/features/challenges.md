@@ -24,6 +24,14 @@ base-URL federation identity, and the bucketed-data engine behind dashboards.
   one data shape.
 - **Visibility:** public challenges are listed on the host's `/u/<user>` profile;
   unlisted ones are reachable only by their slug.
+- **Chart granularity (`spec.bucket_size`):** controls only the race chart's
+  resolution — never the score (the cumulative total is bucket-size-independent).
+  `auto` (default) adapts to the window so short challenges show intraday progress and
+  long ones stay readable/cheap: ≤1d → 5-minute, ≤3d → 15-minute, ≤14d → 1-hour,
+  ≤120d → daily, else weekly. A creator can instead fix a coarser bucket
+  (`1d`/`1w`/`1M`) for very long challenges. The resolved size is exposed to viewers as
+  `effective_bucket_size` on the public challenge; because it derives purely from the
+  window, every instance resolves the same size, so members' series stay aligned.
 
 ## URLs & storage
 
