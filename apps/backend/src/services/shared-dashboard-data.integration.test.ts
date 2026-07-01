@@ -185,6 +185,78 @@ describe('resolveDashboardData integration', () => {
     }
   })
 
+  test('masked_breakdown_fields anonymizes breakdown series as A/B for public viewers', async () => {
+    const user = getTestUser()
+    const base = new Date('2026-03-01T12:00:00Z')
+    const seed = async (intensity: string, dayOffset: number) => {
+      const start = new Date(base)
+      start.setUTCDate(start.getUTCDate() + dayOffset)
+      await insertActivity(user, {
+        activity_type: 'exercise',
+        data: { intensity },
+        end_time: new Date(start.getTime() + 30 * 60_000),
+        source: 'health_connect',
+        start_time: start,
+      })
+    }
+    await seed('anaerobic', 0)
+    await seed('zone2', 1)
+
+    const data = await resolveDashboardData(user, {
+      sections: [
+        {
+          id: 's',
+          title: 'x',
+          type: 'charts',
+          widgets: [
+            {
+              config: {
+                breakdown_fields: ['intensity'],
+                lookback_days: 3650,
+                masked_breakdown_fields: ['intensity'],
+                pattern: 'exercise',
+                source_type: 'activity_type',
+              },
+              id: 'trend',
+              type: 'trend_chart',
+            },
+            {
+              config: {
+                breakdown_fields: ['intensity'],
+                bucket_size: '1M',
+                lookback_days: 3650,
+                masked_breakdown_fields: ['intensity'],
+                pattern: 'exercise',
+                source_type: 'activity_type',
+              },
+              id: 'bar',
+              type: 'bar_chart',
+            },
+          ],
+        },
+      ],
+      version: 1,
+    })
+
+    const trend = data['trend']
+    if (trend.type === 'trend_chart' && trend.data) {
+      // Real values 'anaerobic'/'zone2' are replaced with A/B; no real value leaks.
+      expect(trend.data.breakdown_series).toEqual(['A', 'B'])
+      expect(Object.keys(trend.data.breakdown_histories ?? {}).sort()).toEqual(['A', 'B'])
+      expect(JSON.stringify(trend.data)).not.toContain('anaerobic')
+      expect(JSON.stringify(trend.data)).not.toContain('zone2')
+    }
+
+    const bar = data['bar']
+    if (bar.type === 'bar_chart' && bar.data) {
+      expect(bar.data.breakdown_series).toEqual(['A', 'B'])
+      for (const bucket of bar.data.breakdown_buckets ?? []) {
+        expect(Object.keys(bucket.series).every((k) => k === 'A' || k === 'B')).toBe(true)
+      }
+      expect(JSON.stringify(bar.data)).not.toContain('anaerobic')
+    }
+  })
+
   test('activity_summary respects visibility toggles (hidden categories omitted)', async () => {
     const user = getTestUser()
     const data = await resolveDashboardData(user, {

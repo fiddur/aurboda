@@ -2,7 +2,13 @@ import type { DashboardConfig, DashboardWidget } from '@aurboda/api-spec'
 
 import { describe, expect, test } from 'vitest'
 
-import { boardReturnPath, chartWidgetTitle, parseChartOrigin, replaceWidgetInConfig } from './updateWidget'
+import {
+  boardReturnPath,
+  chartWidgetMaskedFields,
+  chartWidgetTitle,
+  parseChartOrigin,
+  replaceWidgetInConfig,
+} from './updateWidget'
 
 const trendWidget = (id: string, title?: string): DashboardWidget => ({
   config: { pattern: 'coffee', source_type: 'activity_type', ...(title ? { title } : {}) },
@@ -65,6 +71,28 @@ describe('chartWidgetTitle', () => {
   test('returns undefined for non-chart widgets', () => {
     const link: DashboardWidget = { config: { href: '/x', label: 'X' }, id: 'l-1', type: 'quick_link' }
     expect(chartWidgetTitle(link)).toBeUndefined()
+  })
+})
+
+describe('chartWidgetMaskedFields', () => {
+  test('returns the masked breakdown fields of a chart widget', () => {
+    const w: DashboardWidget = {
+      config: {
+        breakdown_fields: ['partner'],
+        masked_breakdown_fields: ['partner'],
+        pattern: 'x',
+        source_type: 'activity_type',
+      },
+      id: 'w',
+      type: 'trend_chart',
+    }
+    expect(chartWidgetMaskedFields(w)).toEqual(['partner'])
+  })
+
+  test('returns [] when none are masked or for non-chart widgets', () => {
+    expect(chartWidgetMaskedFields(trendWidget('w'))).toEqual([])
+    const link: DashboardWidget = { config: { href: '/x', label: 'X' }, id: 'l', type: 'quick_link' }
+    expect(chartWidgetMaskedFields(link)).toEqual([])
   })
 })
 
