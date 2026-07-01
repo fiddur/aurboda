@@ -3,31 +3,18 @@
  * resolves to a challenge. Shows a cumulative "race" chart (one line per member)
  * and a leaderboard, plus join actions. Rendered without app chrome.
  */
-import type { ChallengeStanding, PublicChallenge as PublicChallengeData } from '@aurboda/api-spec'
+import type { PublicChallenge as PublicChallengeData } from '@aurboda/api-spec'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'preact/hooks'
 
-import { type LineSeriesData, TrendLineChart } from '../../components/charts/TrendLineChart'
+import { TrendLineChart } from '../../components/charts/TrendLineChart'
 import { fetchPublicChallengeStandings, joinChallengeByUrl } from '../../state/api'
 import { auth } from '../../state/auth'
+import { toCumulativeSeries } from './race-series'
 import './style.css'
 
 const COLORS = ['#8b5cf6', '#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#ec4899', '#14b8a6', '#a855f7']
-
-/** Build a cumulative (running-total) series from a member's per-bucket values. */
-const toCumulativeSeries = (standing: ChallengeStanding, color: string): LineSeriesData => {
-  const sorted = [...standing.buckets].sort((a, b) => a.bucket_start.localeCompare(b.bucket_start))
-  let running = 0
-  return {
-    color,
-    data: sorted.map((b) => {
-      running += b.value
-      return { date: b.bucket_start, value: running }
-    }),
-    name: standing.display_name,
-  }
-}
 
 const shortHost = (identityBaseUrl: string): string => {
   try {
@@ -79,8 +66,9 @@ export function PublicChallenge({
 
   const standings = (standingsQuery.data ?? []).filter((s) => s.status === 'active')
   const series = standings
-    .map((s, i) => toCumulativeSeries(s, COLORS[i % COLORS.length]))
-    .filter((s) => s.data.length > 0)
+    .map((s, i) => toCumulativeSeries(s, COLORS[i % COLORS.length], challenge.start_ts, challenge.spec.bucket_size))
+    // Keep members with at least one real bucket (the start-line point alone is length 1).
+    .filter((s) => s.data.length > 1)
 
   return (
     <div class="dashboard public-dashboard public-challenge">
