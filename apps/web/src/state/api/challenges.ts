@@ -77,9 +77,15 @@ export const fetchPublicResource = async (
 export const fetchPublicChallengeStandings = async (
   username: string,
   slug: string,
+  options: { bustCache?: boolean } = {},
 ): Promise<ChallengeStanding[]> => {
   const res = await axios.get<ChallengeStandingsResponse>(
     `${API_URL}/public/${encodeURIComponent(username)}/${encodeURIComponent(slug)}/standings`,
+    // The endpoint sends `Cache-Control: public, max-age=60`, so a plain refetch right
+    // after joining can be served a pre-join member list from an HTTP/proxy cache. A
+    // unique query param forces a never-before-seen URL past those caches. The backend
+    // ignores unknown params (and never honors `refresh` here — see public-shares-router).
+    { params: options.bustCache ? { _: Date.now() } : undefined },
   )
   return res.data.members ?? []
 }
