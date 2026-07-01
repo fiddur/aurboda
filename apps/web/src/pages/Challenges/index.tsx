@@ -20,31 +20,25 @@ import {
   listChallenges,
   listMyChallengeParticipations,
 } from '../../state/api'
+import {
+  browserTz,
+  dateToEndIso,
+  dateToStartIso,
+  defaultWeekRange,
+  thisMonthRange,
+  thisWeekRange,
+} from './date-range'
 import './style.css'
 
-/** Local YYYY-MM-DD → UTC ISO instant at that day's local midnight. */
-const dateToStartIso = (date: string): string => new Date(`${date}T00:00:00`).toISOString()
-/** Local YYYY-MM-DD → UTC ISO instant at the local midnight AFTER that day (exclusive end). */
-const dateToEndIso = (date: string): string => {
-  const d = new Date(`${date}T00:00:00`)
-  d.setDate(d.getDate() + 1)
-  return d.toISOString()
-}
-
-const browserTz = (): string => Intl.DateTimeFormat().resolvedOptions().timeZone
-
-const toDateInput = (d: Date): string =>
-  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-
 function CreateChallengeForm({ onCreated }: { onCreated: () => void }) {
-  const today = new Date()
+  const initialRange = defaultWeekRange()
   const [name, setName] = useState('')
   const [sourceType, setSourceType] = useState<'metric' | 'activity_type'>('metric')
   const [pattern, setPattern] = useState('')
   const [aggregation, setAggregation] = useState<'sum' | 'count'>('sum')
   const [unit, setUnit] = useState('')
-  const [startDate, setStartDate] = useState(toDateInput(today))
-  const [endDate, setEndDate] = useState(toDateInput(new Date(today.getTime() + 6 * 864e5)))
+  const [startDate, setStartDate] = useState(initialRange.start)
+  const [endDate, setEndDate] = useState(initialRange.end)
   const [isPublic, setIsPublic] = useState(false)
 
   const createMutation = useMutation({
@@ -58,18 +52,9 @@ function CreateChallengeForm({ onCreated }: { onCreated: () => void }) {
     },
   })
 
-  const setThisWeek = () => {
-    const d = new Date()
-    const monday = new Date(d)
-    monday.setDate(d.getDate() - ((d.getDay() + 6) % 7))
-    const sunday = new Date(monday.getTime() + 6 * 864e5)
-    setStartDate(toDateInput(monday))
-    setEndDate(toDateInput(sunday))
-  }
-  const setThisMonth = () => {
-    const d = new Date()
-    setStartDate(toDateInput(new Date(d.getFullYear(), d.getMonth(), 1)))
-    setEndDate(toDateInput(new Date(d.getFullYear(), d.getMonth() + 1, 0)))
+  const applyRange = ({ start, end }: { start: string; end: string }) => {
+    setStartDate(start)
+    setEndDate(end)
   }
 
   const canSubmit = name.trim() && pattern.trim() && unit.trim() && !createMutation.isPending
@@ -157,10 +142,10 @@ function CreateChallengeForm({ onCreated }: { onCreated: () => void }) {
         </label>
       </div>
       <div class="challenge-quick-spans">
-        <button type="button" class="btn-secondary" onClick={setThisWeek}>
+        <button type="button" class="btn-secondary" onClick={() => applyRange(thisWeekRange())}>
           This week
         </button>
-        <button type="button" class="btn-secondary" onClick={setThisMonth}>
+        <button type="button" class="btn-secondary" onClick={() => applyRange(thisMonthRange())}>
           This month
         </button>
       </div>
