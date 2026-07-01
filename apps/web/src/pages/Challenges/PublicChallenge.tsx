@@ -6,6 +6,7 @@
 import type { ChallengeStanding, PublicChallenge as PublicChallengeData } from '@aurboda/api-spec'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useState } from 'preact/hooks'
 
 import { type LineSeriesData, TrendLineChart } from '../../components/charts/TrendLineChart'
 import { fetchPublicChallengeStandings, joinChallengeByUrl } from '../../state/api'
@@ -48,6 +49,7 @@ export function PublicChallenge({
   const queryClient = useQueryClient()
   const isLoggedIn = Boolean(auth.value.token)
   const isOwner = isLoggedIn && auth.value.user === username
+  const [joined, setJoined] = useState(false)
 
   const standingsQuery = useQuery({
     queryFn: () => fetchPublicChallengeStandings(username, slug),
@@ -58,9 +60,13 @@ export function PublicChallenge({
   const joinMutation = useMutation({
     mutationFn: () => joinChallengeByUrl(challenge.share_url),
     onError: (e) => alert(e instanceof Error ? e.message : 'Failed to join.'),
-    onSuccess: () => {
-      alert('Joined!')
-      queryClient.invalidateQueries({ queryKey: ['challengeStandings', username, slug] })
+    onSuccess: async () => {
+      setJoined(true)
+      // Refetch with the cache buster so the just-joined member shows up immediately
+      // (a plain refetch can be served the pre-join list from the endpoint's 60s HTTP
+      // cache), and seed the query cache with the fresh result so no stale refetch races.
+      const fresh = await fetchPublicChallengeStandings(username, slug, { bustCache: true })
+      queryClient.setQueryData(['challengeStandings', username, slug], fresh)
     },
   })
 
@@ -87,15 +93,19 @@ export function PublicChallenge({
 
       <p class="challenge-view-meta">
         {challenge.spec.pattern} · {challenge.spec.aggregation} ({challenge.spec.unit}) ·{' '}
-        {new Date(challenge.start_ts).toLocaleDateString()} – {new Date(challenge.end_ts).toLocaleDateString()}
+        {new Date(challenge.start_ts).toLocaleDateString()} –{' '}
+        {/* end_ts is the exclusive window end (midnight after the last day); step back
+            one ms to render the inclusive last competing day. */}
+        {new Date(new Date(challenge.end_ts).getTime() - 1).toLocaleDateString()}
       </p>
 
       <div class="challenge-view-actions">
-        {isLoggedIn && !isOwner && (
+        {isLoggedIn && !isOwner && !joined && (
           <button class="btn-primary" disabled={joinMutation.isPending} onClick={() => joinMutation.mutate()}>
             Join
           </button>
         )}
+        {joined && <span class="challenge-joined">✓ Joined</span>}
         <button class="btn-secondary" onClick={joinFromOtherHost}>
           Join from another instance
         </button>
