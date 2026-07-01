@@ -2,7 +2,7 @@ import type { DashboardConfig, DashboardWidget } from '@aurboda/api-spec'
 
 import { describe, expect, test } from 'vitest'
 
-import { chartWidgetTitle, parseChartOrigin, replaceWidgetInConfig } from './updateWidget'
+import { boardReturnPath, chartWidgetTitle, parseChartOrigin, replaceWidgetInConfig } from './updateWidget'
 
 const trendWidget = (id: string, title?: string): DashboardWidget => ({
   config: { pattern: 'coffee', source_type: 'activity_type', ...(title ? { title } : {}) },
@@ -32,6 +32,24 @@ describe('parseChartOrigin', () => {
       section_id: 'sec-1',
       widget_id: 'w-1',
     })
+  })
+})
+
+describe('boardReturnPath', () => {
+  test('returns the home dashboard path for the home board', () => {
+    expect(boardReturnPath({ board_id: 'home', section_id: 's', widget_id: 'w' }, 'fiddur', 'abc')).toBe('/')
+  })
+
+  test('returns the owner shared-dashboard path for a shared board', () => {
+    expect(boardReturnPath({ board_id: 'sd-1', section_id: 's', widget_id: 'w' }, 'fiddur', 'abc')).toBe(
+      '/u/fiddur/abc',
+    )
+  })
+
+  test('url-encodes both the username and the slug', () => {
+    expect(boardReturnPath({ board_id: 'sd-1', section_id: 's', widget_id: 'w' }, 'a b', 'a/b')).toBe(
+      '/u/a%20b/a%2Fb',
+    )
   })
 })
 
