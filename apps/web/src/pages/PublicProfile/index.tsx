@@ -1,6 +1,6 @@
 /**
  * PublicProfile - a user's public page at /u/:username, listing their public
- * shared dashboards. Unauthenticated; rendered without app chrome.
+ * shared dashboards and challenges. Unauthenticated; rendered without app chrome.
  */
 import { useQuery } from '@tanstack/react-query'
 import { useRoute } from 'preact-iso'
@@ -37,21 +37,35 @@ export function PublicProfile() {
   }
 
   const dashboards = query.data.dashboards ?? []
+  const challenges = query.data.challenges ?? []
+
+  const renderItem = (item: { name: string; slug: string }) => (
+    <li key={item.slug}>
+      <a href={`/u/${encodeURIComponent(username)}/${encodeURIComponent(item.slug)}`}>{item.name}</a>
+    </li>
+  )
 
   return (
     <div class="public-profile">
       <h1>@{username}</h1>
-      {dashboards.length === 0 ? (
-        <p class="public-muted">This user has no public dashboards.</p>
-      ) : (
-        <ul class="public-dashboard-list">
-          {dashboards.map((d) => (
-            <li key={d.slug}>
-              <a href={`/u/${encodeURIComponent(username)}/${encodeURIComponent(d.slug)}`}>{d.name}</a>
-            </li>
-          ))}
-        </ul>
-      )}
+
+      <section class="public-section">
+        <h2>Dashboards</h2>
+        {dashboards.length === 0 ? (
+          <p class="public-muted">This user has no public dashboards.</p>
+        ) : (
+          <ul class="public-item-list">{dashboards.map(renderItem)}</ul>
+        )}
+      </section>
+
+      <section class="public-section">
+        <h2>Challenges</h2>
+        {challenges.length === 0 ? (
+          <p class="public-muted">This user has no public challenges.</p>
+        ) : (
+          <ul class="public-item-list">{challenges.map(renderItem)}</ul>
+        )}
+      </section>
     </div>
   )
 }
