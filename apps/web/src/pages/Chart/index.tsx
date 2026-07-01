@@ -22,6 +22,7 @@ import type { ChartOrigin } from '../../utils/chart-url'
 
 import { ActivityTypePicker } from '../../components/ActivityTypePicker'
 import { BarChart, type BarClickInfo } from '../../components/charts/BarChart'
+import { BreakdownLegend, SERIES_COLORS } from '../../components/charts/breakdown'
 import { TrendLineChart } from '../../components/charts/TrendLineChart'
 import { MetricPicker } from '../../components/MetricPicker'
 import {
@@ -365,21 +366,6 @@ function ChartControls({
   )
 }
 
-const SERIES_COLORS = ['#8b5cf6', '#f97316', '#22c55e', '#3b82f6', '#ef4444', '#f59e0b', '#ec4899', '#14b8a6']
-
-function BreakdownLegend({ series, colors }: { series: string[]; colors: string[] }) {
-  return (
-    <div class="breakdown-legend">
-      {series.map((name, i) => (
-        <span key={name} class="breakdown-legend-item">
-          <span class="breakdown-legend-dot" style={{ background: colors[i % colors.length] }} />
-          {name}
-        </span>
-      ))}
-    </div>
-  )
-}
-
 function TrendDisplay({ params }: { params: FetchTrendParams }) {
   const trendQuery = useQuery({
     enabled: Boolean(params.pattern),
@@ -397,7 +383,7 @@ function TrendDisplay({ params }: { params: FetchTrendParams }) {
   if (breakdown_series?.length && breakdown_histories) {
     return (
       <div class="chart-display">
-        <BreakdownLegend series={breakdown_series} colors={SERIES_COLORS} />
+        <BreakdownLegend series={breakdown_series} />
         <TrendLineChart
           data={[]}
           color="#8b5cf6"
@@ -510,7 +496,7 @@ function BarDisplay({ params }: { params: FetchChartDataParams }) {
     const series = result.breakdown_series ?? []
     return (
       <div class="chart-display">
-        <BreakdownLegend series={series} colors={SERIES_COLORS} />
+        <BreakdownLegend series={series} />
         <BarChart
           data={[]}
           height={350}
@@ -564,6 +550,7 @@ function buildWidgetFromState(
     return {
       config: {
         aggregation: state.aggregation,
+        ...(state.breakdown_fields.length ? { breakdown_fields: state.breakdown_fields } : {}),
         bucket_size: state.bucket_size,
         lookback_days: state.lookback_days,
         ...(state.pattern ? { pattern: state.pattern } : {}),
@@ -579,6 +566,7 @@ function buildWidgetFromState(
   return {
     config: {
       aggregation: state.aggregation,
+      ...(state.breakdown_fields.length ? { breakdown_fields: state.breakdown_fields } : {}),
       display_period: state.display_period,
       half_life_days: state.half_life_days,
       lookback_days: state.lookback_days,

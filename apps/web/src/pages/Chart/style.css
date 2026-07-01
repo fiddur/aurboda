@@ -133,26 +133,6 @@
   cursor: pointer;
 }
 
-.breakdown-legend {
-  display: flex;
-  gap: 1rem;
-  flex-wrap: wrap;
-  margin-bottom: 1rem;
-}
-
-.breakdown-legend-item {
-  display: flex;
-  align-items: center;
-  gap: 0.375rem;
-  font-size: 0.85rem;
-}
-
-.breakdown-legend-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-}
-
 .breakdown-series {
   margin-bottom: 0.5rem;
 }
