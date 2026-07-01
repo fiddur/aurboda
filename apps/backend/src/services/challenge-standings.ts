@@ -36,15 +36,17 @@ export const getChallengeStandings = async (
         return { ...base, buckets: [], last_updated: null, stale: false, total: 0 }
       }
 
-      // Local member: compute directly from this instance's data.
+      // Local member: compute directly from this instance's data. `last_updated`
+      // is the time of their most recent contributing data point (null if none),
+      // not "now" — so a member on 0 shows no update rather than a fake one.
       if (member.kind === 'local' && member.local_user) {
-        const { buckets, total } = await resolveMemberSeries(
+        const { buckets, last_updated, total } = await resolveMemberSeries(
           member.local_user,
           challenge.spec,
           challenge.start_ts,
           challenge.end_ts,
         )
-        return { ...base, buckets, last_updated: new Date().toISOString(), stale: false, total }
+        return { ...base, buckets, last_updated, stale: false, total }
       }
 
       // Remote member: use the TTL cache unless refresh requested. We short-circuit
@@ -56,7 +58,7 @@ export const getChallengeStandings = async (
         return {
           ...base,
           buckets: member.cached_buckets ?? [],
-          last_updated: member.last_fetched_at?.toISOString() ?? null,
+          last_updated: member.data_last_updated?.toISOString() ?? null,
           stale: member.last_error !== null,
           total: member.cached_total ?? 0,
         }
@@ -66,7 +68,7 @@ export const getChallengeStandings = async (
         return {
           ...base,
           buckets: member.cached_buckets ?? [],
-          last_updated: null,
+          last_updated: member.data_last_updated?.toISOString() ?? null,
           stale: true,
           total: member.cached_total ?? 0,
         }
@@ -76,19 +78,30 @@ export const getChallengeStandings = async (
         const data = await fetchMemberData(member.data_endpoint_url)
         const buckets = data.buckets ?? []
         const total = data.total ?? buckets.reduce((s, b) => s + b.value, 0)
-        await updateChallengeMemberCache(hostUser, member.id, { buckets, error: null, total })
-        return { ...base, buckets, last_updated: new Date().toISOString(), stale: false, total }
+        // The member reports when *their* data last changed; keep it as-is (null
+        // if they have none) rather than stamping our fetch time. Guard against a
+        // malformed value so it can't poison the timestamptz cache column.
+        const parsed = data.last_updated ? new Date(data.last_updated) : null
+        const dataLastUpdated = parsed && !Number.isNaN(parsed.getTime()) ? parsed : null
+        await updateChallengeMemberCache(hostUser, member.id, {
+          buckets,
+          dataLastUpdated,
+          error: null,
+          total,
+        })
+        return { ...base, buckets, last_updated: dataLastUpdated?.toISOString() ?? null, stale: false, total }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
         await updateChallengeMemberCache(hostUser, member.id, {
           buckets: member.cached_buckets,
+          dataLastUpdated: member.data_last_updated,
           error: message,
           total: member.cached_total,
         })
         return {
           ...base,
           buckets: member.cached_buckets ?? [],
-          last_updated: member.last_fetched_at?.toISOString() ?? null,
+          last_updated: member.data_last_updated?.toISOString() ?? null,
           stale: true,
           total: member.cached_total ?? 0,
         }

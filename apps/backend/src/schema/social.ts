@@ -61,6 +61,7 @@ export const socialTables: Record<string, string> = {
       status            VARCHAR(12) NOT NULL DEFAULT 'active',
       joined_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       last_fetched_at   TIMESTAMPTZ,
+      data_last_updated TIMESTAMPTZ,
       cached_total      DOUBLE PRECISION,
       cached_buckets    JSONB,
       last_error        TEXT,

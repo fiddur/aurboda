@@ -1024,6 +1024,13 @@ export const migrateSchema = async (user: string) => {
     await query(db, `ALTER TABLE outbound_sync_queue ADD COLUMN IF NOT EXISTS fail_reason TEXT`)
   }
 
+  // challenge_members: data_last_updated is the member-reported timestamp of
+  // their latest data point, surfaced as standings' "last updated" (distinct
+  // from last_fetched_at, which is when the host fetched). See #843.
+  if (existingTableNames.has('challenge_members')) {
+    await query(db, `ALTER TABLE challenge_members ADD COLUMN IF NOT EXISTS data_last_updated TIMESTAMPTZ`)
+  }
+
   if (existingTableNames.has('deduction_rules')) {
     await query(
       db,

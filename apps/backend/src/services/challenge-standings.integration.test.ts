@@ -5,13 +5,9 @@
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest'
 
-import {
-  createChallenge,
-  insertTimeSeries,
-  upsertChallengeMember,
-} from '../db/index.ts'
 import type * as FederationModule from './challenge-federation.ts'
 
+import { createChallenge, insertTimeSeries, upsertChallengeMember } from '../db/index.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import { fetchMemberData } from './challenge-federation.ts'
 import { getChallengeStandings } from './challenge-standings.ts'
@@ -75,13 +71,15 @@ describe('getChallengeStandings integration', () => {
       kind: 'remote',
     })
 
+    // The remote instance reports when *its* data last changed — not "now".
+    const remoteReported = '2026-06-02T07:15:00.000Z'
     vi.mocked(fetchMemberData).mockResolvedValue({
       buckets: [
         { bucket_start: '2026-06-01T00:00:00.000Z', value: 100 },
         { bucket_start: '2026-06-02T00:00:00.000Z', value: 200 },
       ],
       display_name: 'remote-bob',
-      last_updated: new Date().toISOString(),
+      last_updated: remoteReported,
       success: true,
       total: 300,
       unit: 'bpm',
@@ -93,16 +91,63 @@ describe('getChallengeStandings integration', () => {
     expect(standings.map((s) => s.display_name)).toEqual(['remote-bob', user])
     expect(standings[0].total).toBe(300)
     expect(standings[1].total).toBe(110)
+    // last_updated reflects each member's own latest data point, not the request time.
+    // Local: MAX(time) of their series (2026-06-02T08:00). Remote: the reported value.
+    expect(standings[0].last_updated).toBe(remoteReported)
+    expect(standings[1].last_updated).toBe('2026-06-02T08:00:00.000Z')
     // Minimal projection — only bucket_start + value per bucket.
     for (const s of standings) {
       for (const b of s.buckets) expect(Object.keys(b).sort()).toEqual(['bucket_start', 'value'])
     }
     expect(vi.mocked(fetchMemberData)).toHaveBeenCalledTimes(1)
 
-    // Second call within TTL uses the cache — no second remote fetch.
+    // Second call within TTL uses the cache — no second remote fetch, and the
+    // member-reported timestamp survives the round-trip through the cache.
     const again = await getChallengeStandings(user, challenge)
-    expect(again.find((s) => s.display_name === 'remote-bob')?.total).toBe(300)
+    const cachedBob = again.find((s) => s.display_name === 'remote-bob')
+    expect(cachedBob?.total).toBe(300)
+    expect(cachedBob?.last_updated).toBe(remoteReported)
     expect(vi.mocked(fetchMemberData)).toHaveBeenCalledTimes(1)
+  })
+
+  test('a remote member with no data reports last_updated=null (#843)', async () => {
+    const user = getTestUser()
+    const challenge = await createChallenge(user, {
+      end_ts: new Date('2026-06-03T00:00:00Z'),
+      is_public: true,
+      name: 'Steps',
+      spec: {
+        activity_type_id: null,
+        aggregation: 'sum',
+        bucket_size: '1d',
+        pattern: 'steps',
+        source_type: 'metric',
+        unit: 'steps',
+      },
+      start_ts: new Date('2026-06-01T00:00:00Z'),
+      timezone: 'UTC',
+    })
+    await upsertChallengeMember(user, challenge.id, {
+      data_endpoint_url: 'https://remote.example/challenge-data/u/tok',
+      display_name: 'zero-bob',
+      identity_base_url: 'https://remote.example/u/bob',
+      kind: 'remote',
+    })
+
+    // A member on 0 has no contributing data point → null, not a stamped "now".
+    vi.mocked(fetchMemberData).mockResolvedValue({
+      buckets: [],
+      display_name: 'zero-bob',
+      last_updated: null,
+      success: true,
+      total: 0,
+      unit: 'steps',
+    })
+
+    const standings = await getChallengeStandings(user, challenge)
+    expect(standings[0].total).toBe(0)
+    expect(standings[0].last_updated).toBeNull()
+    expect(standings[0].stale).toBe(false)
   })
 
   test('caches a failed remote fetch for the TTL (no per-call re-fetch storm)', async () => {
