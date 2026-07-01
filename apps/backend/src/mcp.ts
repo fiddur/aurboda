@@ -22,6 +22,7 @@ import type { StravaQueue } from './services/strava-queue.ts'
 
 import { registerActivityTools } from './mcp/activity-tools.ts'
 import { registerActivityTypeTools } from './mcp/activity-type-tools.ts'
+import { registerChallengeTools } from './mcp/challenge-tools.ts'
 import { registerChartTools } from './mcp/chart-tools.ts'
 import { registerCorrelationTools } from './mcp/correlation-tools.ts'
 import { registerDebugTools } from './mcp/debug-tools.ts'
@@ -49,6 +50,7 @@ import { isOAuthAccessToken, validateAccessToken } from './services/oauth.ts'
 type OuraClientType = ReturnType<typeof ouraClient>
 
 interface McpDeps {
+  apiBaseUrl?: string
   centralDb?: CentralDb
   deductionQueue?: DeductionQueue
   engineDeps?: DeductionEngineDeps
@@ -57,6 +59,7 @@ interface McpDeps {
   oura?: OuraClientType
   stravaQueue?: StravaQueue
   sync?: SyncProvider
+  webHost?: string
 }
 
 const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
@@ -89,6 +92,7 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
   }
   registerReportTools(server, user)
   registerSharedDashboardTools(server, user)
+  registerChallengeTools(server, user, { apiBaseUrl: deps.apiBaseUrl, webHost: deps.webHost })
   registerScreentimeCategoryTools(server, user)
   registerDebugTools(server, user)
 

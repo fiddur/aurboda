@@ -24,6 +24,8 @@ import { createActivitiesRouter } from '../routes/activities-router.ts'
 import { createActivityTypesRouter } from '../routes/activity-types-router.ts'
 import { createAdminRouter } from '../routes/admin-router.ts'
 import { createAuditLogRouter } from '../routes/audit-log-router.ts'
+import { createChallengeDataRouter } from '../routes/challenge-data-router.ts'
+import { createChallengesRouter } from '../routes/challenges-router.ts'
 import { createChartDataRouter } from '../routes/chart-data-router.ts'
 import { createCorrelationsRouter } from '../routes/correlations-router.ts'
 import { createDashboardRouter } from '../routes/dashboard-router.ts'
@@ -56,6 +58,7 @@ interface RestRoutesDeps {
   centralDb: CentralDb
   invitationAuth: InvitationAuth
   webHost: string
+  apiBaseUrl: string
   garmin: GarminClient
   syncProvider: SyncProvider
   activityNotifier: ActivityNotifier
@@ -75,6 +78,7 @@ export const mountRestRouters = ({
   centralDb,
   invitationAuth,
   webHost,
+  apiBaseUrl,
   garmin,
   syncProvider,
   activityNotifier,
@@ -120,6 +124,8 @@ export const mountRestRouters = ({
   httpd.use(createRawRecordsRouter(authMiddleware))
   httpd.use('/dashboard', createDashboardRouter(authMiddleware))
   httpd.use('/shared-dashboards', createSharedDashboardsRouter(authMiddleware, webHost))
+  httpd.use('/challenges', createChallengesRouter(authMiddleware, webHost, apiBaseUrl))
+  httpd.use(createChallengeDataRouter())
   httpd.use(createPublicSharesRouter(webHost))
   httpd.use('/correlations', createCorrelationsRouter(authMiddleware, syncProvider))
   httpd.use('/training-load', createTrainingLoadRouter(authMiddleware))

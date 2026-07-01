@@ -261,6 +261,10 @@ export type PublicDashboardListItem = z.infer<typeof publicDashboardListItemSche
  */
 export const publicProfileResponseSchema = baseResponseSchema
   .extend({
+    challenges: z
+      .array(publicDashboardListItemSchema)
+      .optional()
+      .meta({ description: 'Public challenges hosted by this user' }),
     dashboards: z
       .array(publicDashboardListItemSchema)
       .optional()
@@ -282,6 +286,7 @@ export const publicSharedDashboardResponseSchema = baseResponseSchema
     name: sharedDashboardNameSchema.optional(),
     profile_url: z.string().optional().meta({ description: 'Absolute URL of the owner public profile' }),
     share_url: z.string().optional().meta({ description: 'Absolute URL of this shared dashboard' }),
+    type: z.literal('dashboard').optional().meta({ description: 'Resource type discriminator' }),
     widget_data: widgetDataMapSchema.optional().meta({ description: 'Resolved data per widget id' }),
   })
   .meta({ id: 'PublicSharedDashboardResponse' })

@@ -240,6 +240,35 @@ export {
   updateSharedDashboard,
 } from './shared-dashboards.ts'
 
+// Challenges
+export {
+  type ChallengeInput,
+  type ChallengeMemberInput,
+  type ChallengeMemberRecord,
+  type ChallengeParticipationInput,
+  type ChallengeParticipationRecord,
+  type ChallengePatch,
+  type ChallengeRecord,
+  type ChallengeSpecFields,
+  createChallenge,
+  createChallengeParticipation,
+  deleteChallenge,
+  deleteChallengeParticipation,
+  getChallengeById,
+  getChallengeBySlug,
+  getChallengeMemberByIdentity,
+  getParticipationByToken,
+  getParticipationByUrl,
+  listChallengeMembers,
+  listChallengeParticipations,
+  listChallenges,
+  listPublicChallenges,
+  removeChallengeMember,
+  updateChallenge,
+  updateChallengeMemberCache,
+  upsertChallengeMember,
+} from './challenges.ts'
+
 // Food Items
 export {
   deleteFoodItem,

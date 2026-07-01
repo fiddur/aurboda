@@ -30,11 +30,17 @@ export type SignupMode = z.infer<typeof signupModeSchema>
  */
 export const serverStatusResponseSchema = baseResponseSchema
   .extend({
+    federation: z
+      .boolean()
+      .optional()
+      .meta({ description: 'Whether this instance supports cross-instance federation' }),
+    product: z.literal('aurboda').optional().meta({ description: 'Product identifier for federation discovery' }),
     // For backwards compatibility
     signup_allowed: z
       .boolean()
       .meta({ description: 'Whether signup is allowed (deprecated, use signupMode)' }),
     signup_mode: signupModeSchema.meta({ description: 'Current signup mode' }),
+    version: z.string().optional().meta({ description: 'Instance build/version identifier' }),
   })
   .meta({ id: 'ServerStatusResponse' })
 
