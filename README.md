@@ -26,6 +26,7 @@ No public signup, but self-hosting is straightforward via Docker. It was initiat
 - [**Custom Activity Types**](docs/features/activity-types.md) -- User-defined activity types with display categories, colors, and timeline visibility
 - [**Deduction Rules**](docs/features/deduction-rules.md) -- Automatic activity creation from data conditions (tag + activity + screentime), with rule chaining
 - [**Active Calorie Computation**](docs/features/calories.md) -- HR-based calculation with gap-fill from Health Connect
+- [**Sharing & Challenges**](docs/features/sharing.md) -- Public read-only shared dashboards and [federated cumulative-metric challenges](docs/features/challenges.md) across Aurboda instances
 - [**Passkey Login**](docs/passkeys.md) -- WebAuthn-based sign-in for web and Android, with Digital Asset Links to share passkeys between the website and the Android app
 - **MCP Integration** -- Full AI assistant access via [Model Context Protocol](docs/mcp-server.md) (60+ tools)
 
@@ -66,6 +67,18 @@ The timeline is fully responsive and works on mobile browsers too:
   <img src="apps/web/public/screenshots/timeline-mobile.jpg" alt="Timeline on mobile" width="300" />
 </p>
 
+More in the [Timeline docs](docs/features/timeline.md).
+
+## Dashboard
+
+Your home page is a customizable grid of widgets -- baseline HRV/resting-HR cards, metric sparklines, trend arrows, goal progress, and quick links -- organized into sections. Rearrange, add, or remove widgets to surface what matters to you.
+
+<p align="center">
+  <img src="apps/web/public/screenshots/dashboard.jpg" alt="Customizable dashboard with baseline cards, sparklines, and trend widgets" width="800" />
+</p>
+
+More in the [Dashboard docs](docs/features/dashboard.md).
+
 ## HR Zones & Fitness Tracking
 
 Track time spent in each heart rate zone across all your exercises. Set weekly goals for Zone 2 cardio and Zone 5 high-intensity work based on exercise science recommendations (Huberman/Galpin protocols).
@@ -78,6 +91,8 @@ Track time spent in each heart rate zone across all your exercises. Set weekly g
 
 The Android app includes a home screen widget so you can see your weekly zone progress without opening the app.
 
+More in the [HR Zones docs](docs/features/hr-zones.md).
+
 ## Trends (EMA)
 
 Track any metric or tag frequency over time with Exponential Moving Average smoothing. Configurable half-life (7/15/30 days) and display periods (daily, weekly, monthly).
@@ -85,6 +100,8 @@ Track any metric or tag frequency over time with Exponential Moving Average smoo
 <p align="center">
   <img src="apps/web/public/screenshots/trends.jpg" alt="Trend cards showing painkillers, coffee, weight, and custom metrics over time" width="800" />
 </p>
+
+More in the [Trends docs](docs/features/trends.md).
 
 ## Meals & Nutrition
 
@@ -102,6 +119,8 @@ The **Overview** tab turns your log into a nutrient report. Average intake over 
 
 Import full macros and ~50 micronutrients from a Cronometer CSV export, pull meals from Oura, or build your own food library with composite recipes and custom portion units.
 
+More in the [Meals & Nutrition docs](docs/features/meals.md).
+
 ## Places & Location History
 
 Visualize your daily movements on a map. Aurboda detects frequently visited locations, lets you name them, and tracks visit durations. Powered by OwnTracks and PostGIS.
@@ -109,6 +128,8 @@ Visualize your daily movements on a map. Aurboda detects frequently visited loca
 <p align="center">
   <img src="apps/web/public/screenshots/places.jpg" alt="Places view with location timeline and map" width="800" />
 </p>
+
+More in the [Places docs](docs/features/places.md).
 
 ## AI-Ready via MCP
 
@@ -127,11 +148,25 @@ Example queries an AI can answer:
 - "Show me days where I hit my Zone 2 cardio goals"
 - "What's the probability of a headache the day after poor sleep?"
 
+More in the [MCP server docs](docs/mcp-server.md).
+
 ## Correlation Analysis
 
 Go beyond simple charts. Aurboda computes statistical correlations between any combination of activities, tags, metrics, and productivity data. Includes Pearson correlation coefficients, chi-squared significance testing, relative risk ratios, and configurable lag windows (12h to 7 days).
 
 Examples: Does evening exercise affect your sleep score? Does coffee intake correlate with HRV? What's the probability of a headache after a bad night?
+
+More in the [Correlation docs](docs/features/correlations.md).
+
+## Sharing & Challenges
+
+Publish read-only **shared dashboards** under your own public namespace (`/u/:username/:slug`) so anyone can view a curated set of charts without signing in. **Challenges** build on the same foundation: host a cumulative-metric or activity competition over a date span, let others join -- even from a different Aurboda instance -- and watch a live race chart and leaderboard of everyone's running total.
+
+<p align="center">
+  <img src="apps/web/public/screenshots/challenge.jpg" alt="Federated challenge with cumulative race chart and leaderboard" width="800" />
+</p>
+
+More in the [Sharing](docs/features/sharing.md) and [Challenges](docs/features/challenges.md) docs.
 
 ## Android App
 
@@ -144,6 +179,8 @@ The companion Android app syncs data from Health Connect (40+ record types inclu
   &nbsp;&nbsp;
   <img src="apps/web/public/screenshots/widget.jpg" alt="Android home screen widget" width="250" />
 </p>
+
+More in the [Health Connect docs](docs/health-connect.md).
 
 ---
 
