@@ -86,6 +86,22 @@ Track any metric or tag frequency over time with Exponential Moving Average smoo
   <img src="apps/web/public/screenshots/trends.jpg" alt="Trend cards showing painkillers, coffee, weight, and custom metrics over time" width="800" />
 </p>
 
+## Meals & Nutrition
+
+Log food fast and see how your intake stacks up over time. The day view gives you configurable meal slots (Breakfast, Lunch, Snack, Dinner) with one-tap quick-log chips for your frequent foods, per-item sensitivity/allergen flags, and a running day total for calories and every micronutrient.
+
+<p align="center">
+  <img src="apps/web/public/screenshots/meals-day.jpg" alt="Meals day view with meal slots, quick-log food chips, and per-day nutrient totals" width="800" />
+</p>
+
+The **Overview** tab turns your log into a nutrient report. Average intake over **1, 7, 30, and 90 days** is shown side by side, each value plotted against its recommended min/max range (NNR2023 defaults, with per-user overrides). An energy-balance row compares average calories eaten against calories burned (from Garmin / Health Connect), so surplus or deficit is visible at a glance. Averaging ignores days with no meal data, so a sparse log isn't dragged toward zero.
+
+<p align="center">
+  <img src="apps/web/public/screenshots/meals-overview.jpg" alt="Nutrient overview report with 1/7/30/90-day average columns, reference-range bars, and energy balance" width="800" />
+</p>
+
+Import full macros and ~50 micronutrients from a Cronometer CSV export, pull meals from Oura, or build your own food library with composite recipes and custom portion units.
+
 ## Places & Location History
 
 Visualize your daily movements on a map. Aurboda detects frequently visited locations, lets you name them, and tracks visit durations. Powered by OwnTracks and PostGIS.
