@@ -45,7 +45,10 @@ export function ChallengeJoin() {
       <div class="challenges-page">
         <h1>Join a challenge</h1>
         <p>
-          Please <a href={`/login?next=${encodeURIComponent(`/challenges/join?challenge=${challengeUrl}`)}`}>log in</a>{' '}
+          Please{' '}
+          <a href={`/login?next=${encodeURIComponent(`/challenges/join?challenge=${encodeURIComponent(challengeUrl)}`)}`}>
+            log in
+          </a>{' '}
           to join this challenge on your instance.
         </p>
       </div>
