@@ -96,8 +96,8 @@ Every chart widget links to the [Chart Explorer](./trends.md) (`/chart`), carryi
 identifier for the exact board widget it came from. On the chart page you can tweak the
 source, lookback, aggregation, or chart type, then click **"Update Chart in _&lt;board&gt;_ /
 _&lt;section&gt;_"** at the bottom to replace that widget in place with the new configuration
-(and optionally give it a new title). This works for both your home dashboard and any
-shared dashboard you own.
+(and optionally give it a new title). On save you are taken straight back to that
+dashboard. This works for both your home dashboard and any shared dashboard you own.
 
 ### Metric Picker
 
