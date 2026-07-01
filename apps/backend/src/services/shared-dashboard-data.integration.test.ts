@@ -11,6 +11,7 @@ import type { DashboardConfig } from '@aurboda/api-spec'
 
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
+import { insertActivity } from '../db/index.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import { resolveDashboardData } from './shared-dashboard-data.ts'
 
@@ -112,6 +113,75 @@ describe('resolveDashboardData integration', () => {
       for (const bucket of bar.data.buckets) {
         expect(Object.keys(bucket).sort()).toEqual(['bucket_start', 'value'])
       }
+    }
+  })
+
+  test('trend_chart and bar_chart resolve breakdown series when breakdown_fields is set', async () => {
+    const user = getTestUser()
+    const base = new Date('2026-02-01T12:00:00Z')
+    const seed = async (intensity: string, dayOffset: number) => {
+      const start = new Date(base)
+      start.setUTCDate(start.getUTCDate() + dayOffset)
+      await insertActivity(user, {
+        activity_type: 'exercise',
+        data: { intensity },
+        end_time: new Date(start.getTime() + 30 * 60_000),
+        source: 'health_connect',
+        start_time: start,
+      })
+    }
+    await seed('high', 0)
+    await seed('low', 1)
+    await seed('high', 2)
+
+    const data = await resolveDashboardData(user, {
+      sections: [
+        {
+          id: 's',
+          title: 'x',
+          type: 'charts',
+          widgets: [
+            {
+              config: {
+                breakdown_fields: ['intensity'],
+                lookback_days: 3650,
+                pattern: 'exercise',
+                source_type: 'activity_type',
+              },
+              id: 'trend',
+              type: 'trend_chart',
+            },
+            {
+              config: {
+                breakdown_fields: ['intensity'],
+                bucket_size: '1M',
+                lookback_days: 3650,
+                pattern: 'exercise',
+                source_type: 'activity_type',
+              },
+              id: 'bar',
+              type: 'bar_chart',
+            },
+          ],
+        },
+      ],
+      version: 1,
+    })
+
+    const trend = data['trend']
+    expect(trend.type).toBe('trend_chart')
+    if (trend.type === 'trend_chart' && trend.data) {
+      expect(trend.data.breakdown_series?.slice().sort()).toEqual(['high', 'low'])
+      expect(Object.keys(trend.data.breakdown_histories ?? {}).sort()).toEqual(['high', 'low'])
+    }
+
+    const bar = data['bar']
+    expect(bar.type).toBe('bar_chart')
+    if (bar.type === 'bar_chart' && bar.data) {
+      expect(bar.data.breakdown_series?.slice().sort()).toEqual(['high', 'low'])
+      expect(bar.data.breakdown_buckets?.length ?? 0).toBeGreaterThan(0)
+      // In breakdown mode the flat buckets array is empty — series live in breakdown_buckets.
+      expect(bar.data.buckets).toEqual([])
     }
   })
 

@@ -101,6 +101,10 @@ export type SparklineCardConfig = z.infer<typeof sparklineCardConfigSchema>
 export const trendChartConfigSchema = z
   .object({
     aggregation: z.enum(['count', 'sum', 'mean']).optional().meta({ description: 'Aggregation method' }),
+    breakdown_fields: z
+      .array(z.string())
+      .optional()
+      .meta({ description: 'Categorical data fields to break the series down by' }),
     display_period: z
       .enum(['daily', 'weekly', 'monthly'])
       .optional()
@@ -124,6 +128,10 @@ export const trendChartConfigSchema = z
 export const barChartConfigSchema = z
   .object({
     aggregation: z.enum(['count', 'sum', 'mean']).optional().meta({ description: 'Aggregation method' }),
+    breakdown_fields: z
+      .array(z.string())
+      .optional()
+      .meta({ description: 'Categorical data fields to break the series down by' }),
     bucket_size: z
       .enum(['1m', '5m', '15m', '1h', '1d', '1w', '1M'])
       .meta({ description: 'Time bucket size' }),
