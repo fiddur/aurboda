@@ -71,9 +71,8 @@ export function PublicChallenge({
     window.location.href = `${base.replace(/\/+$/, '')}/challenges/join?challenge=${encodeURIComponent(challenge.share_url)}`
   }
 
-  const standings = standingsQuery.data ?? []
+  const standings = (standingsQuery.data ?? []).filter((s) => s.status === 'active')
   const series = standings
-    .filter((s) => s.status === 'active')
     .map((s, i) => toCumulativeSeries(s, COLORS[i % COLORS.length]))
     .filter((s) => s.data.length > 0)
 

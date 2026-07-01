@@ -7,12 +7,7 @@
  * - Dashboard, anyone else: read-only from server-resolved `widget_data`.
  * - Challenge: the race-chart + leaderboard view.
  */
-import type {
-  DashboardConfig,
-  PublicSharedDashboardResponse,
-  SectionType,
-  WidgetDataMap,
-} from '@aurboda/api-spec'
+import type { DashboardConfig, SectionType, WidgetDataMap } from '@aurboda/api-spec'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRoute } from 'preact-iso'
@@ -172,28 +167,36 @@ export function PublicResource() {
     )
   }
 
-  if (data.type === 'challenge' && data.challenge) {
-    return <PublicChallenge username={username} slug={slug} challenge={data.challenge} />
+  if (data.type === 'challenge') {
+    return data.challenge ? (
+      <PublicChallenge username={username} slug={slug} challenge={data.challenge} />
+    ) : (
+      <NotFound />
+    )
   }
 
   // Dashboard. Owners get the live, editable view; everyone else the read-only one.
   if (isOwner) return <OwnerSharedDashboard username={username} slug={slug} />
 
-  const dash = data as PublicSharedDashboardResponse
-  if (!dash.config) {
+  // `'config' in data` narrows the union to the dashboard response (no cast).
+  if ('config' in data && data.config) {
     return (
-      <div class="public-dashboard">
-        <h1>Not found</h1>
-        <p class="public-muted">This page does not exist or is no longer available.</p>
-      </div>
+      <ReadOnlyDashboard
+        username={username}
+        name={data.name ?? 'Dashboard'}
+        config={data.config}
+        widgetData={data.widget_data}
+      />
     )
   }
+  return <NotFound />
+}
+
+function NotFound() {
   return (
-    <ReadOnlyDashboard
-      username={username}
-      name={dash.name ?? 'Dashboard'}
-      config={dash.config}
-      widgetData={dash.widget_data}
-    />
+    <div class="public-dashboard">
+      <h1>Not found</h1>
+      <p class="public-muted">This page does not exist or is no longer available.</p>
+    </div>
   )
 }

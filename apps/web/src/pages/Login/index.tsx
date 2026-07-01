@@ -5,17 +5,23 @@ import { auth, ensureStatusLoaded, login, loginWithPasskey, signupAllowed } from
 import './style.css'
 
 export function Login() {
-  const { route } = useLocation()
+  const { route, query } = useLocation()
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [passkeyLoading, setPasskeyLoading] = useState(false)
+
+  // Where to go after login. Only allow internal paths (no open redirect).
+  const next =
+    typeof query.next === 'string' && query.next.startsWith('/') && !query.next.startsWith('//')
+      ? query.next
+      : '/'
 
   useEffect(() => {
     ensureStatusLoaded()
   }, [])
 
   if (auth.value.token) {
-    route('/')
+    route(next)
     return null
   }
 
@@ -29,7 +35,7 @@ export function Login() {
       const result = await login(formData.get('user') as string, formData.get('pass') as string)
 
       if (result.success) {
-        route('/')
+        route(next)
       } else {
         setError(result.error ?? 'Login failed')
       }
@@ -42,7 +48,7 @@ export function Login() {
     setPasskeyLoading(true)
     const result = await loginWithPasskey()
     if (result.success) {
-      route('/')
+      route(next)
     } else {
       setError(result.error ?? 'Passkey login failed')
     }

@@ -10,7 +10,6 @@ import type {
   CreateChallengeBody,
   PublicChallengeResponse,
   PublicSharedDashboardResponse,
-  UpdateChallengeBody,
 } from '@aurboda/api-spec'
 
 import axios from 'axios'
@@ -32,14 +31,6 @@ export const listChallenges = async (): Promise<Challenge[]> => {
 export const createChallenge = async (body: CreateChallengeBody): Promise<Challenge> => {
   const res = await axios.post<ChallengeResponse>(`${API_URL}/challenges`, body, { headers: authHeaders() })
   if (!res.data.challenge) throw new Error(res.data.error ?? 'Failed to create challenge')
-  return res.data.challenge
-}
-
-export const updateChallenge = async (id: string, body: UpdateChallengeBody): Promise<Challenge> => {
-  const res = await axios.put<ChallengeResponse>(`${API_URL}/challenges/${id}`, body, {
-    headers: authHeaders(),
-  })
-  if (!res.data.challenge) throw new Error(res.data.error ?? 'Failed to update challenge')
   return res.data.challenge
 }
 
@@ -66,18 +57,6 @@ export const joinChallengeByUrl = async (challengeUrl: string): Promise<Challeng
 
 export const leaveChallenge = async (participationId: string): Promise<void> => {
   await axios.delete(`${API_URL}/challenges/participations/${participationId}`, { headers: authHeaders() })
-}
-
-/** Owner-only standings (can force a refresh). */
-export const fetchOwnerChallengeStandings = async (
-  id: string,
-  refresh = false,
-): Promise<ChallengeStanding[]> => {
-  const res = await axios.get<ChallengeStandingsResponse>(`${API_URL}/challenges/${id}/standings`, {
-    headers: authHeaders(),
-    params: refresh ? { refresh: '1' } : {},
-  })
-  return res.data.members ?? []
 }
 
 // ===========================================================================
