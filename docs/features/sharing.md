@@ -66,12 +66,15 @@ beyond the saved widgets.
   server-resolved data.
 - **Edit in place**: when you are logged in and viewing your *own* shared
   dashboard (`/u/<you>/<slug>`), an Edit toggle appears and you get the same
-  add/remove/move-widget and section controls as the home dashboard; changes
-  save to that shared dashboard. (Owners see live widget data here, not the
-  read-only snapshot.)
+  add/remove/move-widget and section controls as the home dashboard (including
+  renaming sections inline); changes save to that shared dashboard. (Owners see
+  live widget data here, not the read-only snapshot.)
 - **Add a chart to a shared dashboard**: the chart page's "Add to dashboard"
   dialog lets you pick the target dashboard (your home dashboard or any shared
   one) and then the section.
+- **Update a chart on a shared dashboard**: clicking a chart on a shared
+  dashboard you own opens the chart page carrying that widget's origin; tweak it
+  and use "Update Chart in _&lt;board&gt;_ / _&lt;section&gt;_" to replace it in place.
 
 ## API
 

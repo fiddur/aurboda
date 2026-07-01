@@ -18,36 +18,94 @@ const generateSectionId = () => `section-${Date.now()}-${Math.random().toString(
 function DashboardSectionComponent({
   section,
   isEditing,
+  boardId,
   onRemoveWidget,
   onMoveWidget,
   onAddWidgetClick,
   onDeleteSection,
+  onRenameSection,
 }: {
   section: DashboardSection
   isEditing: boolean
+  boardId?: string
   onRemoveWidget?: (widgetId: string) => void
   onMoveWidget?: (widgetId: string, direction: 'up' | 'down') => void
   onAddWidgetClick?: () => void
   onDeleteSection?: () => void
+  onRenameSection?: (title: string) => void
 }) {
   const [collapsed, setCollapsed] = useState(section.collapsed ?? false)
+  const [editingTitle, setEditingTitle] = useState(false)
+  const [titleDraft, setTitleDraft] = useState(section.title)
 
   const gridClass =
     section.type === 'links' ? 'links-grid' : section.type === 'charts' ? 'charts-grid' : 'metrics-grid'
 
+  const commitTitle = () => {
+    const next = titleDraft.trim()
+    if (next && next !== section.title) onRenameSection?.(next)
+    else setTitleDraft(section.title)
+    setEditingTitle(false)
+  }
+
+  const cancelTitle = () => {
+    setTitleDraft(section.title)
+    setEditingTitle(false)
+  }
+
   return (
     <section class="metrics-section">
       <div class="section-header">
-        <h2 onClick={() => setCollapsed(!collapsed)} style={{ cursor: 'pointer' }}>
-          {section.title}
-          {section.widgets.length > 0 && (
-            <span class="collapse-indicator">{collapsed ? '▶' : '▼'}</span>
-          )}
-        </h2>
-        {isEditing && (
+        {editingTitle ? (
+          <input
+            class="section-title-input"
+            type="text"
+            value={titleDraft}
+            onInput={(e) => setTitleDraft((e.target as HTMLInputElement).value)}
+            onBlur={commitTitle}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') commitTitle()
+              else if (e.key === 'Escape') cancelTitle()
+            }}
+            autoFocus
+          />
+        ) : (
+          <h2 onClick={() => setCollapsed(!collapsed)} style={{ cursor: 'pointer' }}>
+            {section.title}
+            {section.widgets.length > 0 && <span class="collapse-indicator">{collapsed ? '▶' : '▼'}</span>}
+          </h2>
+        )}
+        {isEditing && !editingTitle && (
           <div class="section-edit-controls">
+            <button
+              class="section-rename-btn"
+              onClick={() => {
+                setTitleDraft(section.title)
+                setEditingTitle(true)
+              }}
+              title="Rename section"
+            >
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
+                <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
+              </svg>
+            </button>
             <button class="section-delete-btn" onClick={onDeleteSection} title="Delete section">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
                 <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2" />
               </svg>
             </button>
@@ -66,7 +124,14 @@ function DashboardSectionComponent({
                       onClick={() => onMoveWidget?.(widget.id, 'up')}
                       title="Move up"
                     >
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <svg
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                      >
                         <path d="M12 19V5M5 12l7-7 7 7" />
                       </svg>
                     </button>
@@ -77,7 +142,14 @@ function DashboardSectionComponent({
                       onClick={() => onMoveWidget?.(widget.id, 'down')}
                       title="Move down"
                     >
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <svg
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                      >
                         <path d="M12 5v14M5 12l7 7 7-7" />
                       </svg>
                     </button>
@@ -87,13 +159,20 @@ function DashboardSectionComponent({
                     onClick={() => onRemoveWidget?.(widget.id)}
                     title="Remove widget"
                   >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <svg
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                    >
                       <path d="M18 6L6 18M6 6l12 12" />
                     </svg>
                   </button>
                 </div>
               )}
-              <WidgetRenderer widget={widget} />
+              <WidgetRenderer widget={widget} boardId={boardId} sectionId={section.id} />
             </div>
           ))}
           {isEditing && (
@@ -187,9 +266,11 @@ interface EditableDashboardProps {
   config: DashboardConfig
   isEditing: boolean
   onChange: (next: DashboardConfig) => void
+  /** Identifies this board ('home' or a shared-dashboard id) so chart widgets can link back for update-in-place. */
+  boardId: string
 }
 
-export function EditableDashboard({ config, isEditing, onChange }: EditableDashboardProps) {
+export function EditableDashboard({ config, isEditing, onChange, boardId }: EditableDashboardProps) {
   const [showWidgetPicker, setShowWidgetPicker] = useState<string | null>(null) // section id or null
   const [showAddSection, setShowAddSection] = useState(false)
 
@@ -240,6 +321,15 @@ export function EditableDashboard({ config, isEditing, onChange }: EditableDashb
     setShowAddSection(false)
   }
 
+  const handleRenameSection = (sectionId: string, title: string) => {
+    onChange({
+      ...config,
+      sections: config.sections.map((section) =>
+        section.id === sectionId ? { ...section, title } : section,
+      ),
+    })
+  }
+
   const handleDeleteSection = (sectionId: string) => {
     const section = config.sections.find((s) => s.id === sectionId)
     if (!section) return
@@ -262,10 +352,12 @@ export function EditableDashboard({ config, isEditing, onChange }: EditableDashb
           key={section.id}
           section={section}
           isEditing={isEditing}
+          boardId={boardId}
           onRemoveWidget={(widgetId) => handleRemoveWidget(section.id, widgetId)}
           onMoveWidget={(widgetId, direction) => handleMoveWidget(section.id, widgetId, direction)}
           onAddWidgetClick={() => setShowWidgetPicker(section.id)}
           onDeleteSection={() => handleDeleteSection(section.id)}
+          onRenameSection={(title) => handleRenameSection(section.id, title)}
         />
       ))}
 
@@ -275,7 +367,14 @@ export function EditableDashboard({ config, isEditing, onChange }: EditableDashb
         ) : (
           <div class="add-section-placeholder">
             <button class="add-section-btn" onClick={() => setShowAddSection(true)}>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
                 <path d="M12 5v14M5 12h14" />
               </svg>
               Add Section

@@ -11,7 +11,7 @@ import type { TrendChartConfig, TrendChartData } from '@aurboda/api-spec'
 import { useQuery } from '@tanstack/react-query'
 
 import { fetchTrend } from '../../state/api'
-import { buildChartUrl } from '../../utils/chart-url'
+import { buildChartUrl, type ChartOrigin } from '../../utils/chart-url'
 import { TrendLineChart } from '../charts/TrendLineChart'
 
 interface TrendChartViewProps {
@@ -50,9 +50,11 @@ export function TrendChartView({ config, data, href }: TrendChartViewProps) {
 
 interface TrendChartWidgetProps {
   config: TrendChartConfig
+  /** When rendered inside a board, links back to /chart carrying this widget's origin. */
+  origin?: ChartOrigin
 }
 
-export function TrendChartWidget({ config }: TrendChartWidgetProps) {
+export function TrendChartWidget({ config, origin }: TrendChartWidgetProps) {
   const {
     source_type,
     pattern,
@@ -87,6 +89,7 @@ export function TrendChartWidget({ config }: TrendChartWidgetProps) {
     pattern,
     source_type,
     activity_type_id: config.tag_definition_id,
+    origin,
   })
 
   if (trendQuery.isLoading) {

@@ -84,10 +84,20 @@ Click the pencil icon next to the "Dashboard" title to enter edit mode.
 - **Remove a widget**: Click the X button on any widget.
 - **Reorder widgets**: Use the up/down arrows on each widget to move it within its section.
 - **Add a section**: Click "Add Section" at the bottom. Give it a title and choose a type (Metrics, Charts, or Links).
+- **Rename a section**: Click the pencil icon next to a section title, edit the title inline, and press Enter (or click away) to save. Press Escape to cancel.
 - **Delete a section**: Click the trash icon next to a section title. Confirms before deleting the section and all its widgets.
 - **Reset to defaults**: Click "Reset to Default" to restore the original 4-section layout. Your customizations will be lost.
 
 Every change saves immediately -- there is no separate "Save" button. Click "Done Editing" to exit edit mode.
+
+### Updating a chart from the chart explorer
+
+Every chart widget links to the [Chart Explorer](./trends.md) (`/chart`), carrying an
+identifier for the exact board widget it came from. On the chart page you can tweak the
+source, lookback, aggregation, or chart type, then click **"Update Chart in _&lt;board&gt;_ /
+_&lt;section&gt;_"** at the bottom to replace that widget in place with the new configuration
+(and optionally give it a new title). This works for both your home dashboard and any
+shared dashboard you own.
 
 ### Metric Picker
 
