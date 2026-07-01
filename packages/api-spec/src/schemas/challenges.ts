@@ -197,8 +197,11 @@ export type RegisterChallengeMemberBody = z.infer<typeof registerChallengeMember
 
 export const publicChallengeSchema = z
   .object({
-    effective_bucket_size: challengeEffectiveBucketSizeSchema.meta({
-      description: 'Concrete bucket size the race chart is rendered with (resolved from spec.bucket_size + window)',
+    effective_bucket_size: challengeEffectiveBucketSizeSchema.optional().meta({
+      description:
+        'Concrete bucket size the race chart is rendered with (resolved from spec.bucket_size + window). ' +
+        'Optional for cross-version federation: only the viewing frontend reads it (falling back to a ' +
+        'default), so a joiner parsing an older host that omits it can still join.',
     }),
     end_ts: z.string(),
     host_identity: z.string().meta({ description: 'Host public profile base URL' }),
