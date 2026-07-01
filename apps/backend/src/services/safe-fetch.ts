@@ -76,11 +76,13 @@ export const assertPublicUrl = async (rawUrl: string): Promise<void> => {
 const MAX_RESPONSE_BYTES = 1_000_000 // federation payloads are small; cap to avoid memory exhaustion
 
 const guardedConfig = (config?: AxiosRequestConfig): AxiosRequestConfig => ({
-  maxBodyLength: MAX_RESPONSE_BYTES,
-  maxContentLength: MAX_RESPONSE_BYTES,
-  maxRedirects: 0, // a redirect could bounce to an internal address — reject it
   timeout: DEFAULT_TIMEOUT_MS,
   ...config,
+  // Security-critical: keep these after the spread so caller config can't relax
+  // them (a caller-set maxRedirects would re-open the redirect-to-internal SSRF).
+  maxBodyLength: MAX_RESPONSE_BYTES,
+  maxContentLength: MAX_RESPONSE_BYTES,
+  maxRedirects: 0,
 })
 
 export const safeFetchGet = async <T = unknown>(
