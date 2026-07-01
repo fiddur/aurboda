@@ -9,6 +9,13 @@
  * structure, the owner can mark a subset of the fields as masked: those field
  * values are replaced with stable positional labels A, B, C…, resolved
  * server-side so the real values never reach a public viewer.
+ *
+ * Known limitation: labels are assigned in sorted order of the real values, so a
+ * public viewer never sees the values themselves but can infer their alphabetical
+ * ordering (e.g. that series "A" sorts before "B"). Sorting is what makes labels
+ * stable across refreshes; a per-board seeded shuffle (hash of slug + value) could
+ * hide the ordering too, but that residual signal is accepted here as it exposes
+ * no actual value.
  */
 
 const SERIES_DELIMITER = ' / '
