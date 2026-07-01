@@ -158,27 +158,20 @@ export function PublicResource() {
   }
 
   const data = query.data
-  if (query.isError || !data?.success) {
-    return (
-      <div class="public-dashboard">
-        <h1>Not found</h1>
-        <p class="public-muted">This page does not exist or is no longer available.</p>
-      </div>
-    )
+
+  // Challenge — same view for everyone (from a successful public fetch).
+  if (data?.success && data.type === 'challenge' && data.challenge) {
+    return <PublicChallenge username={username} slug={slug} challenge={data.challenge} />
   }
 
-  if (data.type === 'challenge') {
-    return data.challenge ? (
-      <PublicChallenge username={username} slug={slug} challenge={data.challenge} />
-    ) : (
-      <NotFound />
-    )
-  }
-
-  // Dashboard. Owners get the live, editable view; everyone else the read-only one.
+  // Owner of this profile → their live, editable dashboard, independent of the
+  // (unauthenticated, retry:false) public fetch — so a transient failure of that
+  // fetch doesn't strip the owner of their editable view.
   if (isOwner) return <OwnerSharedDashboard username={username} slug={slug} />
 
-  // `'config' in data` narrows the union to the dashboard response (no cast).
+  if (query.isError || !data?.success) return <NotFound />
+
+  // Non-owner dashboard. `'config' in data` narrows the union (no cast).
   if ('config' in data && data.config) {
     return (
       <ReadOnlyDashboard
