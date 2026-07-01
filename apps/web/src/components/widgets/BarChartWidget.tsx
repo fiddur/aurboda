@@ -10,7 +10,7 @@ import type { BarChartConfig, BarChartData } from '@aurboda/api-spec'
 import { useQuery } from '@tanstack/react-query'
 
 import { fetchChartData } from '../../state/api'
-import { buildChartUrl } from '../../utils/chart-url'
+import { buildChartUrl, type ChartOrigin } from '../../utils/chart-url'
 import { BarChart } from '../charts/BarChart'
 
 /** Compute start/end ISO strings from lookback_days. */
@@ -50,9 +50,11 @@ export function BarChartView({ config, data, href }: BarChartViewProps) {
 
 interface BarChartWidgetProps {
   config: BarChartConfig
+  /** When rendered inside a board, links back to /chart carrying this widget's origin. */
+  origin?: ChartOrigin
 }
 
-export function BarChartWidget({ config }: BarChartWidgetProps) {
+export function BarChartWidget({ config, origin }: BarChartWidgetProps) {
   const {
     source_type,
     pattern,
@@ -90,6 +92,7 @@ export function BarChartWidget({ config }: BarChartWidgetProps) {
     pattern: pattern ?? undefined,
     source_type,
     activity_type_id,
+    origin,
   })
 
   if (chartQuery.isLoading) {
