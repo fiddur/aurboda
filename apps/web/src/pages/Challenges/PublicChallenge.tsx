@@ -66,7 +66,9 @@ export function PublicChallenge({
 
   const standings = (standingsQuery.data ?? []).filter((s) => s.status === 'active')
   const series = standings
-    .map((s, i) => toCumulativeSeries(s, COLORS[i % COLORS.length], challenge.start_ts, challenge.spec.bucket_size))
+    .map((s, i) =>
+      toCumulativeSeries(s, COLORS[i % COLORS.length], challenge.start_ts, challenge.spec.bucket_size),
+    )
     // Keep members with at least one real bucket (the start-line point alone is length 1).
     .filter((s) => s.data.length > 1)
 
@@ -86,7 +88,10 @@ export function PublicChallenge({
         {formatDateInZone(challenge.start_ts, challenge.timezone)} –{' '}
         {/* end_ts is the exclusive window end (midnight after the last day); step back
             one ms to render the inclusive last competing day. */}
-        {formatDateInZone(new Date(new Date(challenge.end_ts).getTime() - 1).toISOString(), challenge.timezone)}
+        {formatDateInZone(
+          new Date(new Date(challenge.end_ts).getTime() - 1).toISOString(),
+          challenge.timezone,
+        )}
       </p>
 
       <div class="challenge-view-actions">
@@ -110,7 +115,13 @@ export function PublicChallenge({
         {standingsQuery.isLoading ? (
           <div class="public-loading">Loading standings…</div>
         ) : series.length > 0 ? (
-          <TrendLineChart data={[]} color={COLORS[0]} multiSeries={series} height={280} />
+          <TrendLineChart
+            data={[]}
+            color={COLORS[0]}
+            multiSeries={series}
+            height={280}
+            xDomain={[new Date(challenge.start_ts), new Date(challenge.end_ts)]}
+          />
         ) : (
           <p class="public-muted">No data yet.</p>
         )}
