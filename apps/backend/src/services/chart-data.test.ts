@@ -1,11 +1,15 @@
+import type * as TimeSeriesModule from '../db/time-series.ts'
+
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 import * as db from '../db/index.ts'
 import { buildBucketExpr, getChartData } from './chart-data.ts'
 
-// Mock the db module
-vi.mock('../db', () => ({
+// Mock the db module. getSourceFilter is pulled through real (pure function) so
+// the cumulative-source rules can't drift from production.
+vi.mock('../db', async () => ({
   expandActivityTypes: vi.fn().mockImplementation((_user: string, types: string[]) => Promise.resolve(types)),
+  getSourceFilter: (await vi.importActual<typeof TimeSeriesModule>('../db/time-series.ts')).getSourceFilter,
   query: vi.fn(),
 }))
 
@@ -122,6 +126,30 @@ describe('getChartData', () => {
 
     const call = vi.mocked(db.query).mock.calls[0]
     expect(call[1]).toContain('SUM(value)')
+    // Cumulative metric (steps) must be restricted to trusted sources so it isn't
+    // multiply-counted (raw + daily-aggregate + …). Regression guard for the
+    // chart/challenge over-count.
+    expect(call[1]).toContain('source = ANY')
+    expect(call[1]).toContain('deleted_at IS NULL')
+    expect(call[2]).toContainEqual(['health_connect_aggregate', 'aurboda'])
+  })
+
+  test('non-cumulative metric sum does not restrict sources', async () => {
+    vi.mocked(db.query).mockResolvedValue({
+      rows: [{ bucket_start: new Date('2026-01-01T00:00:00Z'), value: 5 }],
+    } as never)
+
+    await getChartData('testuser', {
+      aggregation: 'sum',
+      bucket_size: '1d',
+      end: '2026-01-31T23:59:59Z',
+      pattern: 'heart_rate',
+      source_type: 'metric',
+      start: '2026-01-01T00:00:00Z',
+    })
+
+    const call = vi.mocked(db.query).mock.calls[0]
+    expect(call[1]).not.toContain('source = ANY')
   })
 
   test('returns bucketed metric data with count aggregation', async () => {
