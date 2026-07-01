@@ -13,14 +13,17 @@ import { auth } from '../../state/auth'
 export function ChallengeJoin() {
   const { query } = useLocation()
   const challengeUrl = typeof query.challenge === 'string' ? query.challenge : ''
+  // The challenge param is attacker-controllable; only ever treat it as a link
+  // target if it's http(s) (a `javascript:` URL passes the backend's url() check
+  // but must never become an href — DOM XSS).
+  const safeChallengeUrl = /^https?:\/\//.test(challengeUrl) ? challengeUrl : null
   const isLoggedIn = Boolean(auth.value.token)
   const started = useRef(false)
 
   const joinMutation = useMutation({
     mutationFn: () => joinChallengeByUrl(challengeUrl),
     onSuccess: () => {
-      // Only follow http(s) targets (defense-in-depth; the join already validated it).
-      window.location.href = /^https?:\/\//.test(challengeUrl) ? challengeUrl : '/challenges'
+      window.location.href = safeChallengeUrl ?? '/challenges'
     },
   })
 
@@ -61,7 +64,7 @@ export function ChallengeJoin() {
       {joinMutation.isError && (
         <p class="challenges-empty">
           {joinMutation.error instanceof Error ? joinMutation.error.message : 'Failed to join.'}{' '}
-          <a href={challengeUrl}>Open the challenge</a>
+          {safeChallengeUrl && <a href={safeChallengeUrl}>Open the challenge</a>}
         </p>
       )}
       {!joinMutation.isError && <p class="public-muted">Setting things up, you’ll be redirected shortly…</p>}
