@@ -205,7 +205,7 @@ Nutrient recommendations:
 
 ## Multi-day Overview
 
-The Meals page exposes a second tab, **Overview**, with averaged nutrient intake over a selectable window (7 / 14 / 30 / 90 days) plus an energy-balance row comparing average kcal eaten against averaged daily `calories_total` burned.
+The Meals page exposes a second tab, **Overview**, with averaged nutrient intake over four windows (1 / 7 / 30 / 90 days) shown side by side as columns, plus an energy-balance row comparing average kcal eaten against averaged daily `calories_total` burned. A window selector emphasizes one column but all four remain visible.
 
 Each nutrient is rendered against a recommended min/max range using the same `ReferenceRangeBar` component reports use. The defaults come from a curated **NNR2023** seed in the central database; per-user overrides live in the `user_nutrient_recommendations` table and win whenever present. A user override can also explicitly suppress a nutrient's range (NULL/NULL) so the value is shown without a bar.
 

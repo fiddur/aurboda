@@ -150,8 +150,14 @@
 /* Public challenge view */
 .public-challenge .challenge-view-actions {
   display: flex;
+  align-items: center;
   gap: 0.5rem;
   margin-bottom: 1rem;
+}
+
+.challenge-joined {
+  color: var(--color-success, #10b981);
+  font-weight: 600;
 }
 
 .challenge-race-chart {
