@@ -71,7 +71,11 @@ More in the [Timeline docs](docs/features/timeline.md).
 
 ## Dashboard
 
-Your home page is a customizable grid of widgets -- baseline HRV/resting-HR cards, metric sparklines, trend arrows, goal progress, and quick links -- organized into sections. Rearrange, add, or remove widgets to surface what matters to you, then optionally publish a read-only version (see [Sharing & Challenges](#sharing--challenges) below).
+Your home page is a customizable grid of widgets -- metric cards, sparklines, trend arrows, goal progress, and charts -- organized into sections you can rearrange, add to, or remove. Dashboards can also be published read-only under your public profile (see [Sharing & Challenges](#sharing--challenges)); the one below is a public example.
+
+<p align="center">
+  <img src="apps/web/public/screenshots/dashboard.png" alt="A dashboard with strength-training, running, VO2 max, and weekly sleep-score charts" width="800" />
+</p>
 
 More in the [Dashboard docs](docs/features/dashboard.md).
 
@@ -104,13 +108,13 @@ More in the [Trends docs](docs/features/trends.md).
 Log food fast and see how your intake stacks up over time. The day view gives you configurable meal slots (Breakfast, Lunch, Snack, Dinner) with one-tap quick-log chips for your frequent foods, per-item sensitivity/allergen flags, and a running day total for calories and every micronutrient.
 
 <p align="center">
-  <img src="apps/web/public/screenshots/meals-day.jpg" alt="Meals day view with meal slots, quick-log food chips, and per-day nutrient totals" width="800" />
+  <img src="apps/web/public/screenshots/meals-day.png" alt="Meals day view with meal slots, quick-log food chips, and per-day nutrient totals" width="800" />
 </p>
 
 The **Overview** tab turns your log into a nutrient report. Average intake over **1, 7, 30, and 90 days** is shown side by side, each value plotted against its recommended min/max range (NNR2023 defaults, with per-user overrides). An energy-balance row compares average calories eaten against calories burned (from Garmin / Health Connect), so surplus or deficit is visible at a glance. Averaging ignores days with no meal data, so a sparse log isn't dragged toward zero.
 
 <p align="center">
-  <img src="apps/web/public/screenshots/meals-overview.jpg" alt="Nutrient overview report with 1/7/30/90-day average columns, reference-range bars, and energy balance" width="800" />
+  <img src="apps/web/public/screenshots/meals-overview.png" alt="Nutrient overview report with 1/7/30/90-day average columns, reference-range bars, and energy balance" width="800" />
 </p>
 
 Import full macros and ~50 micronutrients from a Cronometer CSV export, pull meals from Oura, or build your own food library with composite recipes and custom portion units.
@@ -156,13 +160,11 @@ More in the [Correlation docs](docs/features/correlations.md).
 
 ## Sharing & Challenges
 
-Publish read-only **shared dashboards** under your own public namespace (`/u/:username/:slug`) so anyone can view a curated set of charts without signing in -- no private home dashboard required.
+Publish read-only **shared dashboards** (like the one above) under your own public namespace (`/u/:username/:slug`), so anyone can view a curated set of charts without signing in. **Challenges** build on the same foundation: host a cumulative-metric or activity competition over a date span, let others join -- even from a different Aurboda instance -- and watch a live race chart and leaderboard of everyone's running total.
 
 <p align="center">
-  <img src="apps/web/public/screenshots/shared-dashboard.jpg" alt="Public shared dashboard with strength-training, running, VO2 max, and sleep-score charts" width="800" />
+  <img src="apps/web/public/screenshots/challenge.png" alt="Federated step challenge with a cumulative race chart, cross-instance join, and leaderboard" width="800" />
 </p>
-
-**Challenges** build on the same foundation: host a cumulative-metric or activity competition over a date span, let others join -- even from a different Aurboda instance -- and watch a live race chart and leaderboard of everyone's running total.
 
 More in the [Sharing](docs/features/sharing.md) and [Challenges](docs/features/challenges.md) docs.
 
