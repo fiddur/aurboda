@@ -12,6 +12,8 @@ import { ActivityTypes } from './pages/ActivityTypes/index.jsx'
 import { AddData } from './pages/AddData/index.jsx'
 import { AdminSettings } from './pages/AdminSettings/index.jsx'
 import { AuditLog } from './pages/AuditLog/index.jsx'
+import { Challenges } from './pages/Challenges/index.jsx'
+import { ChallengeJoin } from './pages/Challenges/Join.jsx'
 import { Chart } from './pages/Chart/index.jsx'
 import { Correlations } from './pages/Correlations/index.jsx'
 import { Data } from './pages/Data/index.jsx'
@@ -41,7 +43,7 @@ import { MealTypeMeta } from './pages/MealTypeMeta/index.jsx'
 import { MetricMeta } from './pages/MetricMeta/index.jsx'
 import { Places } from './pages/Places/index.jsx'
 import { Privacy } from './pages/Privacy/index.jsx'
-import { PublicDashboard } from './pages/PublicDashboard/index.jsx'
+import { PublicResource } from './pages/PublicDashboard/index.jsx'
 import { PublicProfile } from './pages/PublicProfile/index.jsx'
 import { AddReport } from './pages/Reports/AddReport.jsx'
 import { Reports } from './pages/Reports/index.jsx'
@@ -70,9 +72,11 @@ function AppShell() {
       <div class="app-content">
         <main>
           <Router>
-            <Route path="/u/:username/:slug" component={PublicDashboard} />
+            <Route path="/u/:username/:slug" component={PublicResource} />
             <Route path="/u/:username" component={PublicProfile} />
             <Route path="/shared-dashboards" component={SharedDashboards} />
+            <Route path="/challenges/join" component={ChallengeJoin} />
+            <Route path="/challenges" component={Challenges} />
             <Route path="/" component={Home} />
             <Route path="/login" component={Login} />
             <Route path="/signup" component={Signup} />
