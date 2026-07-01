@@ -384,6 +384,10 @@
   width: 8rem;
 }
 
+.goal-form-fields .chart-update-title {
+  width: 100%;
+}
+
 .goal-form-error {
   color: #e53e3e;
   font-size: 0.8rem;

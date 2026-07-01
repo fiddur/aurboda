@@ -18,9 +18,16 @@ interface WidgetRendererProps {
   widget: DashboardWidget
   isEditing?: boolean
   onRemove?: () => void
+  /** Board this widget belongs to ('home' or a shared-dashboard id) — enables update-in-place from the chart page. */
+  boardId?: string
+  /** Section this widget belongs to. */
+  sectionId?: string
 }
 
-export function WidgetRenderer({ widget, isEditing, onRemove }: WidgetRendererProps) {
+export function WidgetRenderer({ widget, isEditing, onRemove, boardId, sectionId }: WidgetRendererProps) {
+  const origin =
+    boardId && sectionId ? { board_id: boardId, section_id: sectionId, widget_id: widget.id } : undefined
+
   const renderWidget = () => {
     switch (widget.type) {
       case 'metric_card':
@@ -28,9 +35,9 @@ export function WidgetRenderer({ widget, isEditing, onRemove }: WidgetRendererPr
       case 'sparkline_card':
         return <SparklineCardWidget config={widget.config} />
       case 'trend_chart':
-        return <TrendChartWidget config={widget.config} />
+        return <TrendChartWidget config={widget.config} origin={origin} />
       case 'bar_chart':
-        return <BarChartWidget config={widget.config} />
+        return <BarChartWidget config={widget.config} origin={origin} />
       case 'correlation':
         return <CorrelationWidget config={widget.config} />
       case 'activity_summary':

@@ -770,6 +770,35 @@
   background: #fee2e2;
 }
 
+.dashboard .section-rename-btn {
+  background: none;
+  border: none;
+  color: #9ca3af;
+  cursor: pointer;
+  padding: 0.25rem;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.dashboard .section-rename-btn:hover {
+  color: #673ab8;
+  background: #faf5ff;
+}
+
+/* Inline section-title editor */
+.dashboard .section-title-input {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #555;
+  border: none;
+  border-bottom: 2px solid #673ab8;
+  background: transparent;
+  padding: 0 0 0.5rem 0;
+  margin: 0 0 1rem 0;
+  width: 100%;
+  outline: none;
+}
+
 /* Dark mode additions for editing */
 @media (prefers-color-scheme: dark) {
   .dashboard .btn-edit {
@@ -887,5 +916,14 @@
   .dashboard .section-delete-btn:hover {
     color: #f87171;
     background: #7f1d1d;
+  }
+
+  .dashboard .section-rename-btn:hover {
+    color: #a855f7;
+    background: #1e1b4b;
+  }
+
+  .dashboard .section-title-input {
+    color: #e5e7eb;
   }
 }

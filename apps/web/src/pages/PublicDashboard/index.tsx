@@ -12,16 +12,12 @@
 import type { DashboardConfig, SectionType } from '@aurboda/api-spec'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'preact/hooks'
 import { useRoute } from 'preact-iso'
+import { useState } from 'preact/hooks'
 
 import { EditableDashboard } from '../../components/EditableDashboard'
 import { PublicWidgetRenderer } from '../../components/widgets'
-import {
-  fetchPublicSharedDashboard,
-  listSharedDashboards,
-  updateSharedDashboard,
-} from '../../state/api'
+import { fetchPublicSharedDashboard, listSharedDashboards, updateSharedDashboard } from '../../state/api'
 import { auth } from '../../state/auth'
 import '../Dashboard/style.css'
 import './style.css'
@@ -45,9 +41,8 @@ function OwnerSharedDashboard({ username, slug }: { username: string; slug: stri
       updateSharedDashboard(id, { config }),
     onError: () => alert('Failed to save the dashboard. Please try again.'),
     onSuccess: (updated) => {
-      queryClient.setQueryData(
-        ['sharedDashboards'],
-        (old: typeof listQuery.data) => old?.map((d) => (d.id === updated.id ? updated : d)),
+      queryClient.setQueryData(['sharedDashboards'], (old: typeof listQuery.data) =>
+        old?.map((d) => (d.id === updated.id ? updated : d)),
       )
     },
   })
@@ -78,7 +73,14 @@ function OwnerSharedDashboard({ username, slug }: { username: string; slug: stri
             </button>
           ) : (
             <button class="btn-edit" onClick={() => setIsEditing(true)} title="Edit dashboard">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
                 <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
                 <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
               </svg>
@@ -90,6 +92,7 @@ function OwnerSharedDashboard({ username, slug }: { username: string; slug: stri
       <EditableDashboard
         config={share.config}
         isEditing={isEditing}
+        boardId={share.id}
         onChange={(next) => saveMutation.mutate({ config: next, id: share.id })}
       />
     </div>
