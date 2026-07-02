@@ -65,6 +65,21 @@ describe('GET /u/:username/:slug/opengraph-image.png', () => {
     await supertest(app).get('/u/fiddur/abc/opengraph-image.png')
     expect(deps.renderImage).toHaveBeenCalledTimes(1)
   })
+
+  test('collapses concurrent cold-cache misses into a single render', async () => {
+    const renderImage = vi.fn(() => new Promise<Buffer>((resolve) => setTimeout(() => resolve(fakePng), 30)))
+    const { app } = buildApp({
+      renderImage,
+      resolveDashboard: async () => ({ is_public: true, name: 'Training' }),
+    })
+    const responses = await Promise.all([
+      supertest(app).get('/u/fiddur/abc/opengraph-image.png'),
+      supertest(app).get('/u/fiddur/abc/opengraph-image.png'),
+      supertest(app).get('/u/fiddur/abc/opengraph-image.png'),
+    ])
+    for (const res of responses) expect(res.status).toBe(200)
+    expect(renderImage).toHaveBeenCalledTimes(1)
+  })
 })
 
 describe('GET /u/:username/opengraph-image.png', () => {

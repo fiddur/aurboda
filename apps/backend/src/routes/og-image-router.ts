@@ -37,17 +37,35 @@ export const createOgImageRouter = (deps: OgImageDeps): Router => {
   const { profileExists, renderImage, resolveChallenge, resolveDashboard, webHost } = deps
   const router = Router()
   const cache = new Map<string, Buffer>()
+  // Collapses concurrent misses for the same key into a single render, so a
+  // fresh share hit by several crawlers at once doesn't run N identical
+  // CPU-heavy Satori renders in parallel.
+  const inFlight = new Map<string, Promise<Buffer>>()
 
-  const sendImage = async (res: Response, key: string, card: OgCard): Promise<void> => {
-    let png = cache.get(key)
-    if (!png) {
-      png = await renderImage(card)
+  const render = async (key: string, card: OgCard): Promise<Buffer> => {
+    const cached = cache.get(key)
+    if (cached) return cached
+
+    const pending = inFlight.get(key)
+    if (pending) return pending
+
+    const promise = renderImage(card)
+    inFlight.set(key, promise)
+    try {
+      const png = await promise
       if (cache.size >= MAX_CACHE_ENTRIES) {
         const oldest = cache.keys().next().value
         if (oldest !== undefined) cache.delete(oldest)
       }
       cache.set(key, png)
+      return png
+    } finally {
+      inFlight.delete(key)
     }
+  }
+
+  const sendImage = async (res: Response, key: string, card: OgCard): Promise<void> => {
+    const png = await render(key, card)
     res.setHeader('Cache-Control', 'public, max-age=3600')
     res.type('png').send(png)
   }
