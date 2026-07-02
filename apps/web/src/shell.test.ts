@@ -1,21 +1,21 @@
 import { describe, expect, test } from 'vitest'
 
-import { shouldShowChrome } from './shell'
+import { shouldShowNav } from './shell'
 
-describe('shouldShowChrome', () => {
-  test('shows chrome on normal app routes regardless of auth', () => {
-    expect(shouldShowChrome('/', false)).toBe(true)
-    expect(shouldShowChrome('/dashboard', false)).toBe(true)
-    expect(shouldShowChrome('/challenges', true)).toBe(true)
+describe('shouldShowNav', () => {
+  test('shows nav on normal app routes regardless of auth', () => {
+    expect(shouldShowNav('/', false)).toBe(true)
+    expect(shouldShowNav('/dashboard', false)).toBe(true)
+    expect(shouldShowNav('/challenges', true)).toBe(true)
   })
 
-  test('hides chrome on public share pages for anonymous visitors', () => {
-    expect(shouldShowChrome('/u/fiddur', false)).toBe(false)
-    expect(shouldShowChrome('/u/fiddur/a3GVcs14D', false)).toBe(false)
+  test('hides nav on public share pages for anonymous visitors', () => {
+    expect(shouldShowNav('/u/fiddur', false)).toBe(false)
+    expect(shouldShowNav('/u/fiddur/a3GVcs14D', false)).toBe(false)
   })
 
-  test('keeps chrome on public share pages for logged-in users', () => {
-    expect(shouldShowChrome('/u/fiddur', true)).toBe(true)
-    expect(shouldShowChrome('/u/fiddur/a3GVcs14D', true)).toBe(true)
+  test('keeps nav on public share pages for logged-in users', () => {
+    expect(shouldShowNav('/u/fiddur', true)).toBe(true)
+    expect(shouldShowNav('/u/fiddur/a3GVcs14D', true)).toBe(true)
   })
 })

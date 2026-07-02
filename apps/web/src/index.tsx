@@ -56,22 +56,22 @@ import { Signup } from './pages/Signup/index.jsx'
 import { Sleep } from './pages/Sleep/index.jsx'
 import { Terms } from './pages/Terms/index.jsx'
 import { Timeline } from './pages/Timeline/index.jsx'
-import { shouldShowChrome } from './shell.js'
+import { shouldShowNav } from './shell.js'
 import { auth } from './state/auth.js'
 import { queryClient } from './state/queryClient.js'
 import './style.css'
 
 function AppShell() {
-  // Public sharing pages (/u/...) render without the app chrome for anonymous
-  // visitors (a clean, standalone page), but a logged-in user keeps their nav so
-  // they can navigate away without the browser back button.
+  // Public sharing pages (/u/...) hide the nav for anonymous visitors (a clean,
+  // standalone page), but a logged-in user keeps their nav so they can navigate
+  // away without the browser back button. The footer renders on every page.
   const { path } = useLocation()
-  const showChrome = shouldShowChrome(path, Boolean(auth.value.token))
+  const showNav = shouldShowNav(path, Boolean(auth.value.token))
 
   return (
     <>
-      {showChrome && <Header />}
-      {showChrome && <Sidebar />}
+      {showNav && <Header />}
+      {showNav && <Sidebar />}
       <div class="app-content">
         <main>
           <Router>
@@ -128,7 +128,7 @@ function AppShell() {
             <Route default component={NotFound} />
           </Router>
         </main>
-        {showChrome && <Footer />}
+        <Footer />
       </div>
     </>
   )

@@ -12,6 +12,7 @@
  * This file orchestrates: clients, queues, central DB, auth, error handler,
  * server lifecycle.
  */
+import { integrateFederation } from '@fedify/express'
 import cors from 'cors'
 import express, { json, type NextFunction, type Request, type Response } from 'express'
 import { Client } from 'pg'
@@ -49,6 +50,7 @@ import { createOwnTracksRouter } from './integrations/owntracks/router.ts'
 import { stravaClient } from './integrations/strava/client.ts'
 import { createMcpRouter } from './mcp.ts'
 import { createOAuthRouter } from './routes/oauth-router.ts'
+import { createFeedFederation } from './services/activitypub/federation.ts'
 import { auditError } from './services/audit-log.ts'
 import { triggerCalorieComputation } from './services/calorie-computation.ts'
 import { createCalorieQueue, type CalorieQueue } from './services/calorie-queue.ts'
@@ -103,6 +105,11 @@ const main = async () => {
   const webHost = process.env.WEB_HOST ?? 'http://localhost:5173'
   const apiBaseUrl = process.env.API_BASE_URL ?? 'http://localhost:3000'
   console.info(`🌐 WEB_HOST=${webHost} API_BASE_URL=${apiBaseUrl}`)
+
+  // Path to the built SPA index.html, so /u/* share pages can serve
+  // crawler-visible <head> meta. In the Docker image nginx serves this same
+  // file. Unset in local dev (vite serves /u/* directly).
+  const webIndexPath = process.env.WEB_INDEX_PATH
 
   // WebAuthn / passkey configuration. The Relying Party ID must match the
   // origin the user's browser sees (i.e. the web host) — not the API host,
@@ -313,6 +320,17 @@ const main = async () => {
     }),
   )
 
+  // ActivityPub federation (actor + WebFinger). Mounted BEFORE the JSON body
+  // parser so Fedify owns the raw body of signed inbox POSTs; it passes through
+  // (next()) any request that isn't one of its own routes. `trust proxy` lets
+  // Fedify reconstruct the external https URL from nginx's X-Forwarded-* headers.
+  // Scope it to `loopback`: nginx proxies to the backend over loopback
+  // (proxy_pass http://127.0.0.1:3000), so Express trusts X-Forwarded-* only when
+  // the immediate peer is loopback — a direct remote client isn't, so it can't
+  // spoof them.
+  httpd.set('trust proxy', 'loopback')
+  httpd.use(integrateFederation(createFeedFederation(), () => undefined))
+
   httpd.use(json({ limit: '10mb' }))
 
   // Audit-log middleware: records non-GET requests with response status / body
@@ -429,6 +447,7 @@ const main = async () => {
     userDb,
     webAuthn,
     webHost,
+    webIndexPath,
     wellKnown,
   })
 
