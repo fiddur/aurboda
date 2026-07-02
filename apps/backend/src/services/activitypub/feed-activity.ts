@@ -9,16 +9,23 @@
  * unit-testable without a database; `windowMetricStat` adapts a
  * `queryMetricsBucketed` result into that shape for the delivery path.
  */
-import type { FeedVisibility } from '@aurboda/api-spec'
+import { type FeedVisibility, hrZoneMetrics } from '@aurboda/api-spec'
 
 import type { MetricType } from '../../schema.ts'
 import type { QueryMetricsBucketedResult } from '../queries/types.ts'
 import type { AS2Create, ScalarMetric } from './object.ts'
 import type { MetricStat, ScalarStat } from './scalars.ts'
 
+import { getTimeSeries } from '../../db/index.ts'
 import { queryMetricsBucketed } from '../queries/index.ts'
+import { computeHrZoneSecs, getEffectiveHrZones } from '../settings.ts'
 import { buildCreateExercise } from './object.ts'
 import { resolveSharedScalars, SCALAR_SOURCE_METRICS } from './scalars.ts'
+
+/** Maps `hr_zone_<n>_sec` → the numeric zone index (0–5) in `HrZoneSecs`. */
+const HR_ZONE_INDEX = new Map<string, 0 | 1 | 2 | 3 | 4 | 5>(
+  hrZoneMetrics.map((m, i) => [m, i as 0 | 1 | 2 | 3 | 4 | 5]),
+)
 
 /** Canonical federation URLs for a user, derived from the deploy's public hosts. */
 export interface FeedActivityContext {
@@ -88,11 +95,26 @@ export const resolveActivityScalars = async (
   // One bucket sized to the window; windowMetricStat re-merges if PG splits it.
   const seconds = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / 1000))
   const result = await queryMetricsBucketed(user, SCALAR_SOURCE_METRICS, start, end, `${seconds}s`, {})
-  return resolveSharedScalars(
-    { endTime: activity.end_time, startTime: start },
-    includedMetrics,
-    windowMetricStat(result),
-  )
+  const base = windowMetricStat(result)
+
+  // HR-zone seconds aren't stored in time_series — derive them from heart_rate
+  // over the window using the user's effective zones, but only when requested.
+  let zoneSecs: Record<number, number> | undefined
+  if (includedMetrics.includes('hr_zone_minutes') && activity.end_time) {
+    const [{ zones }, hrData] = await Promise.all([
+      getEffectiveHrZones(user),
+      getTimeSeries(user, 'heart_rate', start, end),
+    ])
+    zoneSecs = computeHrZoneSecs(hrData, zones)
+  }
+
+  const metricStat: MetricStat = (metric, stat) => {
+    const zoneIndex = HR_ZONE_INDEX.get(metric)
+    if (zoneSecs !== undefined && zoneIndex !== undefined) return zoneSecs[zoneIndex]
+    return base(metric, stat)
+  }
+
+  return resolveSharedScalars({ endTime: activity.end_time, startTime: start }, includedMetrics, metricStat)
 }
 
 /** Build the `Create{Exercise}` activity for a feed post. */

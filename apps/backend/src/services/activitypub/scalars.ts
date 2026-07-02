@@ -72,12 +72,14 @@ const METRIC_SCALARS: Record<
 }
 
 /**
- * The distinct time-series metrics the supported scalar keys read from — the set
- * a caller must aggregate over the activity window before calling
- * `resolveSharedScalars`. Kept in sync with `METRIC_SCALARS` + the HR zones.
+ * The distinct time-series metrics the metric-backed scalar keys read from — the
+ * set a caller aggregates over the activity window before calling
+ * `resolveSharedScalars`. HR-zone metrics are deliberately excluded: they are
+ * NOT stored in `time_series` (they're computed from `heart_rate` + effective
+ * zones), so the caller must supply their seconds separately via `metricStat`.
  */
 export const SCALAR_SOURCE_METRICS: MetricType[] = [
-  ...new Set<MetricType>([...Object.values(METRIC_SCALARS).map((c) => c.metric), ...hrZoneMetrics]),
+  ...new Set<MetricType>(Object.values(METRIC_SCALARS).map((c) => c.metric)),
 ]
 
 /** Build the `hr_zone_minutes` record (minutes per zone with data) from zone-second sums. */

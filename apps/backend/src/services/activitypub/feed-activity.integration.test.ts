@@ -27,11 +27,18 @@ describe('resolveActivityScalars', () => {
 
   test('aggregates window metrics into the selected scalar summaries', async () => {
     const user = getTestUser()
-    await insertTimeSeries(user, [
-      { metric: 'heart_rate', source: 'garmin', time: new Date('2026-07-01T06:40:00Z'), value: 140 },
-      { metric: 'heart_rate', source: 'garmin', time: new Date('2026-07-01T06:50:00Z'), value: 160 },
-      { metric: 'hr_zone_2_sec', source: 'garmin', time: new Date('2026-07-01T06:45:00Z'), value: 1320 },
-    ])
+    // Only heart_rate is stored; HR-zone seconds are computed from it. Real
+    // devices sample densely — computeHrZoneSecs caps gaps at 5s — so insert a
+    // 5s cadence for ~5 min at 150 bpm.
+    await insertTimeSeries(
+      user,
+      Array.from({ length: 60 }, (_, i) => ({
+        metric: 'heart_rate' as const,
+        source: 'garmin' as const,
+        time: new Date(START.getTime() + 10 * 60_000 + i * 5_000),
+        value: 150,
+      })),
+    )
 
     const scalars = await resolveActivityScalars(user, { end_time: END, start_time: START }, [
       'duration',
@@ -41,9 +48,13 @@ describe('resolveActivityScalars', () => {
     ])
     const byKey = Object.fromEntries(scalars.map((s) => [s.key, s.value]))
     expect(byKey.duration).toBe(2400) // 40 min window
-    expect(byKey.heart_rate_avg).toBe(150) // (140+160)/2
-    expect(byKey.heart_rate_max).toBe(160)
-    expect(byKey.hr_zone_minutes).toEqual({ z2: 22 }) // 1320s → 22 min
+    expect(byKey.heart_rate_avg).toBe(150)
+    expect(byKey.heart_rate_max).toBe(150)
+    // hr_zone_minutes is derived from the heart_rate samples + effective zones,
+    // not read from time_series — so it resolves to a non-empty per-zone record.
+    const zones = byKey.hr_zone_minutes as Record<string, number>
+    expect(typeof zones).toBe('object')
+    expect(Object.values(zones).reduce((a, b) => a + b, 0)).toBeGreaterThan(0)
   })
 
   test('omits scalars whose metrics have no data in the window', async () => {
