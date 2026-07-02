@@ -32,6 +32,7 @@ import { StravaSource } from './pages/DataSources/StravaSource.jsx'
 import { DeductionRules } from './pages/DeductionRules/index.jsx'
 import { DeductionRuleDetail } from './pages/DeductionRules/RuleDetail.jsx'
 import { EntityDetail } from './pages/EntityDetail/index.jsx'
+import { Feed } from './pages/Feed/index.jsx'
 import { FoodItemDetail } from './pages/FoodItems/FoodItemDetail.jsx'
 import { FoodItems } from './pages/FoodItems/index.jsx'
 import { Goals } from './pages/Goals/index.jsx'
@@ -98,6 +99,7 @@ function AppShell() {
             <Route path="/reports/:id" component={ReportDetail} />
             <Route path="/reports" component={Reports} />
             <Route path="/detail/:type/:id" component={EntityDetail} />
+            <Route path="/feed" component={Feed} />
             <Route path="/activity-type/:name" component={ActivityTypeMeta} />
             <Route path="/metric/:metricName" component={MetricMeta} />
             <Route path="/sleep" component={Sleep} />
