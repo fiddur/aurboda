@@ -30,7 +30,7 @@ import {
   upsertChallengeMember,
 } from '../db/index.ts'
 import { fetchMemberData } from '../services/challenge-federation.ts'
-import { specToApi } from '../services/challenge-spec.ts'
+import { effectiveBucketSize, specToApi } from '../services/challenge-spec.ts'
 import { getChallengeStandings } from '../services/challenge-standings.ts'
 import { buildProfileUrl, buildShareUrl } from '../services/share-urls.ts'
 import { resolveDashboardData } from '../services/shared-dashboard-data.ts'
@@ -204,6 +204,11 @@ export const createPublicSharesRouter = (webHost: string): TypedRouter => {
           res.setHeader('Cache-Control', 'public, max-age=60')
           return res.json({
             challenge: {
+              effective_bucket_size: effectiveBucketSize(
+                challenge.spec.bucket_size,
+                challenge.start_ts,
+                challenge.end_ts,
+              ),
               end_ts: challenge.end_ts.toISOString(),
               host_identity: buildProfileUrl(webHost, username),
               is_public: challenge.is_public,

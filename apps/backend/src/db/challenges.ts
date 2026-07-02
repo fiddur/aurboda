@@ -13,7 +13,7 @@ import { randomBytes } from 'node:crypto'
 import { query } from './connection.ts'
 import { getSharedDashboardBySlug } from './shared-dashboards.ts'
 
-export type ChallengeBucketSize = '1d' | '1w' | '1M'
+export type ChallengeBucketSize = 'auto' | '1d' | '1w' | '1M'
 
 export interface ChallengeSpecFields {
   source_type: ChallengeSourceType
@@ -67,6 +67,8 @@ export interface ChallengeMemberRecord {
   status: 'active' | 'withdrawn'
   joined_at: Date
   last_fetched_at: Date | null
+  /** When this member's underlying data was last updated (reported by the member). */
+  data_last_updated: Date | null
   cached_total: number | null
   cached_buckets: ChartDataBucket[] | null
   last_error: string | null
@@ -108,7 +110,7 @@ const CHALLENGE_COLUMNS =
   'id, slug, name, is_public, source_type, pattern, activity_type_id, aggregation, unit, bucket_size, start_ts, end_ts, timezone, join_token, created_at, updated_at'
 
 const MEMBER_COLUMNS =
-  'id, challenge_id, identity_base_url, display_name, kind, local_user, data_endpoint_url, status, joined_at, last_fetched_at, cached_total, cached_buckets, last_error'
+  'id, challenge_id, identity_base_url, display_name, kind, local_user, data_endpoint_url, status, joined_at, last_fetched_at, data_last_updated, cached_total, cached_buckets, last_error'
 
 const PARTICIPATION_COLUMNS =
   'id, challenge_url, host_identity, name, source_type, pattern, activity_type_id, aggregation, unit, bucket_size, start_ts, end_ts, timezone, data_token, status, created_at'
@@ -394,18 +396,37 @@ export const removeChallengeMember = async (
   return (result.rowCount ?? 0) > 0
 }
 
-/** Persist a freshly fetched series (or the error) for a member. */
+/**
+ * Persist a freshly fetched series (or the error) for a member.
+ *
+ * `last_fetched_at` records when *we* fetched; `data_last_updated` is the
+ * member-reported timestamp of their latest data point (null if none), which is
+ * what standings surface as "last updated". On a failed fetch, pass the previous
+ * `data_last_updated` to keep the last-known value.
+ */
 export const updateChallengeMemberCache = async (
   user: string,
   memberId: string,
-  data: { total: number | null; buckets: ChartDataBucket[] | null; error: string | null },
+  data: {
+    total: number | null
+    buckets: ChartDataBucket[] | null
+    error: string | null
+    dataLastUpdated: Date | null
+  },
 ): Promise<void> => {
   await query(
     user,
     `UPDATE challenge_members
-       SET cached_total = $1, cached_buckets = $2::jsonb, last_error = $3, last_fetched_at = NOW()
-     WHERE id = $4`,
-    [data.total, data.buckets ? JSON.stringify(data.buckets) : null, data.error, memberId],
+       SET cached_total = $1, cached_buckets = $2::jsonb, last_error = $3,
+           data_last_updated = $4, last_fetched_at = NOW()
+     WHERE id = $5`,
+    [
+      data.total,
+      data.buckets ? JSON.stringify(data.buckets) : null,
+      data.error,
+      data.dataLastUpdated,
+      memberId,
+    ],
   )
 }
 

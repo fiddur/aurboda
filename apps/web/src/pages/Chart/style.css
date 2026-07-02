@@ -368,6 +368,26 @@
   width: 100%;
 }
 
+.mask-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 0.25rem;
+}
+
+.mask-field-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.9rem;
+}
+
+.mask-hint {
+  color: #999;
+  font-size: 0.8rem;
+  margin: 0.375rem 0 0;
+}
+
 .goal-form-error {
   color: #e53e3e;
   font-size: 0.8rem;

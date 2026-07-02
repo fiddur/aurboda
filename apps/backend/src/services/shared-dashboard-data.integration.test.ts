@@ -170,6 +170,7 @@ describe('resolveDashboardData integration', () => {
 
     const trend = data['trend']
     expect(trend.type).toBe('trend_chart')
+    expect(trend.data).not.toBeNull()
     if (trend.type === 'trend_chart' && trend.data) {
       expect(trend.data.breakdown_series?.slice().sort()).toEqual(['high', 'low'])
       expect(Object.keys(trend.data.breakdown_histories ?? {}).sort()).toEqual(['high', 'low'])
@@ -177,11 +178,89 @@ describe('resolveDashboardData integration', () => {
 
     const bar = data['bar']
     expect(bar.type).toBe('bar_chart')
+    expect(bar.data).not.toBeNull()
     if (bar.type === 'bar_chart' && bar.data) {
       expect(bar.data.breakdown_series?.slice().sort()).toEqual(['high', 'low'])
       expect(bar.data.breakdown_buckets?.length ?? 0).toBeGreaterThan(0)
       // In breakdown mode the flat buckets array is empty — series live in breakdown_buckets.
       expect(bar.data.buckets).toEqual([])
+    }
+  })
+
+  test('masked_breakdown_fields anonymizes breakdown series as A/B for public viewers', async () => {
+    const user = getTestUser()
+    const base = new Date('2026-03-01T12:00:00Z')
+    const seed = async (intensity: string, dayOffset: number) => {
+      const start = new Date(base)
+      start.setUTCDate(start.getUTCDate() + dayOffset)
+      await insertActivity(user, {
+        activity_type: 'exercise',
+        data: { intensity },
+        end_time: new Date(start.getTime() + 30 * 60_000),
+        source: 'health_connect',
+        start_time: start,
+      })
+    }
+    await seed('anaerobic', 0)
+    await seed('zone2', 1)
+
+    const data = await resolveDashboardData(user, {
+      sections: [
+        {
+          id: 's',
+          title: 'x',
+          type: 'charts',
+          widgets: [
+            {
+              config: {
+                breakdown_fields: ['intensity'],
+                lookback_days: 3650,
+                masked_breakdown_fields: ['intensity'],
+                pattern: 'exercise',
+                source_type: 'activity_type',
+              },
+              id: 'trend',
+              type: 'trend_chart',
+            },
+            {
+              config: {
+                breakdown_fields: ['intensity'],
+                bucket_size: '1M',
+                lookback_days: 3650,
+                masked_breakdown_fields: ['intensity'],
+                pattern: 'exercise',
+                source_type: 'activity_type',
+              },
+              id: 'bar',
+              type: 'bar_chart',
+            },
+          ],
+        },
+      ],
+      version: 1,
+    })
+
+    const trend = data['trend']
+    expect(trend.type).toBe('trend_chart')
+    expect(trend.data).not.toBeNull()
+    if (trend.type === 'trend_chart' && trend.data) {
+      // Real values 'anaerobic'/'zone2' are replaced with A/B; no real value leaks.
+      expect(trend.data.breakdown_series).toEqual(['A', 'B'])
+      expect(Object.keys(trend.data.breakdown_histories ?? {}).sort()).toEqual(['A', 'B'])
+      expect(JSON.stringify(trend.data)).not.toContain('anaerobic')
+      expect(JSON.stringify(trend.data)).not.toContain('zone2')
+    }
+
+    const bar = data['bar']
+    expect(bar.type).toBe('bar_chart')
+    expect(bar.data).not.toBeNull()
+    if (bar.type === 'bar_chart' && bar.data) {
+      expect(bar.data.breakdown_series).toEqual(['A', 'B'])
+      expect(bar.data.breakdown_buckets?.length ?? 0).toBeGreaterThan(0)
+      for (const bucket of bar.data.breakdown_buckets ?? []) {
+        expect(Object.keys(bucket.series).every((k) => k === 'A' || k === 'B')).toBe(true)
+      }
+      expect(JSON.stringify(bar.data)).not.toContain('anaerobic')
     }
   })
 

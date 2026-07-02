@@ -151,8 +151,10 @@ describe('Challenges integration', () => {
     expect(members.length).toBe(2)
     expect(members.find((m) => m.identity_base_url.includes('alice'))?.display_name).toBe('Alice A.')
 
+    const reportedUpdate = new Date('2026-06-02T09:30:00.000Z')
     await updateChallengeMemberCache(user, m1.id, {
       buckets: [{ bucket_start: '2026-06-01T00:00:00.000Z', value: 1000 }],
+      dataLastUpdated: reportedUpdate,
       error: null,
       total: 1000,
     })
@@ -161,6 +163,8 @@ describe('Challenges integration', () => {
     expect(cached?.cached_total).toBe(1000)
     expect(cached?.cached_buckets).toEqual([{ bucket_start: '2026-06-01T00:00:00.000Z', value: 1000 }])
     expect(cached?.last_fetched_at).not.toBeNull()
+    // data_last_updated is the member-reported data time, independent of the fetch time.
+    expect(cached?.data_last_updated?.toISOString()).toBe(reportedUpdate.toISOString())
 
     expect(await removeChallengeMember(user, c.id, m1.id)).toBe(true)
     expect((await listChallengeMembers(user, c.id)).length).toBe(1)
