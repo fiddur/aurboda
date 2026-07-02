@@ -67,21 +67,29 @@ export function ShareActivityDialog({ activityId, activityTitle, post, onClose, 
   const [summary, setSummary] = useState<Set<string>>(
     () => new Set(post ? post.included_metrics : DEFAULT_SUMMARY),
   )
+  // Preselect from the post's shared series, intersected with the keys this
+  // dialog can represent — keeps the state typed as `Set<MetricType>` without a
+  // cast (the dialog only offers `SERIES_METRICS` anyway).
   const [series, setSeries] = useState<Set<MetricType>>(
-    () => new Set((post?.series_metrics ?? []) as MetricType[]),
+    () => new Set(SERIES_METRICS.map((m) => m.key).filter((k) => post?.series_metrics.includes(k) ?? false)),
   )
   const [visibility, setVisibility] = useState<FeedVisibility>(post?.visibility ?? 'public')
 
   const mutation = useMutation({
     mutationFn: () => {
-      const body = {
-        include_chart: false,
-        include_map: false,
-        included_metrics: [...summary],
-        series_metrics: [...series],
-        visibility,
-      }
-      return post ? updateFeedPost(post.id, body) : shareActivity(activityId, body)
+      const included_metrics = [...summary]
+      const series_metrics = [...series]
+      // Edit mode leaves include_chart/include_map untouched (both optional on
+      // UpdateFeedPostBody); only the create path sets their defaults.
+      return post
+        ? updateFeedPost(post.id, { included_metrics, series_metrics, visibility })
+        : shareActivity(activityId, {
+            include_chart: false,
+            include_map: false,
+            included_metrics,
+            series_metrics,
+            visibility,
+          })
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['feed'] })
