@@ -1,13 +1,15 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
-
 /**
  * Integration tests for the Fedify actor + WebFinger surface, exercised through
  * `federation.fetch` against a real per-user database (no Express/nginx needed).
  */
+import { Note } from '@fedify/fedify/vocab'
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
+
 import { insertActivity } from '../../db/activities/index.ts'
 import { upsertFeedFollower } from '../../db/feed-follower.ts'
 import { createFeedPost, type FeedPostInput } from '../../db/feed.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../../test/db-test-helper.ts'
+import { buildFeedUpdate } from './deliver.ts'
 import { createFeedFederation } from './federation.ts'
 
 const CONTAINER_TIMEOUT = 120_000
@@ -173,5 +175,25 @@ describe('Feed federation actor + WebFinger', () => {
     const user = getTestUser()
     const res = await fetchAs2(`/users/${user}/feed/not-a-uuid`)
     expect(res.status).toBe(404)
+  })
+
+  test('buildFeedUpdate wraps the post Note in an Update at the canonical object id', async () => {
+    const user = getTestUser()
+    const activityId = await insertExercise(user)
+    const post = await sharePost(user, activityId)
+
+    const ctx = await fed.createContext(new URL(ORIGIN))
+    const update = await buildFeedUpdate(ctx, user, post, {
+      activity_type: 'exercise',
+      end_time: new Date('2026-07-01T07:11:00Z'),
+      start_time: new Date('2026-07-01T06:30:00Z'),
+      title: 'Morning run',
+    })
+
+    const noteId = `${ORIGIN}/users/${user}/feed/${post.id}`
+    expect(update.id?.href).toBe(`${noteId}#update-${post.updated_at.getTime()}`)
+    const object = await update.getObject()
+    expect(object).toBeInstanceOf(Note)
+    expect(object?.id?.href).toBe(noteId)
   })
 })

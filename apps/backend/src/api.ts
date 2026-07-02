@@ -28,6 +28,7 @@ import { setupOuraWebhook, setupStravaWebhook } from './api/webhooks-setup.ts'
 import { createAuth } from './auth.ts'
 import {
   deleteRuleActivities,
+  getActivityById,
   getDeductionRulesByIds,
   getDetectedLocationById,
   getEnabledDeductionRules,
@@ -52,7 +53,7 @@ import { createOwnTracksRouter } from './integrations/owntracks/router.ts'
 import { stravaClient } from './integrations/strava/client.ts'
 import { createMcpRouter } from './mcp.ts'
 import { createOAuthRouter } from './routes/oauth-router.ts'
-import { deliverFeedPost } from './services/activitypub/deliver.ts'
+import { deliverFeedDelete, deliverFeedPost, deliverFeedUpdate } from './services/activitypub/deliver.ts'
 import { createFeedFederation } from './services/activitypub/federation.ts'
 import { auditError } from './services/audit-log.ts'
 import { triggerCalorieComputation } from './services/calorie-computation.ts'
@@ -310,10 +311,25 @@ const main = async () => {
   // out to followers, fire-and-forget, so it's identical whether a post is
   // created via MCP or REST.
   const feedFederation = createFeedFederation(webHost)
-  const feedDeliver: FeedDeliver = (user, post, activity) => {
-    void deliverFeedPost({ federation: feedFederation, origin: webHost }, user, post, activity).catch((err) =>
-      console.error(`⚠️ feed delivery failed for ${user}/${post.id}:`, err),
-    )
+  const feedDeps = { federation: feedFederation, origin: webHost }
+  const onDeliverError = (op: string, user: string, postId: string) => (err: unknown) =>
+    console.error(`⚠️ feed ${op} delivery failed for ${user}/${postId}:`, err)
+  const feedDeliver: FeedDeliver = {
+    created: (user, post, activity) => {
+      void deliverFeedPost(feedDeps, user, post, activity).catch(onDeliverError('create', user, post.id))
+    },
+    deleted: (user, post) => {
+      void deliverFeedDelete(feedDeps, user, post).catch(onDeliverError('delete', user, post.id))
+    },
+    // Resolve the activity inside the fire-and-forget boundary so a lookup
+    // failure never bubbles into the (already-committed) edit's response.
+    updated: (user, post) => {
+      void (async () => {
+        if (!post.activity_id) return
+        const activity = await getActivityById(user, post.activity_id)
+        if (activity) await deliverFeedUpdate(feedDeps, user, post, activity)
+      })().catch(onDeliverError('update', user, post.id))
+    },
   }
 
   // Mount MCP server BEFORE body-parser (MCP SDK needs raw body)
