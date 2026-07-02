@@ -96,6 +96,23 @@ const formatScalar = ({ key, value, unit, label }: ScalarMetric): string => {
 }
 
 /**
+ * The human-readable status a plain fediverse client renders: a `name` headline
+ * and an HTML `content` line flattening the title + shared scalars. Shared by
+ * the AS2 object model and the Fedify delivery Note so both read identically.
+ */
+export const feedPostContent = (
+  title: string | undefined,
+  activityType: string,
+  scalars: ScalarMetric[],
+): { name: string; content: string } => {
+  const summaryLine = [title, ...scalars.map(formatScalar)].filter((p): p is string => Boolean(p)).join(' · ')
+  return {
+    content: `<p>${escapeHtml(summaryLine)}</p>`,
+    name: title ?? `${prettifyKey(activityType)} activity`,
+  }
+}
+
+/**
  * Map a post's visibility to AS2 `to`/`cc` addressing. `followers` is the
  * actor's followers collection; public objects are addressed to the AS2 Public
  * magic collection.
@@ -149,11 +166,7 @@ export const buildCreateExercise = (input: BuildCreateInput): AS2Create => {
   const { to, cc } = addressingFor(input.visibility, followersUrl)
   const objectId = `${input.postId}/object`
 
-  const summaryParts = [input.title, ...input.scalars.map(formatScalar)].filter((p): p is string =>
-    Boolean(p),
-  )
-  const summaryLine = summaryParts.join(' · ')
-  const name = input.title ?? `${prettifyKey(input.activityType)} activity`
+  const { content, name } = feedPostContent(input.title, input.activityType, input.scalars)
   // `published` is the share time (timeline ordering); the workout time lives in
   // `aurboda:startTime`.
   const published = input.publishedAt ?? input.startTime
@@ -167,7 +180,7 @@ export const buildCreateExercise = (input: BuildCreateInput): AS2Create => {
     })),
     'aurboda:startTime': input.startTime,
     attributedTo: input.actorUrl,
-    content: `<p>${escapeHtml(summaryLine)}</p>`,
+    content,
     id: objectId,
     name,
     published,

@@ -20,7 +20,7 @@ import {
   updateFeedPostBodySchema,
 } from '@aurboda/api-spec'
 
-import type { FeedPostRecord } from '../db/index.ts'
+import type { Activity, FeedPostRecord } from '../db/index.ts'
 
 import {
   createFeedPost,
@@ -31,6 +31,13 @@ import {
 } from '../db/index.ts'
 import { type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody } from '../validation.ts'
+
+/**
+ * Fire-and-forget federation delivery for a freshly-shared post. Injected so the
+ * router stays decoupled from the ActivityPub layer (and testable without it);
+ * the implementation signs + fans the Create out to the user's followers.
+ */
+export type FeedDeliver = (user: string, post: FeedPostRecord, activity: Activity) => void
 
 const serialize = (record: FeedPostRecord): FeedPost => ({
   activity_id: record.activity_id,
@@ -44,7 +51,7 @@ const serialize = (record: FeedPostRecord): FeedPost => ({
   visibility: record.visibility,
 })
 
-export const createFeedRouter = (authMiddleware: RequestHandler): TypedRouter => {
+export const createFeedRouter = (authMiddleware: RequestHandler, deliver?: FeedDeliver): TypedRouter => {
   const router = typedRouter()
 
   router.get<Record<string, never>, FeedPostsResponse>('/', authMiddleware, async (req, res) => {
@@ -71,6 +78,8 @@ export const createFeedRouter = (authMiddleware: RequestHandler): TypedRouter =>
         series_metrics: req.body.series_metrics,
         visibility: req.body.visibility,
       })
+      // Fan the post out to followers (best-effort; never blocks the response).
+      deliver?.(user, record, activity)
       res.json({ post: serialize(record), success: true })
     },
   )
