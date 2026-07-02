@@ -136,4 +136,18 @@ export const socialTables: Record<string, string> = {
       CHECK (singleton)
     )
   `,
+
+  // Remote actors that follow this user's ActivityPub actor. Keyed by the
+  // follower's actor URI; we cache their (personal) inbox and optional shared
+  // inbox so the delivery slice can fan posts out to them. `accepted` records
+  // that we answered their Follow with an Accept.
+  feed_follower: `
+    CREATE TABLE IF NOT EXISTS feed_follower (
+      actor_uri        TEXT PRIMARY KEY,
+      inbox_uri        TEXT NOT NULL,
+      shared_inbox_uri TEXT,
+      accepted         BOOLEAN NOT NULL DEFAULT false,
+      created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `,
 }
