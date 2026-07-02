@@ -17,6 +17,8 @@ import cors from 'cors'
 import express, { json, type NextFunction, type Request, type Response } from 'express'
 import { Client } from 'pg'
 
+import type { FeedDeliver } from './routes/feed-router.ts'
+
 import { registerAuthRoutes } from './api/auth-routes.ts'
 import { createAdminMiddleware, createAuditLogMiddleware, createAuthMiddleware } from './api/middleware.ts'
 import { registerOAuthRoutes } from './api/oauth-routes.ts'
@@ -50,6 +52,7 @@ import { createOwnTracksRouter } from './integrations/owntracks/router.ts'
 import { stravaClient } from './integrations/strava/client.ts'
 import { createMcpRouter } from './mcp.ts'
 import { createOAuthRouter } from './routes/oauth-router.ts'
+import { deliverFeedPost } from './services/activitypub/deliver.ts'
 import { createFeedFederation } from './services/activitypub/federation.ts'
 import { auditError } from './services/audit-log.ts'
 import { triggerCalorieComputation } from './services/calorie-computation.ts'
@@ -329,7 +332,15 @@ const main = async () => {
   // the immediate peer is loopback — a direct remote client isn't, so it can't
   // spoof them.
   httpd.set('trust proxy', 'loopback')
-  httpd.use(integrateFederation(createFeedFederation(webHost), () => undefined))
+  const feedFederation = createFeedFederation(webHost)
+  httpd.use(integrateFederation(feedFederation, () => undefined))
+
+  // Fire-and-forget federation delivery for shared feed posts.
+  const feedDeliver: FeedDeliver = (user, post, activity) => {
+    void deliverFeedPost({ federation: feedFederation, origin: webHost }, user, post, activity).catch((err) =>
+      console.error(`⚠️ feed delivery failed for ${user}/${post.id}:`, err),
+    )
+  }
 
   httpd.use(json({ limit: '10mb' }))
 
@@ -439,6 +450,7 @@ const main = async () => {
     centralDb,
     deductionQueue,
     engineDeps,
+    feedDeliver,
     garmin,
     httpd,
     invitationAuth,
