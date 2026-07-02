@@ -104,6 +104,11 @@ const main = async () => {
   const apiBaseUrl = process.env.API_BASE_URL ?? 'http://localhost:3000'
   console.info(`🌐 WEB_HOST=${webHost} API_BASE_URL=${apiBaseUrl}`)
 
+  // Path to the built SPA index.html, so /u/* share pages can serve
+  // crawler-visible <head> meta. In the Docker image nginx serves this same
+  // file. Unset in local dev (vite serves /u/* directly).
+  const webIndexPath = process.env.WEB_INDEX_PATH
+
   // WebAuthn / passkey configuration. The Relying Party ID must match the
   // origin the user's browser sees (i.e. the web host) — not the API host,
   // which can be on a different subdomain.
@@ -429,6 +434,7 @@ const main = async () => {
     userDb,
     webAuthn,
     webHost,
+    webIndexPath,
     wellKnown,
   })
 

@@ -125,7 +125,7 @@ function AppShell() {
             <Route default component={NotFound} />
           </Router>
         </main>
-        {!isPublic && <Footer />}
+        <Footer />
       </div>
     </>
   )
