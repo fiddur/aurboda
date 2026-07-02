@@ -46,7 +46,7 @@ const trimSlashes = (s: string): string => s.replace(/\/+$/, '')
 /**
  * Merge a bucketed-metrics result into a `MetricStat` over the whole window.
  * Buckets are combined so date-bin splitting never skews the aggregate: sums
- * add, max/min take the extreme, and avg is re-weighted by sample count.
+ * add, max takes the extreme, and avg is re-weighted by sample count.
  */
 export const windowMetricStat = (result: QueryMetricsBucketedResult): MetricStat => {
   const merged = new Map<string, { sum: number; max: number; count: number; weighted: number }>()
