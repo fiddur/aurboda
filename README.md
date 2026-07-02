@@ -32,18 +32,25 @@ No public signup, but self-hosting is straightforward via Docker. It was initiat
 
 ### Data Sources
 
-| Source                                               | What it provides                                                                                       | Docs                         |
-| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | ---------------------------- |
-| [**Android Health Connect**](docs/health-connect.md) | Heart rate, HRV, sleep, exercise (80+ types), steps, weight, SpO2, VO2 max, calories, and more         | Push from Android app        |
-| **BLE Sensors**                                      | Real-time heart rate, HRV (Polar H10, etc.) and steps (Zwift RunPod, etc.)                             | Live via Android app         |
-| [**Oura Ring**](docs/oura.md)                        | Sleep stages/scores, readiness, resilience, cardiovascular age, HRV, heart rate, meditation, tags      | Pull (API) + Push (webhooks) |
-| [**Garmin Connect**](docs/garmin.md)                 | Daily summary, HR, HRV, sleep, stress, body battery, activities, SpO2, respiration, training readiness | Pull (session-based)         |
-| [**OwnTracks**](docs/owntracks.md)                   | GPS locations, geofences, place visits                                                                 | Push (HTTP mode)             |
-| [**RescueTime**](docs/rescuetime.md)                 | App/website usage, productivity scores, categories                                                     | Pull (API)                   |
-| [**ActivityWatch**](docs/activitywatch.md)           | App/window usage per device (desktop and Android)                                                      | Push (agent script)          |
-| [**Last.fm**](docs/lastfm.md)                        | Music scrobbles with auto-generated tags from configurable rules                                       | Pull (API)                   |
-| [**Calendars (ICS)**](docs/calendars.md)             | Calendar events imported as tags (Google Calendar, Outlook, iCloud, Nextcloud, etc.)                   | Pull (ICS fetch)             |
-| **Manual Entry**                                     | Any metric, tag, activity, or note                                                                     | Web UI, REST API, or MCP     |
+<!-- BEGIN:data-sources -->
+
+| Source                                               | What it provides                                                                                       | How                              |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | -------------------------------- |
+| [**Android Health Connect**](docs/health-connect.md) | Heart rate, HRV, sleep, exercise (80+ types), steps, weight, SpO2, VO2 max, calories, and more         | Push from Android app            |
+| **BLE Sensors**                                      | Real-time heart rate, HRV (Polar H10, etc.) and steps (Zwift RunPod, etc.)                             | Live via Android app             |
+| [**Oura Ring**](docs/oura.md)                        | Sleep stages/scores, readiness, resilience, cardiovascular age, HRV, heart rate, meditation, tags      | Pull (API) + Push (webhooks)     |
+| [**Garmin Connect**](docs/garmin.md)                 | Daily summary, HR, HRV, sleep, stress, body battery, activities, SpO2, respiration, training readiness | Pull (session-based)             |
+| [**Strava**](docs/strava.md)                         | Activities with per-second heart rate, GPS routes, cadence, and power                                  | Pull (API) + Push (webhooks)     |
+| [**OwnTracks**](docs/owntracks.md)                   | GPS locations, geofences, place visits                                                                 | Push (HTTP mode)                 |
+| [**RescueTime**](docs/rescuetime.md)                 | App/website usage, productivity scores, categories                                                     | Pull (API)                       |
+| [**ActivityWatch**](docs/activitywatch.md)           | App/window usage per device (desktop and Android)                                                      | Push (agent script)              |
+| [**Last.fm**](docs/lastfm.md)                        | Music scrobbles with auto-generated tags from configurable rules                                       | Pull (API)                       |
+| [**Calendars (ICS)**](docs/calendars.md)             | Calendar events imported as tags (Google Calendar, Outlook, iCloud, Nextcloud, etc.)                   | Pull (ICS fetch)                 |
+| **Cronometer**                                       | Meals with full per-item macros and ~50 micronutrients                                                 | CSV import                       |
+| [**Livsmedelsverket**](docs/livsmedelsverket.md)     | Canonical food library: 2,500+ Swedish foods with macros + micros (per 100 g)                          | One-shot bulk import (UI button) |
+| **Manual Entry**                                     | Any metric, tag, activity, meal, or note                                                               | Web UI, REST API, or MCP         |
+
+<!-- END:data-sources -->
 
 See [docs/data-sources.md](docs/data-sources.md) for setup overview.
 
