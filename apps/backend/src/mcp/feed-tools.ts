@@ -6,6 +6,7 @@ import { shareActivityBodySchema, updateFeedPostBodySchema } from '@aurboda/api-
 import { z } from 'zod'
 
 import type { FeedPostRecord } from '../db/index.ts'
+import type { FeedDeliver } from '../routes/feed-router.ts'
 
 import {
   createFeedPost,
@@ -29,7 +30,7 @@ const serialize = (record: FeedPostRecord) => ({
   visibility: record.visibility,
 })
 
-export const registerFeedTools = (server: McpServer, user: string) => {
+export const registerFeedTools = (server: McpServer, user: string, deliver?: FeedDeliver) => {
   server.tool(
     'list_feed',
     'List activities you have published to your feed, with their shared metric selection, series opt-in, and visibility.',
@@ -55,6 +56,8 @@ export const registerFeedTools = (server: McpServer, user: string) => {
         series_metrics: body.series_metrics,
         visibility: body.visibility,
       })
+      // Fan out to followers (best-effort), same as the REST share route.
+      deliver?.(user, record, activity)
       return jsonResponse(serialize(record))
     },
   )

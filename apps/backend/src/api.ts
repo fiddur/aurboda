@@ -305,6 +305,17 @@ const main = async () => {
   // Mount OAuth endpoints BEFORE body-parser (uses its own parsers)
   httpd.use(createOAuthRouter({ centralDb, loginToUserDb, webHost }))
 
+  // ActivityPub federation object (one instance, shared by the actor mount, the
+  // MCP feed tools, and the REST feed router). `feedDeliver` fans a shared post
+  // out to followers, fire-and-forget, so it's identical whether a post is
+  // created via MCP or REST.
+  const feedFederation = createFeedFederation(webHost)
+  const feedDeliver: FeedDeliver = (user, post, activity) => {
+    void deliverFeedPost({ federation: feedFederation, origin: webHost }, user, post, activity).catch((err) =>
+      console.error(`⚠️ feed delivery failed for ${user}/${post.id}:`, err),
+    )
+  }
+
   // Mount MCP server BEFORE body-parser (MCP SDK needs raw body)
   // Stateless mode — no session tracking needed (tools only, no subscriptions)
   httpd.use(
@@ -314,6 +325,7 @@ const main = async () => {
       centralDb,
       deductionQueue: deductionQueue ?? undefined,
       engineDeps,
+      feedDeliver,
       garmin,
       onActivityMutated: activityNotifier,
       oura,
@@ -332,15 +344,7 @@ const main = async () => {
   // the immediate peer is loopback — a direct remote client isn't, so it can't
   // spoof them.
   httpd.set('trust proxy', 'loopback')
-  const feedFederation = createFeedFederation(webHost)
   httpd.use(integrateFederation(feedFederation, () => undefined))
-
-  // Fire-and-forget federation delivery for shared feed posts.
-  const feedDeliver: FeedDeliver = (user, post, activity) => {
-    void deliverFeedPost({ federation: feedFederation, origin: webHost }, user, post, activity).catch((err) =>
-      console.error(`⚠️ feed delivery failed for ${user}/${post.id}:`, err),
-    )
-  }
 
   httpd.use(json({ limit: '10mb' }))
 
