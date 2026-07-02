@@ -8,6 +8,7 @@ import {
   defaultOgImage,
   injectShareMeta,
   renderShareMetaTags,
+  resourceOgImage,
   type ShareMeta,
 } from './share-meta.ts'
 
@@ -81,11 +82,10 @@ describe('builders', () => {
       name: 'Training',
       url: 'https://aurboda.net/u/fiddur/abc',
       username: 'fiddur',
-      webHost: 'https://aurboda.net',
     })
     expect(m.title).toBe('Training — Aurboda')
     expect(m.type).toBe('website')
-    expect(m.image).toBe('https://aurboda.net/og-default.png')
+    expect(m.image).toBe('https://aurboda.net/u/fiddur/abc/opengraph-image.png')
     expect(m.description).toContain('Training')
   })
 
@@ -95,7 +95,6 @@ describe('builders', () => {
       name: 'Training',
       url: 'https://aurboda.net/u/fiddur/abc',
       username: 'fiddur',
-      webHost: 'https://aurboda.net',
     })
     expect(m.description).toBe('Two years of training and effect.')
   })
@@ -106,7 +105,6 @@ describe('builders', () => {
       name: 'x',
       url: 'https://aurboda.net/u/fiddur/abc',
       username: 'fiddur',
-      webHost: 'https://aurboda.net',
     })
     expect(m.description.length).toBeLessThanOrEqual(201)
     expect(m.description.endsWith('…')).toBe(true)
@@ -116,10 +114,10 @@ describe('builders', () => {
     const m = buildProfileShareMeta({
       url: 'https://aurboda.net/u/fiddur',
       username: 'fiddur',
-      webHost: 'https://aurboda.net',
     })
     expect(m.type).toBe('profile')
     expect(m.jsonLd?.['@type']).toBe('ProfilePage')
+    expect(m.image).toBe('https://aurboda.net/u/fiddur/opengraph-image.png')
   })
 
   test('challenge meta mentions federation', () => {
@@ -127,7 +125,6 @@ describe('builders', () => {
       name: 'Step count',
       url: 'https://aurboda.net/u/fiddur/xyz',
       username: 'fiddur',
-      webHost: 'https://aurboda.net',
     })
     expect(m.title).toBe('Step count — Aurboda')
     expect(m.description.toLowerCase()).toContain('challenge')
@@ -137,6 +134,7 @@ describe('builders', () => {
     const m = buildDefaultShareMeta('https://aurboda.net', 'https://aurboda.net/u/x/y')
     expect(m.title).toBe('Aurboda')
     expect(m.jsonLd).toBeUndefined()
+    expect(m.image).toBe('https://aurboda.net/og-default.png')
   })
 })
 
@@ -144,5 +142,16 @@ describe('defaultOgImage', () => {
   test('joins without double slashes', () => {
     expect(defaultOgImage('https://aurboda.net/')).toBe('https://aurboda.net/og-default.png')
     expect(defaultOgImage('https://aurboda.net')).toBe('https://aurboda.net/og-default.png')
+  })
+})
+
+describe('resourceOgImage', () => {
+  test('appends the image path to the resource URL', () => {
+    expect(resourceOgImage('https://aurboda.net/u/fiddur/abc')).toBe(
+      'https://aurboda.net/u/fiddur/abc/opengraph-image.png',
+    )
+    expect(resourceOgImage('https://aurboda.net/u/fiddur/abc/')).toBe(
+      'https://aurboda.net/u/fiddur/abc/opengraph-image.png',
+    )
   })
 })
