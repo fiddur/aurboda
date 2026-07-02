@@ -55,6 +55,12 @@ export const listFeedFollowers = async (user: string): Promise<FeedFollowerRecor
   return result.rows
 }
 
+/** Count followers without loading their rows (for the followers-collection counter). */
+export const countFeedFollowers = async (user: string): Promise<number> => {
+  const result = await query<{ count: string }>(user, `SELECT COUNT(*)::text AS count FROM feed_follower`)
+  return Number(result.rows[0].count)
+}
+
 /** Remove a follower by actor URI (e.g. on an Undo{Follow}). */
 export const removeFeedFollower = async (user: string, actorUri: string): Promise<boolean> => {
   const result = await query(user, `DELETE FROM feed_follower WHERE actor_uri = $1`, [actorUri])

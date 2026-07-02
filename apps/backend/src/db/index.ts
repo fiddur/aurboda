@@ -277,6 +277,7 @@ export { type ActorKeyPair, getOrCreateActorKeyPair } from './feed-actor.ts'
 
 // Feed followers (remote ActivityPub actors following a user)
 export {
+  countFeedFollowers,
   type FeedFollowerInput,
   type FeedFollowerRecord,
   listFeedFollowers,

@@ -4,7 +4,12 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
  * Integration tests for the remote-follower store.
  */
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
-import { listFeedFollowers, removeFeedFollower, upsertFeedFollower } from './feed-follower.ts'
+import {
+  countFeedFollowers,
+  listFeedFollowers,
+  removeFeedFollower,
+  upsertFeedFollower,
+} from './feed-follower.ts'
 
 const CONTAINER_TIMEOUT = 120_000
 
@@ -62,6 +67,20 @@ describe('Feed followers integration', () => {
 
     const followers = await listFeedFollowers(user)
     expect(followers).toHaveLength(1)
+  })
+
+  test('counts followers without loading rows', async () => {
+    const user = getTestUser()
+    expect(await countFeedFollowers(user)).toBe(0)
+    await upsertFeedFollower(user, alice)
+    await upsertFeedFollower(user, {
+      actor_uri: 'https://remote.example/users/bob',
+      inbox_uri: 'https://remote.example/users/bob/inbox',
+    })
+    expect(await countFeedFollowers(user)).toBe(2)
+    // Re-following an existing actor does not double-count.
+    await upsertFeedFollower(user, alice)
+    expect(await countFeedFollowers(user)).toBe(2)
   })
 
   test('removes a follower (e.g. on Undo Follow)', async () => {

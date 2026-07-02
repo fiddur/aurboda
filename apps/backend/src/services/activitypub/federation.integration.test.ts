@@ -4,6 +4,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
  * Integration tests for the Fedify actor + WebFinger surface, exercised through
  * `federation.fetch` against a real per-user database (no Express/nginx needed).
  */
+import { upsertFeedFollower } from '../../db/feed-follower.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../../test/db-test-helper.ts'
 import { createFeedFederation } from './federation.ts'
 
@@ -84,5 +85,19 @@ describe('Feed federation actor + WebFinger', () => {
   test('404s the actor for an invalid username (never touches the database)', async () => {
     const res = await fetchAs2('/users/Invalid..Name')
     expect(res.status).toBe(404)
+  })
+
+  test('serves the followers collection from feed_follower', async () => {
+    const user = getTestUser()
+    await upsertFeedFollower(user, {
+      actor_uri: 'https://mastodon.example/users/alice',
+      inbox_uri: 'https://mastodon.example/users/alice/inbox',
+      shared_inbox_uri: 'https://mastodon.example/inbox',
+    })
+    const res = await fetchAs2(`/users/${user}/followers`)
+    expect(res.status).toBe(200)
+    const doc = (await res.json()) as { totalItems?: number; orderedItems?: string[] }
+    expect(doc.totalItems).toBe(1)
+    expect(doc.orderedItems).toContain('https://mastodon.example/users/alice')
   })
 })
