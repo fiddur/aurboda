@@ -5,7 +5,9 @@ import type { FeedVisibility } from '@aurboda/api-spec'
  * Builds a Fedify `Create{Note}` — the Mastodon-compatible representation: an
  * HTML `content` summary + `name`/`url`, addressed per the post's visibility —
  * and fans it out via `ctx.sendActivity(..., 'followers', …)`, which Fedify
- * signs, dedupes by shared inbox, and queues with retries.
+ * signs and dedupes by shared inbox. Delivery is synchronous (no message queue
+ * configured), so this awaits the outbound POSTs; retry/durability via a
+ * persistent queue is a later slice.
  *
  * The custom `aurboda:` structured extension is not carried on the pushed Note
  * (Fedify's typed vocab drops unknown properties); it's progressive enhancement

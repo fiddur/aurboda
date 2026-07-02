@@ -1,4 +1,4 @@
-import { createFederation, type Federation, InProcessMessageQueue, MemoryKvStore } from '@fedify/fedify'
+import { createFederation, type Federation, MemoryKvStore } from '@fedify/fedify'
 import { Accept, Follow, Person, Undo } from '@fedify/fedify/vocab'
 
 /**
@@ -14,9 +14,8 @@ import { Accept, Follow, Person, Undo } from '@fedify/fedify/vocab'
  * - inbound inbox: `Follow` → persist follower + `Accept`; `Undo{Follow}` →
  *   drop the follower (Fedify verifies the HTTP Signature first).
  *
- * Outbound delivery of the user's own posts is a later slice. The in-memory
- * KV/queue are fine here (Accept is sent inline); a persistent (Postgres)
- * backing lands with reliable delivery.
+ * Delivery is synchronous (no message queue — see `createFeedFederation`); a
+ * persistent Postgres queue for retried, durable delivery is a later slice.
  */
 import { isValidUsername } from '../../api/auth-routes.ts'
 import {
@@ -37,7 +36,11 @@ export const createFeedFederation = (origin: string): Federation<void> => {
     // scheme + host — Mastodon requires https, and reconstructing the scheme
     // from the request yields http behind the TLS-terminating proxy.
     origin,
-    queue: new InProcessMessageQueue(),
+    // No message queue: `sendActivity` then delivers synchronously (awaits the
+    // POST). An in-process queue would need `federation.startQueue()` to drain —
+    // which the Express integration doesn't run — so queued activities (e.g. the
+    // Create on share) would never send. A persistent Postgres queue + worker is
+    // a later reliability slice; synchronous delivery is correct for now.
   })
 
   federation
