@@ -46,6 +46,8 @@ export interface DeliverablePost {
   included_metrics: string[]
   visibility: FeedVisibility
   created_at: Date
+  /** Last-edited time; makes each `Update` activity id unique (see `buildFeedUpdate`). */
+  updated_at: Date
 }
 
 export interface DeliverableActivity {
@@ -115,8 +117,10 @@ export const buildFeedCreate = async (
 /**
  * Wrap the post's (re-resolved) `Note` in an `Update` activity. Sent when a
  * post's shared metric selection or visibility changes, so followers' servers
- * replace the stored object. The `Update` id is a `#update` fragment on the
- * Note id; Mastodon supersedes by the object being updated, not the activity id.
+ * replace the stored object. The `Update` id carries the post's `updated_at`
+ * (`#update-<epoch-ms>`) so each edit has a distinct activity id — AS2 requires
+ * unique activity ids, and servers that dedupe inbound activities by id would
+ * otherwise drop every edit after the first.
  */
 export const buildFeedUpdate = async (
   ctx: Context<void>,
@@ -130,7 +134,7 @@ export const buildFeedUpdate = async (
   return new Update({
     actor: ctx.getActorUri(user),
     ccs: cc,
-    id: new URL(`${noteId.href}#update`),
+    id: new URL(`${noteId.href}#update-${post.updated_at.getTime()}`),
     object: note,
     tos: to,
   })

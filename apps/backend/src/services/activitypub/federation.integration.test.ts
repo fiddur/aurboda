@@ -191,7 +191,7 @@ describe('Feed federation actor + WebFinger', () => {
     })
 
     const noteId = `${ORIGIN}/users/${user}/feed/${post.id}`
-    expect(update.id?.href).toBe(`${noteId}#update`)
+    expect(update.id?.href).toBe(`${noteId}#update-${post.updated_at.getTime()}`)
     const object = await update.getObject()
     expect(object).toBeInstanceOf(Note)
     expect(object?.id?.href).toBe(noteId)
