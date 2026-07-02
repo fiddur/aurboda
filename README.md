@@ -5,32 +5,24 @@
 <h1 align="center">Aurboda</h1>
 <h3 align="center">Self-Hosted Self-Quantification Aggregator</h3>
 
-Your health, fitness, productivity, and location data is scattered across apps and services. Aurboda aggregates it all into one self-hosted platform, provides rich visualizations, and exposes everything to AI assistants via [MCP (Model Context Protocol)](https://modelcontextprotocol.io/).
+**A self-hosted personal data warehouse for quantified self.** Aurboda unifies your health, fitness, productivity, location, and nutrition data -- from Oura, Garmin, Strava, Android Health Connect, screen-time trackers, calendars, and more -- into a single timeline and database that lives on your own server.
 
-No public signup, but self-hosting is straightforward via Docker. It was initiated as a personal (manually coded) hobby project but has grown with AI coding; take it or leave it.
+Think of it as **Home Assistant, but for your personal data instead of your smart home.**
 
-### Features
+Once everything is in one place, you can:
 
-- [**Timeline**](docs/features/timeline.md) -- Multi-track interactive day view: activities, tags, metrics, screen time, music, and location
-- [**Dashboard**](docs/features/dashboard.md) -- Customizable widget-based home page with metric cards, sparklines, trends, and correlations
-- [**HR Zones**](docs/features/hr-zones.md) -- Weekly heart rate zone tracking with Huberman/Galpin protocol targets
-- [**Correlation Analysis**](docs/features/correlations.md) -- Pearson coefficients, chi-squared tests, relative risk, activity impact timelines
-- [**Trends (EMA)**](docs/features/trends.md) -- Exponential Moving Average smoothing for tags, metrics, and screen time
-- [**Goals**](docs/features/goals.md) -- Rolling-window health targets with "losing tomorrow" calculations
-- [**Sleep Analysis**](docs/features/sleep.md) -- Sleep quality tracking, hypnogram, Oura scores, sleep location detection
-- [**Screentime Categories**](docs/features/screentime-categories.md) -- Hierarchical app categorization with productivity scoring
-- [**Training Load**](docs/features/training-load.md) -- Banister model fitness/fatigue tracking (CTL/ATL/TSB)
-- [**Places**](docs/features/places.md) -- GPS location history, auto-detected locations, visit tracking with PostGIS
-- [**Meals & Nutrition**](docs/features/meals.md) -- Quick sensitivity logging, Cronometer/Oura import, per-item micronutrients
-- [**Lab Reports**](docs/features/lab-reports.md) -- Structured lab results with metric write-through and reference ranges
-- [**Custom Activity Types**](docs/features/activity-types.md) -- User-defined activity types with display categories, colors, and timeline visibility
-- [**Deduction Rules**](docs/features/deduction-rules.md) -- Automatic activity creation from data conditions (tag + activity + screentime), with rule chaining
-- [**Active Calorie Computation**](docs/features/calories.md) -- HR-based calculation with gap-fill from Health Connect
-- [**Sharing & Challenges**](docs/features/sharing.md) -- Public read-only shared dashboards and [federated cumulative-metric challenges](docs/features/challenges.md) across Aurboda instances
-- [**Passkey Login**](docs/passkeys.md) -- WebAuthn-based sign-in for web and Android, with Digital Asset Links to share passkeys between the website and the Android app
-- **MCP Integration** -- Full AI assistant access via [Model Context Protocol](docs/mcp-server.md) (60+ tools)
+- **Explore** it visually -- a unified timeline, customizable dashboards, and maps
+- **Analyze** it -- trends, correlations, and statistics across every source
+- **Own** it -- standard PostgreSQL on your machine, no cloud account, no subscription
+- **Ask** it anything -- connect Claude or any MCP client and query your whole life in plain language
+
+That last part is the point: instead of "my data is scattered across ten apps," you can finally ask _"is there a link between my coffee, HRV, sleep, and headaches?"_ -- and get an answer.
+
+> No public signup. It began as a hand-coded personal hobby project and has since grown with AI-assisted coding; self-host your own instance and take it or leave it.
 
 ### Data Sources
+
+Aurboda's reach is the point, so here's what it ingests today:
 
 <!-- BEGIN:data-sources -->
 
@@ -53,6 +45,31 @@ No public signup, but self-hosting is straightforward via Docker. It was initiat
 <!-- END:data-sources -->
 
 See [docs/data-sources.md](docs/data-sources.md) for setup overview.
+
+### What you can do
+
+Everything above feeds a common data model, so every feature works across every source:
+
+- **Explore** -- [timeline](docs/features/timeline.md), [dashboards](docs/features/dashboard.md), and [maps of where you've been](docs/features/places.md)
+- **Analyze** -- [trends with EMA smoothing](docs/features/trends.md), [correlations](docs/features/correlations.md) (Pearson, chi-squared, relative risk), and [goals](docs/features/goals.md)
+- **Track health** -- [sleep](docs/features/sleep.md), [HR zones](docs/features/hr-zones.md), [training load](docs/features/training-load.md), [lab results](docs/features/lab-reports.md), and [active-calorie computation](docs/features/calories.md)
+- **Organize life** -- [activities](docs/features/activity-types.md), [meals & nutrition](docs/features/meals.md), places, and [screen time](docs/features/screentime-categories.md)
+- **Automate** -- [deduction rules](docs/features/deduction-rules.md) that create activities from your data, plus custom activity types
+- **Share** -- read-only [public dashboards and federated challenges](docs/features/sharing.md) across Aurboda instances
+- **AI access** -- full query access from Claude or any [MCP](docs/mcp-server.md) client (60+ tools)
+
+Each links to detailed docs, and the sections below walk through the highlights with screenshots.
+
+### Your data, your server
+
+For the self-hosting crowd, the appeal is ownership:
+
+- Your data stays on your machine -- no cloud account, no third party.
+- No subscription, ever.
+- Stored in **standard PostgreSQL** you can query directly.
+- **Docker deployment** in minutes (see [Quick Start](#quick-start-docker)).
+- Open **REST API** and **MCP** -- nothing is locked in.
+- [Passkey / WebAuthn login](docs/passkeys.md) for web and Android.
 
 ---
 

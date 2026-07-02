@@ -31,30 +31,25 @@ function GuestHome({ canSignup }: { canSignup: boolean }) {
     <>
       <section class="intro">
         <p>
-          Your health, fitness, productivity, and location data is scattered across apps and services. Aurboda
-          aggregates it all into one self-hosted platform, provides rich visualizations, and exposes
-          everything to AI assistants via{' '}
-          <a href="https://modelcontextprotocol.io/" target="_blank" rel="noopener noreferrer">
-            MCP (Model Context Protocol)
-          </a>
-          .
+          <strong>A self-hosted personal data warehouse for quantified self.</strong> Aurboda unifies your
+          health, fitness, productivity, location, and nutrition data — from Oura, Garmin, Strava, Android
+          Health Connect, screen-time trackers, calendars, and more — into a single timeline and database that
+          lives on your own server.
         </p>
-
-        <h3>What it does</h3>
-        <ul>
-          <li>
-            <strong>Aggregates</strong> health data from Android Health Connect, Oura, Garmin, OwnTracks,
-            RescueTime, ActivityWatch, Last.fm, calendar feeds, and more.
-          </li>
-          <li>
-            <strong>Visualizes</strong> timelines, heart rate zones, sleep patterns, trends, correlations,
-            location history, training load, and screen time.
-          </li>
-          <li>
-            <strong>AI-ready</strong> via MCP — connect Claude or other AI assistants to your self-hosted
-            instance to query your health data and find insights.
-          </li>
-        </ul>
+        <p>
+          Think of it as{' '}
+          <strong>Home Assistant, but for your personal data instead of your smart home.</strong> Once
+          everything is in one place, you can explore it visually, analyze it for trends and correlations, and
+          query your whole life in plain language by connecting Claude or any{' '}
+          <a href="https://modelcontextprotocol.io/" target="_blank" rel="noopener noreferrer">
+            MCP
+          </a>{' '}
+          client.
+        </p>
+        <p>
+          Instead of “my data is scattered across ten apps,” you can finally ask{' '}
+          <em>“is there a link between my coffee, HRV, sleep, and headaches?”</em> — and get an answer.
+        </p>
 
         <div class="screenshots">
           <Screenshot
@@ -177,50 +172,34 @@ function GuestHome({ canSignup }: { canSignup: boolean }) {
       </section>
 
       <section class="features">
-        <h2>Features</h2>
+        <h2>What you can do</h2>
+        <p>Everything above feeds a common data model, so every feature works across every source:</p>
         <ul>
           <li>
-            <strong>Timeline</strong> — Multi-track interactive day view: activities, metrics, screen time,
-            music, and location
+            <strong>Explore</strong> — a unified timeline, customizable dashboards, and maps of where you've
+            been
           </li>
           <li>
-            <strong>Dashboard</strong> — Customizable widget-based home page with metric cards, sparklines,
-            trends, and correlations
+            <strong>Analyze</strong> — trends with EMA smoothing, correlations (Pearson, chi-squared, relative
+            risk), and rolling-window goals
           </li>
           <li>
-            <strong>HR Zones</strong> — Weekly heart rate zone tracking with Huberman/Galpin protocol targets
+            <strong>Track health</strong> — sleep, HR zones (Huberman/Galpin targets), training load (Banister
+            model), lab results, and active-calorie computation
           </li>
           <li>
-            <strong>Correlation Analysis</strong> — Pearson coefficients, chi-squared tests, relative risk,
-            activity impact timelines
+            <strong>Organize life</strong> — activities, meals &amp; nutrition, places, and screen time
           </li>
           <li>
-            <strong>Trends (EMA)</strong> — Exponential Moving Average smoothing for activity types, metrics,
-            and screen time
+            <strong>Automate</strong> — deduction rules that create activities from your data, plus custom
+            activity types
           </li>
           <li>
-            <strong>Goals</strong> — Rolling-window health targets
+            <strong>Share</strong> — read-only public dashboards and federated challenges across Aurboda
+            instances
           </li>
           <li>
-            <strong>Sleep Analysis</strong> — Sleep quality tracking, hypnogram, Oura scores
-          </li>
-          <li>
-            <strong>Training Load</strong> — Banister model fitness/fatigue tracking (CTL/ATL/TSB)
-          </li>
-          <li>
-            <strong>Places</strong> — GPS location history, auto-detected locations, visit tracking with
-            PostGIS
-          </li>
-          <li>
-            <strong>Meals & Nutrition</strong> — Quick sensitivity logging, Cronometer/Oura import, per-item
-            micronutrients
-          </li>
-          <li>
-            <strong>Lab Reports</strong> — Structured lab results with metric write-through and reference
-            ranges
-          </li>
-          <li>
-            <strong>MCP Integration</strong> — Full AI assistant access via Model Context Protocol (50+ tools)
+            <strong>AI access</strong> — full query access from Claude or any MCP client (60+ tools)
           </li>
         </ul>
       </section>
