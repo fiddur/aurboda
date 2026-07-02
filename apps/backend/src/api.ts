@@ -319,8 +319,10 @@ const main = async () => {
   // parser so Fedify owns the raw body of signed inbox POSTs; it passes through
   // (next()) any request that isn't one of its own routes. `trust proxy` lets
   // Fedify reconstruct the external https URL from nginx's X-Forwarded-* headers.
-  // Scope it to `loopback`: the backend binds 127.0.0.1 behind nginx, so only the
-  // loopback hop is trusted and those headers can't be spoofed by a remote client.
+  // Scope it to `loopback`: nginx proxies to the backend over loopback
+  // (proxy_pass http://127.0.0.1:3000), so Express trusts X-Forwarded-* only when
+  // the immediate peer is loopback — a direct remote client isn't, so it can't
+  // spoof them.
   httpd.set('trust proxy', 'loopback')
   httpd.use(integrateFederation(createFeedFederation(), () => undefined))
 
