@@ -11,7 +11,7 @@ const CONTAINER_TIMEOUT = 120_000
 const ORIGIN = 'https://aurboda.example'
 
 const notFound = () => new Response('nope', { status: 404 })
-const fed = createFeedFederation()
+const fed = createFeedFederation(ORIGIN)
 
 const fetchAs2 = (path: string) =>
   fed.fetch(new Request(`${ORIGIN}${path}`, { headers: { Accept: 'application/activity+json' } }), {
@@ -49,6 +49,23 @@ describe('Feed federation actor + WebFinger', () => {
     const publicKey = doc.publicKey as { owner?: string; publicKeyPem?: string }
     expect(publicKey.owner).toBe(`${ORIGIN}/users/${user}`)
     expect(publicKey.publicKeyPem).toContain('BEGIN PUBLIC KEY')
+  })
+
+  test('builds https URLs from the canonical origin even when the request arrives over http', async () => {
+    // Simulates a request reaching the backend over loopback http behind a
+    // TLS-terminating proxy; the pinned origin must still yield https URLs
+    // (Mastodon rejects http actors).
+    const user = getTestUser()
+    const res = await fed.fetch(
+      new Request(`http://aurboda.example/users/${user}`, {
+        headers: { Accept: 'application/activity+json' },
+      }),
+      { contextData: undefined, onNotAcceptable: notFound, onNotFound: notFound },
+    )
+    expect(res.status).toBe(200)
+    const doc = (await res.json()) as Record<string, unknown>
+    expect(doc.id).toBe(`https://aurboda.example/users/${user}`)
+    expect(doc.inbox).toBe(`https://aurboda.example/users/${user}/inbox`)
   })
 
   test('resolves the actor via WebFinger by acct handle', async () => {
