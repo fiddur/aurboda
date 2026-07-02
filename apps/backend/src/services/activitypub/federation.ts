@@ -79,12 +79,20 @@ export const createFeedFederation = (): Federation<void> => {
       const sender = await follow.getActor(ctx)
       if (sender?.id == null || sender.inboxId == null) return
 
-      await upsertFeedFollower(target.identifier, {
-        accepted: true,
-        actor_uri: sender.id.href,
-        inbox_uri: sender.inboxId.href,
-        shared_inbox_uri: sender.endpoints?.sharedInbox?.href ?? null,
-      })
+      try {
+        await upsertFeedFollower(target.identifier, {
+          accepted: true,
+          actor_uri: sender.id.href,
+          inbox_uri: sender.inboxId.href,
+          shared_inbox_uri: sender.endpoints?.sharedInbox?.href ?? null,
+        })
+      } catch (error) {
+        // A syntactically-valid username with no database is a Follow to a
+        // nonexistent actor — ignore it (don't 500 and invite retries), and
+        // don't answer with an Accept.
+        if (isMissingDatabase(error)) return
+        throw error
+      }
 
       // Answer the Follow so the remote server marks it established.
       await ctx.sendActivity(
@@ -99,7 +107,12 @@ export const createFeedFederation = (): Federation<void> => {
       if (!(object instanceof Follow) || object.objectId == null || undo.actorId == null) return
       const target = ctx.parseUri(object.objectId)
       if (target?.type !== 'actor' || !isValidUsername(target.identifier)) return
-      await removeFeedFollower(target.identifier, undo.actorId.href)
+      try {
+        await removeFeedFollower(target.identifier, undo.actorId.href)
+      } catch (error) {
+        if (isMissingDatabase(error)) return
+        throw error
+      }
     })
 
   // Empty collections for now; the outbox serves the user's public posts once
