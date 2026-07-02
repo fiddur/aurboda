@@ -1,3 +1,4 @@
+import sharp from 'sharp'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 vi.mock('../db/index.ts', () => ({
@@ -6,7 +7,7 @@ vi.mock('../db/index.ts', () => ({
 }))
 
 const db = await import('../db/index.ts')
-const { loadAvatarImage } = await import('./avatar-resolve.ts')
+const { loadAvatarDataUri, loadAvatarImage } = await import('./avatar-resolve.ts')
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -37,5 +38,24 @@ describe('loadAvatarImage', () => {
   test('rethrows unexpected errors', async () => {
     vi.mocked(db.getProfileAvatar).mockRejectedValue(new Error('boom'))
     await expect(loadAvatarImage('fiddur')).rejects.toThrow('boom')
+  })
+})
+
+describe('loadAvatarDataUri', () => {
+  test('re-encodes a stored WebP avatar to a PNG data URI (Satori-safe)', async () => {
+    const webp = await sharp({
+      create: { background: { b: 90, g: 150, r: 20 }, channels: 3, height: 256, width: 256 },
+    })
+      .webp()
+      .toBuffer()
+    vi.mocked(db.getProfileAvatar).mockResolvedValue({
+      content_type: 'image/webp',
+      data: webp,
+      updated_at: new Date(0),
+    })
+    const uri = await loadAvatarDataUri('fiddur')
+    expect(uri.startsWith('data:image/png;base64,')).toBe(true)
+    const decoded = Buffer.from(uri.split(',')[1], 'base64')
+    expect(decoded.subarray(0, 4).toString('hex')).toBe('89504e47')
   })
 })

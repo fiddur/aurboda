@@ -14,6 +14,11 @@ export const AVATAR_SIZE = 256
 
 const ALLOWED_UPLOAD_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif'])
 
+// The formats sharp must actually detect. Guards against Content-Type spoofing
+// (e.g. SVG bytes sent as image/png), since sharp would otherwise rasterize the
+// real bytes regardless of the claimed mimetype.
+const ALLOWED_DETECTED_FORMATS = new Set(['png', 'jpeg', 'webp', 'gif'])
+
 export const isAllowedAvatarType = (contentType: string): boolean => ALLOWED_UPLOAD_TYPES.has(contentType)
 
 export interface StoredImage {
@@ -23,9 +28,15 @@ export interface StoredImage {
 
 /**
  * Normalize an uploaded avatar to a square 256×256 WebP. Throws if the buffer
- * isn't a decodable image (caller maps that to a 400).
+ * isn't a decodable raster image of an allowed format (caller maps that to a
+ * 400) — the format is checked against what sharp actually detects, not the
+ * client-claimed mimetype, so SVG can't slip through by Content-Type spoofing.
  */
 export const processAvatar = async (buffer: Buffer): Promise<StoredImage> => {
+  const { format } = await sharp(buffer).metadata()
+  if (!format || !ALLOWED_DETECTED_FORMATS.has(format)) {
+    throw new Error(`Unsupported image format: ${format ?? 'unknown'}`)
+  }
   const data = await sharp(buffer)
     .resize(AVATAR_SIZE, AVATAR_SIZE, { fit: 'cover', position: 'attention' })
     .webp({ quality: 82 })

@@ -32,6 +32,13 @@ describe('processAvatar', () => {
   test('rejects a non-image buffer', async () => {
     await expect(processAvatar(Buffer.from('not an image'))).rejects.toThrow()
   })
+
+  test('rejects SVG bytes even if the caller claims a raster mimetype', async () => {
+    // Content-Type spoofing: SVG bytes are what sharp detects, so this must fail
+    // regardless of the mimetype multer reported.
+    const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><rect width="10" height="10"/></svg>')
+    await expect(processAvatar(svg)).rejects.toThrow(/format/i)
+  })
 })
 
 describe('generateIdenticon', () => {

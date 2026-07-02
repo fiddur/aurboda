@@ -25,11 +25,15 @@ export const createPublicAvatarRouter = (
 
   router.get('/u/:username/avatar.png', async (req, res) => {
     const { username } = req.params
-    // Skip DB routing for invalid usernames — still yield an identicon so the
-    // endpoint always returns an image.
-    const image = isValidUsername(username)
-      ? await deps.loadAvatar(username)
-      : await generateIdenticon(username)
+    // Skip DB routing for invalid usernames, and fall back to an identicon on
+    // any unexpected load error — the endpoint always yields an image.
+    let image
+    try {
+      image = isValidUsername(username) ? await deps.loadAvatar(username) : await generateIdenticon(username)
+    } catch (error) {
+      console.error('avatar load failed, serving identicon:', error)
+      image = await generateIdenticon(username)
+    }
     res.set('Content-Type', image.content_type)
     res.set('Cache-Control', 'public, max-age=3600')
     res.send(image.data)
