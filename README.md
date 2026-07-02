@@ -55,7 +55,7 @@ Everything above feeds a common data model, so every feature works across every 
 - **Track health** -- [sleep](docs/features/sleep.md), [HR zones](docs/features/hr-zones.md), [training load](docs/features/training-load.md), [lab results](docs/features/lab-reports.md), and [active-calorie computation](docs/features/calories.md)
 - **Organize life** -- [activities](docs/features/activity-types.md), [meals & nutrition](docs/features/meals.md), places, and [screen time](docs/features/screentime-categories.md)
 - **Automate** -- [deduction rules](docs/features/deduction-rules.md) that create activities from your data, plus custom activity types
-- **Share** -- read-only [public dashboards and federated challenges](docs/features/sharing.md) across Aurboda instances
+- **Share** -- read-only [public dashboards and federated challenges](docs/features/sharing.md) across Aurboda instances, plus a [federated activity feed](docs/features/feed.md) followable from Mastodon
 - **AI access** -- full query access from Claude or any [MCP](docs/mcp-server.md) client (60+ tools)
 
 Each links to detailed docs, and the sections below walk through the highlights with screenshots.
@@ -191,6 +191,12 @@ Publish read-only **shared dashboards** (like the one above) under your own publ
 </p>
 
 More in the [Sharing](docs/features/sharing.md) and [Challenges](docs/features/challenges.md) docs.
+
+## Federated Activity Feed
+
+Publish an activity -- a run, a night's sleep, a meditation -- to your **ActivityPub** feed, choosing **per post exactly which data leaves the instance**: which scalar summaries (duration, distance, avg/max HR, HR zones, calories), whether to opt into sharing the full high-resolution series, and the audience (public / unlisted / followers-only). Each user is a fediverse actor, so anyone on Mastodon can search `@you@your-host`, **Follow**, and see your posts; editing or unsharing federates an `Update` or `Delete`. Share from any activity's detail page and manage everything on the **Feed** page.
+
+More in the [Federated Feed docs](docs/features/feed.md).
 
 ## Android App
 
