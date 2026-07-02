@@ -287,6 +287,7 @@ export {
 
 // Feed posts
 export {
+  countPublicFeedPosts,
   createFeedPost,
   deleteFeedPost,
   type FeedPostInput,
@@ -295,6 +296,7 @@ export {
   findCoveringSharedSeriesWindow,
   getFeedPostById,
   listFeedPosts,
+  listPublicFeedPosts,
   updateFeedPost,
 } from './feed.ts'
 

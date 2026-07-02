@@ -4,12 +4,34 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
  * Integration tests for the Fedify actor + WebFinger surface, exercised through
  * `federation.fetch` against a real per-user database (no Express/nginx needed).
  */
+import { insertActivity } from '../../db/activities/index.ts'
 import { upsertFeedFollower } from '../../db/feed-follower.ts'
+import { createFeedPost, type FeedPostInput } from '../../db/feed.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../../test/db-test-helper.ts'
 import { createFeedFederation } from './federation.ts'
 
 const CONTAINER_TIMEOUT = 120_000
 const ORIGIN = 'https://aurboda.example'
+
+const insertExercise = (user: string): Promise<string> =>
+  insertActivity(user, {
+    activity_type: 'exercise',
+    end_time: new Date('2026-07-01T07:11:00Z'),
+    source: 'garmin',
+    start_time: new Date('2026-07-01T06:30:00Z'),
+    title: 'Morning run',
+  })
+
+const sharePost = (user: string, activityId: string, overrides: Partial<FeedPostInput> = {}) =>
+  createFeedPost(user, {
+    activity_id: activityId,
+    include_chart: false,
+    include_map: false,
+    included_metrics: ['duration'],
+    series_metrics: [],
+    visibility: 'public',
+    ...overrides,
+  })
 
 const notFound = () => new Response('nope', { status: 404 })
 const fed = createFeedFederation(ORIGIN)
@@ -99,5 +121,57 @@ describe('Feed federation actor + WebFinger', () => {
     const doc = (await res.json()) as { totalItems?: number; orderedItems?: string[] }
     expect(doc.totalItems).toBe(1)
     expect(doc.orderedItems).toContain('https://mastodon.example/users/alice')
+  })
+
+  test('serves the outbox with public posts as Create activities', async () => {
+    const user = getTestUser()
+    const activityId = await insertExercise(user)
+    const post = await sharePost(user, activityId)
+
+    const res = await fetchAs2(`/users/${user}/outbox`)
+    expect(res.status).toBe(200)
+    const doc = (await res.json()) as { totalItems?: number; orderedItems?: unknown[] }
+    expect(doc.totalItems).toBe(1)
+    const items = doc.orderedItems ?? []
+    expect(items).toHaveLength(1)
+    const create = items[0] as { type: string; object: string | { id: string; type: string } }
+    expect(create.type).toBe('Create')
+    const object = typeof create.object === 'string' ? { id: create.object, type: 'Note' } : create.object
+    expect(object.id).toBe(`${ORIGIN}/users/${user}/feed/${post.id}`)
+  })
+
+  test('serves an individual public post object as a Note at its canonical id', async () => {
+    const user = getTestUser()
+    const activityId = await insertExercise(user)
+    const post = await sharePost(user, activityId)
+
+    const res = await fetchAs2(`/users/${user}/feed/${post.id}`)
+    expect(res.status).toBe(200)
+    const doc = (await res.json()) as { type: string; id: string; attributedTo?: string }
+    expect(doc.type).toBe('Note')
+    expect(doc.id).toBe(`${ORIGIN}/users/${user}/feed/${post.id}`)
+    expect(doc.attributedTo).toBe(`${ORIGIN}/users/${user}`)
+  })
+
+  test('excludes followers-only posts from the outbox and 404s their object', async () => {
+    const user = getTestUser()
+    const activityId = await insertExercise(user)
+    const post = await sharePost(user, activityId, { visibility: 'followers' })
+
+    const outbox = (await (await fetchAs2(`/users/${user}/outbox`)).json()) as {
+      totalItems?: number
+      orderedItems?: unknown[]
+    }
+    expect(outbox.totalItems).toBe(0)
+    expect(outbox.orderedItems ?? []).toHaveLength(0)
+
+    const object = await fetchAs2(`/users/${user}/feed/${post.id}`)
+    expect(object.status).toBe(404)
+  })
+
+  test('404s a post object for a non-UUID id without touching the database', async () => {
+    const user = getTestUser()
+    const res = await fetchAs2(`/users/${user}/feed/not-a-uuid`)
+    expect(res.status).toBe(404)
   })
 })

@@ -7,12 +7,14 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import { deleteActivity, insertActivity } from './activities/index.ts'
 import {
+  countPublicFeedPosts,
   createFeedPost,
   deleteFeedPost,
   type FeedPostInput,
   findCoveringSharedSeriesWindow,
   getFeedPostById,
   listFeedPosts,
+  listPublicFeedPosts,
   updateFeedPost,
 } from './feed.ts'
 
@@ -104,6 +106,26 @@ describe('Feed posts integration', () => {
     expect(await deleteFeedPost(user, created.id)).toBe(true)
     expect(await deleteFeedPost(user, created.id)).toBe(false)
     expect(await getFeedPostById(user, created.id)).toBeNull()
+  })
+
+  describe('public outbox listing', () => {
+    test('lists public and unlisted posts newest-first, excluding followers-only', async () => {
+      const user = getTestUser()
+      const pub = await createFeedPost(user, postInput({ visibility: 'public' }))
+      const unlisted = await createFeedPost(user, postInput({ visibility: 'unlisted' }))
+      await createFeedPost(user, postInput({ visibility: 'followers' }))
+
+      const posts = await listPublicFeedPosts(user)
+      expect(posts.map((p) => p.id)).toEqual([unlisted.id, pub.id])
+      expect(await countPublicFeedPosts(user)).toBe(2)
+    })
+
+    test('are empty when the user has only followers-only posts', async () => {
+      const user = getTestUser()
+      await createFeedPost(user, postInput({ visibility: 'followers' }))
+      expect(await listPublicFeedPosts(user)).toEqual([])
+      expect(await countPublicFeedPosts(user)).toBe(0)
+    })
   })
 
   describe('findCoveringSharedSeriesWindow', () => {

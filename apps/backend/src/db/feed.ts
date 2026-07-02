@@ -89,6 +89,31 @@ export const listFeedPosts = async (user: string): Promise<FeedPostRecord[]> => 
   return result.rows.map(mapFeedPost)
 }
 
+/**
+ * Posts that appear on the public outbox / actor profile: `public` and
+ * `unlisted` (both addressed to the AS2 Public collection). `followers`-only
+ * posts are never listed here. Same deterministic newest-first ordering as
+ * `listFeedPosts`.
+ */
+export const listPublicFeedPosts = async (user: string): Promise<FeedPostRecord[]> => {
+  const result = await query<FeedPostRow>(
+    user,
+    `SELECT ${FEED_POST_COLUMNS} FROM feed_posts
+      WHERE visibility IN ('public', 'unlisted')
+      ORDER BY created_at DESC, id DESC`,
+  )
+  return result.rows.map(mapFeedPost)
+}
+
+/** Total number of posts on the public outbox (see `listPublicFeedPosts`). */
+export const countPublicFeedPosts = async (user: string): Promise<number> => {
+  const result = await query<{ count: number }>(
+    user,
+    `SELECT count(*)::int AS count FROM feed_posts WHERE visibility IN ('public', 'unlisted')`,
+  )
+  return Number(result.rows[0]?.count ?? 0)
+}
+
 export const getFeedPostById = async (user: string, id: string): Promise<FeedPostRecord | null> => {
   const result = await query<FeedPostRow>(user, `SELECT ${FEED_POST_COLUMNS} FROM feed_posts WHERE id = $1`, [
     id,
