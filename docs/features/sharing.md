@@ -61,10 +61,10 @@ beyond the saved widgets.
   the sidebar): create a copy from your current home dashboard (or a blank one),
   rename it, toggle public/unlisted, copy its link, or delete it.
 - **View** a shared dashboard at `/u/<username>/<slug>` and a profile at
-  `/u/<username>`. These pages are public, render without the app chrome
-  (header/sidebar/footer), and fetch nothing per widget — they render from the
-  server-resolved data.
-- **Edit in place**: when you are logged in and viewing your *own* shared
+  `/u/<username>`. These pages are public, render without the app header/sidebar
+  (but keep the standard site footer), and fetch nothing per widget — they render
+  from the server-resolved data.
+- **Edit in place**: when you are logged in and viewing your _own_ shared
   dashboard (`/u/<you>/<slug>`), an Edit toggle appears and you get the same
   add/remove/move-widget and section controls as the home dashboard (including
   renaming sections inline); changes save to that shared dashboard. (Owners see
@@ -76,24 +76,46 @@ beyond the saved widgets.
   dashboard you own opens the chart page carrying that widget's origin; tweak it
   and use "Update Chart in _&lt;board&gt;_ / _&lt;section&gt;_" to replace it in place.
 
+## Link previews (Open Graph / Twitter Card)
+
+JS-less crawlers (Facebook, Slack, LinkedIn, Discord, iMessage, Mastodon) never run
+the SPA, so a bare `index.html` gives them nothing to preview. To fix this, nginx
+proxies the public share routes (`/u/*`) to the backend, which returns the same
+`index.html` with a **server-rendered `<head>`**: Open Graph, Twitter Card, and
+`description` meta plus schema.org JSON-LD for the resolved resource. Browsers still
+get the full SPA and hydrate normally — only the head is enriched.
+
+- **Dashboards** and **challenges** get a title (resource name), a description, and
+  a canonical URL; profiles get a `profile`-typed card with `ProfilePage` JSON-LD.
+- Every card references a 1200×630 preview image. For now this is a branded default
+  (`/og-default.png`); a dynamically generated per-resource card is a follow-up.
+- **Visibility is respected**: rich meta is emitted only for **public** resources.
+  Unlisted (slug-only) dashboards and unknown URLs get generic site meta, so an
+  unlisted resource's title never lands in a crawler's cache or a search index.
+- Rich meta is cached `public, max-age=300`; generic fallbacks `max-age=60`.
+
+The backend finds `index.html` via `WEB_INDEX_PATH` (set in the Docker image to the
+file nginx serves). In local dev, vite serves `/u/*` directly, so this path is
+unset and the server-rendered head is exercised only by its unit tests.
+
 ## API
 
 Owner-facing CRUD (authenticated, scoped to the caller):
 
-| Method & path                 | Purpose                          |
-| ----------------------------- | -------------------------------- |
-| `GET /shared-dashboards`      | List my shared dashboards        |
-| `POST /shared-dashboards`     | Create one from a dashboard config |
-| `GET /shared-dashboards/:id`  | Fetch one (with config)          |
-| `PUT /shared-dashboards/:id`  | Update name / config / visibility |
-| `DELETE /shared-dashboards/:id` | Delete (its slug stops resolving) |
+| Method & path                   | Purpose                            |
+| ------------------------------- | ---------------------------------- |
+| `GET /shared-dashboards`        | List my shared dashboards          |
+| `POST /shared-dashboards`       | Create one from a dashboard config |
+| `GET /shared-dashboards/:id`    | Fetch one (with config)            |
+| `PUT /shared-dashboards/:id`    | Update name / config / visibility  |
+| `DELETE /shared-dashboards/:id` | Delete (its slug stops resolving)  |
 
 Public (unauthenticated):
 
-| Method & path                          | Purpose                                   |
-| -------------------------------------- | ----------------------------------------- |
-| `GET /public/:username/dashboards`     | List a user's **public** shared dashboards |
-| `GET /public/:username/:slug`          | View one shared dashboard + resolved data |
+| Method & path                      | Purpose                                    |
+| ---------------------------------- | ------------------------------------------ |
+| `GET /public/:username/dashboards` | List a user's **public** shared dashboards |
+| `GET /public/:username/:slug`      | View one shared dashboard + resolved data  |
 
 The same CRUD capability is available over MCP as `list_shared_dashboards`,
 `create_shared_dashboard`, `update_shared_dashboard`, and `delete_shared_dashboard`.
