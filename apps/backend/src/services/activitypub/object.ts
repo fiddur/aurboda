@@ -44,10 +44,16 @@ export interface BuildCreateInput {
   seriesEndpointBase: string
   visibility: FeedVisibility
   activityType: string
-  /** Activity start (ISO 8601); also the `published` time. */
+  /** Activity start (ISO 8601); the workout time, kept in `aurboda:startTime`. */
   startTime: string
   /** Activity end (ISO 8601); required for duration and series links. */
   endTime?: string
+  /**
+   * When the post was created (ISO 8601), used for the AS2 `published` of the
+   * Create and its object so remote timelines order it by share time, not the
+   * (possibly much earlier) workout time. Defaults to `startTime`.
+   */
+  publishedAt?: string
   title?: string
   /** Resolved scalar summaries for the shared `included_metrics`. */
   scalars: ScalarMetric[]
@@ -148,6 +154,9 @@ export const buildCreateExercise = (input: BuildCreateInput): AS2Create => {
   )
   const summaryLine = summaryParts.join(' · ')
   const name = input.title ?? `${prettifyKey(input.activityType)} activity`
+  // `published` is the share time (timeline ordering); the workout time lives in
+  // `aurboda:startTime`.
+  const published = input.publishedAt ?? input.startTime
 
   const object: Record<string, unknown> = {
     'aurboda:activityType': input.activityType,
@@ -161,7 +170,7 @@ export const buildCreateExercise = (input: BuildCreateInput): AS2Create => {
     content: `<p>${escapeHtml(summaryLine)}</p>`,
     id: objectId,
     name,
-    published: input.startTime,
+    published,
     // Note first → Mastodon uses content/name/url; Aurboda recognises aurboda:Exercise.
     type: ['Note', 'aurboda:Exercise'],
     url: input.postId,
@@ -182,7 +191,7 @@ export const buildCreateExercise = (input: BuildCreateInput): AS2Create => {
     cc,
     id: input.postId,
     object,
-    published: input.startTime,
+    published,
     to,
     type: 'Create',
   }

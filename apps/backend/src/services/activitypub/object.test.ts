@@ -113,6 +113,19 @@ describe('buildCreateExercise', () => {
     expect(c.object.content).toBe('<p>Run &lt;b&gt;x&lt;/b&gt; &amp; &quot;go&quot;</p>')
   })
 
+  test('uses publishedAt for the AS2 published times, keeping the workout time in aurboda:startTime', () => {
+    const c = buildCreateExercise({ ...base, publishedAt: '2026-07-01T20:00:00Z' })
+    expect(c.published).toBe('2026-07-01T20:00:00Z')
+    expect(c.object.published).toBe('2026-07-01T20:00:00Z')
+    expect(c.object['aurboda:startTime']).toBe(base.startTime)
+  })
+
+  test('published defaults to startTime when publishedAt is omitted', () => {
+    const c = buildCreateExercise(base)
+    expect(c.published).toBe(base.startTime)
+    expect(c.object.published).toBe(base.startTime)
+  })
+
   test('falls back to a derived name when the activity has no title', () => {
     const c = buildCreateExercise({ ...base, title: undefined })
     expect(c.object.name).toBe('Running activity')
