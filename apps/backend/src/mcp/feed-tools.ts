@@ -76,10 +76,7 @@ export const registerFeedTools = (server: McpServer, user: string, deliver?: Fee
       })
       if (!record) return errorResponse('Feed post not found')
       // Federate the edit as an Update, same as the REST update route.
-      if (record.activity_id) {
-        const activity = await getActivityById(user, record.activity_id)
-        if (activity) deliver?.updated(user, record, activity)
-      }
+      deliver?.updated(user, record)
       return jsonResponse(serialize(record))
     },
   )

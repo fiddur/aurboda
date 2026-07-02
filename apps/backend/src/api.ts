@@ -28,6 +28,7 @@ import { setupOuraWebhook, setupStravaWebhook } from './api/webhooks-setup.ts'
 import { createAuth } from './auth.ts'
 import {
   deleteRuleActivities,
+  getActivityById,
   getDeductionRulesByIds,
   getDetectedLocationById,
   getEnabledDeductionRules,
@@ -320,8 +321,14 @@ const main = async () => {
     deleted: (user, post) => {
       void deliverFeedDelete(feedDeps, user, post).catch(onDeliverError('delete', user, post.id))
     },
-    updated: (user, post, activity) => {
-      void deliverFeedUpdate(feedDeps, user, post, activity).catch(onDeliverError('update', user, post.id))
+    // Resolve the activity inside the fire-and-forget boundary so a lookup
+    // failure never bubbles into the (already-committed) edit's response.
+    updated: (user, post) => {
+      void (async () => {
+        if (!post.activity_id) return
+        const activity = await getActivityById(user, post.activity_id)
+        if (activity) await deliverFeedUpdate(feedDeps, user, post, activity)
+      })().catch(onDeliverError('update', user, post.id))
     },
   }
 

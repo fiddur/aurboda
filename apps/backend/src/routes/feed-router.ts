@@ -38,12 +38,17 @@ import { validateBody } from '../validation.ts'
  * injected so the router + MCP tools stay decoupled from the ActivityPub layer
  * (and testable without it). Each impl signs + fans the corresponding activity
  * out to the user's followers: `created` → `Create`, `updated` → `Update`,
- * `deleted` → `Delete{Tombstone}`. `deleted` takes only the post — no activity
- * lookup is needed to retract by object id, and the row is already gone.
+ * `deleted` → `Delete{Tombstone}`.
+ *
+ * `created` receives the activity because the share handler already resolved it
+ * (for the 404 check), so there's no double fetch. `updated`/`deleted` take only
+ * the post: their implementation resolves whatever it needs *inside* the
+ * fire-and-forget boundary, so a post-mutation lookup can never turn a
+ * successful edit/delete into a 500.
  */
 export interface FeedDeliver {
   created: (user: string, post: FeedPostRecord, activity: Activity) => void
-  updated: (user: string, post: FeedPostRecord, activity: Activity) => void
+  updated: (user: string, post: FeedPostRecord) => void
   deleted: (user: string, post: FeedPostRecord) => void
 }
 
@@ -109,10 +114,8 @@ export const createFeedRouter = (authMiddleware: RequestHandler, deliver?: FeedD
         return res.status(404).json({ error: 'Feed post not found', success: false })
       }
       // Federate the edit as an Update so followers replace the stored object.
-      if (record.activity_id) {
-        const activity = await getActivityById(user, record.activity_id)
-        if (activity) deliver?.updated(user, record, activity)
-      }
+      // Fire-and-forget: the impl resolves the activity, so it can't 500 here.
+      deliver?.updated(user, record)
       res.json({ post: serialize(record), success: true })
     },
   )
