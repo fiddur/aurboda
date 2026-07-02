@@ -102,8 +102,11 @@ export const createFeedFederation = (): Federation<void> => {
       )
     })
     .on(Undo, async (ctx, undo) => {
-      // Undo{Follow} — drop the follower.
-      const object = await undo.getObject()
+      // Undo{Follow} — drop the follower. `suppressError` so an unresolvable
+      // inner object (e.g. a bare Follow URI the remote 404s after unfollowing)
+      // yields null and is ignored, rather than throwing a 500 that invites
+      // retries. Mastodon embeds the full Follow, so the common case resolves.
+      const object = await undo.getObject({ suppressError: true })
       if (!(object instanceof Follow) || object.objectId == null || undo.actorId == null) return
       const target = ctx.parseUri(object.objectId)
       if (target?.type !== 'actor' || !isValidUsername(target.identifier)) return
