@@ -1,24 +1,30 @@
 import { createFederation, type Federation, InProcessMessageQueue, MemoryKvStore } from '@fedify/fedify'
-import { Person } from '@fedify/fedify/vocab'
+import { Accept, Follow, Person, Undo } from '@fedify/fedify/vocab'
 
 /**
  * The Fedify `Federation` object for the activity feed.
  *
  * Single actor per user: the actor identifier IS the username, and the actor
  * lives at `<host>/users/<username>` — a dedicated prefix that never collides
- * with the SPA's human-facing `/u/<username>` profile/dashboard pages. This
- * slice wires the read/discovery surface only:
+ * with the SPA's human-facing `/u/<username>` profile/dashboard pages. It wires:
  *
  * - actor document (`Person`) with the user's published RSA public key,
  * - WebFinger (`acct:<user>@<host>` → the actor), via `mapHandle`,
- * - key-pairs dispatcher backed by the per-user `feed_actor` keypair.
+ * - key-pairs dispatcher backed by the per-user `feed_actor` keypair,
+ * - inbound inbox: `Follow` → persist follower + `Accept`; `Undo{Follow}` →
+ *   drop the follower (Fedify verifies the HTTP Signature first).
  *
- * Inbound inbox handling + HTTP-signature verification and outbound delivery are
- * layered on in later slices. The in-memory KV/queue here are fine for the
- * read-only surface; a persistent (Postgres) backing lands with delivery.
+ * Outbound delivery of the user's own posts is a later slice. The in-memory
+ * KV/queue are fine here (Accept is sent inline); a persistent (Postgres)
+ * backing lands with reliable delivery.
  */
 import { isValidUsername } from '../../api/auth-routes.ts'
-import { getOrCreateActorKeyPair, isMissingDatabase } from '../../db/index.ts'
+import {
+  getOrCreateActorKeyPair,
+  isMissingDatabase,
+  removeFeedFollower,
+  upsertFeedFollower,
+} from '../../db/index.ts'
 import { toCryptoKeyPair } from './keys.ts'
 
 export const createFeedFederation = (): Federation<void> => {
@@ -59,10 +65,58 @@ export const createFeedFederation = (): Federation<void> => {
     })
     .mapHandle((_ctx, username) => (isValidUsername(username) ? username : null))
 
-  // Register the inbox path so the actor can advertise inbox/shared-inbox URIs.
-  // Inbound handling (Follow→Accept, signature verification) is a later slice —
-  // for now the inbox simply accepts and ignores.
-  federation.setInboxListeners('/users/{identifier}/inbox', '/inbox')
+  // Inbound inbox. Fedify verifies the HTTP Signature before invoking these
+  // handlers, so a request that reaches `.on(...)` is authenticated as the
+  // sending actor. Unregistered activity types are silently ignored.
+  federation
+    .setInboxListeners('/users/{identifier}/inbox', '/inbox')
+    .on(Follow, async (ctx, follow) => {
+      // The Follow must target one of our actors.
+      if (follow.objectId == null) return
+      const target = ctx.parseUri(follow.objectId)
+      if (target?.type !== 'actor' || !isValidUsername(target.identifier)) return
+
+      const sender = await follow.getActor(ctx)
+      if (sender?.id == null || sender.inboxId == null) return
+
+      try {
+        await upsertFeedFollower(target.identifier, {
+          accepted: true,
+          actor_uri: sender.id.href,
+          inbox_uri: sender.inboxId.href,
+          shared_inbox_uri: sender.endpoints?.sharedInbox?.href ?? null,
+        })
+      } catch (error) {
+        // A syntactically-valid username with no database is a Follow to a
+        // nonexistent actor — ignore it (don't 500 and invite retries), and
+        // don't answer with an Accept.
+        if (isMissingDatabase(error)) return
+        throw error
+      }
+
+      // Answer the Follow so the remote server marks it established.
+      await ctx.sendActivity(
+        { identifier: target.identifier },
+        sender,
+        new Accept({ actor: follow.objectId, object: follow }),
+      )
+    })
+    .on(Undo, async (ctx, undo) => {
+      // Undo{Follow} — drop the follower. `suppressError` so an unresolvable
+      // inner object (e.g. a bare Follow URI the remote 404s after unfollowing)
+      // yields null and is ignored, rather than throwing a 500 that invites
+      // retries. Mastodon embeds the full Follow, so the common case resolves.
+      const object = await undo.getObject({ suppressError: true })
+      if (!(object instanceof Follow) || object.objectId == null || undo.actorId == null) return
+      const target = ctx.parseUri(object.objectId)
+      if (target?.type !== 'actor' || !isValidUsername(target.identifier)) return
+      try {
+        await removeFeedFollower(target.identifier, undo.actorId.href)
+      } catch (error) {
+        if (isMissingDatabase(error)) return
+        throw error
+      }
+    })
 
   // Empty collections for now; the outbox serves the user's public posts once
   // delivery wiring exists.
