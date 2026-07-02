@@ -18,6 +18,8 @@ const FOOD_ITEM_COLUMNS = [
   'source_id',
   'default_quantity',
   'default_unit',
+  'default_portion_id',
+  'default_log_quantity',
   ...NUTRIENT_FIELD_NAMES,
   'icon',
   'is_composite',
@@ -35,6 +37,8 @@ const mapFoodItemRow = (row: Record<string, unknown>): FoodItemEntity => {
     source_id: row.source_id ?? undefined,
     default_quantity: row.default_quantity ?? undefined,
     default_unit: row.default_unit ?? undefined,
+    default_portion_id: (row.default_portion_id as string | null) ?? undefined,
+    default_log_quantity: (row.default_log_quantity as number | null) ?? undefined,
     icon: row.icon ?? undefined,
     is_composite: row.is_composite === true,
     reference_food_item_id: (row.reference_food_item_id as string | null) ?? undefined,
@@ -236,6 +240,14 @@ export const updateFoodItem = async (
     setClauses.push(`default_unit = $${idx++}`)
     params.push(input.default_unit)
   }
+  if (input.default_portion_id !== undefined) {
+    setClauses.push(`default_portion_id = $${idx++}`)
+    params.push(input.default_portion_id)
+  }
+  if (input.default_log_quantity !== undefined) {
+    setClauses.push(`default_log_quantity = $${idx++}`)
+    params.push(input.default_log_quantity)
+  }
   if (input.icon !== undefined) {
     setClauses.push(`icon = $${idx++}`)
     params.push(input.icon)
@@ -304,6 +316,8 @@ export const deleteFoodItem = async (user: string, id: string): Promise<boolean>
     )
     // Sensitivity assignments — live state; drop.
     await query(user, 'DELETE FROM food_item_sensitivities WHERE food_item_id = $1', [id])
+    // Portion sizings — owned by this food; drop alongside the food itself.
+    await query(user, 'DELETE FROM food_item_portions WHERE food_item_id = $1', [id])
     const result = await query(user, 'DELETE FROM food_items WHERE id = $1', [id])
     await query(user, 'COMMIT')
     return (result.rowCount ?? 0) > 0

@@ -21,6 +21,8 @@
 
 All data is also preserved as raw JSON in the `raw_records` table.
 
+> **Note on `calories_active` and `calories_total`:** these metrics are stored from Garmin's daily summary (source `garmin`) but **excluded from queries** — aurboda recomputes them per-minute from HR data using the zone-METs model and is the authoritative source for both metrics. See [`docs/features/calories.md`](./features/calories.md) for the model and the source-filter rationale.
+
 ## Admin Setup
 
 No server-side admin configuration is needed. Unlike Oura (which requires OAuth client credentials), Garmin Connect integration uses per-user credentials to authenticate directly with Garmin's web services.

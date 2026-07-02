@@ -29,6 +29,7 @@ import { toDisplayName } from '../../utils/displayName'
 import { resolveItemIcon } from '../../utils/emojiLookup'
 import { ActivityChart } from './ActivityChart'
 import { ActivityMap } from './ActivityMap'
+import { type BuildActivityStatRowsInput, buildActivityStatRows } from './activityStats'
 import { type ActivityDraft, EditableActivityFields } from './EditableActivityFields'
 import { EntityActions, type EntityType } from './EntityActions'
 import { formatDateTimeLocal, formatTime } from './format-utils'
@@ -43,7 +44,6 @@ import { activityRouteAfterSave } from './saveNavigation'
 import { SchemaDataFields } from './SchemaDataFields'
 import {
   computeSleepMinutesFromStages,
-  formatMinutesAsHM,
   SLEEP_METRIC_LABELS,
   SLEEP_METRIC_UNITS,
   SLEEP_METRICS,
@@ -181,6 +181,22 @@ const SleepMetricsCards = ({ metrics }: { metrics: Partial<Record<SleepMetricKey
   </div>
 )
 
+const ActivityStatsTable = (props: BuildActivityStatRowsInput) => {
+  const rows = buildActivityStatRows(props)
+  return (
+    <table class="activity-stats-table">
+      <tbody>
+        {rows.map((row) => (
+          <tr key={row.label}>
+            <th scope="row">{row.label}</th>
+            <td>{row.value}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )
+}
+
 // ── Unified Activity Detail ──────────────────────────────────────────────────
 
 /** Data-driven activity detail: shows features based on what data exists, not display_category. */
@@ -304,9 +320,6 @@ const ActivityDetailContent = ({
 
         <EditableActivityFields
           title={activity.title || exerciseDisplayName || typeDisplayName}
-          displayStart={displayStart}
-          displayEnd={realEnd}
-          notes={getUserNotesContent(activity)}
           isEditing={isEditing}
           draft={draft}
           onDraftChange={onDraftChange}
@@ -328,30 +341,15 @@ const ActivityDetailContent = ({
         {/* Read-only stats — shown based on data presence, not activity type */}
         {!isEditing && (
           <>
-            {totalCalories !== undefined && (
-              <div class="entity-fields">
-                <div class="field-row">
-                  <span class="field-label">Active Calories</span>
-                  <span class="field-value">{totalCalories} kcal</span>
-                </div>
-              </div>
-            )}
-            {sleepMinutes !== undefined && (
-              <div class="entity-fields">
-                <div class="field-row">
-                  <span class="field-label">Asleep</span>
-                  <span class="field-value">{formatMinutesAsHM(sleepMinutes)}</span>
-                </div>
-              </div>
-            )}
-            {activity.avg_hrv !== undefined && (
-              <div class="entity-fields">
-                <div class="field-row">
-                  <span class="field-label">Avg HRV</span>
-                  <span class="field-value">{activity.avg_hrv} ms</span>
-                </div>
-              </div>
-            )}
+            <ActivityStatsTable
+              activity={activity}
+              displayStart={displayStart}
+              displayEnd={realEnd}
+              durationLabel={hasSleepStages ? 'In Bed' : 'Duration'}
+              totalCalories={totalCalories}
+              sleepMinutes={sleepMinutes}
+              notes={getUserNotesContent(activity)}
+            />
             {hasHrZones && <HrZoneBar zones={hrZoneSecs!} />}
           </>
         )}

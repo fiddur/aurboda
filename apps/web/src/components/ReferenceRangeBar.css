@@ -44,6 +44,32 @@
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
 }
 
+.ref-range-marker-label {
+  position: absolute;
+  top: -1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.6rem;
+  line-height: 1;
+  color: #6b7280;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* Stagger label vertical position by index so two markers with similar
+ * values don't overlap their labels. Adjacent windows (1d vs 7d, 30d vs
+ * 90d) are most likely to land close on stable nutrients like sodium. */
+.ref-range-multi .ref-range-marker[data-marker-index='1'] .ref-range-marker-label,
+.ref-range-multi .ref-range-marker[data-marker-index='3'] .ref-range-marker-label {
+  top: -1.75rem;
+}
+
+.ref-range-multi {
+  /* Reserve space above the track for the staggered window labels. */
+  padding-top: 1.7rem;
+}
+
 .ref-range-labels {
   display: flex;
   justify-content: space-between;
@@ -75,5 +101,9 @@
 
   .ref-range-labels {
     color: #6b7280;
+  }
+
+  .ref-range-marker-label {
+    color: #9ca3af;
   }
 }

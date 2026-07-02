@@ -68,14 +68,31 @@ const defaultIcon = (
   </svg>
 )
 
+const resolveIcon = (icon?: string) => (icon ? (icons[icon] ?? defaultIcon) : defaultIcon)
+
 export function QuickLinkWidget({ config }: QuickLinkWidgetProps) {
   const { href, label, icon } = config
-  const iconElement = icon ? (icons[icon] ?? defaultIcon) : defaultIcon
 
   return (
     <a href={href} class="quick-link">
-      <span class="link-icon">{iconElement}</span>
+      <span class="link-icon">{resolveIcon(icon)}</span>
       <span class="link-text">{label}</span>
     </a>
+  )
+}
+
+/**
+ * Non-navigational quick-link tile for the public shared-dashboard view.
+ * Quick links point into the owner's private app, so the public view renders a
+ * static tile instead of a navigable link.
+ */
+export function QuickLinkView({ config }: QuickLinkWidgetProps) {
+  const { label, icon } = config
+
+  return (
+    <span class="quick-link quick-link-static">
+      <span class="link-icon">{resolveIcon(icon)}</span>
+      <span class="link-text">{label}</span>
+    </span>
   )
 }

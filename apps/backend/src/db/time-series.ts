@@ -17,8 +17,13 @@ import { query } from './connection.ts'
 import { querySplitByCumulative } from './cumulative-query.ts'
 import { parseMetricType } from './row-mappers.ts'
 
-/** Get the source filter for a single metric: aurboda-only, cumulative sources, or all sources (null). */
-const getSourceFilter = (metric: string): string[] | null => {
+/**
+ * Get the source filter for a single metric: aurboda-only, cumulative sources,
+ * or all sources (null). Reads of cumulative/derived metrics are restricted to
+ * these sources, so a write from any other source would be unqueryable — write
+ * paths reuse this to reject such writes (see #802).
+ */
+export const getSourceFilter = (metric: string): string[] | null => {
   if (aurbodaOnlyMetrics.includes(metric as MetricType)) return aurbodaOnlySources
   if (cumulativeMetrics.includes(metric as MetricType)) return cumulativeSources
   return null
@@ -397,6 +402,20 @@ export const deleteTimeSeriesMetric = async (user: string, metric: string): Prom
   return result.rowCount ?? 0
 }
 
+/**
+ * Hard-delete time_series rows in [start, end) for a given (metric, source).
+ *
+ * Used by "wipe and rewrite" rebuild paths (e.g. calorie recompute, training-
+ * load rebuild) where the caller will immediately re-insert fresh rows. We
+ * cannot soft-delete here: `insertTimeSeries`' ON CONFLICT clause has a
+ * `WHERE deleted_at IS NULL` filter (to preserve user-initiated tombstones
+ * against background re-syncs), which means a soft-deleted row would block
+ * the re-insert from writing the new value — the row stays invisible.
+ * A real DELETE removes the row so the subsequent INSERT lands cleanly.
+ *
+ * For single-row user-initiated deletes (e.g. `deleteMetric`), keep using
+ * soft-delete: that path's intent is to preserve the tombstone.
+ */
 export const deleteTimeSeriesBySource = async (
   user: string,
   metric: string,
@@ -406,7 +425,7 @@ export const deleteTimeSeriesBySource = async (
 ): Promise<number> => {
   const result = await query(
     user,
-    `UPDATE time_series SET deleted_at = NOW() WHERE metric = $1 AND source = $2 AND time >= $3 AND time < $4 AND deleted_at IS NULL`,
+    `DELETE FROM time_series WHERE metric = $1 AND source = $2 AND time >= $3 AND time < $4`,
     [metric, source, start, end],
   )
   return result.rowCount ?? 0
@@ -432,7 +451,9 @@ export const getTimeSeriesBucketed = async (
        MIN(value) as min,
        MAX(value) as max,
        SUM(value) as sum,
-       COUNT(*)::integer as count
+       COUNT(*)::integer as count,
+       MIN(time) as first_time,
+       MAX(time) as last_time
      FROM time_series
      WHERE metric = ANY($1) AND time >= $2 AND time < $3 AND deleted_at IS NULL${sourceFilter}
      GROUP BY bucket_start, metric
@@ -442,6 +463,8 @@ export const getTimeSeriesBucketed = async (
     avg: row.avg !== null ? Number(row.avg) : 0,
     bucket_start: new Date(row.bucket_start as string),
     count: row.count as number,
+    first_time: new Date(row.first_time as string),
+    last_time: new Date(row.last_time as string),
     max: row.max !== null ? Number(row.max) : 0,
     metric: parseMetricType(row.metric as string),
     min: row.min !== null ? Number(row.min) : 0,

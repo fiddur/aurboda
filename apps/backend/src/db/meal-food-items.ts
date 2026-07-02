@@ -30,6 +30,8 @@ const JUNCTION_COLUMNS = [
   'food_item_icon',
   'quantity',
   'unit',
+  'food_item_portion_id',
+  'portion_count',
   'sort_order',
   ...NUTRIENT_FIELD_NAMES,
 ].join(', ')
@@ -43,6 +45,8 @@ const mapJunctionRow = (row: Record<string, unknown>): MealFoodItemLink => {
     legacy_food_item_icon: row.food_item_icon ?? undefined,
     quantity: row.quantity ?? undefined,
     unit: row.unit ?? undefined,
+    food_item_portion_id: (row.food_item_portion_id as string | null) ?? undefined,
+    portion_count: (row.portion_count as number | null) ?? undefined,
     sort_order: row.sort_order ?? 0,
   }
   for (const field of NUTRIENT_FIELD_NAMES) {
@@ -58,6 +62,10 @@ export interface MealFoodItemInput {
   food_item_id: string
   quantity?: number
   unit?: string
+  /** When set, ties this row to a food_item_portions entry. */
+  food_item_portion_id?: string
+  /** How many of `food_item_portion_id` were logged (e.g. 3 for "3 ruta"). */
+  portion_count?: number
   sort_order?: number
   [nutrient: string]: string | number | undefined
 }
@@ -91,12 +99,22 @@ export const setMealFoodItems = async (
 
   for (let i = 0; i < items.length; i++) {
     const item = items[i]
-    const fields = ['meal_id', 'food_item_id', 'quantity', 'unit', 'sort_order']
+    const fields = [
+      'meal_id',
+      'food_item_id',
+      'quantity',
+      'unit',
+      'food_item_portion_id',
+      'portion_count',
+      'sort_order',
+    ]
     const values: unknown[] = [
       mealId,
       item.food_item_id,
       item.quantity ?? null,
       item.unit ?? null,
+      item.food_item_portion_id ?? null,
+      item.portion_count ?? null,
       item.sort_order ?? i,
     ]
 

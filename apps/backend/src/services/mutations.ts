@@ -31,6 +31,7 @@ import {
   updateActivity as dbUpdateActivity,
   enqueueOutboundSync,
   findHcRecordId,
+  getSourceFilter,
   insertTimeSeries,
   type TimeSeriesPoint,
 } from '../db/index.ts'
@@ -271,6 +272,19 @@ export async function bulkAddMetrics(
 
     const unit = getMetricUnit(item.metric, customMetrics)
     const source: DataSource = (item.source as DataSource) ?? resolvedDefaultSource
+
+    // Cumulative/derived metrics (steps, calories, …) are only read back from a
+    // restricted set of sources. Writing one from any other source would store a
+    // row that no query path returns — reject it rather than report a phantom
+    // insert (#802).
+    const sourceFilter = getSourceFilter(item.metric)
+    if (sourceFilter !== null && !sourceFilter.includes(source)) {
+      errors.push({
+        error: `Metric "${item.metric}" is cumulative/derived and is only queryable from source(s) [${sourceFilter.join(', ')}]; got "${source}". Omit source to use the default, or use an allowed source.`,
+        index: i,
+      })
+      continue
+    }
 
     validPoints.push({
       metric: item.metric,

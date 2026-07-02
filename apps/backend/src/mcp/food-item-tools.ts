@@ -9,11 +9,13 @@
 
 import {
   addFoodItemBodySchema,
+  addFoodItemPortionBodySchema,
   foodItemsQuerySchema,
   setFoodItemIngredientsBodySchema,
   setFoodItemReferenceBodySchema,
   setSharedFoodItemOverrideBodySchema,
   updateFoodItemBodySchema,
+  updateFoodItemPortionBodySchema,
 } from '@aurboda/api-spec'
 import { z } from 'zod'
 
@@ -23,6 +25,7 @@ import {
   clearIngredients,
   deleteFoodItem,
   getFoodItemById as getUserFoodItemById,
+  getFoodItemPortionById,
   listFoodItems,
   setFoodItemReference,
   setIngredients,
@@ -31,10 +34,19 @@ import {
 } from '../db/index.ts'
 import { clearSharedFoodItemOverride, setSharedFoodItemOverride } from '../db/shared-food-item-overrides.ts'
 import {
+  addPortion,
+  deletePortion,
+  listPortions,
+  setDefaultPortion,
+  updatePortion,
+} from '../services/food-item-portions.ts'
+import {
   cacheCompositeNutrients,
   clearCompositeNutrientCache,
   createFoodItemsMergeService,
   createFoodItemsService,
+  duplicateFoodItem,
+  prepareIngredientInputs,
 } from '../services/food-items.ts'
 import { resnapshotMealsForFoodItem } from '../services/meals.ts'
 import { errorResponse, jsonResponse, type McpServer } from './helpers.ts'
@@ -108,6 +120,17 @@ export const registerFoodItemTools = (server: McpServer, user: string, centralDb
   )
 
   server.tool(
+    'duplicate_food_item',
+    'Duplicate a food item into a fresh per-user copy named "<name> (copy)" and return the new copy\'s detail. Copies nutrients, default quantity/unit/icon, composite ingredients, portions, reference pointer, and sensitivity flags. The source may be one of the user\'s own items OR a central shared-library item — duplicating a shared item yields an editable per-user fork. Use this to base a new recipe on an existing one and then change a single ingredient.',
+    { id: z.string().uuid().describe('ID of the food item to duplicate (per-user or central)') },
+    async ({ id }) => {
+      const detail = await duplicateFoodItem(user, centralDb, id)
+      if (!detail) return errorResponse('Food item not found')
+      return jsonResponse({ data: detail, success: true })
+    },
+  )
+
+  server.tool(
     'get_food_item',
     'Get a food item by ID — checks the user library first, then the central shared library. For composite (recipe) items, the response includes the resolved ingredients and derived nutrient totals.',
     { id: z.string().uuid().describe('Food item ID') },
@@ -121,8 +144,8 @@ export const registerFoodItemTools = (server: McpServer, user: string, centralDb
   server.tool(
     'set_food_item_ingredients',
     [
-      "Mark a per-user food item as composite (a recipe) and replace its full ingredient list. The item's nutrient values become derived: at read time we sum each ingredient's value × quantity / default_quantity (when units match).",
-      'Each ingredient points at another food item by `ingredient_food_item_id` — may be a per-user food OR a central library item. Cycles (A → B → A) are rejected.',
+      "Mark a per-user food item as composite (a recipe) and replace its full ingredient list. The item's nutrient values become derived: at read time we sum each ingredient's contribution, scaled by quantity / default_quantity (legacy) or, when a `food_item_portion_id` is given, by portion_count × portion.base_equivalent / default_quantity.",
+      'Each ingredient points at another food item by `ingredient_food_item_id` — may be a per-user food OR a central library item. Provide either `quantity` (+ optional `unit`) or a `food_item_portion_id` of that food plus `portion_count` (e.g. "2 brödkaka"). Cycles (A → B → A) are rejected.',
       'Only per-user items can be made composite; central shared-library rows return an error.',
     ].join(' '),
     {
@@ -141,7 +164,13 @@ export const registerFoodItemTools = (server: McpServer, user: string, centralDb
       if (await foodItems.wouldCreateCycle(user, id, ingredientIds)) {
         return errorResponse('Setting these ingredients would create a cycle in the recipe graph')
       }
-      await setIngredients(user, id, ingredients)
+      let prepared
+      try {
+        prepared = await prepareIngredientInputs(user, ingredients)
+      } catch (err) {
+        return errorResponse(err instanceof Error ? err.message : 'Invalid ingredient portion')
+      }
+      await setIngredients(user, id, prepared)
       await cacheCompositeNutrients(user, centralDb, id)
       const detail = await foodItems.getDetail(user, id)
       if (!detail) return errorResponse('Food item not found')
@@ -263,7 +292,11 @@ export const registerFoodItemTools = (server: McpServer, user: string, centralDb
     async ({ id, ...input }) => {
       // The .refine on the body schema doesn't survive .shape destructuring,
       // so re-check the at-least-one-field invariant here.
-      if (input.icon === undefined) {
+      if (
+        input.icon === undefined &&
+        input.default_portion_id === undefined &&
+        input.default_log_quantity === undefined
+      ) {
         return errorResponse(
           'At least one override field must be supplied; use clear_shared_food_item_override to revert',
         )
@@ -276,6 +309,16 @@ export const registerFoodItemTools = (server: McpServer, user: string, centralDb
             ? 'Per-user items have no override layer — edit them directly via update_food_item'
             : 'Food item not found',
         )
+      }
+      // Mirror the REST route's ownership guard on default_portion_id —
+      // refuse a portion that doesn't belong to this central food. null
+      // clears and skips the check.
+      if (input.default_portion_id) {
+        const portion = await getFoodItemPortionById(user, input.default_portion_id)
+        if (!portion) return errorResponse(`Portion not found: ${input.default_portion_id}`)
+        if (portion.food_item_id !== id) {
+          return errorResponse('default_portion_id does not belong to this food item')
+        }
       }
       const override = await setSharedFoodItemOverride(user, id, input)
       return jsonResponse({ data: override, success: true })
@@ -298,6 +341,97 @@ export const registerFoodItemTools = (server: McpServer, user: string, centralDb
       }
       const cleared = await clearSharedFoodItemOverride(user, id)
       return jsonResponse({ data: { cleared, shared_food_item_id: id }, success: true })
+    },
+  )
+
+  // ────────────────────────────────────────────────────────────────────────
+  // Portion sizings — extra units a food can be logged in, beyond its base
+  // unit. Each portion is a named unit (`label_unit`) plus `base_equivalent`:
+  // how many of the food's base unit ONE of this unit equals. Works for
+  // per-user OR central food items via the soft pointer on food_item_id.
+  // ────────────────────────────────────────────────────────────────────────
+
+  server.tool(
+    'list_food_item_portions',
+    'List extra portion sizings for a food item (e.g. "1 wrap", "1 ruta"). The food item\'s own default_quantity/default_unit is the implicit base portion and is NOT included in this list.',
+    { food_item_id: z.string().uuid().describe('Food item ID (per-user or central)') },
+    async ({ food_item_id }) => {
+      const userExists = await getUserFoodItemById(user, food_item_id)
+      const centralExists = userExists ? null : await centralDb.getSharedFoodItemById(food_item_id)
+      if (!userExists && !centralExists) return errorResponse('Food item not found')
+      const rows = await listPortions(user, food_item_id)
+      return jsonResponse({ data: rows, success: true })
+    },
+  )
+
+  server.tool(
+    'add_food_item_portion',
+    [
+      'Add a unit a food item can be logged in. A portion expresses an equivalence "1 label_unit = base_equivalent of the food\'s base unit".',
+      'Example: for a 100 g chocolate base, "1 ruta = 3.4 g" stores label_unit="ruta", base_equivalent=3.4.',
+      'Targets per-user OR central food items (soft pointer).',
+    ].join(' '),
+    {
+      food_item_id: z.string().uuid().describe('Food item this portion belongs to (per-user or central)'),
+      ...addFoodItemPortionBodySchema.shape,
+    },
+    async ({ food_item_id, ...input }) => {
+      try {
+        const row = await addPortion(user, food_item_id, input, centralDb)
+        return jsonResponse({ data: row, success: true })
+      } catch (err) {
+        return errorResponse(err instanceof Error ? err.message : 'Failed to add portion')
+      }
+    },
+  )
+
+  server.tool(
+    'update_food_item_portion',
+    'Update a portion sizing by id. Only provided fields are changed.',
+    { id: z.string().uuid().describe('Portion id'), ...updateFoodItemPortionBodySchema.shape },
+    async ({ id, ...input }) => {
+      try {
+        const row = await updatePortion(user, id, input)
+        return jsonResponse({ data: row, success: true })
+      } catch (err) {
+        return errorResponse(err instanceof Error ? err.message : 'Failed to update portion')
+      }
+    },
+  )
+
+  server.tool(
+    'delete_food_item_portion',
+    'Delete a portion sizing by id. If the parent food item had this portion set as default_portion_id, that pointer is cleared (reverts to the base portion).',
+    { id: z.string().uuid().describe('Portion id') },
+    async ({ id }) => {
+      const ok = await deletePortion(user, id)
+      if (!ok) return errorResponse('Portion not found')
+      return jsonResponse({ success: true })
+    },
+  )
+
+  server.tool(
+    'set_default_food_item_portion',
+    'Set or clear the default logging amount for a per-user food item: which unit to preselect (`portion_id`, null = the base unit) and how much (`quantity`, null = the base quantity). The chosen portion must belong to the food item. Central foods use the override layer (set_shared_food_item_override) instead.',
+    {
+      food_item_id: z.string().uuid().describe('Per-user food item id'),
+      portion_id: z.string().uuid().nullable().describe('Portion (unit) id, or null for the base unit'),
+      quantity: z
+        .number()
+        .positive()
+        .nullable()
+        .optional()
+        .describe('Default quantity to prefill, or null/omitted for the base quantity'),
+    },
+    async ({ food_item_id, portion_id, quantity }) => {
+      try {
+        await setDefaultPortion(user, food_item_id, portion_id, quantity ?? null)
+      } catch (err) {
+        return errorResponse(err instanceof Error ? err.message : 'Failed to set default portion')
+      }
+      const detail = await foodItems.getDetail(user, food_item_id)
+      if (!detail) return errorResponse('Food item not found')
+      return jsonResponse({ data: detail, success: true })
     },
   )
 

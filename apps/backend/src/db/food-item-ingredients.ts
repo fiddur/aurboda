@@ -14,7 +14,7 @@
 import { query } from './connection.ts'
 
 const COLUMNS =
-  'id, parent_food_item_id, ingredient_food_item_id, quantity, unit, sort_order, created_at, updated_at'
+  'id, parent_food_item_id, ingredient_food_item_id, quantity, unit, food_item_portion_id, portion_count, sort_order, created_at, updated_at'
 
 export interface FoodItemIngredientRow {
   id: string
@@ -22,6 +22,10 @@ export interface FoodItemIngredientRow {
   ingredient_food_item_id: string
   quantity: number
   unit?: string
+  /** When set, the ingredient is measured in this portion (unit); scaling uses portion_count × base_equivalent. */
+  food_item_portion_id?: string
+  /** The count entered in the portion's unit (paired with food_item_portion_id). */
+  portion_count?: number
   sort_order: number
   created_at: Date
   updated_at: Date
@@ -31,6 +35,8 @@ export interface FoodItemIngredientInput {
   ingredient_food_item_id: string
   quantity: number
   unit?: string
+  food_item_portion_id?: string
+  portion_count?: number
   sort_order?: number
 }
 
@@ -40,6 +46,8 @@ const mapRow = (row: Record<string, unknown>): FoodItemIngredientRow => ({
   ingredient_food_item_id: row.ingredient_food_item_id as string,
   parent_food_item_id: row.parent_food_item_id as string,
   quantity: Number(row.quantity),
+  food_item_portion_id: (row.food_item_portion_id as string | null) ?? undefined,
+  portion_count: row.portion_count == null ? undefined : Number(row.portion_count),
   sort_order: Number(row.sort_order),
   unit: (row.unit as string | null) ?? undefined,
   updated_at: new Date(row.updated_at as string),
@@ -90,25 +98,27 @@ export const setIngredients = async (
     await query(user, `DELETE FROM food_item_ingredients WHERE parent_food_item_id = $1`, [parentFoodItemId])
 
     if (items.length > 0) {
-      // Single multi-row INSERT — 5 columns per row, parameterised.
+      // Single multi-row INSERT — 7 columns per row, parameterised.
       const params: unknown[] = []
       const valuesSql = items
         .map((item, i) => {
-          const base = i * 5
+          const base = i * 7
           params.push(
             parentFoodItemId,
             item.ingredient_food_item_id,
             item.quantity,
             item.unit ?? null,
+            item.food_item_portion_id ?? null,
+            item.portion_count ?? null,
             item.sort_order ?? i,
           )
-          return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5})`
+          return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7})`
         })
         .join(', ')
       await query(
         user,
         `INSERT INTO food_item_ingredients
-           (parent_food_item_id, ingredient_food_item_id, quantity, unit, sort_order)
+           (parent_food_item_id, ingredient_food_item_id, quantity, unit, food_item_portion_id, portion_count, sort_order)
          VALUES ${valuesSql}`,
         params,
       )

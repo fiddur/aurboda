@@ -332,6 +332,72 @@ function IntegrationsSection() {
   )
 }
 
+function SentrySection() {
+  const queryClient = useQueryClient()
+  const { data: settings } = useQuery({
+    queryFn: fetchAdminSettings,
+    queryKey: ['adminSettings'],
+  })
+
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>({ status: 'idle' })
+  const [dsn, setDsn] = useState('')
+
+  const configuredDsn = settings?.sentry_dsn ?? null
+
+  const saveDsn = useCallback(
+    async (value: string | null) => {
+      setSaveStatus({ status: 'saving' })
+      try {
+        const result = await updateAdminSettings({ sentry_dsn: value })
+        queryClient.setQueryData(['adminSettings'], result)
+        setDsn('')
+        setSaveStatus({ status: 'saved', time: new Date() })
+      } catch (err) {
+        setSaveStatus({ error: getErrorMessage(err), status: 'error' })
+      }
+    },
+    [queryClient],
+  )
+
+  return (
+    <section class="settings-section">
+      <h2>Error Reporting</h2>
+      <div class="form-field">
+        <div class="section-header-row">
+          <label for="sentry-dsn">Sentry DSN</label>
+          <SaveStatusIndicator state={saveStatus} />
+        </div>
+        {configuredDsn && (
+          <p class="connected-status" style={{ wordBreak: 'break-all' }}>
+            {configuredDsn}
+          </p>
+        )}
+        <div class="api-key-input-row">
+          <input
+            id="sentry-dsn"
+            type="text"
+            value={dsn}
+            onInput={(e) => setDsn((e.target as HTMLInputElement).value)}
+            placeholder={configuredDsn ? 'Enter new DSN to update' : 'https://<key>@<host>/<project>'}
+          />
+          {configuredDsn && (
+            <button type="button" class="clear-button" onClick={() => saveDsn(null)}>
+              Clear
+            </button>
+          )}
+        </div>
+        <button type="button" class="generate-button" onClick={() => dsn && saveDsn(dsn)} disabled={!dsn}>
+          Save DSN
+        </button>
+        <p class="field-description">
+          Sentry DSN for backend error reporting. When set, uncaught errors from the API are reported to
+          Sentry. Changes take effect after the next backend restart/redeploy.
+        </p>
+      </div>
+    </section>
+  )
+}
+
 function InvitationsSection() {
   const [invitation, setInvitation] = useState<InvitationResult | null>(null)
   const [invitationLoading, setInvitationLoading] = useState(false)
@@ -471,6 +537,8 @@ export function AdminSettings() {
       </section>
 
       <IntegrationsSection />
+
+      <SentrySection />
 
       <section class="settings-section">
         <h2>Shared Food Library</h2>

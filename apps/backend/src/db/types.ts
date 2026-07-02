@@ -69,6 +69,8 @@ export interface BucketedMetricData {
   max: number
   count: number
   sum: number
+  first_time: Date
+  last_time: Date
 }
 
 // ============================================================================
@@ -329,6 +331,10 @@ export type Micros = Record<string, NutrientValue>
 
 export interface MealFoodItem {
   food_item_id?: string
+  /** Soft pointer to the portion the user picked when logging, if any. */
+  food_item_portion_id?: string
+  /** Count of `food_item_portion_id` portions logged. */
+  portion_count?: number
   name: string
   /** Icon for display — resolved live from the canonical food item; not snapshotted. */
   icon?: string
@@ -377,6 +383,10 @@ export interface FoodItemEntity {
   reference_food_item_id?: string
   default_quantity?: number
   default_unit?: string
+  /** Soft pointer to the preselected portion (food_item_portions.id) when logging. */
+  default_portion_id?: string
+  /** Default quantity to prefill when logging, in the unit named by default_portion_id (or base). */
+  default_log_quantity?: number
   // ~65 nutrient fields are optional numbers, accessed dynamically via
   // NUTRIENT_FIELD_NAMES from api-spec. The index signature has to cover
   // every named field above too, hence the broad union — it loosens type
@@ -402,6 +412,10 @@ export interface MealFoodItemLink {
   legacy_food_item_icon?: string
   quantity?: number
   unit?: string
+  /** Soft pointer to the portion the user picked when logging, if any. */
+  food_item_portion_id?: string
+  /** Count of `food_item_portion_id` portions logged (e.g. 3 for "3 ruta"). */
+  portion_count?: number
   sort_order: number
   // Nutrient snapshot — same fields as FoodItemEntity
   [nutrient: string]: string | number | boolean | Date | undefined

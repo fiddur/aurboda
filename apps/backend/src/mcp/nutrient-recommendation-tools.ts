@@ -79,8 +79,8 @@ export const registerNutrientRecommendationTools = (server: McpServer, user: str
       'For each nutrient: avg = mean across days that have any meal (so sparse logs are not dragged toward zero), days_with_data, and total. calories_burned is null when no calories_total metric exists in the window.',
     ].join(' '),
     { ...nutrientPeriodSummaryQuerySchema.shape },
-    async ({ start, end, tz }) => {
-      const data = await getMealPeriodSummary(user, { end, start, tz })
+    async ({ start, end, tz, count_only_completed }) => {
+      const data = await getMealPeriodSummary(user, { count_only_completed, end, start, tz })
       return jsonResponse({ data, success: true })
     },
   )

@@ -30,11 +30,17 @@ export type SignupMode = z.infer<typeof signupModeSchema>
  */
 export const serverStatusResponseSchema = baseResponseSchema
   .extend({
+    federation: z
+      .boolean()
+      .optional()
+      .meta({ description: 'Whether this instance supports cross-instance federation' }),
+    product: z.literal('aurboda').optional().meta({ description: 'Product identifier for federation discovery' }),
     // For backwards compatibility
     signup_allowed: z
       .boolean()
       .meta({ description: 'Whether signup is allowed (deprecated, use signupMode)' }),
     signup_mode: signupModeSchema.meta({ description: 'Current signup mode' }),
+    version: z.string().optional().meta({ description: 'Instance build/version identifier' }),
   })
   .meta({ id: 'ServerStatusResponse' })
 
@@ -147,6 +153,10 @@ export const adminSettingsResponseSchema = baseResponseSchema
       description: 'Whether Oura webhook push can be enabled (requires HTTPS and Oura credentials)',
     }),
     oura_webhook_enabled: z.boolean().meta({ description: 'Whether Oura webhook push sync is enabled' }),
+    sentry_dsn: z
+      .string()
+      .nullable()
+      .meta({ description: 'Sentry DSN for backend error reporting (null if not configured)' }),
     signup_mode: signupModeSchema.meta({ description: 'Current signup mode' }),
     strava_client_id_set: z.boolean().meta({ description: 'Whether a Strava client ID is configured' }),
     strava_client_secret_set: z
@@ -188,6 +198,10 @@ export const updateAdminSettingsBodySchema = z
       .boolean()
       .optional()
       .meta({ description: 'Enable or disable Oura webhook push sync' }),
+    sentry_dsn: z.string().url().nullable().optional().meta({
+      description:
+        'Sentry DSN for backend error reporting (set to null to clear). Takes effect after the next backend restart.',
+    }),
     signup_mode: signupModeSchema.optional().meta({ description: 'New signup mode' }),
     strava_client_id: z
       .string()

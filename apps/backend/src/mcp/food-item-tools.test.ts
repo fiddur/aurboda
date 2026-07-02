@@ -10,14 +10,19 @@ import { registerFoodItemTools } from './food-item-tools.ts'
 vi.mock('../db/index.ts', () => ({
   clearIngredients: vi.fn(),
   deleteFoodItem: vi.fn(),
+  deleteFoodItemPortion: vi.fn().mockResolvedValue(true),
   findCompositeParentsOfIngredient: vi.fn().mockResolvedValue([]),
   getFoodItemById: vi.fn(),
+  getFoodItemPortionById: vi.fn().mockResolvedValue(null),
   getFoodItemSensitivities: vi.fn().mockResolvedValue([]),
   getFoodItemSensitivityNamesBatch: vi.fn().mockResolvedValue(new Map()),
+  insertFoodItemPortion: vi.fn(),
   listFoodItems: vi.fn(),
+  listPortionsForFoodItem: vi.fn().mockResolvedValue([]),
   setFoodItemReference: vi.fn(),
   setIngredients: vi.fn(),
   updateFoodItem: vi.fn(),
+  updateFoodItemPortion: vi.fn(),
   upsertFoodItem: vi.fn(),
 }))
 
@@ -36,6 +41,14 @@ vi.mock('../db/food-item-ingredients.ts', () => ({
 
 vi.mock('../db/sensitivities.ts', () => ({
   getFoodItemSensitivities: vi.fn().mockResolvedValue([]),
+}))
+
+vi.mock('../db/food-item-portions.ts', () => ({
+  deleteFoodItemPortion: vi.fn().mockResolvedValue(true),
+  getFoodItemPortionById: vi.fn().mockResolvedValue(null),
+  insertFoodItemPortion: vi.fn(),
+  listPortionsForFoodItem: vi.fn().mockResolvedValue([]),
+  updateFoodItemPortion: vi.fn(),
 }))
 
 vi.mock('../services/meals.ts', () => ({

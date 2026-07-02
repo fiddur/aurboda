@@ -8,6 +8,7 @@
 import { z } from 'zod'
 
 import { baseResponseSchema, createDataArrayResponseSchema, createDataResponseSchema } from './common.ts'
+import { foodItemPortionSchema } from './food-item-portions.ts'
 import { nutrientFieldsSchema } from './nutrients.ts'
 
 // ============================================================================
@@ -40,6 +41,14 @@ export const foodItemEntitySchema = nutrientFieldsSchema
       description:
         'Optional pointer to a richer canonical food item (typically a central library row, e.g. an LSV item) used to inherit empty micronutrient fields. Per-user atomic items only.',
     }),
+    default_portion_id: z.string().uuid().optional().meta({
+      description:
+        'Default *unit* to preselect when logging this food (a food_item_portions id). NULL/absent means the base unit (default_unit). Pairs with default_log_quantity to form the prefill.',
+    }),
+    default_log_quantity: z.number().positive().optional().meta({
+      description:
+        'Default *quantity* to prefill when logging this food, in the unit named by default_portion_id (or the base unit when that is null). NULL/absent falls back to default_quantity (the base quantity).',
+    }),
     name: z.string().min(1).max(255).meta({ description: 'Food item name' }),
     source: z
       .string()
@@ -63,23 +72,48 @@ export type FoodItemEntity = z.infer<typeof foodItemEntitySchema>
 
 /**
  * One ingredient line in a composite food item — points at another food
- * (per-user or central), with quantity + unit. The pointed-at food's
- * nutrients are scaled by quantity/default_quantity at read time to
- * contribute to the parent's totals.
+ * (per-user or central). The pointed-at food's nutrients are scaled by
+ * quantity/default_quantity (legacy) or, when a `food_item_portion_id` is set,
+ * by portion_count × portion.base_equivalent / default_quantity, to contribute
+ * to the parent's totals.
+ *
+ * Base fields are kept as a bare object so both `.refine()` (for the request
+ * schema's cross-field rules) and `.extend()` (for the resolved response
+ * schema with name/icon) are available.
  */
+const foodItemIngredientFields = {
+  ingredient_food_item_id: z
+    .string()
+    .uuid()
+    .meta({ description: 'ID of the food item used as an ingredient (per-user OR central library)' }),
+  quantity: z.number().optional().meta({
+    description:
+      'Amount used, in `unit` — legacy path. Ignored when `food_item_portion_id` is set (the backend stores `portion_count` here for display). Either `quantity` or (`food_item_portion_id` + `portion_count`) must be provided.',
+  }),
+  unit: z.string().max(100).optional().meta({ description: 'Unit for quantity (legacy free-form path)' }),
+  food_item_portion_id: z.string().uuid().optional().meta({
+    description:
+      'Optional portion id (a food_item_portions row belonging to the ingredient food). When set, the ingredient\'s contribution is scaled by `portion_count × portion.base_equivalent / ingredient.default_quantity`, mirroring meals. Lets a recipe say e.g. "2 brödkaka".',
+  }),
+  portion_count: z.number().positive().optional().meta({
+    description: 'Required when `food_item_portion_id` is set: how many of that portion the recipe uses.',
+  }),
+  sort_order: z
+    .number()
+    .int()
+    .optional()
+    .meta({ description: 'Display order; defaults to position in the input array' }),
+}
+
 export const foodItemIngredientSchema = z
-  .object({
-    ingredient_food_item_id: z
-      .string()
-      .uuid()
-      .meta({ description: 'ID of the food item used as an ingredient (per-user OR central library)' }),
-    quantity: z.number().meta({ description: 'Amount used, in `unit`' }),
-    unit: z.string().max(100).optional().meta({ description: 'Unit for quantity' }),
-    sort_order: z
-      .number()
-      .int()
-      .optional()
-      .meta({ description: 'Display order; defaults to position in the input array' }),
+  .object(foodItemIngredientFields)
+  .refine((body) => body.food_item_portion_id === undefined || typeof body.portion_count === 'number', {
+    message: 'portion_count is required when food_item_portion_id is set',
+    path: ['portion_count'],
+  })
+  .refine((body) => body.food_item_portion_id !== undefined || typeof body.quantity === 'number', {
+    message: 'quantity is required when no food_item_portion_id is set',
+    path: ['quantity'],
   })
   .meta({ description: 'One ingredient of a composite food item', id: 'FoodItemIngredient' })
 
@@ -103,8 +137,9 @@ export type SetFoodItemIngredientsBody = z.infer<typeof setFoodItemIngredientsBo
  * junction row plus a snapshot of the ingredient food item's name/icon
  * for display.
  */
-export const resolvedFoodItemIngredientSchema = foodItemIngredientSchema
-  .extend({
+export const resolvedFoodItemIngredientSchema = z
+  .object({
+    ...foodItemIngredientFields,
     name: z.string().nullable().meta({
       description: 'Ingredient food name (null if the pointed-at item was deleted)',
     }),
@@ -161,6 +196,17 @@ export const foodItemDetailSchema = foodItemEntitySchema
     is_shared: z.boolean().optional().meta({
       description:
         'True when this row lives in the central shared library (e.g. Livsmedelsverket). Such rows are read-only — clients must use the `/food-items/:id/override` endpoints (or `set_shared_food_item_override` MCP tool) to customize fields like icon, and PATCH/DELETE on the row itself will 403.',
+    }),
+    portions: z.array(foodItemPortionSchema).optional().meta({
+      description: 'Extra portion sizings defined for this food item, sorted by sort_order.',
+    }),
+    effective_default_portion_id: z.string().uuid().optional().meta({
+      description:
+        'Resolved default *unit* to preselect when logging this food. For per-user items this mirrors `default_portion_id`; for central items it resolves through `shared_food_item_overrides.default_portion_id`. Absent ⇒ preselect the base unit.',
+    }),
+    effective_default_quantity: z.number().positive().optional().meta({
+      description:
+        'Resolved default *quantity* to prefill, in the unit named by effective_default_portion_id (or the base unit). Resolves the per-user / override default_log_quantity, falling back to the base default_quantity. Absent ⇒ no prefill hint.',
     }),
     ingredients: z.array(resolvedFoodItemIngredientSchema).optional(),
     derived_nutrients: z
@@ -222,7 +268,20 @@ export const sharedFoodItemOverrideSchema = z
       .uuid()
       .meta({ description: 'ID of the central shared food item this override applies to' }),
     icon: z.string().max(2048).nullable().meta({
-      description: 'User-set icon for the central item; null means "no icon" (explicit override to empty).',
+      description:
+        'User-set icon — only meaningful when `icon_overridden` is true. Null then means "user explicitly chose no icon" (hide central). When `icon_overridden` is false, this field\'s value is incidental and clients must pass through the central icon untouched.',
+    }),
+    icon_overridden: z.boolean().meta({
+      description:
+        'Whether the user supplied an icon value (string OR explicit null). False means no icon override was set on this row.',
+    }),
+    default_portion_id: z.string().uuid().nullable().meta({
+      description:
+        "User-preselected portion id (unit) for the central item; null means no override (fall through to the central row's own default_portion_id).",
+    }),
+    default_log_quantity: z.number().positive().nullable().meta({
+      description:
+        'User-preselected default quantity for the central item, in the unit named by default_portion_id (or the base unit). Null means no override (fall through to the base default_quantity).',
     }),
     created_at: z.string().meta({ description: 'Override creation timestamp' }),
     updated_at: z.string().meta({ description: 'Override last-update timestamp' }),
@@ -251,10 +310,24 @@ export const setSharedFoodItemOverrideBodySchema = z
       description:
         'Override icon for the central item. String sets the icon, null hides the central icon, omitted leaves the column unchanged.',
     }),
+    default_portion_id: z.string().uuid().nullable().optional().meta({
+      description:
+        'Override preselected portion id (unit). String sets the override, null clears any prior override (falls through to the central default), omitted leaves the column unchanged.',
+    }),
+    default_log_quantity: z.number().positive().nullable().optional().meta({
+      description:
+        'Override default quantity, in the unit named by default_portion_id. Number sets the override, null clears it (falls through to the base quantity), omitted leaves the column unchanged.',
+    }),
   })
-  .refine((body) => body.icon !== undefined, {
-    message: 'At least one override field must be supplied; clear via DELETE to revert to central',
-  })
+  .refine(
+    (body) =>
+      body.icon !== undefined ||
+      body.default_portion_id !== undefined ||
+      body.default_log_quantity !== undefined,
+    {
+      message: 'At least one override field must be supplied; clear via DELETE to revert to central',
+    },
+  )
   .meta({
     description: 'Upsert per-user override columns for a central shared food item',
     id: 'SetSharedFoodItemOverrideBody',
@@ -289,6 +362,12 @@ export type AddFoodItemBody = z.infer<typeof addFoodItemBodySchema>
 
 /**
  * Update food item request body — all fields optional.
+ *
+ * `default_portion_id` is intentionally excluded: setting it requires a
+ * cross-validation step ("the portion must belong to this food") that the
+ * generic update path can't enforce without duplicating service logic.
+ * Use the dedicated `PUT /food-items/:id/default-portion` endpoint (or the
+ * `set_default_food_item_portion` MCP tool) instead.
  */
 export const updateFoodItemBodySchema = nutrientFieldsSchema
   .extend({

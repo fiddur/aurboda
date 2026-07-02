@@ -1,12 +1,24 @@
+import type * as TimeSeriesModule from '../db/time-series.ts'
+
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 import * as db from '../db/index.ts'
 import { buildBucketExpr, getChartData } from './chart-data.ts'
+import * as settings from './settings.ts'
 
-// Mock the db module
-vi.mock('../db', () => ({
+// Mock the db module. getSourceFilter is pulled through real (pure function) so
+// the cumulative-source rules can't drift from production.
+vi.mock('../db', async () => ({
   expandActivityTypes: vi.fn().mockImplementation((_user: string, types: string[]) => Promise.resolve(types)),
+  getSourceFilter: (await vi.importActual<typeof TimeSeriesModule>('../db/time-series.ts')).getSourceFilter,
+  getTimeSeries: vi.fn(),
   query: vi.fn(),
+}))
+
+// Keep the real (pure) computeHrZoneSecs; only stub the DB-backed zones lookup.
+vi.mock('./settings', async () => ({
+  ...(await vi.importActual<typeof settings>('./settings.ts')),
+  getEffectiveHrZones: vi.fn(),
 }))
 
 describe('getChartData', () => {
@@ -122,6 +134,79 @@ describe('getChartData', () => {
 
     const call = vi.mocked(db.query).mock.calls[0]
     expect(call[1]).toContain('SUM(value)')
+    // Cumulative metric (steps) must be restricted to trusted sources so it isn't
+    // multiply-counted (raw + daily-aggregate + …). Regression guard for the
+    // chart/challenge over-count.
+    expect(call[1]).toContain('source = ANY')
+    expect(call[1]).toContain('deleted_at IS NULL')
+    expect(call[2]).toContainEqual(['health_connect_aggregate', 'aurboda'])
+  })
+
+  test('non-cumulative metric sum does not restrict sources', async () => {
+    vi.mocked(db.query).mockResolvedValue({
+      rows: [{ bucket_start: new Date('2026-01-01T00:00:00Z'), value: 5 }],
+    } as never)
+
+    await getChartData('testuser', {
+      aggregation: 'sum',
+      bucket_size: '1d',
+      end: '2026-01-31T23:59:59Z',
+      pattern: 'heart_rate',
+      source_type: 'metric',
+      start: '2026-01-01T00:00:00Z',
+    })
+
+    const call = vi.mocked(db.query).mock.calls[0]
+    expect(call[1]).not.toContain('source = ANY')
+  })
+
+  test('charts hr_zone metrics by computing zone seconds per bucket', async () => {
+    // Two heart-rate samples 60s apart in zone 2 (hr 115, with z2 start 110).
+    vi.mocked(db.getTimeSeries).mockResolvedValue([
+      [new Date('2026-06-24T08:00:00Z'), 115],
+      [new Date('2026-06-24T08:01:00Z'), 115],
+    ])
+    vi.mocked(settings.getEffectiveHrZones).mockResolvedValue({
+      source: 'custom',
+      zones: { 1: 90, 2: 110, 3: 130, 4: 150, 5: 170 },
+    })
+
+    const result = await getChartData('testuser', {
+      aggregation: 'sum',
+      bucket_size: '1d',
+      end: '2026-06-25T00:00:00Z',
+      pattern: 'hr_zone_2_sec',
+      source_type: 'metric',
+      start: '2026-06-24T00:00:00Z',
+    })
+
+    // Reads heart_rate (not the non-existent hr_zone_2_sec rows) and buckets by day.
+    expect(vi.mocked(db.getTimeSeries).mock.calls[0][1]).toBe('heart_rate')
+    expect(result.buckets).toHaveLength(1)
+    expect(result.buckets[0].bucket_start).toBe('2026-06-24T00:00:00.000Z')
+    expect((result.buckets[0] as { value: number }).value).toBeGreaterThan(0)
+    // Plain metric query path is not used for zone metrics.
+    expect(vi.mocked(db.query)).not.toHaveBeenCalled()
+  })
+
+  test('zone2_weekly aliases to hr_zone_2_sec (computed, not queried)', async () => {
+    vi.mocked(db.getTimeSeries).mockResolvedValue([])
+    vi.mocked(settings.getEffectiveHrZones).mockResolvedValue({
+      source: 'default',
+      zones: { 1: 90, 2: 110, 3: 130, 4: 150, 5: 170 },
+    })
+
+    await getChartData('testuser', {
+      aggregation: 'sum',
+      bucket_size: '1w',
+      end: '2026-06-25T00:00:00Z',
+      pattern: 'zone2_weekly',
+      source_type: 'metric',
+      start: '2026-06-01T00:00:00Z',
+    })
+
+    expect(vi.mocked(db.getTimeSeries).mock.calls[0][1]).toBe('heart_rate')
+    expect(vi.mocked(db.query)).not.toHaveBeenCalled()
   })
 
   test('returns bucketed metric data with count aggregation', async () => {

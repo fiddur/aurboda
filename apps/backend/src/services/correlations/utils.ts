@@ -4,6 +4,8 @@
 
 import type { HrvStats, HrvStatsWithDelta } from './types.ts'
 
+import { chiSquared2x2, chiSquaredPValue1df } from './stats.ts'
+
 /**
  * Calculate mean of an array of numbers.
  */
@@ -57,35 +59,11 @@ export const chiSquaredTest = (
   observed: [[number, number], [number, number]],
 ): { chiSquared: number; pValue: number } | null => {
   const [[a, b], [c, d]] = observed
-  const total = a + b + c + d
+  const chiSquared = chiSquared2x2({ a, b, c, d })
+  if (chiSquared === null) return null
 
-  if (total === 0) return null
-
-  // Expected values
-  const rowTotals = [a + b, c + d]
-  const colTotals = [a + c, b + d]
-
-  const expected = [
-    [(rowTotals[0] * colTotals[0]) / total, (rowTotals[0] * colTotals[1]) / total],
-    [(rowTotals[1] * colTotals[0]) / total, (rowTotals[1] * colTotals[1]) / total],
-  ]
-
-  // Chi-squared statistic
-  let chiSquared = 0
-  for (let i = 0; i < 2; i++) {
-    for (let j = 0; j < 2; j++) {
-      if (expected[i][j] > 0) {
-        chiSquared += (observed[i][j] - expected[i][j]) ** 2 / expected[i][j]
-      }
-    }
-  }
-
-  // Approximate p-value using chi-squared distribution with 1 df
-  // Using approximation: p ≈ exp(-0.5 * chi^2) for chi^2 > 3
-  // More accurate approximation for 1 df
-  const pValue = chiSquared > 0 ? Math.exp(-0.5 * chiSquared) : 1
-
-  return { chiSquared, pValue }
+  // Exact two-sided p-value for the chi-squared distribution with 1 df.
+  return { chiSquared, pValue: chiSquaredPValue1df(chiSquared) }
 }
 
 /**

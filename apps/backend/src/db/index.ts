@@ -78,6 +78,7 @@ export {
   getDailyAggregates,
   getDistinctMetrics,
   getRawDailySum,
+  getSourceFilter,
   getLatestMetricValuesMulti,
   getTimeSeries,
   getTimeSeriesBucketed,
@@ -225,6 +226,68 @@ export {
   upsertSyncedNote,
 } from './notes.ts'
 
+// Shared dashboards
+export {
+  createSharedDashboard,
+  deleteSharedDashboard,
+  getSharedDashboardById,
+  getSharedDashboardBySlug,
+  listPublicSharedDashboards,
+  listSharedDashboards,
+  type SharedDashboardInput,
+  type SharedDashboardPatch,
+  type SharedDashboardRecord,
+  updateSharedDashboard,
+} from './shared-dashboards.ts'
+
+// Challenges
+export {
+  type ChallengeInput,
+  type ChallengeMemberInput,
+  type ChallengeMemberRecord,
+  type ChallengeParticipationInput,
+  type ChallengeParticipationRecord,
+  type ChallengePatch,
+  type ChallengeRecord,
+  type ChallengeSpecFields,
+  createChallenge,
+  createChallengeParticipation,
+  deleteChallenge,
+  deleteChallengeParticipation,
+  getChallengeById,
+  getChallengeBySlug,
+  getChallengeMemberByIdentity,
+  getParticipationByToken,
+  getParticipationByUrl,
+  listChallengeMembers,
+  listChallengeParticipations,
+  listChallenges,
+  listPublicChallenges,
+  removeChallengeMember,
+  updateChallenge,
+  updateChallengeMemberCache,
+  upsertChallengeMember,
+} from './challenges.ts'
+
+// PostgreSQL error predicates
+export { isMissingDatabase } from './pg-errors.ts'
+
+// Feed actor (ActivityPub keypair)
+export { type ActorKeyPair, getOrCreateActorKeyPair } from './feed-actor.ts'
+
+// Feed posts
+export {
+  createFeedPost,
+  deleteFeedPost,
+  type FeedPostInput,
+  type FeedPostPatch,
+  type FeedPostRecord,
+  findCoveringSharedSeriesWindow,
+  getFeedPostById,
+  listFeedPosts,
+  updateFeedPost,
+} from './feed.ts'
+
 // Food Items
 export {
   deleteFoodItem,
@@ -276,17 +339,37 @@ export {
   setIngredients,
 } from './food-item-ingredients.ts'
 
+// Food item portions (additional sizings)
+export {
+  deleteFoodItemPortion,
+  deletePortionsForFoodItem,
+  type FoodItemPortionRow,
+  getFoodItemPortionById,
+  getPortionsByFoodItemIds,
+  insertFoodItemPortion,
+  type InsertFoodItemPortionInput,
+  listPortionsForFoodItem,
+  type UpdateFoodItemPortionInput,
+  updateFoodItemPortion,
+} from './food-item-portions.ts'
+
 // Meals
 export {
+  type DailyNutrientTotal,
   deleteMeal,
   type FrequentFoodItemRow,
   type FrequentMealRow,
+  getDailyNutrientTotals,
   getFrequentFoodItems,
   getFrequentMeals,
   getMealById,
   getMealLogCompleted,
+  getMealLogCompletedInRange,
   getMeals,
+  getNutritionCompleteDaysInRange,
   insertMeal,
+  type NutrientKey,
+  NUTRIENT_KEYS,
   upsertMeal,
   setMealLogCompleted,
   unsetMealLogCompleted,

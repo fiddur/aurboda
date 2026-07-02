@@ -128,6 +128,8 @@ export const mealsTables: Record<string, string> = {
       source_id       VARCHAR(100),
       is_composite    BOOLEAN NOT NULL DEFAULT FALSE,
       reference_food_item_id UUID,
+      default_portion_id UUID,
+      default_log_quantity DOUBLE PRECISION,
       created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       CONSTRAINT unique_food_item_name UNIQUE (name_lower)
@@ -152,6 +154,8 @@ export const mealsTables: Record<string, string> = {
       ingredient_food_item_id  UUID NOT NULL,
       quantity                 DOUBLE PRECISION NOT NULL,
       unit                     VARCHAR(100),
+      food_item_portion_id     UUID,
+      portion_count            DOUBLE PRECISION,
       sort_order               INTEGER NOT NULL DEFAULT 0,
       created_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -163,6 +167,35 @@ export const mealsTables: Record<string, string> = {
       ON food_item_ingredients (parent_food_item_id);
     CREATE INDEX IF NOT EXISTS idx_food_item_ingredients_ingredient
       ON food_item_ingredients (ingredient_food_item_id)
+  `,
+
+  // Additional units a food item can be logged in, beyond its "base" unit.
+  // The food item's own (default_quantity, default_unit) is the base the
+  // nutrient columns are measured per; each portion row is a named unit plus
+  // its conversion to that base — e.g. "1 glas = 515 g" for a 100 g base, or
+  // "1 ruta = 3.4 g". When logging, the user enters a quantity in the chosen
+  // unit; nutrients scale by `quantity × base_equivalent / default_quantity`.
+  //
+  // `food_item_id` is a soft pointer (no FK) so portions can target the
+  // per-user `food_items` table or a central `shared_food_items` row. Cascade
+  // on per-user food deletion is handled in app code (deleteFoodItem).
+  //
+  // `base_equivalent` is "how many base units ONE of this unit equals" —
+  // direct conversion only, no chaining via other portions.
+  food_item_portions: `
+    CREATE TABLE IF NOT EXISTS food_item_portions (
+      id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      food_item_id      UUID NOT NULL,
+      label_unit        VARCHAR(100) NOT NULL,
+      base_equivalent   DOUBLE PRECISION NOT NULL,
+      sort_order        INTEGER NOT NULL DEFAULT 0,
+      created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `,
+  food_item_portions_indexes: `
+    CREATE INDEX IF NOT EXISTS idx_food_item_portions_food
+      ON food_item_portions (food_item_id, sort_order, id)
   `,
 
   // Fuzzy/accent-insensitive search support: pg_trgm + unaccent extensions,
@@ -194,6 +227,8 @@ export const mealsTables: Record<string, string> = {
       food_item_icon  TEXT,
       quantity        DOUBLE PRECISION,
       unit            VARCHAR(100),
+      food_item_portion_id UUID,
+      portion_count   DOUBLE PRECISION,
       sort_order      INTEGER NOT NULL DEFAULT 0,
       calories        DOUBLE PRECISION,
       protein         DOUBLE PRECISION,
@@ -346,6 +381,18 @@ export const mealsTables: Record<string, string> = {
     CREATE TABLE IF NOT EXISTS shared_food_item_overrides (
       shared_food_item_id  UUID PRIMARY KEY,
       icon                 TEXT,
+      -- "user supplied an icon value (string OR explicit null)" — needed
+      -- because (icon IS NULL, icon_overridden FALSE) means "user never
+      -- touched icon, pass through central", whereas
+      -- (icon IS NULL, icon_overridden TRUE) means "user explicitly hid
+      -- the central icon". Pre-PR2 the body refine guaranteed icon was
+      -- always supplied so the column-default NULL was unambiguous, but
+      -- with multiple override fields a default_portion_id-only update
+      -- would otherwise leave icon at its column default and the read
+      -- path would silently hide the central icon.
+      icon_overridden      BOOLEAN NOT NULL DEFAULT FALSE,
+      default_portion_id   UUID,
+      default_log_quantity DOUBLE PRECISION,
       created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )

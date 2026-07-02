@@ -1,8 +1,10 @@
 /**
  * SparklineCardWidget - Displays a metric value with a small sparkline chart.
+ *
+ * Split into a presentational `SparklineCardView` and a fetching container.
  */
 
-import type { SparklineCardConfig } from '@aurboda/api-spec'
+import type { SparklineCardConfig, SparklineCardData } from '@aurboda/api-spec'
 
 import { useQuery } from '@tanstack/react-query'
 import { endOfDay, formatISO, startOfDay, subDays } from 'date-fns'
@@ -20,25 +22,7 @@ import {
   type PeriodMetricStats,
 } from '../../state/api'
 import { SparklineChart } from '../SparklineChart'
-
-// Trend indicator component
-function TrendIndicator({ value, inverse = false }: { value: number | null; inverse?: boolean }) {
-  if (value === null) return null
-
-  const isPositive = inverse ? value < 0 : value > 0
-  const arrow = value > 0 ? '\u2191' : value < 0 ? '\u2193' : '\u2192'
-  const className = isPositive ? 'trend-positive' : value === 0 ? 'trend-neutral' : 'trend-negative'
-
-  return (
-    <span class={`trend-indicator ${className}`}>
-      {arrow} {Math.abs(value).toFixed(1)}%
-    </span>
-  )
-}
-
-interface SparklineCardWidgetProps {
-  config: SparklineCardConfig
-}
+import { TrendIndicator } from './TrendIndicator'
 
 // Map metric names to display titles
 const metricTitles: Record<string, string> = {
@@ -70,49 +54,21 @@ const metricToApiMetric: Record<string, string> = {
   steps: 'steps',
 }
 
+interface SparklineCardViewProps {
+  config: SparklineCardConfig
+  data: SparklineCardData | null
+  loading?: boolean
+}
+
 // eslint-disable-next-line complexity -- TODO: refactor
-export function SparklineCardWidget({ config }: SparklineCardWidgetProps) {
-  const { metric, title: configTitle, lookback_days = 30, color = '#3b82f6' } = config
-
+export function SparklineCardView({ config, data, loading = false }: SparklineCardViewProps) {
+  const { metric, title: configTitle, color = '#3b82f6' } = config
   const title = configTitle ?? metricTitles[metric] ?? metric
-  const end = endOfDay(new Date())
-  const start = startOfDay(subDays(new Date(), lookback_days))
 
-  // Fetch time series data for sparkline
-  const fetcher = metricFetchers[metric] ?? ((s: Date, e: Date) => fetchMetricTimeSeries(metric, s, e))
-  const timeSeriesQuery = useQuery({
-    queryFn: () => fetcher(start, end),
-    queryKey: ['sparkline', metric, formatISO(start, { representation: 'date' })],
-    staleTime: 5 * 60 * 1000,
-  })
-
-  // Fetch period summary for the value and trend
-  const apiMetric = metricToApiMetric[metric] ?? metric
-  const periodSummaryQuery = useQuery({
-    queryFn: () => fetchPeriodSummary(start, end, [apiMetric]),
-    queryKey: ['periodSummary', metric, formatISO(start, { representation: 'date' })],
-    staleTime: 5 * 60 * 1000,
-  })
-
-  // Extract value and trend from period summary
-  let value: number | null = null
-  let trend: number | null = null
-  let subtitle: string | undefined
-
-  if (periodSummaryQuery.data) {
-    const metricsArray = periodSummaryQuery.data.metrics ?? []
-    const periodSummary: Record<string, PeriodMetricStats> = {}
-    for (const m of metricsArray) {
-      periodSummary[m.metric] = m
-    }
-    const stats = periodSummary[apiMetric]
-    value = periodStatsValue(stats, 'avg')
-    trend = stats?.change_from_previous_period_percent ?? null
-    subtitle = stats?.count ? `${stats.count} days` : undefined
-  }
-
-  const sparklineData = timeSeriesQuery.data ?? []
-  const isLoading = timeSeriesQuery.isLoading || periodSummaryQuery.isLoading
+  const value = data?.value ?? null
+  const trend = data?.trend_percent ?? null
+  const subtitle = data?.count ? `${data.count} days` : undefined
+  const sparklineData: [Date, number][] = (data?.series ?? []).map((p) => [new Date(p.time), p.value])
 
   return (
     <div class="metric-card">
@@ -121,7 +77,7 @@ export function SparklineCardWidget({ config }: SparklineCardWidgetProps) {
         {trend !== null && <TrendIndicator value={trend} />}
       </div>
       <div class="metric-value">
-        {isLoading ? (
+        {loading ? (
           <span class="loading-placeholder">...</span>
         ) : value !== null ? (
           <span class="value">{value.toFixed(1)}</span>
@@ -131,7 +87,7 @@ export function SparklineCardWidget({ config }: SparklineCardWidgetProps) {
       </div>
       {subtitle && <div class="metric-subtitle">{subtitle}</div>}
       <div class="metric-sparkline">
-        {isLoading ? (
+        {loading ? (
           <div class="sparkline-placeholder">Loading...</div>
         ) : (
           <SparklineChart data={sparklineData} color={color} />
@@ -139,4 +95,45 @@ export function SparklineCardWidget({ config }: SparklineCardWidgetProps) {
       </div>
     </div>
   )
+}
+
+interface SparklineCardWidgetProps {
+  config: SparklineCardConfig
+}
+
+export function SparklineCardWidget({ config }: SparklineCardWidgetProps) {
+  const { metric, lookback_days = 30 } = config
+
+  const end = endOfDay(new Date())
+  const start = startOfDay(subDays(new Date(), lookback_days))
+
+  const fetcher = metricFetchers[metric] ?? ((s: Date, e: Date) => fetchMetricTimeSeries(metric, s, e))
+  const timeSeriesQuery = useQuery({
+    queryFn: () => fetcher(start, end),
+    queryKey: ['sparkline', metric, formatISO(start, { representation: 'date' })],
+    staleTime: 5 * 60 * 1000,
+  })
+
+  const apiMetric = metricToApiMetric[metric] ?? metric
+  const periodSummaryQuery = useQuery({
+    queryFn: () => fetchPeriodSummary(start, end, [apiMetric]),
+    queryKey: ['periodSummary', metric, formatISO(start, { representation: 'date' })],
+    staleTime: 5 * 60 * 1000,
+  })
+
+  let stats: PeriodMetricStats | undefined
+  if (periodSummaryQuery.data) {
+    stats = (periodSummaryQuery.data.metrics ?? []).find((m) => m.metric === apiMetric)
+  }
+
+  const data: SparklineCardData = {
+    count: stats?.count ?? null,
+    series: (timeSeriesQuery.data ?? []).map(([time, value]) => ({ time: time.toISOString(), value })),
+    trend_percent: stats?.change_from_previous_period_percent ?? null,
+    value: stats ? periodStatsValue(stats, 'avg') : null,
+  }
+
+  const loading = timeSeriesQuery.isLoading || periodSummaryQuery.isLoading
+
+  return <SparklineCardView config={config} data={data} loading={loading} />
 }

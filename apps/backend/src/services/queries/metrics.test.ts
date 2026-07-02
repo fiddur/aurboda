@@ -60,6 +60,26 @@ describe('queryMetrics', () => {
   })
 })
 
+/** Build a BucketedMetricData with first_time/last_time defaulting to bucket_start. */
+const mkBucket = (
+  b: Omit<BucketedMetricData, 'first_time' | 'last_time'> &
+    Partial<Pick<BucketedMetricData, 'first_time' | 'last_time'>>,
+): BucketedMetricData => ({
+  first_time: b.bucket_start,
+  last_time: b.bucket_start,
+  ...b,
+})
+
+/** Build a BucketMetricStats with first_time/last_time defaulting to a given moment (or zero). */
+const mkStats = (
+  s: { avg: number; count: number; max: number; min: number; sum?: number },
+  time: Date = new Date(0),
+) => ({
+  ...s,
+  first_time: time.toISOString(),
+  last_time: time.toISOString(),
+})
+
 describe('queryMetricsBucketed', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -67,7 +87,7 @@ describe('queryMetricsBucketed', () => {
 
   test('returns bucketed data for a single metric', async () => {
     const mockBuckets: BucketedMetricData[] = [
-      {
+      mkBucket({
         avg: 72,
         bucket_start: new Date('2024-01-15T06:00:00Z'),
         count: 300,
@@ -75,8 +95,8 @@ describe('queryMetricsBucketed', () => {
         metric: 'heart_rate',
         min: 65,
         sum: 0,
-      },
-      {
+      }),
+      mkBucket({
         avg: 78,
         bucket_start: new Date('2024-01-15T06:15:00Z'),
         count: 280,
@@ -84,7 +104,7 @@ describe('queryMetricsBucketed', () => {
         metric: 'heart_rate',
         min: 70,
         sum: 0,
-      },
+      }),
     ]
     vi.mocked(db.getTimeSeriesBucketed).mockResolvedValue(mockBuckets)
 
@@ -101,14 +121,14 @@ describe('queryMetricsBucketed', () => {
     expect(result.buckets[0]).toEqual({
       end: '2024-01-15T06:15:00.000Z',
       metrics: {
-        heart_rate: { avg: 72, count: 300, max: 80, min: 65 },
+        heart_rate: mkStats({ avg: 72, count: 300, max: 80, min: 65 }, new Date('2024-01-15T06:00:00Z')),
       },
       start: '2024-01-15T06:00:00.000Z',
     })
     expect(result.buckets[1]).toEqual({
       end: '2024-01-15T06:30:00.000Z',
       metrics: {
-        heart_rate: { avg: 78, count: 280, max: 85, min: 70 },
+        heart_rate: mkStats({ avg: 78, count: 280, max: 85, min: 70 }, new Date('2024-01-15T06:15:00Z')),
       },
       start: '2024-01-15T06:15:00.000Z',
     })
@@ -116,7 +136,7 @@ describe('queryMetricsBucketed', () => {
 
   test('returns bucketed data for multiple metrics', async () => {
     const mockBuckets: BucketedMetricData[] = [
-      {
+      mkBucket({
         avg: 72,
         bucket_start: new Date('2024-01-15T06:00:00Z'),
         count: 300,
@@ -124,8 +144,8 @@ describe('queryMetricsBucketed', () => {
         metric: 'heart_rate',
         min: 65,
         sum: 0,
-      },
-      {
+      }),
+      mkBucket({
         avg: 45,
         bucket_start: new Date('2024-01-15T06:00:00Z'),
         count: 100,
@@ -133,8 +153,8 @@ describe('queryMetricsBucketed', () => {
         metric: 'hrv_rmssd',
         min: 30,
         sum: 0,
-      },
-      {
+      }),
+      mkBucket({
         avg: 78,
         bucket_start: new Date('2024-01-15T06:15:00Z'),
         count: 280,
@@ -142,8 +162,8 @@ describe('queryMetricsBucketed', () => {
         metric: 'heart_rate',
         min: 70,
         sum: 0,
-      },
-      {
+      }),
+      mkBucket({
         avg: 42,
         bucket_start: new Date('2024-01-15T06:15:00Z'),
         count: 90,
@@ -151,7 +171,7 @@ describe('queryMetricsBucketed', () => {
         metric: 'hrv_rmssd',
         min: 28,
         sum: 0,
-      },
+      }),
     ]
     vi.mocked(db.getTimeSeriesBucketed).mockResolvedValue(mockBuckets)
 
@@ -165,12 +185,12 @@ describe('queryMetricsBucketed', () => {
 
     expect(result.buckets).toHaveLength(2)
     expect(result.buckets[0].metrics).toEqual({
-      heart_rate: { avg: 72, count: 300, max: 80, min: 65 },
-      hrv_rmssd: { avg: 45, count: 100, max: 60, min: 30 },
+      heart_rate: mkStats({ avg: 72, count: 300, max: 80, min: 65 }, new Date('2024-01-15T06:00:00Z')),
+      hrv_rmssd: mkStats({ avg: 45, count: 100, max: 60, min: 30 }, new Date('2024-01-15T06:00:00Z')),
     })
     expect(result.buckets[1].metrics).toEqual({
-      heart_rate: { avg: 78, count: 280, max: 85, min: 70 },
-      hrv_rmssd: { avg: 42, count: 90, max: 55, min: 28 },
+      heart_rate: mkStats({ avg: 78, count: 280, max: 85, min: 70 }, new Date('2024-01-15T06:15:00Z')),
+      hrv_rmssd: mkStats({ avg: 42, count: 90, max: 55, min: 28 }, new Date('2024-01-15T06:15:00Z')),
     })
   })
 
@@ -190,7 +210,7 @@ describe('queryMetricsBucketed', () => {
 
   test('handles 5m bucket interval', async () => {
     const mockBuckets: BucketedMetricData[] = [
-      {
+      mkBucket({
         avg: 72,
         bucket_start: new Date('2024-01-15T06:00:00Z'),
         count: 100,
@@ -198,7 +218,7 @@ describe('queryMetricsBucketed', () => {
         metric: 'heart_rate',
         min: 65,
         sum: 0,
-      },
+      }),
     ]
     vi.mocked(db.getTimeSeriesBucketed).mockResolvedValue(mockBuckets)
 
@@ -224,7 +244,7 @@ describe('queryMetricsBucketed', () => {
 
   test('handles 1h bucket interval', async () => {
     const mockBuckets: BucketedMetricData[] = [
-      {
+      mkBucket({
         avg: 72,
         bucket_start: new Date('2024-01-15T06:00:00Z'),
         count: 1200,
@@ -232,7 +252,7 @@ describe('queryMetricsBucketed', () => {
         metric: 'heart_rate',
         min: 65,
         sum: 0,
-      },
+      }),
     ]
     vi.mocked(db.getTimeSeriesBucketed).mockResolvedValue(mockBuckets)
 
@@ -258,7 +278,7 @@ describe('queryMetricsBucketed', () => {
 
   test('handles 1d bucket interval', async () => {
     const mockBuckets: BucketedMetricData[] = [
-      {
+      mkBucket({
         avg: 72,
         bucket_start: new Date('2024-01-15T00:00:00Z'),
         count: 28800,
@@ -266,7 +286,7 @@ describe('queryMetricsBucketed', () => {
         metric: 'heart_rate',
         min: 55,
         sum: 0,
-      },
+      }),
     ]
     vi.mocked(db.getTimeSeriesBucketed).mockResolvedValue(mockBuckets)
 
@@ -293,7 +313,7 @@ describe('queryMetricsBucketed', () => {
   test('handles buckets with partial metric coverage', async () => {
     // Only heart_rate has data in second bucket, not hrv_rmssd
     const mockBuckets: BucketedMetricData[] = [
-      {
+      mkBucket({
         avg: 72,
         bucket_start: new Date('2024-01-15T06:00:00Z'),
         count: 300,
@@ -301,8 +321,8 @@ describe('queryMetricsBucketed', () => {
         metric: 'heart_rate',
         min: 65,
         sum: 0,
-      },
-      {
+      }),
+      mkBucket({
         avg: 45,
         bucket_start: new Date('2024-01-15T06:00:00Z'),
         count: 100,
@@ -310,8 +330,8 @@ describe('queryMetricsBucketed', () => {
         metric: 'hrv_rmssd',
         min: 30,
         sum: 0,
-      },
-      {
+      }),
+      mkBucket({
         avg: 78,
         bucket_start: new Date('2024-01-15T06:15:00Z'),
         count: 280,
@@ -319,7 +339,7 @@ describe('queryMetricsBucketed', () => {
         metric: 'heart_rate',
         min: 70,
         sum: 0,
-      },
+      }),
       // No hrv_rmssd data for 06:15 bucket
     ]
     vi.mocked(db.getTimeSeriesBucketed).mockResolvedValue(mockBuckets)
@@ -385,7 +405,7 @@ describe('queryMetricsBucketed', () => {
   test('returns bucketed data for mixed regular and contextual HRV metrics', async () => {
     // Mock regular bucketed data for heart_rate
     vi.mocked(db.getTimeSeriesBucketed).mockResolvedValue([
-      {
+      mkBucket({
         avg: 72,
         bucket_start: new Date('2024-01-15T02:00:00Z'),
         count: 100,
@@ -393,7 +413,7 @@ describe('queryMetricsBucketed', () => {
         metric: 'heart_rate' as MetricType,
         min: 65,
         sum: 0,
-      },
+      }),
     ])
 
     // Raw HRV data for contextual processing
@@ -466,7 +486,7 @@ describe('queryMetricsBucketed', () => {
   test('discovers all metrics when metrics param is omitted', async () => {
     vi.mocked(db.getDistinctMetrics).mockResolvedValue(['heart_rate', 'steps'])
     vi.mocked(db.getTimeSeriesBucketed).mockResolvedValue([
-      {
+      mkBucket({
         avg: 72,
         bucket_start: new Date('2024-01-15T06:00:00Z'),
         count: 60,
@@ -474,8 +494,8 @@ describe('queryMetricsBucketed', () => {
         metric: 'heart_rate',
         min: 65,
         sum: 0,
-      },
-      {
+      }),
+      mkBucket({
         avg: 100,
         bucket_start: new Date('2024-01-15T06:00:00Z'),
         count: 12,
@@ -483,7 +503,7 @@ describe('queryMetricsBucketed', () => {
         metric: 'steps',
         min: 0,
         sum: 1200,
-      },
+      }),
     ])
 
     const result = await queryMetricsBucketed(
@@ -503,7 +523,7 @@ describe('queryMetricsBucketed', () => {
   test('applies exclude filter to discovered metrics', async () => {
     vi.mocked(db.getDistinctMetrics).mockResolvedValue(['heart_rate', 'steps', 'training_impulse'])
     vi.mocked(db.getTimeSeriesBucketed).mockResolvedValue([
-      {
+      mkBucket({
         avg: 72,
         bucket_start: new Date('2024-01-15T06:00:00Z'),
         count: 60,
@@ -511,7 +531,7 @@ describe('queryMetricsBucketed', () => {
         metric: 'heart_rate',
         min: 65,
         sum: 0,
-      },
+      }),
     ])
 
     const result = await queryMetricsBucketed(
@@ -539,7 +559,7 @@ describe('queryMetricsBucketed', () => {
 
   test('includes sum for cumulative metrics', async () => {
     vi.mocked(db.getTimeSeriesBucketed).mockResolvedValue([
-      {
+      mkBucket({
         avg: 100,
         bucket_start: new Date('2024-01-15T06:00:00Z'),
         count: 12,
@@ -547,7 +567,7 @@ describe('queryMetricsBucketed', () => {
         metric: 'steps',
         min: 0,
         sum: 1200,
-      },
+      }),
     ])
 
     const result = await queryMetricsBucketed(
@@ -567,7 +587,7 @@ describe('queryMetricsBucketed', () => {
 
   test('omits sum for non-cumulative metrics', async () => {
     vi.mocked(db.getTimeSeriesBucketed).mockResolvedValue([
-      {
+      mkBucket({
         avg: 72,
         bucket_start: new Date('2024-01-15T06:00:00Z'),
         count: 60,
@@ -575,7 +595,7 @@ describe('queryMetricsBucketed', () => {
         metric: 'heart_rate',
         min: 65,
         sum: 4320,
-      },
+      }),
     ])
 
     const result = await queryMetricsBucketed(
@@ -591,6 +611,52 @@ describe('queryMetricsBucketed', () => {
     expect(hr).toBeDefined()
     expect(hr.sum).toBeUndefined()
     expect(hr.avg).toBe(72)
+  })
+
+  test('surfaces first_time and last_time per metric per bucket', async () => {
+    vi.mocked(db.getTimeSeriesBucketed).mockResolvedValue([
+      {
+        avg: 72,
+        bucket_start: new Date('2024-01-15T00:00:00Z'),
+        count: 500,
+        first_time: new Date('2024-01-15T00:05:00Z'),
+        last_time: new Date('2024-01-15T16:50:00Z'),
+        max: 150,
+        metric: 'heart_rate',
+        min: 60,
+        sum: 0,
+      },
+      {
+        avg: 57.2,
+        bucket_start: new Date('2024-01-15T00:00:00Z'),
+        count: 1,
+        first_time: new Date('2024-01-15T07:59:00Z'),
+        last_time: new Date('2024-01-15T07:59:00Z'),
+        max: 57.2,
+        metric: 'body_water_mass',
+        min: 57.2,
+        sum: 0,
+      },
+    ])
+
+    const result = await queryMetricsBucketed(
+      'testuser',
+      ['heart_rate', 'body_water_mass'],
+      new Date('2024-01-15T00:00:00Z'),
+      new Date('2024-01-16T00:00:00Z'),
+      '1d',
+    )
+
+    expect(result.buckets).toHaveLength(1)
+    const hr = result.buckets[0]!.metrics.heart_rate!
+    expect(hr.first_time).toBe('2024-01-15T00:05:00.000Z')
+    expect(hr.last_time).toBe('2024-01-15T16:50:00.000Z')
+    expect(hr.count).toBe(500)
+
+    const bwm = result.buckets[0]!.metrics.body_water_mass!
+    expect(bwm.first_time).toBe('2024-01-15T07:59:00.000Z')
+    expect(bwm.last_time).toBe('2024-01-15T07:59:00.000Z')
+    expect(bwm.count).toBe(1)
   })
 
   test('returns empty buckets when no metrics discovered', async () => {

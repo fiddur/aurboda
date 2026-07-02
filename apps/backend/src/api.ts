@@ -66,6 +66,7 @@ import { createGeocodeQueue } from './services/geocode-queue.ts'
 import { createInvitationAuth } from './services/invitation.ts'
 import { getPlaceVisits } from './services/locations.ts'
 import { createPgBoss } from './services/pg-boss.ts'
+import { initSentry, Sentry } from './services/sentry.ts'
 import { createStravaQueue, type StravaQueue } from './services/strava-queue.ts'
 import { createSyncProvider } from './services/sync-provider.ts'
 import { createWebAuthnService } from './services/webauthn.ts'
@@ -94,6 +95,10 @@ const main = async () => {
   // Initialize central database (server settings, admins)
   await initializeCentralDb()
   const centralDb = getCentralDb()
+
+  // Initialize Sentry as early as possible after centralDb is available.
+  // DSN is read from server_settings (configured via Admin Settings).
+  await initSentry(centralDb)
 
   const webHost = process.env.WEB_HOST ?? 'http://localhost:5173'
   const apiBaseUrl = process.env.API_BASE_URL ?? 'http://localhost:3000'
@@ -127,7 +132,12 @@ const main = async () => {
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean)
-  const wellKnown = { androidFingerprints, androidPackageName }
+  const wellKnown = {
+    androidFingerprints,
+    androidPackageName,
+    apiBaseUrl,
+    version: process.env.BUILD_SHA ?? 'dev',
+  }
 
   // Migrate legacy OURA_CLIENT/OURA_SECRET env vars into server_settings if DB empty
   const envOuraClientId = process.env.OURA_CLIENT
@@ -181,16 +191,8 @@ const main = async () => {
       centralDb.upsertStravaAthleteMapping(stravaAthleteId, username),
   })
 
-  // Create sync provider for auto-syncing data before queries
-  const syncProvider = createSyncProvider({
-    garmin,
-    getLastFmApiKey: () => centralDb.getLastFmApiKey(),
-    oura,
-  })
-
-  // Initialize shared pg-boss instance and job queues (before MCP mount)
-  const boss = await createPgBoss()
-
+  // Deduction queue is assigned once pg-boss is up (below). The notifier closes
+  // over the variable, so it starts enqueuing as soon as the queue exists.
   let deductionQueue: DeductionQueue | null = null
   const activityNotifier: ActivityNotifier = (user, activityType, start, end, sourceRuleId) => {
     deductionQueue?.enqueueEvaluation({
@@ -201,6 +203,20 @@ const main = async () => {
       window_start: start.toISOString(),
     })
   }
+
+  // Create sync provider for auto-syncing data before queries. onActivitySynced
+  // lets background scrobble syncs trigger deduction rules (e.g. auto-tagging),
+  // like the REST /sync routes — here fired only when a sync ingests new data.
+  const syncProvider = createSyncProvider({
+    garmin,
+    getLastFmApiKey: () => centralDb.getLastFmApiKey(),
+    oura,
+    onActivitySynced: activityNotifier,
+  })
+
+  // Initialize shared pg-boss instance and job queues (before MCP mount)
+  const boss = await createPgBoss()
+
   const engineDeps = createDefaultEngineDeps(activityNotifier)
 
   if (boss) {
@@ -284,6 +300,7 @@ const main = async () => {
   httpd.use(
     '/mcp',
     createMcpRouter(auth, {
+      apiBaseUrl,
       centralDb,
       deductionQueue: deductionQueue ?? undefined,
       engineDeps,
@@ -292,6 +309,7 @@ const main = async () => {
       oura,
       stravaQueue: stravaQueue ?? undefined,
       sync: syncProvider,
+      webHost,
     }),
   )
 
@@ -397,6 +415,7 @@ const main = async () => {
   mountRestRouters({
     activityNotifier,
     adminMiddleware,
+    apiBaseUrl,
     auth,
     authMiddleware,
     centralDb,
@@ -412,6 +431,10 @@ const main = async () => {
     webHost,
     wellKnown,
   })
+
+  // Sentry must be registered AFTER all controllers and BEFORE any other
+  // error middleware. No-op if Sentry was not initialized.
+  Sentry.setupExpressErrorHandler(httpd)
 
   // Centralized error handler
   httpd.use((err: Error, req: Request, res: Response, _next: NextFunction) => {

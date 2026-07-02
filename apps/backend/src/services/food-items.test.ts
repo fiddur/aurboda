@@ -30,6 +30,11 @@ vi.mock('../db/sensitivities.ts', () => ({
   getFoodItemSensitivities: vi.fn().mockResolvedValue([]),
 }))
 
+vi.mock('../db/food-item-portions.ts', () => ({
+  getFoodItemPortionById: vi.fn().mockResolvedValue(null),
+  listPortionsForFoodItem: vi.fn().mockResolvedValue([]),
+}))
+
 vi.mock('../db/shared-food-item-overrides.ts', () => ({
   getSharedFoodItemOverridesByIds: vi.fn().mockResolvedValue(new Map()),
 }))
@@ -205,6 +210,17 @@ describe('createFoodItemsService.getById', () => {
     const service = createFoodItemsService(central)
 
     expect(await service.getById('user', 'missing')).toBeNull()
+  })
+})
+
+describe('createFoodItemsService.getDetail portions', () => {
+  test('returns [] (not null/undefined) when the item has no portions', async () => {
+    vi.mocked(dbModule.getFoodItemById).mockResolvedValue(userItem('u1', 'Apple'))
+    // listPortionsForFoodItem is mocked to [] by default.
+    const service = createFoodItemsService(fakeCentral())
+
+    const detail = await service.getDetail('user', 'u1')
+    expect(detail?.portions).toEqual([])
   })
 })
 
@@ -462,6 +478,55 @@ describe('aggregateNutrientsFromIngredients — scaling edge cases', () => {
     expect(values.calories).toBe(1800)
     expect(nutrient_data_incomplete).toBe(false)
   })
+
+  const buildPortionRow = (portionId: string, count: number) => ({
+    created_at: new Date(),
+    food_item_portion_id: portionId,
+    id: 'r',
+    ingredient_food_item_id: 'x',
+    parent_food_item_id: 'p',
+    portion_count: count,
+    quantity: count,
+    sort_order: 0,
+    unit: 'brödkaka',
+    updated_at: new Date(),
+  })
+
+  const portion = (id: string, base_equivalent: number) => ({
+    base_equivalent,
+    created_at: new Date(),
+    food_item_id: 'bread',
+    id,
+    label_unit: 'brödkaka',
+    sort_order: 0,
+    updated_at: new Date(),
+  })
+
+  test('portion path scales by portion_count × base_equivalent / default_quantity', () => {
+    const bread = userItem('bread', 'Bread')
+    bread.default_quantity = 100
+    bread.default_unit = 'g'
+    bread.calories = 200
+
+    // 2 brödkaka × 35 g = 70 g; scale 0.7 → 200 × 0.7 = 140 kcal
+    const { values, nutrient_data_incomplete } = aggregateNutrientsFromIngredients([
+      { food: bread, row: buildPortionRow('por-1', 2), portion: portion('por-1', 35) },
+    ])
+    expect(values.calories).toBe(140)
+    expect(nutrient_data_incomplete).toBe(false)
+  })
+
+  test('flags incomplete when a portion-based row has no resolved portion (deleted unit)', () => {
+    const bread = userItem('bread', 'Bread')
+    bread.default_quantity = 100
+    bread.default_unit = 'g'
+    bread.calories = 200
+
+    const { nutrient_data_incomplete } = aggregateNutrientsFromIngredients([
+      { food: bread, row: buildPortionRow('por-gone', 2), portion: null },
+    ])
+    expect(nutrient_data_incomplete).toBe(true)
+  })
 })
 
 describe('createFoodItemsService.getDetail — reference enrichment', () => {
@@ -661,6 +726,9 @@ describe('createFoodItemsService — shared item overrides', () => {
             shared_food_item_id: 'c1',
             icon: '🥕',
             created_at: new Date(),
+            icon_overridden: true,
+            default_log_quantity: null,
+            default_portion_id: null,
             updated_at: new Date(),
           },
         ],
@@ -670,6 +738,40 @@ describe('createFoodItemsService — shared item overrides', () => {
 
     const results = await service.search('user', 'banan')
     expect(results.map((r) => r.icon)).toEqual(['🥕'])
+  })
+
+  test('default_portion_id-only override does NOT strip the central icon', async () => {
+    // Regression: PR2 introduced multiple override fields. A row created via
+    // PUT /override with only `{ default_portion_id: ... }` has icon=NULL
+    // at the column default. Without the icon_overridden discriminator the
+    // read path would treat that as "user-hid-central-icon" and the
+    // user-facing icon would silently disappear after setting a default
+    // portion. Fix: only apply icon when icon_overridden=true.
+    const lsv = sharedItem('c1', 'Banan')
+    lsv.icon = '🍌'
+    const central = fakeCentral()
+    vi.mocked(central.getSharedFoodItemById).mockResolvedValue(lsv)
+    vi.mocked(dbModule.getFoodItemById).mockResolvedValue(null)
+    vi.mocked(overridesModule.getSharedFoodItemOverridesByIds).mockResolvedValue(
+      new Map([
+        [
+          'c1',
+          {
+            shared_food_item_id: 'c1',
+            icon: null, // column default — NOT user-supplied
+            icon_overridden: false, // user only touched default_portion_id
+            default_log_quantity: null,
+            default_portion_id: '11111111-1111-1111-1111-111111111111',
+            created_at: new Date(),
+            updated_at: new Date(),
+          },
+        ],
+      ]),
+    )
+    const service = createFoodItemsService(central)
+
+    const result = await service.getById('user', 'c1')
+    expect(result?.icon).toBe('🍌') // central icon preserved
   })
 
   test('null override icon hides the central icon', async () => {
@@ -686,6 +788,9 @@ describe('createFoodItemsService — shared item overrides', () => {
             shared_food_item_id: 'c1',
             icon: null,
             created_at: new Date(),
+            icon_overridden: true,
+            default_log_quantity: null,
+            default_portion_id: null,
             updated_at: new Date(),
           },
         ],
@@ -725,6 +830,9 @@ describe('createFoodItemsService — shared item overrides', () => {
             shared_food_item_id: 'u1',
             icon: '🚫',
             created_at: new Date(),
+            icon_overridden: true,
+            default_log_quantity: null,
+            default_portion_id: null,
             updated_at: new Date(),
           },
         ],
@@ -842,6 +950,9 @@ describe('resolveFoodItemDisplay', () => {
           'c1',
           {
             created_at: new Date(),
+            icon_overridden: true,
+            default_log_quantity: null,
+            default_portion_id: null,
             icon: '🍯',
             shared_food_item_id: 'c1',
             updated_at: new Date(),
@@ -867,6 +978,9 @@ describe('resolveFoodItemDisplay', () => {
           'c1',
           {
             created_at: new Date(),
+            icon_overridden: true,
+            default_log_quantity: null,
+            default_portion_id: null,
             icon: null,
             shared_food_item_id: 'c1',
             updated_at: new Date(),

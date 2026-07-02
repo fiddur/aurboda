@@ -231,8 +231,24 @@ export const insertActivities = async (
   if (activities.length === 0) return []
 
   // Split into external_id and non-external_id batches for different conflict targets
-  const withExtId = activities.filter((a) => a.external_id)
-  const withoutExtId = activities.filter((a) => !a.external_id)
+  const withExtIdAll = activities.filter((a) => a.external_id)
+  const withoutExtIdAll = activities.filter((a) => !a.external_id)
+
+  // Dedupe within each batch by the SQL conflict key. Postgres' ON CONFLICT
+  // DO UPDATE can only touch each existing row once per command, so a batch
+  // containing two rows that hit the same key (e.g. an HC sync that re-sends
+  // the same ExerciseSessionRecord, or two records sharing
+  // (source, activity_type, start_time)) raises 21000. Last write wins,
+  // matching the upsert semantics callers already rely on.
+  const withExtIdMap = new Map<string, Activity>()
+  for (const a of withExtIdAll) withExtIdMap.set(`${a.source}|${a.external_id}`, a)
+  const withExtId = Array.from(withExtIdMap.values())
+
+  const withoutExtIdMap = new Map<string, Activity>()
+  for (const a of withoutExtIdAll) {
+    withoutExtIdMap.set(`${a.source}|${a.activity_type}|${a.start_time.getTime()}`, a)
+  }
+  const withoutExtId = Array.from(withoutExtIdMap.values())
 
   const inserted: InsertedActivityKey[] = []
 

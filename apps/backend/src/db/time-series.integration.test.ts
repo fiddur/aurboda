@@ -319,6 +319,8 @@ describe('Time Series Integration Tests', () => {
       expect(buckets[0].min).toBe(70)
       expect(buckets[0].max).toBe(74)
       expect(buckets[0].avg).toBeCloseTo(72, 1) // (70+72+74)/3 = 72
+      expect(buckets[0].first_time).toEqual(new Date('2024-01-15T10:00:00Z'))
+      expect(buckets[0].last_time).toEqual(new Date('2024-01-15T10:10:00Z'))
 
       // Second bucket: 10:15-10:30
       expect(buckets[1].bucket_start).toEqual(new Date('2024-01-15T10:15:00Z'))
@@ -327,6 +329,8 @@ describe('Time Series Integration Tests', () => {
       expect(buckets[1].min).toBe(80)
       expect(buckets[1].max).toBe(90)
       expect(buckets[1].avg).toBeCloseTo(85, 1) // (80+85+90)/3 = 85
+      expect(buckets[1].first_time).toEqual(new Date('2024-01-15T10:15:00Z'))
+      expect(buckets[1].last_time).toEqual(new Date('2024-01-15T10:25:00Z'))
     })
 
     test('returns buckets for multiple metrics', async () => {
@@ -677,6 +681,42 @@ describe('Time Series Integration Tests', () => {
       )
 
       expect(count).toBe(0)
+    })
+
+    test('subsequent insertTimeSeries on the same (time, metric, source) is visible (no tombstone)', async () => {
+      // Regression: deleteTimeSeriesBySource used to soft-delete (set
+      // deleted_at = NOW()). The ON CONFLICT clause in insertTimeSeries has
+      // `WHERE deleted_at IS NULL`, so re-inserting the same key was
+      // silently skipped and the row stayed invisible. This broke the
+      // calorie recompute's wipe-and-rewrite pattern. Hard-delete now.
+      const user = getTestUser()
+      const t = new Date('2024-02-01T10:00:00Z')
+
+      // 1. Initial insert (e.g. previous recompute pass)
+      await insertTimeSeries(user, [{ metric: 'heart_rate', source: 'aurboda', time: t, value: 70 }])
+
+      // 2. Wipe via deleteTimeSeriesBySource
+      const deleted = await deleteTimeSeriesBySource(
+        user,
+        'heart_rate',
+        'aurboda',
+        new Date('2024-02-01T09:00:00Z'),
+        new Date('2024-02-01T11:00:00Z'),
+      )
+      expect(deleted).toBe(1)
+
+      // 3. Re-insert with a new value
+      await insertTimeSeries(user, [{ metric: 'heart_rate', source: 'aurboda', time: t, value: 99 }])
+
+      // 4. The new value must be visible
+      const rows = await getTimeSeriesWithSource(
+        user,
+        'heart_rate',
+        new Date('2024-02-01T09:00:00Z'),
+        new Date('2024-02-01T11:00:00Z'),
+      )
+      expect(rows).toHaveLength(1)
+      expect(rows[0].value).toBe(99)
     })
   })
 

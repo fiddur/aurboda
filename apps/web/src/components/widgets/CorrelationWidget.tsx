@@ -1,18 +1,16 @@
 /**
- * CorrelationWidget - Displays activity impact on HRV/HR.
+ * CorrelationWidget - Displays activity impact on HRV.
+ *
+ * Split into a presentational `CorrelationView` and a fetching container.
  */
 
-import type { CorrelationConfig } from '@aurboda/api-spec'
+import type { CorrelationConfig, CorrelationData } from '@aurboda/api-spec'
 
 import { useQuery } from '@tanstack/react-query'
 import * as d3 from 'd3'
 import { useEffect, useRef } from 'preact/hooks'
 
-import { fetchActivityImpact, type ActivityImpactData } from '../../state/api'
-
-interface CorrelationWidgetProps {
-  config: CorrelationConfig
-}
+import { fetchActivityImpact } from '../../state/api'
 
 // Phase data for the chart
 interface PhaseData {
@@ -20,13 +18,17 @@ interface PhaseData {
   avgHrv: number | null
 }
 
-// Impact timeline chart using D3
+// Impact timeline chart using D3 (before / during / after HRV means)
 function ImpactChart({
-  data,
+  before,
+  during,
+  after,
   width = 300,
   height = 120,
 }: {
-  data: ActivityImpactData
+  before: number | null
+  during: number | null
+  after: number | null
   width?: number
   height?: number
 }) {
@@ -42,11 +44,10 @@ function ImpactChart({
     const innerWidth = width - margin.left - margin.right
     const innerHeight = height - margin.top - margin.bottom
 
-    // Convert timeline object to array for chart
     const timelineData: PhaseData[] = [
-      { avgHrv: data.hrv_timeline.before30min.mean, phase: 'before' },
-      { avgHrv: data.hrv_timeline.during.mean, phase: 'during' },
-      { avgHrv: data.hrv_timeline.after30min.mean, phase: 'after' },
+      { avgHrv: before, phase: 'before' },
+      { avgHrv: during, phase: 'during' },
+      { avgHrv: after, phase: 'after' },
     ]
 
     const phases = timelineData.map((d) => d.phase)
@@ -62,7 +63,6 @@ function ImpactChart({
 
     const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`)
 
-    // Add axes
     g.append('g')
       .attr('transform', `translate(0,${innerHeight})`)
       .call(d3.axisBottom(x))
@@ -76,7 +76,6 @@ function ImpactChart({
       .attr('fill', '#9ca3af')
       .style('font-size', '10px')
 
-    // Draw bars for HRV
     g.selectAll('.hrv-bar')
       .data(timelineData)
       .enter()
@@ -93,7 +92,6 @@ function ImpactChart({
       })
       .attr('rx', 4)
 
-    // Add value labels
     g.selectAll('.value-label')
       .data(timelineData)
       .enter()
@@ -106,9 +104,37 @@ function ImpactChart({
       .style('font-size', '10px')
       .style('font-weight', '600')
       .text((d) => (d.avgHrv !== null ? d.avgHrv.toFixed(0) : ''))
-  }, [data, width, height])
+  }, [before, during, after, width, height])
 
   return <svg ref={svgRef} width={width} height={height} />
+}
+
+interface CorrelationViewProps {
+  config: CorrelationConfig
+  data: CorrelationData | null
+}
+
+export function CorrelationView({ config, data }: CorrelationViewProps) {
+  const { activity, title } = config
+  const displayTitle = title ?? `${activity} impact`
+
+  return (
+    <div class="correlation-widget">
+      <h4>{displayTitle}</h4>
+      <div class="correlation-summary">
+        <span class="occurrences">{data?.occurrences ?? 0} occurrences</span>
+      </div>
+      <ImpactChart
+        before={data?.hrv_before30 ?? null}
+        during={data?.hrv_during ?? null}
+        after={data?.hrv_after30 ?? null}
+      />
+    </div>
+  )
+}
+
+interface CorrelationWidgetProps {
+  config: CorrelationConfig
 }
 
 export function CorrelationWidget({ config }: CorrelationWidgetProps) {
@@ -140,15 +166,13 @@ export function CorrelationWidget({ config }: CorrelationWidgetProps) {
     )
   }
 
-  const { occurrences } = impactQuery.data
+  const impact = impactQuery.data
+  const data: CorrelationData = {
+    hrv_after30: impact.hrv_timeline.after30min.mean,
+    hrv_before30: impact.hrv_timeline.before30min.mean,
+    hrv_during: impact.hrv_timeline.during.mean,
+    occurrences: impact.occurrences,
+  }
 
-  return (
-    <div class="correlation-widget">
-      <h4>{displayTitle}</h4>
-      <div class="correlation-summary">
-        <span class="occurrences">{occurrences} occurrences</span>
-      </div>
-      <ImpactChart data={impactQuery.data} />
-    </div>
-  )
+  return <CorrelationView config={config} data={data} />
 }

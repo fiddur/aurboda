@@ -193,7 +193,7 @@ export const createMetricsRouter = (
         })
       }
 
-      const result = await computeAndStoreCalories(user, new Date(start), new Date(end), { force: true })
+      const result = await computeAndStoreCalories(user, new Date(start), new Date(end))
       res.json({ ...result, success: true })
     },
   )

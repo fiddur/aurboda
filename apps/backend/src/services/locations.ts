@@ -54,6 +54,22 @@ export interface Stay {
 const DEFAULT_CLUSTER_RADIUS_METERS = 200
 const DEFAULT_MIN_STAY_MINUTES = 60
 
+// Unknown ("Somewhere") visits have no named/detected place identity to bound
+// them, so merging consecutive unknown fixes by name alone lets a single stale
+// GPS fix be stretched into one long stay that swallows travel *and* the real
+// destination (issue #811). Break such a visit when a fix moves beyond this
+// radius from the visit's running centroid (real movement), or after a gap with
+// no fixes longer than the cap below (no evidence of continuous presence).
+const UNKNOWN_VISIT_BREAK_RADIUS_METERS = DEFAULT_CLUSTER_RADIUS_METERS
+const MAX_UNKNOWN_VISIT_GAP_MINUTES = 90
+
+// When collapsing short unknown visits, only absorb one into an adjacent visit
+// if it is genuinely contiguous — close in both space and time. This keeps a
+// brief GPS glitch stitched into the stay it interrupted while refusing to
+// bridge a stay across travel or a long data gap.
+const MERGE_BRIDGE_RADIUS_METERS = DEFAULT_CLUSTER_RADIUS_METERS
+const MERGE_BRIDGE_GAP_MINUTES = 30
+
 // ============================================================================
 // Helper Functions
 // ============================================================================
@@ -388,6 +404,107 @@ export const getRawLocationPoints = async (
   }))
 }
 
+interface FixClassification {
+  placeName: string
+  source: 'named' | 'detected' | 'owntracks' | 'unknown'
+  address?: string
+  detectedLocationId?: string
+  namedLocationId?: string
+}
+
+/**
+ * Classify a single fix to a place: a named location wins, then a detected
+ * location, then an OwnTracks region, else "Somewhere" (unknown).
+ */
+const classifyFix = (
+  lat: number,
+  lon: number,
+  regions: string[],
+  namedLocations: NamedLocation[],
+  detectedLocations: StoredDetectedLocation[],
+): FixClassification => {
+  const namedMatch = matchLocationToNamed(lat, lon, namedLocations)
+  if (namedMatch) return { namedLocationId: namedMatch.id, placeName: namedMatch.name, source: 'named' }
+
+  const detectedMatch = matchLocationToDetected(lat, lon, detectedLocations)
+  if (detectedMatch) {
+    return {
+      address: detectedMatch.address || undefined,
+      detectedLocationId: detectedMatch.id,
+      placeName: detectedMatch.address || 'Detected location',
+      source: 'detected',
+    }
+  }
+
+  if (regions.length > 0) return { placeName: regions[0], source: 'owntracks' }
+  return { placeName: 'Somewhere', source: 'unknown' }
+}
+
+/**
+ * Mutable accumulator for a visit being built. `point_count` tracks how many
+ * fixes have been folded into the running centroid of an unknown visit (lat/lon
+ * hold that centroid); `duration_minutes` is computed when the visit is
+ * finalized.
+ */
+interface VisitAccumulator {
+  name: string
+  lat: number
+  lon: number
+  start_time: Date
+  end_time: Date
+  source: 'named' | 'detected' | 'owntracks' | 'unknown'
+  address?: string
+  detected_location_id?: string
+  named_location_id?: string
+  point_count: number
+}
+
+/**
+ * Decide whether `loc` continues `current`. Beyond matching the place identity,
+ * an unknown ("Somewhere") visit also breaks on real movement away from its
+ * running centroid or after a long data gap — otherwise a single stale fix
+ * would swallow travel and the real destination (issue #811).
+ */
+const continuesVisit = (current: VisitAccumulator, cls: FixClassification, loc: LocationPoint): boolean => {
+  if (
+    current.named_location_id !== cls.namedLocationId ||
+    current.name !== cls.placeName ||
+    current.detected_location_id !== cls.detectedLocationId
+  ) {
+    return false
+  }
+  if (cls.source !== 'unknown') return true
+  const movedAway =
+    haversineDistance(current.lat, current.lon, loc.lat, loc.lon) > UNKNOWN_VISIT_BREAK_RADIUS_METERS
+  const gapMinutes = (loc.time.getTime() - current.end_time.getTime()) / (1000 * 60)
+  return !movedAway && gapMinutes <= MAX_UNKNOWN_VISIT_GAP_MINUTES
+}
+
+/** Extend `current` to include `loc`, folding unknown fixes into a running centroid. */
+const extendVisit = (current: VisitAccumulator, loc: LocationPoint): void => {
+  current.end_time = loc.time
+  if (current.source === 'unknown') {
+    const n = current.point_count
+    current.lat = (current.lat * n + loc.lat) / (n + 1)
+    current.lon = (current.lon * n + loc.lon) / (n + 1)
+    current.point_count = n + 1
+  }
+}
+
+/** Convert a visit accumulator into a PlaceVisit (computes duration, drops bookkeeping). */
+const finalizeVisit = (v: VisitAccumulator): PlaceVisit => ({
+  address: v.address,
+  detected_location_id: v.detected_location_id,
+  duration_minutes: Math.round((v.end_time.getTime() - v.start_time.getTime()) / (1000 * 60)),
+  end_time: v.end_time,
+  lat: v.lat,
+  lon: v.lon,
+  name: v.name,
+  named_location_id: v.named_location_id,
+  source: v.source,
+  start_time: v.start_time,
+})
+
 /**
  * Get place visits for a time range, using named locations when available.
  * Falls back to detected locations, then OwnTracks regions.
@@ -421,96 +538,38 @@ export const getPlaceVisits = async (user: string, start: Date, end: Date): Prom
     time: new Date(row.time),
   }))
 
-  // Group consecutive locations at the same place
+  // Group consecutive locations at the same place. named_location_id is part
+  // of the identity key (see continuesVisit) so two named locations with the
+  // same display name correctly split into separate visits.
   const visits: PlaceVisit[] = []
-  let currentVisit: {
-    name: string
-    lat: number
-    lon: number
-    start_time: Date
-    end_time: Date
-    source: 'named' | 'detected' | 'owntracks' | 'unknown'
-    address?: string
-    detected_location_id?: string
-    named_location_id?: string
-  } | null = null
+  let currentVisit: VisitAccumulator | null = null
 
   for (const loc of locations) {
-    // Try to match against named locations first
-    const namedMatch = matchLocationToNamed(loc.lat, loc.lon, namedLocations)
+    const cls = classifyFix(loc.lat, loc.lon, loc.regions, namedLocations, detectedLocations)
 
-    let placeName: string
-    let source: 'named' | 'detected' | 'owntracks' | 'unknown'
-    let address: string | undefined
-    let detectedLocationId: string | undefined
-    let namedLocationId: string | undefined
-
-    if (namedMatch) {
-      placeName = namedMatch.name
-      source = 'named'
-      namedLocationId = namedMatch.id
-    } else {
-      // Try to match against detected locations
-      const detectedMatch = matchLocationToDetected(loc.lat, loc.lon, detectedLocations)
-      if (detectedMatch) {
-        placeName = detectedMatch.address || 'Detected location'
-        source = 'detected'
-        address = detectedMatch.address || undefined
-        detectedLocationId = detectedMatch.id
-      } else if (loc.regions.length > 0) {
-        placeName = loc.regions[0]
-        source = 'owntracks'
-      } else {
-        placeName = 'Somewhere'
-        source = 'unknown'
-      }
+    if (currentVisit && continuesVisit(currentVisit, cls, loc)) {
+      extendVisit(currentVisit, loc)
+      continue
     }
 
-    // Check if this is a continuation of the same visit.
-    // named_location_id is part of the key so two named locations with the
-    // same name (e.g. different "Home" entries) correctly split into
-    // separate visits rather than being merged by display name alone.
-    const samePlace =
-      currentVisit &&
-      currentVisit.named_location_id === namedLocationId &&
-      currentVisit.name === placeName &&
-      currentVisit.detected_location_id === detectedLocationId
-
-    if (samePlace) {
-      // Extend current visit
-      currentVisit!.end_time = loc.time
-    } else {
-      // Finalize previous visit if exists
-      if (currentVisit) {
-        const duration = (currentVisit.end_time.getTime() - currentVisit.start_time.getTime()) / (1000 * 60)
-        visits.push({
-          ...currentVisit,
-          duration_minutes: Math.round(duration),
-        })
-      }
-
-      // Start new visit
-      currentVisit = {
-        address,
-        detected_location_id: detectedLocationId,
-        end_time: loc.time,
-        lat: loc.lat,
-        lon: loc.lon,
-        name: placeName,
-        named_location_id: namedLocationId,
-        source,
-        start_time: loc.time,
-      }
+    if (currentVisit) visits.push(finalizeVisit(currentVisit))
+    currentVisit = {
+      address: cls.address,
+      detected_location_id: cls.detectedLocationId,
+      end_time: loc.time,
+      lat: loc.lat,
+      lon: loc.lon,
+      name: cls.placeName,
+      named_location_id: cls.namedLocationId,
+      point_count: 1,
+      source: cls.source,
+      start_time: loc.time,
     }
   }
 
   // Don't forget the last visit
   if (currentVisit) {
-    const duration = (currentVisit.end_time.getTime() - currentVisit.start_time.getTime()) / (1000 * 60)
-    visits.push({
-      ...currentVisit,
-      duration_minutes: Math.round(duration),
-    })
+    visits.push(finalizeVisit(currentVisit))
   }
 
   // Filter out short "unknown" visits (GPS jumps) and merge into adjacent visits
@@ -518,40 +577,53 @@ export const getPlaceVisits = async (user: string, start: Date, end: Date): Prom
 }
 
 /**
- * Merge short "unknown" (Somewhere) visits into adjacent visits.
- * Short visits (<5 min) at unknown locations are typically GPS jumps.
- * They are removed and the previous/next visit is extended to cover the gap.
+ * Collapse short "unknown" (Somewhere) visits — typically brief GPS glitches.
+ *
+ * A short unknown visit is absorbed into an adjacent visit only when it is
+ * genuinely *contiguous* with it: close in both space (within
+ * `MERGE_BRIDGE_RADIUS_METERS`) and time (gap ≤ `MERGE_BRIDGE_GAP_MINUTES`).
+ * That stitches a momentary glitch back into the stay it interrupted, but it
+ * refuses to bridge a stay across travel or a long data gap — without this, a
+ * chain of brief travel fixes would keep extending a neighbouring stay and
+ * re-create the issue #811 swallowing. A short unknown that fits neither
+ * neighbour is dropped (it was movement, not a stay).
  */
 export const mergeShortUnknownVisits = (visits: PlaceVisit[], minDurationMinutes = 5): PlaceVisit[] => {
   if (visits.length === 0) return visits
 
   const result: PlaceVisit[] = []
 
+  const contiguous = (a: PlaceVisit, b: PlaceVisit): boolean => {
+    // `a` precedes `b` in time; measure the gap between them and the distance.
+    const gapMinutes = (b.start_time.getTime() - a.end_time.getTime()) / (1000 * 60)
+    return (
+      gapMinutes <= MERGE_BRIDGE_GAP_MINUTES &&
+      haversineDistance(a.lat, a.lon, b.lat, b.lon) <= MERGE_BRIDGE_RADIUS_METERS
+    )
+  }
+
   for (let i = 0; i < visits.length; i++) {
     const visit = visits[i]
 
-    // Keep non-unknown visits and unknown visits >= minDuration
+    // Keep non-unknown visits and unknown visits >= minDuration.
     if (visit.source !== 'unknown' || visit.duration_minutes >= minDurationMinutes) {
       result.push(visit)
-    } else {
-      // Short unknown visit - merge into adjacent visits
-      if (result.length > 0) {
-        // Extend previous visit to cover this gap
-        const prev = result[result.length - 1]
-        prev.end_time = visit.end_time
-        prev.duration_minutes = Math.round(
-          (prev.end_time.getTime() - prev.start_time.getTime()) / (1000 * 60),
-        )
-      } else if (i + 1 < visits.length) {
-        // No previous visit, extend next visit backwards
-        const next = visits[i + 1]
-        next.start_time = visit.start_time
-        next.duration_minutes = Math.round(
-          (next.end_time.getTime() - next.start_time.getTime()) / (1000 * 60),
-        )
-      }
-      // If it's the only visit and it's short unknown, we drop it entirely
+      continue
     }
+
+    const prev = result.length > 0 ? result[result.length - 1] : null
+    const next = i + 1 < visits.length ? visits[i + 1] : null
+
+    if (prev && contiguous(prev, visit)) {
+      // Extend the previous visit to cover this brief glitch.
+      prev.end_time = visit.end_time
+      prev.duration_minutes = Math.round((prev.end_time.getTime() - prev.start_time.getTime()) / (1000 * 60))
+    } else if (next && contiguous(visit, next)) {
+      // No usable previous visit — fold backwards into the next one.
+      next.start_time = visit.start_time
+      next.duration_minutes = Math.round((next.end_time.getTime() - next.start_time.getTime()) / (1000 * 60))
+    }
+    // Otherwise drop it: a transient fix not contiguous with either neighbour.
   }
 
   return result

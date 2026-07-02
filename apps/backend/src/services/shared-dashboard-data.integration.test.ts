@@ -1,0 +1,293 @@
+/**
+ * Integration tests for the shared dashboard data resolver.
+ *
+ * The resolver is the public-dashboard security boundary: it takes only
+ * `(user, config)` — there is no request/viewer input it could leak through —
+ * and returns a map keyed by widget id with a minimal projection per widget.
+ * These tests run every widget type against a real (empty) database to verify
+ * the wiring resolves without throwing and produces the expected shape.
+ */
+import type { DashboardConfig } from '@aurboda/api-spec'
+
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
+
+import { insertActivity } from '../db/index.ts'
+import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
+import { resolveDashboardData } from './shared-dashboard-data.ts'
+
+const CONTAINER_TIMEOUT = 120_000
+
+const everyWidgetConfig: DashboardConfig = {
+  sections: [
+    {
+      id: 'sec',
+      title: 'All widgets',
+      type: 'charts',
+      widgets: [
+        { config: { metric: 'hrv_7day', title: 'HRV' }, id: 'mc-baseline', type: 'metric_card' },
+        { config: { metric: 'steps', title: 'Steps' }, id: 'mc-period', type: 'metric_card' },
+        { config: { metric: 'sleep_score', lookback_days: 30 }, id: 'spark', type: 'sparkline_card' },
+        {
+          config: { pattern: 'exercise', source_type: 'activity_type' },
+          id: 'trend',
+          type: 'trend_chart',
+        },
+        {
+          config: { bucket_size: '1d', lookback_days: 7, pattern: 'exercise', source_type: 'activity_type' },
+          id: 'bar',
+          type: 'bar_chart',
+        },
+        {
+          config: { activity: 'exercise', activity_type: 'activity_type' },
+          id: 'corr',
+          type: 'correlation',
+        },
+        { config: { lookback_days: 7 }, id: 'actsum', type: 'activity_summary' },
+        { config: { href: '/timeline', label: 'Timeline' }, id: 'ql', type: 'quick_link' },
+        { config: { lookback_days: 7 }, id: 'hrz', type: 'hr_zones' },
+        { config: {}, id: 'goals', type: 'goal_progress' },
+      ],
+    },
+  ],
+  version: 1,
+}
+
+describe('resolveDashboardData integration', () => {
+  beforeAll(async () => {
+    await startTestDb()
+  }, CONTAINER_TIMEOUT)
+
+  afterAll(async () => {
+    await stopTestDb()
+  })
+
+  beforeEach(async () => {
+    await cleanTestDb()
+  })
+
+  test('takes only (user, config) — no viewer input channel', () => {
+    expect(resolveDashboardData.length).toBe(2)
+  })
+
+  test('resolves every widget type, keyed by widget id', async () => {
+    const user = getTestUser()
+    const data = await resolveDashboardData(user, everyWidgetConfig)
+
+    // Keyed by widget id, one entry per widget.
+    expect(Object.keys(data).sort()).toEqual(
+      ['actsum', 'bar', 'corr', 'goals', 'hrz', 'mc-baseline', 'mc-period', 'ql', 'spark', 'trend'].sort(),
+    )
+
+    // Each entry carries its widget type.
+    expect(data['mc-baseline'].type).toBe('metric_card')
+    expect(data['spark'].type).toBe('sparkline_card')
+    expect(data['trend'].type).toBe('trend_chart')
+    expect(data['bar'].type).toBe('bar_chart')
+    expect(data['corr'].type).toBe('correlation')
+    expect(data['actsum'].type).toBe('activity_summary')
+    expect(data['hrz'].type).toBe('hr_zones')
+    expect(data['goals'].type).toBe('goal_progress')
+
+    // quick_link never carries data.
+    expect(data['ql']).toEqual({ data: null, type: 'quick_link' })
+  })
+
+  test('activity_summary emits only aggregates (never the raw activity list)', async () => {
+    const user = getTestUser()
+    const data = await resolveDashboardData(user, everyWidgetConfig)
+
+    const actsum = data['actsum']
+    expect(actsum.type).toBe('activity_summary')
+    if (actsum.type === 'activity_summary' && actsum.data) {
+      // Only the three aggregate categories — no `activities` array.
+      expect(Object.keys(actsum.data).sort()).toEqual(['exercise', 'meditation', 'sleep'])
+      expect('activities' in actsum.data).toBe(false)
+      // All categories shown by default → aggregate objects, not null.
+      expect(actsum.data.exercise).toEqual({ count: 0, total_minutes: 0 })
+      expect(actsum.data.meditation).toEqual({ count: 0, total_minutes: 0 })
+      expect(actsum.data.sleep).toEqual({ avg_hours: null, count: 0 })
+    }
+
+    const bar = data['bar']
+    if (bar.type === 'bar_chart' && bar.data) {
+      for (const bucket of bar.data.buckets) {
+        expect(Object.keys(bucket).sort()).toEqual(['bucket_start', 'value'])
+      }
+    }
+  })
+
+  test('trend_chart and bar_chart resolve breakdown series when breakdown_fields is set', async () => {
+    const user = getTestUser()
+    const base = new Date('2026-02-01T12:00:00Z')
+    const seed = async (intensity: string, dayOffset: number) => {
+      const start = new Date(base)
+      start.setUTCDate(start.getUTCDate() + dayOffset)
+      await insertActivity(user, {
+        activity_type: 'exercise',
+        data: { intensity },
+        end_time: new Date(start.getTime() + 30 * 60_000),
+        source: 'health_connect',
+        start_time: start,
+      })
+    }
+    await seed('high', 0)
+    await seed('low', 1)
+    await seed('high', 2)
+
+    const data = await resolveDashboardData(user, {
+      sections: [
+        {
+          id: 's',
+          title: 'x',
+          type: 'charts',
+          widgets: [
+            {
+              config: {
+                breakdown_fields: ['intensity'],
+                lookback_days: 3650,
+                pattern: 'exercise',
+                source_type: 'activity_type',
+              },
+              id: 'trend',
+              type: 'trend_chart',
+            },
+            {
+              config: {
+                breakdown_fields: ['intensity'],
+                bucket_size: '1M',
+                lookback_days: 3650,
+                pattern: 'exercise',
+                source_type: 'activity_type',
+              },
+              id: 'bar',
+              type: 'bar_chart',
+            },
+          ],
+        },
+      ],
+      version: 1,
+    })
+
+    const trend = data['trend']
+    expect(trend.type).toBe('trend_chart')
+    expect(trend.data).not.toBeNull()
+    if (trend.type === 'trend_chart' && trend.data) {
+      expect(trend.data.breakdown_series?.slice().sort()).toEqual(['high', 'low'])
+      expect(Object.keys(trend.data.breakdown_histories ?? {}).sort()).toEqual(['high', 'low'])
+    }
+
+    const bar = data['bar']
+    expect(bar.type).toBe('bar_chart')
+    expect(bar.data).not.toBeNull()
+    if (bar.type === 'bar_chart' && bar.data) {
+      expect(bar.data.breakdown_series?.slice().sort()).toEqual(['high', 'low'])
+      expect(bar.data.breakdown_buckets?.length ?? 0).toBeGreaterThan(0)
+      // In breakdown mode the flat buckets array is empty — series live in breakdown_buckets.
+      expect(bar.data.buckets).toEqual([])
+    }
+  })
+
+  test('masked_breakdown_fields anonymizes breakdown series as A/B for public viewers', async () => {
+    const user = getTestUser()
+    const base = new Date('2026-03-01T12:00:00Z')
+    const seed = async (intensity: string, dayOffset: number) => {
+      const start = new Date(base)
+      start.setUTCDate(start.getUTCDate() + dayOffset)
+      await insertActivity(user, {
+        activity_type: 'exercise',
+        data: { intensity },
+        end_time: new Date(start.getTime() + 30 * 60_000),
+        source: 'health_connect',
+        start_time: start,
+      })
+    }
+    await seed('anaerobic', 0)
+    await seed('zone2', 1)
+
+    const data = await resolveDashboardData(user, {
+      sections: [
+        {
+          id: 's',
+          title: 'x',
+          type: 'charts',
+          widgets: [
+            {
+              config: {
+                breakdown_fields: ['intensity'],
+                lookback_days: 3650,
+                masked_breakdown_fields: ['intensity'],
+                pattern: 'exercise',
+                source_type: 'activity_type',
+              },
+              id: 'trend',
+              type: 'trend_chart',
+            },
+            {
+              config: {
+                breakdown_fields: ['intensity'],
+                bucket_size: '1M',
+                lookback_days: 3650,
+                masked_breakdown_fields: ['intensity'],
+                pattern: 'exercise',
+                source_type: 'activity_type',
+              },
+              id: 'bar',
+              type: 'bar_chart',
+            },
+          ],
+        },
+      ],
+      version: 1,
+    })
+
+    const trend = data['trend']
+    expect(trend.type).toBe('trend_chart')
+    expect(trend.data).not.toBeNull()
+    if (trend.type === 'trend_chart' && trend.data) {
+      // Real values 'anaerobic'/'zone2' are replaced with A/B; no real value leaks.
+      expect(trend.data.breakdown_series).toEqual(['A', 'B'])
+      expect(Object.keys(trend.data.breakdown_histories ?? {}).sort()).toEqual(['A', 'B'])
+      expect(JSON.stringify(trend.data)).not.toContain('anaerobic')
+      expect(JSON.stringify(trend.data)).not.toContain('zone2')
+    }
+
+    const bar = data['bar']
+    expect(bar.type).toBe('bar_chart')
+    expect(bar.data).not.toBeNull()
+    if (bar.type === 'bar_chart' && bar.data) {
+      expect(bar.data.breakdown_series).toEqual(['A', 'B'])
+      expect(bar.data.breakdown_buckets?.length ?? 0).toBeGreaterThan(0)
+      for (const bucket of bar.data.breakdown_buckets ?? []) {
+        expect(Object.keys(bucket.series).every((k) => k === 'A' || k === 'B')).toBe(true)
+      }
+      expect(JSON.stringify(bar.data)).not.toContain('anaerobic')
+    }
+  })
+
+  test('activity_summary respects visibility toggles (hidden categories omitted)', async () => {
+    const user = getTestUser()
+    const data = await resolveDashboardData(user, {
+      sections: [
+        {
+          id: 's',
+          title: 'x',
+          type: 'charts',
+          widgets: [
+            {
+              config: { lookback_days: 7, show_meditation: false, show_sleep: false, show_workouts: true },
+              id: 'a',
+              type: 'activity_summary',
+            },
+          ],
+        },
+      ],
+      version: 1,
+    })
+    const a = data['a']
+    if (a.type === 'activity_summary' && a.data) {
+      expect(a.data.exercise).not.toBeNull()
+      expect(a.data.sleep).toBeNull()
+      expect(a.data.meditation).toBeNull()
+    }
+  })
+})

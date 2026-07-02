@@ -5,46 +5,71 @@
 <h1 align="center">Aurboda</h1>
 <h3 align="center">Self-Hosted Self-Quantification Aggregator</h3>
 
-Your health, fitness, productivity, and location data is scattered across apps and services. Aurboda aggregates it all into one self-hosted platform, provides rich visualizations, and exposes everything to AI assistants via [MCP (Model Context Protocol)](https://modelcontextprotocol.io/).
+**A self-hosted personal data warehouse for quantified self.** Aurboda unifies your health, fitness, productivity, location, and nutrition data -- from Oura, Garmin, Strava, Android Health Connect, screen-time trackers, calendars, and more -- into a single timeline and database that lives on your own server.
 
-No public signup, but self-hosting is straightforward via Docker. It was initiated as a personal (manually coded) hobby project but has grown with AI coding; take it or leave it.
+Think of it as **Home Assistant, but for your personal data instead of your smart home.**
 
-### Features
+Once everything is in one place, you can:
 
-- [**Timeline**](docs/features/timeline.md) -- Multi-track interactive day view: activities, tags, metrics, screen time, music, and location
-- [**Dashboard**](docs/features/dashboard.md) -- Customizable widget-based home page with metric cards, sparklines, trends, and correlations
-- [**HR Zones**](docs/features/hr-zones.md) -- Weekly heart rate zone tracking with Huberman/Galpin protocol targets
-- [**Correlation Analysis**](docs/features/correlations.md) -- Pearson coefficients, chi-squared tests, relative risk, activity impact timelines
-- [**Trends (EMA)**](docs/features/trends.md) -- Exponential Moving Average smoothing for tags, metrics, and screen time
-- [**Goals**](docs/features/goals.md) -- Rolling-window health targets with "losing tomorrow" calculations
-- [**Sleep Analysis**](docs/features/sleep.md) -- Sleep quality tracking, hypnogram, Oura scores, sleep location detection
-- [**Screentime Categories**](docs/features/screentime-categories.md) -- Hierarchical app categorization with productivity scoring
-- [**Training Load**](docs/features/training-load.md) -- Banister model fitness/fatigue tracking (CTL/ATL/TSB)
-- [**Places**](docs/features/places.md) -- GPS location history, auto-detected locations, visit tracking with PostGIS
-- [**Meals & Nutrition**](docs/features/meals.md) -- Quick sensitivity logging, Cronometer/Oura import, per-item micronutrients
-- [**Lab Reports**](docs/features/lab-reports.md) -- Structured lab results with metric write-through and reference ranges
-- [**Custom Activity Types**](docs/features/activity-types.md) -- User-defined activity types with display categories, colors, and timeline visibility
-- [**Deduction Rules**](docs/features/deduction-rules.md) -- Automatic activity creation from data conditions (tag + activity + screentime), with rule chaining
-- [**Active Calorie Computation**](docs/features/calories.md) -- HR-based calculation with gap-fill from Health Connect
-- [**Passkey Login**](docs/passkeys.md) -- WebAuthn-based sign-in for web and Android, with Digital Asset Links to share passkeys between the website and the Android app
-- **MCP Integration** -- Full AI assistant access via [Model Context Protocol](docs/mcp-server.md) (60+ tools)
+- **Explore** it visually -- a unified timeline, customizable dashboards, and maps
+- **Analyze** it -- trends, correlations, and statistics across every source
+- **Own** it -- standard PostgreSQL on your machine, no cloud account, no subscription
+- **Ask** it anything -- connect Claude or any MCP client and query your whole life in plain language
+
+That last part is the point: instead of "my data is scattered across ten apps," you can finally ask _"is there a link between my coffee, HRV, sleep, and headaches?"_ -- and get an answer.
+
+> No public signup. It began as a hand-coded personal hobby project and has since grown with AI-assisted coding; self-host your own instance and take it or leave it.
 
 ### Data Sources
 
-| Source                                               | What it provides                                                                                       | Docs                         |
-| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | ---------------------------- |
-| [**Android Health Connect**](docs/health-connect.md) | Heart rate, HRV, sleep, exercise (80+ types), steps, weight, SpO2, VO2 max, calories, and more         | Push from Android app        |
-| **BLE Sensors**                                      | Real-time heart rate, HRV (Polar H10, etc.) and steps (Zwift RunPod, etc.)                             | Live via Android app         |
-| [**Oura Ring**](docs/oura.md)                        | Sleep stages/scores, readiness, resilience, cardiovascular age, HRV, heart rate, meditation, tags      | Pull (API) + Push (webhooks) |
-| [**Garmin Connect**](docs/garmin.md)                 | Daily summary, HR, HRV, sleep, stress, body battery, activities, SpO2, respiration, training readiness | Pull (session-based)         |
-| [**OwnTracks**](docs/owntracks.md)                   | GPS locations, geofences, place visits                                                                 | Push (HTTP mode)             |
-| [**RescueTime**](docs/rescuetime.md)                 | App/website usage, productivity scores, categories                                                     | Pull (API)                   |
-| [**ActivityWatch**](docs/activitywatch.md)           | App/window usage per device (desktop and Android)                                                      | Push (agent script)          |
-| [**Last.fm**](docs/lastfm.md)                        | Music scrobbles with auto-generated tags from configurable rules                                       | Pull (API)                   |
-| [**Calendars (ICS)**](docs/calendars.md)             | Calendar events imported as tags (Google Calendar, Outlook, iCloud, Nextcloud, etc.)                   | Pull (ICS fetch)             |
-| **Manual Entry**                                     | Any metric, tag, activity, or note                                                                     | Web UI, REST API, or MCP     |
+Aurboda's reach is the point, so here's what it ingests today:
+
+<!-- BEGIN:data-sources -->
+
+| Source                                               | What it provides                                                                                       | How                              |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | -------------------------------- |
+| [**Android Health Connect**](docs/health-connect.md) | Heart rate, HRV, sleep, exercise (80+ types), steps, weight, SpO2, VO2 max, calories, and more         | Push from Android app            |
+| **BLE Sensors**                                      | Real-time heart rate, HRV (Polar H10, etc.) and steps (Zwift RunPod, etc.)                             | Live via Android app             |
+| [**Oura Ring**](docs/oura.md)                        | Sleep stages/scores, readiness, resilience, cardiovascular age, HRV, heart rate, meditation, tags      | Pull (API) + Push (webhooks)     |
+| [**Garmin Connect**](docs/garmin.md)                 | Daily summary, HR, HRV, sleep, stress, body battery, activities, SpO2, respiration, training readiness | Pull (session-based)             |
+| [**Strava**](docs/strava.md)                         | Activities with per-second heart rate, GPS routes, cadence, and power                                  | Pull (API) + Push (webhooks)     |
+| [**OwnTracks**](docs/owntracks.md)                   | GPS locations, geofences, place visits                                                                 | Push (HTTP mode)                 |
+| [**RescueTime**](docs/rescuetime.md)                 | App/website usage, productivity scores, categories                                                     | Pull (API)                       |
+| [**ActivityWatch**](docs/activitywatch.md)           | App/window usage per device (desktop and Android)                                                      | Push (agent script)              |
+| [**Last.fm**](docs/lastfm.md)                        | Music scrobbles with auto-generated tags from configurable rules                                       | Pull (API)                       |
+| [**Calendars (ICS)**](docs/calendars.md)             | Calendar events imported as tags (Google Calendar, Outlook, iCloud, Nextcloud, etc.)                   | Pull (ICS fetch)                 |
+| **Cronometer**                                       | Meals with full per-item macros and ~50 micronutrients                                                 | CSV import                       |
+| [**Livsmedelsverket**](docs/livsmedelsverket.md)     | Canonical food library: 2,500+ Swedish foods with macros + micros (per 100 g)                          | One-shot bulk import (UI button) |
+| **Manual Entry**                                     | Any metric, tag, activity, meal, or note                                                               | Web UI, REST API, or MCP         |
+
+<!-- END:data-sources -->
 
 See [docs/data-sources.md](docs/data-sources.md) for setup overview.
+
+### What you can do
+
+Everything above feeds a common data model, so every feature works across every source:
+
+- **Explore** -- [timeline](docs/features/timeline.md), [dashboards](docs/features/dashboard.md), and [maps of where you've been](docs/features/places.md)
+- **Analyze** -- [trends with EMA smoothing](docs/features/trends.md), [correlations](docs/features/correlations.md) (Pearson, chi-squared, relative risk), and [goals](docs/features/goals.md)
+- **Track health** -- [sleep](docs/features/sleep.md), [HR zones](docs/features/hr-zones.md), [training load](docs/features/training-load.md), [lab results](docs/features/lab-reports.md), and [active-calorie computation](docs/features/calories.md)
+- **Organize life** -- [activities](docs/features/activity-types.md), [meals & nutrition](docs/features/meals.md), places, and [screen time](docs/features/screentime-categories.md)
+- **Automate** -- [deduction rules](docs/features/deduction-rules.md) that create activities from your data, plus custom activity types
+- **Share** -- read-only [public dashboards and federated challenges](docs/features/sharing.md) across Aurboda instances
+- **AI access** -- full query access from Claude or any [MCP](docs/mcp-server.md) client (60+ tools)
+
+Each links to detailed docs, and the sections below walk through the highlights with screenshots.
+
+### Your data, your server
+
+For the self-hosting crowd, the appeal is ownership:
+
+- Your data stays on your machine -- no cloud account, no third party.
+- No subscription, ever.
+- Stored in **standard PostgreSQL** you can query directly.
+- **Docker deployment** in minutes (see [Quick Start](#quick-start-docker)).
+- Open **REST API** and **MCP** -- nothing is locked in.
+- [Passkey / WebAuthn login](docs/passkeys.md) for web and Android.
 
 ---
 
@@ -66,6 +91,18 @@ The timeline is fully responsive and works on mobile browsers too:
   <img src="apps/web/public/screenshots/timeline-mobile.jpg" alt="Timeline on mobile" width="300" />
 </p>
 
+More in the [Timeline docs](docs/features/timeline.md).
+
+## Dashboard
+
+Your home page is a customizable grid of widgets -- metric cards, sparklines, trend arrows, goal progress, and charts -- organized into sections you can rearrange, add to, or remove. Dashboards can also be published read-only under your public profile (see [Sharing & Challenges](#sharing--challenges)); the one below is a public example.
+
+<p align="center">
+  <img src="apps/web/public/screenshots/dashboard.png" alt="A dashboard with strength-training, running, VO2 max, and weekly sleep-score charts" width="800" />
+</p>
+
+More in the [Dashboard docs](docs/features/dashboard.md).
+
 ## HR Zones & Fitness Tracking
 
 Track time spent in each heart rate zone across all your exercises. Set weekly goals for Zone 2 cardio and Zone 5 high-intensity work based on exercise science recommendations (Huberman/Galpin protocols).
@@ -78,6 +115,8 @@ Track time spent in each heart rate zone across all your exercises. Set weekly g
 
 The Android app includes a home screen widget so you can see your weekly zone progress without opening the app.
 
+More in the [HR Zones docs](docs/features/hr-zones.md).
+
 ## Trends (EMA)
 
 Track any metric or tag frequency over time with Exponential Moving Average smoothing. Configurable half-life (7/15/30 days) and display periods (daily, weekly, monthly).
@@ -86,6 +125,26 @@ Track any metric or tag frequency over time with Exponential Moving Average smoo
   <img src="apps/web/public/screenshots/trends.jpg" alt="Trend cards showing painkillers, coffee, weight, and custom metrics over time" width="800" />
 </p>
 
+More in the [Trends docs](docs/features/trends.md).
+
+## Meals & Nutrition
+
+Log food fast and see how your intake stacks up over time. The day view gives you configurable meal slots (Breakfast, Lunch, Snack, Dinner) with one-tap quick-log chips for your frequent foods, per-item sensitivity/allergen flags, and a running day total for calories and every micronutrient.
+
+<p align="center">
+  <img src="apps/web/public/screenshots/meals-day.png" alt="Meals day view with meal slots, quick-log food chips, and per-day nutrient totals" width="800" />
+</p>
+
+The **Overview** tab turns your log into a nutrient report. Average intake over **1, 7, 30, and 90 days** is shown side by side, each value plotted against its recommended min/max range (NNR2023 defaults, with per-user overrides). An energy-balance row compares average calories eaten against calories burned (from Garmin / Health Connect), so surplus or deficit is visible at a glance. Averaging ignores days with no meal data, so a sparse log isn't dragged toward zero.
+
+<p align="center">
+  <img src="apps/web/public/screenshots/meals-overview.png" alt="Nutrient overview report with 1/7/30/90-day average columns, reference-range bars, and energy balance" width="800" />
+</p>
+
+Import full macros and ~50 micronutrients from a Cronometer CSV export, pull meals from Oura, or build your own food library with composite recipes and custom portion units.
+
+More in the [Meals & Nutrition docs](docs/features/meals.md).
+
 ## Places & Location History
 
 Visualize your daily movements on a map. Aurboda detects frequently visited locations, lets you name them, and tracks visit durations. Powered by OwnTracks and PostGIS.
@@ -93,6 +152,8 @@ Visualize your daily movements on a map. Aurboda detects frequently visited loca
 <p align="center">
   <img src="apps/web/public/screenshots/places.jpg" alt="Places view with location timeline and map" width="800" />
 </p>
+
+More in the [Places docs](docs/features/places.md).
 
 ## AI-Ready via MCP
 
@@ -111,11 +172,25 @@ Example queries an AI can answer:
 - "Show me days where I hit my Zone 2 cardio goals"
 - "What's the probability of a headache the day after poor sleep?"
 
+More in the [MCP server docs](docs/mcp-server.md).
+
 ## Correlation Analysis
 
 Go beyond simple charts. Aurboda computes statistical correlations between any combination of activities, tags, metrics, and productivity data. Includes Pearson correlation coefficients, chi-squared significance testing, relative risk ratios, and configurable lag windows (12h to 7 days).
 
 Examples: Does evening exercise affect your sleep score? Does coffee intake correlate with HRV? What's the probability of a headache after a bad night?
+
+More in the [Correlation docs](docs/features/correlations.md).
+
+## Sharing & Challenges
+
+Publish read-only **shared dashboards** (like the one above) under your own public namespace (`/u/:username/:slug`), so anyone can view a curated set of charts without signing in. **Challenges** build on the same foundation: host a cumulative-metric or activity competition over a date span, let others join -- even from a different Aurboda instance -- and watch a live race chart and leaderboard of everyone's running total.
+
+<p align="center">
+  <img src="apps/web/public/screenshots/challenge.png" alt="Federated step challenge with a cumulative race chart, cross-instance join, and leaderboard" width="800" />
+</p>
+
+More in the [Sharing](docs/features/sharing.md) and [Challenges](docs/features/challenges.md) docs.
 
 ## Android App
 
@@ -128,6 +203,8 @@ The companion Android app syncs data from Health Connect (40+ record types inclu
   &nbsp;&nbsp;
   <img src="apps/web/public/screenshots/widget.jpg" alt="Android home screen widget" width="250" />
 </p>
+
+More in the [Health Connect docs](docs/health-connect.md).
 
 ---
 

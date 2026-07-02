@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
-import { getScrobbles, insertRawRecord, queryRawRecords } from './raw-records.ts'
+import { getScrobbles, insertRawRecord, insertRawRecords, queryRawRecords } from './raw-records.ts'
 
 const CONTAINER_TIMEOUT = 120_000
 
@@ -214,6 +214,65 @@ describe('Raw Records Integration Tests', () => {
         start: new Date('2026-02-17T12:00:00Z'),
       })
       expect(rows).toEqual([])
+    })
+  })
+
+  describe('insertRawRecords', () => {
+    test('dedupes a batch sharing (source, record_type, external_id) — no 21000', async () => {
+      const user = getTestUser()
+
+      // Two copies of the same ExerciseSessionRecord (same external_id) in one
+      // batch — the un-deduped upsert would raise 21000. Last write wins.
+      await expect(
+        insertRawRecords(user, [
+          {
+            data: { title: 'First' },
+            external_id: 'dup-1',
+            record_type: 'ExerciseSessionRecord',
+            recorded_at: new Date('2026-04-01T10:00:00Z'),
+            source: 'health_connect',
+          },
+          {
+            data: { title: 'Second' },
+            external_id: 'dup-1',
+            record_type: 'ExerciseSessionRecord',
+            recorded_at: new Date('2026-04-01T10:00:00Z'),
+            source: 'health_connect',
+          },
+        ]),
+      ).resolves.not.toThrow()
+
+      const { rows, total } = await queryRawRecords(user, {
+        record_type: 'ExerciseSessionRecord',
+        source: 'health_connect',
+      })
+      expect(total).toBe(1)
+      expect(rows[0].data).toEqual({ title: 'Second' })
+    })
+
+    test('keeps multiple rows with NULL external_id (they do not collide)', async () => {
+      const user = getTestUser()
+
+      await insertRawRecords(user, [
+        {
+          data: { n: 1 },
+          record_type: 'StepsRecord',
+          recorded_at: new Date('2026-04-02T10:00:00Z'),
+          source: 'health_connect',
+        },
+        {
+          data: { n: 2 },
+          record_type: 'StepsRecord',
+          recorded_at: new Date('2026-04-02T10:05:00Z'),
+          source: 'health_connect',
+        },
+      ])
+
+      const { total } = await queryRawRecords(user, {
+        record_type: 'StepsRecord',
+        source: 'health_connect',
+      })
+      expect(total).toBe(2)
     })
   })
 })

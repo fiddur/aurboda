@@ -51,6 +51,18 @@ export const RESERVED_USERNAMES = [
   'aurboda',
 ]
 
+/**
+ * Username format: a valid lowercase PostgreSQL role name. This also selects
+ * which per-user database a request connects to, so any caller that resolves a
+ * username to a database (e.g. public sharing routes) MUST validate against
+ * this same rule — reuse `isValidUsername` rather than re-declaring the regex.
+ */
+export const USERNAME_REGEX = /^[a-z][a-z0-9_]{2,30}$/
+
+/** True when `user` is a well-formed, non-reserved username. */
+export const isValidUsername = (user: string): boolean =>
+  USERNAME_REGEX.test(user) && !RESERVED_USERNAMES.includes(user)
+
 export const registerAuthRoutes = ({
   httpd,
   auth,
@@ -70,9 +82,12 @@ export const registerAuthRoutes = ({
   httpd.get<Record<string, never>, ServerStatusResponse>('/status', async (_req, res) => {
     const signupMode = await centralDb.getSignupMode()
     res.json({
+      federation: true,
+      product: 'aurboda',
       signup_allowed: signupMode === 'open',
       signup_mode: signupMode,
       success: true,
+      version: process.env.BUILD_SHA ?? 'dev',
     })
   })
 
@@ -113,7 +128,7 @@ export const registerAuthRoutes = ({
     }
 
     // Validate username format (alphanumeric, lowercase, no special chars for PostgreSQL role)
-    if (!/^[a-z][a-z0-9_]{2,30}$/.test(user)) {
+    if (!USERNAME_REGEX.test(user)) {
       res.status(400).json({
         error:
           'Username must be 3-31 characters, start with a letter, and contain only lowercase letters, numbers, and underscores',

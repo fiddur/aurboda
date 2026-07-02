@@ -287,6 +287,12 @@ export const bucketMetricStatsSchema = z
   .object({
     avg: z.number().meta({ description: 'Average value in bucket' }),
     count: z.number().int().meta({ description: 'Number of data points' }),
+    first_time: iso8601DateTimeSchema.meta({
+      description: 'Time of the first measurement in the bucket',
+    }),
+    last_time: iso8601DateTimeSchema.meta({
+      description: 'Time of the last measurement in the bucket',
+    }),
     max: z.number().meta({ description: 'Maximum value in bucket' }),
     min: z.number().meta({ description: 'Minimum value in bucket' }),
     sum: z
@@ -394,10 +400,9 @@ export const recalculateCaloriesResponseSchema = baseResponseSchema
       .optional()
       .meta({ description: 'New points stored (excluding already-computed)' }),
     skipped_reason: z.string().optional().meta({ description: 'Reason computation was skipped, if any' }),
-    vo2_max_source: z
-      .enum(['measured', 'fallback'])
-      .optional()
-      .meta({ description: 'Whether measured VO2 max was used or age/sex fallback' }),
+    bmr_source: z.enum(['lab', 'mifflin_st_jeor']).optional().meta({
+      description: 'Source of BMR used: lab metric (basal_metabolic_rate) or Mifflin-St Jeor formula',
+    }),
   })
   .meta({ id: 'RecalculateCaloriesResponse' })
 

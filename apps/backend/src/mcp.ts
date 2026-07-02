@@ -22,10 +22,12 @@ import type { StravaQueue } from './services/strava-queue.ts'
 
 import { registerActivityTools } from './mcp/activity-tools.ts'
 import { registerActivityTypeTools } from './mcp/activity-type-tools.ts'
+import { registerChallengeTools } from './mcp/challenge-tools.ts'
 import { registerChartTools } from './mcp/chart-tools.ts'
 import { registerCorrelationTools } from './mcp/correlation-tools.ts'
 import { registerDebugTools } from './mcp/debug-tools.ts'
 import { registerDeductionRuleTools } from './mcp/deduction-rule-tools.ts'
+import { registerFeedTools } from './mcp/feed-tools.ts'
 import { registerFoodItemTools } from './mcp/food-item-tools.ts'
 import { registerImportTools } from './mcp/import-tools.ts'
 import { registerLocationTools } from './mcp/location-tools.ts'
@@ -38,6 +40,7 @@ import { registerReportTools } from './mcp/report-tools.ts'
 import { registerScreentimeCategoryTools } from './mcp/screentime-category-tools.ts'
 import { registerSensitivityTools } from './mcp/sensitivity-tools.ts'
 import { registerSettingsTools } from './mcp/settings-tools.ts'
+import { registerSharedDashboardTools } from './mcp/shared-dashboard-tools.ts'
 import { registerSyncTools } from './mcp/sync-tools.ts'
 // tag-tools removed: tags are now activities
 import { registerTrainingLoadTools } from './mcp/training-load-tools.ts'
@@ -48,6 +51,7 @@ import { isOAuthAccessToken, validateAccessToken } from './services/oauth.ts'
 type OuraClientType = ReturnType<typeof ouraClient>
 
 interface McpDeps {
+  apiBaseUrl?: string
   centralDb?: CentralDb
   deductionQueue?: DeductionQueue
   engineDeps?: DeductionEngineDeps
@@ -56,6 +60,7 @@ interface McpDeps {
   oura?: OuraClientType
   stravaQueue?: StravaQueue
   sync?: SyncProvider
+  webHost?: string
 }
 
 const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
@@ -71,7 +76,7 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
   registerActivityTools(server, user, deps.onActivityMutated)
   registerActivityTypeTools(server, user)
   registerDeductionRuleTools(server, user, engineDeps, deps.deductionQueue)
-  registerSyncTools(server, user, deps.oura, deps.garmin, deps.stravaQueue)
+  registerSyncTools(server, user, deps.oura, deps.garmin, deps.stravaQueue, deps.onActivityMutated)
   registerSettingsTools(server, user)
   registerLocationTools(server, user)
   registerCorrelationTools(server, user, deps.sync)
@@ -87,6 +92,9 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
     registerImportTools(server, user, deps.centralDb)
   }
   registerReportTools(server, user)
+  registerSharedDashboardTools(server, user)
+  registerFeedTools(server, user)
+  registerChallengeTools(server, user, { apiBaseUrl: deps.apiBaseUrl, webHost: deps.webHost })
   registerScreentimeCategoryTools(server, user)
   registerDebugTools(server, user)
 

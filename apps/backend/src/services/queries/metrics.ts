@@ -104,27 +104,34 @@ export const computeContextualHrvBuckets = (
   max: number
   count: number
   sum: number
+  first_time: Date
+  last_time: Date
 }[] => {
   if (hrvData.length === 0) return []
 
   // Group data by bucket
-  const bucketMap = new Map<string, number[]>()
+  const bucketMap = new Map<string, { values: number[]; times: Date[] }>()
   for (const [time, value] of hrvData) {
     const bucketStart = getBucketStart(time, bucketMs, rangeStart, tz)
     const key = bucketStart.toISOString()
     if (!bucketMap.has(key)) {
-      bucketMap.set(key, [])
+      bucketMap.set(key, { times: [], values: [] })
     }
-    bucketMap.get(key)!.push(value)
+    const entry = bucketMap.get(key)!
+    entry.values.push(value)
+    entry.times.push(time)
   }
 
   // Compute aggregations for each bucket
-  return Array.from(bucketMap.entries()).map(([key, values]) => {
+  return Array.from(bucketMap.entries()).map(([key, { values, times }]) => {
     const sum = values.reduce((a, b) => a + b, 0)
+    const timeMs = times.map((t) => t.getTime())
     return {
       avg: sum / values.length,
       bucket_start: new Date(key),
       count: values.length,
+      first_time: new Date(Math.min(...timeMs)),
+      last_time: new Date(Math.max(...timeMs)),
       max: Math.max(...values),
       metric,
       min: Math.min(...values),
@@ -183,6 +190,8 @@ async function computeContextualHrvData(
     max: number
     count: number
     sum: number
+    first_time: Date
+    last_time: Date
   }[]
 > {
   // Fetch raw HRV data and context windows in parallel
@@ -205,6 +214,8 @@ async function computeContextualHrvData(
     max: number
     count: number
     sum: number
+    first_time: Date
+    last_time: Date
   }[] = []
 
   for (const metric of metrics) {
@@ -336,6 +347,8 @@ export async function queryMetricsBucketed(
     const stats: BucketMetricStats = {
       avg: row.avg,
       count: row.count,
+      first_time: row.first_time.toISOString(),
+      last_time: row.last_time.toISOString(),
       max: row.max,
       min: row.min,
     }

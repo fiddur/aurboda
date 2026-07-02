@@ -11,14 +11,29 @@ import {
   type ActivityImpactData,
   type ActivityImpactType,
   type BaselineData,
+  type HrvContextMetric,
   type HrvStatsWithDelta,
   type LocationCorrelation,
   type ProductivityCorrelation,
 } from '../../state/api'
+import { ExploreTab } from './Explore'
 import './style.css'
 
 // Period signal
 const periodDays = signal(30)
+
+// Which autonomic metric drives the productivity correlation. Not everyone has
+// continuous HRV, so heart rate / stress can be a denser context.
+const contextMetric = signal<HrvContextMetric>('hrv_rmssd')
+
+const CONTEXT_METRIC_LABELS: Record<HrvContextMetric, string> = {
+  heart_rate: 'Heart rate',
+  hrv_rmssd: 'HRV',
+  stress_level: 'Stress',
+}
+
+// Active tab
+const activeTab = signal<'hrv' | 'explore'>('hrv')
 
 // Selected activity for impact analysis
 const selectedActivity = signal<{ name: string; type: ActivityImpactType } | null>(null)
@@ -302,6 +317,7 @@ function CorrelationRow({
   )
 }
 
+// eslint-disable-next-line complexity -- large render switching between HRV and explore tabs
 export function Correlations() {
   // Fetch baseline
   const baselineQuery = useQuery({
@@ -312,8 +328,8 @@ export function Correlations() {
 
   // Fetch HRV-activities correlations
   const correlationsQuery = useQuery({
-    queryFn: () => fetchHrvActivitiesCorrelation(periodDays.value),
-    queryKey: ['hrvActivitiesCorrelation', periodDays.value],
+    queryFn: () => fetchHrvActivitiesCorrelation(periodDays.value, contextMetric.value),
+    queryKey: ['hrvActivitiesCorrelation', periodDays.value, contextMetric.value],
     staleTime: 5 * 60 * 1000,
   })
 
@@ -349,218 +365,257 @@ export function Correlations() {
   return (
     <div class="correlations-page">
       <div class="correlations-header">
-        <h1>Correlations</h1>
-        <select value={periodDays.value} onChange={handlePeriodChange} class="period-select">
-          <option value={14}>Last 14 days</option>
-          <option value={30}>Last 30 days</option>
-          <option value={60}>Last 60 days</option>
-          <option value={90}>Last 90 days</option>
-        </select>
+        <h1>Analyze</h1>
+        {activeTab.value === 'hrv' && (
+          <div class="hrv-controls">
+            <select
+              value={contextMetric.value}
+              onChange={(e) =>
+                (contextMetric.value = (e.target as HTMLSelectElement).value as HrvContextMetric)
+              }
+              class="period-select"
+              title="Which autonomic metric the productivity correlation is computed against"
+            >
+              <option value="hrv_rmssd">Context: HRV</option>
+              <option value="heart_rate">Context: Heart rate</option>
+              <option value="stress_level">Context: Stress</option>
+            </select>
+            <select value={periodDays.value} onChange={handlePeriodChange} class="period-select">
+              <option value={14}>Last 14 days</option>
+              <option value={30}>Last 30 days</option>
+              <option value={60}>Last 60 days</option>
+              <option value={90}>Last 90 days</option>
+            </select>
+          </div>
+        )}
       </div>
 
-      <p class="intro-text">
-        Analyze how different activities correlate with your heart rate variability (HRV) and heart rate.
-        Click a row to see the detailed before/during/after timeline.
-      </p>
+      <div class="analyze-tabs">
+        <button class={activeTab.value === 'hrv' ? 'active' : ''} onClick={() => (activeTab.value = 'hrv')}>
+          HRV context
+        </button>
+        <button
+          class={activeTab.value === 'explore' ? 'active' : ''}
+          onClick={() => (activeTab.value = 'explore')}
+        >
+          Explore
+        </button>
+      </div>
 
-      {isLoading && <div class="loading">Analyzing correlations...</div>}
+      {activeTab.value === 'explore' && <ExploreTab />}
 
-      {/* Baseline overview */}
-      {baseline && (
-        <section class="baseline-section">
-          <h2>Your Baseline</h2>
-          <div class="baseline-grid">
-            <div class="baseline-card">
-              <span class="baseline-label">HRV (30-day avg)</span>
-              <span class="baseline-value hrv">{formatValue(baseline.hrv.avg30day, 1)} ms</span>
-            </div>
-            <div class="baseline-card">
-              <span class="baseline-label">Resting HR (30-day avg)</span>
-              <span class="baseline-value hr">{formatValue(baseline.resting_hr.avg30day, 0)} bpm</span>
-            </div>
-            <div class="baseline-card">
-              <span class="baseline-label">Stress (30-day avg)</span>
-              <span class="baseline-value stress">{formatValue(baseline.stress.avg30day, 0)}</span>
-            </div>
-          </div>
-        </section>
-      )}
-
-      {/* Activity Impact Detail */}
-      {activityImpact && (
-        <section class="impact-section">
-          <h2>
-            Impact of "{activityImpact.activity}" on HRV/HR
-            <span class="impact-meta">
-              {activityImpact.occurrences} occurrences, avg {activityImpact.avg_duration_min} min
-            </span>
-          </h2>
-          <ImpactTimelineChart data={activityImpact} baseline={baseline} />
-          <div class="impact-legend">
-            <span>
-              <span class="dot hrv" /> HRV (higher is generally better)
-            </span>
-            <span>
-              <span class="dot hr" /> Heart Rate
-            </span>
-            <span>
-              <span class="dot stress" /> Stress
-            </span>
-            <span>
-              <span class="zone" /> Activity period
-            </span>
-          </div>
-        </section>
-      )}
-
-      {/* Correlations tables */}
-      {correlations && (
+      {activeTab.value === 'hrv' && (
         <>
-          {/* Activities */}
-          {correlations.correlations.activities.length > 0 && (
-            <section class="table-section">
-              <h2>Activities</h2>
-              <div class="table-container">
-                <table class="correlations-table">
-                  <thead>
-                    <tr>
-                      <th>Activity</th>
-                      <th>Type</th>
-                      <th>HRV</th>
-                      <th>Δ HRV</th>
-                      <th>HR</th>
-                      <th>Δ HR</th>
-                      <th>Stress</th>
-                      <th>Δ Stress</th>
-                      <th>Samples</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {correlations.correlations.activities.map((a: ActivityCorrelation) => (
-                      <CorrelationRow
-                        key={a.activity_type}
-                        name={a.activity_type}
-                        stats={a}
-                        onSelect={() => handleSelectActivity(a.activity_type, 'activity_type')}
-                        selected={isActivitySelected(
-                          selectedActivity.value,
-                          a.activity_type,
-                          'activity_type',
-                        )}
-                        type="activity"
-                        extra={`${a.occurrences}× (avg ${a.avg_duration_min} min)`}
-                      />
-                    ))}
-                  </tbody>
-                </table>
+          <p class="intro-text">
+            Analyze how different activities correlate with your heart rate variability (HRV) and heart rate.
+            Click a row to see the detailed before/during/after timeline.
+          </p>
+
+          {isLoading && <div class="loading">Analyzing correlations...</div>}
+
+          {/* Baseline overview */}
+          {baseline && (
+            <section class="baseline-section">
+              <h2>Your Baseline</h2>
+              <div class="baseline-grid">
+                <div class="baseline-card">
+                  <span class="baseline-label">HRV (30-day avg)</span>
+                  <span class="baseline-value hrv">{formatValue(baseline.hrv.avg30day, 1)} ms</span>
+                </div>
+                <div class="baseline-card">
+                  <span class="baseline-label">Resting HR (30-day avg)</span>
+                  <span class="baseline-value hr">{formatValue(baseline.resting_hr.avg30day, 0)} bpm</span>
+                </div>
+                <div class="baseline-card">
+                  <span class="baseline-label">Stress (30-day avg)</span>
+                  <span class="baseline-value stress">{formatValue(baseline.stress.avg30day, 0)}</span>
+                </div>
               </div>
             </section>
           )}
 
-          {/* Locations */}
-          {correlations.correlations.locations.length > 0 && (
-            <section class="table-section">
-              <h2>Locations</h2>
-              <div class="table-container">
-                <table class="correlations-table">
-                  <thead>
-                    <tr>
-                      <th>Location</th>
-                      <th>Type</th>
-                      <th>HRV</th>
-                      <th>Δ HRV</th>
-                      <th>HR</th>
-                      <th>Δ HR</th>
-                      <th>Stress</th>
-                      <th>Δ Stress</th>
-                      <th>Samples</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {correlations.correlations.locations.map((l: LocationCorrelation) => (
-                      <CorrelationRow
-                        key={l.location_name}
-                        name={l.location_name}
-                        stats={l}
-                        onSelect={() => handleSelectActivity(l.location_name, 'location')}
-                        selected={isActivitySelected(selectedActivity.value, l.location_name, 'location')}
-                        type="location"
-                        extra={`${l.visit_count} visits`}
-                      />
-                    ))}
-                  </tbody>
-                </table>
+          {/* Activity Impact Detail */}
+          {activityImpact && (
+            <section class="impact-section">
+              <h2>
+                Impact of "{activityImpact.activity}" on HRV/HR
+                <span class="impact-meta">
+                  {activityImpact.occurrences} occurrences, avg {activityImpact.avg_duration_min} min
+                </span>
+              </h2>
+              <ImpactTimelineChart data={activityImpact} baseline={baseline} />
+              <div class="impact-legend">
+                <span>
+                  <span class="dot hrv" /> HRV (higher is generally better)
+                </span>
+                <span>
+                  <span class="dot hr" /> Heart Rate
+                </span>
+                <span>
+                  <span class="dot stress" /> Stress
+                </span>
+                <span>
+                  <span class="zone" /> Activity period
+                </span>
               </div>
             </section>
           )}
 
-          {/* Productivity categories */}
-          {correlations.correlations.productivity.length > 0 && (
-            <section class="table-section">
-              <h2>Productivity Categories</h2>
-              <div class="table-container">
-                <table class="correlations-table">
-                  <thead>
-                    <tr>
-                      <th>Category</th>
-                      <th>Type</th>
-                      <th>HRV</th>
-                      <th>Δ HRV</th>
-                      <th>HR</th>
-                      <th>Δ HR</th>
-                      <th>Stress</th>
-                      <th>Δ Stress</th>
-                      <th>Samples</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {correlations.correlations.productivity.map((p: ProductivityCorrelation) => (
-                      <CorrelationRow
-                        key={p.category}
-                        name={p.category}
-                        stats={p}
-                        onSelect={() => handleSelectActivity(p.category, 'productivity_category')}
-                        selected={isActivitySelected(
-                          selectedActivity.value,
-                          p.category,
-                          'productivity_category',
-                        )}
-                        type="productivity"
-                        extra={
-                          p.correlation_coefficient !== null
-                            ? `r=${p.correlation_coefficient.toFixed(2)}`
-                            : undefined
-                        }
-                      />
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </section>
+          {/* Correlations tables */}
+          {correlations && (
+            <>
+              {/* Activities */}
+              {correlations.correlations.activities.length > 0 && (
+                <section class="table-section">
+                  <h2>Activities</h2>
+                  <div class="table-container">
+                    <table class="correlations-table">
+                      <thead>
+                        <tr>
+                          <th>Activity</th>
+                          <th>Type</th>
+                          <th>HRV</th>
+                          <th>Δ HRV</th>
+                          <th>HR</th>
+                          <th>Δ HR</th>
+                          <th>Stress</th>
+                          <th>Δ Stress</th>
+                          <th>Samples</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {correlations.correlations.activities.map((a: ActivityCorrelation) => (
+                          <CorrelationRow
+                            key={a.activity_type}
+                            name={a.activity_type}
+                            stats={a}
+                            onSelect={() => handleSelectActivity(a.activity_type, 'activity_type')}
+                            selected={isActivitySelected(
+                              selectedActivity.value,
+                              a.activity_type,
+                              'activity_type',
+                            )}
+                            type="activity"
+                            extra={`${a.occurrences}× (avg ${a.avg_duration_min} min)`}
+                          />
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+              )}
+
+              {/* Locations */}
+              {correlations.correlations.locations.length > 0 && (
+                <section class="table-section">
+                  <h2>Locations</h2>
+                  <div class="table-container">
+                    <table class="correlations-table">
+                      <thead>
+                        <tr>
+                          <th>Location</th>
+                          <th>Type</th>
+                          <th>HRV</th>
+                          <th>Δ HRV</th>
+                          <th>HR</th>
+                          <th>Δ HR</th>
+                          <th>Stress</th>
+                          <th>Δ Stress</th>
+                          <th>Samples</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {correlations.correlations.locations.map((l: LocationCorrelation) => (
+                          <CorrelationRow
+                            key={l.location_name}
+                            name={l.location_name}
+                            stats={l}
+                            onSelect={() => handleSelectActivity(l.location_name, 'location')}
+                            selected={isActivitySelected(selectedActivity.value, l.location_name, 'location')}
+                            type="location"
+                            extra={`${l.visit_count} visits`}
+                          />
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+              )}
+
+              {/* Productivity categories */}
+              {correlations.correlations.productivity.length > 0 && (
+                <section class="table-section">
+                  <h2>Productivity Categories</h2>
+                  <div class="table-container">
+                    <table class="correlations-table">
+                      <thead>
+                        <tr>
+                          <th>Category</th>
+                          <th>Type</th>
+                          <th>HRV</th>
+                          <th>Δ HRV</th>
+                          <th>HR</th>
+                          <th>Δ HR</th>
+                          <th>Stress</th>
+                          <th>Δ Stress</th>
+                          <th>Samples</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {correlations.correlations.productivity.map((p: ProductivityCorrelation) => (
+                          <CorrelationRow
+                            key={p.category}
+                            name={p.category}
+                            stats={p}
+                            onSelect={() => handleSelectActivity(p.category, 'productivity_category')}
+                            selected={isActivitySelected(
+                              selectedActivity.value,
+                              p.category,
+                              'productivity_category',
+                            )}
+                            type="productivity"
+                            extra={
+                              p.correlation_coefficient !== null
+                                ? `r=${p.correlation_coefficient.toFixed(2)}`
+                                : undefined
+                            }
+                          />
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+              )}
+
+              {/* Tags section removed — tags are now activities */}
+            </>
           )}
 
-          {/* Tags section removed — tags are now activities */}
+          {/* Info */}
+          <section class="info-section">
+            <h3>Understanding the data</h3>
+            <ul>
+              <li>
+                <strong>HRV (Heart Rate Variability):</strong> Higher HRV generally indicates better recovery
+                and lower stress.
+              </li>
+              <li>
+                <strong>Δ HRV / Δ HR / Δ Stress:</strong> Change from your personal baseline. Positive HRV
+                delta is typically good; negative HR/stress delta is typically good.
+              </li>
+              <li>
+                <strong>Correlation coefficient (r):</strong> For productivity, this shows how the
+                productivity score correlates with{' '}
+                {CONTEXT_METRIC_LABELS[correlations?.context_metric ?? contextMetric.value]} (-1 to 1). Pick a
+                different <em>context</em> metric above if you don't have continuous HRV. The HRV / HR /
+                Stress columns are each metric's own mean (— when that metric wasn't recorded), independent of
+                the chosen context — so a row can show a blank HRV yet still have an r from the context
+                metric.
+              </li>
+            </ul>
+          </section>
         </>
       )}
-
-      {/* Info */}
-      <section class="info-section">
-        <h3>Understanding the data</h3>
-        <ul>
-          <li>
-            <strong>HRV (Heart Rate Variability):</strong> Higher HRV generally indicates better recovery and
-            lower stress.
-          </li>
-          <li>
-            <strong>Δ HRV / Δ HR / Δ Stress:</strong> Change from your personal baseline. Positive HRV delta
-            is typically good; negative HR/stress delta is typically good.
-          </li>
-          <li>
-            <strong>Correlation coefficient (r):</strong> For productivity, this shows how the productivity
-            score correlates with HRV (-1 to 1).
-          </li>
-        </ul>
-      </section>
     </div>
   )
 }

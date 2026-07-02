@@ -92,6 +92,7 @@ export const createMealsRouter = (authMiddleware: AnyMiddleware): TypedRouter =>
     validateQuery(nutrientPeriodSummaryQuerySchema),
     async (req, res) => {
       const data = await getMealPeriodSummary(req.user!, {
+        count_only_completed: req.query.count_only_completed,
         end: req.query.end,
         start: req.query.start,
         tz: req.query.tz,
@@ -150,7 +151,13 @@ export const createMealsRouter = (authMiddleware: AnyMiddleware): TypedRouter =>
     validateBody(updateMealBodySchema),
     async (req, res) => {
       const result = await updateMealById(req.user!, req.params.id, req.body)
-      if (!result.success) return res.status(404).json({ error: result.error, success: false })
+      if (!result.success) {
+        // updateMealById can fail two ways now: the meal id doesn't resolve
+        // (404) or a portion id in the body is invalid (400). Pick by the
+        // errorCode the service set; unknown codes are treated as 500.
+        const status = result.errorCode === 'invalid' ? 400 : result.errorCode === 'not_found' ? 404 : 500
+        return res.status(status).json({ error: result.error, success: false })
+      }
       res.json({ data: result.data, success: true })
     },
   )

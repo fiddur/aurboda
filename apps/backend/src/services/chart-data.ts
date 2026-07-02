@@ -7,7 +7,8 @@
 
 import type { ChartDataBreakdownBucket, ChartDataBucket, ChartDataSourceType } from '@aurboda/api-spec'
 
-import { expandActivityTypes, query } from '../db/index.ts'
+import { expandActivityTypes, getSourceFilter, getTimeSeries, query } from '../db/index.ts'
+import { computeHrZoneSecs, getEffectiveHrZones } from './settings.ts'
 
 /** Map bucket_size parameter to PostgreSQL date_trunc interval name (day and above). */
 const bucketToTrunc: Record<string, string> = {
@@ -136,21 +137,106 @@ const queryMetricBuckets = async (
 ): Promise<ChartDataBucket[]> => {
   const aggFn = aggregation === 'mean' ? 'AVG(value)' : aggregation === 'sum' ? 'SUM(value)' : 'COUNT(*)'
   const bucket = buildBucketExpr(bucketSize, 'time', 1)
+  const p = bucket.params.length
+  const params: unknown[] = [...bucket.params, metric, start, end]
+
+  // Cumulative/derived metrics (steps, distance, calories, …) are stored from
+  // multiple sources (raw per-minute + deduplicated daily aggregates + …), so
+  // summing across all sources multiply-counts them. Restrict to the trusted
+  // source(s) — the same rule the metric/period-summary read paths use — so the
+  // chart (and challenges, which share this path) matches the real totals.
+  const sourceFilter = getSourceFilter(metric)
+  let sourceClause = ''
+  if (sourceFilter !== null) {
+    params.push(sourceFilter)
+    sourceClause = ` AND source = ANY($${params.length})`
+  }
+
   const result = await query(
     user,
     `SELECT ${bucket.expr} AS bucket_start,
             ${aggFn} AS value
        FROM time_series
-      WHERE metric = $${bucket.params.length + 1}
-        AND time BETWEEN $${bucket.params.length + 2} AND $${bucket.params.length + 3}
+      WHERE metric = $${p + 1}
+        AND time BETWEEN $${p + 2} AND $${p + 3}
+        AND deleted_at IS NULL${sourceClause}
       GROUP BY 1
       ORDER BY 1`,
-    [...bucket.params, metric, start, end],
+    params,
   )
   return result.rows.map((row) => ({
     bucket_start: row.bucket_start.toISOString(),
     value: Number(row.value),
   }))
+}
+
+const HR_ZONE_BIN_ORIGIN = Date.UTC(2000, 0, 1)
+
+/** UTC bucket-start for a timestamp, mirroring buildBucketExpr's date_trunc/date_bin. */
+const utcBucketStart = (t: Date, bucketSize: string): Date => {
+  const bin = (intervalMs: number): Date =>
+    new Date(HR_ZONE_BIN_ORIGIN + Math.floor((t.getTime() - HR_ZONE_BIN_ORIGIN) / intervalMs) * intervalMs)
+  switch (bucketSize) {
+    case '1m':
+      return bin(60_000)
+    case '5m':
+      return bin(5 * 60_000)
+    case '15m':
+      return bin(15 * 60_000)
+    case '1h':
+      return new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate(), t.getUTCHours()))
+    case '1w': {
+      const d = new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate()))
+      d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7)) // back to Monday (date_trunc('week'))
+      return d
+    }
+    case '1M':
+      return new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), 1))
+    default:
+      return new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate()))
+  }
+}
+
+/**
+ * Bucketed seconds-in-zone for an `hr_zone_<n>_sec` metric. HR-zone metrics are
+ * not stored — they're computed from heart-rate samples + the user's effective
+ * zones (same as the period summary / HR-zones widget). We group the samples
+ * into buckets and run the zone computation per bucket.
+ */
+const queryHrZoneBuckets = async (
+  user: string,
+  metric: string,
+  start: string,
+  end: string,
+  bucketSize: string,
+): Promise<ChartDataBucket[]> => {
+  const zoneIndex = Number.parseInt(metric.replace('hr_zone_', '').replace('_sec', ''), 10) as
+    | 0
+    | 1
+    | 2
+    | 3
+    | 4
+    | 5
+  const [hrData, { zones }] = await Promise.all([
+    getTimeSeries(user, 'heart_rate', new Date(start), new Date(end)),
+    getEffectiveHrZones(user),
+  ])
+  if (hrData.length === 0) return []
+
+  const groups = new Map<number, [Date, number][]>()
+  for (const point of hrData) {
+    const key = utcBucketStart(point[0], bucketSize).getTime()
+    const arr = groups.get(key)
+    if (arr) arr.push(point)
+    else groups.set(key, [point])
+  }
+
+  return [...groups.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([key, points]) => ({
+      bucket_start: new Date(key).toISOString(),
+      value: computeHrZoneSecs(points, zones)[zoneIndex],
+    }))
 }
 
 /**
@@ -296,6 +382,25 @@ const queryActivityTypeBreakdown = async (
 }
 
 /**
+ * Route a metric-source query: HR-zone metrics are computed from heart-rate data,
+ * `zone2_weekly` is a dashboard alias for zone-2 seconds, everything else is a
+ * stored time-series metric.
+ */
+const queryMetricSource = async (
+  user: string,
+  pattern: string | undefined,
+  start: string,
+  end: string,
+  bucketSize: string,
+  aggregation: 'count' | 'mean' | 'sum',
+): Promise<ChartDataBucket[]> => {
+  const metric = pattern === 'zone2_weekly' ? 'hr_zone_2_sec' : pattern
+  if (!metric) return []
+  if (/^hr_zone_[0-5]_sec$/.test(metric)) return queryHrZoneBuckets(user, metric, start, end, bucketSize)
+  return queryMetricBuckets(user, metric, start, end, bucketSize, aggregation)
+}
+
+/**
  * Get bucketed chart data for the given source type and parameters.
  */
 export const getChartData = async (
@@ -349,7 +454,7 @@ export const getChartData = async (
     }
 
     case 'metric':
-      buckets = pattern ? await queryMetricBuckets(user, pattern, start, end, bucket_size, aggregation) : []
+      buckets = await queryMetricSource(user, pattern, start, end, bucket_size, aggregation)
       break
 
     case 'productivity_category':

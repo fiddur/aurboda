@@ -138,6 +138,28 @@ a.entity-type-badge:hover {
   gap: 0.5rem;
 }
 
+.activity-stats-table {
+  border-collapse: collapse;
+  font-size: 0.9rem;
+  margin-bottom: 0.5rem;
+}
+
+.activity-stats-table th {
+  text-align: left;
+  font-weight: 500;
+  color: #6b7280;
+  padding: 0.25rem 1rem 0.25rem 0;
+  vertical-align: top;
+  white-space: nowrap;
+}
+
+.activity-stats-table td {
+  color: #374151;
+  padding: 0.25rem 0;
+  vertical-align: top;
+  white-space: pre-wrap;
+}
+
 .field-row {
   display: flex;
   gap: 1rem;

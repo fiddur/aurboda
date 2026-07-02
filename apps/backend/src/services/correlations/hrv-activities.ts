@@ -2,6 +2,8 @@
  * HRV-activities correlation analysis.
  */
 
+import type { HrvContextMetric } from '@aurboda/api-spec'
+
 import type { SyncProvider } from '../queries/index.ts'
 import type {
   ActivityCorrelation,
@@ -22,6 +24,7 @@ export async function getHrvActivitiesCorrelation(
   user: string,
   periodDays: number = 30,
   sync?: SyncProvider,
+  contextMetric: HrvContextMetric = 'hrv_rmssd',
 ): Promise<HrvActivitiesResult> {
   const end = new Date()
   end.setHours(23, 59, 59, 999)
@@ -49,6 +52,11 @@ export async function getHrvActivitiesCorrelation(
     getAllActivitiesInRange(user, start, end),
   ])
 
+  // The series the productivity correlation is computed against. HRV is the
+  // default, but heart rate / stress are denser when continuous HRV is sparse.
+  const contextData =
+    contextMetric === 'heart_rate' ? hrData : contextMetric === 'stress_level' ? stressData : hrvData
+
   // Calculate baseline stats
   const baselineHrvValues = hrvData.map(([, v]) => v)
   const baselineHrValues = hrData.map(([, v]) => v)
@@ -59,13 +67,21 @@ export async function getHrvActivitiesCorrelation(
   // === Productivity correlations by category ===
   const productivityByCategory = new Map<
     string,
-    { hrvValues: number[]; hrValues: number[]; stressValues: number[]; minutes: number; scores: number[] }
+    {
+      hrvValues: number[]
+      hrValues: number[]
+      stressValues: number[]
+      contextValues: number[]
+      minutes: number
+      scores: number[]
+    }
   >()
 
   for (const record of productivity) {
     const category = record.resolved_category?.join(' > ') || record.category || 'Uncategorized'
     if (!productivityByCategory.has(category)) {
       productivityByCategory.set(category, {
+        contextValues: [],
         hrValues: [],
         hrvValues: [],
         minutes: 0,
@@ -76,17 +92,19 @@ export async function getHrvActivitiesCorrelation(
     const cat = productivityByCategory.get(category)!
     cat.minutes += record.duration_sec / 60
 
-    // Get HRV/HR during this productivity window
+    // Get HRV/HR/stress during this productivity window (all shown in the table).
     const hrvInWindow = getDataInRange(hrvData, record.start_time, record.end_time)
     const hrInWindow = getDataInRange(hrData, record.start_time, record.end_time)
     const stressInWindow = getDataInRange(stressData, record.start_time, record.end_time)
+    const contextInWindow = getDataInRange(contextData, record.start_time, record.end_time)
     cat.hrvValues.push(...hrvInWindow)
     cat.hrValues.push(...hrInWindow)
     cat.stressValues.push(...stressInWindow)
+    cat.contextValues.push(...contextInWindow)
 
     if (record.productivity !== undefined && record.productivity !== null) {
-      // Add productivity score for correlation calculation - one score per HRV value
-      cat.scores.push(...hrvInWindow.map(() => record.productivity!))
+      // One productivity score per context-metric value, for the correlation.
+      cat.scores.push(...contextInWindow.map(() => record.productivity!))
     }
   }
 
@@ -97,10 +115,10 @@ export async function getHrvActivitiesCorrelation(
     const stats = calculateHrvStats(data.hrvValues, data.hrValues, data.minutes, data.stressValues)
     const statsWithDelta = addBaselineDelta(stats, baseline)
 
-    // Calculate correlation between productivity score and HRV
+    // Correlation between productivity score and the chosen context metric.
     const correlation =
-      data.scores.length >= 3 && data.hrvValues.length === data.scores.length
-        ? pearsonCorrelation(data.scores, data.hrvValues)
+      data.scores.length >= 3 && data.contextValues.length === data.scores.length
+        ? pearsonCorrelation(data.scores, data.contextValues)
         : null
 
     productivityCorrelations.push({
@@ -226,6 +244,7 @@ export async function getHrvActivitiesCorrelation(
 
   return {
     baseline,
+    context_metric: contextMetric,
     correlations: {
       activities: activityCorrelations,
       locations: locationCorrelations,

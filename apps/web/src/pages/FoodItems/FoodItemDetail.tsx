@@ -1,6 +1,7 @@
 import {
   type FoodItemDetail as ApiFoodItemDetail,
   type FoodItemIngredient,
+  type FoodItemPortion,
   NUTRIENT_FIELDS,
   type NutrientFieldDef,
 } from '@aurboda/api-spec'
@@ -12,6 +13,13 @@ import { ConfirmButton } from '../../components/ConfirmButton'
 import { FoodItemAutocomplete } from '../../components/FoodItemAutocomplete'
 import { IconInput } from '../../components/IconInput'
 import { type IngredientRow, IngredientList } from '../../components/IngredientList'
+import {
+  addFoodItemPortionApi,
+  deleteFoodItemPortionApi,
+  duplicateFoodItemApi,
+  setDefaultPortionApi,
+  updateFoodItemPortionApi,
+} from '../../state/api/meals'
 import { auth } from '../../state/auth'
 import { isEmoji, isIconPath, isUrl } from '../../utils/emojiLookup'
 import './FoodItemDetail.css'
@@ -289,6 +297,19 @@ export function FoodItemDetail() {
     },
   })
 
+  const duplicateMutation = useMutation({
+    mutationFn: () => duplicateFoodItemApi(id),
+    onError: (err: Error) => setSaveError(err.message ?? 'Duplicate failed'),
+    onSuccess: (copy) => {
+      // Seed the new copy's detail so its page renders without a refetch, then
+      // navigate there so the user can immediately tweak the one ingredient
+      // they wanted to change.
+      queryClient.setQueryData(['foodItem', copy.id], copy)
+      queryClient.invalidateQueries({ queryKey: ['foodItems'] })
+      route(`/food-items/${copy.id}`)
+    },
+  })
+
   const [resnapshotResult, setResnapshotResult] = useState<{
     meals_updated: number
     rows_updated: number
@@ -424,6 +445,19 @@ export function FoodItemDetail() {
             isPending={resnapshotMutation.isPending}
             buttonClass="btn-secondary"
           />
+          <button
+            type="button"
+            class="btn-secondary"
+            onClick={() => duplicateMutation.mutate()}
+            disabled={duplicateMutation.isPending}
+            title={
+              isShared
+                ? `Create an editable personal copy of ${item.name}`
+                : `Create a copy of ${item.name} to edit`
+            }
+          >
+            {duplicateMutation.isPending ? 'Duplicating…' : 'Duplicate'}
+          </button>
           {!isShared && (
             <ConfirmButton
               label="Delete"
@@ -469,6 +503,11 @@ export function FoodItemDetail() {
         commitDefaultQuantity={commitDefaultQuantity}
         commitDefaultUnit={commitDefaultUnit}
       />
+
+      {/* TODO: portions section for shared/central items goes through the
+          override layer (shared_food_item_overrides.default_portion_id +
+          a future per-user portions-on-central pattern). Deferred. */}
+      {!isShared && <PortionsSection item={item} foodItemId={id} />}
 
       <CompositeOrAtomicSection
         item={item}
@@ -539,7 +578,7 @@ function DefaultMetaRow({
     <div class="fi-meta">
       {item.source && <span class="fi-source">Source: {item.source}</span>}
       <span class="fi-default-edit">
-        Default:
+        Base:
         {isShared ? (
           <span class="fi-default-readonly">
             {item.default_quantity ?? '—'} {item.default_unit ?? ''}
@@ -550,14 +589,14 @@ function DefaultMetaRow({
               type="number"
               step="0.1"
               value={defaultQuantity}
-              placeholder="Qty"
+              placeholder="100"
               onInput={(e) => setDefaultQuantity((e.target as HTMLInputElement).value)}
               onBlur={commitDefaultQuantity}
             />
             <input
               type="text"
               value={defaultUnit}
-              placeholder="Unit"
+              placeholder="g"
               onInput={(e) => setDefaultUnit((e.target as HTMLInputElement).value)}
               onBlur={commitDefaultUnit}
             />
@@ -565,6 +604,297 @@ function DefaultMetaRow({
         )}
       </span>
     </div>
+  )
+}
+
+// Default logging amount — number + unit dropdown, same shape as the meal
+// logger's row. The dropdown lists the base unit (value "") plus every named
+// unit; picking one sets default_portion_id, the number sets
+// default_log_quantity. Changing the unit keeps the current amount untouched
+// (the user may have typed/altered it first) — only the unit changes.
+function DefaultLoggingAmount({
+  portions,
+  baseUnit,
+  effectiveDefault,
+  effectiveQty,
+  onCommit,
+}: {
+  portions: FoodItemPortion[]
+  baseUnit: string
+  effectiveDefault: string | undefined
+  effectiveQty: number | undefined
+  onCommit: (portionId: string | null, quantity: number | null) => void
+}) {
+  const [qty, setQty] = useState(effectiveQty !== undefined ? String(effectiveQty) : '')
+  useEffect(() => {
+    setQty(effectiveQty !== undefined ? String(effectiveQty) : '')
+  }, [effectiveQty])
+
+  const commitQty = () => {
+    const t = qty.trim()
+    if (t === '') {
+      if (effectiveQty !== undefined) onCommit(effectiveDefault ?? null, null)
+      return
+    }
+    const n = parseFloat(t)
+    if (!(n > 0)) {
+      setQty(effectiveQty !== undefined ? String(effectiveQty) : '')
+      return
+    }
+    if (n !== effectiveQty) onCommit(effectiveDefault ?? null, n)
+  }
+
+  return (
+    <div class="fi-default-amount">
+      <label>Default:</label>
+      <input
+        type="number"
+        step="0.1"
+        class="fi-default-qty"
+        value={qty}
+        placeholder="Qty"
+        onInput={(e) => setQty((e.target as HTMLInputElement).value)}
+        onBlur={commitQty}
+      />
+      <select
+        class="fi-default-unit"
+        value={effectiveDefault ?? ''}
+        onChange={(e) => {
+          // Keep the current amount — only the unit changes. Empty = an
+          // intentional clear (null → base quantity). A transient/invalid
+          // value (e.g. mid-edit "abc" or a negative) must NOT wipe a saved
+          // amount, so fall back to the last effective quantity rather than
+          // committing null.
+          const t = qty.trim()
+          let quantity: number | null
+          if (t === '') {
+            quantity = null
+          } else {
+            const n = parseFloat(t)
+            quantity = n > 0 ? n : (effectiveQty ?? null)
+          }
+          onCommit((e.target as HTMLSelectElement).value || null, quantity)
+        }}
+      >
+        <option value="">{baseUnit}</option>
+        {portions.map((p) => (
+          <option key={p.id} value={p.id}>
+            {p.label_unit}
+          </option>
+        ))}
+      </select>
+      <span class="fi-default-amount-hint">prefilled when logging</span>
+    </div>
+  )
+}
+
+function PortionsSection({ item, foodItemId }: { item: ApiFoodItemDetail; foodItemId: string }) {
+  const queryClient = useQueryClient()
+  const portions = item.portions ?? []
+  const baseUnit = item.default_unit ?? 'base unit'
+  const baseQty = item.default_quantity
+  const [draft, setDraft] = useState({ label_unit: '', base_equivalent: '' })
+  // Keep the add-row error separate from row-level (update/delete/default)
+  // errors so an unrelated failure doesn't clear the message a user needs
+  // to see while they fix their draft inputs.
+  const [addError, setAddError] = useState<string | null>(null)
+  const [rowError, setRowError] = useState<string | null>(null)
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['foodItem', foodItemId] })
+
+  const addMutation = useMutation({
+    mutationFn: () => {
+      const be = parseFloat(draft.base_equivalent)
+      if (!draft.label_unit.trim() || !(be > 0)) {
+        throw new Error('Unit and base-equivalent are required, and base-equivalent must be positive')
+      }
+      return addFoodItemPortionApi(foodItemId, {
+        label_unit: draft.label_unit.trim(),
+        base_equivalent: be,
+      })
+    },
+    onError: (err: Error) => setAddError(err.message),
+    onSuccess: () => {
+      setDraft({ label_unit: '', base_equivalent: '' })
+      setAddError(null)
+      invalidate()
+    },
+  })
+
+  const updateMutation = useMutation({
+    mutationFn: (input: { portionId: string; body: Partial<FoodItemPortion> }) =>
+      updateFoodItemPortionApi(foodItemId, input.portionId, {
+        label_unit: input.body.label_unit,
+        base_equivalent: input.body.base_equivalent,
+      }),
+    onError: (err: Error) => setRowError(err.message),
+    onSuccess: () => {
+      setRowError(null)
+      invalidate()
+    },
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: (portionId: string) => deleteFoodItemPortionApi(foodItemId, portionId),
+    onError: (err: Error) => setRowError(err.message),
+    onSuccess: () => {
+      setRowError(null)
+      invalidate()
+    },
+  })
+
+  // Default logging amount: which unit (portion id, or null = base) and how
+  // much (quantity). The quantity carries across unit switches.
+  const defaultMutation = useMutation({
+    mutationFn: (input: { portionId: string | null; quantity: number | null }) =>
+      setDefaultPortionApi(foodItemId, input.portionId, input.quantity),
+    onError: (err: Error) => setRowError(err.message),
+    onSuccess: () => {
+      setRowError(null)
+      invalidate()
+    },
+  })
+
+  // Effective default is exposed by the server (resolves override layer for
+  // central items); for per-user items it mirrors the row column.
+  const effectiveDefault = item.effective_default_portion_id
+  const effectiveQty = item.effective_default_quantity
+
+  return (
+    <section class="fi-portions">
+      <header class="fi-portions-header">
+        <h2>Units</h2>
+        <p class="fi-portions-help">
+          Extra units this food can be logged in. Each is "1 unit = amount in {baseUnit}"
+          {baseQty !== undefined ? ` (nutrient values are per ${baseQty} ${baseUnit})` : ''}. Pick the default
+          unit and amount to prefill when logging.
+        </p>
+      </header>
+
+      <DefaultLoggingAmount
+        portions={portions}
+        baseUnit={baseUnit}
+        effectiveDefault={effectiveDefault}
+        effectiveQty={effectiveQty}
+        onCommit={(portionId, quantity) => defaultMutation.mutate({ portionId, quantity })}
+      />
+
+      {portions.length > 0 && (
+        <ul class="fi-portions-list">
+          {portions.map((p) => (
+            <PortionRow
+              key={p.id}
+              portion={p}
+              baseUnit={baseUnit}
+              onUpdate={(body) => updateMutation.mutate({ portionId: p.id, body })}
+              onDelete={() => deleteMutation.mutate(p.id)}
+            />
+          ))}
+        </ul>
+      )}
+
+      <div class="fi-portion-add">
+        <span class="fi-portion-add-prefix">1</span>
+        <input
+          type="text"
+          placeholder="Unit (e.g. ruta)"
+          value={draft.label_unit}
+          onInput={(e) => setDraft({ ...draft, label_unit: (e.target as HTMLInputElement).value })}
+        />
+        <span class="fi-portion-eq-sep">=</span>
+        <input
+          type="number"
+          step="0.01"
+          placeholder={`Amount in ${baseUnit}`}
+          value={draft.base_equivalent}
+          onInput={(e) => setDraft({ ...draft, base_equivalent: (e.target as HTMLInputElement).value })}
+        />
+        <span class="fi-portion-base-unit">{baseUnit}</span>
+        <button
+          type="button"
+          class="btn-secondary"
+          onClick={() => addMutation.mutate()}
+          disabled={addMutation.isPending}
+        >
+          Add unit
+        </button>
+      </div>
+      {addError && <p class="fi-portions-error">{addError}</p>}
+      {rowError && <p class="fi-portions-error">{rowError}</p>}
+    </section>
+  )
+}
+
+function PortionRow({
+  portion,
+  baseUnit,
+  onUpdate,
+  onDelete,
+}: {
+  portion: FoodItemPortion
+  baseUnit: string
+  onUpdate: (body: Partial<FoodItemPortion>) => void
+  onDelete: () => void
+}) {
+  // Auto-save on blur — mirrors the rest of FoodItemDetail's commit pattern.
+  // Local state lets the user edit without each keystroke racing to the API.
+  const [lu, setLu] = useState(portion.label_unit)
+  const [be, setBe] = useState(String(portion.base_equivalent))
+
+  // Independent effects so a mutation/invalidate that refreshes the
+  // server-side value of one field doesn't clobber unsaved input on a
+  // sibling field (the previous combined effect dropped pending edits any
+  // time the user blurred a different field on the same row).
+  useEffect(() => {
+    setLu(portion.label_unit)
+  }, [portion.id, portion.label_unit])
+  useEffect(() => {
+    setBe(String(portion.base_equivalent))
+  }, [portion.id, portion.base_equivalent])
+
+  const commitUnit = () => {
+    const trimmed = lu.trim()
+    if (!trimmed) {
+      setLu(portion.label_unit)
+      return
+    }
+    if (trimmed !== portion.label_unit) onUpdate({ label_unit: trimmed })
+  }
+  const commitBase = () => {
+    const parsed = parseFloat(be)
+    if (!(parsed > 0)) {
+      // Revert; the schema rejects non-positive values.
+      setBe(String(portion.base_equivalent))
+      return
+    }
+    if (parsed !== portion.base_equivalent) onUpdate({ base_equivalent: parsed })
+  }
+
+  return (
+    <li class="fi-portion-row">
+      <span class="fi-portion-add-prefix">1</span>
+      <input
+        type="text"
+        value={lu}
+        onInput={(e) => setLu((e.target as HTMLInputElement).value)}
+        onBlur={commitUnit}
+      />
+      <span class="fi-portion-eq-sep">=</span>
+      <input
+        type="number"
+        step="0.01"
+        value={be}
+        onInput={(e) => setBe((e.target as HTMLInputElement).value)}
+        onBlur={commitBase}
+      />
+      <span class="fi-portion-base-unit">{baseUnit}</span>
+      <ConfirmButton
+        label="Delete"
+        confirmMessage={`Delete unit "${portion.label_unit}"?`}
+        onConfirm={onDelete}
+        buttonClass="btn-link fi-portion-del"
+      />
+    </li>
   )
 }
 
@@ -594,22 +924,34 @@ function CompositeOrAtomicSection({
 
   if (isComposite) {
     const initial: IngredientRow[] = (item.ingredients ?? []).map((ing) => ({
+      food_item_portion_id: ing.food_item_portion_id,
       icon: ing.icon,
       ingredient_food_item_id: ing.ingredient_food_item_id,
       name: ing.name,
-      quantity: ing.quantity,
+      portion_count: ing.portion_count,
+      quantity: ing.quantity ?? 0,
       sort_order: ing.sort_order ?? 0,
       unit: ing.unit,
     }))
 
     const persist = (rows: IngredientRow[]) => {
       ingredientsMutation.mutate(
-        rows.map((r) => ({
-          ingredient_food_item_id: r.ingredient_food_item_id,
-          quantity: r.quantity,
-          sort_order: r.sort_order,
-          unit: r.unit,
-        })),
+        rows.map((r) =>
+          // Portion path: send the portion + count. Legacy path: quantity + unit.
+          r.food_item_portion_id && typeof r.portion_count === 'number'
+            ? {
+                food_item_portion_id: r.food_item_portion_id,
+                ingredient_food_item_id: r.ingredient_food_item_id,
+                portion_count: r.portion_count,
+                sort_order: r.sort_order,
+              }
+            : {
+                ingredient_food_item_id: r.ingredient_food_item_id,
+                quantity: r.quantity,
+                sort_order: r.sort_order,
+                unit: r.unit,
+              },
+        ),
       )
     }
 

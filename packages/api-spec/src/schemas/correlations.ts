@@ -94,9 +94,23 @@ export type BaselineResponse = z.infer<typeof baselineResponseSchema>
 // HRV-Activities endpoint
 // ============================================================================
 
+/**
+ * The autonomic metric the HRV-context analysis correlates against. HRV is the
+ * default, but not everyone has continuous HRV — heart rate and stress are
+ * denser and let the analysis still produce a meaningful productivity
+ * correlation.
+ */
+export const hrvContextMetricSchema = z.enum(['hrv_rmssd', 'heart_rate', 'stress_level']).meta({
+  description: 'Autonomic metric to correlate against (default: hrv_rmssd)',
+  id: 'HrvContextMetric',
+})
+
+export type HrvContextMetric = z.infer<typeof hrvContextMetricSchema>
+
 /** HRV-Activities query parameters */
 export const hrvActivitiesQuerySchema = z
   .object({
+    context_metric: hrvContextMetricSchema.optional().meta({ description: 'Metric to correlate against' }),
     period_days: z
       .string()
       .optional()
@@ -144,6 +158,9 @@ export type ActivityCorrelation = z.infer<typeof activityCorrelationSchema>
 export const hrvActivitiesDataSchema = z
   .object({
     baseline: hrvStatsSchema,
+    context_metric: hrvContextMetricSchema.meta({
+      description: 'The metric the correlation_coefficient was computed against',
+    }),
     correlations: z.object({
       activities: z.array(activityCorrelationSchema),
       locations: z.array(locationCorrelationSchema),
@@ -341,9 +358,28 @@ export type EventProbabilityResponse = z.infer<typeof eventProbabilityResponseSc
 // Generic Correlation endpoint
 // ============================================================================
 
+/** Nutrient keys that have authoritative meal-level total columns. */
+export const nutrientKeySchema = z.enum(['calories', 'protein', 'carbs', 'fat', 'fiber']).meta({
+  description: 'Nutrient with a per-day meal total',
+  example: 'carbs',
+  id: 'NutrientKey',
+})
+
+export type NutrientKey = z.infer<typeof nutrientKeySchema>
+
+/** Threshold that turns a numeric value into a discrete event. */
+export const thresholdSpecSchema = z
+  .object({
+    op: z.enum(['gt', 'gte', 'lt', 'lte']).meta({ description: 'Comparison operator' }),
+    value: z.number().meta({ description: 'Threshold value' }),
+  })
+  .meta({ id: 'ThresholdSpec' })
+
+export type ThresholdSpec = z.infer<typeof thresholdSpecSchema>
+
 /** Trigger condition type */
 export const triggerConditionTypeSchema = z
-  .enum(['activity', 'tag', 'productivity_category', 'productivity_app'])
+  .enum(['activity', 'tag', 'productivity_category', 'productivity_app', 'nutrition'])
   .meta({
     description: 'Type of trigger event',
     example: 'tag',
@@ -356,13 +392,19 @@ export type TriggerConditionType = z.infer<typeof triggerConditionTypeSchema>
 export const triggerConditionSchema = z
   .object({
     min_count: z.number().int().optional().meta({
-      description: 'Minimum occurrences within the window (default: 1)',
+      description:
+        'Minimum occurrences within the window (default: 1). In event-outcome mode (day-granular) this counts distinct days with the event, not raw occurrences.',
       example: 3,
     }),
-    pattern: z.string().meta({
-      description: 'Pattern to match (regex for tags, exact match for activity types)',
+    nutrient: nutrientKeySchema.optional().meta({ description: 'Nutrient to use when type is "nutrition"' }),
+    pattern: z.string().optional().meta({
+      description:
+        'Pattern to match (regex for tags, exact match for activity types). Omit for nutrition triggers.',
       example: 'meditation',
     }),
+    threshold: thresholdSpecSchema
+      .optional()
+      .meta({ description: 'Threshold turning a daily value into a trigger (default: value > 0)' }),
     type: triggerConditionTypeSchema,
     window_days: z.number().int().optional().meta({
       description: 'Rolling window in days for counting occurrences (default: 1)',
@@ -413,18 +455,63 @@ export const productivityOutcomeSchema = z
 
 export type ProductivityOutcome = z.infer<typeof productivityOutcomeSchema>
 
+/**
+ * Event outcome schema — treats outcome entries as discrete onsets rather than
+ * averaging them. Designed for presence-only metrics (e.g. back_pain) where a
+ * row only exists on "bad" days. See issue #792.
+ */
+export const eventOutcomeSchema = z
+  .object({
+    collapse_gap_days: z.number().int().optional().meta({
+      description: 'Consecutive event days within this gap collapse into one onset (default: 3)',
+      example: 3,
+    }),
+    metric: z.string().optional().meta({
+      description: 'Metric name when source is "metric" (e.g. back_pain)',
+      example: 'back_pain',
+    }),
+    pattern: z.string().optional().meta({
+      description: 'Regex for the outcome tag when source is "tag"',
+      example: 'migraine',
+    }),
+    source: z
+      .enum(['metric', 'tag'])
+      .meta({ description: 'Where outcome events come from', example: 'metric' }),
+    threshold: thresholdSpecSchema
+      .optional()
+      .meta({ description: 'Value threshold defining an event (default: value > 0)' }),
+    type: z.literal('event'),
+  })
+  .meta({ id: 'EventOutcome' })
+
+export type EventOutcome = z.infer<typeof eventOutcomeSchema>
+
 /** Outcome configuration (discriminated union) */
 export const outcomeConfigSchema = z.discriminatedUnion('type', [
   tagOutcomeSchema,
   metricOutcomeSchema,
   productivityOutcomeSchema,
+  eventOutcomeSchema,
 ])
 
 export type OutcomeConfig = z.infer<typeof outcomeConfigSchema>
 
+/** Denominator universe for event-outcome analysis. */
+export const denominatorSchema = z.enum(['known', 'all']).meta({
+  description:
+    'Which days form the denominator: "known" = days where outcome status is known (default), "all" = every day in the window',
+  example: 'known',
+  id: 'CorrelationDenominator',
+})
+
+export type CorrelationDenominator = z.infer<typeof denominatorSchema>
+
 /** Generic correlation request body */
 export const genericCorrelationBodySchema = z
   .object({
+    denominator: denominatorSchema.optional().meta({
+      description: 'Denominator universe for event outcomes (default: known)',
+    }),
     lag_windows: z
       .array(z.string())
       .optional()
@@ -434,8 +521,16 @@ export const genericCorrelationBodySchema = z
       }),
     outcome: outcomeConfigSchema.meta({ description: 'Outcome to measure' }),
     period_days: z.number().int().optional().meta({
-      description: 'Days to analyze (default: 90)',
+      description: 'Days to analyze (default: 90). Ignored when period_start is given.',
       example: 90,
+    }),
+    period_end: z.string().optional().meta({
+      description: 'Inclusive end of the analysis regime (YYYY-MM-DD, default: today)',
+      example: '2024-12-31',
+    }),
+    period_start: z.string().optional().meta({
+      description: 'Inclusive start of the analysis regime (YYYY-MM-DD). Scopes to a behavioural era.',
+      example: '2019-09-28',
     }),
     triggers: z.array(triggerConditionSchema).min(1).meta({
       description: 'Trigger conditions (all must be satisfied for a match)',
@@ -516,10 +611,59 @@ export const genericBaselineSchema = z.union([
 
 export type GenericBaseline = z.infer<typeof genericBaselineSchema>
 
+/**
+ * Exposure-corrected result for a single lag window (event-outcome mode).
+ * Reports the reverse conditional P(recent trigger | onset) as the headline,
+ * beside the base rate, relative risk + 95% CI, and a significance test.
+ */
+export const lagExposureResultSchema = z
+  .object({
+    base_rate: z.number().meta({ description: 'P(a known day is exposed to a recent trigger)' }),
+    chi_squared: z.number().nullable().meta({ description: 'Chi-squared statistic (null if Fisher used)' }),
+    ci_high: z.number().nullable().meta({ description: 'Upper bound of the 95% CI for relative risk' }),
+    ci_low: z.number().nullable().meta({ description: 'Lower bound of the 95% CI for relative risk' }),
+    exposed_days: z.number().int().meta({ description: 'Known days within lag of a trigger' }),
+    expected_onsets_exposed: z
+      .number()
+      .meta({ description: 'Onsets expected to be exposed under the base rate' }),
+    known_days: z.number().int().meta({ description: 'Known-day denominator size' }),
+    lag: z.string().meta({ description: 'Lag window label' }),
+    lag_days: z.number().int().meta({ description: 'Lag window length in days' }),
+    onsets: z.number().int().meta({ description: 'Onset count after collapsing' }),
+    onsets_exposed: z.number().int().meta({ description: 'Onsets that were exposed to a recent trigger' }),
+    p_value: z.number().meta({ description: 'Two-sided p-value' }),
+    relative_risk: z.number().nullable().meta({ description: 'Onset rate exposed vs unexposed' }),
+    reverse_conditional: z.number().meta({ description: 'P(recent trigger | onset) — the headline' }),
+    risk_difference: z.number().meta({ description: 'Onset rate difference (exposed minus unexposed)' }),
+    test: z.enum(['chi_squared', 'fisher']).meta({ description: 'Significance test used' }),
+    unexposed_days: z.number().int().meta({ description: 'Known days not within lag of a trigger' }),
+  })
+  .meta({ id: 'LagExposureResult' })
+
+export type LagExposureResultData = z.infer<typeof lagExposureResultSchema>
+
+/** Event-outcome analysis block (present when outcome.type === 'event'). */
+export const eventOutcomeDataSchema = z
+  .object({
+    collapse_gap_days: z.number().int(),
+    denominator: denominatorSchema,
+    known_days: z.number().int().meta({ description: 'Known-day denominator size' }),
+    onsets: z.number().int().meta({ description: 'Onset count after collapsing' }),
+    outcome_days: z.number().int().meta({ description: 'Raw outcome-day count before collapsing' }),
+    per_lag: z.array(lagExposureResultSchema).meta({ description: 'Exposure result per lag window' }),
+    trigger_days: z.number().int().meta({ description: 'Days all trigger conditions were met' }),
+  })
+  .meta({ id: 'EventOutcomeData' })
+
+export type EventOutcomeData = z.infer<typeof eventOutcomeDataSchema>
+
 /** Generic correlation result data */
 export const genericCorrelationDataSchema = z
   .object({
     baseline: genericBaselineSchema.meta({ description: 'Baseline statistics (periods without triggers)' }),
+    event_outcome: eventOutcomeDataSchema
+      .optional()
+      .meta({ description: 'Exposure-corrected analysis (present when outcome.type === "event")' }),
     outcome: outcomeConfigSchema.meta({ description: 'Outcome configuration' }),
     period: z.object({
       days: z.number().int(),
@@ -603,6 +747,9 @@ export type EventProbabilityInput = z.infer<typeof eventProbabilityInputSchema>
 /** HRV correlation MCP input schema */
 export const hrvCorrelationInputSchema = z
   .object({
+    context_metric: hrvContextMetricSchema
+      .optional()
+      .meta({ description: 'Autonomic metric to correlate against (default: hrv_rmssd)' }),
     period_days: z
       .number()
       .int()
@@ -612,3 +759,186 @@ export const hrvCorrelationInputSchema = z
   .meta({ id: 'HrvCorrelationInput' })
 
 export type HrvCorrelationInput = z.infer<typeof hrvCorrelationInputSchema>
+
+// ============================================================================
+// Selectors + continuous correlation (exploratory engine)
+// ============================================================================
+
+/** A data dimension that resolves to events and a daily series. */
+export const selectorSchema = z
+  .discriminatedUnion('kind', [
+    z.object({
+      kind: z.literal('tag'),
+      pattern: z.string().meta({ description: 'Regex matched against activity_type' }),
+    }),
+    z.object({
+      kind: z.literal('activity'),
+      measure: z
+        .enum(['count', 'duration_min'])
+        .optional()
+        .meta({ description: 'Daily measure (default: count)' }),
+      pattern: z.string().meta({ description: 'Regex matched against activity_type' }),
+    }),
+    z.object({
+      agg: z.enum(['avg', 'sum']).optional().meta({ description: 'Daily aggregation (default: avg)' }),
+      kind: z.literal('metric'),
+      metric: z.string().meta({ description: 'Metric name', example: 'sleep_score' }),
+      threshold: thresholdSpecSchema.optional(),
+    }),
+    z.object({
+      kind: z.literal('nutrition'),
+      nutrient: nutrientKeySchema,
+      threshold: thresholdSpecSchema.optional(),
+    }),
+    z.object({
+      kind: z.enum(['productivity_category', 'productivity_app']),
+      pattern: z.string().meta({ description: 'Regex matched against category/app' }),
+    }),
+  ])
+  .meta({ id: 'CorrelationSelector' })
+
+export type CorrelationSelector = z.infer<typeof selectorSchema>
+
+/** How partially-logged nutrition days are treated in continuous correlation. */
+export const nutritionCompletenessSchema = z.enum(['all', 'complete_only']).meta({
+  description:
+    "How to treat partial nutrition days: 'all' keeps every known day; 'complete_only' drops days without real macros (flag-only). n_complete is reported either way.",
+  id: 'NutritionCompleteness',
+})
+
+export type NutritionCompleteness = z.infer<typeof nutritionCompletenessSchema>
+
+/** Continuous correlation request body */
+export const continuousCorrelationBodySchema = z
+  .object({
+    lag_days: z.number().int().optional().meta({
+      description: 'Days the outcome lags the trigger (default: 0)',
+      example: 1,
+    }),
+    nutrition_completeness: nutritionCompletenessSchema
+      .optional()
+      .meta({ description: 'Filter for partial nutrition days (default: all)' }),
+    outcome: selectorSchema.meta({ description: 'Outcome dimension' }),
+    period_days: z.number().int().optional().meta({ description: 'Days to analyze (default: 90)' }),
+    period_end: z.string().optional().meta({ description: 'Inclusive regime end (YYYY-MM-DD)' }),
+    period_start: z.string().optional().meta({ description: 'Inclusive regime start (YYYY-MM-DD)' }),
+    trigger: selectorSchema.meta({ description: 'Trigger / predictor dimension' }),
+  })
+  .meta({ id: 'ContinuousCorrelationBody' })
+
+export type ContinuousCorrelationBody = z.infer<typeof continuousCorrelationBodySchema>
+
+/** Single aligned point in a continuous correlation. */
+export const alignedPointSchema = z
+  .object({
+    date: z.string(),
+    outcome: z.number(),
+    trigger: z.number(),
+  })
+  .meta({ id: 'AlignedPoint' })
+
+/** Welch two-sample t-test result. */
+export const welchResultSchema = z
+  .object({
+    df: z.number().meta({ description: 'Welch–Satterthwaite degrees of freedom' }),
+    p_value: z.number().meta({ description: 'Two-sided p-value' }),
+    t: z.number().meta({ description: 't statistic (positive when present-group mean is higher)' }),
+  })
+  .meta({ id: 'WelchResult' })
+
+/** Mann–Whitney U test result. */
+export const mannWhitneyResultSchema = z
+  .object({
+    p_value: z.number().meta({ description: 'Two-sided p-value (normal approximation)' }),
+    rank_biserial: z.number().meta({
+      description: 'Rank-biserial effect size in [-1, 1] (positive when present tends to exceed absent)',
+    }),
+    u: z.number().meta({ description: 'U statistic for the present group' }),
+  })
+  .meta({ id: 'MannWhitneyResult' })
+
+/**
+ * Present-vs-absent comparison of a continuous outcome for a binary/presence
+ * trigger — group means, their difference, effect size and group-difference
+ * tests. Answers "how much does X change Y?" where a Pearson r on a 0/1 trigger
+ * would mislead.
+ */
+export const groupComparisonSchema = z
+  .object({
+    cohens_d: z.number().nullable().meta({ description: "Cohen's d (pooled SD)" }),
+    difference: z.number().nullable().meta({ description: 'mean_with − mean_without' }),
+    mann_whitney: mannWhitneyResultSchema.nullable(),
+    mean_with: z.number().nullable().meta({ description: 'Mean outcome on days the trigger was present' }),
+    mean_without: z.number().nullable().meta({ description: 'Mean outcome on days the trigger was absent' }),
+    n_with: z.number().int().meta({ description: 'Days the trigger was present (value > 0)' }),
+    n_without: z.number().int().meta({ description: 'Days the trigger was absent (value 0)' }),
+    trigger_is_binary: z.boolean().meta({ description: 'True when every aligned trigger value is 0 or 1' }),
+    welch: welchResultSchema.nullable(),
+  })
+  .meta({ id: 'GroupComparison' })
+
+export type GroupComparison = z.infer<typeof groupComparisonSchema>
+
+/** Continuous correlation result data */
+export const continuousCorrelationDataSchema = z
+  .object({
+    group_comparison: groupComparisonSchema
+      .nullable()
+      .meta({ description: 'Present-vs-absent group comparison; null when there is no split to compare' }),
+    lag_days: z.number().int(),
+    n: z.number().int().meta({ description: 'Number of aligned day pairs' }),
+    n_complete: z.number().int().nullable().meta({
+      description:
+        'Of the n aligned pairs, how many have complete nutrition on every nutrition side; null when no side is nutrition',
+    }),
+    outcome: selectorSchema,
+    pearson: z.number().nullable().meta({ description: 'Pearson correlation (-1..1)' }),
+    pearson_p: z
+      .number()
+      .nullable()
+      .meta({ description: 'Two-sided p-value for the Pearson correlation (null when not estimable)' }),
+    period: z.object({ days: z.number().int(), end: z.string(), start: z.string() }),
+    series: z.array(alignedPointSchema).meta({ description: 'Aligned daily points for plotting' }),
+    spearman: z.number().nullable().meta({ description: 'Spearman rank correlation (-1..1)' }),
+    trigger: selectorSchema,
+  })
+  .meta({ id: 'ContinuousCorrelationData' })
+
+export type ContinuousCorrelationData = z.infer<typeof continuousCorrelationDataSchema>
+
+export const continuousCorrelationResponseSchema = createDataResponseSchema(
+  continuousCorrelationDataSchema,
+).meta({ id: 'ContinuousCorrelationResponse' })
+
+export type ContinuousCorrelationResponse = z.infer<typeof continuousCorrelationResponseSchema>
+
+// ============================================================================
+// Selector discovery (populates the explore UI pickers)
+// ============================================================================
+
+/** One selectable option in a discovery category. */
+export const selectorOptionSchema = z
+  .object({
+    label: z.string().meta({ description: 'Human-readable label' }),
+    value: z.string().meta({ description: 'Selector value (metric name, pattern, nutrient, ...)' }),
+  })
+  .meta({ id: 'SelectorOption' })
+
+/** Available selectors grouped by kind. */
+export const correlationSelectorsDataSchema = z
+  .object({
+    activity_types: z.array(selectorOptionSchema),
+    metrics: z.array(selectorOptionSchema),
+    nutrients: z.array(selectorOptionSchema),
+    productivity_categories: z.array(selectorOptionSchema),
+    tags: z.array(selectorOptionSchema),
+  })
+  .meta({ id: 'CorrelationSelectorsData' })
+
+export type CorrelationSelectorsData = z.infer<typeof correlationSelectorsDataSchema>
+
+export const correlationSelectorsResponseSchema = createDataResponseSchema(
+  correlationSelectorsDataSchema,
+).meta({ id: 'CorrelationSelectorsResponse' })
+
+export type CorrelationSelectorsResponse = z.infer<typeof correlationSelectorsResponseSchema>

@@ -8,6 +8,7 @@ import { getMealPeriodSummary } from './meal-period-summary.ts'
 vi.mock('../../db', () => ({
   getMeals: vi.fn(),
   getMealFoodItemsBatch: vi.fn(),
+  getMealLogCompletedInRange: vi.fn(),
   getTimeSeriesBucketed: vi.fn(),
 }))
 
@@ -32,6 +33,7 @@ describe('getMealPeriodSummary', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.mocked(db.getTimeSeriesBucketed).mockResolvedValue([])
+    vi.mocked(db.getMealLogCompletedInRange).mockResolvedValue([])
   })
 
   test('averages over days that have data, not the full range', async () => {
@@ -115,6 +117,8 @@ describe('getMealPeriodSummary', () => {
         avg: 0,
         bucket_start: new Date('2025-01-10T00:00:00Z'),
         count: 1,
+        first_time: new Date('2025-01-10T00:00:00Z'),
+        last_time: new Date('2025-01-10T00:00:00Z'),
         max: 2400,
         metric: 'calories_total',
         min: 2400,
@@ -124,6 +128,8 @@ describe('getMealPeriodSummary', () => {
         avg: 0,
         bucket_start: new Date('2025-01-11T00:00:00Z'),
         count: 0,
+        first_time: new Date('2025-01-11T00:00:00Z'),
+        last_time: new Date('2025-01-11T00:00:00Z'),
         max: 0,
         metric: 'calories_total',
         min: 0,
@@ -133,6 +139,8 @@ describe('getMealPeriodSummary', () => {
         avg: 0,
         bucket_start: new Date('2025-01-12T00:00:00Z'),
         count: 1,
+        first_time: new Date('2025-01-12T00:00:00Z'),
+        last_time: new Date('2025-01-12T00:00:00Z'),
         max: 2600,
         metric: 'calories_total',
         min: 2600,
@@ -143,6 +151,135 @@ describe('getMealPeriodSummary', () => {
     const result = await getMealPeriodSummary('user', { start: '2025-01-10', end: '2025-01-12' })
 
     expect(result.calories_burned).toEqual({ avg: 2500, days_with_data: 2 })
+  })
+
+  test('reports days_completed regardless of count_only_completed', async () => {
+    vi.mocked(db.getMeals).mockResolvedValue([
+      mealAt('m1', '2025-03-01T12:00:00Z'),
+      mealAt('m2', '2025-03-02T12:00:00Z'),
+      mealAt('m3', '2025-03-03T12:00:00Z'),
+    ])
+    vi.mocked(db.getMealFoodItemsBatch).mockResolvedValue(
+      new Map<string, MealFoodItemLink[]>([
+        ['m1', [link('m1', { calories: 600 })]],
+        ['m2', [link('m2', { calories: 900 })]],
+        ['m3', [link('m3', { calories: 1200 })]],
+      ]),
+    )
+    vi.mocked(db.getMealLogCompletedInRange).mockResolvedValue(['2025-03-01', '2025-03-03'])
+
+    const noFilter = await getMealPeriodSummary('user', { start: '2025-03-01', end: '2025-03-03' })
+    expect(noFilter.days_completed).toBe(2)
+    expect(noFilter.days_with_meals).toBe(3)
+    expect(noFilter.nutrients.calories.avg).toBe(900) // (600+900+1200)/3
+  })
+
+  test('count_only_completed=true averages only over completed days', async () => {
+    vi.mocked(db.getMeals).mockResolvedValue([
+      mealAt('m1', '2025-03-01T12:00:00Z'),
+      mealAt('m2', '2025-03-02T12:00:00Z'),
+      mealAt('m3', '2025-03-03T12:00:00Z'),
+    ])
+    vi.mocked(db.getMealFoodItemsBatch).mockResolvedValue(
+      new Map<string, MealFoodItemLink[]>([
+        ['m1', [link('m1', { calories: 600 })]],
+        ['m2', [link('m2', { calories: 900 })]],
+        ['m3', [link('m3', { calories: 1200 })]],
+      ]),
+    )
+    // Only the 1st and 3rd are marked complete.
+    vi.mocked(db.getMealLogCompletedInRange).mockResolvedValue(['2025-03-01', '2025-03-03'])
+
+    const result = await getMealPeriodSummary('user', {
+      start: '2025-03-01',
+      end: '2025-03-03',
+      count_only_completed: true,
+    })
+    expect(result.days_completed).toBe(2)
+    expect(result.days_with_meals).toBe(2) // March 2 dropped
+    expect(result.nutrients.calories.avg).toBe(900) // (600+1200)/2
+    expect(result.nutrients.calories.total).toBe(1800)
+  })
+
+  test('count_only_completed=true with no completed days yields empty nutrients', async () => {
+    vi.mocked(db.getMeals).mockResolvedValue([
+      mealAt('m1', '2025-03-01T12:00:00Z'),
+      mealAt('m2', '2025-03-02T12:00:00Z'),
+    ])
+    vi.mocked(db.getMealFoodItemsBatch).mockResolvedValue(
+      new Map<string, MealFoodItemLink[]>([
+        ['m1', [link('m1', { calories: 600 })]],
+        ['m2', [link('m2', { calories: 900 })]],
+      ]),
+    )
+    vi.mocked(db.getMealLogCompletedInRange).mockResolvedValue([])
+
+    const result = await getMealPeriodSummary('user', {
+      start: '2025-03-01',
+      end: '2025-03-02',
+      count_only_completed: true,
+    })
+    expect(result.days_completed).toBe(0)
+    expect(result.days_with_meals).toBe(0)
+    expect(result.nutrients).toEqual({})
+  })
+
+  test('vitamin_a derivation is per-row: explicit row keeps its value, precursor-only row contributes derived', async () => {
+    // Row 1 has explicit vitamin_a=100 AND retinol=500 — the explicit value
+    // already represents that food's RAE, so retinol must NOT be re-added.
+    // Row 2 has only retinol=300 → contributes 300 µg RAE.
+    // Expected vitamin_a total: 100 + 300 = 400 (NOT 100 + 500 + 300 = 900).
+    vi.mocked(db.getMeals).mockResolvedValue([mealAt('m1', '2025-04-20T12:00:00Z')])
+    vi.mocked(db.getMealFoodItemsBatch).mockResolvedValue(
+      new Map<string, MealFoodItemLink[]>([
+        [
+          'm1',
+          [
+            link('m1', { calories: 100, retinol: 500, vitamin_a: 100 }),
+            link('m1', { calories: 100, retinol: 300 }),
+          ],
+        ],
+      ]),
+    )
+
+    const result = await getMealPeriodSummary('user', { start: '2025-04-20', end: '2025-04-20' })
+
+    expect(result.nutrients.vitamin_a.total).toBe(400)
+    expect(result.nutrients.retinol.total).toBe(800)
+  })
+
+  test('derives vitamin_a, niacin_equivalents and salt from precursors across a period', async () => {
+    // One day, two food items: an LSV-style row carrying only precursors
+    // (vitamin_a/niacin_equivalents/sodium null) and an explicit row.
+    vi.mocked(db.getMeals).mockResolvedValue([mealAt('m1', '2025-04-10T12:00:00Z')])
+    vi.mocked(db.getMealFoodItemsBatch).mockResolvedValue(
+      new Map<string, MealFoodItemLink[]>([
+        [
+          'm1',
+          [
+            link('m1', {
+              calories: 200,
+              b3_niacin: 4,
+              beta_carotene: 6720,
+              retinol: 580,
+              salt: 5,
+              tryptophan: 0.3,
+            }),
+            link('m1', { calories: 100, vitamin_a: 50 }),
+          ],
+        ],
+      ]),
+    )
+
+    const result = await getMealPeriodSummary('user', { start: '2025-04-10', end: '2025-04-10' })
+
+    // 580 + 6720/12 = 1140 from precursors + 50 explicit = 1190 µg RAE
+    expect(result.nutrients.vitamin_a.total).toBeCloseTo(1190)
+    // 4 mg niacin + 0.3 g tryptophan × 1000 / 60 = 4 + 5 = 9 mg NE
+    expect(result.nutrients.niacin_equivalents.total).toBeCloseTo(9)
+    // 5 g salt → 2000 mg sodium
+    expect(result.nutrients.sodium.total).toBeCloseTo(2000)
+    expect(result.nutrients.salt.total).toBeCloseTo(5)
   })
 
   test('returns empty nutrients map when there are no meals', async () => {

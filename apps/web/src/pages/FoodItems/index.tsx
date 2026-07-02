@@ -4,7 +4,7 @@ import { useEffect, useState } from 'preact/hooks'
 
 import { ConfirmButton } from '../../components/ConfirmButton'
 import { MergeFoodItemDialog } from '../../components/MergeFoodItemDialog'
-import { searchFoodItemsApi } from '../../state/api'
+import { addFoodItemApi, duplicateFoodItemApi, searchFoodItemsApi } from '../../state/api'
 import { auth } from '../../state/auth'
 import './style.css'
 
@@ -17,18 +17,6 @@ const deleteFoodItemApi = async (id: string): Promise<void> => {
     method: 'DELETE',
   })
   if (!res.ok) throw new Error('Delete failed')
-}
-
-const createFoodItemApi = async (name: string): Promise<{ id: string }> => {
-  const { token } = auth.value
-  const res = await fetch(`${API_URL}/food-items`, {
-    body: JSON.stringify({ name }),
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    method: 'POST',
-  })
-  if (!res.ok) throw new Error('Failed to create food item')
-  const json = (await res.json()) as { data: { id: string } }
-  return json.data
 }
 
 export function FoodItems() {
@@ -58,8 +46,23 @@ export function FoodItems() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['foodItems'] }),
   })
 
+  // Surfaces a failed row-action (duplicate) — the list page navigates away on
+  // success, so without this a network/500 error would silently do nothing.
+  const [actionError, setActionError] = useState<string | null>(null)
+
+  const duplicateMutation = useMutation({
+    mutationFn: (sourceId: string) => duplicateFoodItemApi(sourceId),
+    onError: (err: Error) => setActionError(err.message || 'Duplicate failed'),
+    onSuccess: (copy) => {
+      setActionError(null)
+      queryClient.invalidateQueries({ queryKey: ['foodItems'] })
+      // Land on the new copy so the user can immediately edit it.
+      route(`/food-items/${copy.id}`)
+    },
+  })
+
   const createMutation = useMutation({
-    mutationFn: createFoodItemApi,
+    mutationFn: (name: string) => addFoodItemApi({ name }),
     onSuccess: ({ id }) => {
       queryClient.invalidateQueries({ queryKey: ['foodItems'] })
       // Land on the detail page so the user can rename, set an icon, click
@@ -111,6 +114,15 @@ export function FoodItems() {
         </button>
       </div>
 
+      {actionError && (
+        <p class="fi-error" role="alert">
+          {actionError}
+          <button type="button" class="btn-link" onClick={() => setActionError(null)}>
+            Dismiss
+          </button>
+        </p>
+      )}
+
       {!hasQuery ? (
         <p class="fi-help">Type to search the food library.</p>
       ) : isLoading ? (
@@ -144,6 +156,17 @@ export function FoodItems() {
                 <td class="fi-num">{item.fiber ?? '—'}</td>
                 <td class="fi-source">{item.source ?? '—'}</td>
                 <td class="fi-row-actions">
+                  <button
+                    type="button"
+                    class="btn-secondary"
+                    onClick={() => duplicateMutation.mutate(item.id)}
+                    // Disable only the row being duplicated, not every row, by
+                    // matching the in-flight mutation's source id.
+                    disabled={duplicateMutation.isPending && duplicateMutation.variables === item.id}
+                    title={`Duplicate ${item.name} into an editable copy`}
+                  >
+                    Duplicate
+                  </button>
                   <button
                     type="button"
                     class="btn-secondary fi-merge-btn"

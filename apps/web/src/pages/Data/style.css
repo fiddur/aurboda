@@ -88,6 +88,12 @@
   background: #f9fafb;
 }
 
+.data-type-btn-all {
+  justify-content: center;
+  font-weight: 500;
+  margin-bottom: 0.25rem;
+}
+
 .data-type-dot {
   width: 8px;
   height: 8px;

@@ -84,10 +84,32 @@ Click the pencil icon next to the "Dashboard" title to enter edit mode.
 - **Remove a widget**: Click the X button on any widget.
 - **Reorder widgets**: Use the up/down arrows on each widget to move it within its section.
 - **Add a section**: Click "Add Section" at the bottom. Give it a title and choose a type (Metrics, Charts, or Links).
+- **Rename a section**: Click the pencil icon next to a section title, edit the title inline, and press Enter (or click away) to save. Press Escape to cancel.
 - **Delete a section**: Click the trash icon next to a section title. Confirms before deleting the section and all its widgets.
 - **Reset to defaults**: Click "Reset to Default" to restore the original 4-section layout. Your customizations will be lost.
 
 Every change saves immediately -- there is no separate "Save" button. Click "Done Editing" to exit edit mode.
+
+### Updating a chart from the chart explorer
+
+Every chart widget links to the [Chart Explorer](./trends.md) (`/chart`), carrying an
+identifier for the exact board widget it came from. On the chart page you can tweak the
+source, lookback, aggregation, or chart type, then click **"Update Chart in _&lt;board&gt;_ /
+_&lt;section&gt;_"** at the bottom to replace that widget in place with the new configuration
+(and optionally give it a new title). On save you are taken straight back to that
+dashboard. This works for both your home dashboard and any shared dashboard you own.
+
+Chart widgets preserve a **breakdown** (splitting an activity type into series by a
+categorical field, e.g. by partner or intensity): the breakdown is saved with the
+widget and rendered as multiple coloured series with a legend, both on your own
+dashboards and on public shared boards.
+
+When adding or updating a chart on a board, you can **mask** individual breakdown
+fields for public viewers: in the Add-to-dashboard / Update-chart form, tick the
+fields to hide under "Mask on public boards". Masked field values are replaced with
+stable positional labels (A, B, C…) — the breakdown structure and volumes still show,
+but the real values (e.g. partner names) never leave the server for a public viewer.
+You always see the real values on your own live view.
 
 ### Metric Picker
 
@@ -107,6 +129,14 @@ The dashboard works with whatever data sources you have connected. Widgets grace
 | Activity summary             | Any activity source                             |
 | Trend charts                 | Depends on what you're trending (tags, metrics) |
 | Correlation impact           | HRV data + the activity/tag you're analyzing    |
+
+## Sharing
+
+You can publish read-only copies of a dashboard under your public namespace
+(`/u/<username>/<slug>`), either publicly listed or unlisted-by-link. See
+[Sharing & Public Pages](./sharing.md) for the visibility model, URLs, and the
+backend security guarantee that limits a viewer to exactly the data the dashboard's
+widgets render.
 
 ## Known Limitations
 

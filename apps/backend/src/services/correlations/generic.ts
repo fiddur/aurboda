@@ -7,6 +7,7 @@ import type { MetricType } from '@aurboda/api-spec'
 import type { SyncProvider } from '../queries/index.ts'
 import type {
   BaselineStats,
+  GenericCorrelationOptions,
   GenericCorrelationResult,
   LagResult,
   OutcomeConfig,
@@ -15,6 +16,8 @@ import type {
 } from './types.ts'
 
 import { getAllActivitiesInRange, getProductivity, getTimeSeries } from '../../db/index.ts'
+import { triggerCorrelationSyncs } from './background-sync.ts'
+import { getCompoundEventOutcome } from './explore.ts'
 import { chiSquaredTest, mean, stddev } from './utils.ts'
 
 /** Parse lag window string (e.g., "24h", "7d") to milliseconds */
@@ -65,22 +68,42 @@ export async function getGenericCorrelation(
   lagWindows: string[] = ['24h', '48h', '7d'],
   periodDays: number = 90,
   sync?: SyncProvider,
+  options: GenericCorrelationOptions = {},
 ): Promise<GenericCorrelationResult> {
-  const end = new Date()
-  end.setHours(23, 59, 59, 999)
-  const start = new Date()
-  start.setDate(start.getDate() - periodDays)
-  start.setHours(0, 0, 0, 0)
-
-  // Auto-sync if provider available
-  if (sync) {
-    await Promise.all([
-      sync.syncOuraIfNeeded(user, 'tags'),
-      sync.syncOuraIfNeeded(user, 'sessions'),
-      sync.syncRescueTimeIfNeeded(user),
-      sync.syncCalendarsIfNeeded(user),
-    ])
+  // Event outcomes use the exposure-corrected onset engine instead of averaging.
+  if (outcome.type === 'event') {
+    return getGenericEventOutcome(user, triggers, outcome, lagWindows, periodDays, sync, options)
   }
+
+  // Nutrition triggers are only resolvable through the event-outcome path; the
+  // averaging path below has no nutrition case and would silently match nothing.
+  if (triggers.some((t) => t.type === 'nutrition')) {
+    throw new Error('Nutrition triggers are only supported with an "event" outcome')
+  }
+
+  // Window: an explicit regime (UTC) overrides the trailing periodDays window.
+  // `analysisDays` is the number of days iterated/used as the day denominator.
+  let start: Date
+  let end: Date
+  let analysisDays: number
+  if (options.periodStart || options.periodEnd) {
+    const endDay = options.periodEnd ?? new Date().toISOString().split('T')[0]
+    end = new Date(`${endDay}T23:59:59.999Z`)
+    start = options.periodStart
+      ? new Date(`${options.periodStart}T00:00:00.000Z`)
+      : new Date(Date.parse(`${endDay}T00:00:00.000Z`) - periodDays * 86_400_000)
+    analysisDays = Math.max(1, Math.round((end.getTime() - start.getTime()) / 86_400_000))
+  } else {
+    end = new Date()
+    end.setHours(23, 59, 59, 999)
+    start = new Date()
+    start.setDate(start.getDate() - periodDays)
+    start.setHours(0, 0, 0, 0)
+    analysisDays = periodDays
+  }
+
+  // Fire-and-forget: never block the analysis on live external syncs.
+  triggerCorrelationSyncs(sync, user)
 
   // Determine which data we need based on triggers and outcome
   const needsActivities =
@@ -105,7 +128,7 @@ export async function getGenericCorrelation(
   for (const trigger of triggers) {
     if (trigger.type === 'activity') {
       for (const act of activities) {
-        if (matchesPattern(act.activity_type, trigger.pattern)) {
+        if (matchesPattern(act.activity_type, trigger.pattern ?? '')) {
           triggerEvents.push({
             time: act.start_time,
             type: 'activity',
@@ -116,7 +139,7 @@ export async function getGenericCorrelation(
     } else if (trigger.type === 'tag') {
       // Tags are now activities — match by activity_type
       for (const act of activities) {
-        if (matchesPattern(act.activity_type, trigger.pattern)) {
+        if (matchesPattern(act.activity_type, trigger.pattern ?? '')) {
           triggerEvents.push({
             time: act.start_time,
             type: 'tag',
@@ -128,7 +151,7 @@ export async function getGenericCorrelation(
       for (const prod of productivity) {
         const resolvedCatStr = prod.resolved_category?.join(' > ')
         const catStr = resolvedCatStr || prod.category
-        if (catStr && matchesPattern(catStr, trigger.pattern)) {
+        if (catStr && matchesPattern(catStr, trigger.pattern ?? '')) {
           triggerEvents.push({
             time: prod.start_time,
             type: 'productivity_category',
@@ -138,7 +161,7 @@ export async function getGenericCorrelation(
       }
     } else if (trigger.type === 'productivity_app') {
       for (const prod of productivity) {
-        if (matchesPattern(prod.activity, trigger.pattern)) {
+        if (matchesPattern(prod.activity, trigger.pattern ?? '')) {
           triggerEvents.push({
             time: prod.start_time,
             type: 'productivity_app',
@@ -162,7 +185,7 @@ export async function getGenericCorrelation(
     // Simple case: use actual trigger event times
     const trigger = triggers[0]
     const matchingEvents = triggerEvents.filter(
-      (e) => e.type === trigger.type && matchesPattern(e.value, trigger.pattern),
+      (e) => e.type === trigger.type && matchesPattern(e.value, trigger.pattern ?? ''),
     )
 
     // Use each trigger event time as a matched window
@@ -174,7 +197,7 @@ export async function getGenericCorrelation(
 
     // Track days without triggers for baseline
     const daysWithTriggers = new Set(matchingEvents.map((e) => getDayString(e.time)))
-    for (let dayOffset = 0; dayOffset < periodDays; dayOffset++) {
+    for (let dayOffset = 0; dayOffset < analysisDays; dayOffset++) {
       const day = new Date(start)
       day.setDate(day.getDate() + dayOffset)
       const dayStr = getDayString(day)
@@ -184,7 +207,7 @@ export async function getGenericCorrelation(
     }
   } else {
     // Compound case: iterate through each day and check if all conditions are met
-    for (let dayOffset = 0; dayOffset < periodDays; dayOffset++) {
+    for (let dayOffset = 0; dayOffset < analysisDays; dayOffset++) {
       const windowEnd = new Date(start)
       windowEnd.setDate(windowEnd.getDate() + dayOffset)
       windowEnd.setHours(23, 59, 59, 999)
@@ -202,7 +225,7 @@ export async function getGenericCorrelation(
         // Count events matching this trigger in the window
         const count = triggerEvents.filter((e) => {
           if (e.type !== trigger.type) return false
-          if (!matchesPattern(e.value, trigger.pattern)) return false
+          if (!matchesPattern(e.value, trigger.pattern ?? '')) return false
           return e.time >= windowStart && e.time <= windowEnd
         }).length
 
@@ -356,7 +379,7 @@ export async function getGenericCorrelation(
 
   if (outcome.type === 'tag') {
     const daysWithOutcome = new Set(outcomeTagEvents.map(getDayString))
-    const probability = periodDays > 0 ? daysWithOutcome.size / periodDays : 0
+    const probability = analysisDays > 0 ? daysWithOutcome.size / analysisDays : 0
 
     baseline = {
       description: 'P(outcome on any given day)',
@@ -423,7 +446,7 @@ export async function getGenericCorrelation(
     baseline,
     outcome,
     period: {
-      days: periodDays,
+      days: analysisDays,
       end: end.toISOString(),
       start: start.toISOString(),
     },
@@ -438,5 +461,55 @@ export async function getGenericCorrelation(
     },
     triggers,
     windows_matched: matchedWindowEnds.length,
+  }
+}
+
+/**
+ * Event-outcome path for getGenericCorrelation: delegates to the exposure-
+ * corrected onset engine and packages it into a GenericCorrelationResult under
+ * the `event_outcome` block. The legacy fields (post_trigger, averaged
+ * baseline) are not meaningful here and are left empty.
+ */
+async function getGenericEventOutcome(
+  user: string,
+  triggers: TriggerCondition[],
+  outcome: Extract<OutcomeConfig, { type: 'event' }>,
+  lagWindows: string[],
+  periodDays: number,
+  sync: SyncProvider | undefined,
+  options: GenericCorrelationOptions,
+): Promise<GenericCorrelationResult> {
+  // Fire-and-forget: never block the analysis on live external syncs.
+  triggerCorrelationSyncs(sync, user)
+
+  const eventOutcome = await getCompoundEventOutcome(user, triggers, outcome, lagWindows, {
+    denominator: options.denominator,
+    periodDays,
+    periodEnd: options.periodEnd,
+    periodStart: options.periodStart,
+  })
+
+  const primaryLag = eventOutcome.per_lag[0]
+
+  return {
+    baseline: { description: 'Event-outcome mode — see event_outcome block', probability: 0 },
+    event_outcome: {
+      collapse_gap_days: eventOutcome.collapse_gap_days,
+      denominator: eventOutcome.denominator,
+      known_days: eventOutcome.known_days,
+      onsets: eventOutcome.onsets,
+      outcome_days: eventOutcome.outcome_days,
+      per_lag: eventOutcome.per_lag,
+      trigger_days: eventOutcome.trigger_days,
+    },
+    outcome,
+    period: eventOutcome.period,
+    post_trigger: {},
+    statistical_significance: {
+      chi_squared: primaryLag?.chi_squared ?? null,
+      p_value: primaryLag?.p_value ?? null,
+    },
+    triggers,
+    windows_matched: eventOutcome.trigger_days,
   }
 }

@@ -32,6 +32,7 @@ vi.mock('../db/index.ts', () => ({
 }))
 
 const periodSvc = await import('../services/queries/meal-period-summary.ts')
+const mealsSvc = await import('../services/meals.ts')
 
 const buildApp = () => {
   const app = express()
@@ -53,6 +54,7 @@ describe('GET /meals/period-summary', () => {
       end: '2025-01-07',
       days_in_range: 7,
       days_with_meals: 7,
+      days_completed: 7,
       nutrients: { calories: { avg: 2100, total: 14_700, days_with_value: 7 } },
       calories_burned: { avg: 2400, days_with_data: 7 },
     })
@@ -73,6 +75,7 @@ describe('GET /meals/period-summary', () => {
       end: '2025-01-01',
       days_in_range: 1,
       days_with_meals: 0,
+      days_completed: 0,
       nutrients: {},
       calories_burned: null,
     })
@@ -82,6 +85,44 @@ describe('GET /meals/period-summary', () => {
     expect(periodSvc.getMealPeriodSummary).toHaveBeenCalledWith(
       'tester',
       expect.objectContaining({ tz: 'Europe/Stockholm' }),
+    )
+  })
+
+  test('passes through count_only_completed=true', async () => {
+    vi.mocked(periodSvc.getMealPeriodSummary).mockResolvedValue({
+      start: '2025-01-01',
+      end: '2025-01-07',
+      days_in_range: 7,
+      days_with_meals: 3,
+      days_completed: 3,
+      nutrients: {},
+      calories_burned: null,
+    })
+    await supertest(buildApp()).get(
+      '/meals/period-summary?start=2025-01-01&end=2025-01-07&count_only_completed=true',
+    )
+    expect(periodSvc.getMealPeriodSummary).toHaveBeenCalledWith(
+      'tester',
+      expect.objectContaining({ count_only_completed: true }),
+    )
+  })
+
+  test('count_only_completed=false stays falsy', async () => {
+    vi.mocked(periodSvc.getMealPeriodSummary).mockResolvedValue({
+      start: '2025-01-01',
+      end: '2025-01-07',
+      days_in_range: 7,
+      days_with_meals: 7,
+      days_completed: 0,
+      nutrients: {},
+      calories_burned: null,
+    })
+    await supertest(buildApp()).get(
+      '/meals/period-summary?start=2025-01-01&end=2025-01-07&count_only_completed=false',
+    )
+    expect(periodSvc.getMealPeriodSummary).toHaveBeenCalledWith(
+      'tester',
+      expect.objectContaining({ count_only_completed: false }),
     )
   })
 
@@ -104,6 +145,31 @@ describe('GET /meals/period-summary', () => {
 
   test('400 when end is missing', async () => {
     const res = await supertest(buildApp()).get('/meals/period-summary?start=2025-01-01')
+    expect(res.status).toBe(400)
+  })
+})
+
+describe('PATCH /meals/:id error code → status mapping', () => {
+  beforeEach(() => vi.clearAllMocks())
+  const MEAL_ID = '11111111-1111-4111-8111-111111111111'
+
+  test('errorCode=not_found → 404', async () => {
+    vi.mocked(mealsSvc.updateMealById).mockResolvedValue({
+      success: false,
+      error: 'Meal not found',
+      errorCode: 'not_found',
+    })
+    const res = await supertest(buildApp()).patch(`/meals/${MEAL_ID}`).send({ name: 'x' })
+    expect(res.status).toBe(404)
+  })
+
+  test('errorCode=invalid → 400', async () => {
+    vi.mocked(mealsSvc.updateMealById).mockResolvedValue({
+      success: false,
+      error: 'Portion abc does not belong to food item def',
+      errorCode: 'invalid',
+    })
+    const res = await supertest(buildApp()).patch(`/meals/${MEAL_ID}`).send({ name: 'x' })
     expect(res.status).toBe(400)
   })
 })

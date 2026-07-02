@@ -9,10 +9,16 @@
 import {
   type AddFoodItemBody,
   addFoodItemBodySchema,
+  type AddFoodItemPortionBody,
+  addFoodItemPortionBodySchema,
+  type DeleteFoodItemPortionResponse,
   type DeleteFoodItemResponse,
   type FoodItemDetail,
   type FoodItemDetailResponse,
   type FoodItemEntity,
+  type FoodItemPortion,
+  type FoodItemPortionResponse,
+  type FoodItemPortionsResponse,
   type FoodItemResponse,
   type FoodItemsQuery,
   type FoodItemsResponse,
@@ -24,6 +30,8 @@ import {
   mergeFoodItemsQuerySchema,
   type MergeFoodItemsResponse,
   type ResnapshotMealsResponse,
+  type SetDefaultFoodItemPortionBody,
+  setDefaultFoodItemPortionBodySchema,
   type SetFoodItemIngredientsBody,
   setFoodItemIngredientsBodySchema,
   type SetFoodItemReferenceBody,
@@ -36,6 +44,8 @@ import {
   type SharedFoodItemOverrideResponse,
   type UpdateFoodItemBody,
   updateFoodItemBodySchema,
+  type UpdateFoodItemPortionBody,
+  updateFoodItemPortionBodySchema,
 } from '@aurboda/api-spec'
 
 import type { CentralDb } from '../services/central-db.ts'
@@ -45,7 +55,9 @@ import {
   clearIngredients as dbClearIngredients,
   deleteFoodItem,
   type FoodItemEntity as DbFoodItemEntity,
+  type FoodItemPortionRow,
   getFoodItemById as getUserFoodItemById,
+  getFoodItemPortionById,
   listFoodItems,
   setFoodItemReference as dbSetFoodItemReference,
   setFoodItemSensitivities as dbSetFoodItemSensitivities,
@@ -60,12 +72,21 @@ import {
   type SharedFoodItemOverride as DbSharedFoodItemOverride,
 } from '../db/shared-food-item-overrides.ts'
 import {
+  addPortion,
+  deletePortion,
+  listPortions,
+  setDefaultPortion,
+  updatePortion,
+} from '../services/food-item-portions.ts'
+import {
   cacheCompositeNutrients,
   clearCompositeNutrientCache,
   createFoodItemsMergeService,
   createFoodItemsService,
+  duplicateFoodItem,
   type FoodItemDetail as ServiceFoodItemDetail,
   type MergedFoodItem,
+  prepareIngredientInputs,
 } from '../services/food-items.ts'
 import { resnapshotMealsForFoodItem } from '../services/meals.ts'
 import { type AnyMiddleware, type TypedRouter, typedRouter } from '../typed-router.ts'
@@ -82,24 +103,53 @@ const serializeFoodItem = (
   return result as FoodItemEntity
 }
 
+/**
+ * Resolve the default logging quantity, expressed in the unit named by the
+ * effective default portion. Prefer an explicit `default_log_quantity`;
+ * otherwise fall back to the base `default_quantity` only for the base unit
+ * (no default portion) — for a non-base default unit fall back to 1 of that
+ * unit, never the base quantity (which would be a number in the wrong unit).
+ */
+export const resolveEffectiveDefaultQuantity = (
+  effectiveDefaultPortionId: string | undefined,
+  defaultLogQuantity: number | undefined,
+  baseQuantity: number | undefined,
+): number | undefined => defaultLogQuantity ?? (effectiveDefaultPortionId ? 1 : baseQuantity)
+
 const serializeDetail = (detail: ServiceFoodItemDetail): FoodItemDetail => {
   const base = serializeFoodItem(detail.item)
   const sensitivities = detail.sensitivities ?? []
+  // Always an array so the response is `portions: []`, never null/absent (#780).
+  const portions = (detail.portions ?? []).map(serializePortion)
   const is_shared = detail.is_shared
+  // For per-user items default_portion_id is the column on the food row;
+  // for central items applySharedOverrides decorated it from the user's
+  // shared_food_item_overrides row (when the user picked a portion).
+  const effective_default_portion_id = (detail.item.default_portion_id as string | undefined) ?? undefined
+  const effective_default_quantity = resolveEffectiveDefaultQuantity(
+    effective_default_portion_id,
+    detail.item.default_log_quantity as number | undefined,
+    detail.item.default_quantity as number | undefined,
+  )
   // Composite branch: ingredient list + derived totals.
   if (detail.ingredients) {
     return {
       ...base,
       derived_nutrients: detail.derived_nutrients ?? { nutrient_data_incomplete: false, values: {} },
       ingredients: detail.ingredients.map((ing) => ({
+        food_item_portion_id: ing.row.food_item_portion_id,
         icon: (ing.food?.icon as string | undefined) ?? null,
         ingredient_food_item_id: ing.row.ingredient_food_item_id,
         name: ing.food ? (ing.food.name as string) : null,
+        portion_count: ing.row.portion_count,
         quantity: ing.row.quantity,
         sort_order: ing.row.sort_order,
         unit: ing.row.unit,
       })),
       is_shared,
+      portions,
+      effective_default_portion_id,
+      effective_default_quantity,
       sensitivities,
     }
   }
@@ -109,6 +159,9 @@ const serializeDetail = (detail: ServiceFoodItemDetail): FoodItemDetail => {
     return {
       ...base,
       is_shared,
+      portions,
+      effective_default_portion_id,
+      effective_default_quantity,
       reference: {
         food: serializeFoodItem(detail.reference.food),
         unit_mismatch: detail.reference.unit_mismatch,
@@ -117,12 +170,32 @@ const serializeDetail = (detail: ServiceFoodItemDetail): FoodItemDetail => {
       sensitivities,
     }
   }
-  return { ...base, is_shared, sensitivities } as FoodItemDetail
+  return {
+    ...base,
+    is_shared,
+    portions,
+    effective_default_portion_id,
+    effective_default_quantity,
+    sensitivities,
+  } as FoodItemDetail
 }
+
+const serializePortion = (row: FoodItemPortionRow): FoodItemPortion => ({
+  id: row.id,
+  food_item_id: row.food_item_id,
+  label_unit: row.label_unit,
+  base_equivalent: row.base_equivalent,
+  sort_order: row.sort_order,
+  created_at: row.created_at.toISOString(),
+  updated_at: row.updated_at.toISOString(),
+})
 
 const serializeOverride = (override: DbSharedFoodItemOverride): ApiSharedFoodItemOverride => ({
   shared_food_item_id: override.shared_food_item_id,
   icon: override.icon,
+  icon_overridden: override.icon_overridden,
+  default_portion_id: override.default_portion_id,
+  default_log_quantity: override.default_log_quantity,
   created_at: override.created_at.toISOString(),
   updated_at: override.updated_at.toISOString(),
 })
@@ -199,6 +272,15 @@ export const createFoodItemsRouter = (authMiddleware: AnyMiddleware, centralDb: 
     res.json({ success: true })
   })
 
+  // Duplicate a food item into a fresh per-user copy ("<name> (copy)") and
+  // return the new copy's detail. The source may be per-user OR central — a
+  // copy of a central item becomes an editable per-user fork.
+  router.post<{ id: string }, FoodItemDetailResponse>('/:id/duplicate', authMiddleware, async (req, res) => {
+    const detail = await duplicateFoodItem(req.user!, centralDb, req.params.id)
+    if (!detail) return res.status(404).json({ error: 'Food item not found', success: false })
+    res.json({ data: serializeDetail(detail), success: true })
+  })
+
   // Replace the full ingredient list of a composite food item. Per-user
   // items only — central rows can't be made composite from this endpoint.
   router.put<{ id: string }, FoodItemDetailResponse, SetFoodItemIngredientsBody>(
@@ -224,7 +306,18 @@ export const createFoodItemsRouter = (authMiddleware: AnyMiddleware, centralDb: 
           success: false,
         })
       }
-      await dbSetIngredients(user, id, ingredients)
+      // Validate + normalise portions (must belong to the ingredient food) and
+      // fill display columns before persisting.
+      let prepared
+      try {
+        prepared = await prepareIngredientInputs(user, ingredients)
+      } catch (err) {
+        return res.status(400).json({
+          error: err instanceof Error ? err.message : 'Invalid ingredient portion',
+          success: false,
+        })
+      }
+      await dbSetIngredients(user, id, prepared)
       // Refresh the cached derived nutrients on this row + every parent
       // recipe that uses this item — keeps search results, frequent-meal
       // cards, and outer-recipe totals in sync without lazy recomputation.
@@ -449,6 +542,25 @@ export const createFoodItemsRouter = (authMiddleware: AnyMiddleware, centralDb: 
           success: false,
         })
       }
+      // When the user sets default_portion_id, enforce the same ownership
+      // invariant as the per-user `set_default_food_item_portion` path:
+      // the portion must exist AND belong to this central food. A `null`
+      // clears the override and skips the check.
+      if (req.body.default_portion_id) {
+        const portion = await getFoodItemPortionById(user, req.body.default_portion_id)
+        if (!portion) {
+          return res.status(400).json({
+            error: `Portion not found: ${req.body.default_portion_id}`,
+            success: false,
+          })
+        }
+        if (portion.food_item_id !== id) {
+          return res.status(400).json({
+            error: 'default_portion_id does not belong to this food item',
+            success: false,
+          })
+        }
+      }
       const override = await setSharedFoodItemOverride(user, id, req.body)
       res.json({ data: serializeOverride(override), success: true })
     },
@@ -476,6 +588,111 @@ export const createFoodItemsRouter = (authMiddleware: AnyMiddleware, centralDb: 
       await clearSharedFoodItemOverride(user, id)
       // No `data` after clear — same shape as GET when no override exists.
       res.json({ success: true })
+    },
+  )
+
+  // ────────────────────────────────────────────────────────────────────────
+  // Portion sizings — extra named units (label_unit + base_equivalent) per
+  // food item with a base_equivalent that resolves the entry into the food's
+  // base unit. food_item_portions.food_item_id is a soft pointer (per-user
+  // OR central), so these endpoints accept either kind of id.
+  // ────────────────────────────────────────────────────────────────────────
+
+  router.get<{ id: string }, FoodItemPortionsResponse>('/:id/portions', authMiddleware, async (req, res) => {
+    const user = req.user!
+    const id = req.params.id
+    const exists =
+      (await getUserFoodItemById(user, id)) !== null || (await centralDb.getSharedFoodItemById(id)) !== null
+    if (!exists) return res.status(404).json({ error: 'Food item not found', success: false })
+    const rows = await listPortions(user, id)
+    res.json({ data: rows.map(serializePortion), success: true })
+  })
+
+  router.post<{ id: string }, FoodItemPortionResponse, AddFoodItemPortionBody>(
+    '/:id/portions',
+    authMiddleware,
+    validateBody(addFoodItemPortionBodySchema),
+    async (req, res) => {
+      try {
+        const row = await addPortion(req.user!, req.params.id, req.body, centralDb)
+        res.json({ data: serializePortion(row), success: true })
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Failed to add portion'
+        res.status(/not found/i.test(message) ? 404 : 500).json({ error: message, success: false })
+      }
+    },
+  )
+
+  router.patch<{ id: string; portionId: string }, FoodItemPortionResponse, UpdateFoodItemPortionBody>(
+    '/:id/portions/:portionId',
+    authMiddleware,
+    validateBody(updateFoodItemPortionBodySchema),
+    async (req, res) => {
+      // Pre-update ownership guard: a caller passing the wrong `:id` must NOT
+      // mutate the row first and only then learn it didn't belong to that
+      // food. Look up the portion and verify its parent before delegating to
+      // updatePortion, which would otherwise persist the bad write.
+      const existing = await getFoodItemPortionById(req.user!, req.params.portionId)
+      if (!existing || existing.food_item_id !== req.params.id) {
+        return res.status(404).json({ error: 'Portion not found', success: false })
+      }
+      try {
+        const row = await updatePortion(req.user!, req.params.portionId, req.body)
+        res.json({ data: serializePortion(row), success: true })
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Failed to update portion'
+        res.status(/not found/i.test(message) ? 404 : 500).json({ error: message, success: false })
+      }
+    },
+  )
+
+  router.delete<{ id: string; portionId: string }, DeleteFoodItemPortionResponse>(
+    '/:id/portions/:portionId',
+    authMiddleware,
+    async (req, res) => {
+      // Same pre-mutation guard as PATCH above: never delete a portion whose
+      // parent doesn't match the URL — the URL is part of the contract.
+      const existing = await getFoodItemPortionById(req.user!, req.params.portionId)
+      if (!existing || existing.food_item_id !== req.params.id) {
+        return res.status(404).json({ error: 'Portion not found', success: false })
+      }
+      const deleted = await deletePortion(req.user!, req.params.portionId)
+      if (!deleted) return res.status(404).json({ error: 'Portion not found', success: false })
+      res.json({ success: true })
+    },
+  )
+
+  // Set or clear the preselected portion for a per-user food item. Pass
+  // `portion_id: null` to revert to the base portion.
+  router.put<{ id: string }, FoodItemDetailResponse, SetDefaultFoodItemPortionBody>(
+    '/:id/default-portion',
+    authMiddleware,
+    validateBody(setDefaultFoodItemPortionBodySchema),
+    async (req, res) => {
+      const user = req.user!
+      const id = req.params.id
+      const userItem = await getUserFoodItemById(user, id)
+      if (!userItem) {
+        const fromCentral = await centralDb.getSharedFoodItemById(id)
+        return res.status(fromCentral ? 403 : 404).json({
+          error: fromCentral
+            ? 'Setting a default portion on a central item lives on the per-user override layer (use the override endpoint)'
+            : 'Food item not found',
+          success: false,
+        })
+      }
+      try {
+        await setDefaultPortion(user, id, req.body.portion_id, req.body.quantity ?? null)
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Failed to set default portion'
+        return res.status(/not found|does not belong/i.test(message) ? 400 : 500).json({
+          error: message,
+          success: false,
+        })
+      }
+      const detail = await service.getDetail(user, id)
+      if (!detail) return res.status(404).json({ error: 'Food item not found', success: false })
+      res.json({ data: serializeDetail(detail), success: true })
     },
   )
 

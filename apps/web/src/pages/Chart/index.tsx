@@ -18,8 +18,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useLocation } from 'preact-iso'
 import { useCallback, useMemo, useState } from 'preact/hooks'
 
+import type { ChartOrigin } from '../../utils/chart-url'
+
 import { ActivityTypePicker } from '../../components/ActivityTypePicker'
 import { BarChart, type BarClickInfo } from '../../components/charts/BarChart'
+import { BreakdownLegend, SERIES_COLORS } from '../../components/charts/breakdown'
 import { TrendLineChart } from '../../components/charts/TrendLineChart'
 import { MetricPicker } from '../../components/MetricPicker'
 import {
@@ -31,11 +34,20 @@ import {
   fetchTrend,
   type FetchTrendParams,
   fetchUserSettings,
+  listSharedDashboards,
   saveDashboard,
   type TrendDisplayPeriod,
+  updateSharedDashboard,
   updateUserSettings,
 } from '../../state/api'
 import { auth } from '../../state/auth'
+import {
+  boardReturnPath,
+  chartWidgetMaskedFields,
+  chartWidgetTitle,
+  parseChartOrigin,
+  replaceWidgetInConfig,
+} from './updateWidget'
 import './style.css'
 
 type SourceType = 'metric' | 'productivity_category' | 'activity_type'
@@ -98,8 +110,8 @@ function parseQuery(query: Record<string, string>): ChartState {
   }
 }
 
-/** Sync current state to URL query params. */
-function syncUrl(state: ChartState) {
+/** Sync current state to URL query params, preserving any board-chart origin. */
+function syncUrl(state: ChartState, origin: ChartOrigin | null) {
   const params = new URLSearchParams()
   params.set('source_type', state.source_type)
   if (state.pattern) params.set('pattern', state.pattern)
@@ -120,6 +132,11 @@ function syncUrl(state: ChartState) {
   }
   if (state.breakdown_fields.length > 0) {
     params.set('breakdown_fields', state.breakdown_fields.join(','))
+  }
+  if (origin) {
+    params.set('board_id', origin.board_id)
+    params.set('section_id', origin.section_id)
+    params.set('widget_id', origin.widget_id)
   }
   history.replaceState(null, '', `${window.location.pathname}?${params}`)
 }
@@ -355,21 +372,6 @@ function ChartControls({
   )
 }
 
-const SERIES_COLORS = ['#8b5cf6', '#f97316', '#22c55e', '#3b82f6', '#ef4444', '#f59e0b', '#ec4899', '#14b8a6']
-
-function BreakdownLegend({ series, colors }: { series: string[]; colors: string[] }) {
-  return (
-    <div class="breakdown-legend">
-      {series.map((name, i) => (
-        <span key={name} class="breakdown-legend-item">
-          <span class="breakdown-legend-dot" style={{ background: colors[i % colors.length] }} />
-          {name}
-        </span>
-      ))}
-    </div>
-  )
-}
-
 function TrendDisplay({ params }: { params: FetchTrendParams }) {
   const trendQuery = useQuery({
     enabled: Boolean(params.pattern),
@@ -387,7 +389,7 @@ function TrendDisplay({ params }: { params: FetchTrendParams }) {
   if (breakdown_series?.length && breakdown_histories) {
     return (
       <div class="chart-display">
-        <BreakdownLegend series={breakdown_series} colors={SERIES_COLORS} />
+        <BreakdownLegend series={breakdown_series} />
         <TrendLineChart
           data={[]}
           color="#8b5cf6"
@@ -500,7 +502,7 @@ function BarDisplay({ params }: { params: FetchChartDataParams }) {
     const series = result.breakdown_series ?? []
     return (
       <div class="chart-display">
-        <BreakdownLegend series={series} colors={SERIES_COLORS} />
+        <BreakdownLegend series={series} />
         <BarChart
           data={[]}
           height={350}
@@ -541,12 +543,28 @@ function BarDisplay({ params }: { params: FetchChartDataParams }) {
 /** Generate unique ID for widgets and sections. */
 const generateId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
 
-/** Build a dashboard widget config from the current chart state. */
-function buildWidgetFromState(state: ChartState, title: string): DashboardWidget {
+/**
+ * Build a dashboard widget config from the current chart state. Pass `id` to
+ * update an existing widget in place; omit it to create a new one.
+ */
+function buildWidgetFromState(
+  state: ChartState,
+  title: string,
+  id: string = generateId('widget'),
+  maskedBreakdownFields: string[] = [],
+): DashboardWidget {
+  // Only mask fields that are actually part of the breakdown.
+  const masked = maskedBreakdownFields.filter((f) => state.breakdown_fields.includes(f))
+  const breakdownConfig = {
+    ...(state.breakdown_fields.length ? { breakdown_fields: state.breakdown_fields } : {}),
+    ...(masked.length ? { masked_breakdown_fields: masked } : {}),
+  }
+
   if (state.chart_type === 'bar') {
     return {
       config: {
         aggregation: state.aggregation,
+        ...breakdownConfig,
         bucket_size: state.bucket_size,
         lookback_days: state.lookback_days,
         ...(state.pattern ? { pattern: state.pattern } : {}),
@@ -554,7 +572,7 @@ function buildWidgetFromState(state: ChartState, title: string): DashboardWidget
         ...(state.activity_type_id ? { tag_definition_id: state.activity_type_id } : {}),
         ...(title ? { title } : {}),
       },
-      id: generateId('widget'),
+      id,
       type: 'bar_chart',
     } as DashboardWidget
   }
@@ -562,6 +580,7 @@ function buildWidgetFromState(state: ChartState, title: string): DashboardWidget
   return {
     config: {
       aggregation: state.aggregation,
+      ...breakdownConfig,
       display_period: state.display_period,
       half_life_days: state.half_life_days,
       lookback_days: state.lookback_days,
@@ -573,18 +592,50 @@ function buildWidgetFromState(state: ChartState, title: string): DashboardWidget
       ...(state.activity_type_id ? { tag_definition_id: state.activity_type_id } : {}),
       ...(title ? { title } : {}),
     },
-    id: generateId('widget'),
+    id,
     type: 'trend_chart',
   } as DashboardWidget
+}
+
+/** Per-field toggle to mask breakdown values (shown as A, B, C…) on public boards. */
+function BreakdownMaskPicker({
+  fields,
+  masked,
+  onToggle,
+}: {
+  fields: string[]
+  masked: string[]
+  onToggle: (field: string) => void
+}) {
+  if (fields.length === 0) return null
+  return (
+    <div class="form-group">
+      <label>Mask on public boards</label>
+      <div class="mask-fields">
+        {fields.map((field) => (
+          <label key={field} class="mask-field-checkbox">
+            <input type="checkbox" checked={masked.includes(field)} onChange={() => onToggle(field)} />
+            {field}
+          </label>
+        ))}
+      </div>
+      <p class="mask-hint">Masked field values are shown as A, B, C… to public viewers.</p>
+    </div>
+  )
 }
 
 /** Modal for adding the current chart to a dashboard section. */
 function AddToDashboardModal({ state, onClose }: { state: ChartState; onClose: () => void }) {
   const queryClient = useQueryClient()
   const [title, setTitle] = useState('')
+  const [targetId, setTargetId] = useState('home') // 'home' or a shared dashboard id
   const [selectedSectionId, setSelectedSectionId] = useState('')
   const [newSectionTitle, setNewSectionTitle] = useState('')
+  const [masked, setMasked] = useState<string[]>([])
   const [saved, setSaved] = useState(false)
+
+  const toggleMasked = (field: string) =>
+    setMasked((prev) => (prev.includes(field) ? prev.filter((f) => f !== field) : [...prev, field]))
 
   const dashboardQuery = useQuery({
     queryFn: fetchDashboard,
@@ -592,23 +643,47 @@ function AddToDashboardModal({ state, onClose }: { state: ChartState; onClose: (
     staleTime: 5 * 60 * 1000,
   })
 
+  const sharedQuery = useQuery({
+    queryFn: listSharedDashboards,
+    queryKey: ['sharedDashboards'],
+    staleTime: 60 * 1000,
+  })
+
   const saveMutation = useMutation({
-    mutationFn: saveDashboard,
-    onSuccess: (data) => {
-      queryClient.setQueryData(['dashboard'], data)
+    mutationFn: async (next: { targetId: string; config: DashboardConfig }) => {
+      if (next.targetId === 'home') {
+        await saveDashboard(next.config)
+      } else {
+        await updateSharedDashboard(next.targetId, { config: next.config })
+      }
+    },
+    onError: () => alert('Failed to add the widget. Please try again.'),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+      void queryClient.invalidateQueries({ queryKey: ['sharedDashboards'] })
       setSaved(true)
     },
   })
 
-  const dashboard: DashboardConfig | undefined = dashboardQuery.data
-  const chartsSections = dashboard?.sections.filter((s) => s.type === 'charts') ?? []
+  const sharedDashboards = sharedQuery.data ?? []
+  // The config of the currently selected target (home or a shared dashboard).
+  const targetConfig: DashboardConfig | undefined =
+    targetId === 'home' ? dashboardQuery.data : sharedDashboards.find((d) => d.id === targetId)?.config
+  const chartsSections = targetConfig?.sections.filter((s) => s.type === 'charts') ?? []
+
+  // Reset the section choice when the target dashboard changes.
+  const handleTargetChange = (id: string) => {
+    setTargetId(id)
+    setSelectedSectionId('')
+    setNewSectionTitle('')
+  }
 
   const handleSave = () => {
-    if (!dashboard) return
+    if (!targetConfig) return
 
-    const widget = buildWidgetFromState(state, title)
+    const widget = buildWidgetFromState(state, title, undefined, masked)
 
-    let newDashboard: DashboardConfig
+    let newConfig: DashboardConfig
     if (selectedSectionId === '__new__') {
       const sectionTitle = newSectionTitle.trim() || 'Charts'
       const newSection: DashboardSection = {
@@ -617,21 +692,22 @@ function AddToDashboardModal({ state, onClose }: { state: ChartState; onClose: (
         type: 'charts' as SectionType,
         widgets: [widget],
       }
-      newDashboard = { ...dashboard, sections: [...dashboard.sections, newSection] }
+      newConfig = { ...targetConfig, sections: [...targetConfig.sections, newSection] }
     } else {
-      newDashboard = {
-        ...dashboard,
-        sections: dashboard.sections.map((section) =>
+      newConfig = {
+        ...targetConfig,
+        sections: targetConfig.sections.map((section) =>
           section.id === selectedSectionId ? { ...section, widgets: [...section.widgets, widget] } : section,
         ),
       }
     }
 
-    saveMutation.mutate(newDashboard)
+    saveMutation.mutate({ config: newConfig, targetId })
   }
 
   const canSave =
     !saveMutation.isPending &&
+    !!targetConfig &&
     (selectedSectionId === '__new__' ? newSectionTitle.trim().length > 0 : selectedSectionId.length > 0)
 
   return (
@@ -669,6 +745,21 @@ function AddToDashboardModal({ state, onClose }: { state: ChartState; onClose: (
               </div>
 
               <div class="form-group">
+                <label>Dashboard</label>
+                <select
+                  value={targetId}
+                  onChange={(e) => handleTargetChange((e.target as HTMLSelectElement).value)}
+                >
+                  <option value="home">My dashboard (home)</option>
+                  {sharedDashboards.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.name} (shared)
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div class="form-group">
                 <label>Dashboard Section</label>
                 <select
                   value={selectedSectionId}
@@ -695,6 +786,8 @@ function AddToDashboardModal({ state, onClose }: { state: ChartState; onClose: (
                   />
                 </div>
               )}
+
+              <BreakdownMaskPicker fields={state.breakdown_fields} masked={masked} onToggle={toggleMasked} />
             </div>
           )}
         </div>
@@ -720,12 +813,126 @@ function AddToDashboardModal({ state, onClose }: { state: ChartState; onClose: (
   )
 }
 
+/**
+ * Bottom-of-page control shown when the user navigated here from a board chart.
+ * Lets them replace that widget in place with the current chart configuration,
+ * optionally under a new title.
+ */
+function UpdateChartOnBoard({ state, origin }: { state: ChartState; origin: ChartOrigin }) {
+  const queryClient = useQueryClient()
+  const { route } = useLocation()
+  const isHome = origin.board_id === 'home'
+  const [expanded, setExpanded] = useState(false)
+  const [title, setTitle] = useState('')
+  const [masked, setMasked] = useState<string[]>([])
+
+  const toggleMasked = (field: string) =>
+    setMasked((prev) => (prev.includes(field) ? prev.filter((f) => f !== field) : [...prev, field]))
+
+  const dashboardQuery = useQuery({
+    enabled: isHome,
+    queryFn: fetchDashboard,
+    queryKey: ['dashboard'],
+    staleTime: 5 * 60 * 1000,
+  })
+
+  const sharedQuery = useQuery({
+    enabled: !isHome,
+    queryFn: listSharedDashboards,
+    queryKey: ['sharedDashboards'],
+    staleTime: 60 * 1000,
+  })
+
+  const shared = isHome ? undefined : sharedQuery.data?.find((d) => d.id === origin.board_id)
+  const targetConfig: DashboardConfig | undefined = isHome ? dashboardQuery.data : shared?.config
+  const boardName = isHome ? 'home dashboard' : shared?.name
+  const section = targetConfig?.sections.find((s) => s.id === origin.section_id)
+  const existingWidget = section?.widgets.find((w) => w.id === origin.widget_id)
+
+  // Where to send the user after a successful update: the board they came from.
+  const destination = boardReturnPath(origin, auth.value.user, shared?.slug)
+
+  const updateMutation = useMutation({
+    mutationFn: async () => {
+      if (!targetConfig) return
+      const widget = buildWidgetFromState(state, title.trim(), origin.widget_id, masked)
+      const nextConfig = replaceWidgetInConfig(targetConfig, origin.section_id, origin.widget_id, widget)
+      if (isHome) await saveDashboard(nextConfig)
+      else await updateSharedDashboard(origin.board_id, { config: nextConfig })
+    },
+    onError: () => alert('Failed to update the chart. Please try again.'),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+      void queryClient.invalidateQueries({ queryKey: ['sharedDashboards'] })
+      route(destination)
+    },
+  })
+
+  // The origin no longer resolves to a real widget (widget/section/board removed).
+  if (!section || !existingWidget) return null
+
+  const label = `Update Chart in ${boardName} / ${section.title}`
+
+  if (!expanded) {
+    return (
+      <div class="add-to-dashboard-row">
+        <button
+          class="btn-add-to-dashboard"
+          onClick={() => {
+            setTitle(chartWidgetTitle(existingWidget) ?? '')
+            setMasked(chartWidgetMaskedFields(existingWidget))
+            setExpanded(true)
+          }}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
+            <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
+          </svg>
+          {label}
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div class="chart-goal-form">
+      <h3>{label}</h3>
+      <p class="goal-form-description">
+        Replace this chart on <strong>{boardName}</strong> with the current configuration. You'll be taken
+        back to the dashboard.
+      </p>
+      <div class="goal-form-fields">
+        <label style={{ flex: 1 }}>
+          Title (optional)
+          <input
+            class="chart-update-title"
+            type="text"
+            value={title}
+            onInput={(e) => setTitle((e.target as HTMLInputElement).value)}
+            placeholder={state.pattern || 'Chart title'}
+          />
+        </label>
+      </div>
+      <BreakdownMaskPicker fields={state.breakdown_fields} masked={masked} onToggle={toggleMasked} />
+      <div class="goal-form-actions">
+        <button class="btn-cancel" onClick={() => setExpanded(false)}>
+          Cancel
+        </button>
+        <button class="btn-save" disabled={updateMutation.isPending} onClick={() => updateMutation.mutate()}>
+          {updateMutation.isPending ? 'Updating...' : 'Update Chart'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // eslint-disable-next-line complexity -- chart page with multiple feature sections
 export function Chart() {
   const isLoggedIn = auth.value.token
   const queryClient = useQueryClient()
   const { query } = useLocation()
   const [state, setState] = useState(() => parseQuery(query))
+  const [origin] = useState(() => parseChartOrigin(query))
   const [showAddToDashboard, setShowAddToDashboard] = useState(false)
   const [showSetGoal, setShowSetGoal] = useState(false)
   const [goalMax, setGoalMax] = useState('')
@@ -736,9 +943,9 @@ export function Chart() {
     (patch: Partial<ChartState>) => {
       const next = { ...state, ...patch }
       setState(next)
-      syncUrl(next)
+      syncUrl(next, origin)
     },
-    [state],
+    [state, origin],
   )
 
   if (!isLoggedIn) {
@@ -826,6 +1033,8 @@ export function Chart() {
           )}
         </div>
       )}
+
+      {origin && <UpdateChartOnBoard state={state} origin={origin} />}
 
       {showSetGoal && (
         <div class="chart-goal-form">

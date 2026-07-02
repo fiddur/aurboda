@@ -24,10 +24,14 @@ import { createActivitiesRouter } from '../routes/activities-router.ts'
 import { createActivityTypesRouter } from '../routes/activity-types-router.ts'
 import { createAdminRouter } from '../routes/admin-router.ts'
 import { createAuditLogRouter } from '../routes/audit-log-router.ts'
+import { createChallengeDataRouter } from '../routes/challenge-data-router.ts'
+import { createChallengesRouter } from '../routes/challenges-router.ts'
 import { createChartDataRouter } from '../routes/chart-data-router.ts'
 import { createCorrelationsRouter } from '../routes/correlations-router.ts'
 import { createDashboardRouter } from '../routes/dashboard-router.ts'
 import { createDeductionRulesRouter } from '../routes/deduction-rules-router.ts'
+import { createFeedPublicRouter } from '../routes/feed-public-router.ts'
+import { createFeedRouter } from '../routes/feed-router.ts'
 import { createFoodItemsRouter } from '../routes/food-items-router.ts'
 import { createIconsRouter } from '../routes/icons-router.ts'
 import { createImportsRouter } from '../routes/imports-router.ts'
@@ -37,11 +41,13 @@ import { createMetricsRouter } from '../routes/metrics-router.ts'
 import { createNotesRouter } from '../routes/notes-router.ts'
 import { createNutrientRecommendationsRouter } from '../routes/nutrient-recommendations-router.ts'
 import { createProductivityRouter } from '../routes/productivity-router.ts'
+import { createPublicSharesRouter } from '../routes/public-shares-router.ts'
 import { createRawRecordsRouter } from '../routes/raw-records-router.ts'
 import { createReportsRouter } from '../routes/reports-router.ts'
 import { createScreentimeCategoriesRouter } from '../routes/screentime-categories-router.ts'
 import { createSensitivityFlagsRouter } from '../routes/sensitivity-flags-router.ts'
 import { createSettingsRouter } from '../routes/settings-router.ts'
+import { createSharedDashboardsRouter } from '../routes/shared-dashboards-router.ts'
 import { createTrainingLoadRouter } from '../routes/training-load-router.ts'
 import { createTrendsRouter } from '../routes/trends-router.ts'
 import { createWebAuthnRouter } from '../routes/webauthn-router.ts'
@@ -54,6 +60,7 @@ interface RestRoutesDeps {
   centralDb: CentralDb
   invitationAuth: InvitationAuth
   webHost: string
+  apiBaseUrl: string
   garmin: GarminClient
   syncProvider: SyncProvider
   activityNotifier: ActivityNotifier
@@ -73,6 +80,7 @@ export const mountRestRouters = ({
   centralDb,
   invitationAuth,
   webHost,
+  apiBaseUrl,
   garmin,
   syncProvider,
   activityNotifier,
@@ -117,6 +125,14 @@ export const mountRestRouters = ({
   httpd.use(createAuditLogRouter(authMiddleware))
   httpd.use(createRawRecordsRouter(authMiddleware))
   httpd.use('/dashboard', createDashboardRouter(authMiddleware))
+  httpd.use('/shared-dashboards', createSharedDashboardsRouter(authMiddleware, webHost))
+  httpd.use('/feed', createFeedRouter(authMiddleware))
+  httpd.use('/challenges', createChallengesRouter(authMiddleware, webHost, apiBaseUrl))
+  httpd.use(createChallengeDataRouter())
+  // Public feed series must be mounted before the generic /public/:username/:slug
+  // resolver so `series` is not matched as a share slug.
+  httpd.use(createFeedPublicRouter())
+  httpd.use(createPublicSharesRouter(webHost))
   httpd.use('/correlations', createCorrelationsRouter(authMiddleware, syncProvider))
   httpd.use('/training-load', createTrainingLoadRouter(authMiddleware))
   httpd.use('/trends', createTrendsRouter(authMiddleware))

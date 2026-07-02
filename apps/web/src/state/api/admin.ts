@@ -13,6 +13,7 @@ export interface AdminSettings {
   oura_client_secret_set: boolean
   oura_webhook_available: boolean
   oura_webhook_enabled: boolean
+  sentry_dsn: string | null
   strava_client_id_set: boolean
   strava_client_secret_set: boolean
 }
@@ -37,6 +38,7 @@ export const fetchAdminSettings = async (): Promise<AdminSettings> => {
     oura_client_secret_set: response.data.oura_client_secret_set,
     oura_webhook_available: response.data.oura_webhook_available,
     oura_webhook_enabled: response.data.oura_webhook_enabled,
+    sentry_dsn: response.data.sentry_dsn,
     signup_mode: response.data.signup_mode,
     strava_client_id_set: response.data.strava_client_id_set,
     strava_client_secret_set: response.data.strava_client_secret_set,
@@ -50,6 +52,7 @@ export const updateAdminSettings = async (params: {
   oura_client_id?: string | null
   oura_client_secret?: string | null
   oura_webhook_enabled?: boolean
+  sentry_dsn?: string | null
   strava_client_id?: string | null
   strava_client_secret?: string | null
 }): Promise<AdminSettings> => {
@@ -69,6 +72,7 @@ export const updateAdminSettings = async (params: {
     oura_client_secret_set: response.data.oura_client_secret_set,
     oura_webhook_available: response.data.oura_webhook_available,
     oura_webhook_enabled: response.data.oura_webhook_enabled,
+    sentry_dsn: response.data.sentry_dsn,
     signup_mode: response.data.signup_mode,
     strava_client_id_set: response.data.strava_client_id_set,
     strava_client_secret_set: response.data.strava_client_secret_set,

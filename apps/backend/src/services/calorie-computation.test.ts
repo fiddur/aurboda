@@ -19,12 +19,12 @@ describe('enqueueCalorieSync', () => {
   test('enqueues all points regardless of age', async () => {
     const oldPoint = {
       end_time: new Date('2024-01-01T10:01:00Z'),
-      kcal: 5.5,
+      kcal_active: 5.5,
       time: new Date('2024-01-01T10:00:00Z'),
     }
     const recentPoint = {
       end_time: new Date('2026-03-17T10:01:00Z'),
-      kcal: 12.3,
+      kcal_active: 12.3,
       time: new Date('2026-03-17T10:00:00Z'),
     }
 
@@ -55,7 +55,7 @@ describe('enqueueCalorieSync', () => {
 
     // Should not throw
     await expect(
-      enqueueCalorieSync('test-user', [{ end_time: new Date(), kcal: 1, time: new Date() }]),
+      enqueueCalorieSync('test-user', [{ end_time: new Date(), kcal_active: 1, time: new Date() }]),
     ).resolves.toBeUndefined()
   })
 })

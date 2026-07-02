@@ -56,6 +56,15 @@
   font-size: 0.7rem;
 }
 
+.autocomplete-create {
+  border-top: 1px solid #e5e7eb;
+}
+
+.autocomplete-create .ac-name {
+  color: #2563eb;
+  font-weight: 500;
+}
+
 @media (prefers-color-scheme: dark) {
   .food-autocomplete input {
     background: #374151;
@@ -79,5 +88,13 @@
 
   .ac-cal {
     color: #9ca3af;
+  }
+
+  .autocomplete-create {
+    border-top-color: #4b5563;
+  }
+
+  .autocomplete-create .ac-name {
+    color: #60a5fa;
   }
 }
