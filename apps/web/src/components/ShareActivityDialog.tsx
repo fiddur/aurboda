@@ -15,6 +15,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'preact/hooks'
 
 import { shareActivity, updateFeedPost } from '../state/api'
+import { SERIES_METRICS, SUMMARY_METRICS } from './feed-metrics'
 import './ShareActivityDialog.css'
 
 interface Props {
@@ -25,27 +26,6 @@ interface Props {
   onClose: () => void
   onShared?: (post: FeedPost) => void
 }
-
-/** Scalar summaries the backend knows how to resolve (see services/activitypub/scalars.ts). */
-const SUMMARY_METRICS: { key: string; label: string }[] = [
-  { key: 'duration', label: 'Duration' },
-  { key: 'distance', label: 'Distance' },
-  { key: 'heart_rate_avg', label: 'Avg HR' },
-  { key: 'heart_rate_max', label: 'Max HR' },
-  { key: 'hr_zone_minutes', label: 'HR zones' },
-  { key: 'calories', label: 'Calories' },
-  { key: 'stress_avg', label: 'Avg stress' },
-]
-
-/** High-resolution series a user can explicitly opt into sharing. */
-const SERIES_METRICS: { key: MetricType; label: string }[] = [
-  { key: 'heart_rate', label: 'Heart rate' },
-  { key: 'speed', label: 'Speed' },
-  { key: 'power', label: 'Power' },
-  { key: 'elevation', label: 'Elevation' },
-  { key: 'run_cadence', label: 'Cadence' },
-  { key: 'stress_level', label: 'Stress' },
-]
 
 const VISIBILITIES: { value: FeedVisibility; label: string; hint: string }[] = [
   { hint: 'Anyone can see it; appears in public timelines.', label: 'Public', value: 'public' },
