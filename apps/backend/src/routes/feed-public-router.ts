@@ -42,7 +42,11 @@ export const createFeedPublicRouter = (): TypedRouter => {
         if (!result) {
           return res.status(404).json({ error: 'Not found', success: false })
         }
-        res.setHeader('Cache-Control', 'public, max-age=60')
+        // `no-store`: sharing is revocable (delete the post, flip it to
+        // `followers`, or drop the metric from `series_metrics`) and must take
+        // effect immediately, so shared caches/CDNs must never serve a series
+        // that was just un-shared.
+        res.setHeader('Cache-Control', 'no-store')
         res.json({ ...result, success: true })
       } catch (error) {
         if (isMissingDatabase(error)) {
