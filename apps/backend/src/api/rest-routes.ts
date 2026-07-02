@@ -30,6 +30,8 @@ import { createChartDataRouter } from '../routes/chart-data-router.ts'
 import { createCorrelationsRouter } from '../routes/correlations-router.ts'
 import { createDashboardRouter } from '../routes/dashboard-router.ts'
 import { createDeductionRulesRouter } from '../routes/deduction-rules-router.ts'
+import { createFeedPublicRouter } from '../routes/feed-public-router.ts'
+import { createFeedRouter } from '../routes/feed-router.ts'
 import { createFoodItemsRouter } from '../routes/food-items-router.ts'
 import { createIconsRouter } from '../routes/icons-router.ts'
 import { createImportsRouter } from '../routes/imports-router.ts'
@@ -124,8 +126,12 @@ export const mountRestRouters = ({
   httpd.use(createRawRecordsRouter(authMiddleware))
   httpd.use('/dashboard', createDashboardRouter(authMiddleware))
   httpd.use('/shared-dashboards', createSharedDashboardsRouter(authMiddleware, webHost))
+  httpd.use('/feed', createFeedRouter(authMiddleware))
   httpd.use('/challenges', createChallengesRouter(authMiddleware, webHost, apiBaseUrl))
   httpd.use(createChallengeDataRouter())
+  // Public feed series must be mounted before the generic /public/:username/:slug
+  // resolver so `series` is not matched as a share slug.
+  httpd.use(createFeedPublicRouter())
   httpd.use(createPublicSharesRouter(webHost))
   httpd.use('/correlations', createCorrelationsRouter(authMiddleware, syncProvider))
   httpd.use('/training-load', createTrainingLoadRouter(authMiddleware))

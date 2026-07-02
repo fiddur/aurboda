@@ -1,0 +1,179 @@
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
+
+/**
+ * Integration tests for feed-post CRUD and the series-authorization window
+ * lookup that guards the public `/series` endpoint.
+ */
+import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
+import { deleteActivity, insertActivity } from './activities/index.ts'
+import {
+  createFeedPost,
+  deleteFeedPost,
+  type FeedPostInput,
+  findCoveringSharedSeriesWindow,
+  getFeedPostById,
+  listFeedPosts,
+  updateFeedPost,
+} from './feed.ts'
+
+const CONTAINER_TIMEOUT = 120_000
+
+const ACTIVITY_START = new Date('2026-07-01T06:30:00Z')
+const ACTIVITY_END = new Date('2026-07-01T07:11:00Z')
+
+const insertExercise = (user: string): Promise<string> =>
+  insertActivity(user, {
+    activity_type: 'exercise',
+    end_time: ACTIVITY_END,
+    source: 'garmin',
+    start_time: ACTIVITY_START,
+    title: 'Morning run',
+  })
+
+const postInput = (overrides: Partial<FeedPostInput> = {}): FeedPostInput => ({
+  activity_id: null,
+  include_chart: false,
+  include_map: false,
+  included_metrics: ['duration', 'distance', 'heart_rate_avg'],
+  series_metrics: [],
+  visibility: 'public',
+  ...overrides,
+})
+
+describe('Feed posts integration', () => {
+  beforeAll(async () => {
+    await startTestDb()
+  }, CONTAINER_TIMEOUT)
+
+  afterAll(async () => {
+    await stopTestDb()
+  })
+
+  beforeEach(async () => {
+    await cleanTestDb()
+  })
+
+  test('creates a post and round-trips by id', async () => {
+    const user = getTestUser()
+    const activityId = await insertExercise(user)
+    const created = await createFeedPost(
+      user,
+      postInput({ activity_id: activityId, series_metrics: ['heart_rate'] }),
+    )
+
+    expect(created.id).toMatch(/^[0-9a-f-]{36}$/)
+    expect(created.activity_id).toBe(activityId)
+    expect(created.included_metrics).toEqual(['duration', 'distance', 'heart_rate_avg'])
+    expect(created.series_metrics).toEqual(['heart_rate'])
+    expect(created.visibility).toBe('public')
+
+    const fetched = await getFeedPostById(user, created.id)
+    expect(fetched?.id).toBe(created.id)
+    expect(await getFeedPostById(user, '00000000-0000-0000-0000-000000000000')).toBeNull()
+  })
+
+  test('lists posts newest-first', async () => {
+    const user = getTestUser()
+    const first = await createFeedPost(user, postInput())
+    const second = await createFeedPost(user, postInput())
+    const posts = await listFeedPosts(user)
+    expect(posts.map((p) => p.id)).toEqual([second.id, first.id])
+  })
+
+  test('updates selected fields and leaves others intact', async () => {
+    const user = getTestUser()
+    const created = await createFeedPost(user, postInput({ series_metrics: ['heart_rate'] }))
+
+    const updated = await updateFeedPost(user, created.id, {
+      series_metrics: ['heart_rate', 'stress_level'],
+      visibility: 'unlisted',
+    })
+    expect(updated?.series_metrics).toEqual(['heart_rate', 'stress_level'])
+    expect(updated?.visibility).toBe('unlisted')
+    expect(updated?.included_metrics).toEqual(created.included_metrics)
+
+    // Empty patch is a no-op that still returns the current record.
+    const noop = await updateFeedPost(user, created.id, {})
+    expect(noop?.id).toBe(created.id)
+    expect(await updateFeedPost(user, '00000000-0000-0000-0000-000000000000', {})).toBeNull()
+  })
+
+  test('deletes a post', async () => {
+    const user = getTestUser()
+    const created = await createFeedPost(user, postInput())
+    expect(await deleteFeedPost(user, created.id)).toBe(true)
+    expect(await deleteFeedPost(user, created.id)).toBe(false)
+    expect(await getFeedPostById(user, created.id)).toBeNull()
+  })
+
+  describe('findCoveringSharedSeriesWindow', () => {
+    const within = { end: new Date('2026-07-01T07:00:00Z'), start: new Date('2026-07-01T06:40:00Z') }
+
+    test('resolves when a public post shares the series and the activity covers the range', async () => {
+      const user = getTestUser()
+      const activityId = await insertExercise(user)
+      await createFeedPost(user, postInput({ activity_id: activityId, series_metrics: ['heart_rate'] }))
+
+      const window = await findCoveringSharedSeriesWindow(user, 'heart_rate', within.start, within.end)
+      expect(window?.start_time.toISOString()).toBe(ACTIVITY_START.toISOString())
+      expect(window?.end_time.toISOString()).toBe(ACTIVITY_END.toISOString())
+    })
+
+    test('resolves for an unlisted post', async () => {
+      const user = getTestUser()
+      const activityId = await insertExercise(user)
+      await createFeedPost(
+        user,
+        postInput({ activity_id: activityId, series_metrics: ['heart_rate'], visibility: 'unlisted' }),
+      )
+      expect(
+        await findCoveringSharedSeriesWindow(user, 'heart_rate', within.start, within.end),
+      ).not.toBeNull()
+    })
+
+    test('does NOT resolve a metric that was only shared as a scalar (not a series)', async () => {
+      const user = getTestUser()
+      const activityId = await insertExercise(user)
+      await createFeedPost(
+        user,
+        postInput({ activity_id: activityId, included_metrics: ['heart_rate'], series_metrics: [] }),
+      )
+      expect(await findCoveringSharedSeriesWindow(user, 'heart_rate', within.start, within.end)).toBeNull()
+    })
+
+    test('does NOT resolve for a followers-only post', async () => {
+      const user = getTestUser()
+      const activityId = await insertExercise(user)
+      await createFeedPost(
+        user,
+        postInput({ activity_id: activityId, series_metrics: ['heart_rate'], visibility: 'followers' }),
+      )
+      expect(await findCoveringSharedSeriesWindow(user, 'heart_rate', within.start, within.end)).toBeNull()
+    })
+
+    test('does NOT resolve a window that extends outside the activity', async () => {
+      const user = getTestUser()
+      const activityId = await insertExercise(user)
+      await createFeedPost(user, postInput({ activity_id: activityId, series_metrics: ['heart_rate'] }))
+
+      // Ends after the activity ends.
+      const outside = { end: new Date('2026-07-01T08:00:00Z'), start: within.start }
+      expect(await findCoveringSharedSeriesWindow(user, 'heart_rate', outside.start, outside.end)).toBeNull()
+    })
+
+    test('does NOT resolve a different metric', async () => {
+      const user = getTestUser()
+      const activityId = await insertExercise(user)
+      await createFeedPost(user, postInput({ activity_id: activityId, series_metrics: ['heart_rate'] }))
+      expect(await findCoveringSharedSeriesWindow(user, 'stress_level', within.start, within.end)).toBeNull()
+    })
+
+    test('does NOT resolve once the activity is soft-deleted', async () => {
+      const user = getTestUser()
+      const activityId = await insertExercise(user)
+      await createFeedPost(user, postInput({ activity_id: activityId, series_metrics: ['heart_rate'] }))
+      await deleteActivity(user, activityId)
+      expect(await findCoveringSharedSeriesWindow(user, 'heart_rate', within.start, within.end)).toBeNull()
+    })
+  })
+})
