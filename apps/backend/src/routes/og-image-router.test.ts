@@ -48,6 +48,7 @@ describe('GET /u/:username/:slug/opengraph-image.png', () => {
     const res = await supertest(app).get('/u/fiddur/abc/opengraph-image.png')
     expect(res.status).toBe(302)
     expect(res.headers.location).toBe('https://aurboda.net/og-default.png')
+    expect(res.headers['cache-control']).toBe('public, max-age=300')
     expect(deps.renderImage).not.toHaveBeenCalled()
   })
 

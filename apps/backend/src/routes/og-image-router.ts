@@ -65,6 +65,10 @@ export const createOgImageRouter = (deps: OgImageDeps): Router => {
   }
 
   const redirectToDefault = (res: Response): void => {
+    // Cache the redirect briefly so crawler hits on non-public/unknown share
+    // URLs don't re-resolve the DB every time; short enough that a resource
+    // turned public starts serving its rendered card within minutes.
+    res.setHeader('Cache-Control', 'public, max-age=300')
     res.redirect(302, defaultOgImage(webHost))
   }
 
