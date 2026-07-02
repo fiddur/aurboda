@@ -5,9 +5,9 @@ import { Person } from '@fedify/fedify/vocab'
  * The Fedify `Federation` object for the activity feed.
  *
  * Single actor per user: the actor identifier IS the username, and the actor
- * lives at `<host>/u/<username>` — consistent with the shared-dashboard /
- * challenge identity model and the AS2 object model. This slice wires the
- * read/discovery surface only:
+ * lives at `<host>/users/<username>` — a dedicated prefix that never collides
+ * with the SPA's human-facing `/u/<username>` profile/dashboard pages. This
+ * slice wires the read/discovery surface only:
  *
  * - actor document (`Person`) with the user's published RSA public key,
  * - WebFinger (`acct:<user>@<host>` → the actor), via `mapHandle`,
