@@ -129,7 +129,7 @@ export const createShareHtmlRouter = (deps: ShareHtmlDeps): Router => {
     if (dashboard?.is_public) {
       return sendHtml(
         loadTemplate,
-        buildDashboardShareMeta({ name: dashboard.name, url, username, webHost }),
+        buildDashboardShareMeta({ name: dashboard.name, url, username }),
         true,
         res,
       )
@@ -139,7 +139,7 @@ export const createShareHtmlRouter = (deps: ShareHtmlDeps): Router => {
     if (challenge?.is_public) {
       return sendHtml(
         loadTemplate,
-        buildChallengeShareMeta({ name: challenge.name, url, username, webHost }),
+        buildChallengeShareMeta({ name: challenge.name, url, username }),
         true,
         res,
       )
@@ -153,7 +153,7 @@ export const createShareHtmlRouter = (deps: ShareHtmlDeps): Router => {
     const { username } = req.params
     const url = buildProfileUrl(webHost, username)
     if (isValidUsername(username) && (await profileExists(username))) {
-      return sendHtml(loadTemplate, buildProfileShareMeta({ url, username, webHost }), true, res)
+      return sendHtml(loadTemplate, buildProfileShareMeta({ url, username }), true, res)
     }
     return sendHtml(loadTemplate, buildDefaultShareMeta(webHost, url), false, res)
   })

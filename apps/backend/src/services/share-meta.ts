@@ -38,6 +38,10 @@ export interface ShareMeta {
 export const defaultOgImage = (webHost: string): string =>
   `${webHost.replace(/\/+$/, '')}${DEFAULT_OG_IMAGE_PATH}`
 
+/** Absolute URL of a resource's dynamically rendered preview image. */
+export const resourceOgImage = (resourceUrl: string): string =>
+  `${resourceUrl.replace(/\/+$/, '')}/opengraph-image.png`
+
 /** Escape a string for use in HTML element text content. */
 const escapeHtmlText = (value: string): string =>
   value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
@@ -101,7 +105,6 @@ const clampDescription = (value: string, max = 200): string => {
 }
 
 interface DashboardMetaInput {
-  webHost: string
   username: string
   name: string
   url: string
@@ -111,7 +114,6 @@ interface DashboardMetaInput {
 
 /** Build share meta for a public shared dashboard. */
 export const buildDashboardShareMeta = ({
-  webHost,
   username,
   name,
   url,
@@ -120,7 +122,7 @@ export const buildDashboardShareMeta = ({
   description: clampDescription(
     description ?? `${name} — a public dashboard shared by ${username} on ${SITE_NAME}.`,
   ),
-  image: defaultOgImage(webHost),
+  image: resourceOgImage(url),
   imageAlt: `${SITE_NAME} dashboard: ${name}`,
   jsonLd: {
     '@context': 'https://schema.org',
@@ -134,18 +136,17 @@ export const buildDashboardShareMeta = ({
 })
 
 interface ChallengeMetaInput {
-  webHost: string
   username: string
   name: string
   url: string
 }
 
 /** Build share meta for a public federated challenge. */
-export const buildChallengeShareMeta = ({ webHost, username, name, url }: ChallengeMetaInput): ShareMeta => ({
+export const buildChallengeShareMeta = ({ username, name, url }: ChallengeMetaInput): ShareMeta => ({
   description: clampDescription(
     `${name} — a federated challenge hosted by ${username} on ${SITE_NAME}. Join from any Aurboda instance.`,
   ),
-  image: defaultOgImage(webHost),
+  image: resourceOgImage(url),
   imageAlt: `${SITE_NAME} challenge: ${name}`,
   jsonLd: {
     '@context': 'https://schema.org',
@@ -159,15 +160,14 @@ export const buildChallengeShareMeta = ({ webHost, username, name, url }: Challe
 })
 
 interface ProfileMetaInput {
-  webHost: string
   username: string
   url: string
 }
 
 /** Build share meta for a public profile / actor page. */
-export const buildProfileShareMeta = ({ webHost, username, url }: ProfileMetaInput): ShareMeta => ({
+export const buildProfileShareMeta = ({ username, url }: ProfileMetaInput): ShareMeta => ({
   description: clampDescription(`${username}'s public dashboards and challenges on ${SITE_NAME}.`),
-  image: defaultOgImage(webHost),
+  image: resourceOgImage(url),
   imageAlt: `${SITE_NAME} profile: ${username}`,
   jsonLd: {
     '@context': 'https://schema.org',
