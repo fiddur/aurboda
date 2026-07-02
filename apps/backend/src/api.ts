@@ -329,7 +329,7 @@ const main = async () => {
   // the immediate peer is loopback — a direct remote client isn't, so it can't
   // spoof them.
   httpd.set('trust proxy', 'loopback')
-  httpd.use(integrateFederation(createFeedFederation(), () => undefined))
+  httpd.use(integrateFederation(createFeedFederation(webHost), () => undefined))
 
   httpd.use(json({ limit: '10mb' }))
 

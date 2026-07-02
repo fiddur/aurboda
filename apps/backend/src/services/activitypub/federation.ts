@@ -27,9 +27,14 @@ import {
 } from '../../db/index.ts'
 import { toCryptoKeyPair } from './keys.ts'
 
-export const createFeedFederation = (): Federation<void> => {
+export const createFeedFederation = (origin: string): Federation<void> => {
   const federation = createFederation<void>({
     kv: new MemoryKvStore(),
+    // Pin the canonical origin (the public base URL) so actor ids, WebFinger
+    // self-links, inbox/outbox URIs, etc. are always built with the right
+    // scheme + host — Mastodon requires https, and reconstructing the scheme
+    // from the request yields http behind the TLS-terminating proxy.
+    origin,
     queue: new InProcessMessageQueue(),
   })
 
