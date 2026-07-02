@@ -434,6 +434,14 @@ export {
 // Uploaded icons
 export { deleteIcon, getIcon, insertIcon } from './icons.ts'
 
+// Profile avatar
+export {
+  deleteProfileAvatar,
+  getProfileAvatar,
+  type ProfileAvatar,
+  upsertProfileAvatar,
+} from './profile-avatar.ts'
+
 // Shared food-item overrides (per-user customizations layered onto central rows)
 export {
   clearSharedFoodItemOverride,

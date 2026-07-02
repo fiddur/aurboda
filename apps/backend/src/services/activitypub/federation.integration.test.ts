@@ -11,7 +11,7 @@ const CONTAINER_TIMEOUT = 120_000
 const ORIGIN = 'https://aurboda.example'
 
 const notFound = () => new Response('nope', { status: 404 })
-const fed = createFeedFederation()
+const fed = createFeedFederation(ORIGIN)
 
 const fetchAs2 = (path: string) =>
   fed.fetch(new Request(`${ORIGIN}${path}`, { headers: { Accept: 'application/activity+json' } }), {

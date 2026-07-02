@@ -89,10 +89,11 @@ get the full SPA and hydrate normally — only the head is enriched.
   a canonical URL; profiles get a `profile`-typed card with `ProfilePage` JSON-LD.
 - Every public resource has a **dynamically rendered 1200×630 preview image** at
   `<resource-url>/opengraph-image.png`. Satori renders a branded card (title +
-  DASHBOARD/CHALLENGE/PROFILE eyebrow + Aurboda wordmark) to SVG and sharp
-  rasterizes it to PNG; fonts are bundled (no system fonts in the image). Renders
-  are memoised in-process and cached `public, max-age=3600`. Non-public / unknown
-  resources fall back to the branded static default (`/og-default.png`).
+  DASHBOARD/CHALLENGE/PROFILE eyebrow + the owner's avatar + Aurboda wordmark) to
+  SVG and sharp rasterizes it to PNG; fonts are bundled (no system fonts in the
+  image). Renders are memoised in-process and cached `public, max-age=3600`.
+  Non-public / unknown resources fall back to the branded static default
+  (`/og-default.png`).
 - **Visibility is respected**: rich meta and rendered images are emitted only for
   **public** resources. Unlisted (slug-only) dashboards and unknown URLs get generic
   site meta and the static default image, so an unlisted resource's title/image never
@@ -102,6 +103,21 @@ get the full SPA and hydrate normally — only the head is enriched.
 The backend finds `index.html` via `WEB_INDEX_PATH` (set in the Docker image to the
 file nginx serves). In local dev, vite serves `/u/*` directly, so this path is
 unset and the server-rendered head is exercised only by its unit tests.
+
+## Avatars
+
+Each user has a public profile avatar, surfaced on the profile page, in shared-page
+OG cards, and as the ActivityPub actor `icon` (so Mastodon and friends show it).
+
+- **Storage**: the image lives in the user's own database (`profile_avatar`, a
+  singleton row). The deployment has no object store or persistent app-container
+  volume — only Postgres persists — so DB storage is the robust choice. Uploads are
+  normalized to a square **256×256 WebP** (sharp), stripping metadata.
+- **Upload / remove** (authenticated): `POST /profile/avatar` (multipart `avatar`
+  field; PNG/JPEG/WebP/GIF) and `DELETE /profile/avatar`.
+- **Public read**: `GET /u/:username/avatar.png`. If the user hasn't uploaded one,
+  a **deterministic identicon** derived from the username is generated (a font-free
+  SVG rasterized by sharp), so an avatar always renders. Served `max-age=3600`.
 
 ## API
 
