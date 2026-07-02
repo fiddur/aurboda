@@ -20,6 +20,7 @@ import { Accept, Follow, Person, Undo } from '@fedify/fedify/vocab'
  */
 import { isValidUsername } from '../../api/auth-routes.ts'
 import {
+  countFeedFollowers,
   getOrCreateActorKeyPair,
   isMissingDatabase,
   listFeedFollowers,
@@ -149,7 +150,7 @@ export const createFeedFederation = (origin: string): Federation<void> => {
     .setCounter(async (_ctx, identifier) => {
       if (!isValidUsername(identifier)) return 0
       try {
-        return (await listFeedFollowers(identifier)).length
+        return await countFeedFollowers(identifier)
       } catch (error) {
         if (isMissingDatabase(error)) return 0
         throw error
