@@ -47,11 +47,13 @@ import { createReportsRouter } from '../routes/reports-router.ts'
 import { createScreentimeCategoriesRouter } from '../routes/screentime-categories-router.ts'
 import { createSensitivityFlagsRouter } from '../routes/sensitivity-flags-router.ts'
 import { createSettingsRouter } from '../routes/settings-router.ts'
+import { createShareHtmlRouter, createShareResolvers } from '../routes/share-html-router.ts'
 import { createSharedDashboardsRouter } from '../routes/shared-dashboards-router.ts'
 import { createTrainingLoadRouter } from '../routes/training-load-router.ts'
 import { createTrendsRouter } from '../routes/trends-router.ts'
 import { createWebAuthnRouter } from '../routes/webauthn-router.ts'
 import { createWellKnownRouter, type WellKnownConfig } from '../routes/well-known-router.ts'
+import { createTemplateLoader } from '../services/web-template.ts'
 
 interface RestRoutesDeps {
   httpd: Express
@@ -60,6 +62,7 @@ interface RestRoutesDeps {
   centralDb: CentralDb
   invitationAuth: InvitationAuth
   webHost: string
+  webIndexPath: string | undefined
   apiBaseUrl: string
   garmin: GarminClient
   syncProvider: SyncProvider
@@ -80,6 +83,7 @@ export const mountRestRouters = ({
   centralDb,
   invitationAuth,
   webHost,
+  webIndexPath,
   apiBaseUrl,
   garmin,
   syncProvider,
@@ -133,6 +137,13 @@ export const mountRestRouters = ({
   // resolver so `series` is not matched as a share slug.
   httpd.use(createFeedPublicRouter())
   httpd.use(createPublicSharesRouter(webHost))
+  httpd.use(
+    createShareHtmlRouter({
+      loadTemplate: createTemplateLoader(webIndexPath),
+      webHost,
+      ...createShareResolvers(),
+    }),
+  )
   httpd.use('/correlations', createCorrelationsRouter(authMiddleware, syncProvider))
   httpd.use('/training-load', createTrainingLoadRouter(authMiddleware))
   httpd.use('/trends', createTrendsRouter(authMiddleware))
