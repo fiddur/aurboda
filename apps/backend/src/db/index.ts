@@ -275,6 +275,15 @@ export { isMissingDatabase } from './pg-errors.ts'
 // Feed actor (ActivityPub keypair)
 export { type ActorKeyPair, getOrCreateActorKeyPair } from './feed-actor.ts'
 
+// Feed followers (remote ActivityPub actors following a user)
+export {
+  type FeedFollowerInput,
+  type FeedFollowerRecord,
+  listFeedFollowers,
+  removeFeedFollower,
+  upsertFeedFollower,
+} from './feed-follower.ts'
+
 // Feed posts
 export {
   createFeedPost,
