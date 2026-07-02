@@ -13,11 +13,12 @@ import type { FeedVisibility } from '@aurboda/api-spec'
 
 import type { MetricType } from '../../schema.ts'
 import type { QueryMetricsBucketedResult } from '../queries/types.ts'
-import type { AS2Create } from './object.ts'
+import type { AS2Create, ScalarMetric } from './object.ts'
 import type { MetricStat, ScalarStat } from './scalars.ts'
 
+import { queryMetricsBucketed } from '../queries/index.ts'
 import { buildCreateExercise } from './object.ts'
-import { resolveSharedScalars } from './scalars.ts'
+import { resolveSharedScalars, SCALAR_SOURCE_METRICS } from './scalars.ts'
 
 /** Canonical federation URLs for a user, derived from the deploy's public hosts. */
 export interface FeedActivityContext {
@@ -68,6 +69,30 @@ export const windowMetricStat = (result: QueryMetricsBucketedResult): MetricStat
     if (stat === 'max') return m.max
     return m.count > 0 ? m.weighted / m.count : undefined
   }
+}
+
+/**
+ * Resolve the shared scalar values for an activity against the database: fetch
+ * the source metrics aggregated over the activity window (one bucketed query),
+ * then map the user's `includedMetrics` selection into `ScalarMetric[]`. The
+ * window is `[start, end]`; an activity with no end has no window, so only
+ * window-independent keys (none, currently) resolve.
+ */
+export const resolveActivityScalars = async (
+  user: string,
+  activity: { start_time: Date; end_time?: Date },
+  includedMetrics: string[],
+): Promise<ScalarMetric[]> => {
+  const start = activity.start_time
+  const end = activity.end_time ?? activity.start_time
+  // One bucket sized to the window; windowMetricStat re-merges if PG splits it.
+  const seconds = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / 1000))
+  const result = await queryMetricsBucketed(user, SCALAR_SOURCE_METRICS, start, end, `${seconds}s`, {})
+  return resolveSharedScalars(
+    { endTime: activity.end_time, startTime: start },
+    includedMetrics,
+    windowMetricStat(result),
+  )
 }
 
 /** Build the `Create{Exercise}` activity for a feed post. */
