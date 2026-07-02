@@ -22,6 +22,7 @@ import { isValidUsername } from '../../api/auth-routes.ts'
 import {
   getOrCreateActorKeyPair,
   isMissingDatabase,
+  listFeedFollowers,
   removeFeedFollower,
   upsertFeedFollower,
 } from '../../db/index.ts'
@@ -123,12 +124,37 @@ export const createFeedFederation = (origin: string): Federation<void> => {
       }
     })
 
-  // Empty collections for now; the outbox serves the user's public posts once
-  // delivery wiring exists.
+  // Outbox stays empty until the delivery slice serves the user's public posts.
   federation.setOutboxDispatcher('/users/{identifier}/outbox', (_ctx, _identifier) => ({ items: [] }))
-  federation.setFollowersDispatcher('/users/{identifier}/followers', (_ctx, _identifier) => ({
-    items: [],
-  }))
+
+  // Real followers, backed by feed_follower. This both serves the followers
+  // collection and enumerates recipients for `sendActivity(..., 'followers', …)`.
+  federation
+    .setFollowersDispatcher('/users/{identifier}/followers', async (_ctx, identifier) => {
+      if (!isValidUsername(identifier)) return { items: [] }
+      try {
+        const followers = await listFeedFollowers(identifier)
+        return {
+          items: followers.map((f) => ({
+            endpoints: f.shared_inbox_uri ? { sharedInbox: new URL(f.shared_inbox_uri) } : null,
+            id: new URL(f.actor_uri),
+            inboxId: new URL(f.inbox_uri),
+          })),
+        }
+      } catch (error) {
+        if (isMissingDatabase(error)) return { items: [] }
+        throw error
+      }
+    })
+    .setCounter(async (_ctx, identifier) => {
+      if (!isValidUsername(identifier)) return 0
+      try {
+        return (await listFeedFollowers(identifier)).length
+      } catch (error) {
+        if (isMissingDatabase(error)) return 0
+        throw error
+      }
+    })
 
   return federation
 }
