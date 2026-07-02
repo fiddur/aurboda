@@ -318,8 +318,10 @@ const main = async () => {
   // ActivityPub federation (actor + WebFinger). Mounted BEFORE the JSON body
   // parser so Fedify owns the raw body of signed inbox POSTs; it passes through
   // (next()) any request that isn't one of its own routes. `trust proxy` lets
-  // Fedify reconstruct the external https URL behind nginx.
-  httpd.set('trust proxy', true)
+  // Fedify reconstruct the external https URL from nginx's X-Forwarded-* headers.
+  // Scope it to `loopback`: the backend binds 127.0.0.1 behind nginx, so only the
+  // loopback hop is trusted and those headers can't be spoofed by a remote client.
+  httpd.set('trust proxy', 'loopback')
   httpd.use(integrateFederation(createFeedFederation(), () => undefined))
 
   httpd.use(json({ limit: '10mb' }))
