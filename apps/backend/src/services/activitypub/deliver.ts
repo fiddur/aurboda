@@ -17,20 +17,16 @@ import type { Federation } from '@fedify/fedify'
 import { Create, Note } from '@fedify/fedify/vocab'
 
 import { resolveActivityScalars } from './feed-activity.ts'
-import { feedPostContent } from './object.ts'
+import { addressingFor, feedPostContent } from './object.ts'
 
-const PUBLIC_URI = new URL('https://www.w3.org/ns/activitystreams#Public')
-
-/** AS2 `to`/`cc` addressing (as URLs) for a post's visibility. */
+/**
+ * AS2 `to`/`cc` addressing (as URLs) for a post's visibility — the same table
+ * `addressingFor` uses for the JSON object model, mapped through `URL` so the
+ * two can't drift.
+ */
 export const recipients = (visibility: FeedVisibility, followers: URL): { to: URL[]; cc: URL[] } => {
-  switch (visibility) {
-    case 'public':
-      return { cc: [followers], to: [PUBLIC_URI] }
-    case 'unlisted':
-      return { cc: [PUBLIC_URI], to: [followers] }
-    case 'followers':
-      return { cc: [], to: [followers] }
-  }
+  const { cc, to } = addressingFor(visibility, followers.href)
+  return { cc: cc.map((u) => new URL(u)), to: to.map((u) => new URL(u)) }
 }
 
 export interface FeedDeliveryDeps {
