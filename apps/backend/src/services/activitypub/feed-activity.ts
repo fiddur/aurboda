@@ -49,14 +49,13 @@ const trimSlashes = (s: string): string => s.replace(/\/+$/, '')
  * add, max/min take the extreme, and avg is re-weighted by sample count.
  */
 export const windowMetricStat = (result: QueryMetricsBucketedResult): MetricStat => {
-  const merged = new Map<string, { sum: number; max: number; min: number; count: number; weighted: number }>()
+  const merged = new Map<string, { sum: number; max: number; count: number; weighted: number }>()
   for (const bucket of result.buckets) {
     for (const [metric, stats] of Object.entries(bucket.metrics)) {
       if (!stats) continue
-      const m = merged.get(metric) ?? { count: 0, max: -Infinity, min: Infinity, sum: 0, weighted: 0 }
+      const m = merged.get(metric) ?? { count: 0, max: -Infinity, sum: 0, weighted: 0 }
       m.sum += stats.sum ?? 0
       m.max = Math.max(m.max, stats.max)
-      m.min = Math.min(m.min, stats.min)
       m.count += stats.count
       m.weighted += stats.avg * stats.count
       merged.set(metric, m)
