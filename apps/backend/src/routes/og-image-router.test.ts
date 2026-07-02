@@ -66,6 +66,18 @@ describe('GET /u/:username/:slug/opengraph-image.png', () => {
     expect(deps.renderImage).toHaveBeenCalledTimes(1)
   })
 
+  test('degrades to the default image when a render fails', async () => {
+    const { app } = buildApp({
+      renderImage: vi.fn(async () => {
+        throw new Error('satori boom')
+      }),
+      resolveDashboard: async () => ({ is_public: true, name: 'Training' }),
+    })
+    const res = await supertest(app).get('/u/fiddur/abc/opengraph-image.png')
+    expect(res.status).toBe(302)
+    expect(res.headers.location).toBe('https://aurboda.net/og-default.png')
+  })
+
   test('collapses concurrent cold-cache misses into a single render', async () => {
     const renderImage = vi.fn(() => new Promise<Buffer>((resolve) => setTimeout(() => resolve(fakePng), 30)))
     const { app } = buildApp({

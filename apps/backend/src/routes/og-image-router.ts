@@ -64,14 +64,22 @@ export const createOgImageRouter = (deps: OgImageDeps): Router => {
     }
   }
 
-  const sendImage = async (res: Response, key: string, card: OgCard): Promise<void> => {
-    const png = await render(key, card)
-    res.setHeader('Cache-Control', 'public, max-age=3600')
-    res.type('png').send(png)
-  }
-
   const redirectToDefault = (res: Response): void => {
     res.redirect(302, defaultOgImage(webHost))
+  }
+
+  const sendImage = async (res: Response, key: string, card: OgCard): Promise<void> => {
+    let png: Buffer
+    try {
+      png = await render(key, card)
+    } catch (error) {
+      // The whole design is "always yield some image", so a transient
+      // Satori/sharp failure degrades to the branded default rather than 500.
+      console.error('OG image render failed, serving default:', error)
+      return redirectToDefault(res)
+    }
+    res.setHeader('Cache-Control', 'public, max-age=3600')
+    res.type('png').send(png)
   }
 
   router.get('/u/:username/:slug/opengraph-image.png', async (req, res) => {
