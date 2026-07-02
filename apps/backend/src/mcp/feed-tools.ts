@@ -57,7 +57,7 @@ export const registerFeedTools = (server: McpServer, user: string, deliver?: Fee
         visibility: body.visibility,
       })
       // Fan out to followers (best-effort), same as the REST share route.
-      deliver?.(user, record, activity)
+      deliver?.created(user, record, activity)
       return jsonResponse(serialize(record))
     },
   )
@@ -75,6 +75,11 @@ export const registerFeedTools = (server: McpServer, user: string, deliver?: Fee
         visibility: body.visibility,
       })
       if (!record) return errorResponse('Feed post not found')
+      // Federate the edit as an Update, same as the REST update route.
+      if (record.activity_id) {
+        const activity = await getActivityById(user, record.activity_id)
+        if (activity) deliver?.updated(user, record, activity)
+      }
       return jsonResponse(serialize(record))
     },
   )
@@ -87,6 +92,8 @@ export const registerFeedTools = (server: McpServer, user: string, deliver?: Fee
       const existing = await getFeedPostById(user, id)
       if (!existing) return errorResponse('Feed post not found')
       await deleteFeedPost(user, id)
+      // Retract from followers with a Delete{Tombstone}, same as the REST route.
+      deliver?.deleted(user, existing)
       return jsonResponse({ deleted: true, id })
     },
   )

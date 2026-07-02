@@ -26,6 +26,7 @@ import {
   createFeedPost,
   deleteFeedPost,
   getActivityById,
+  getFeedPostById,
   listFeedPosts,
   updateFeedPost,
 } from '../db/index.ts'
@@ -33,11 +34,18 @@ import { type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody } from '../validation.ts'
 
 /**
- * Fire-and-forget federation delivery for a freshly-shared post. Injected so the
- * router stays decoupled from the ActivityPub layer (and testable without it);
- * the implementation signs + fans the Create out to the user's followers.
+ * Fire-and-forget federation delivery hooks for the feed-post lifecycle,
+ * injected so the router + MCP tools stay decoupled from the ActivityPub layer
+ * (and testable without it). Each impl signs + fans the corresponding activity
+ * out to the user's followers: `created` → `Create`, `updated` → `Update`,
+ * `deleted` → `Delete{Tombstone}`. `deleted` takes only the post — no activity
+ * lookup is needed to retract by object id, and the row is already gone.
  */
-export type FeedDeliver = (user: string, post: FeedPostRecord, activity: Activity) => void
+export interface FeedDeliver {
+  created: (user: string, post: FeedPostRecord, activity: Activity) => void
+  updated: (user: string, post: FeedPostRecord, activity: Activity) => void
+  deleted: (user: string, post: FeedPostRecord) => void
+}
 
 const serialize = (record: FeedPostRecord): FeedPost => ({
   activity_id: record.activity_id,
@@ -79,7 +87,7 @@ export const createFeedRouter = (authMiddleware: RequestHandler, deliver?: FeedD
         visibility: req.body.visibility,
       })
       // Fan the post out to followers (best-effort; never blocks the response).
-      deliver?.(user, record, activity)
+      deliver?.created(user, record, activity)
       res.json({ post: serialize(record), success: true })
     },
   )
@@ -100,16 +108,25 @@ export const createFeedRouter = (authMiddleware: RequestHandler, deliver?: FeedD
       if (!record) {
         return res.status(404).json({ error: 'Feed post not found', success: false })
       }
+      // Federate the edit as an Update so followers replace the stored object.
+      if (record.activity_id) {
+        const activity = await getActivityById(user, record.activity_id)
+        if (activity) deliver?.updated(user, record, activity)
+      }
       res.json({ post: serialize(record), success: true })
     },
   )
 
   router.delete<{ postId: string }, FeedPostResponse>('/:postId', authMiddleware, async (req, res) => {
     const user = req.user!
+    // Capture the post before deleting so its Delete can be addressed by the
+    // same visibility and reference the right object id.
+    const existing = await getFeedPostById(user, req.params.postId)
     const deleted = await deleteFeedPost(user, req.params.postId)
-    if (!deleted) {
+    if (!deleted || !existing) {
       return res.status(404).json({ error: 'Feed post not found', success: false })
     }
+    deliver?.deleted(user, existing)
     res.json({ success: true })
   })
 

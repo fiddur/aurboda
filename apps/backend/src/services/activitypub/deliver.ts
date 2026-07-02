@@ -20,7 +20,7 @@ import type { FeedVisibility } from '@aurboda/api-spec'
  */
 import type { Context, Federation } from '@fedify/fedify'
 
-import { Create, Note } from '@fedify/fedify/vocab'
+import { Create, Delete, Note, Tombstone, Update } from '@fedify/fedify/vocab'
 
 import { resolveActivityScalars } from './feed-activity.ts'
 import { addressingFor, feedPostContent } from './object.ts'
@@ -112,6 +112,48 @@ export const buildFeedCreate = async (
   })
 }
 
+/**
+ * Wrap the post's (re-resolved) `Note` in an `Update` activity. Sent when a
+ * post's shared metric selection or visibility changes, so followers' servers
+ * replace the stored object. The `Update` id is a `#update` fragment on the
+ * Note id; Mastodon supersedes by the object being updated, not the activity id.
+ */
+export const buildFeedUpdate = async (
+  ctx: Context<void>,
+  user: string,
+  post: DeliverablePost,
+  activity: DeliverableActivity,
+): Promise<Update> => {
+  const note = await buildFeedNote(ctx, user, post, activity)
+  const noteId = ctx.getObjectUri(Note, { identifier: user, postId: post.id })
+  const { cc, to } = recipients(post.visibility, ctx.getFollowersUri(user))
+  return new Update({
+    actor: ctx.getActorUri(user),
+    ccs: cc,
+    id: new URL(`${noteId.href}#update`),
+    object: note,
+    tos: to,
+  })
+}
+
+/**
+ * Build the `Delete{Tombstone}` for a removed post — the AS2-standard way to
+ * retract it from followers' timelines. Needs no activity/scalar resolution
+ * (just the object id + addressing), so it stays synchronous and survives the
+ * post row already being gone.
+ */
+export const buildFeedDelete = (ctx: Context<void>, user: string, post: DeliverablePost): Delete => {
+  const noteId = ctx.getObjectUri(Note, { identifier: user, postId: post.id })
+  const { cc, to } = recipients(post.visibility, ctx.getFollowersUri(user))
+  return new Delete({
+    actor: ctx.getActorUri(user),
+    ccs: cc,
+    id: new URL(`${noteId.href}#delete`),
+    object: new Tombstone({ id: noteId }),
+    tos: to,
+  })
+}
+
 /** Build and send the `Create{Note}` for a freshly-shared post to its followers. */
 export const deliverFeedPost = async (
   deps: FeedDeliveryDeps,
@@ -122,4 +164,27 @@ export const deliverFeedPost = async (
   const ctx = await deps.federation.createContext(new URL(deps.origin))
   const create = await buildFeedCreate(ctx, user, post, activity)
   await ctx.sendActivity({ identifier: user }, 'followers', create)
+}
+
+/** Build and send the `Update{Note}` for an edited post to its followers. */
+export const deliverFeedUpdate = async (
+  deps: FeedDeliveryDeps,
+  user: string,
+  post: DeliverablePost,
+  activity: DeliverableActivity,
+): Promise<void> => {
+  const ctx = await deps.federation.createContext(new URL(deps.origin))
+  const update = await buildFeedUpdate(ctx, user, post, activity)
+  await ctx.sendActivity({ identifier: user }, 'followers', update)
+}
+
+/** Build and send the `Delete{Tombstone}` for a removed post to its followers. */
+export const deliverFeedDelete = async (
+  deps: FeedDeliveryDeps,
+  user: string,
+  post: DeliverablePost,
+): Promise<void> => {
+  const ctx = await deps.federation.createContext(new URL(deps.origin))
+  const del = buildFeedDelete(ctx, user, post)
+  await ctx.sendActivity({ identifier: user }, 'followers', del)
 }
