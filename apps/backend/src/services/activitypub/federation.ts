@@ -1,5 +1,5 @@
 import { createFederation, type Federation, MemoryKvStore } from '@fedify/fedify'
-import { Accept, Follow, Person, Undo } from '@fedify/fedify/vocab'
+import { Accept, type Create, Follow, Note, Person, Undo } from '@fedify/fedify/vocab'
 
 /**
  * The Fedify `Federation` object for the activity feed.
@@ -20,13 +20,23 @@ import { Accept, Follow, Person, Undo } from '@fedify/fedify/vocab'
 import { isValidUsername } from '../../api/auth-routes.ts'
 import {
   countFeedFollowers,
+  countPublicFeedPosts,
+  getActivityById,
+  getFeedPostById,
   getOrCreateActorKeyPair,
   isMissingDatabase,
   listFeedFollowers,
+  listPublicFeedPosts,
   removeFeedFollower,
   upsertFeedFollower,
 } from '../../db/index.ts'
+import { buildFeedCreate, buildFeedNote } from './deliver.ts'
 import { toCryptoKeyPair } from './keys.ts'
+import { isPubliclyVisible } from './object.ts'
+
+/** RFC 4122 canonical form — guards `getFeedPostById` from a non-UUID `postId`
+ * (Postgres would otherwise raise `invalid input syntax for type uuid`). */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export const createFeedFederation = (origin: string): Federation<void> => {
   const federation = createFederation<void>({
@@ -128,8 +138,66 @@ export const createFeedFederation = (origin: string): Federation<void> => {
       }
     })
 
-  // Outbox stays empty until the delivery slice serves the user's public posts.
-  federation.setOutboxDispatcher('/users/{identifier}/outbox', (_ctx, _identifier) => ({ items: [] }))
+  // Individual post object. Serves the same `Note` that was delivered, at its
+  // canonical id, so a remote server can dereference it. Only `public`/`unlisted`
+  // objects resolve — `followers`-only posts are delivered with the object
+  // inline, so their id never needs to be fetched; refusing them keeps
+  // follower-only content off an unauthenticated fetch.
+  federation.setObjectDispatcher(
+    Note,
+    '/users/{identifier}/feed/{postId}',
+    async (ctx, { identifier, postId }) => {
+      if (!isValidUsername(identifier) || !UUID_RE.test(postId)) return null
+      let post
+      try {
+        post = await getFeedPostById(identifier, postId)
+      } catch (error) {
+        if (isMissingDatabase(error)) return null
+        throw error
+      }
+      if (post == null || post.activity_id == null || !isPubliclyVisible(post.visibility)) return null
+      const activity = await getActivityById(identifier, post.activity_id)
+      if (activity == null) return null
+      return buildFeedNote(ctx, identifier, post, activity)
+    },
+  )
+
+  // Outbox: the user's public + unlisted posts as `Create` activities, so a
+  // Mastodon profile shows them. Served as a single inline OrderedCollection (no
+  // cursor) — fine at feed scale; pagination is a later slice. A post whose
+  // activity was soft-deleted is skipped from the items (its Create can't be
+  // built) while `setCounter` still counts it; the divergence self-heals when
+  // the stale post is removed.
+  federation
+    .setOutboxDispatcher('/users/{identifier}/outbox', async (ctx, identifier) => {
+      if (!isValidUsername(identifier)) return null
+      let posts
+      try {
+        posts = await listPublicFeedPosts(identifier)
+      } catch (error) {
+        if (isMissingDatabase(error)) return null
+        throw error
+      }
+      const items = (
+        await Promise.all(
+          posts.map(async (post) => {
+            if (post.activity_id == null) return null
+            const activity = await getActivityById(identifier, post.activity_id)
+            return activity == null ? null : buildFeedCreate(ctx, identifier, post, activity)
+          }),
+        )
+      ).filter((item): item is Create => item != null)
+      return { items }
+    })
+    .setCounter(async (_ctx, identifier) => {
+      if (!isValidUsername(identifier)) return 0
+      try {
+        return await countPublicFeedPosts(identifier)
+      } catch (error) {
+        if (isMissingDatabase(error)) return 0
+        throw error
+      }
+    })
 
   // Real followers, backed by feed_follower. This both serves the followers
   // collection and enumerates recipients for `sendActivity(..., 'followers', …)`.

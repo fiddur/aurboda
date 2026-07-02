@@ -1,20 +1,24 @@
 import type { FeedVisibility } from '@aurboda/api-spec'
 /**
- * Deliver a shared feed post to the user's followers over ActivityPub.
+ * Build and deliver a shared feed post over ActivityPub.
  *
- * Builds a Fedify `Create{Note}` — the Mastodon-compatible representation: an
- * HTML `content` summary + `name`/`url`, addressed per the post's visibility —
- * and fans it out via `ctx.sendActivity(..., 'followers', …)`, which Fedify
- * signs and dedupes by shared inbox. Delivery is synchronous (no message queue
- * configured), so this awaits the outbound POSTs; retry/durability via a
- * persistent queue is a later slice.
+ * The Mastodon-compatible representation is a Fedify `Create{Note}` — an HTML
+ * `content` summary + `name`/`url`, addressed per the post's visibility. The
+ * `Note`'s id is its object-dispatcher URL (`getObjectUri(Note, …)`), so the
+ * object we deliver, the one listed in the outbox, and the one served when a
+ * remote server dereferences that id are all built here and stay identical.
  *
- * The custom `aurboda:` structured extension is not carried on the pushed Note
- * (Fedify's typed vocab drops unknown properties); it's progressive enhancement
- * an Aurboda consumer fetches by dereferencing the object id — served in a
- * follow-up slice. Delivery is best-effort: callers invoke it fire-and-forget.
+ * `deliverFeedPost` fans the `Create` out via `ctx.sendActivity(..., 'followers',
+ * …)`, which Fedify signs and dedupes by shared inbox. Delivery is synchronous
+ * (no message queue configured), so it awaits the outbound POSTs; retry/
+ * durability via a persistent queue is a later slice.
+ *
+ * The custom `aurboda:` structured extension is not carried on the Fedify `Note`
+ * (its typed vocab drops unknown properties); that richer, Aurboda-native
+ * representation lives in `object.ts` for a future content-negotiated endpoint.
+ * Delivery is best-effort: callers invoke it fire-and-forget.
  */
-import type { Federation } from '@fedify/fedify'
+import type { Context, Federation } from '@fedify/fedify'
 
 import { Create, Note } from '@fedify/fedify/vocab'
 
@@ -51,6 +55,63 @@ export interface DeliverableActivity {
   title?: string
 }
 
+/**
+ * Build the Fedify `Note` for a shared post: the Mastodon-compatible object
+ * (HTML `content` + headline `name`), addressed per visibility. Its id and `url`
+ * are the object-dispatcher URL (`getObjectUri(Note, …)`), so the delivered
+ * object and the one served at that URL are guaranteed identical.
+ *
+ * `published` is intentionally omitted: Fedify's vocab types it as the ambient
+ * (esnext.temporal) `Temporal.Instant`, which the `@js-temporal` polyfill value
+ * isn't assignable to. Delivery fires right after the share, so remote servers
+ * timestamp it at receipt (≈ share time); wiring an explicit `published` is a
+ * follow-up (needs Temporal-lib interop sorted).
+ */
+export const buildFeedNote = async (
+  ctx: Context<void>,
+  user: string,
+  post: DeliverablePost,
+  activity: DeliverableActivity,
+): Promise<Note> => {
+  const scalars = await resolveActivityScalars(user, activity, post.included_metrics)
+  const { content, name } = feedPostContent(activity.title, activity.activity_type, scalars)
+  const noteId = ctx.getObjectUri(Note, { identifier: user, postId: post.id })
+  const { cc, to } = recipients(post.visibility, ctx.getFollowersUri(user))
+  return new Note({
+    attribution: ctx.getActorUri(user),
+    ccs: cc,
+    content,
+    id: noteId,
+    name,
+    tos: to,
+    url: noteId,
+  })
+}
+
+/**
+ * Wrap the post's `Note` in the `Create` activity that is both delivered to
+ * followers and listed in the actor's outbox. The `Create` id is a `#create`
+ * fragment on the Note id, so it never collides with (nor 404s separately from)
+ * the object URL.
+ */
+export const buildFeedCreate = async (
+  ctx: Context<void>,
+  user: string,
+  post: DeliverablePost,
+  activity: DeliverableActivity,
+): Promise<Create> => {
+  const note = await buildFeedNote(ctx, user, post, activity)
+  const noteId = ctx.getObjectUri(Note, { identifier: user, postId: post.id })
+  const { cc, to } = recipients(post.visibility, ctx.getFollowersUri(user))
+  return new Create({
+    actor: ctx.getActorUri(user),
+    ccs: cc,
+    id: new URL(`${noteId.href}#create`),
+    object: note,
+    tos: to,
+  })
+}
+
 /** Build and send the `Create{Note}` for a freshly-shared post to its followers. */
 export const deliverFeedPost = async (
   deps: FeedDeliveryDeps,
@@ -58,30 +119,7 @@ export const deliverFeedPost = async (
   post: DeliverablePost,
   activity: DeliverableActivity,
 ): Promise<void> => {
-  const scalars = await resolveActivityScalars(user, activity, post.included_metrics)
-  const { content, name } = feedPostContent(activity.title, activity.activity_type, scalars)
-
   const ctx = await deps.federation.createContext(new URL(deps.origin))
-  const actorUri = ctx.getActorUri(user)
-  const followers = ctx.getFollowersUri(user)
-  const postUrl = new URL(`${actorUri.href}/feed/${post.id}`)
-  const { cc, to } = recipients(post.visibility, followers)
-
-  // `published` is intentionally omitted: Fedify's vocab types it as the ambient
-  // (esnext.temporal) Temporal.Instant, which the @js-temporal polyfill value
-  // isn't assignable to. Delivery fires right after the share, so remote servers
-  // timestamp it at receipt (≈ share time). Wiring an explicit published is a
-  // follow-up (needs Temporal-lib interop sorted).
-  const note = new Note({
-    attribution: actorUri,
-    ccs: cc,
-    content,
-    id: new URL(`${postUrl.href}/object`),
-    name,
-    tos: to,
-    url: postUrl,
-  })
-  const create = new Create({ actor: actorUri, ccs: cc, id: postUrl, object: note, tos: to })
-
+  const create = await buildFeedCreate(ctx, user, post, activity)
   await ctx.sendActivity({ identifier: user }, 'followers', create)
 }
