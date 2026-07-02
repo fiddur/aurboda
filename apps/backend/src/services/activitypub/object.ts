@@ -11,8 +11,9 @@
  * scalar values and passes in the absolute URLs — so it is fully unit-testable
  * and carries no dependency on the (upcoming) Fedify actor/delivery layer. Only
  * the metrics the user actually shared are ever emitted: unshared scalars are
- * absent from `content` and `aurboda:metrics`, and only `seriesMetrics` produce
- * `aurboda:series` links (which resolve against the public `/series` endpoint).
+ * absent from `content` and `aurboda:metrics`, and only `seriesMetrics` on a
+ * `public`/`unlisted` post produce `aurboda:series` links (matching what the
+ * public `/series` endpoint will actually resolve).
  */
 
 import type { FeedVisibility } from '@aurboda/api-spec'
@@ -107,10 +108,16 @@ export const addressingFor = (
   }
 }
 
-/** Build the `aurboda:series` link objects for the shared series metrics. */
+/**
+ * Build the `aurboda:series` link objects for the shared series metrics.
+ *
+ * Emitted only for `public`/`unlisted` posts: the public `/series` endpoint
+ * refuses `followers`-only posts, so advertising links there would just 404.
+ * Series also need a bounded activity window.
+ */
 const seriesLinks = (input: BuildCreateInput): Record<string, string>[] => {
-  const { endTime, seriesMetrics } = input
-  if (!endTime || seriesMetrics.length === 0) return []
+  const { endTime, seriesMetrics, visibility } = input
+  if (visibility === 'followers' || !endTime || seriesMetrics.length === 0) return []
   const bucket = input.seriesBucket ?? '5s'
   return seriesMetrics.map((metric) => {
     const params = new URLSearchParams({

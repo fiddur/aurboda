@@ -94,6 +94,13 @@ describe('buildCreateExercise', () => {
     expect(c.object['aurboda:series']).toBeUndefined()
   })
 
+  test('no series links for a followers-only post (public /series would 404)', () => {
+    const c = buildCreateExercise({ ...base, seriesMetrics: ['heart_rate'], visibility: 'followers' })
+    expect(c.object['aurboda:series']).toBeUndefined()
+    // The scalar summary still rides along for followers.
+    expect(c.object['aurboda:metrics']).toHaveLength(base.scalars.length)
+  })
+
   test('no series links or duration for an open-ended activity (no end time)', () => {
     const c = buildCreateExercise({ ...base, endTime: undefined })
     expect(c.object['aurboda:series']).toBeUndefined()
