@@ -1,3 +1,4 @@
+import { dataSources } from '@aurboda/api-spec'
 import { useEffect } from 'preact/hooks'
 
 import { auth, ensureStatusLoaded, signupAllowed } from '../../state/auth'
@@ -156,99 +157,21 @@ function GuestHome({ canSignup }: { canSignup: boolean }) {
             </tr>
           </thead>
           <tbody>
-            <tr>
-              <td>
-                <strong>Android Health Connect</strong>
-              </td>
-              <td>Heart rate, HRV, sleep, exercise (80+ types), steps, weight, SpO2, VO2 max, calories</td>
-              <td>Push from Android app</td>
-            </tr>
-            <tr>
-              <td>
-                <strong>BLE Sensors</strong>
-              </td>
-              <td>Real-time heart rate, HRV (Polar H10, etc.) and steps (Zwift RunPod, etc.)</td>
-              <td>Live via Android app</td>
-            </tr>
-            <tr>
-              <td>
-                <a href="https://ouraring.com/" target="_blank" rel="noopener noreferrer">
-                  <strong>Oura Ring</strong>
-                </a>
-              </td>
-              <td>Sleep stages/scores, readiness, resilience, cardiovascular age, HRV, heart rate, tags</td>
-              <td>Pull (API) + Push (webhooks)</td>
-            </tr>
-            <tr>
-              <td>
-                <a href="https://connect.garmin.com/" target="_blank" rel="noopener noreferrer">
-                  <strong>Garmin Connect</strong>
-                </a>
-              </td>
-              <td>Daily summary, HR, HRV, sleep, stress, body battery, activities, SpO2, respiration</td>
-              <td>Pull (session-based)</td>
-            </tr>
-            <tr>
-              <td>
-                <a href="https://owntracks.org/" target="_blank" rel="noopener noreferrer">
-                  <strong>OwnTracks</strong>
-                </a>
-              </td>
-              <td>GPS locations, geofences, place visits</td>
-              <td>Push (HTTP mode)</td>
-            </tr>
-            <tr>
-              <td>
-                <a href="https://www.rescuetime.com/" target="_blank" rel="noopener noreferrer">
-                  <strong>RescueTime</strong>
-                </a>
-              </td>
-              <td>App/website usage, productivity scores, categories</td>
-              <td>Pull (API)</td>
-            </tr>
-            <tr>
-              <td>
-                <a href="https://activitywatch.net/" target="_blank" rel="noopener noreferrer">
-                  <strong>ActivityWatch</strong>
-                </a>
-              </td>
-              <td>App/window usage per device (desktop and Android)</td>
-              <td>Push (agent script)</td>
-            </tr>
-            <tr>
-              <td>
-                <a href="https://www.last.fm/" target="_blank" rel="noopener noreferrer">
-                  <strong>Last.fm</strong>
-                </a>
-              </td>
-              <td>Music scrobbles with auto-generated activities from configurable rules</td>
-              <td>Pull (API)</td>
-            </tr>
-            <tr>
-              <td>
-                <strong>Calendars (ICS)</strong>
-              </td>
-              <td>
-                Calendar events imported as activities (Google Calendar, Outlook, iCloud, Nextcloud, etc.)
-              </td>
-              <td>Pull (ICS fetch)</td>
-            </tr>
-            <tr>
-              <td>
-                <a href="https://cronometer.com/" target="_blank" rel="noopener noreferrer">
-                  <strong>Cronometer</strong>
-                </a>
-              </td>
-              <td>Meals with full per-item macros and ~50 micronutrients</td>
-              <td>CSV import script</td>
-            </tr>
-            <tr>
-              <td>
-                <strong>Manual Entry</strong>
-              </td>
-              <td>Any metric, activity, meal, or note</td>
-              <td>Web UI, REST API, or MCP</td>
-            </tr>
+            {dataSources.map((source) => (
+              <tr key={source.name}>
+                <td>
+                  {source.homepage ? (
+                    <a href={source.homepage} target="_blank" rel="noopener noreferrer">
+                      <strong>{source.name}</strong>
+                    </a>
+                  ) : (
+                    <strong>{source.name}</strong>
+                  )}
+                </td>
+                <td>{source.provides}</td>
+                <td>{source.how}</td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </section>
