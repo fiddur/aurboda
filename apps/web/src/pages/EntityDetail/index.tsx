@@ -42,6 +42,7 @@ import { NotesSection } from './NotesSection'
 import { ProductivityDetail } from './ProductivityDetail'
 import { activityRouteAfterSave } from './saveNavigation'
 import { SchemaDataFields } from './SchemaDataFields'
+import { ShareActivityButton } from './ShareActivityButton'
 import {
   computeSleepMinutesFromStages,
   SLEEP_METRIC_LABELS,
@@ -620,6 +621,9 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
         onSuccess={() => queryClient.invalidateQueries()}
         isEditing={isEditing}
       />
+      {activity.id && !isMergedActivity && !activity.deleted_at && !isEditing && (
+        <ShareActivityButton activityId={activity.id} activityTitle={activity.title} />
+      )}
       {isMerging && <MergePanel activityId={rawEntityId} onCancel={() => setIsMerging(false)} />}
       <ActivityDetailContent
         activity={activity}
