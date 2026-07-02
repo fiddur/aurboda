@@ -9,6 +9,8 @@
  * keys that are supported AND have data are emitted; everything else is skipped,
  * so a post never advertises a summary it can't back.
  */
+import { hrZoneMetrics } from '@aurboda/api-spec'
+
 import type { MetricType } from '../../schema.ts'
 import type { ScalarMetric } from './object.ts'
 
@@ -72,8 +74,8 @@ const METRIC_SCALARS: Record<
 /** Build the `hr_zone_minutes` record (minutes per zone with data) from zone-second sums. */
 const hrZoneMinutes = (metricStat: MetricStat): Record<string, number> => {
   const zones: Record<string, number> = {}
-  for (let i = 0; i <= 5; i++) {
-    const seconds = metricStat(`hr_zone_${i}_sec` as MetricType, 'sum')
+  for (const [i, metric] of hrZoneMetrics.entries()) {
+    const seconds = metricStat(metric, 'sum')
     if (seconds !== undefined && seconds > 0) zones[`z${i}`] = Math.round(seconds / 60)
   }
   return zones
