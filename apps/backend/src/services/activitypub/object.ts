@@ -113,6 +113,17 @@ export const feedPostContent = (
 }
 
 /**
+ * Whether a post is visible on the unauthenticated AP surfaces — the outbox and
+ * its dereferenceable object. `public` and `unlisted` are both addressed to the
+ * AS2 Public collection; `followers`-only never is (and is delivered with its
+ * object inline, so its id never needs fetching). An allowlist, so any future
+ * non-public visibility is excluded by default; mirrors the SQL filter in
+ * `listPublicFeedPosts`.
+ */
+export const isPubliclyVisible = (visibility: FeedVisibility): boolean =>
+  visibility === 'public' || visibility === 'unlisted'
+
+/**
  * Map a post's visibility to AS2 `to`/`cc` addressing. `followers` is the
  * actor's followers collection; public objects are addressed to the AS2 Public
  * magic collection.

@@ -32,6 +32,7 @@ import {
 } from '../../db/index.ts'
 import { buildFeedCreate, buildFeedNote } from './deliver.ts'
 import { toCryptoKeyPair } from './keys.ts'
+import { isPubliclyVisible } from './object.ts'
 
 /** RFC 4122 canonical form — guards `getFeedPostById` from a non-UUID `postId`
  * (Postgres would otherwise raise `invalid input syntax for type uuid`). */
@@ -154,7 +155,7 @@ export const createFeedFederation = (origin: string): Federation<void> => {
         if (isMissingDatabase(error)) return null
         throw error
       }
-      if (post == null || post.visibility === 'followers' || post.activity_id == null) return null
+      if (post == null || post.activity_id == null || !isPubliclyVisible(post.visibility)) return null
       const activity = await getActivityById(identifier, post.activity_id)
       if (activity == null) return null
       return buildFeedNote(ctx, identifier, post, activity)
