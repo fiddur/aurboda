@@ -25,16 +25,19 @@ export interface OgCard {
 const FONT_FAMILY = 'Liberation Sans'
 const fontDir = fileURLToPath(new URL('../assets/fonts/', import.meta.url))
 
-let fontsPromise: Promise<Font[]> | null = null
-const loadFonts = (): Promise<Font[]> => {
-  fontsPromise ??= Promise.all([
-    readFile(`${fontDir}LiberationSans-Regular.ttf`),
-    readFile(`${fontDir}LiberationSans-Bold.ttf`),
-  ]).then(([regular, bold]): Font[] => [
-    { data: regular, name: FONT_FAMILY, style: 'normal', weight: 400 },
-    { data: bold, name: FONT_FAMILY, style: 'normal', weight: 700 },
-  ])
-  return fontsPromise
+/** A write-once memoizing font loader; kept in a closure to avoid module state. */
+const createFontLoader = (): (() => Promise<Font[]>) => {
+  let fontsPromise: Promise<Font[]> | null = null
+  return () => {
+    fontsPromise ??= Promise.all([
+      readFile(`${fontDir}LiberationSans-Regular.ttf`),
+      readFile(`${fontDir}LiberationSans-Bold.ttf`),
+    ]).then(([regular, bold]): Font[] => [
+      { data: regular, name: FONT_FAMILY, style: 'normal', weight: 400 },
+      { data: bold, name: FONT_FAMILY, style: 'normal', weight: 700 },
+    ])
+    return fontsPromise
+  }
 }
 
 const KIND_LABEL: Record<OgCard['kind'], string> = {
@@ -137,13 +140,19 @@ const cardTree = (card: OgCard): El =>
 export const clampTitle = (title: string, max = 60): string =>
   title.length <= max ? title : `${title.slice(0, max - 1).trimEnd()}…`
 
-/** Render a branded 1200×630 PNG for the given card. */
-export const renderOgImage = async (card: OgCard): Promise<Buffer> => {
-  const fonts = await loadFonts()
-  const svg = await satori(cardTree({ ...card, title: clampTitle(card.title) }), {
-    fonts,
-    height: OG_HEIGHT,
-    width: OG_WIDTH,
-  })
-  return sharp(Buffer.from(svg)).png().toBuffer()
+/**
+ * Create a renderer that turns card data into a branded 1200×630 PNG. Fonts are
+ * loaded once and memoized inside the returned closure (no module-level state).
+ */
+export const createOgImageRenderer = (): ((card: OgCard) => Promise<Buffer>) => {
+  const loadFonts = createFontLoader()
+  return async (card) => {
+    const fonts = await loadFonts()
+    const svg = await satori(cardTree({ ...card, title: clampTitle(card.title) }), {
+      fonts,
+      height: OG_HEIGHT,
+      width: OG_WIDTH,
+    })
+    return sharp(Buffer.from(svg)).png().toBuffer()
+  }
 }

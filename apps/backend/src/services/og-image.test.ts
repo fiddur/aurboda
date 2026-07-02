@@ -1,7 +1,9 @@
 import sharp from 'sharp'
 import { describe, expect, test } from 'vitest'
 
-import { clampTitle, OG_HEIGHT, OG_WIDTH, renderOgImage } from './og-image.ts'
+import { clampTitle, createOgImageRenderer, OG_HEIGHT, OG_WIDTH } from './og-image.ts'
+
+const renderOgImage = createOgImageRenderer()
 
 describe('clampTitle', () => {
   test('leaves short titles untouched', () => {

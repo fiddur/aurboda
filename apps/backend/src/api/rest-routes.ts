@@ -54,7 +54,7 @@ import { createTrainingLoadRouter } from '../routes/training-load-router.ts'
 import { createTrendsRouter } from '../routes/trends-router.ts'
 import { createWebAuthnRouter } from '../routes/webauthn-router.ts'
 import { createWellKnownRouter, type WellKnownConfig } from '../routes/well-known-router.ts'
-import { renderOgImage } from '../services/og-image.ts'
+import { createOgImageRenderer } from '../services/og-image.ts'
 import { createTemplateLoader } from '../services/web-template.ts'
 
 interface RestRoutesDeps {
@@ -141,7 +141,7 @@ export const mountRestRouters = ({
   httpd.use(createPublicSharesRouter(webHost))
   // Mounted before the share-html router so `/u/.../opengraph-image.png` wins
   // over the generic `/u/:username/:slug` HTML route.
-  httpd.use(createOgImageRouter({ renderImage: renderOgImage, webHost, ...createShareResolvers() }))
+  httpd.use(createOgImageRouter({ renderImage: createOgImageRenderer(), webHost, ...createShareResolvers() }))
   httpd.use(
     createShareHtmlRouter({
       loadTemplate: createTemplateLoader(webIndexPath),
