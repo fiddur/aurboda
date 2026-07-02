@@ -1,6 +1,7 @@
 /**
  * PublicResource - resolves `/u/:username/:slug` to either a shared dashboard or
- * a challenge and renders the appropriate view. Rendered without app chrome.
+ * a challenge and renders the appropriate view. Rendered without app chrome for
+ * anonymous visitors; logged-in viewers keep their nav (see AppShell).
  *
  * - Dashboard, owner viewing their own: live, editable dashboard (own controls),
  *   saved via `updateSharedDashboard`.

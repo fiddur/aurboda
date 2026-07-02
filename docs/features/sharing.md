@@ -61,9 +61,11 @@ beyond the saved widgets.
   the sidebar): create a copy from your current home dashboard (or a blank one),
   rename it, toggle public/unlisted, copy its link, or delete it.
 - **View** a shared dashboard at `/u/<username>/<slug>` and a profile at
-  `/u/<username>`. These pages are public, render without the app header/sidebar
-  (but keep the standard site footer), and fetch nothing per widget — they render
-  from the server-resolved data.
+  `/u/<username>`. For anonymous visitors these public pages render without the
+  app header/sidebar (but keep the standard site footer) — a clean, standalone
+  page — and fetch nothing per widget (they render from the server-resolved
+  data). A logged-in viewer keeps their normal app nav on these pages, so they
+  can navigate away without the browser back button.
 - **Edit in place**: when you are logged in and viewing your _own_ shared
   dashboard (`/u/<you>/<slug>`), an Edit toggle appears and you get the same
   add/remove/move-widget and section controls as the home dashboard (including
