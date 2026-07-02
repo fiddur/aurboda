@@ -89,11 +89,16 @@ get the full SPA and hydrate normally — only the head is enriched.
 
 - **Dashboards** and **challenges** get a title (resource name), a description, and
   a canonical URL; profiles get a `profile`-typed card with `ProfilePage` JSON-LD.
-- Every card references a 1200×630 preview image. For now this is a branded default
-  (`/og-default.png`); a dynamically generated per-resource card is a follow-up.
-- **Visibility is respected**: rich meta is emitted only for **public** resources.
-  Unlisted (slug-only) dashboards and unknown URLs get generic site meta, so an
-  unlisted resource's title never lands in a crawler's cache or a search index.
+- Every public resource has a **dynamically rendered 1200×630 preview image** at
+  `<resource-url>/opengraph-image.png`. Satori renders a branded card (title +
+  DASHBOARD/CHALLENGE/PROFILE eyebrow + Aurboda wordmark) to SVG and sharp
+  rasterizes it to PNG; fonts are bundled (no system fonts in the image). Renders
+  are memoised in-process and cached `public, max-age=3600`. Non-public / unknown
+  resources fall back to the branded static default (`/og-default.png`).
+- **Visibility is respected**: rich meta and rendered images are emitted only for
+  **public** resources. Unlisted (slug-only) dashboards and unknown URLs get generic
+  site meta and the static default image, so an unlisted resource's title/image never
+  lands in a crawler's cache or a search index.
 - Rich meta is cached `public, max-age=300`; generic fallbacks `max-age=60`.
 
 The backend finds `index.html` via `WEB_INDEX_PATH` (set in the Docker image to the
