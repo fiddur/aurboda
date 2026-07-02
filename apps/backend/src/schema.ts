@@ -143,6 +143,7 @@ export const tableCreationOrder = [
   'challenge_participations_indexes',
   'feed_posts',
   'feed_posts_indexes',
+  'feed_actor',
   'mcp_sessions',
   'mcp_sessions_indexes',
   'outbound_sync_queue',

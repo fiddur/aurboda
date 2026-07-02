@@ -122,4 +122,18 @@ export const socialTables: Record<string, string> = {
     CREATE INDEX IF NOT EXISTS idx_feed_posts_created ON feed_posts (created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_feed_posts_series ON feed_posts USING GIN (series_metrics)
   `,
+
+  // The user's ActivityPub actor keypair. Each per-user database has a single
+  // actor (the user), so this is a singleton table: the `singleton` PK + CHECK
+  // pins it to one row. The RSA keypair (PKCS#8 private / SPKI public PEM) signs
+  // outbound federation traffic and is published in the actor document.
+  feed_actor: `
+    CREATE TABLE IF NOT EXISTS feed_actor (
+      singleton        BOOLEAN PRIMARY KEY DEFAULT true,
+      private_key_pem  TEXT NOT NULL,
+      public_key_pem   TEXT NOT NULL,
+      created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CHECK (singleton)
+    )
+  `,
 }

@@ -272,6 +272,9 @@ export {
 // PostgreSQL error predicates
 export { isMissingDatabase } from './pg-errors.ts'
 
+// Feed actor (ActivityPub keypair)
+export { type ActorKeyPair, getOrCreateActorKeyPair } from './feed-actor.ts'
+
 // Feed posts
 export {
   createFeedPost,
