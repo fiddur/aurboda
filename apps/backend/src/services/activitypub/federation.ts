@@ -28,9 +28,14 @@ import {
 import { buildProfileUrl } from '../share-urls.ts'
 import { toCryptoKeyPair } from './keys.ts'
 
-export const createFeedFederation = (webHost: string): Federation<void> => {
+export const createFeedFederation = (origin: string): Federation<void> => {
   const federation = createFederation<void>({
     kv: new MemoryKvStore(),
+    // Pin the canonical origin (the public base URL) so actor ids, WebFinger
+    // self-links, inbox/outbox URIs, etc. are always built with the right
+    // scheme + host — Mastodon requires https, and reconstructing the scheme
+    // from the request yields http behind the TLS-terminating proxy.
+    origin,
     queue: new InProcessMessageQueue(),
   })
 
@@ -49,7 +54,7 @@ export const createFeedFederation = (webHost: string): Federation<void> => {
         followers: ctx.getFollowersUri(identifier),
         // Avatar served on the web host; always resolves (identicon fallback),
         // so remote servers like Mastodon always have an actor icon to show.
-        icon: new Image({ url: new URL(`${buildProfileUrl(webHost, identifier)}/avatar.png`) }),
+        icon: new Image({ url: new URL(`${buildProfileUrl(origin, identifier)}/avatar.png`) }),
         id: ctx.getActorUri(identifier),
         inbox: ctx.getInboxUri(identifier),
         outbox: ctx.getOutboxUri(identifier),

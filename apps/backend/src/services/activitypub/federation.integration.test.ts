@@ -51,6 +51,23 @@ describe('Feed federation actor + WebFinger', () => {
     expect(publicKey.publicKeyPem).toContain('BEGIN PUBLIC KEY')
   })
 
+  test('builds https URLs from the canonical origin even when the request arrives over http', async () => {
+    // Simulates a request reaching the backend over loopback http behind a
+    // TLS-terminating proxy; the pinned origin must still yield https URLs
+    // (Mastodon rejects http actors).
+    const user = getTestUser()
+    const res = await fed.fetch(
+      new Request(`http://aurboda.example/users/${user}`, {
+        headers: { Accept: 'application/activity+json' },
+      }),
+      { contextData: undefined, onNotAcceptable: notFound, onNotFound: notFound },
+    )
+    expect(res.status).toBe(200)
+    const doc = (await res.json()) as Record<string, unknown>
+    expect(doc.id).toBe(`https://aurboda.example/users/${user}`)
+    expect(doc.inbox).toBe(`https://aurboda.example/users/${user}/inbox`)
+  })
+
   test('resolves the actor via WebFinger by acct handle', async () => {
     const user = getTestUser()
     const res = await fed.fetch(
