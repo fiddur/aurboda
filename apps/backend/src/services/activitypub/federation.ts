@@ -26,7 +26,7 @@ import {
   getOrCreateActorKeyPair,
   isMissingDatabase,
   listFeedFollowers,
-  listPublicFeedPosts,
+  listPublicFeedPostsPage,
   removeFeedFollower,
   upsertFeedFollower,
 } from '../../db/index.ts'
@@ -34,6 +34,9 @@ import { buildProfileUrl } from '../share-urls.ts'
 import { buildFeedCreate, buildFeedNote } from './deliver.ts'
 import { toCryptoKeyPair } from './keys.ts'
 import { isPubliclyVisible } from './object.ts'
+
+/** Posts per outbox page (cursor pagination). */
+const OUTBOX_PAGE_SIZE = 20
 
 /** RFC 4122 canonical form — guards `getFeedPostById` from a non-UUID `postId`
  * (Postgres would otherwise raise `invalid input syntax for type uuid`). */
@@ -167,17 +170,22 @@ export const createFeedFederation = (origin: string, apiBaseUrl: string): Federa
   )
 
   // Outbox: the user's public + unlisted posts as `Create` activities, so a
-  // Mastodon profile shows them. Served as a single inline OrderedCollection (no
-  // cursor) — fine at feed scale; pagination is a later slice. A post whose
-  // activity was soft-deleted is skipped from the items (its Create can't be
-  // built) while `setCounter` still counts it; the divergence self-heals when
-  // the stale post is removed.
+  // Mastodon profile shows them. Cursor-paginated (`OUTBOX_PAGE_SIZE` per page)
+  // so an unauthenticated fetch never resolves every post's scalars at once; the
+  // cursor is a simple offset (a concurrent share can shift a page boundary —
+  // acceptable for an occasionally-crawled outbox). A post whose activity was
+  // soft-deleted is skipped from the items while `setCounter` still counts it;
+  // the divergence self-heals when the stale post is removed.
   federation
-    .setOutboxDispatcher('/users/{identifier}/outbox', async (ctx, identifier) => {
+    .setOutboxDispatcher('/users/{identifier}/outbox', async (ctx, identifier, cursor) => {
       if (!isValidUsername(identifier)) return null
+      const offset = cursor == null ? 0 : Number.parseInt(cursor, 10)
+      // `isSafeInteger` also rejects absurd offsets (e.g. a crafted `1e20`) that
+      // would overflow Postgres `bigint` in `OFFSET` and 500 the request.
+      if (!Number.isSafeInteger(offset) || offset < 0) return null
       let posts
       try {
-        posts = await listPublicFeedPosts(identifier)
+        posts = await listPublicFeedPostsPage(identifier, OUTBOX_PAGE_SIZE, offset)
       } catch (error) {
         if (isMissingDatabase(error)) return null
         throw error
@@ -191,7 +199,8 @@ export const createFeedFederation = (origin: string, apiBaseUrl: string): Federa
           }),
         )
       ).filter((item): item is Create => item != null)
-      return { items }
+      const nextCursor = posts.length === OUTBOX_PAGE_SIZE ? String(offset + OUTBOX_PAGE_SIZE) : null
+      return { items, nextCursor }
     })
     .setCounter(async (_ctx, identifier) => {
       if (!isValidUsername(identifier)) return 0
@@ -199,6 +208,20 @@ export const createFeedFederation = (origin: string, apiBaseUrl: string): Federa
         return await countPublicFeedPosts(identifier)
       } catch (error) {
         if (isMissingDatabase(error)) return 0
+        throw error
+      }
+    })
+    .setFirstCursor((_ctx, identifier) => (isValidUsername(identifier) ? '0' : null))
+    .setLastCursor(async (_ctx, identifier) => {
+      if (!isValidUsername(identifier)) return null
+      try {
+        const count = await countPublicFeedPosts(identifier)
+        // Offset of the last page; '0' for an empty or single-page outbox.
+        return count <= OUTBOX_PAGE_SIZE
+          ? '0'
+          : String(Math.floor((count - 1) / OUTBOX_PAGE_SIZE) * OUTBOX_PAGE_SIZE)
+      } catch (error) {
+        if (isMissingDatabase(error)) return null
         throw error
       }
     })

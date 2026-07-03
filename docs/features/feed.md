@@ -82,9 +82,11 @@ links) is a separate, richer representation for Aurboda-to-Aurboda consumers.
 
 ### Outbox & object serving
 
-- **Outbox** (`/users/<username>/outbox`) — an `OrderedCollection` of the user's
-  `public` + `unlisted` posts as `Create` activities, newest-first, so the actor's
-  profile shows their posts. `followers`-only posts are never listed.
+- **Outbox** (`/users/<username>/outbox`) — a **cursor-paginated** `OrderedCollection`
+  of the user's `public` + `unlisted` posts as `Create` activities, newest-first, so the
+  actor's profile shows their posts. The root returns `totalItems` + `first`/`last` page
+  links; each page (`?cursor=<offset>`) serves up to a fixed page size with a `next` link.
+  `followers`-only posts are never listed.
 - **Object** (`/users/<username>/feed/<postId>`) — the post's `Note`, served at its
   canonical id so a remote server can dereference it. Only `public`/`unlisted` resolve;
   `followers`-only and unknown ids return 404.
@@ -204,8 +206,6 @@ These are known and intentional for the current implementation:
   from followers' timelines.
 - **`published` is omitted** on the delivered `Note` (a Fedify/Temporal type-interop
   detail), so remote servers timestamp posts at receipt (≈ share time).
-- **The outbox is not paginated** — it serves all public posts inline. Fine at feed
-  scale; cursor pagination is a follow-up.
 - **Route maps have no basemap and no privacy trimming.** The route is a bare shape
   (no street tiles) and shows the full track, so a public route map reveals the
   approximate area; a street basemap and start/area masking are planned follow-ups.
