@@ -1,9 +1,18 @@
 import { useMutation } from '@tanstack/react-query'
+import axios from 'axios'
 import { useState } from 'preact/hooks'
 
 import { avatarUrl, deleteAvatar, uploadAvatar } from '../state/api/profile'
 import { auth } from '../state/auth'
 import { SettingsSection } from './SettingsSection'
+
+/** Prefer the backend's descriptive `{ error }` over axios's generic message. */
+const errorMessage = (err: unknown, fallback: string): string => {
+  if (axios.isAxiosError(err)) {
+    return (err.response?.data as { error?: string } | undefined)?.error ?? err.message
+  }
+  return err instanceof Error ? err.message : fallback
+}
 
 export function AvatarSettings() {
   const username = auth.value.user
@@ -13,7 +22,7 @@ export function AvatarSettings() {
 
   const uploadMut = useMutation({
     mutationFn: (file: File) => uploadAvatar(file),
-    onError: (err) => setError(err instanceof Error ? err.message : 'Upload failed'),
+    onError: (err) => setError(errorMessage(err, 'Upload failed')),
     onSuccess: () => {
       setError(null)
       setCacheBust(Date.now())
@@ -22,7 +31,7 @@ export function AvatarSettings() {
 
   const deleteMut = useMutation({
     mutationFn: () => deleteAvatar(),
-    onError: (err) => setError(err instanceof Error ? err.message : 'Remove failed'),
+    onError: (err) => setError(errorMessage(err, 'Remove failed')),
     onSuccess: () => {
       setError(null)
       setCacheBust(Date.now())
