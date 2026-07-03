@@ -14,6 +14,7 @@ import { type Request, type Response, Router } from 'express'
 import type { Auth } from './auth.ts'
 import type { GarminClient } from './integrations/garmin/client.ts'
 import type { ouraClient } from './integrations/oura/client.ts'
+import type { FeedDeliver } from './routes/feed-router.ts'
 import type { CentralDb } from './services/central-db.ts'
 import type { DeductionEngineDeps } from './services/deduction-engine.ts'
 import type { ActivityNotifier, DeductionQueue } from './services/deduction-queue.ts'
@@ -55,6 +56,7 @@ interface McpDeps {
   centralDb?: CentralDb
   deductionQueue?: DeductionQueue
   engineDeps?: DeductionEngineDeps
+  feedDeliver?: FeedDeliver
   garmin?: GarminClient
   onActivityMutated?: ActivityNotifier
   oura?: OuraClientType
@@ -93,7 +95,7 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
   }
   registerReportTools(server, user)
   registerSharedDashboardTools(server, user)
-  registerFeedTools(server, user)
+  registerFeedTools(server, user, deps.feedDeliver)
   registerChallengeTools(server, user, { apiBaseUrl: deps.apiBaseUrl, webHost: deps.webHost })
   registerScreentimeCategoryTools(server, user)
   registerDebugTools(server, user)

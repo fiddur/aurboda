@@ -1,0 +1,149 @@
+.share-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 1rem;
+}
+
+.share-dialog {
+  background: #fff;
+  border-radius: 8px;
+  padding: 1.25rem;
+  max-width: 520px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+}
+
+.share-dialog-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 0.5rem;
+}
+
+.share-dialog-header h2 {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.share-dialog-close {
+  background: transparent;
+  border: none;
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+  color: #6b7280;
+  padding: 0 0.25rem;
+}
+
+.share-dialog-close:hover {
+  color: #1f2937;
+}
+
+.share-dialog-subtitle {
+  margin: 0 0 1rem;
+  font-size: 0.9rem;
+  color: #374151;
+}
+
+.share-dialog-group {
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 0.75rem;
+  margin: 0 0 0.75rem;
+}
+
+.share-dialog-group legend {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #1f2937;
+  padding: 0 0.375rem;
+}
+
+.share-dialog-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem 1rem;
+}
+
+.share-dialog-note {
+  margin: 0 0 0.5rem;
+  font-size: 0.78rem;
+  color: #6b7280;
+  font-style: italic;
+}
+
+.share-dialog-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.share-dialog-radio {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+  margin-top: 0.4rem;
+}
+
+.share-dialog-radio span {
+  display: flex;
+  flex-direction: column;
+}
+
+.share-dialog-hint {
+  font-size: 0.75rem;
+  color: #6b7280;
+}
+
+.share-dialog-checkbox input[type='checkbox'],
+.share-dialog-radio input[type='radio'] {
+  accent-color: #673ab8;
+}
+
+.share-dialog-error {
+  margin: 0.5rem 0 0;
+  padding: 0.375rem 0.5rem;
+  background: #fee2e2;
+  color: #991b1b;
+  border-radius: 4px;
+  font-size: 0.85rem;
+}
+
+.share-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  .share-dialog {
+    background: #1f2937;
+  }
+
+  .share-dialog-header h2,
+  .share-dialog-group legend {
+    color: #e5e7eb;
+  }
+
+  .share-dialog-subtitle {
+    color: #d1d5db;
+  }
+
+  .share-dialog-group {
+    border-color: #374151;
+  }
+}

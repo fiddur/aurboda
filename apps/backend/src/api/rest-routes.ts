@@ -31,7 +31,7 @@ import { createCorrelationsRouter } from '../routes/correlations-router.ts'
 import { createDashboardRouter } from '../routes/dashboard-router.ts'
 import { createDeductionRulesRouter } from '../routes/deduction-rules-router.ts'
 import { createFeedPublicRouter } from '../routes/feed-public-router.ts'
-import { createFeedRouter } from '../routes/feed-router.ts'
+import { createFeedRouter, type FeedDeliver } from '../routes/feed-router.ts'
 import { createFoodItemsRouter } from '../routes/food-items-router.ts'
 import { createIconsRouter } from '../routes/icons-router.ts'
 import { createImportsRouter } from '../routes/imports-router.ts'
@@ -79,6 +79,7 @@ interface RestRoutesDeps {
   webAuthn: WebAuthnService
   wellKnown: WellKnownConfig
   userDb: Client
+  feedDeliver: FeedDeliver
 }
 
 export const mountRestRouters = ({
@@ -95,6 +96,7 @@ export const mountRestRouters = ({
   activityNotifier,
   engineDeps,
   deductionQueue,
+  feedDeliver,
   ouraWebhookManager,
   auth,
   webAuthn,
@@ -136,7 +138,7 @@ export const mountRestRouters = ({
   httpd.use('/dashboard', createDashboardRouter(authMiddleware))
   httpd.use('/shared-dashboards', createSharedDashboardsRouter(authMiddleware, webHost))
   httpd.use('/profile', createProfileRouter(authMiddleware, webHost))
-  httpd.use('/feed', createFeedRouter(authMiddleware))
+  httpd.use('/feed', createFeedRouter(authMiddleware, feedDeliver))
   httpd.use('/challenges', createChallengesRouter(authMiddleware, webHost, apiBaseUrl))
   httpd.use(createChallengeDataRouter())
   // Public feed series must be mounted before the generic /public/:username/:slug

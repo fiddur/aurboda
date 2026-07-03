@@ -17,6 +17,8 @@ import cors from 'cors'
 import express, { json, type NextFunction, type Request, type Response } from 'express'
 import { Client } from 'pg'
 
+import type { FeedDeliver } from './routes/feed-router.ts'
+
 import { registerAuthRoutes } from './api/auth-routes.ts'
 import { createAdminMiddleware, createAuditLogMiddleware, createAuthMiddleware } from './api/middleware.ts'
 import { registerOAuthRoutes } from './api/oauth-routes.ts'
@@ -26,6 +28,7 @@ import { setupOuraWebhook, setupStravaWebhook } from './api/webhooks-setup.ts'
 import { createAuth } from './auth.ts'
 import {
   deleteRuleActivities,
+  getActivityById,
   getDeductionRulesByIds,
   getDetectedLocationById,
   getEnabledDeductionRules,
@@ -50,6 +53,7 @@ import { createOwnTracksRouter } from './integrations/owntracks/router.ts'
 import { stravaClient } from './integrations/strava/client.ts'
 import { createMcpRouter } from './mcp.ts'
 import { createOAuthRouter } from './routes/oauth-router.ts'
+import { deliverFeedDelete, deliverFeedPost, deliverFeedUpdate } from './services/activitypub/deliver.ts'
 import { createFeedFederation } from './services/activitypub/federation.ts'
 import { auditError } from './services/audit-log.ts'
 import { triggerCalorieComputation } from './services/calorie-computation.ts'
@@ -302,6 +306,32 @@ const main = async () => {
   // Mount OAuth endpoints BEFORE body-parser (uses its own parsers)
   httpd.use(createOAuthRouter({ centralDb, loginToUserDb, webHost }))
 
+  // ActivityPub federation object (one instance, shared by the actor mount, the
+  // MCP feed tools, and the REST feed router). `feedDeliver` fans a shared post
+  // out to followers, fire-and-forget, so it's identical whether a post is
+  // created via MCP or REST.
+  const feedFederation = createFeedFederation(webHost)
+  const feedDeps = { federation: feedFederation, origin: webHost }
+  const onDeliverError = (op: string, user: string, postId: string) => (err: unknown) =>
+    console.error(`⚠️ feed ${op} delivery failed for ${user}/${postId}:`, err)
+  const feedDeliver: FeedDeliver = {
+    created: (user, post, activity) => {
+      void deliverFeedPost(feedDeps, user, post, activity).catch(onDeliverError('create', user, post.id))
+    },
+    deleted: (user, post) => {
+      void deliverFeedDelete(feedDeps, user, post).catch(onDeliverError('delete', user, post.id))
+    },
+    // Resolve the activity inside the fire-and-forget boundary so a lookup
+    // failure never bubbles into the (already-committed) edit's response.
+    updated: (user, post) => {
+      void (async () => {
+        if (!post.activity_id) return
+        const activity = await getActivityById(user, post.activity_id)
+        if (activity) await deliverFeedUpdate(feedDeps, user, post, activity)
+      })().catch(onDeliverError('update', user, post.id))
+    },
+  }
+
   // Mount MCP server BEFORE body-parser (MCP SDK needs raw body)
   // Stateless mode — no session tracking needed (tools only, no subscriptions)
   httpd.use(
@@ -311,6 +341,7 @@ const main = async () => {
       centralDb,
       deductionQueue: deductionQueue ?? undefined,
       engineDeps,
+      feedDeliver,
       garmin,
       onActivityMutated: activityNotifier,
       oura,
@@ -329,7 +360,7 @@ const main = async () => {
   // the immediate peer is loopback — a direct remote client isn't, so it can't
   // spoof them.
   httpd.set('trust proxy', 'loopback')
-  httpd.use(integrateFederation(createFeedFederation(webHost), () => undefined))
+  httpd.use(integrateFederation(feedFederation, () => undefined))
 
   httpd.use(json({ limit: '10mb' }))
 
@@ -439,6 +470,7 @@ const main = async () => {
     centralDb,
     deductionQueue,
     engineDeps,
+    feedDeliver,
     garmin,
     httpd,
     invitationAuth,

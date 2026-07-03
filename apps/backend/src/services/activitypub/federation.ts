@@ -1,5 +1,5 @@
-import { createFederation, type Federation, InProcessMessageQueue, MemoryKvStore } from '@fedify/fedify'
-import { Accept, Follow, Image, Person, Undo } from '@fedify/fedify/vocab'
+import { createFederation, type Federation, MemoryKvStore } from '@fedify/fedify'
+import { Accept, type Create, Follow, Image, Note, Person, Undo } from '@fedify/fedify/vocab'
 
 /**
  * The Fedify `Federation` object for the activity feed.
@@ -14,19 +14,30 @@ import { Accept, Follow, Image, Person, Undo } from '@fedify/fedify/vocab'
  * - inbound inbox: `Follow` → persist follower + `Accept`; `Undo{Follow}` →
  *   drop the follower (Fedify verifies the HTTP Signature first).
  *
- * Outbound delivery of the user's own posts is a later slice. The in-memory
- * KV/queue are fine here (Accept is sent inline); a persistent (Postgres)
- * backing lands with reliable delivery.
+ * Delivery is synchronous (no message queue — see `createFeedFederation`); a
+ * persistent Postgres queue for retried, durable delivery is a later slice.
  */
 import { isValidUsername } from '../../api/auth-routes.ts'
 import {
+  countFeedFollowers,
+  countPublicFeedPosts,
+  getActivityById,
+  getFeedPostById,
   getOrCreateActorKeyPair,
   isMissingDatabase,
+  listFeedFollowers,
+  listPublicFeedPosts,
   removeFeedFollower,
   upsertFeedFollower,
 } from '../../db/index.ts'
 import { buildProfileUrl } from '../share-urls.ts'
+import { buildFeedCreate, buildFeedNote } from './deliver.ts'
 import { toCryptoKeyPair } from './keys.ts'
+import { isPubliclyVisible } from './object.ts'
+
+/** RFC 4122 canonical form — guards `getFeedPostById` from a non-UUID `postId`
+ * (Postgres would otherwise raise `invalid input syntax for type uuid`). */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export const createFeedFederation = (origin: string): Federation<void> => {
   const federation = createFederation<void>({
@@ -36,7 +47,11 @@ export const createFeedFederation = (origin: string): Federation<void> => {
     // scheme + host — Mastodon requires https, and reconstructing the scheme
     // from the request yields http behind the TLS-terminating proxy.
     origin,
-    queue: new InProcessMessageQueue(),
+    // No message queue: `sendActivity` then delivers synchronously (awaits the
+    // POST). An in-process queue would need `federation.startQueue()` to drain —
+    // which the Express integration doesn't run — so queued activities (e.g. the
+    // Create on share) would never send. A persistent Postgres queue + worker is
+    // a later reliability slice; synchronous delivery is correct for now.
   })
 
   federation
@@ -127,12 +142,95 @@ export const createFeedFederation = (origin: string): Federation<void> => {
       }
     })
 
-  // Empty collections for now; the outbox serves the user's public posts once
-  // delivery wiring exists.
-  federation.setOutboxDispatcher('/users/{identifier}/outbox', (_ctx, _identifier) => ({ items: [] }))
-  federation.setFollowersDispatcher('/users/{identifier}/followers', (_ctx, _identifier) => ({
-    items: [],
-  }))
+  // Individual post object. Serves the same `Note` that was delivered, at its
+  // canonical id, so a remote server can dereference it. Only `public`/`unlisted`
+  // objects resolve — `followers`-only posts are delivered with the object
+  // inline, so their id never needs to be fetched; refusing them keeps
+  // follower-only content off an unauthenticated fetch.
+  federation.setObjectDispatcher(
+    Note,
+    '/users/{identifier}/feed/{postId}',
+    async (ctx, { identifier, postId }) => {
+      if (!isValidUsername(identifier) || !UUID_RE.test(postId)) return null
+      let post
+      try {
+        post = await getFeedPostById(identifier, postId)
+      } catch (error) {
+        if (isMissingDatabase(error)) return null
+        throw error
+      }
+      if (post == null || post.activity_id == null || !isPubliclyVisible(post.visibility)) return null
+      const activity = await getActivityById(identifier, post.activity_id)
+      if (activity == null) return null
+      return buildFeedNote(ctx, identifier, post, activity)
+    },
+  )
+
+  // Outbox: the user's public + unlisted posts as `Create` activities, so a
+  // Mastodon profile shows them. Served as a single inline OrderedCollection (no
+  // cursor) — fine at feed scale; pagination is a later slice. A post whose
+  // activity was soft-deleted is skipped from the items (its Create can't be
+  // built) while `setCounter` still counts it; the divergence self-heals when
+  // the stale post is removed.
+  federation
+    .setOutboxDispatcher('/users/{identifier}/outbox', async (ctx, identifier) => {
+      if (!isValidUsername(identifier)) return null
+      let posts
+      try {
+        posts = await listPublicFeedPosts(identifier)
+      } catch (error) {
+        if (isMissingDatabase(error)) return null
+        throw error
+      }
+      const items = (
+        await Promise.all(
+          posts.map(async (post) => {
+            if (post.activity_id == null) return null
+            const activity = await getActivityById(identifier, post.activity_id)
+            return activity == null ? null : buildFeedCreate(ctx, identifier, post, activity)
+          }),
+        )
+      ).filter((item): item is Create => item != null)
+      return { items }
+    })
+    .setCounter(async (_ctx, identifier) => {
+      if (!isValidUsername(identifier)) return 0
+      try {
+        return await countPublicFeedPosts(identifier)
+      } catch (error) {
+        if (isMissingDatabase(error)) return 0
+        throw error
+      }
+    })
+
+  // Real followers, backed by feed_follower. This both serves the followers
+  // collection and enumerates recipients for `sendActivity(..., 'followers', …)`.
+  federation
+    .setFollowersDispatcher('/users/{identifier}/followers', async (_ctx, identifier) => {
+      if (!isValidUsername(identifier)) return { items: [] }
+      try {
+        const followers = await listFeedFollowers(identifier)
+        return {
+          items: followers.map((f) => ({
+            endpoints: f.shared_inbox_uri ? { sharedInbox: new URL(f.shared_inbox_uri) } : null,
+            id: new URL(f.actor_uri),
+            inboxId: new URL(f.inbox_uri),
+          })),
+        }
+      } catch (error) {
+        if (isMissingDatabase(error)) return { items: [] }
+        throw error
+      }
+    })
+    .setCounter(async (_ctx, identifier) => {
+      if (!isValidUsername(identifier)) return 0
+      try {
+        return await countFeedFollowers(identifier)
+      } catch (error) {
+        if (isMissingDatabase(error)) return 0
+        throw error
+      }
+    })
 
   return federation
 }

@@ -1,14 +1,18 @@
-# Activity Feed
+# Federated Activity Feed
 
 The activity feed lets a user publish an **activity** (a run, a night's sleep, a
 meditation, …) to their public feed, choosing **per post exactly which data leaves the
-instance**. It reuses the same base-URL identity and `/u/<username>` namespace as
+instance**, and have it delivered over **ActivityPub** to followers on Mastodon and the
+wider fediverse. It reuses the same base-URL identity and `/u/<username>` namespace as
 [shared dashboards](./sharing.md) and [challenges](./challenges.md).
 
-This page describes the **persistence + share API + public series** foundation. The
-ActivityPub delivery layer (actor, outbox/inbox, HTTP signatures, follower delivery)
-and server-side map/chart image rendering are layered on top of this model in
-follow-up work; they are intentionally **not** part of this foundation.
+The feed is built on [Fedify](https://fedify.dev). It has three layers:
+
+1. **Persistence + metric selection** — what a post is and what it exposes.
+2. **Public series endpoint** — the unauthenticated, data-driven privacy boundary for
+   high-resolution series.
+3. **ActivityPub federation** — a per-user actor, WebFinger discovery, follower
+   inbox/outbox, and delivery of the post's lifecycle (create / update / delete).
 
 ## Feed posts
 
@@ -16,18 +20,76 @@ A **feed post** references one of the user's activities and records the explicit
 selection that bounds what is shared:
 
 - **`included_metrics`** — the scalar summaries the user opted to share (e.g.
-  `duration`, `distance`, `heart_rate_avg`, `hr_zone_minutes`). This is the single
-  source of truth for the human-readable summary and the machine-readable scalars a
-  remote Aurboda instance reads.
+  `duration`, `distance`, `heart_rate_avg`, `heart_rate_max`, `hr_zone_minutes`,
+  `calories`, `stress_avg`). This is the single source of truth for the human-readable
+  summary and the machine-readable scalars a remote Aurboda instance reads.
 - **`series_metrics`** — a **separate, explicit opt-in** for high-resolution continuous
   series (e.g. per-5-second heart rate or stress). A per-sample trace is far more
   revealing than an average, so series are **off unless deliberately chosen**, even for
   a metric whose scalar summary is shared.
-- **`visibility`** — `public`, `followers`, or `unlisted`.
+- **`visibility`** — `public`, `unlisted`, or `followers`.
 - **`include_map` / `include_chart`** — flags for the (deferred) image attachments.
 
 Defaults are privacy-conservative: sharing an activity with no explicit selection
 shares no scalars and, crucially, **no series**.
+
+## ActivityPub federation
+
+Each user is a single ActivityPub **actor** (a `Person`) at:
+
+```
+<public-base>/users/<username>          e.g. https://aurboda.net/users/fiddur
+```
+
+The `/users/` prefix is dedicated to federation and never collides with the human-facing
+`/u/<username>` profile/dashboard pages. The actor publishes an RSA public key (used to
+verify HTTP Signatures) held in the per-user `feed_actor` table.
+
+**Discovery (WebFinger).** The actor is resolvable by handle:
+
+```
+acct:<username>@<host>                  e.g. @fiddur@aurboda.net
+```
+
+so anyone on Mastodon (or any fediverse server) can search for `@fiddur@aurboda.net`,
+open the profile, and **Follow**. A `Follow` arrives at the actor's inbox; Aurboda
+verifies its HTTP Signature, records the follower (`feed_follower`), and replies with an
+`Accept` so the remote server marks the relationship established. `Undo{Follow}` removes
+the follower.
+
+Canonical absolute URLs (actor id, inbox/outbox, object ids, WebFinger self-link) are
+always built from the configured public base (`WEB_HOST`) as **https**, so they stay
+correct behind the TLS-terminating proxy (which forwards over loopback http).
+
+### Publishing & lifecycle delivery
+
+Sharing, editing, or unsharing a post federates the matching activity to the user's
+followers (best-effort, fire-and-forget; delivery is synchronous — a durable retry queue
+is a later slice):
+
+| Action        | Federated activity   | Effect on followers                          |
+| ------------- | -------------------- | -------------------------------------------- |
+| Share         | `Create{Note}`       | The post appears in their timeline           |
+| Edit          | `Update{Note}`       | Their stored copy is replaced                |
+| Unshare       | `Delete{Tombstone}`  | The post is retracted from their timeline    |
+
+The `Note` is Mastodon-compatible: an HTML `content` summary flattening the title and the
+shared scalar summaries, plus a `name` headline, addressed per the post's visibility
+(`public` → AS2 Public + followers; `unlisted` → followers + Public in `cc`; `followers`
+→ followers only). The custom structured `aurboda:` extension (typed metrics + series
+links) is a separate, richer representation for Aurboda-to-Aurboda consumers.
+
+### Outbox & object serving
+
+- **Outbox** (`/users/<username>/outbox`) — an `OrderedCollection` of the user's
+  `public` + `unlisted` posts as `Create` activities, newest-first, so the actor's
+  profile shows their posts. `followers`-only posts are never listed.
+- **Object** (`/users/<username>/feed/<postId>`) — the post's `Note`, served at its
+  canonical id so a remote server can dereference it. Only `public`/`unlisted` resolve;
+  `followers`-only and unknown ids return 404.
+
+The object we deliver, list in the outbox, and serve at that id are all built from one
+place, so they can't drift.
 
 ## Public series endpoint (the privacy boundary)
 
@@ -58,25 +120,41 @@ Deleting a feed post, changing its visibility to `followers`, removing the metri
 `series_metrics`, or soft-deleting the activity all immediately stop the series from
 resolving.
 
+## Using it in the web app
+
+- **Share** — an activity's detail page has a **Share to feed** button. It opens a dialog
+  to pick the summary metrics, optionally opt into full series, and choose the audience.
+- **Manage** — the **Feed** page (`/feed`, the 📣 item in the sidebar) lists everything
+  you've shared, with each post's audience and metrics. From there you can **Edit** a
+  post (re-opens the dialog; saving federates an `Update`) or **Unshare** it (federates a
+  `Delete`).
+
 ## API
 
 Owner-facing (authenticated, scoped to the caller):
 
-| Method & path                        | Purpose                                            |
-| ------------------------------------ | -------------------------------------------------- |
-| `GET /feed`                          | List my feed posts                                 |
-| `POST /feed/activities/:id/share`    | Publish an activity with a chosen metric selection |
-| `PATCH /feed/:postId`                | Edit selection / visibility / attachments          |
-| `DELETE /feed/:postId`               | Unpublish (its public series stops resolving)      |
+| Method & path                     | Purpose                                            |
+| --------------------------------- | -------------------------------------------------- |
+| `GET /feed`                       | List my feed posts                                 |
+| `POST /feed/activities/:id/share` | Publish an activity with a chosen metric selection |
+| `PATCH /feed/:postId`             | Edit selection / visibility / attachments          |
+| `DELETE /feed/:postId`            | Unpublish (its public series stops resolving)      |
 
-Public (unauthenticated):
+Public / federation (unauthenticated):
 
-| Method & path                    | Purpose                                                    |
-| -------------------------------- | ---------------------------------------------------------- |
-| `GET /public/:username/series`   | Bucketed samples for a **shared** series within its window |
+| Method & path                              | Purpose                                                    |
+| ------------------------------------------ | ---------------------------------------------------------- |
+| `GET /public/:username/series`             | Bucketed samples for a **shared** series within its window |
+| `GET /.well-known/webfinger`               | Resolve `acct:<username>@<host>` → the actor               |
+| `GET /users/:username`                     | The actor document (`Person`)                              |
+| `GET /users/:username/outbox`              | Public + unlisted posts as `Create` activities             |
+| `GET /users/:username/followers`           | The actor's followers collection                           |
+| `GET /users/:username/feed/:postId`        | A single post's `Note`                                     |
+| `POST /users/:username/inbox` (+ `/inbox`) | Inbound `Follow` / `Undo{Follow}` (HTTP-Signature verified) |
 
-The same owner-facing capability is available over MCP as `list_feed`, `share_activity`,
-`update_feed_post`, and `delete_feed_post`. The public series read is web/federation-only.
+The owner-facing capability is also available over MCP as `list_feed`, `share_activity`,
+`update_feed_post`, and `delete_feed_post` — sharing/editing/deleting over MCP federates
+identically to the REST routes.
 
 ## Storage
 
@@ -84,7 +162,24 @@ Feed posts live in the user's own database in the `feed_posts` table. `activity_
 **soft reference** (no foreign key): activities are soft-deleted and the series lookup
 re-checks `deleted_at` at query time, so a removed activity simply stops resolving rather
 than cascading a delete. A GIN index over `series_metrics` backs the public series
-endpoint's authorization check.
+endpoint's authorization check. Followers live in `feed_follower`; the actor's RSA
+keypair in `feed_actor`.
+
+## Caveats & limitations
+
+These are known and intentional for the current implementation:
+
+- **Visibility downgrade doesn't retract from non-followers.** Narrowing a `public`
+  post to `followers` federates an `Update` addressed only to followers; servers that
+  showed it to non-followers keep their copy. This is an inherent ActivityPub limitation
+  (Mastodon behaves the same) — there is no addressable "public" inbox to retract from.
+- **No `410 Tombstone` on GET of a deleted object.** A deleted post's object id returns
+  `404` (the row is hard-deleted). The pushed `Delete{Tombstone}` is what retracts it
+  from followers' timelines.
+- **`published` is omitted** on the delivered `Note` (a Fedify/Temporal type-interop
+  detail), so remote servers timestamp posts at receipt (≈ share time).
+- **The outbox is not paginated** — it serves all public posts inline. Fine at feed
+  scale; cursor pagination is a follow-up.
 
 ## Related
 

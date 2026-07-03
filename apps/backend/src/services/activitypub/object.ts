@@ -44,10 +44,16 @@ export interface BuildCreateInput {
   seriesEndpointBase: string
   visibility: FeedVisibility
   activityType: string
-  /** Activity start (ISO 8601); also the `published` time. */
+  /** Activity start (ISO 8601); the workout time, kept in `aurboda:startTime`. */
   startTime: string
   /** Activity end (ISO 8601); required for duration and series links. */
   endTime?: string
+  /**
+   * When the post was created (ISO 8601), used for the AS2 `published` of the
+   * Create and its object so remote timelines order it by share time, not the
+   * (possibly much earlier) workout time. Defaults to `startTime`.
+   */
+  publishedAt?: string
   title?: string
   /** Resolved scalar summaries for the shared `included_metrics`. */
   scalars: ScalarMetric[]
@@ -88,6 +94,34 @@ const formatScalar = ({ key, value, unit, label }: ScalarMetric): string => {
           .join(', ')
   return `${name} ${rendered}`
 }
+
+/**
+ * The human-readable status a plain fediverse client renders: a `name` headline
+ * and an HTML `content` line flattening the title + shared scalars. Shared by
+ * the AS2 object model and the Fedify delivery Note so both read identically.
+ */
+export const feedPostContent = (
+  title: string | undefined,
+  activityType: string,
+  scalars: ScalarMetric[],
+): { name: string; content: string } => {
+  const summaryLine = [title, ...scalars.map(formatScalar)].filter((p): p is string => Boolean(p)).join(' · ')
+  return {
+    content: `<p>${escapeHtml(summaryLine)}</p>`,
+    name: title ?? `${prettifyKey(activityType)} activity`,
+  }
+}
+
+/**
+ * Whether a post is visible on the unauthenticated AP surfaces — the outbox and
+ * its dereferenceable object. `public` and `unlisted` are both addressed to the
+ * AS2 Public collection; `followers`-only never is (and is delivered with its
+ * object inline, so its id never needs fetching). An allowlist, so any future
+ * non-public visibility is excluded by default; mirrors the SQL filter in
+ * `listPublicFeedPosts`.
+ */
+export const isPubliclyVisible = (visibility: FeedVisibility): boolean =>
+  visibility === 'public' || visibility === 'unlisted'
 
 /**
  * Map a post's visibility to AS2 `to`/`cc` addressing. `followers` is the
@@ -143,11 +177,10 @@ export const buildCreateExercise = (input: BuildCreateInput): AS2Create => {
   const { to, cc } = addressingFor(input.visibility, followersUrl)
   const objectId = `${input.postId}/object`
 
-  const summaryParts = [input.title, ...input.scalars.map(formatScalar)].filter((p): p is string =>
-    Boolean(p),
-  )
-  const summaryLine = summaryParts.join(' · ')
-  const name = input.title ?? `${prettifyKey(input.activityType)} activity`
+  const { content, name } = feedPostContent(input.title, input.activityType, input.scalars)
+  // `published` is the share time (timeline ordering); the workout time lives in
+  // `aurboda:startTime`.
+  const published = input.publishedAt ?? input.startTime
 
   const object: Record<string, unknown> = {
     'aurboda:activityType': input.activityType,
@@ -158,10 +191,10 @@ export const buildCreateExercise = (input: BuildCreateInput): AS2Create => {
     })),
     'aurboda:startTime': input.startTime,
     attributedTo: input.actorUrl,
-    content: `<p>${escapeHtml(summaryLine)}</p>`,
+    content,
     id: objectId,
     name,
-    published: input.startTime,
+    published,
     // Note first → Mastodon uses content/name/url; Aurboda recognises aurboda:Exercise.
     type: ['Note', 'aurboda:Exercise'],
     url: input.postId,
@@ -182,7 +215,7 @@ export const buildCreateExercise = (input: BuildCreateInput): AS2Create => {
     cc,
     id: input.postId,
     object,
-    published: input.startTime,
+    published,
     to,
     type: 'Create',
   }
