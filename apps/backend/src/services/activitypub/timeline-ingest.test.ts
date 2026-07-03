@@ -95,4 +95,35 @@ describe('noteToTimelineInput', () => {
     const noPublished = new Note({ content: 'x', id: new URL('https://mastodon.example/notes/3') })
     expect(noteToTimelineInput(noPublished, author)).toBeNull()
   })
+
+  test('rejects a Note whose id is on a different host than the sender (id-collision spoof)', () => {
+    // An accepted followee delivering a Note with an id on ANOTHER actor's host
+    // could otherwise overwrite that actor's entry via the global object_uri key.
+    const spoof = new Note({
+      content: '<p>pwned</p>',
+      id: new URL('https://good.example/notes/1'),
+      published: published('2026-07-02T08:30:00Z'),
+    })
+    expect(noteToTimelineInput(spoof, author)).toBeNull()
+  })
+
+  test('rejects a Note attributed to a different actor', () => {
+    const spoof = new Note({
+      attribution: new URL('https://mastodon.example/users/mallory'),
+      content: '<p>not mine</p>',
+      id: new URL('https://mastodon.example/notes/9'),
+      published: published('2026-07-02T08:30:00Z'),
+    })
+    expect(noteToTimelineInput(spoof, author)).toBeNull()
+  })
+
+  test('accepts a Note correctly attributed to the sender', () => {
+    const note = new Note({
+      attribution: new URL(author.actor_uri),
+      content: '<p>mine</p>',
+      id: new URL('https://mastodon.example/notes/10'),
+      published: published('2026-07-02T08:30:00Z'),
+    })
+    expect(noteToTimelineInput(note, author)?.object_uri).toBe('https://mastodon.example/notes/10')
+  })
 })

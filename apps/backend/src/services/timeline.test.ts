@@ -89,4 +89,16 @@ describe('getTimelinePage', () => {
     })
     expect(received).toBeUndefined()
   })
+
+  test('rejects a structurally-valid cursor whose id is not a UUID (avoids a $::uuid 500)', async () => {
+    // `12345:not-a-uuid` base64url-decodes with a safe-integer ms but a non-UUID id;
+    // it must decode to undefined (first page) rather than reaching the uuid cast.
+    const crafted = Buffer.from('12345:not-a-uuid').toString('base64url')
+    let received: TimelineCursor | undefined = { id: 'sentinel', published_at: new Date(0) }
+    await getTimelinePage('user', 20, crafted, async (_u, _l, cursor) => {
+      received = cursor
+      return []
+    })
+    expect(received).toBeUndefined()
+  })
 })

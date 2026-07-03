@@ -68,12 +68,24 @@ export const sanitizeRemoteHtml = (html: string): string =>
 
 /**
  * Map a received `Note` + its (already-resolved, followed) author to a timeline
- * entry, or null if the Note lacks an id or a `published` timestamp. The author's
- * presentation (handle / name / avatar) comes from the cached `feed_following`
- * row — no extra network — since we only ingest posts from actors we follow.
+ * entry, or null if the Note lacks an id or a `published` timestamp.
+ *
+ * **Authority check.** `note.id` becomes `object_uri`, the *globally-unique* upsert
+ * key. Without an origin check a malicious accepted followee could deliver a Note
+ * whose id collides with another followee's post and overwrite it (attributed to
+ * themselves). So we require the Note to originate from the sender's host and, when
+ * it declares `attributedTo`, to attribute to the sender — the symmetric guard to
+ * the sender-scoped inbound `Delete`. The author's presentation (handle / name /
+ * avatar) comes from the cached `feed_following` row (no extra network).
  */
 export const noteToTimelineInput = (note: Note, author: FeedFollowingRecord): TimelineEntryInput | null => {
   if (note.id == null || note.published == null) return null
+  // The sender (this Note's author) is `author.actor_uri` — the accepted followee
+  // the inbox handler looked up by the activity's actor id.
+  const senderHost = new URL(author.actor_uri).host
+  if (note.id.host !== senderHost) return null
+  const attributions = note.attributionIds
+  if (attributions.length > 0 && !attributions.some((uri) => uri.href === author.actor_uri)) return null
   return {
     actor_uri: author.actor_uri,
     avatar_url: author.avatar_url,

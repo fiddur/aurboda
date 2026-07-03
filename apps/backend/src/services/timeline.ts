@@ -17,6 +17,9 @@ import { listTimelineEntries } from '../db/index.ts'
 const encodeCursor = (record: TimelineEntryRecord): string =>
   Buffer.from(`${record.published_at.getTime()}:${record.id}`).toString('base64url')
 
+/** A canonical UUID, to validate a decoded cursor's id before it hits the `$::uuid` cast. */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 /** Decode an opaque cursor, or undefined if it's missing/malformed (→ first page). */
 const decodeCursor = (cursor: string | undefined): TimelineCursor | undefined => {
   if (cursor == null || cursor === '') return undefined
@@ -25,7 +28,9 @@ const decodeCursor = (cursor: string | undefined): TimelineCursor | undefined =>
   if (sep <= 0) return undefined
   const ms = Number(decoded.slice(0, sep))
   const id = decoded.slice(sep + 1)
-  if (!Number.isSafeInteger(ms) || id === '') return undefined
+  // Validate the id is a UUID: it's cast to `uuid` in listTimelineEntries, so a
+  // crafted `12345:not-a-uuid` cursor would otherwise 500 instead of paging.
+  if (!Number.isSafeInteger(ms) || !UUID_RE.test(id)) return undefined
   return { id, published_at: new Date(ms) }
 }
 
