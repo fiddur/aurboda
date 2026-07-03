@@ -121,6 +121,28 @@ describe('querySplitByCumulative', () => {
     ])
   })
 
+  test('handles very large result sets without a stack overflow', async () => {
+    // Regression: `results.push(...rows.map(...))` overflows the call stack once a query
+    // returns ~100k+ rows (spread passes each element as a function argument). A multi-day
+    // per-second heart_rate query easily exceeds that.
+    const rowCount = 500_000
+    const bigRows = Array.from({ length: rowCount }, (_, i) => ({ metric: 'heart_rate', value: i }))
+    const queryFn = vi.fn().mockResolvedValueOnce({ rows: bigRows })
+
+    const results = await querySplitByCumulative({
+      mapRow: (row) => ({ metric: row.metric as string, value: row.value as number }),
+      metrics: ['heart_rate'],
+      params: [new Date('2024-01-15'), new Date('2024-01-23')],
+      queryFn,
+      sqlCumulative: 'CUMULATIVE SQL',
+      sqlNonCumulative: 'NON-CUMULATIVE SQL',
+    })
+
+    expect(results).toHaveLength(rowCount)
+    expect(results[0]).toEqual({ metric: 'heart_rate', value: 0 })
+    expect(results.at(-1)).toEqual({ metric: 'heart_rate', value: rowCount - 1 })
+  })
+
   test('returns empty when no metrics', async () => {
     const queryFn = vi.fn()
 

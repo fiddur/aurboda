@@ -8,6 +8,17 @@
   color: #6b7280;
   text-decoration: none;
   font-size: 0.95rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.public-dashboard .public-attribution__avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: #0001;
 }
 
 .public-dashboard .public-attribution:hover {
@@ -37,4 +48,19 @@
   .public-dashboard .public-attribution {
     color: #9ca3af;
   }
+}
+
+.public-dashboard .share-link-btn {
+  padding: 0.4rem 0.9rem;
+  border: 1px solid #673ab8;
+  border-radius: 6px;
+  background: transparent;
+  color: #8b5cf6;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.public-dashboard .share-link-btn:hover {
+  background: #673ab8;
+  color: #fff;
 }

@@ -8,6 +8,7 @@ export const NAV_LINKS = [
   { href: '/add', label: '+ Add', icon: '➕' },
   { href: '/chart', label: 'Chart', icon: '📈' },
   { href: '/shared-dashboards', label: 'Share', icon: '🔆' },
+  { href: '/feed', label: 'Feed', icon: '📣' },
   { href: '/challenges', label: 'Challenges', icon: '🏆' },
   { href: '/correlations', label: 'Analyze', icon: '🔬' },
   { href: '/places', label: 'Places', icon: '📍' },

@@ -799,6 +799,51 @@
   outline: none;
 }
 
+/* Author-editable prose: dashboard + section intro text */
+.dashboard .dashboard-intro,
+.dashboard .section-intro {
+  color: #555;
+  line-height: 1.5;
+  margin: 0 0 1rem 0;
+  white-space: pre-wrap;
+}
+
+.dashboard .dashboard-intro {
+  grid-column: 1 / -1;
+  font-size: 1.05rem;
+}
+
+.dashboard .section-intro {
+  font-size: 0.95rem;
+}
+
+.dashboard .dashboard-intro-input,
+.dashboard .section-intro-input {
+  width: 100%;
+  font: inherit;
+  color: #555;
+  background: transparent;
+  border: 1px solid #673ab8;
+  border-radius: 6px;
+  padding: 0.5rem;
+  margin: 0 0 1rem 0;
+  resize: vertical;
+  outline: none;
+}
+
+.dashboard .dashboard-intro-input {
+  grid-column: 1 / -1;
+}
+
+@media (prefers-color-scheme: dark) {
+  .dashboard .dashboard-intro,
+  .dashboard .section-intro,
+  .dashboard .dashboard-intro-input,
+  .dashboard .section-intro-input {
+    color: #bbb;
+  }
+}
+
 /* Dark mode additions for editing */
 @media (prefers-color-scheme: dark) {
   .dashboard .btn-edit {

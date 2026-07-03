@@ -43,6 +43,7 @@ import { NotesSection } from './NotesSection'
 import { ProductivityDetail } from './ProductivityDetail'
 import { activityRouteAfterSave } from './saveNavigation'
 import { SchemaDataFields } from './SchemaDataFields'
+import { ShareActivityButton } from './ShareActivityButton'
 import {
   computeSleepMinutesFromStages,
   SLEEP_METRIC_LABELS,
@@ -212,6 +213,7 @@ const ActivityDetailContent = ({
   referencedRules,
   onRevertOverride,
   isReverting,
+  onChartMetricsChange,
 }: {
   activity: Activity
   isEditing: boolean
@@ -222,6 +224,7 @@ const ActivityDetailContent = ({
   referencedRules?: Record<string, string>
   onRevertOverride?: () => void
   isReverting?: boolean
+  onChartMetricsChange?: (metrics: string[]) => void
 }) => {
   const displayStart = activity.merged_start_time ?? activity.start_time
   const realEnd = activity.merged_end_time ?? activity.end_time
@@ -374,6 +377,7 @@ const ActivityDetailContent = ({
             stages={hasSleepStages ? stages : undefined}
             defaultMetrics={['heart_rate', 'hrv_rmssd']}
             onHoverTime={setHoverTime}
+            onEnabledMetricsChange={onChartMetricsChange}
           />
           <ActivityMap start={displayStart} end={displayEnd} hoverTime={hoverTime} />
         </div>
@@ -489,6 +493,8 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
 
   const [isEditing, setIsEditing] = useState(false)
   const [isMerging, setIsMerging] = useState(false)
+  // Metrics currently shown on the chart, mirrored into the share dialog defaults.
+  const [chartMetrics, setChartMetrics] = useState<string[]>([])
   const emptyDraft: ActivityDraft = {
     activity_type: '',
     data: {},
@@ -627,6 +633,20 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
         onSuccess={() => queryClient.invalidateQueries()}
         isEditing={isEditing}
       />
+      {!activity.deleted_at && !isEditing && (
+        // `rawEntityId` is a plain activity UUID for both raw and merged views (a
+        // `merged:<uuid>` id wraps a real anchor activity), so merged activities
+        // — the common case — are shareable; the post references that anchor.
+        // The merged span bounds the metric-availability lookup so the dialog
+        // offers everything the activity has across its sources.
+        <ShareActivityButton
+          activityId={rawEntityId}
+          activityTitle={activity.title}
+          activityStart={activity.merged_start_time ?? activity.start_time}
+          activityEnd={activity.merged_end_time ?? activity.end_time}
+          chartMetrics={chartMetrics}
+        />
+      )}
       {isMerging && <MergePanel activityId={rawEntityId} onCancel={() => setIsMerging(false)} />}
       <ActivityDetailContent
         activity={activity}
@@ -636,6 +656,7 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
         itemIcons={itemIcons}
         typeDefinitions={typeDefinitions}
         referencedRules={referencedRules}
+        onChartMetricsChange={setChartMetrics}
         onRevertOverride={() => revertOverrideMutation.mutate()}
         isReverting={revertOverrideMutation.isPending}
       />

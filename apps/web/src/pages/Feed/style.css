@@ -1,0 +1,159 @@
+.feed-page {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+.feed-page h1 {
+  margin: 0 0 0.25rem;
+}
+
+.feed-intro {
+  margin: 0 0 1.25rem;
+  color: #6b7280;
+  font-size: 0.9rem;
+}
+
+.feed-intro code {
+  background: rgba(103, 58, 184, 0.1);
+  padding: 0.05rem 0.3rem;
+  border-radius: 4px;
+}
+
+.feed-empty,
+.feed-error {
+  padding: 1rem;
+  border-radius: 8px;
+  background: #f9fafb;
+  color: #374151;
+}
+
+.feed-error {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.feed-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 0.875rem 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.feed-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.feed-card-title {
+  font-weight: 600;
+  font-size: 1rem;
+  color: #1f2937;
+  text-decoration: none;
+}
+
+.feed-card-title[href]:hover {
+  text-decoration: underline;
+}
+
+.feed-badge {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.feed-badge-public {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.feed-badge-unlisted {
+  background: #e0e7ff;
+  color: #3730a3;
+}
+
+.feed-badge-followers {
+  background: #f3f4f6;
+  color: #374151;
+}
+
+.feed-card-meta {
+  font-size: 0.78rem;
+  color: #6b7280;
+  margin-top: 0.15rem;
+}
+
+.feed-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.6rem;
+}
+
+.feed-chips-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.feed-chip {
+  font-size: 0.75rem;
+  padding: 0.1rem 0.5rem;
+  border-radius: 4px;
+  background: #f3f4f6;
+  color: #374151;
+}
+
+.feed-chip-series {
+  background: rgba(103, 58, 184, 0.12);
+  color: #4c1d95;
+}
+
+.feed-card-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  .feed-card {
+    border-color: #374151;
+  }
+
+  .feed-card-title {
+    color: #e5e7eb;
+  }
+
+  .feed-empty {
+    background: #1f2937;
+    color: #d1d5db;
+  }
+
+  .feed-chip {
+    background: #374151;
+    color: #d1d5db;
+  }
+
+  .feed-badge-public {
+    background: #14532d;
+    color: #bbf7d0;
+  }
+
+  .feed-badge-unlisted {
+    background: #312e81;
+    color: #c7d2fe;
+  }
+
+  .feed-badge-followers {
+    background: #374151;
+    color: #d1d5db;
+  }
+}

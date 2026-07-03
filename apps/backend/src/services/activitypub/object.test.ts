@@ -1,6 +1,12 @@
 import { describe, expect, test } from 'vitest'
 
-import { addressingFor, AS_PUBLIC, type BuildCreateInput, buildCreateExercise } from './object.ts'
+import {
+  addressingFor,
+  AS_PUBLIC,
+  type BuildCreateInput,
+  buildCreateExercise,
+  feedPostContent,
+} from './object.ts'
 
 const base: BuildCreateInput = {
   activityType: 'running',
@@ -56,10 +62,10 @@ describe('buildCreateExercise', () => {
     ])
   })
 
-  test('content flattens exactly the shared scalars behind the title', () => {
+  test('content is a bold title headline with the shared scalars on their own line', () => {
     const c = buildCreateExercise(base)
     expect(c.object.content).toBe(
-      '<p>Morning run · Distance 8.2 km · Avg HR 148 bpm · Hr zone minutes z2 22, z3 11</p>',
+      '<p><strong>Morning run</strong></p><p>Distance 8.2 km · Avg HR 148 bpm · Hr zone minutes z2 22, z3 11</p>',
     )
   })
 
@@ -110,11 +116,50 @@ describe('buildCreateExercise', () => {
 
   test('escapes HTML in the title for the fallback content', () => {
     const c = buildCreateExercise({ ...base, scalars: [], title: 'Run <b>x</b> & "go"' })
-    expect(c.object.content).toBe('<p>Run &lt;b&gt;x&lt;/b&gt; &amp; &quot;go&quot;</p>')
+    expect(c.object.content).toBe('<p><strong>Run &lt;b&gt;x&lt;/b&gt; &amp; &quot;go&quot;</strong></p>')
+  })
+
+  test('uses publishedAt for the AS2 published times, keeping the workout time in aurboda:startTime', () => {
+    const c = buildCreateExercise({ ...base, publishedAt: '2026-07-01T20:00:00Z' })
+    expect(c.published).toBe('2026-07-01T20:00:00Z')
+    expect(c.object.published).toBe('2026-07-01T20:00:00Z')
+    expect(c.object['aurboda:startTime']).toBe(base.startTime)
+  })
+
+  test('published defaults to startTime when publishedAt is omitted', () => {
+    const c = buildCreateExercise(base)
+    expect(c.published).toBe(base.startTime)
+    expect(c.object.published).toBe(base.startTime)
   })
 
   test('falls back to a derived name when the activity has no title', () => {
     const c = buildCreateExercise({ ...base, title: undefined })
     expect(c.object.name).toBe('Running activity')
+  })
+})
+
+describe('feedPostContent', () => {
+  test('renders a bold headline with stats below and a humanized duration', () => {
+    const { content } = feedPostContent('Evening qigong', 'yoga', [
+      { key: 'duration', label: 'Duration', unit: 'seconds', value: 642 },
+      { key: 'heart_rate_avg', label: 'Avg HR', unit: 'bpm', value: 76 },
+      { key: 'calories', label: 'Calories', unit: 'kcal', value: 9 },
+    ])
+    expect(content).toBe(
+      '<p><strong>Evening qigong</strong></p><p>Duration 10m 42s · Avg HR 76 bpm · Calories 9 kcal</p>',
+    )
+  })
+
+  test('renders hours and minutes for a long duration', () => {
+    const { content } = feedPostContent('Long ride', 'cycling', [
+      { key: 'duration', label: 'Duration', unit: 'seconds', value: 3720 },
+    ])
+    expect(content).toBe('<p><strong>Long ride</strong></p><p>Duration 1h 2m</p>')
+  })
+
+  test('untitled activity gets a type-derived headline and no stats line when nothing is shared', () => {
+    const { content, name } = feedPostContent(undefined, 'yoga', [])
+    expect(content).toBe('<p><strong>Yoga activity</strong></p>')
+    expect(name).toBe('Yoga activity')
   })
 })

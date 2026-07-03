@@ -136,4 +136,31 @@ export const socialTables: Record<string, string> = {
       CHECK (singleton)
     )
   `,
+
+  // Remote actors that follow this user's ActivityPub actor. Keyed by the
+  // follower's actor URI; we cache their (personal) inbox and optional shared
+  // inbox so the delivery slice can fan posts out to them. `accepted` records
+  // that we answered their Follow with an Accept.
+  feed_follower: `
+    CREATE TABLE IF NOT EXISTS feed_follower (
+      actor_uri        TEXT PRIMARY KEY,
+      inbox_uri        TEXT NOT NULL,
+      shared_inbox_uri TEXT,
+      accepted         BOOLEAN NOT NULL DEFAULT false,
+      created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `,
+
+  // The user's public profile avatar. One per user (the profile owner), so a
+  // `singleton` PK + CHECK pins it to a single row. Surfaced on the public
+  // profile, shared-page OG cards, and the ActivityPub actor `icon`.
+  profile_avatar: `
+    CREATE TABLE IF NOT EXISTS profile_avatar (
+      singleton     BOOLEAN PRIMARY KEY DEFAULT true,
+      content_type  TEXT NOT NULL,
+      data          BYTEA NOT NULL,
+      updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CHECK (singleton)
+    )
+  `,
 }

@@ -32,6 +32,7 @@ import { StravaSource } from './pages/DataSources/StravaSource.jsx'
 import { DeductionRules } from './pages/DeductionRules/index.jsx'
 import { DeductionRuleDetail } from './pages/DeductionRules/RuleDetail.jsx'
 import { EntityDetail } from './pages/EntityDetail/index.jsx'
+import { Feed } from './pages/Feed/index.jsx'
 import { FoodItemDetail } from './pages/FoodItems/FoodItemDetail.jsx'
 import { FoodItems } from './pages/FoodItems/index.jsx'
 import { Goals } from './pages/Goals/index.jsx'
@@ -56,19 +57,22 @@ import { Signup } from './pages/Signup/index.jsx'
 import { Sleep } from './pages/Sleep/index.jsx'
 import { Terms } from './pages/Terms/index.jsx'
 import { Timeline } from './pages/Timeline/index.jsx'
+import { shouldShowNav } from './shell.js'
+import { auth } from './state/auth.js'
 import { queryClient } from './state/queryClient.js'
 import './style.css'
 
 function AppShell() {
-  // Public sharing pages (/u/...) render without the app chrome so anonymous
-  // visitors get a clean, standalone page.
+  // Public sharing pages (/u/...) hide the nav for anonymous visitors (a clean,
+  // standalone page), but a logged-in user keeps their nav so they can navigate
+  // away without the browser back button. The footer renders on every page.
   const { path } = useLocation()
-  const isPublic = path.startsWith('/u/')
+  const showNav = shouldShowNav(path, Boolean(auth.value.token))
 
   return (
     <>
-      {!isPublic && <Header />}
-      {!isPublic && <Sidebar />}
+      {showNav && <Header />}
+      {showNav && <Sidebar />}
       <div class="app-content">
         <main>
           <Router>
@@ -95,6 +99,7 @@ function AppShell() {
             <Route path="/reports/:id" component={ReportDetail} />
             <Route path="/reports" component={Reports} />
             <Route path="/detail/:type/:id" component={EntityDetail} />
+            <Route path="/feed" component={Feed} />
             <Route path="/activity-type/:name" component={ActivityTypeMeta} />
             <Route path="/metric/:metricName" component={MetricMeta} />
             <Route path="/sleep" component={Sleep} />
@@ -125,7 +130,7 @@ function AppShell() {
             <Route default component={NotFound} />
           </Router>
         </main>
-        {!isPublic && <Footer />}
+        <Footer />
       </div>
     </>
   )

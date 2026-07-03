@@ -1,6 +1,7 @@
 /**
  * PublicResource - resolves `/u/:username/:slug` to either a shared dashboard or
- * a challenge and renders the appropriate view. Rendered without app chrome.
+ * a challenge and renders the appropriate view. Rendered without app chrome for
+ * anonymous visitors; logged-in viewers keep their nav (see AppShell).
  *
  * - Dashboard, owner viewing their own: live, editable dashboard (own controls),
  *   saved via `updateSharedDashboard`.
@@ -14,15 +15,27 @@ import { useRoute } from 'preact-iso'
 import { useState } from 'preact/hooks'
 
 import { EditableDashboard } from '../../components/EditableDashboard'
+import { ShareLinkButton } from '../../components/ShareLinkButton'
 import { PublicWidgetRenderer } from '../../components/widgets'
-import { PublicChallenge } from '../Challenges/PublicChallenge'
-import { fetchPublicResource, listSharedDashboards, updateSharedDashboard } from '../../state/api'
+import { avatarUrl, fetchPublicResource, listSharedDashboards, updateSharedDashboard } from '../../state/api'
 import { auth } from '../../state/auth'
+import { PublicChallenge } from '../Challenges/PublicChallenge'
 import '../Dashboard/style.css'
 import './style.css'
 
 const gridClass = (type: SectionType): string =>
   type === 'links' ? 'links-grid' : type === 'charts' ? 'charts-grid' : 'metrics-grid'
+
+/** Author attribution (avatar + @handle). Shared so the owner and public views
+ *  can't drift apart (#879). */
+function AttributionLink({ username }: { username: string }) {
+  return (
+    <a class="public-attribution" href={`/u/${encodeURIComponent(username)}`}>
+      <img class="public-attribution__avatar" src={avatarUrl(username)} alt="" width={28} height={28} />@
+      {username}
+    </a>
+  )
+}
 
 /** Owner view: live, editable dashboard backed by the authed shared-dashboard API. */
 function OwnerSharedDashboard({ username, slug }: { username: string; slug: string }) {
@@ -69,16 +82,21 @@ function OwnerSharedDashboard({ username, slug }: { username: string; slug: stri
       <div class="dashboard-header">
         <h1>{share.name}</h1>
         <div class="dashboard-actions">
-          <a class="public-attribution" href={`/u/${encodeURIComponent(username)}`}>
-            @{username}
-          </a>
+          <AttributionLink username={username} />
           {isEditing ? (
             <button class="btn-primary" onClick={() => setIsEditing(false)}>
               Done Editing
             </button>
           ) : (
             <button class="btn-edit" onClick={() => setIsEditing(true)} title="Edit dashboard">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
                 <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
                 <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
               </svg>
@@ -113,10 +131,11 @@ function ReadOnlyDashboard({
     <div class="dashboard public-dashboard">
       <div class="dashboard-header">
         <h1>{name}</h1>
-        <a class="public-attribution" href={`/u/${encodeURIComponent(username)}`}>
-          @{username}
-        </a>
+        <AttributionLink username={username} />
+        <ShareLinkButton url={window.location.href} title={`${name} — Aurboda`} />
       </div>
+
+      {config.description ? <p class="dashboard-intro">{config.description}</p> : null}
 
       <div class="sections-grid">
         {config.sections.map((section) => (
@@ -124,6 +143,7 @@ function ReadOnlyDashboard({
             <div class="section-header">
               <h2>{section.title}</h2>
             </div>
+            {section.description ? <p class="section-intro">{section.description}</p> : null}
             <div class={gridClass(section.type)}>
               {section.widgets.map((widget) => (
                 <PublicWidgetRenderer key={widget.id} widget={widget} data={widgetData?.[widget.id]} />

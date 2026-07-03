@@ -275,8 +275,19 @@ export { isMissingDatabase } from './pg-errors.ts'
 // Feed actor (ActivityPub keypair)
 export { type ActorKeyPair, getOrCreateActorKeyPair } from './feed-actor.ts'
 
+// Feed followers (remote ActivityPub actors following a user)
+export {
+  countFeedFollowers,
+  type FeedFollowerInput,
+  type FeedFollowerRecord,
+  listFeedFollowers,
+  removeFeedFollower,
+  upsertFeedFollower,
+} from './feed-follower.ts'
+
 // Feed posts
 export {
+  countPublicFeedPosts,
   createFeedPost,
   deleteFeedPost,
   type FeedPostInput,
@@ -285,6 +296,7 @@ export {
   findCoveringSharedSeriesWindow,
   getFeedPostById,
   listFeedPosts,
+  listPublicFeedPosts,
   updateFeedPost,
 } from './feed.ts'
 
@@ -424,6 +436,14 @@ export {
 
 // Uploaded icons
 export { deleteIcon, getIcon, insertIcon } from './icons.ts'
+
+// Profile avatar
+export {
+  deleteProfileAvatar,
+  getProfileAvatar,
+  type ProfileAvatar,
+  upsertProfileAvatar,
+} from './profile-avatar.ts'
 
 // Shared food-item overrides (per-user customizations layered onto central rows)
 export {
