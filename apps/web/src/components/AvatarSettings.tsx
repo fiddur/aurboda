@@ -9,7 +9,11 @@ import { SettingsSection } from './SettingsSection'
 /** Prefer the backend's descriptive `{ error }` over axios's generic message. */
 const errorMessage = (err: unknown, fallback: string): string => {
   if (axios.isAxiosError(err)) {
-    return (err.response?.data as { error?: string } | undefined)?.error ?? err.message
+    const data: unknown = err.response?.data
+    if (typeof data === 'object' && data !== null && 'error' in data && typeof data.error === 'string') {
+      return data.error
+    }
+    return err.message
   }
   return err instanceof Error ? err.message : fallback
 }
