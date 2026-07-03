@@ -714,28 +714,14 @@ a.entity-type-badge:hover {
 
 .edit-notes-block {
   margin-top: 0.5rem;
+  margin-bottom: 0.75rem;
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
 }
 
-.edit-notes-input {
-  width: 100%;
-  padding: 0.375rem 0.5rem;
-  font-size: 0.9rem;
-  border: 1px solid #d1d5db;
-  border-radius: 4px;
-  background: transparent;
-  color: inherit;
-  resize: vertical;
-  font-family: inherit;
-  box-sizing: border-box;
-}
-
-.edit-notes-input:focus {
-  outline: none;
-  border-color: #673ab8;
-  box-shadow: 0 0 0 2px rgba(103, 58, 184, 0.2);
+.entity-description {
+  margin: 0.5rem 0 0.75rem;
 }
 
 /* Loading & error */
@@ -1022,15 +1008,6 @@ a.entity-type-badge:hover {
 
   .edit-value-unit {
     color: #9ca3af;
-  }
-
-  .edit-notes-input {
-    border-color: #4b5563;
-  }
-
-  .edit-notes-input:focus {
-    border-color: #8b5cf6;
-    box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.3);
   }
 
   .chart-toggle {

@@ -22,7 +22,6 @@ export interface BuildActivityStatRowsInput {
   durationLabel: string
   totalCalories: number | undefined
   sleepMinutes: number | undefined
-  notes: string
 }
 
 /**
@@ -36,7 +35,6 @@ export const buildActivityStatRows = ({
   durationLabel,
   totalCalories,
   sleepMinutes,
-  notes,
 }: BuildActivityStatRowsInput): ActivityStatRow[] => {
   const rows: ActivityStatRow[] = []
   rows.push({
@@ -63,6 +61,5 @@ export const buildActivityStatRows = ({
   if (totalCalories !== undefined) rows.push({ label: 'Active Calories', value: `${totalCalories} kcal` })
   if (sleepMinutes !== undefined) rows.push({ label: 'Asleep', value: formatMinutesAsHM(sleepMinutes) })
   if (activity.avg_hrv !== undefined) rows.push({ label: 'Avg HRV', value: `${activity.avg_hrv} ms` })
-  if (notes) rows.push({ label: 'Notes', value: notes })
   return rows
 }
