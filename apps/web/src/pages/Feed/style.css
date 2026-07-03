@@ -33,90 +33,74 @@
   color: #991b1b;
 }
 
-.feed-card {
+/* Native post card — mirrors how the post federates. */
+.feed-post {
   border: 1px solid #e5e7eb;
   border-radius: 8px;
   padding: 0.875rem 1rem;
   margin-bottom: 0.75rem;
 }
 
-.feed-card-head {
+.feed-post-head {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 0.5rem;
+  align-items: center;
+  gap: 0.6rem;
 }
 
-.feed-card-title {
-  font-weight: 600;
-  font-size: 1rem;
-  color: #1f2937;
-  text-decoration: none;
-}
-
-.feed-card-title[href]:hover {
-  text-decoration: underline;
-}
-
-.feed-badge {
-  font-size: 0.72rem;
-  font-weight: 600;
-  padding: 0.1rem 0.5rem;
-  border-radius: 999px;
-  white-space: nowrap;
-}
-
-.feed-badge-public {
-  background: #dcfce7;
-  color: #166534;
-}
-
-.feed-badge-unlisted {
-  background: #e0e7ff;
-  color: #3730a3;
-}
-
-.feed-badge-followers {
+.feed-post-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  object-fit: cover;
   background: #f3f4f6;
-  color: #374151;
+  flex-shrink: 0;
 }
 
-.feed-card-meta {
-  font-size: 0.78rem;
+.feed-post-ident {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.feed-post-name {
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.feed-post-handle {
+  font-size: 0.8rem;
   color: #6b7280;
-  margin-top: 0.15rem;
 }
 
-.feed-chips {
+.feed-post-content {
+  margin-top: 0.5rem;
+  color: #1f2937;
+  overflow-wrap: anywhere;
+}
+
+.feed-post-content p {
+  margin: 0 0 0.4rem;
+}
+
+.feed-post-content p:last-child {
+  margin-bottom: 0;
+}
+
+.feed-post-media {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  gap: 0.35rem;
+  gap: 0.5rem;
   margin-top: 0.6rem;
 }
 
-.feed-chips-label {
-  font-size: 0.72rem;
-  font-weight: 600;
-  color: #6b7280;
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
+.feed-post-image {
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
 }
 
-.feed-chip {
-  font-size: 0.75rem;
-  padding: 0.1rem 0.5rem;
-  border-radius: 4px;
-  background: #f3f4f6;
-  color: #374151;
-}
-
-.feed-chip-series {
-  background: rgba(103, 58, 184, 0.12);
-  color: #4c1d95;
-}
-
-.feed-card-actions {
+.feed-post-footer {
   display: flex;
   justify-content: flex-end;
   gap: 0.5rem;
@@ -124,36 +108,23 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  .feed-card {
+  .feed-post {
     border-color: #374151;
   }
 
-  .feed-card-title {
+  .feed-post-name,
+  .feed-post-content {
     color: #e5e7eb;
+  }
+
+  .feed-post-avatar,
+  .feed-post-image {
+    border-color: #374151;
+    background: #1f2937;
   }
 
   .feed-empty {
     background: #1f2937;
-    color: #d1d5db;
-  }
-
-  .feed-chip {
-    background: #374151;
-    color: #d1d5db;
-  }
-
-  .feed-badge-public {
-    background: #14532d;
-    color: #bbf7d0;
-  }
-
-  .feed-badge-unlisted {
-    background: #312e81;
-    color: #c7d2fe;
-  }
-
-  .feed-badge-followers {
-    background: #374151;
     color: #d1d5db;
   }
 }

@@ -22,6 +22,8 @@ import type { FeedPost } from '@aurboda/api-spec'
 import type { Activity, FeedPostRecord } from '../db/index.ts'
 
 import { getActivityById } from '../db/index.ts'
+import { resolveActivityScalars } from './activitypub/feed-activity.ts'
+import { feedPostContent } from './activitypub/object.ts'
 import { resolveActivityWindow } from './queries/index.ts'
 
 /**
@@ -70,18 +72,34 @@ export const resolveFeedActivity = async (
 
 /**
  * Serialise a stored feed post for the owner-facing REST/MCP surface, enriching
- * it with the shared activity's title/type and **merged-span** window resolved
- * at query time. A client can therefore render the post and re-open the share
- * dialog without a second per-post activity fetch (avoids the web feed's N+1).
+ * it with the shared activity's title/type, the **merged-span** window, and the
+ * exact `content` HTML the post federates with — all resolved at query time. A
+ * client can therefore render the post WYSIWYG (as it appears on Mastodon) and
+ * re-open the share dialog without a second per-post activity fetch.
+ *
+ * The `content` is the same server-built, HTML-escaped string the delivered Note
+ * carries (via `feedPostContent`), so the web renders it directly. (When the feed
+ * later renders *remote* actors' posts, that untrusted content will need
+ * sanitising — this owner-facing content does not.)
  */
 export const serializeFeedPost = async (user: string, record: FeedPostRecord): Promise<FeedPost> => {
   const activity = record.activity_id ? await resolveFeedActivity(user, record.activity_id) : null
+  let content: string | undefined
+  if (activity) {
+    const scalars = await resolveActivityScalars(
+      user,
+      { end_time: activity.end_time, start_time: activity.start_time },
+      record.included_metrics,
+    )
+    content = feedPostContent(activity.title, activity.activity_type, scalars).content
+  }
   return {
     activity_end_time: activity?.end_time?.toISOString(),
     activity_id: record.activity_id,
     activity_start_time: activity?.start_time.toISOString(),
     activity_title: activity?.title,
     activity_type: activity?.activity_type,
+    content,
     created_at: record.created_at.toISOString(),
     id: record.id,
     include_chart: record.include_chart,
