@@ -74,6 +74,16 @@ Widgets are organized into sections, each with a title and a layout type:
 
 Sections are collapsible -- click the section header to toggle between expanded and collapsed. On wide screens, multiple sections can appear side by side.
 
+## Descriptive text
+
+While editing a dashboard you can add optional prose (both fields are plain text
+and optional, so existing dashboards are unaffected):
+
+- A **dashboard description** shown under the title. For a [shared dashboard](./sharing.md)
+  this also feeds the link-preview / `og:description`, so a pasted link reads well.
+- A **per-section intro** rendered above that section's widgets, so the page reads
+  as a narrative rather than just a wall of charts.
+
 ## Editing the Dashboard
 
 Click the pencil icon next to the "Dashboard" title to enter edit mode.

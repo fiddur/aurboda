@@ -18,7 +18,13 @@ import type { SyncProvider } from '../services/queries/index.ts'
 import type { WebAuthnService } from '../services/webauthn.ts'
 import type { AnyMiddleware } from '../typed-router.ts'
 
-import { markActivityDetailSynced } from '../db/index.ts'
+import {
+  getActivityById,
+  getFeedPostById,
+  getLocations,
+  getTimeSeries,
+  markActivityDetailSynced,
+} from '../db/index.ts'
 import { processActivityDetail } from '../integrations/garmin/process.ts'
 import { createActivitiesRouter } from '../routes/activities-router.ts'
 import { createActivityTypesRouter } from '../routes/activity-types-router.ts'
@@ -30,8 +36,9 @@ import { createChartDataRouter } from '../routes/chart-data-router.ts'
 import { createCorrelationsRouter } from '../routes/correlations-router.ts'
 import { createDashboardRouter } from '../routes/dashboard-router.ts'
 import { createDeductionRulesRouter } from '../routes/deduction-rules-router.ts'
+import { createFeedImageRouter } from '../routes/feed-image-router.ts'
 import { createFeedPublicRouter } from '../routes/feed-public-router.ts'
-import { createFeedRouter } from '../routes/feed-router.ts'
+import { createFeedRouter, type FeedDeliver } from '../routes/feed-router.ts'
 import { createFoodItemsRouter } from '../routes/food-items-router.ts'
 import { createIconsRouter } from '../routes/icons-router.ts'
 import { createImportsRouter } from '../routes/imports-router.ts'
@@ -40,18 +47,27 @@ import { createMealsRouter } from '../routes/meals-router.ts'
 import { createMetricsRouter } from '../routes/metrics-router.ts'
 import { createNotesRouter } from '../routes/notes-router.ts'
 import { createNutrientRecommendationsRouter } from '../routes/nutrient-recommendations-router.ts'
+import { createOEmbedRouter } from '../routes/oembed-router.ts'
+import { createOgImageRouter } from '../routes/og-image-router.ts'
 import { createProductivityRouter } from '../routes/productivity-router.ts'
+import { createProfileRouter } from '../routes/profile-router.ts'
+import { createPublicAvatarRouter } from '../routes/public-avatar-router.ts'
 import { createPublicSharesRouter } from '../routes/public-shares-router.ts'
 import { createRawRecordsRouter } from '../routes/raw-records-router.ts'
 import { createReportsRouter } from '../routes/reports-router.ts'
 import { createScreentimeCategoriesRouter } from '../routes/screentime-categories-router.ts'
 import { createSensitivityFlagsRouter } from '../routes/sensitivity-flags-router.ts'
 import { createSettingsRouter } from '../routes/settings-router.ts'
+import { createShareHtmlRouter, createShareResolvers } from '../routes/share-html-router.ts'
 import { createSharedDashboardsRouter } from '../routes/shared-dashboards-router.ts'
 import { createTrainingLoadRouter } from '../routes/training-load-router.ts'
 import { createTrendsRouter } from '../routes/trends-router.ts'
 import { createWebAuthnRouter } from '../routes/webauthn-router.ts'
 import { createWellKnownRouter, type WellKnownConfig } from '../routes/well-known-router.ts'
+import { renderChartPng, renderRoutePng } from '../services/activitypub/feed-images.ts'
+import { loadAvatarDataUri } from '../services/avatar-resolve.ts'
+import { createOgImageRenderer } from '../services/og-image.ts'
+import { createTemplateLoader } from '../services/web-template.ts'
 
 interface RestRoutesDeps {
   httpd: Express
@@ -60,6 +76,7 @@ interface RestRoutesDeps {
   centralDb: CentralDb
   invitationAuth: InvitationAuth
   webHost: string
+  webIndexPath: string | undefined
   apiBaseUrl: string
   garmin: GarminClient
   syncProvider: SyncProvider
@@ -71,6 +88,7 @@ interface RestRoutesDeps {
   webAuthn: WebAuthnService
   wellKnown: WellKnownConfig
   userDb: Client
+  feedDeliver: FeedDeliver
 }
 
 export const mountRestRouters = ({
@@ -80,12 +98,14 @@ export const mountRestRouters = ({
   centralDb,
   invitationAuth,
   webHost,
+  webIndexPath,
   apiBaseUrl,
   garmin,
   syncProvider,
   activityNotifier,
   engineDeps,
   deductionQueue,
+  feedDeliver,
   ouraWebhookManager,
   auth,
   webAuthn,
@@ -126,13 +146,46 @@ export const mountRestRouters = ({
   httpd.use(createRawRecordsRouter(authMiddleware))
   httpd.use('/dashboard', createDashboardRouter(authMiddleware))
   httpd.use('/shared-dashboards', createSharedDashboardsRouter(authMiddleware, webHost))
-  httpd.use('/feed', createFeedRouter(authMiddleware))
+  httpd.use('/profile', createProfileRouter(authMiddleware, webHost))
+  httpd.use('/feed', createFeedRouter(authMiddleware, feedDeliver))
   httpd.use('/challenges', createChallengesRouter(authMiddleware, webHost, apiBaseUrl))
   httpd.use(createChallengeDataRouter())
   // Public feed series must be mounted before the generic /public/:username/:slug
   // resolver so `series` is not matched as a share slug.
   httpd.use(createFeedPublicRouter())
+  // Public feed-post images (chart / route map), rendered on demand for opted-in
+  // public/unlisted posts. Mounted alongside the series router (same guard).
+  httpd.use(
+    createFeedImageRouter({
+      getActivity: getActivityById,
+      getPost: getFeedPostById,
+      getRoute: async (user, start, end) =>
+        (await getLocations(user, start, end)).locations.map((l) => l.coordinates),
+      getSeries: getTimeSeries,
+      renderChart: renderChartPng,
+      renderRoute: renderRoutePng,
+    }),
+  )
   httpd.use(createPublicSharesRouter(webHost))
+  // Mounted before the share-html router so `/u/.../opengraph-image.png` and
+  // `/u/:username/avatar.png` win over the generic `/u/:username/:slug` HTML route.
+  httpd.use(createPublicAvatarRouter())
+  httpd.use(createOEmbedRouter({ webHost, ...createShareResolvers() }))
+  httpd.use(
+    createOgImageRouter({
+      loadAvatarDataUri,
+      renderImage: createOgImageRenderer(),
+      webHost,
+      ...createShareResolvers(),
+    }),
+  )
+  httpd.use(
+    createShareHtmlRouter({
+      loadTemplate: createTemplateLoader(webIndexPath),
+      webHost,
+      ...createShareResolvers(),
+    }),
+  )
   httpd.use('/correlations', createCorrelationsRouter(authMiddleware, syncProvider))
   httpd.use('/training-load', createTrainingLoadRouter(authMiddleware))
   httpd.use('/trends', createTrendsRouter(authMiddleware))

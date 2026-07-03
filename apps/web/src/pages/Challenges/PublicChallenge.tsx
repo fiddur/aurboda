@@ -1,7 +1,8 @@
 /**
  * PublicChallenge - read-only challenge view at /u/:username/:slug when the slug
  * resolves to a challenge. Shows a cumulative "race" chart (one line per member)
- * and a leaderboard, plus join actions. Rendered without app chrome.
+ * and a leaderboard, plus join actions. Rendered without app chrome for
+ * anonymous visitors; logged-in viewers keep their nav (see AppShell).
  */
 import type { PublicChallenge as PublicChallengeData } from '@aurboda/api-spec'
 

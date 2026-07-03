@@ -12,9 +12,12 @@
  * This file orchestrates: clients, queues, central DB, auth, error handler,
  * server lifecycle.
  */
+import { integrateFederation } from '@fedify/express'
 import cors from 'cors'
 import express, { json, type NextFunction, type Request, type Response } from 'express'
 import { Client } from 'pg'
+
+import type { FeedDeliver } from './routes/feed-router.ts'
 
 import { registerAuthRoutes } from './api/auth-routes.ts'
 import { createAdminMiddleware, createAuditLogMiddleware, createAuthMiddleware } from './api/middleware.ts'
@@ -25,6 +28,7 @@ import { setupOuraWebhook, setupStravaWebhook } from './api/webhooks-setup.ts'
 import { createAuth } from './auth.ts'
 import {
   deleteRuleActivities,
+  getActivityById,
   getDeductionRulesByIds,
   getDetectedLocationById,
   getEnabledDeductionRules,
@@ -49,6 +53,8 @@ import { createOwnTracksRouter } from './integrations/owntracks/router.ts'
 import { stravaClient } from './integrations/strava/client.ts'
 import { createMcpRouter } from './mcp.ts'
 import { createOAuthRouter } from './routes/oauth-router.ts'
+import { deliverFeedDelete, deliverFeedPost, deliverFeedUpdate } from './services/activitypub/deliver.ts'
+import { createFeedFederation } from './services/activitypub/federation.ts'
 import { auditError } from './services/audit-log.ts'
 import { triggerCalorieComputation } from './services/calorie-computation.ts'
 import { createCalorieQueue, type CalorieQueue } from './services/calorie-queue.ts'
@@ -103,6 +109,11 @@ const main = async () => {
   const webHost = process.env.WEB_HOST ?? 'http://localhost:5173'
   const apiBaseUrl = process.env.API_BASE_URL ?? 'http://localhost:3000'
   console.info(`🌐 WEB_HOST=${webHost} API_BASE_URL=${apiBaseUrl}`)
+
+  // Path to the built SPA index.html, so /u/* share pages can serve
+  // crawler-visible <head> meta. In the Docker image nginx serves this same
+  // file. Unset in local dev (vite serves /u/* directly).
+  const webIndexPath = process.env.WEB_INDEX_PATH
 
   // WebAuthn / passkey configuration. The Relying Party ID must match the
   // origin the user's browser sees (i.e. the web host) — not the API host,
@@ -295,6 +306,32 @@ const main = async () => {
   // Mount OAuth endpoints BEFORE body-parser (uses its own parsers)
   httpd.use(createOAuthRouter({ centralDb, loginToUserDb, webHost }))
 
+  // ActivityPub federation object (one instance, shared by the actor mount, the
+  // MCP feed tools, and the REST feed router). `feedDeliver` fans a shared post
+  // out to followers, fire-and-forget, so it's identical whether a post is
+  // created via MCP or REST.
+  const feedFederation = createFeedFederation(webHost, apiBaseUrl)
+  const feedDeps = { apiBaseUrl, federation: feedFederation, origin: webHost }
+  const onDeliverError = (op: string, user: string, postId: string) => (err: unknown) =>
+    console.error(`⚠️ feed ${op} delivery failed for ${user}/${postId}:`, err)
+  const feedDeliver: FeedDeliver = {
+    created: (user, post, activity) => {
+      void deliverFeedPost(feedDeps, user, post, activity).catch(onDeliverError('create', user, post.id))
+    },
+    deleted: (user, post) => {
+      void deliverFeedDelete(feedDeps, user, post).catch(onDeliverError('delete', user, post.id))
+    },
+    // Resolve the activity inside the fire-and-forget boundary so a lookup
+    // failure never bubbles into the (already-committed) edit's response.
+    updated: (user, post) => {
+      void (async () => {
+        if (!post.activity_id) return
+        const activity = await getActivityById(user, post.activity_id)
+        if (activity) await deliverFeedUpdate(feedDeps, user, post, activity)
+      })().catch(onDeliverError('update', user, post.id))
+    },
+  }
+
   // Mount MCP server BEFORE body-parser (MCP SDK needs raw body)
   // Stateless mode — no session tracking needed (tools only, no subscriptions)
   httpd.use(
@@ -304,6 +341,7 @@ const main = async () => {
       centralDb,
       deductionQueue: deductionQueue ?? undefined,
       engineDeps,
+      feedDeliver,
       garmin,
       onActivityMutated: activityNotifier,
       oura,
@@ -312,6 +350,17 @@ const main = async () => {
       webHost,
     }),
   )
+
+  // ActivityPub federation (actor + WebFinger). Mounted BEFORE the JSON body
+  // parser so Fedify owns the raw body of signed inbox POSTs; it passes through
+  // (next()) any request that isn't one of its own routes. `trust proxy` lets
+  // Fedify reconstruct the external https URL from nginx's X-Forwarded-* headers.
+  // Scope it to `loopback`: nginx proxies to the backend over loopback
+  // (proxy_pass http://127.0.0.1:3000), so Express trusts X-Forwarded-* only when
+  // the immediate peer is loopback — a direct remote client isn't, so it can't
+  // spoof them.
+  httpd.set('trust proxy', 'loopback')
+  httpd.use(integrateFederation(feedFederation, () => undefined))
 
   httpd.use(json({ limit: '10mb' }))
 
@@ -421,6 +470,7 @@ const main = async () => {
     centralDb,
     deductionQueue,
     engineDeps,
+    feedDeliver,
     garmin,
     httpd,
     invitationAuth,
@@ -429,6 +479,7 @@ const main = async () => {
     userDb,
     webAuthn,
     webHost,
+    webIndexPath,
     wellKnown,
   })
 

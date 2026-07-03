@@ -105,13 +105,10 @@ export const trendChartConfigSchema = z
       .array(z.string())
       .optional()
       .meta({ description: 'Categorical data fields to break the series down by' }),
-    masked_breakdown_fields: z
-      .array(z.string())
-      .optional()
-      .meta({
-        description:
-          'Subset of breakdown_fields whose values are masked (shown as A, B, C…) to public viewers of a shared board',
-      }),
+    masked_breakdown_fields: z.array(z.string()).optional().meta({
+      description:
+        'Subset of breakdown_fields whose values are masked (shown as A, B, C…) to public viewers of a shared board',
+    }),
     display_period: z
       .enum(['daily', 'weekly', 'monthly'])
       .optional()
@@ -139,13 +136,10 @@ export const barChartConfigSchema = z
       .array(z.string())
       .optional()
       .meta({ description: 'Categorical data fields to break the series down by' }),
-    masked_breakdown_fields: z
-      .array(z.string())
-      .optional()
-      .meta({
-        description:
-          'Subset of breakdown_fields whose values are masked (shown as A, B, C…) to public viewers of a shared board',
-      }),
+    masked_breakdown_fields: z.array(z.string()).optional().meta({
+      description:
+        'Subset of breakdown_fields whose values are masked (shown as A, B, C…) to public viewers of a shared board',
+    }),
     bucket_size: z
       .enum(['1m', '5m', '15m', '1h', '1d', '1w', '1M'])
       .meta({ description: 'Time bucket size' }),
@@ -346,6 +340,10 @@ export type SectionType = z.infer<typeof sectionTypeSchema>
 export const dashboardSectionSchema = z
   .object({
     collapsed: z.boolean().optional().meta({ description: 'Whether section is collapsed' }),
+    description: z
+      .string()
+      .optional()
+      .meta({ description: 'Optional intro text rendered above the section widgets' }),
     id: z.string().min(1).meta({ description: 'Unique section ID' }),
     title: z.string().min(1).meta({ description: 'Section title' }),
     type: sectionTypeSchema.meta({ description: 'Section type for layout' }),
@@ -360,6 +358,10 @@ export type DashboardSection = z.infer<typeof dashboardSectionSchema>
  */
 export const dashboardConfigSchema = z
   .object({
+    description: z.string().optional().meta({
+      description:
+        'Optional author-provided description (plain text). Feeds the shared-page meta description / link preview.',
+    }),
     sections: z.array(dashboardSectionSchema).meta({ description: 'Dashboard sections' }),
     version: z.literal(1).meta({ description: 'Config version for future migrations' }),
   })

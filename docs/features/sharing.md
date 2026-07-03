@@ -61,10 +61,12 @@ beyond the saved widgets.
   the sidebar): create a copy from your current home dashboard (or a blank one),
   rename it, toggle public/unlisted, copy its link, or delete it.
 - **View** a shared dashboard at `/u/<username>/<slug>` and a profile at
-  `/u/<username>`. These pages are public, render without the app chrome
-  (header/sidebar/footer), and fetch nothing per widget — they render from the
-  server-resolved data.
-- **Edit in place**: when you are logged in and viewing your *own* shared
+  `/u/<username>`. For anonymous visitors these public pages render without the
+  app header/sidebar (but keep the standard site footer) — a clean, standalone
+  page — and fetch nothing per widget (they render from the server-resolved
+  data). A logged-in viewer keeps their normal app nav on these pages, so they
+  can navigate away without the browser back button.
+- **Edit in place**: when you are logged in and viewing your _own_ shared
   dashboard (`/u/<you>/<slug>`), an Edit toggle appears and you get the same
   add/remove/move-widget and section controls as the home dashboard (including
   renaming sections inline); changes save to that shared dashboard. (Owners see
@@ -76,24 +78,87 @@ beyond the saved widgets.
   dashboard you own opens the chart page carrying that widget's origin; tweak it
   and use "Update Chart in _&lt;board&gt;_ / _&lt;section&gt;_" to replace it in place.
 
+## Link previews (Open Graph / Twitter Card)
+
+JS-less crawlers (Facebook, Slack, LinkedIn, Discord, iMessage, Mastodon) never run
+the SPA, so a bare `index.html` gives them nothing to preview. To fix this, nginx
+proxies the public share routes (`/u/*`) to the backend, which returns the same
+`index.html` with a **server-rendered `<head>`**: Open Graph, Twitter Card, and
+`description` meta plus schema.org JSON-LD for the resolved resource. Browsers still
+get the full SPA and hydrate normally — only the head is enriched.
+
+- **Dashboards** and **challenges** get a title (resource name), a description, and
+  a canonical URL; profiles get a `profile`-typed card with `ProfilePage` JSON-LD.
+  A dashboard's description uses the author-provided text when set (see
+  [Dashboard → Descriptive text](./dashboard.md#descriptive-text)), else a generated
+  fallback.
+- Every public resource has a **dynamically rendered 1200×630 preview image** at
+  `<resource-url>/opengraph-image.png`. Satori renders a branded card (title +
+  DASHBOARD/CHALLENGE/PROFILE eyebrow + the owner's avatar + Aurboda wordmark) to
+  SVG and sharp rasterizes it to PNG; fonts are bundled (no system fonts in the
+  image). Renders are memoised in-process and cached `public, max-age=3600`.
+  Non-public / unknown resources fall back to the branded static default
+  (`/og-default.png`).
+- **Visibility is respected**: rich meta and rendered images are emitted only for
+  **public** resources. Unlisted (slug-only) dashboards and unknown URLs get generic
+  site meta and the static default image, so an unlisted resource's title/image never
+  lands in a crawler's cache or a search index.
+- Rich meta is cached `public, max-age=300`; generic fallbacks `max-age=60`.
+
+The backend finds `index.html` via `WEB_INDEX_PATH` (set in the Docker image to the
+file nginx serves). In local dev, vite serves `/u/*` directly, so this path is
+unset and the server-rendered head is exercised only by its unit tests.
+
+## Avatars
+
+Each user has a public profile avatar, surfaced on the profile page, in shared-page
+OG cards, and as the ActivityPub actor `icon` (so Mastodon and friends show it).
+
+- **Storage**: the image lives in the user's own database (`profile_avatar`, a
+  singleton row). The deployment has no object store or persistent app-container
+  volume — only Postgres persists — so DB storage is the robust choice. Uploads are
+  normalized to a square **256×256 WebP** (sharp), stripping metadata.
+- **Upload / remove** (authenticated): `POST /profile/avatar` (multipart `avatar`
+  field; PNG/JPEG/WebP/GIF) and `DELETE /profile/avatar`.
+- **Public read**: `GET /u/:username/avatar.png`. If the user hasn't uploaded one,
+  a **deterministic identicon** derived from the username is generated (a font-free
+  SVG rasterized by sharp), so an avatar always renders. Served `max-age=3600`.
+- **Web UI**: upload/remove from **Settings → Avatar**; the avatar shows on the
+  public profile page and next to the author attribution on shared dashboards.
+
+## oEmbed & sharability
+
+- **oEmbed**: public share pages advertise a `<link rel="alternate"
+  type="application/json+oembed">` pointing at `GET /oembed?url=<share url>`, which
+  returns a `type: "link"` document (title, author, provider, OG-image thumbnail).
+  Only public resources resolve — unlisted/unknown/private URLs 404, so nothing
+  private is exposed. Primarily benefits Mastodon and other oEmbed-aware consumers.
+- **Share button**: public profile and shared-dashboard pages have a Share control
+  that uses the native share sheet (`navigator.share`) where available and otherwise
+  copies the link to the clipboard.
+- **`theme-color`** and favicons/apple-touch-icon are set so tabs and mobile share
+  sheets look finished.
+
+QR codes and per-share preview overrides are possible future additions.
+
 ## API
 
 Owner-facing CRUD (authenticated, scoped to the caller):
 
-| Method & path                 | Purpose                          |
-| ----------------------------- | -------------------------------- |
-| `GET /shared-dashboards`      | List my shared dashboards        |
-| `POST /shared-dashboards`     | Create one from a dashboard config |
-| `GET /shared-dashboards/:id`  | Fetch one (with config)          |
-| `PUT /shared-dashboards/:id`  | Update name / config / visibility |
-| `DELETE /shared-dashboards/:id` | Delete (its slug stops resolving) |
+| Method & path                   | Purpose                            |
+| ------------------------------- | ---------------------------------- |
+| `GET /shared-dashboards`        | List my shared dashboards          |
+| `POST /shared-dashboards`       | Create one from a dashboard config |
+| `GET /shared-dashboards/:id`    | Fetch one (with config)            |
+| `PUT /shared-dashboards/:id`    | Update name / config / visibility  |
+| `DELETE /shared-dashboards/:id` | Delete (its slug stops resolving)  |
 
 Public (unauthenticated):
 
-| Method & path                          | Purpose                                   |
-| -------------------------------------- | ----------------------------------------- |
-| `GET /public/:username/dashboards`     | List a user's **public** shared dashboards |
-| `GET /public/:username/:slug`          | View one shared dashboard + resolved data |
+| Method & path                      | Purpose                                    |
+| ---------------------------------- | ------------------------------------------ |
+| `GET /public/:username/dashboards` | List a user's **public** shared dashboards |
+| `GET /public/:username/:slug`      | View one shared dashboard + resolved data  |
 
 The same CRUD capability is available over MCP as `list_shared_dashboards`,
 `create_shared_dashboard`, `update_shared_dashboard`, and `delete_shared_dashboard`.
