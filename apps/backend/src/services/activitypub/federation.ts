@@ -1,4 +1,4 @@
-import { createFederation, type Federation, MemoryKvStore } from '@fedify/fedify'
+import { createFederation, type Federation, type InboxContext, MemoryKvStore } from '@fedify/fedify'
 import { Accept, type Create, Follow, Image, Note, Person, Reject, Undo } from '@fedify/fedify/vocab'
 
 /**
@@ -49,6 +49,28 @@ const OUTBOX_PAGE_SIZE = 20
 /** RFC 4122 canonical form — guards `getFeedPostById` from a non-UUID `postId`
  * (Postgres would otherwise raise `invalid input syntax for type uuid`). */
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/**
+ * The local follower (inbox owner) that an `Accept`/`Reject` response to a Follow
+ * WE sent belongs to. Derived from the inner Follow's `actor` (which is our
+ * actor), so it works whether the response lands on the personal OR a shared
+ * inbox; falls back to `ctx.recipient` (null on the shared inbox) if the remote
+ * didn't embed the Follow. `suppressError` so an unresolvable inner object yields
+ * null rather than throwing a 500 that invites retries. Returns null if no valid
+ * local user can be determined.
+ */
+const localFollowerIdentifier = async (
+  ctx: InboxContext<void>,
+  response: Accept | Reject,
+): Promise<string | null> => {
+  const object = await response.getObject({ suppressError: true })
+  if (object instanceof Follow && object.actorId != null) {
+    const parsed = ctx.parseUri(object.actorId)
+    if (parsed?.type === 'actor' && isValidUsername(parsed.identifier)) return parsed.identifier
+  }
+  const recipient = ctx.recipient
+  return recipient != null && isValidUsername(recipient) ? recipient : null
+}
 
 export const createFeedFederation = (origin: string, apiBaseUrl: string): Federation<void> => {
   const federation = createFederation<void>({
@@ -155,11 +177,10 @@ export const createFeedFederation = (origin: string, apiBaseUrl: string): Federa
     })
     .on(Accept, async (ctx, accept) => {
       // Accept of a Follow WE sent — the followee's server confirms the follow.
-      // `ctx.recipient` is the identifier of the inbox that received it (us, the
-      // follower); `accept.actorId` is the followee we followed, matching the
-      // `actor_uri` of our pending row. No need to fetch the inner Follow object.
-      const me = ctx.recipient
-      if (me == null || !isValidUsername(me) || accept.actorId == null) return
+      // `accept.actorId` is the followee we followed, matching the `actor_uri` of
+      // our pending row.
+      const me = await localFollowerIdentifier(ctx, accept)
+      if (me == null || accept.actorId == null) return
       try {
         await markFeedFollowingAccepted(me, accept.actorId.href)
       } catch (error) {
@@ -169,8 +190,8 @@ export const createFeedFederation = (origin: string, apiBaseUrl: string): Federa
     })
     .on(Reject, async (ctx, reject) => {
       // Reject of a Follow we sent — the followee declined; drop our pending row.
-      const me = ctx.recipient
-      if (me == null || !isValidUsername(me) || reject.actorId == null) return
+      const me = await localFollowerIdentifier(ctx, reject)
+      if (me == null || reject.actorId == null) return
       try {
         await removeFeedFollowingByActor(me, reject.actorId.href)
       } catch (error) {
