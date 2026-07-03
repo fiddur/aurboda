@@ -120,6 +120,8 @@ OG cards, and as the ActivityPub actor `icon` (so Mastodon and friends show it).
 - **Public read**: `GET /u/:username/avatar.png`. If the user hasn't uploaded one,
   a **deterministic identicon** derived from the username is generated (a font-free
   SVG rasterized by sharp), so an avatar always renders. Served `max-age=3600`.
+- **Web UI**: upload/remove from **Settings → Avatar**; the avatar shows on the
+  public profile page and next to the author attribution on shared dashboards.
 
 ## API
 
