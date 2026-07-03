@@ -201,6 +201,12 @@ describe('Feed federation actor + WebFinger', () => {
     expect(page2.next).toBeUndefined()
   })
 
+  test('404s an outbox page with an out-of-range cursor (no DB error)', async () => {
+    const user = getTestUser()
+    const res = await fetchAs2(`/users/${user}/outbox?cursor=99999999999999999999`)
+    expect(res.status).toBe(404)
+  })
+
   test('404s a post object for a non-UUID id without touching the database', async () => {
     const user = getTestUser()
     const res = await fetchAs2(`/users/${user}/feed/not-a-uuid`)

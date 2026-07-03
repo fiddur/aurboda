@@ -180,7 +180,9 @@ export const createFeedFederation = (origin: string, apiBaseUrl: string): Federa
     .setOutboxDispatcher('/users/{identifier}/outbox', async (ctx, identifier, cursor) => {
       if (!isValidUsername(identifier)) return null
       const offset = cursor == null ? 0 : Number.parseInt(cursor, 10)
-      if (!Number.isInteger(offset) || offset < 0) return null
+      // `isSafeInteger` also rejects absurd offsets (e.g. a crafted `1e20`) that
+      // would overflow Postgres `bigint` in `OFFSET` and 500 the request.
+      if (!Number.isSafeInteger(offset) || offset < 0) return null
       let posts
       try {
         posts = await listPublicFeedPostsPage(identifier, OUTBOX_PAGE_SIZE, offset)
