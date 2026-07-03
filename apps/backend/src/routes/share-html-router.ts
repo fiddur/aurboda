@@ -21,6 +21,7 @@ import {
   buildDefaultShareMeta,
   buildProfileShareMeta,
   injectShareMeta,
+  oembedDiscoveryUrl,
   renderShareMetaTags,
   type ShareMeta,
 } from '../services/share-meta.ts'
@@ -126,6 +127,12 @@ export const createShareHtmlRouter = (deps: ShareHtmlDeps): Router => {
   const { loadTemplate, profileExists, resolveChallenge, resolveDashboard, webHost } = deps
   const router = Router()
 
+  // Attach the oEmbed discovery link to a public resource's meta.
+  const withOembed = (meta: ShareMeta, resourceUrl: string): ShareMeta => ({
+    ...meta,
+    oembedUrl: oembedDiscoveryUrl(webHost, resourceUrl),
+  })
+
   router.get('/u/:username/:slug', async (req, res) => {
     const { slug, username } = req.params
     const url = buildShareUrl(webHost, username, slug)
@@ -137,12 +144,15 @@ export const createShareHtmlRouter = (deps: ShareHtmlDeps): Router => {
     if (dashboard?.is_public) {
       return sendHtml(
         loadTemplate,
-        buildDashboardShareMeta({
-          description: dashboard.description,
-          name: dashboard.name,
+        withOembed(
+          buildDashboardShareMeta({
+            description: dashboard.description,
+            name: dashboard.name,
+            url,
+            username,
+          }),
           url,
-          username,
-        }),
+        ),
         true,
         res,
       )
@@ -152,7 +162,7 @@ export const createShareHtmlRouter = (deps: ShareHtmlDeps): Router => {
     if (challenge?.is_public) {
       return sendHtml(
         loadTemplate,
-        buildChallengeShareMeta({ name: challenge.name, url, username }),
+        withOembed(buildChallengeShareMeta({ name: challenge.name, url, username }), url),
         true,
         res,
       )
@@ -166,7 +176,7 @@ export const createShareHtmlRouter = (deps: ShareHtmlDeps): Router => {
     const { username } = req.params
     const url = buildProfileUrl(webHost, username)
     if (isValidUsername(username) && (await profileExists(username))) {
-      return sendHtml(loadTemplate, buildProfileShareMeta({ url, username }), true, res)
+      return sendHtml(loadTemplate, withOembed(buildProfileShareMeta({ url, username }), url), true, res)
     }
     return sendHtml(loadTemplate, buildDefaultShareMeta(webHost, url), false, res)
   })

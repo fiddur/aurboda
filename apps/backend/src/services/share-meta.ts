@@ -32,7 +32,13 @@ export interface ShareMeta {
   type: 'website' | 'profile'
   /** Optional schema.org JSON-LD object embedded as a <script> tag. */
   jsonLd?: Record<string, unknown>
+  /** Optional oEmbed discovery URL (adds a `<link rel="alternate">`). */
+  oembedUrl?: string
 }
+
+/** oEmbed discovery URL for a resource (consumers fetch this for a rich unfurl). */
+export const oembedDiscoveryUrl = (webHost: string, resourceUrl: string): string =>
+  `${webHost.replace(/\/+$/, '')}/oembed?url=${encodeURIComponent(resourceUrl)}&format=json`
 
 /** Absolute URL of the branded fallback preview image. */
 export const defaultOgImage = (webHost: string): string =>
@@ -76,6 +82,9 @@ export const renderShareMetaTags = (meta: ShareMeta): string => {
     `<meta name="twitter:description" content="${escapeAttr(meta.description)}">`,
     `<meta name="twitter:image" content="${escapeAttr(meta.image)}">`,
   ]
+  if (meta.oembedUrl) {
+    tags.push(`<link rel="alternate" type="application/json+oembed" href="${escapeAttr(meta.oembedUrl)}">`)
+  }
   if (meta.jsonLd) tags.push(jsonLdScript(meta.jsonLd))
   return tags.join('\n    ')
 }

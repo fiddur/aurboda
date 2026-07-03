@@ -5,6 +5,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useRoute } from 'preact-iso'
 
+import { ShareLinkButton } from '../../components/ShareLinkButton'
 import { avatarUrl, fetchPublicProfile } from '../../state/api'
 import './style.css'
 
@@ -56,6 +57,7 @@ export function PublicProfile() {
           height={80}
         />
         <h1>@{username}</h1>
+        <ShareLinkButton url={window.location.href} title={`@${username} on Aurboda`} />
       </header>
 
       <section class="public-section">

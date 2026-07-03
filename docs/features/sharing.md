@@ -126,6 +126,21 @@ OG cards, and as the ActivityPub actor `icon` (so Mastodon and friends show it).
 - **Web UI**: upload/remove from **Settings → Avatar**; the avatar shows on the
   public profile page and next to the author attribution on shared dashboards.
 
+## oEmbed & sharability
+
+- **oEmbed**: public share pages advertise a `<link rel="alternate"
+  type="application/json+oembed">` pointing at `GET /oembed?url=<share url>`, which
+  returns a `type: "link"` document (title, author, provider, OG-image thumbnail).
+  Only public resources resolve — unlisted/unknown/private URLs 404, so nothing
+  private is exposed. Primarily benefits Mastodon and other oEmbed-aware consumers.
+- **Share button**: public profile and shared-dashboard pages have a Share control
+  that uses the native share sheet (`navigator.share`) where available and otherwise
+  copies the link to the clipboard.
+- **`theme-color`** and favicons/apple-touch-icon are set so tabs and mobile share
+  sheets look finished.
+
+QR codes and per-share preview overrides are possible future additions.
+
 ## API
 
 Owner-facing CRUD (authenticated, scoped to the caller):
