@@ -310,8 +310,8 @@ const main = async () => {
   // MCP feed tools, and the REST feed router). `feedDeliver` fans a shared post
   // out to followers, fire-and-forget, so it's identical whether a post is
   // created via MCP or REST.
-  const feedFederation = createFeedFederation(webHost)
-  const feedDeps = { federation: feedFederation, origin: webHost }
+  const feedFederation = createFeedFederation(webHost, apiBaseUrl)
+  const feedDeps = { apiBaseUrl, federation: feedFederation, origin: webHost }
   const onDeliverError = (op: string, user: string, postId: string) => (err: unknown) =>
     console.error(`⚠️ feed ${op} delivery failed for ${user}/${postId}:`, err)
   const feedDeliver: FeedDeliver = {

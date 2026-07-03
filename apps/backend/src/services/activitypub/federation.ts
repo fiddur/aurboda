@@ -39,7 +39,7 @@ import { isPubliclyVisible } from './object.ts'
  * (Postgres would otherwise raise `invalid input syntax for type uuid`). */
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-export const createFeedFederation = (origin: string): Federation<void> => {
+export const createFeedFederation = (origin: string, apiBaseUrl: string): Federation<void> => {
   const federation = createFederation<void>({
     kv: new MemoryKvStore(),
     // Pin the canonical origin (the public base URL) so actor ids, WebFinger
@@ -162,7 +162,7 @@ export const createFeedFederation = (origin: string): Federation<void> => {
       if (post == null || post.activity_id == null || !isPubliclyVisible(post.visibility)) return null
       const activity = await getActivityById(identifier, post.activity_id)
       if (activity == null) return null
-      return buildFeedNote(ctx, identifier, post, activity)
+      return buildFeedNote(ctx, identifier, post, activity, apiBaseUrl)
     },
   )
 
@@ -187,7 +187,7 @@ export const createFeedFederation = (origin: string): Federation<void> => {
           posts.map(async (post) => {
             if (post.activity_id == null) return null
             const activity = await getActivityById(identifier, post.activity_id)
-            return activity == null ? null : buildFeedCreate(ctx, identifier, post, activity)
+            return activity == null ? null : buildFeedCreate(ctx, identifier, post, activity, apiBaseUrl)
           }),
         )
       ).filter((item): item is Create => item != null)

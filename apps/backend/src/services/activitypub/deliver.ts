@@ -20,10 +20,10 @@ import type { FeedVisibility } from '@aurboda/api-spec'
  */
 import type { Context, Federation } from '@fedify/fedify'
 
-import { Create, Delete, Note, Tombstone, Update } from '@fedify/fedify/vocab'
+import { Create, Delete, Image, Note, Tombstone, Update } from '@fedify/fedify/vocab'
 
 import { resolveActivityScalars } from './feed-activity.ts'
-import { addressingFor, feedPostContent } from './object.ts'
+import { addressingFor, feedPostContent, isPubliclyVisible } from './object.ts'
 
 /**
  * AS2 `to`/`cc` addressing (as URLs) for a post's visibility — the same table
@@ -39,6 +39,8 @@ export interface FeedDeliveryDeps {
   federation: Federation<void>
   /** Canonical web origin, e.g. `https://aurboda.net`. */
   origin: string
+  /** Public API base, e.g. `https://aurboda.net/api` — image attachment URLs hang off this. */
+  apiBaseUrl: string
 }
 
 export interface DeliverablePost {
@@ -48,6 +50,52 @@ export interface DeliverablePost {
   created_at: Date
   /** Last-edited time; makes each `Update` activity id unique (see `buildFeedUpdate`). */
   updated_at: Date
+  /** Attach a rendered heart-rate chart image. */
+  include_chart: boolean
+  /** Attach a rendered GPS route-map image. */
+  include_map: boolean
+}
+
+/**
+ * Image attachments for a post's opted-in chart/route. Each points at the public
+ * on-demand image endpoint (`/api/public/<user>/feed/<id>/{chart,route}.png`),
+ * built against the actor's origin so it matches the deployed API base. Fedify's
+ * `Image` carries `url` + `mediaType` + intrinsic size so Mastodon lays it out.
+ *
+ * Only `public`/`unlisted` posts get attachments: the image endpoint is
+ * unauthenticated and (like the object/series endpoints) refuses `followers`-only
+ * posts, so attaching a URL that would 404 for a follower is worse than omitting
+ * it. (Authenticated per-follower image delivery is a possible later slice.)
+ */
+export const imageAttachments = (apiBaseUrl: string, user: string, post: DeliverablePost): Image[] => {
+  if (!isPubliclyVisible(post.visibility)) return []
+  // Same base as the series links (feed-activity.ts) — the configured API base,
+  // NOT a hardcoded `<origin>/api`, so it stays correct if the two ever diverge.
+  const base = `${apiBaseUrl.replace(/\/+$/, '')}/public/${encodeURIComponent(user)}/feed/${post.id}`
+  const images: Image[] = []
+  if (post.include_chart) {
+    images.push(
+      new Image({
+        height: 420,
+        mediaType: 'image/png',
+        name: 'Heart rate',
+        url: new URL(`${base}/chart.png`),
+        width: 1000,
+      }),
+    )
+  }
+  if (post.include_map) {
+    images.push(
+      new Image({
+        height: 700,
+        mediaType: 'image/png',
+        name: 'Route',
+        url: new URL(`${base}/route.png`),
+        width: 700,
+      }),
+    )
+  }
+  return images
 }
 
 export interface DeliverableActivity {
@@ -74,13 +122,16 @@ export const buildFeedNote = async (
   user: string,
   post: DeliverablePost,
   activity: DeliverableActivity,
+  apiBaseUrl: string,
 ): Promise<Note> => {
   const scalars = await resolveActivityScalars(user, activity, post.included_metrics)
   const { content, name } = feedPostContent(activity.title, activity.activity_type, scalars)
+  const actorUri = ctx.getActorUri(user)
   const noteId = ctx.getObjectUri(Note, { identifier: user, postId: post.id })
   const { cc, to } = recipients(post.visibility, ctx.getFollowersUri(user))
   return new Note({
-    attribution: ctx.getActorUri(user),
+    attachments: imageAttachments(apiBaseUrl, user, post),
+    attribution: actorUri,
     ccs: cc,
     content,
     id: noteId,
@@ -101,8 +152,9 @@ export const buildFeedCreate = async (
   user: string,
   post: DeliverablePost,
   activity: DeliverableActivity,
+  apiBaseUrl: string,
 ): Promise<Create> => {
-  const note = await buildFeedNote(ctx, user, post, activity)
+  const note = await buildFeedNote(ctx, user, post, activity, apiBaseUrl)
   const noteId = ctx.getObjectUri(Note, { identifier: user, postId: post.id })
   const { cc, to } = recipients(post.visibility, ctx.getFollowersUri(user))
   return new Create({
@@ -127,8 +179,9 @@ export const buildFeedUpdate = async (
   user: string,
   post: DeliverablePost,
   activity: DeliverableActivity,
+  apiBaseUrl: string,
 ): Promise<Update> => {
-  const note = await buildFeedNote(ctx, user, post, activity)
+  const note = await buildFeedNote(ctx, user, post, activity, apiBaseUrl)
   const noteId = ctx.getObjectUri(Note, { identifier: user, postId: post.id })
   const { cc, to } = recipients(post.visibility, ctx.getFollowersUri(user))
   return new Update({
@@ -166,7 +219,7 @@ export const deliverFeedPost = async (
   activity: DeliverableActivity,
 ): Promise<void> => {
   const ctx = await deps.federation.createContext(new URL(deps.origin))
-  const create = await buildFeedCreate(ctx, user, post, activity)
+  const create = await buildFeedCreate(ctx, user, post, activity, deps.apiBaseUrl)
   await ctx.sendActivity({ identifier: user }, 'followers', create)
 }
 
@@ -178,7 +231,7 @@ export const deliverFeedUpdate = async (
   activity: DeliverableActivity,
 ): Promise<void> => {
   const ctx = await deps.federation.createContext(new URL(deps.origin))
-  const update = await buildFeedUpdate(ctx, user, post, activity)
+  const update = await buildFeedUpdate(ctx, user, post, activity, deps.apiBaseUrl)
   await ctx.sendActivity({ identifier: user }, 'followers', update)
 }
 

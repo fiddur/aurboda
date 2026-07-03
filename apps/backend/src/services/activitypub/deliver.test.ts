@@ -1,7 +1,7 @@
 import { Tombstone } from '@fedify/fedify/vocab'
 import { describe, expect, test } from 'vitest'
 
-import { buildFeedDelete, type DeliverablePost, recipients } from './deliver.ts'
+import { buildFeedDelete, type DeliverablePost, imageAttachments, recipients } from './deliver.ts'
 import { createFeedFederation } from './federation.ts'
 
 const PUBLIC = 'https://www.w3.org/ns/activitystreams#Public'
@@ -34,6 +34,8 @@ describe('buildFeedDelete', () => {
   const deliverablePost = (visibility: DeliverablePost['visibility']): DeliverablePost => ({
     created_at: new Date('2026-07-01T00:00:00Z'),
     id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    include_chart: false,
+    include_map: false,
     included_metrics: [],
     updated_at: new Date('2026-07-01T00:00:00Z'),
     visibility,
@@ -41,7 +43,7 @@ describe('buildFeedDelete', () => {
 
   // No DB: builds a Fedify context off the federation's registered dispatchers
   // (URL builders only), so the Delete/Tombstone shape is unit-testable.
-  const contextFor = () => createFeedFederation(ORIGIN).createContext(new URL(ORIGIN))
+  const contextFor = () => createFeedFederation(ORIGIN, `${ORIGIN}/api`).createContext(new URL(ORIGIN))
 
   test('wraps a Tombstone at the post object id, addressed by visibility', async () => {
     const ctx = await contextFor()
@@ -65,5 +67,42 @@ describe('buildFeedDelete', () => {
     const del = buildFeedDelete(ctx, 'fiddur', deliverablePost('followers'))
     expect(hrefs([...del.toIds])).toEqual([`${ORIGIN}/users/fiddur/followers`])
     expect([...del.ccIds]).toEqual([])
+  })
+})
+
+describe('imageAttachments', () => {
+  const apiBaseUrl = 'https://aurboda.example/api'
+  const POST_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+  const base = `https://aurboda.example/api/public/fiddur/feed/${POST_ID}`
+  const post = (overrides: Partial<DeliverablePost>): DeliverablePost => ({
+    created_at: new Date('2026-07-01T00:00:00Z'),
+    id: POST_ID,
+    include_chart: false,
+    include_map: false,
+    included_metrics: [],
+    updated_at: new Date('2026-07-01T00:00:00Z'),
+    visibility: 'public',
+    ...overrides,
+  })
+
+  test('attaches only the opted-in images, at the public endpoints', () => {
+    const chartOnly = imageAttachments(apiBaseUrl, 'fiddur', post({ include_chart: true }))
+    expect(chartOnly.map((a) => a.url?.href)).toEqual([`${base}/chart.png`])
+
+    const both = imageAttachments(apiBaseUrl, 'fiddur', post({ include_chart: true, include_map: true }))
+    expect(both.map((a) => a.url?.href)).toEqual([`${base}/chart.png`, `${base}/route.png`])
+  })
+
+  test('attaches nothing for a followers-only post (image endpoint is unauthenticated)', () => {
+    const atts = imageAttachments(
+      apiBaseUrl,
+      'fiddur',
+      post({ include_chart: true, include_map: true, visibility: 'followers' }),
+    )
+    expect(atts).toEqual([])
+  })
+
+  test('attaches nothing when neither flag is set', () => {
+    expect(imageAttachments(apiBaseUrl, 'fiddur', post({}))).toEqual([])
   })
 })
