@@ -61,6 +61,14 @@ export const querySplitByCumulative = async <T>(options: SplitQueryOptions<T>): 
   const { aurbodaOnly, cumulative, nonCumulative } = splitMetricsByCumulative(options.metrics)
   const results: T[] = []
 
+  // Map each row and append it individually. Do NOT use `results.push(...rows.map(...))`:
+  // spreading a large array into a function call passes each element as an argument, which
+  // overflows the call stack (RangeError) once a query returns ~100k+ rows (e.g. per-second
+  // heart_rate over a multi-day span).
+  const appendMapped = (rows: QueryResultRow[]): void => {
+    for (const row of rows) results.push(options.mapRow(row))
+  }
+
   if (cumulative.length > 0) {
     const extraParams = options.cumulativeExtraParams ?? []
     const result = await options.queryFn(options.sqlCumulative, [
@@ -68,7 +76,7 @@ export const querySplitByCumulative = async <T>(options: SplitQueryOptions<T>): 
       ...options.params,
       ...extraParams,
     ])
-    results.push(...result.rows.map(options.mapRow))
+    appendMapped(result.rows)
   }
 
   if (aurbodaOnly.length > 0) {
@@ -83,12 +91,12 @@ export const querySplitByCumulative = async <T>(options: SplitQueryOptions<T>): 
       ...options.params,
       ...aurbodaExtraParams,
     ])
-    results.push(...result.rows.map(options.mapRow))
+    appendMapped(result.rows)
   }
 
   if (nonCumulative.length > 0) {
     const result = await options.queryFn(options.sqlNonCumulative, [nonCumulative, ...options.params])
-    results.push(...result.rows.map(options.mapRow))
+    appendMapped(result.rows)
   }
 
   return results
