@@ -1,6 +1,7 @@
 import sharp from 'sharp'
 import { describe, expect, test } from 'vitest'
 
+import { generateIdenticon } from './avatar.ts'
 import { clampTitle, createOgImageRenderer, OG_HEIGHT, OG_WIDTH } from './og-image.ts'
 
 const renderOgImage = createOgImageRenderer()
@@ -33,5 +34,12 @@ describe('renderOgImage', () => {
     await expect(
       renderOgImage({ kind: 'challenge', subtitle: 'federated', title: 'Step count' }),
     ).resolves.toBeInstanceOf(Buffer)
+  })
+
+  test('embeds a PNG avatar data URI without throwing (Satori decodes PNG)', async () => {
+    const { data } = await generateIdenticon('fiddur')
+    const avatarDataUri = `data:image/png;base64,${data.toString('base64')}`
+    const png = await renderOgImage({ avatarDataUri, kind: 'profile', title: 'fiddur' })
+    expect(png.subarray(0, 4).toString('hex')).toBe('89504e47')
   })
 })

@@ -1,5 +1,5 @@
 import { createFederation, type Federation, MemoryKvStore } from '@fedify/fedify'
-import { Accept, type Create, Follow, Note, Person, Undo } from '@fedify/fedify/vocab'
+import { Accept, type Create, Follow, Image, Note, Person, Undo } from '@fedify/fedify/vocab'
 
 /**
  * The Fedify `Federation` object for the activity feed.
@@ -30,6 +30,7 @@ import {
   removeFeedFollower,
   upsertFeedFollower,
 } from '../../db/index.ts'
+import { buildProfileUrl } from '../share-urls.ts'
 import { buildFeedCreate, buildFeedNote } from './deliver.ts'
 import { toCryptoKeyPair } from './keys.ts'
 import { isPubliclyVisible } from './object.ts'
@@ -66,6 +67,9 @@ export const createFeedFederation = (origin: string): Federation<void> => {
       if (keys.length === 0) return null
       return new Person({
         followers: ctx.getFollowersUri(identifier),
+        // Avatar served on the web host; always resolves (identicon fallback),
+        // so remote servers like Mastodon always have an actor icon to show.
+        icon: new Image({ url: new URL(`${buildProfileUrl(origin, identifier)}/avatar.png`) }),
         id: ctx.getActorUri(identifier),
         inbox: ctx.getInboxUri(identifier),
         outbox: ctx.getOutboxUri(identifier),

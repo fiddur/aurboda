@@ -42,6 +42,8 @@ import { createNotesRouter } from '../routes/notes-router.ts'
 import { createNutrientRecommendationsRouter } from '../routes/nutrient-recommendations-router.ts'
 import { createOgImageRouter } from '../routes/og-image-router.ts'
 import { createProductivityRouter } from '../routes/productivity-router.ts'
+import { createProfileRouter } from '../routes/profile-router.ts'
+import { createPublicAvatarRouter } from '../routes/public-avatar-router.ts'
 import { createPublicSharesRouter } from '../routes/public-shares-router.ts'
 import { createRawRecordsRouter } from '../routes/raw-records-router.ts'
 import { createReportsRouter } from '../routes/reports-router.ts'
@@ -54,6 +56,7 @@ import { createTrainingLoadRouter } from '../routes/training-load-router.ts'
 import { createTrendsRouter } from '../routes/trends-router.ts'
 import { createWebAuthnRouter } from '../routes/webauthn-router.ts'
 import { createWellKnownRouter, type WellKnownConfig } from '../routes/well-known-router.ts'
+import { loadAvatarDataUri } from '../services/avatar-resolve.ts'
 import { createOgImageRenderer } from '../services/og-image.ts'
 import { createTemplateLoader } from '../services/web-template.ts'
 
@@ -134,6 +137,7 @@ export const mountRestRouters = ({
   httpd.use(createRawRecordsRouter(authMiddleware))
   httpd.use('/dashboard', createDashboardRouter(authMiddleware))
   httpd.use('/shared-dashboards', createSharedDashboardsRouter(authMiddleware, webHost))
+  httpd.use('/profile', createProfileRouter(authMiddleware, webHost))
   httpd.use('/feed', createFeedRouter(authMiddleware, feedDeliver))
   httpd.use('/challenges', createChallengesRouter(authMiddleware, webHost, apiBaseUrl))
   httpd.use(createChallengeDataRouter())
@@ -141,9 +145,17 @@ export const mountRestRouters = ({
   // resolver so `series` is not matched as a share slug.
   httpd.use(createFeedPublicRouter())
   httpd.use(createPublicSharesRouter(webHost))
-  // Mounted before the share-html router so `/u/.../opengraph-image.png` wins
-  // over the generic `/u/:username/:slug` HTML route.
-  httpd.use(createOgImageRouter({ renderImage: createOgImageRenderer(), webHost, ...createShareResolvers() }))
+  // Mounted before the share-html router so `/u/.../opengraph-image.png` and
+  // `/u/:username/avatar.png` win over the generic `/u/:username/:slug` HTML route.
+  httpd.use(createPublicAvatarRouter())
+  httpd.use(
+    createOgImageRouter({
+      loadAvatarDataUri,
+      renderImage: createOgImageRenderer(),
+      webHost,
+      ...createShareResolvers(),
+    }),
+  )
   httpd.use(
     createShareHtmlRouter({
       loadTemplate: createTemplateLoader(webIndexPath),

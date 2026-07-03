@@ -8,6 +8,7 @@ const fakePng = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
 
 const buildApp = (overrides: Partial<OgImageDeps> = {}) => {
   const deps: OgImageDeps = {
+    loadAvatarDataUri: async () => 'data:image/png;base64,AAAA',
     profileExists: async () => false,
     renderImage: vi.fn(async () => fakePng),
     resolveChallenge: async () => null,
@@ -29,7 +30,9 @@ describe('GET /u/:username/:slug/opengraph-image.png', () => {
     expect(res.status).toBe(200)
     expect(res.type).toBe('image/png')
     expect(res.headers['cache-control']).toBe('public, max-age=3600')
-    expect(deps.renderImage).toHaveBeenCalledWith({ kind: 'dashboard', title: 'Training' })
+    expect(deps.renderImage).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'dashboard', title: 'Training' }),
+    )
   })
 
   test('renders a challenge card when no dashboard matches', async () => {
@@ -38,7 +41,9 @@ describe('GET /u/:username/:slug/opengraph-image.png', () => {
     })
     const res = await supertest(app).get('/u/fiddur/xyz/opengraph-image.png')
     expect(res.status).toBe(200)
-    expect(deps.renderImage).toHaveBeenCalledWith({ kind: 'challenge', title: 'Step count' })
+    expect(deps.renderImage).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'challenge', title: 'Step count' }),
+    )
   })
 
   test('redirects unlisted resources to the default image', async () => {
@@ -65,6 +70,21 @@ describe('GET /u/:username/:slug/opengraph-image.png', () => {
     await supertest(app).get('/u/fiddur/abc/opengraph-image.png')
     await supertest(app).get('/u/fiddur/abc/opengraph-image.png')
     expect(deps.renderImage).toHaveBeenCalledTimes(1)
+  })
+
+  test('still renders a public card when the avatar fails to load', async () => {
+    const { app, deps } = buildApp({
+      loadAvatarDataUri: vi.fn(async () => {
+        throw new Error('avatar db blip')
+      }),
+      resolveDashboard: async () => ({ is_public: true, name: 'Training' }),
+    })
+    const res = await supertest(app).get('/u/fiddur/abc/opengraph-image.png')
+    expect(res.status).toBe(200)
+    expect(res.type).toBe('image/png')
+    expect(deps.renderImage).toHaveBeenCalledWith(
+      expect.objectContaining({ avatarDataUri: undefined, kind: 'dashboard' }),
+    )
   })
 
   test('degrades to the default image when a render fails', async () => {
@@ -101,7 +121,9 @@ describe('GET /u/:username/opengraph-image.png', () => {
     const res = await supertest(app).get('/u/fiddur/opengraph-image.png')
     expect(res.status).toBe(200)
     expect(res.type).toBe('image/png')
-    expect(deps.renderImage).toHaveBeenCalledWith({ kind: 'profile', title: 'fiddur' })
+    expect(deps.renderImage).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'profile', title: 'fiddur' }),
+    )
   })
 
   test('redirects to default when the profile is missing', async () => {

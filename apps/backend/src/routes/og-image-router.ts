@@ -28,28 +28,45 @@ export interface OgImageDeps {
   resolveChallenge: (username: string, slug: string) => Promise<ResolvedResource | null>
   profileExists: (username: string) => Promise<boolean>
   renderImage: (card: OgCard) => Promise<Buffer>
+  /** The owner's avatar as a `data:` URI, embedded in the rendered card. */
+  loadAvatarDataUri: (username: string) => Promise<string>
 }
 
 /** How many rendered cards to keep in memory before evicting the oldest. */
 const MAX_CACHE_ENTRIES = 200
 
 export const createOgImageRouter = (deps: OgImageDeps): Router => {
-  const { profileExists, renderImage, resolveChallenge, resolveDashboard, webHost } = deps
+  const { loadAvatarDataUri, profileExists, renderImage, resolveChallenge, resolveDashboard, webHost } = deps
   const router = Router()
+
+  // The avatar is decorative, so a transient avatar-load failure must not drop
+  // an otherwise-renderable public card to the generic default — render without
+  // it instead.
+  const avatarOrUndefined = async (username: string): Promise<string | undefined> => {
+    try {
+      return await loadAvatarDataUri(username)
+    } catch (error) {
+      console.error('OG avatar load failed, rendering card without it:', error)
+      return undefined
+    }
+  }
   const cache = new Map<string, Buffer>()
   // Collapses concurrent misses for the same key into a single render, so a
   // fresh share hit by several crawlers at once doesn't run N identical
   // CPU-heavy Satori renders in parallel.
   const inFlight = new Map<string, Promise<Buffer>>()
 
-  const render = async (key: string, card: OgCard): Promise<Buffer> => {
+  // The card is built lazily so the avatar is only fetched on a cache miss, not
+  // on every request. The cache key embeds the resource name (renames refresh);
+  // an avatar change propagates on cache eviction / process restart.
+  const render = async (key: string, buildCard: () => Promise<OgCard>): Promise<Buffer> => {
     const cached = cache.get(key)
     if (cached) return cached
 
     const pending = inFlight.get(key)
     if (pending) return pending
 
-    const promise = renderImage(card)
+    const promise = buildCard().then((card) => renderImage(card))
     inFlight.set(key, promise)
     try {
       const png = await promise
@@ -72,10 +89,10 @@ export const createOgImageRouter = (deps: OgImageDeps): Router => {
     res.redirect(302, defaultOgImage(webHost))
   }
 
-  const sendImage = async (res: Response, key: string, card: OgCard): Promise<void> => {
+  const sendImage = async (res: Response, key: string, buildCard: () => Promise<OgCard>): Promise<void> => {
     let png: Buffer
     try {
-      png = await render(key, card)
+      png = await render(key, buildCard)
     } catch (error) {
       // The whole design is "always yield some image", so a transient
       // Satori/sharp failure degrades to the branded default rather than 500.
@@ -92,18 +109,20 @@ export const createOgImageRouter = (deps: OgImageDeps): Router => {
 
     const dashboard = await resolveDashboard(username, slug)
     if (dashboard?.is_public) {
-      return sendImage(res, `d:${username}/${slug}:${dashboard.name}`, {
+      return sendImage(res, `d:${username}/${slug}:${dashboard.name}`, async () => ({
+        avatarDataUri: await avatarOrUndefined(username),
         kind: 'dashboard',
         title: dashboard.name,
-      })
+      }))
     }
 
     const challenge = dashboard ? null : await resolveChallenge(username, slug)
     if (challenge?.is_public) {
-      return sendImage(res, `c:${username}/${slug}:${challenge.name}`, {
+      return sendImage(res, `c:${username}/${slug}:${challenge.name}`, async () => ({
+        avatarDataUri: await avatarOrUndefined(username),
         kind: 'challenge',
         title: challenge.name,
-      })
+      }))
     }
 
     return redirectToDefault(res)
@@ -112,7 +131,11 @@ export const createOgImageRouter = (deps: OgImageDeps): Router => {
   router.get('/u/:username/opengraph-image.png', async (req, res) => {
     const { username } = req.params
     if (isValidUsername(username) && (await profileExists(username))) {
-      return sendImage(res, `p:${username}`, { kind: 'profile', title: username })
+      return sendImage(res, `p:${username}`, async () => ({
+        avatarDataUri: await avatarOrUndefined(username),
+        kind: 'profile',
+        title: username,
+      }))
     }
     return redirectToDefault(res)
   })
