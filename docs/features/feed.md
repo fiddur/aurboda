@@ -151,14 +151,23 @@ is a deliberate capability-URL model (like the shared-dashboard slugs), chosen b
 the fediverse fetches media **without** HTTP signatures — Mastodon's "authorized fetch"
 signs ActivityPub object/actor requests, not media downloads — so a signed-request gate
 wouldn't be exercised and followers would just see a broken image. The tradeoff is that a
-leaked image URL grants access to that one rendered image (a chart or a bare route shape,
+leaked image URL grants access to that one rendered image (a chart or a route map,
 not the underlying high-resolution series, which stays `followers`-excluded entirely).
 Responses are `no-store`, so an unshare / cleared flag / a public→followers flip takes
-effect immediately (the now-untoken'd public URL 404s). The route is drawn as a bare,
-aspect-correct shape — no street basemap (a later enhancement) and **no privacy trimming**
-(area masking is a planned follow-up), so a route map reveals the approximate area. The
-share dialog only offers the chart toggle when the activity has heart-rate data and the
-map toggle when it has an actual GPS track.
+effect immediately (the now-untoken'd public URL 404s). The route is drawn over an
+**OpenStreetMap street basemap** (see below); **no privacy trimming** is applied (area
+masking is a planned follow-up), so a route map reveals the precise area. The share dialog
+only offers the chart toggle when the activity has heart-rate data and the map toggle when
+it has an actual GPS track.
+
+**Route basemap.** The route map projects the GPS track into Web Mercator, fetches the
+covering OpenStreetMap tiles, and composites them behind the track (with a white halo for
+legibility) plus start/end markers. The required "© OpenStreetMap contributors"
+attribution is baked into the image. OSM's tile usage policy is respected: a descriptive
+`User-Agent`, and low volume — route renders are cached per post, so tiles are fetched at
+most once per route until eviction. Tile fetching is best-effort with a short timeout; if
+the tiles can't be fetched (e.g. offline) it falls back to a bare polyline on a dark
+background.
 
 ## Public series endpoint (the privacy boundary)
 
@@ -263,9 +272,10 @@ These are known and intentional for the current implementation:
   Mastodon `Note` carries no series links, this is latent — expanding series
   authorization across a merge group (which needs the merge algorithm at query time) is a
   planned follow-up.
-- **Route maps have no basemap and no privacy trimming.** The route is a bare shape
-  (no street tiles) and shows the full track, so a public route map reveals the
-  approximate area; a street basemap and start/area masking are planned follow-ups.
+- **Route maps have no privacy trimming.** The route is drawn over an OpenStreetMap
+  basemap and shows the full track, so a public route map reveals the precise area
+  (including start/end points, i.e. likely home/work); start-point and area masking are
+  planned follow-ups. Only share a route publicly when that exposure is acceptable.
 
 ## Related
 
