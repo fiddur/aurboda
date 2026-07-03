@@ -59,6 +59,7 @@ import { createTrendsRouter } from '../routes/trends-router.ts'
 import { createWebAuthnRouter } from '../routes/webauthn-router.ts'
 import { createWellKnownRouter, type WellKnownConfig } from '../routes/well-known-router.ts'
 import { renderChartPng, renderRoutePng } from '../services/activitypub/feed-images.ts'
+import { fetchOsmTile } from '../services/activitypub/osm-tiles.ts'
 import { loadAvatarDataUri } from '../services/avatar-resolve.ts'
 import { resolveFeedActivity } from '../services/feed.ts'
 import { createOgImageRenderer } from '../services/og-image.ts'
@@ -160,7 +161,9 @@ export const mountRestRouters = ({
         (await getLocations(user, start, end)).locations.map((l) => l.coordinates),
       getSeries: getTimeSeries,
       renderChart: renderChartPng,
-      renderRoute: renderRoutePng,
+      // Draw the route over the OSM basemap; falls back to a bare shape if tiles
+      // can't be fetched (e.g. offline).
+      renderRoute: (coords) => renderRoutePng(coords, { fetchTile: fetchOsmTile }),
     }),
   )
   httpd.use(createPublicSharesRouter(webHost))
