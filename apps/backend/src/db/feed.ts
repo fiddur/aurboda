@@ -172,9 +172,45 @@ export const updateFeedPost = async (
   return result.rows.length ? mapFeedPost(result.rows[0]) : null
 }
 
+/**
+ * Delete a feed post and, if it was `public`/`unlisted` (so its object id was
+ * publicly dereferenceable), record a tombstone in the same statement so a later
+ * GET of that id can return `410 Gone` instead of `404`. Atomic: the delete and
+ * the tombstone insert commit together. `followers`-only posts leave no tombstone
+ * — their id never resolved publicly, so a 410 would leak that a post existed.
+ * Idempotent via `ON CONFLICT` (re-deleting a since-recreated id is a no-op).
+ */
 export const deleteFeedPost = async (user: string, id: string): Promise<boolean> => {
-  const result = await query(user, `DELETE FROM feed_posts WHERE id = $1`, [id])
-  return (result.rowCount ?? 0) > 0
+  const result = await query<{ id: string }>(
+    user,
+    `WITH deleted AS (
+       DELETE FROM feed_posts WHERE id = $1
+       RETURNING id, visibility
+     ), tomb AS (
+       INSERT INTO feed_tombstone (post_id)
+       SELECT id FROM deleted WHERE visibility IN ('public', 'unlisted')
+       ON CONFLICT (post_id) DO NOTHING
+     )
+     SELECT id FROM deleted`,
+    [id],
+  )
+  return result.rows.length > 0
+}
+
+/**
+ * The tombstone for a deleted public/unlisted post, or null if the id was never
+ * publicly shared (or is still live). Backs the `410 Gone` object dereference.
+ */
+export const getFeedTombstone = async (
+  user: string,
+  postId: string,
+): Promise<{ deleted_at: Date } | null> => {
+  const result = await query<{ deleted_at: Date }>(
+    user,
+    `SELECT deleted_at FROM feed_tombstone WHERE post_id = $1`,
+    [postId],
+  )
+  return result.rows.length ? result.rows[0] : null
 }
 
 /**

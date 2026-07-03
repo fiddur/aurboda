@@ -13,6 +13,7 @@ import {
   type FeedPostInput,
   findCoveringSharedSeriesWindow,
   getFeedPostById,
+  getFeedTombstone,
   listFeedPosts,
   listPublicFeedPosts,
   listPublicFeedPostsPage,
@@ -107,6 +108,39 @@ describe('Feed posts integration', () => {
     expect(await deleteFeedPost(user, created.id)).toBe(true)
     expect(await deleteFeedPost(user, created.id)).toBe(false)
     expect(await getFeedPostById(user, created.id)).toBeNull()
+  })
+
+  describe('tombstones on delete', () => {
+    test('records a tombstone for a deleted public post', async () => {
+      const user = getTestUser()
+      const created = await createFeedPost(user, postInput({ visibility: 'public' }))
+      expect(await getFeedTombstone(user, created.id)).toBeNull()
+
+      await deleteFeedPost(user, created.id)
+      const tomb = await getFeedTombstone(user, created.id)
+      expect(tomb).not.toBeNull()
+      expect(tomb?.deleted_at).toBeInstanceOf(Date)
+    })
+
+    test('records a tombstone for a deleted unlisted post', async () => {
+      const user = getTestUser()
+      const created = await createFeedPost(user, postInput({ visibility: 'unlisted' }))
+      await deleteFeedPost(user, created.id)
+      expect(await getFeedTombstone(user, created.id)).not.toBeNull()
+    })
+
+    test('does NOT tombstone a deleted followers-only post (its id never resolved publicly)', async () => {
+      const user = getTestUser()
+      const created = await createFeedPost(user, postInput({ visibility: 'followers' }))
+      await deleteFeedPost(user, created.id)
+      expect(await getFeedTombstone(user, created.id)).toBeNull()
+    })
+
+    test('has no tombstone for a live (never-deleted) post', async () => {
+      const user = getTestUser()
+      const created = await createFeedPost(user, postInput({ visibility: 'public' }))
+      expect(await getFeedTombstone(user, created.id)).toBeNull()
+    })
   })
 
   describe('public outbox listing', () => {

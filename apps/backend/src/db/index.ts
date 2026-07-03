@@ -295,6 +295,7 @@ export {
   type FeedPostRecord,
   findCoveringSharedSeriesWindow,
   getFeedPostById,
+  getFeedTombstone,
   listFeedPosts,
   listPublicFeedPosts,
   listPublicFeedPostsPage,

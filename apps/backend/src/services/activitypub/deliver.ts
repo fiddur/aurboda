@@ -24,6 +24,7 @@ import { Create, Delete, Image, Note, Tombstone, Update } from '@fedify/fedify/v
 
 import { resolveActivityScalars } from './feed-activity.ts'
 import { addressingFor, feedPostContent, isPubliclyVisible } from './object.ts'
+import { dateToTemporalInstant } from './temporal-interop.ts'
 
 /**
  * AS2 `to`/`cc` addressing (as URLs) for a post's visibility — the same table
@@ -111,11 +112,10 @@ export interface DeliverableActivity {
  * are the object-dispatcher URL (`getObjectUri(Note, …)`), so the delivered
  * object and the one served at that URL are guaranteed identical.
  *
- * `published` is intentionally omitted: Fedify's vocab types it as the ambient
- * (esnext.temporal) `Temporal.Instant`, which the `@js-temporal` polyfill value
- * isn't assignable to. Delivery fires right after the share, so remote servers
- * timestamp it at receipt (≈ share time); wiring an explicit `published` is a
- * follow-up (needs Temporal-lib interop sorted).
+ * `published` is the post's `created_at` (its share time), so remote servers
+ * order and timestamp it correctly instead of stamping it at receipt. Fedify
+ * types `published` as the ambient `Temporal.Instant`; `dateToTemporalInstant`
+ * bridges our `@js-temporal/polyfill` value to it.
  */
 export const buildFeedNote = async (
   ctx: Context<void>,
@@ -136,6 +136,7 @@ export const buildFeedNote = async (
     content,
     id: noteId,
     name,
+    published: dateToTemporalInstant(post.created_at),
     tos: to,
     url: noteId,
   })
@@ -162,6 +163,7 @@ export const buildFeedCreate = async (
     ccs: cc,
     id: new URL(`${noteId.href}#create`),
     object: note,
+    published: dateToTemporalInstant(post.created_at),
     tos: to,
   })
 }
