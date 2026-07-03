@@ -114,6 +114,7 @@ export function ShareActivityDialog({
   const queryClient = useQueryClient()
   // Create mode mirrors the chart's shown metrics; edit mode uses the post's saved selection.
   const defaults = defaultsFromChart(chartMetrics)
+  const mirroredFromChart = !post && (chartMetrics?.length ?? 0) > 0
   const [summary, setSummary] = useState<Set<string>>(
     () => new Set(post ? post.included_metrics : defaults.summary),
   )
@@ -196,7 +197,9 @@ export function ShareActivityDialog({
           <fieldset class="share-dialog-group">
             <legend>Share full time-series</legend>
             <p class="share-dialog-note">
-              Higher resolution — more revealing than a summary. Off by default.
+              {mirroredFromChart
+                ? 'Higher resolution — more revealing than a summary. Pre-checked to match the activity chart; uncheck any you would rather not share.'
+                : 'Higher resolution — more revealing than a summary. Off by default.'}
             </p>
             <div class="share-dialog-options">
               {seriesOptions.map(({ key, label }) => (
