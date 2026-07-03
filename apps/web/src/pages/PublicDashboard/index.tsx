@@ -26,6 +26,17 @@ import './style.css'
 const gridClass = (type: SectionType): string =>
   type === 'links' ? 'links-grid' : type === 'charts' ? 'charts-grid' : 'metrics-grid'
 
+/** Author attribution (avatar + @handle). Shared so the owner and public views
+ *  can't drift apart (#879). */
+function AttributionLink({ username }: { username: string }) {
+  return (
+    <a class="public-attribution" href={`/u/${encodeURIComponent(username)}`}>
+      <img class="public-attribution__avatar" src={avatarUrl(username)} alt="" width={28} height={28} />@
+      {username}
+    </a>
+  )
+}
+
 /** Owner view: live, editable dashboard backed by the authed shared-dashboard API. */
 function OwnerSharedDashboard({ username, slug }: { username: string; slug: string }) {
   const queryClient = useQueryClient()
@@ -71,9 +82,7 @@ function OwnerSharedDashboard({ username, slug }: { username: string; slug: stri
       <div class="dashboard-header">
         <h1>{share.name}</h1>
         <div class="dashboard-actions">
-          <a class="public-attribution" href={`/u/${encodeURIComponent(username)}`}>
-            @{username}
-          </a>
+          <AttributionLink username={username} />
           {isEditing ? (
             <button class="btn-primary" onClick={() => setIsEditing(false)}>
               Done Editing
@@ -122,10 +131,7 @@ function ReadOnlyDashboard({
     <div class="dashboard public-dashboard">
       <div class="dashboard-header">
         <h1>{name}</h1>
-        <a class="public-attribution" href={`/u/${encodeURIComponent(username)}`}>
-          <img class="public-attribution__avatar" src={avatarUrl(username)} alt="" width={28} height={28} />@
-          {username}
-        </a>
+        <AttributionLink username={username} />
         <ShareLinkButton url={window.location.href} title={`${name} — Aurboda`} />
       </div>
 

@@ -48,7 +48,9 @@ export function PublicProfile() {
 
   return (
     <div class="public-profile">
-      <header class="public-profile-header">
+      {/* A <div>, not <header>: the global `header` rule paints a #673ab8 bar
+          (mobile nav style) that made the purple Share button invisible (#883). */}
+      <div class="public-profile-header">
         <img
           class="public-avatar"
           src={avatarUrl(username)}
@@ -58,7 +60,7 @@ export function PublicProfile() {
         />
         <h1>@{username}</h1>
         <ShareLinkButton url={window.location.href} title={`@${username} on Aurboda`} />
-      </header>
+      </div>
 
       <section class="public-section">
         <h2>Dashboards</h2>
