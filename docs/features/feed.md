@@ -128,8 +128,23 @@ The actor advertises a **following collection** (`/users/<username>/following`) 
 *accepted* follows (a pending follow isn't a confirmed relationship yet). The followee's
 inbox URIs are internal delivery details and are never exposed on the owner-facing API.
 
-> Receiving those followees' posts into a **home timeline** (inbound `Create`/`Announce`
-> handling + storage) is the next slice; this slice is the follow relationship only.
+### Home timeline (inbound)
+
+Posts from followed actors arrive at the user's inbox and are stored as a **home timeline**.
+When a `Create` or `Update` for a `Note` is delivered, the inbox:
+
+1. confirms the sender is an **accepted** followee (`feed_following`) — activities from
+   anyone else are ignored, so an unsolicited `Create` can't inject into the timeline,
+2. **sanitises** the note's HTML content server-side (`sanitize-html`, a strict tag/attribute
+   allowlist) — remote content is untrusted, so this is the XSS boundary, then
+3. upserts a `timeline_entry` (keyed by the note's `object_uri`, so an `Update` or a
+   redelivery replaces in place rather than duplicating).
+
+A `Delete` removes the matching entry; unfollowing removes all of that actor's entries. The
+timeline is read back **newest-first**, keyset-paginated on `(published_at, id)` behind an
+opaque `next_cursor` — the same cursor style as the outbox — via `GET /feed/timeline` and the
+`list_timeline` MCP tool. Because the content was sanitised on ingest, the web client renders
+it directly.
 
 ### Images
 
@@ -209,6 +224,9 @@ resolving.
 - **Follow** — the Feed page's **Following** panel lets you follow a fediverse actor by
   handle (`@user@host`) and see who you follow, with a **Pending** badge until the remote
   server accepts and an **Unfollow** button.
+- **Home timeline** — below the Following panel, the Feed page shows your **Home timeline**:
+  posts from the actors you follow, newest-first, as native cards with a **Load more** button
+  to page further back.
 
 ## API
 
@@ -223,6 +241,7 @@ Owner-facing (authenticated, scoped to the caller):
 | `GET /feed/following`             | List the actors I follow (accepted + pending)      |
 | `POST /feed/following`            | Follow an actor by handle (`@user@host` or actor URL) |
 | `DELETE /feed/following/:id`      | Unfollow (sends `Undo{Follow}`)                    |
+| `GET /feed/timeline`              | My home timeline (posts from followees), newest-first, `?cursor=` to page |
 
 Public / federation (unauthenticated):
 
@@ -240,8 +259,8 @@ Public / federation (unauthenticated):
 | `POST /users/:username/inbox` (+ `/inbox`)     | Inbound `Follow` / `Undo{Follow}` / `Accept` / `Reject` (HTTP-Signature verified) |
 
 The owner-facing capability is also available over MCP as `list_feed`, `share_activity`,
-`update_feed_post`, `delete_feed_post`, `list_following`, `follow_actor`, and
-`unfollow_actor` — all federating identically to the REST routes.
+`update_feed_post`, `delete_feed_post`, `list_following`, `follow_actor`, `unfollow_actor`,
+and `list_timeline` — all backed by the same services as the REST routes.
 
 ## Storage
 
@@ -256,6 +275,10 @@ and, in the same statement, records its id in `feed_tombstone` so the object id 
 answer `410 Gone`. Followers live in `feed_follower`; the actors this user **follows** live
 in `feed_following` (keyed by a local `id`, with the followee's cached inbox + handle /
 display name / avatar and an `accepted` flag); the actor's RSA keypair in `feed_actor`.
+Posts received from followees are stored in `timeline_entry` (keyed by the remote note's
+`object_uri` so an `Update`/redelivery replaces in place), holding the **already-sanitised**
+content plus the author's cached handle / display name / avatar, indexed on
+`(published_at DESC, id DESC)` for the keyset-paginated home timeline.
 
 ## Caveats & limitations
 

@@ -182,6 +182,21 @@
   color: #6b7280;
 }
 
+.feed-post-handle a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.feed-post-handle a:hover {
+  text-decoration: underline;
+}
+
+/* "Load more" at the foot of the home timeline. */
+.timeline-more {
+  display: block;
+  margin: 0.25rem auto 1rem;
+}
+
 .feed-post-content {
   margin-top: 0.5rem;
   color: #1f2937;
