@@ -1,31 +1,21 @@
 /**
  * Feed / outbox view — the activities the user has published to their federated
- * (ActivityPub) feed. Lists each shared post with its audience and the metrics
- * it exposes, and lets the user edit the selection (reusing the share dialog in
- * edit mode) or unshare (which retracts a Delete to followers).
+ * (ActivityPub) feed, rendered as native Mastodon-style cards (matching how they
+ * actually appear once federated), each with an Edit / Unshare shortcut. Editing
+ * reuses the share dialog; unsharing retracts a Delete to followers.
  */
-import type { FeedPost, FeedVisibility } from '@aurboda/api-spec'
+import type { FeedPost } from '@aurboda/api-spec'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { format } from 'date-fns'
 import { useState } from 'preact/hooks'
 
-import { seriesLabel, summaryLabel } from '../../components/feed-metrics'
 import { ShareActivityDialog } from '../../components/ShareActivityDialog'
-import { deleteFeedPost, fetchFeed } from '../../state/api'
-import { toDisplayName } from '../../utils/displayName'
+import { avatarUrl, deleteFeedPost, fetchFeed } from '../../state/api'
+import { auth } from '../../state/auth'
+import { FeedPostCard, type PostAuthor } from './FeedPostCard'
 import './style.css'
 
-const VISIBILITY_LABEL: Record<FeedVisibility, string> = {
-  followers: 'Followers only',
-  public: 'Public',
-  unlisted: 'Unlisted',
-}
-
-const formatWhen = (iso: string): string => format(new Date(iso), 'PP')
-
-// eslint-disable-next-line complexity -- render-heavy card: title resolution, edit/unshare actions, chips
-function FeedPostCard({ post }: { post: FeedPost }) {
+function OwnPostCard({ post, author }: { post: FeedPost; author: PostAuthor }) {
   const queryClient = useQueryClient()
   const [editing, setEditing] = useState(false)
   const activityId = post.activity_id
@@ -35,14 +25,6 @@ function FeedPostCard({ post }: { post: FeedPost }) {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['feed'] }),
   })
 
-  // The activity's title + merged-span window are resolved server-side into the
-  // feed response (no per-card fetch). The window is the same merged span the
-  // detail view shows, so the edit dialog offers the same metrics.
-  const title =
-    post.activity_title || (post.activity_type ? toDisplayName(post.activity_type) : 'Shared activity')
-  const activityStart = post.activity_start_time ? new Date(post.activity_start_time) : undefined
-  const activityEnd = post.activity_end_time ? new Date(post.activity_end_time) : undefined
-
   const onUnshare = () => {
     if (window.confirm('Unshare this post? It is removed from your feed and retracted from followers.')) {
       deleteMutation.mutate()
@@ -50,78 +32,59 @@ function FeedPostCard({ post }: { post: FeedPost }) {
   }
 
   return (
-    <div class="feed-card">
-      <div class="feed-card-head">
-        {activityId ? (
-          <a class="feed-card-title" href={`/detail/activity/${activityId}`}>
-            {title}
-          </a>
-        ) : (
-          <span class="feed-card-title">{title}</span>
-        )}
-        <span class={`feed-badge feed-badge-${post.visibility}`}>{VISIBILITY_LABEL[post.visibility]}</span>
-      </div>
-
-      <div class="feed-card-meta">
-        Shared {formatWhen(post.created_at)}
-        {post.updated_at !== post.created_at ? ` · edited ${formatWhen(post.updated_at)}` : ''}
-      </div>
-
-      {post.included_metrics.length > 0 && (
-        <div class="feed-chips">
-          {post.included_metrics.map((k) => (
-            <span key={k} class="feed-chip">
-              {summaryLabel(k)}
-            </span>
-          ))}
-        </div>
-      )}
-
-      {post.series_metrics.length > 0 && (
-        <div class="feed-chips">
-          <span class="feed-chips-label">Series</span>
-          {post.series_metrics.map((k) => (
-            <span key={k} class="feed-chip feed-chip-series">
-              {seriesLabel(k)}
-            </span>
-          ))}
-        </div>
-      )}
-
-      <div class="feed-card-actions">
-        {activityId && (
-          <button type="button" class="btn-secondary" onClick={() => setEditing(true)}>
-            Edit
-          </button>
-        )}
-        <button type="button" class="btn-danger" onClick={onUnshare} disabled={deleteMutation.isPending}>
-          {deleteMutation.isPending ? 'Unsharing…' : 'Unshare'}
-        </button>
-      </div>
+    <>
+      <FeedPostCard
+        post={post}
+        author={author}
+        footer={
+          <>
+            {activityId && (
+              <button type="button" class="btn-secondary" onClick={() => setEditing(true)}>
+                Edit
+              </button>
+            )}
+            <button type="button" class="btn-danger" onClick={onUnshare} disabled={deleteMutation.isPending}>
+              {deleteMutation.isPending ? 'Unsharing…' : 'Unshare'}
+            </button>
+          </>
+        }
+      />
 
       {editing && activityId && (
         <ShareActivityDialog
           activityId={activityId}
           activityTitle={post.activity_title}
-          activityStart={activityStart}
-          activityEnd={activityEnd}
+          activityStart={post.activity_start_time ? new Date(post.activity_start_time) : undefined}
+          activityEnd={post.activity_end_time ? new Date(post.activity_end_time) : undefined}
           post={post}
           onClose={() => setEditing(false)}
         />
       )}
-    </div>
+    </>
   )
 }
 
 export function Feed() {
   const { data: posts, isLoading, error } = useQuery({ queryFn: fetchFeed, queryKey: ['feed'] })
 
+  const username = auth.value.user ?? ''
+  // The actor handle host is the web host the user is browsing (`<user>@<host>`);
+  // the actor lives at `<host>/users/<user>` and WebFinger resolves that host.
+  const host = window.location.host
+  const author: PostAuthor = {
+    avatarUrl: avatarUrl(username),
+    displayName: username,
+    handle: `@${username}@${host}`,
+    profileUrl: `/u/${encodeURIComponent(username)}`,
+    username,
+  }
+
   return (
     <div class="feed-page">
       <h1>Feed</h1>
       <p class="feed-intro">
-        Activities you've published to your federated feed. People can follow your{' '}
-        <code>@handle@aurboda.net</code> from Mastodon and the wider fediverse to see these posts.
+        Activities you've published to your federated feed, shown the way they appear once federated. People
+        can follow your <code>{author.handle}</code> from Mastodon and the wider fediverse to see these posts.
       </p>
 
       {isLoading && <p>Loading…</p>}
@@ -132,7 +95,7 @@ export function Feed() {
         </p>
       )}
       {posts?.map((post) => (
-        <FeedPostCard key={post.id} post={post} />
+        <OwnPostCard key={post.id} post={post} author={author} />
       ))}
     </div>
   )

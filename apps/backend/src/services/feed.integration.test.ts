@@ -125,6 +125,8 @@ describe('feed service', () => {
       expect(dto.activity_type).toBe('exercise')
       expect(dto.activity_start_time).toBe(ANCHOR_START.toISOString())
       expect(dto.activity_end_time).toBe(MERGED_END.toISOString())
+      // Rendered `content` HTML (as federated) with the title headline (#884 §1).
+      expect(dto.content).toContain('<strong>Merged run</strong>')
       // Base fields still present.
       expect(dto.included_metrics).toEqual(['duration'])
       expect(dto.visibility).toBe('public')

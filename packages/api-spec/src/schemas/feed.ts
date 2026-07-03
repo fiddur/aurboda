@@ -126,6 +126,14 @@ export const feedPostSchema = z
       .string()
       .optional()
       .meta({ description: "The shared activity's type (e.g. `exercise`)" }),
+    // The exact HTML `content` that federates for this post (headline + shared
+    // scalar summary), so a client can render the post WYSIWYG — matching what
+    // Mastodon shows — instead of reconstructing it from the metric keys. Absent
+    // when there is no resolvable activity.
+    content: z
+      .string()
+      .optional()
+      .meta({ description: 'Rendered AS2 `content` HTML for the post (as federated)' }),
     created_at: z.string().meta({ description: 'Creation timestamp (ISO 8601)' }),
     id: z.string().uuid().meta({ description: 'Feed post ID' }),
     include_chart: z.boolean().meta({ description: 'Whether a chart image is attached' }),
