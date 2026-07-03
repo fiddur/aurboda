@@ -5,15 +5,20 @@
  */
 import type { MetricType } from '@aurboda/api-spec'
 
-/** Scalar summaries the backend knows how to resolve (see services/activitypub/scalars.ts). */
-export const SUMMARY_METRICS: { key: string; label: string }[] = [
+/**
+ * Scalar summaries the backend knows how to resolve (see
+ * services/activitypub/scalars.ts). `source` is the time-series metric a
+ * summary is derived from — used to offer only metrics the activity actually
+ * has. `duration` has no source (it comes from the activity's window).
+ */
+export const SUMMARY_METRICS: { key: string; label: string; source?: MetricType }[] = [
   { key: 'duration', label: 'Duration' },
-  { key: 'distance', label: 'Distance' },
-  { key: 'heart_rate_avg', label: 'Avg HR' },
-  { key: 'heart_rate_max', label: 'Max HR' },
-  { key: 'hr_zone_minutes', label: 'HR zones' },
-  { key: 'calories', label: 'Calories' },
-  { key: 'stress_avg', label: 'Avg stress' },
+  { key: 'distance', label: 'Distance', source: 'distance' },
+  { key: 'heart_rate_avg', label: 'Avg HR', source: 'heart_rate' },
+  { key: 'heart_rate_max', label: 'Max HR', source: 'heart_rate' },
+  { key: 'hr_zone_minutes', label: 'HR zones', source: 'heart_rate' },
+  { key: 'calories', label: 'Calories', source: 'calories_active' },
+  { key: 'stress_avg', label: 'Avg stress', source: 'stress_level' },
 ]
 
 /** High-resolution series a user can explicitly opt into sharing. */

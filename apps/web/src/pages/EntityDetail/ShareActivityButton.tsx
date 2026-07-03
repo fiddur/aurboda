@@ -11,9 +11,13 @@ import { ShareActivityDialog } from '../../components/ShareActivityDialog'
 export const ShareActivityButton = ({
   activityId,
   activityTitle,
+  activityStart,
+  activityEnd,
 }: {
   activityId: string
   activityTitle?: string
+  activityStart?: Date
+  activityEnd?: Date
 }) => {
   const [open, setOpen] = useState(false)
   return (
@@ -30,6 +34,8 @@ export const ShareActivityButton = ({
         <ShareActivityDialog
           activityId={activityId}
           activityTitle={activityTitle}
+          activityStart={activityStart}
+          activityEnd={activityEnd}
           onClose={() => setOpen(false)}
         />
       )}
