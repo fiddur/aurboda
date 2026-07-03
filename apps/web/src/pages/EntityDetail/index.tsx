@@ -621,8 +621,11 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
         onSuccess={() => queryClient.invalidateQueries()}
         isEditing={isEditing}
       />
-      {activity.id && !isMergedActivity && !activity.deleted_at && !isEditing && (
-        <ShareActivityButton activityId={activity.id} activityTitle={activity.title} />
+      {!activity.deleted_at && !isEditing && (
+        // `rawEntityId` is a plain activity UUID for both raw and merged views (a
+        // `merged:<uuid>` id wraps a real anchor activity), so merged activities
+        // — the common case — are shareable; the post references that anchor.
+        <ShareActivityButton activityId={rawEntityId} activityTitle={activity.title} />
       )}
       {isMerging && <MergePanel activityId={rawEntityId} onCancel={() => setIsMerging(false)} />}
       <ActivityDetailContent
