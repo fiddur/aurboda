@@ -625,7 +625,14 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
         // `rawEntityId` is a plain activity UUID for both raw and merged views (a
         // `merged:<uuid>` id wraps a real anchor activity), so merged activities
         // — the common case — are shareable; the post references that anchor.
-        <ShareActivityButton activityId={rawEntityId} activityTitle={activity.title} />
+        // The merged span bounds the metric-availability lookup so the dialog
+        // offers everything the activity has across its sources.
+        <ShareActivityButton
+          activityId={rawEntityId}
+          activityTitle={activity.title}
+          activityStart={activity.merged_start_time ?? activity.start_time}
+          activityEnd={activity.merged_end_time ?? activity.end_time}
+        />
       )}
       {isMerging && <MergePanel activityId={rawEntityId} onCancel={() => setIsMerging(false)} />}
       <ActivityDetailContent

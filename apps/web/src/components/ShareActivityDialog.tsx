@@ -11,16 +11,19 @@
  */
 import type { FeedPost, FeedVisibility, MetricType } from '@aurboda/api-spec'
 
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'preact/hooks'
 
-import { shareActivity, updateFeedPost } from '../state/api'
+import { fetchBucketedMetrics, shareActivity, updateFeedPost } from '../state/api'
 import { SERIES_METRICS, SUMMARY_METRICS } from './feed-metrics'
 import './ShareActivityDialog.css'
 
 interface Props {
   activityId: string
   activityTitle?: string
+  /** Activity window — when given, the dialog offers only metrics with data in it. */
+  activityStart?: Date
+  activityEnd?: Date
   /** When present, edit this existing post instead of sharing anew. */
   post?: FeedPost
   onClose: () => void
@@ -42,7 +45,41 @@ const toggle = <T extends string>(set: Set<T>, key: T): Set<T> => {
   return next
 }
 
-export function ShareActivityDialog({ activityId, activityTitle, post, onClose, onShared }: Props) {
+/**
+ * Which summary/series options to offer for an activity: only those whose source
+ * metric has data in the given window (e.g. no Distance on a yoga session). One
+ * coarse bucketed fetch; while it loads (or without a window) every option is
+ * offered.
+ */
+const useShareableMetricOptions = (activityStart?: Date, activityEnd?: Date) => {
+  const availabilityQuery = useQuery({
+    // The `??` fallbacks never run — `enabled` gates the fetch on both being set.
+    enabled: activityStart != null && activityEnd != null,
+    queryFn: () =>
+      fetchBucketedMetrics(activityStart ?? new Date(), activityEnd ?? new Date(), undefined, '1h'),
+    queryKey: ['share-activity-metrics', activityStart?.toISOString(), activityEnd?.toISOString()],
+    staleTime: 5 * 60 * 1000,
+  })
+  const present = availabilityQuery.data?.buckets
+    ? new Set(availabilityQuery.data.buckets.flatMap((b) => Object.keys(b.metrics)))
+    : undefined
+  return {
+    seriesOptions: present ? SERIES_METRICS.filter((m) => present.has(m.key)) : SERIES_METRICS,
+    summaryOptions: present
+      ? SUMMARY_METRICS.filter((m) => m.source === undefined || present.has(m.source))
+      : SUMMARY_METRICS,
+  }
+}
+
+export function ShareActivityDialog({
+  activityId,
+  activityTitle,
+  activityStart,
+  activityEnd,
+  post,
+  onClose,
+  onShared,
+}: Props) {
   const queryClient = useQueryClient()
   const [summary, setSummary] = useState<Set<string>>(
     () => new Set(post ? post.included_metrics : DEFAULT_SUMMARY),
@@ -54,11 +91,14 @@ export function ShareActivityDialog({ activityId, activityTitle, post, onClose, 
     () => new Set(SERIES_METRICS.map((m) => m.key).filter((k) => post?.series_metrics.includes(k) ?? false)),
   )
   const [visibility, setVisibility] = useState<FeedVisibility>(post?.visibility ?? 'public')
+  const { summaryOptions, seriesOptions } = useShareableMetricOptions(activityStart, activityEnd)
 
   const mutation = useMutation({
     mutationFn: () => {
-      const included_metrics = [...summary]
-      const series_metrics = [...series]
+      // Only send metrics the dialog actually offered (drops defaults hidden as
+      // irrelevant); the backend still ignores any with no data.
+      const included_metrics = summaryOptions.map((m) => m.key).filter((k) => summary.has(k))
+      const series_metrics = seriesOptions.map((m) => m.key).filter((k) => series.has(k))
       // Edit mode leaves include_chart/include_map untouched (both optional on
       // UpdateFeedPostBody); only the create path sets their defaults.
       return post
@@ -96,7 +136,7 @@ export function ShareActivityDialog({ activityId, activityTitle, post, onClose, 
         <fieldset class="share-dialog-group">
           <legend>Summary metrics</legend>
           <div class="share-dialog-options">
-            {SUMMARY_METRICS.map(({ key, label }) => (
+            {summaryOptions.map(({ key, label }) => (
               <label key={key} class="share-dialog-checkbox">
                 <input
                   type="checkbox"
@@ -109,22 +149,26 @@ export function ShareActivityDialog({ activityId, activityTitle, post, onClose, 
           </div>
         </fieldset>
 
-        <fieldset class="share-dialog-group">
-          <legend>Share full time-series</legend>
-          <p class="share-dialog-note">Higher resolution — more revealing than a summary. Off by default.</p>
-          <div class="share-dialog-options">
-            {SERIES_METRICS.map(({ key, label }) => (
-              <label key={key} class="share-dialog-checkbox">
-                <input
-                  type="checkbox"
-                  checked={series.has(key)}
-                  onChange={() => setSeries((s) => toggle(s, key))}
-                />
-                {label}
-              </label>
-            ))}
-          </div>
-        </fieldset>
+        {seriesOptions.length > 0 && (
+          <fieldset class="share-dialog-group">
+            <legend>Share full time-series</legend>
+            <p class="share-dialog-note">
+              Higher resolution — more revealing than a summary. Off by default.
+            </p>
+            <div class="share-dialog-options">
+              {seriesOptions.map(({ key, label }) => (
+                <label key={key} class="share-dialog-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={series.has(key)}
+                    onChange={() => setSeries((s) => toggle(s, key))}
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+        )}
 
         <fieldset class="share-dialog-group">
           <legend>Visibility</legend>
@@ -157,7 +201,7 @@ export function ShareActivityDialog({ activityId, activityTitle, post, onClose, 
           <button
             type="button"
             class="btn-primary"
-            disabled={mutation.isPending || summary.size === 0}
+            disabled={mutation.isPending || !summaryOptions.some((m) => summary.has(m.key))}
             onClick={() => mutation.mutate()}
           >
             {mutation.isPending ? 'Saving…' : post ? 'Save changes' : 'Share'}

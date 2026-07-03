@@ -24,6 +24,7 @@ const VISIBILITY_LABEL: Record<FeedVisibility, string> = {
 
 const formatWhen = (iso: string): string => format(new Date(iso), 'PP')
 
+// eslint-disable-next-line complexity -- render-heavy card: title resolution, edit/unshare actions, chips
 function FeedPostCard({ post }: { post: FeedPost }) {
   const queryClient = useQueryClient()
   const [editing, setEditing] = useState(false)
@@ -104,6 +105,8 @@ function FeedPostCard({ post }: { post: FeedPost }) {
         <ShareActivityDialog
           activityId={activityId}
           activityTitle={activity?.title}
+          activityStart={activity?.start_time}
+          activityEnd={activity?.end_time}
           post={post}
           onClose={() => setEditing(false)}
         />
