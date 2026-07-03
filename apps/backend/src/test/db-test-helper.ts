@@ -101,6 +101,7 @@ export const cleanTestDb = async (): Promise<void> => {
     'feed_posts',
     'feed_actor',
     'feed_follower',
+    'feed_following',
     'profile_avatar',
     'tags',
     'tag_definitions',

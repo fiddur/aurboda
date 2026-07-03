@@ -13,6 +13,7 @@ import { ShareActivityDialog } from '../../components/ShareActivityDialog'
 import { avatarUrl, deleteFeedPost, fetchFeed } from '../../state/api'
 import { auth } from '../../state/auth'
 import { FeedPostCard, type PostAuthor } from './FeedPostCard'
+import { FollowingPanel } from './FollowingPanel'
 import './style.css'
 
 function OwnPostCard({ post, author }: { post: FeedPost; author: PostAuthor }) {
@@ -87,6 +88,9 @@ export function Feed() {
         can follow your <code>{author.handle}</code> from Mastodon and the wider fediverse to see these posts.
       </p>
 
+      <FollowingPanel />
+
+      <h2 class="feed-section-title">Your posts</h2>
       {isLoading && <p>Loading…</p>}
       {error && <p class="feed-error">Couldn't load your feed. Please try again.</p>}
       {posts && posts.length === 0 && (

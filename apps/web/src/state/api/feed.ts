@@ -2,6 +2,9 @@ import type {
   FeedPost,
   FeedPostResponse,
   FeedPostsResponse,
+  FollowActorResponse,
+  FollowingActor,
+  FollowingResponse,
   ShareActivityBody,
   UpdateFeedPostBody,
 } from '@aurboda/api-spec'
@@ -42,4 +45,28 @@ export const updateFeedPost = async (postId: string, body: UpdateFeedPostBody): 
 /** Unshare a post (removes it from the feed and retracts it from followers). */
 export const deleteFeedPost = async (postId: string): Promise<void> => {
   await axios.delete(`${API_URL}/feed/${postId}`, { headers: authHeaders() })
+}
+
+/** List the actors the user follows (accepted + pending), newest-first. */
+export const fetchFollowing = async (): Promise<FollowingActor[]> => {
+  const response = await axios.get<FollowingResponse>(`${API_URL}/feed/following`, {
+    headers: authHeaders(),
+  })
+  return response.data.following
+}
+
+/** Follow a fediverse actor by handle (`@user@host`, `user@host`, or actor URL). */
+export const followActor = async (handle: string): Promise<FollowingActor> => {
+  const response = await axios.post<FollowActorResponse>(
+    `${API_URL}/feed/following`,
+    { handle },
+    { headers: authHeaders() },
+  )
+  if (!response.data.actor) throw new Error('Follow failed: no actor returned')
+  return response.data.actor
+}
+
+/** Unfollow an actor by its local follow id. */
+export const unfollowActor = async (id: string): Promise<void> => {
+  await axios.delete(`${API_URL}/feed/following/${id}`, { headers: authHeaders() })
 }

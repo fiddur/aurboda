@@ -10,6 +10,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import { insertActivity } from '../../db/activities/index.ts'
 import { upsertFeedFollower } from '../../db/feed-follower.ts'
+import { markFeedFollowingAccepted, upsertFeedFollowing } from '../../db/feed-following.ts'
 import { createFeedPost, deleteFeedPost, type FeedPostInput, getFeedTombstone } from '../../db/feed.ts'
 import { createFeedTombstoneRouter } from '../../routes/feed-tombstone-router.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../../test/db-test-helper.ts'
@@ -73,6 +74,8 @@ describe('Feed federation actor + WebFinger', () => {
     expect(doc.preferredUsername).toBe(user)
     expect(doc.inbox).toBe(`${ORIGIN}/users/${user}/inbox`)
     expect(doc.outbox).toBe(`${ORIGIN}/users/${user}/outbox`)
+    expect(doc.followers).toBe(`${ORIGIN}/users/${user}/followers`)
+    expect(doc.following).toBe(`${ORIGIN}/users/${user}/following`)
     expect(doc.publicKey).toBeDefined()
     // The published key is a PEM-encoded RSA public key.
     const publicKey = doc.publicKey as { owner?: string; publicKeyPem?: string }
@@ -127,6 +130,28 @@ describe('Feed federation actor + WebFinger', () => {
     const doc = (await res.json()) as { totalItems?: number; orderedItems?: string[] }
     expect(doc.totalItems).toBe(1)
     expect(doc.orderedItems).toContain('https://mastodon.example/users/alice')
+  })
+
+  test('serves the following collection with only accepted follows', async () => {
+    const user = getTestUser()
+    // One accepted, one still pending.
+    await upsertFeedFollowing(user, {
+      actor_uri: 'https://mastodon.example/users/carol',
+      inbox_uri: 'https://mastodon.example/users/carol/inbox',
+    })
+    await markFeedFollowingAccepted(user, 'https://mastodon.example/users/carol')
+    await upsertFeedFollowing(user, {
+      actor_uri: 'https://remote.example/users/dave',
+      inbox_uri: 'https://remote.example/users/dave/inbox',
+    })
+
+    const res = await fetchAs2(`/users/${user}/following`)
+    expect(res.status).toBe(200)
+    const doc = (await res.json()) as { totalItems?: number; orderedItems?: string[] }
+    // Only the accepted follow is published.
+    expect(doc.totalItems).toBe(1)
+    expect(doc.orderedItems).toContain('https://mastodon.example/users/carol')
+    expect(doc.orderedItems).not.toContain('https://remote.example/users/dave')
   })
 
   test('serves a paginated outbox: root has totalItems + first page link, page has the Create', async () => {

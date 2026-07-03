@@ -1,24 +1,33 @@
 /**
- * MCP feed tools — publish activities to the user's federated feed and manage
- * the resulting posts. Mirrors the REST `/feed` capability.
+ * MCP feed tools — publish activities to the user's federated feed, manage the
+ * resulting posts, and follow/unfollow other actors. Mirrors the REST `/feed`
+ * and `/feed/following` capabilities.
  */
-import { shareActivityBodySchema, updateFeedPostBodySchema } from '@aurboda/api-spec'
+import { followActorBodySchema, shareActivityBodySchema, updateFeedPostBodySchema } from '@aurboda/api-spec'
 import { z } from 'zod'
 
 import type { FeedDeliver } from '../routes/feed-router.ts'
+import type { FollowActions } from '../services/following.ts'
 
 import {
   createFeedPost,
   deleteFeedPost,
   getActivityById,
   getFeedPostById,
+  listFeedFollowing,
   listFeedPosts,
   updateFeedPost,
 } from '../db/index.ts'
 import { serializeFeedPost } from '../services/feed.ts'
+import { serializeFollowing } from '../services/following.ts'
 import { errorResponse, jsonResponse, type McpServer } from './helpers.ts'
 
-export const registerFeedTools = (server: McpServer, user: string, deliver?: FeedDeliver) => {
+export const registerFeedTools = (
+  server: McpServer,
+  user: string,
+  deliver?: FeedDeliver,
+  followActions?: FollowActions,
+) => {
   server.tool(
     'list_feed',
     'List activities you have published to your feed, with their shared metric selection, series opt-in, and visibility.',
@@ -80,6 +89,40 @@ export const registerFeedTools = (server: McpServer, user: string, deliver?: Fee
       // Retract from followers with a Delete{Tombstone}, same as the REST route.
       deliver?.deleted(user, existing)
       return jsonResponse({ deleted: true, id })
+    },
+  )
+
+  server.tool(
+    'list_following',
+    'List the actors you follow (accepted and pending), with their handle, display name, and acceptance state.',
+    {},
+    async () => {
+      const records = await listFeedFollowing(user)
+      return jsonResponse(records.map(serializeFollowing))
+    },
+  )
+
+  server.tool(
+    'follow_actor',
+    'Follow a fediverse actor so their posts arrive in your feed. `handle` is `@user@host`, `user@host`, or an actor URL. Sends a Follow; the follow is `pending` until the remote server accepts it.',
+    { ...followActorBodySchema.shape },
+    async ({ handle }) => {
+      if (!followActions) return errorResponse('Following is not available')
+      const result = await followActions.follow(user, handle)
+      if (!result.ok) return errorResponse(result.error)
+      return jsonResponse(serializeFollowing(result.record))
+    },
+  )
+
+  server.tool(
+    'unfollow_actor',
+    'Unfollow an actor by the local follow id (from `list_following`). Sends an Undo{Follow} and removes them from your following list.',
+    { id: z.string().uuid().describe('Local follow id (the `id` from list_following)') },
+    async ({ id }) => {
+      if (!followActions) return errorResponse('Following is not available')
+      const removed = await followActions.unfollow(user, id)
+      if (!removed) return errorResponse('Not following that actor')
+      return jsonResponse({ id, unfollowed: true })
     },
   )
 }

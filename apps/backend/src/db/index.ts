@@ -285,6 +285,21 @@ export {
   upsertFeedFollower,
 } from './feed-follower.ts'
 
+// Feed following (actors this user follows)
+export {
+  countAcceptedFeedFollowing,
+  type FeedFollowingInput,
+  type FeedFollowingRecord,
+  getFeedFollowing,
+  getFeedFollowingByActor,
+  listAcceptedFeedFollowing,
+  listFeedFollowing,
+  markFeedFollowingAccepted,
+  removeFeedFollowing,
+  removeFeedFollowingByActor,
+  upsertFeedFollowing,
+} from './feed-following.ts'
+
 // Feed posts
 export {
   countPublicFeedPosts,

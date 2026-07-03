@@ -109,6 +109,28 @@ servers order and timestamp it correctly instead of stamping it at receipt.
 The object we deliver, list in the outbox, and serve at that id are all built from one
 place, so they can't drift.
 
+### Following other actors (inbound)
+
+The feed also runs the **inbound** direction: a user can follow other fediverse actors
+(remote *or* another local Aurboda user). Following `@alice@mastodon.social`:
+
+1. resolves the target actor (WebFinger + actor fetch) to its inbox + presentation,
+2. records a **pending** follow in `feed_following`, then
+3. sends a signed `Follow` from the user's actor to the followee's inbox.
+
+When the followee's server answers with an `Accept`, the inbox marks the follow
+**accepted**; a `Reject` drops it. Unfollowing sends an `Undo{Follow}` to the cached inbox
+and removes the row. Local follows use the exact same path (delivered to the local inbox
+over loopback), so there is no special-casing. Delivery is best-effort/synchronous, matching
+the rest of the feed — a failed `Follow` POST leaves the pending row so the user can retry.
+
+The actor advertises a **following collection** (`/users/<username>/following`) listing only
+*accepted* follows (a pending follow isn't a confirmed relationship yet). The followee's
+inbox URIs are internal delivery details and are never exposed on the owner-facing API.
+
+> Receiving those followees' posts into a **home timeline** (inbound `Create`/`Announce`
+> handling + storage) is the next slice; this slice is the follow relationship only.
+
 ### Images
 
 A post can carry a rendered **heart-rate chart** (`include_chart`) and/or a **GPS
@@ -175,6 +197,9 @@ resolving.
   you've shared, with each post's audience and metrics. From there you can **Edit** a
   post (re-opens the dialog; saving federates an `Update`) or **Unshare** it (federates a
   `Delete`).
+- **Follow** — the Feed page's **Following** panel lets you follow a fediverse actor by
+  handle (`@user@host`) and see who you follow, with a **Pending** badge until the remote
+  server accepts and an **Unfollow** button.
 
 ## API
 
@@ -186,6 +211,9 @@ Owner-facing (authenticated, scoped to the caller):
 | `POST /feed/activities/:id/share` | Publish an activity with a chosen metric selection |
 | `PATCH /feed/:postId`             | Edit selection / visibility / attachments          |
 | `DELETE /feed/:postId`            | Unpublish (its public series stops resolving)      |
+| `GET /feed/following`             | List the actors I follow (accepted + pending)      |
+| `POST /feed/following`            | Follow an actor by handle (`@user@host` or actor URL) |
+| `DELETE /feed/following/:id`      | Unfollow (sends `Undo{Follow}`)                    |
 
 Public / federation (unauthenticated):
 
@@ -198,12 +226,13 @@ Public / federation (unauthenticated):
 | `GET /users/:username`                         | The actor document (`Person`)                               |
 | `GET /users/:username/outbox`                  | Public + unlisted posts as `Create` activities              |
 | `GET /users/:username/followers`               | The actor's followers collection                            |
+| `GET /users/:username/following`               | The actor's following collection (accepted follows only)    |
 | `GET /users/:username/feed/:postId`            | A single post's `Note` (or `410` Tombstone once deleted)    |
-| `POST /users/:username/inbox` (+ `/inbox`)     | Inbound `Follow` / `Undo{Follow}` (HTTP-Signature verified) |
+| `POST /users/:username/inbox` (+ `/inbox`)     | Inbound `Follow` / `Undo{Follow}` / `Accept` / `Reject` (HTTP-Signature verified) |
 
 The owner-facing capability is also available over MCP as `list_feed`, `share_activity`,
-`update_feed_post`, and `delete_feed_post` — sharing/editing/deleting over MCP federates
-identically to the REST routes.
+`update_feed_post`, `delete_feed_post`, `list_following`, `follow_actor`, and
+`unfollow_actor` — all federating identically to the REST routes.
 
 ## Storage
 
@@ -215,8 +244,9 @@ endpoint's authorization check. Each post also holds an unguessable `image_token
 (defaulted at insert) that gates its `followers`-only image URLs. Deleting a
 `public`/`unlisted` post hard-deletes its row
 and, in the same statement, records its id in `feed_tombstone` so the object id can still
-answer `410 Gone`. Followers live in `feed_follower`; the actor's RSA keypair in
-`feed_actor`.
+answer `410 Gone`. Followers live in `feed_follower`; the actors this user **follows** live
+in `feed_following` (keyed by a local `id`, with the followee's cached inbox + handle /
+display name / avatar and an `accepted` flag); the actor's RSA keypair in `feed_actor`.
 
 ## Caveats & limitations
 
