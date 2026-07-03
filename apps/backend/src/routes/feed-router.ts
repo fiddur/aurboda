@@ -1,5 +1,3 @@
-import type { RequestHandler } from 'express'
-
 /**
  * Feed route group (owner-facing).
  *
@@ -15,6 +13,9 @@ import {
   type FeedPostsResponse,
   type ShareActivityBody,
   shareActivityBodySchema,
+  type TimelineQuery,
+  timelineQuerySchema,
+  type TimelineResponse,
   type UpdateFeedPostBody,
   updateFeedPostBodySchema,
 } from '@aurboda/api-spec'
@@ -30,8 +31,9 @@ import {
   updateFeedPost,
 } from '../db/index.ts'
 import { serializeFeedPost } from '../services/feed.ts'
-import { type TypedRouter, typedRouter } from '../typed-router.ts'
-import { validateBody } from '../validation.ts'
+import { getTimelinePage } from '../services/timeline.ts'
+import { type AnyMiddleware, type TypedRouter, typedRouter } from '../typed-router.ts'
+import { validateBody, validateQuery } from '../validation.ts'
 
 /**
  * Fire-and-forget federation delivery hooks for the feed-post lifecycle,
@@ -52,7 +54,7 @@ export interface FeedDeliver {
   deleted: (user: string, post: FeedPostRecord) => void
 }
 
-export const createFeedRouter = (authMiddleware: RequestHandler, deliver?: FeedDeliver): TypedRouter => {
+export const createFeedRouter = (authMiddleware: AnyMiddleware, deliver?: FeedDeliver): TypedRouter => {
   const router = typedRouter()
 
   router.get<Record<string, never>, FeedPostsResponse>('/', authMiddleware, async (req, res) => {
@@ -61,6 +63,17 @@ export const createFeedRouter = (authMiddleware: RequestHandler, deliver?: FeedD
     const posts = await Promise.all(records.map((record) => serializeFeedPost(user, record)))
     res.json({ posts, success: true })
   })
+
+  router.get<Record<string, never>, TimelineResponse, unknown, TimelineQuery>(
+    '/timeline',
+    authMiddleware,
+    validateQuery(timelineQuerySchema),
+    async (req, res) => {
+      const user = req.user!
+      const { entries, next_cursor } = await getTimelinePage(user, req.query.limit, req.query.cursor)
+      res.json({ entries, next_cursor, success: true })
+    },
+  )
 
   router.post<{ id: string }, FeedPostResponse, ShareActivityBody>(
     '/activities/:id/share',

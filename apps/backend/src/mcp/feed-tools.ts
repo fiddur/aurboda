@@ -3,7 +3,12 @@
  * resulting posts, and follow/unfollow other actors. Mirrors the REST `/feed`
  * and `/feed/following` capabilities.
  */
-import { followActorBodySchema, shareActivityBodySchema, updateFeedPostBodySchema } from '@aurboda/api-spec'
+import {
+  followActorBodySchema,
+  shareActivityBodySchema,
+  timelineQuerySchema,
+  updateFeedPostBodySchema,
+} from '@aurboda/api-spec'
 import { z } from 'zod'
 
 import type { FeedDeliver } from '../routes/feed-router.ts'
@@ -20,6 +25,7 @@ import {
 } from '../db/index.ts'
 import { serializeFeedPost } from '../services/feed.ts'
 import { serializeFollowing } from '../services/following.ts'
+import { getTimelinePage } from '../services/timeline.ts'
 import { errorResponse, jsonResponse, type McpServer } from './helpers.ts'
 
 export const registerFeedTools = (
@@ -100,6 +106,13 @@ export const registerFeedTools = (
       const records = await listFeedFollowing(user)
       return jsonResponse(records.map(serializeFollowing))
     },
+  )
+
+  server.tool(
+    'list_timeline',
+    'List your home timeline: posts received from the actors you follow, newest first. Pass `cursor` (from a previous call) to page.',
+    { ...timelineQuerySchema.shape },
+    async ({ cursor, limit }) => jsonResponse(await getTimelinePage(user, limit, cursor)),
   )
 
   server.tool(
