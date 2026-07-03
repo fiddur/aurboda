@@ -81,14 +81,26 @@ describe('Timeline store integration', () => {
     expect(page3.map((e) => e.object_uri)).toEqual(['https://mastodon.example/notes/1'])
   })
 
-  test('deletes a single entry by object uri (inbound Delete)', async () => {
+  test('deletes a single entry by object uri + authoring actor (inbound Delete)', async () => {
     const user = getTestUser()
     await upsertTimelineEntry(user, entry(1))
     await upsertTimelineEntry(user, entry(2))
-    expect(await deleteTimelineEntryByUri(user, 'https://mastodon.example/notes/1')).toBe(true)
-    expect(await deleteTimelineEntryByUri(user, 'https://mastodon.example/notes/1')).toBe(false)
+    const alice = 'https://mastodon.example/users/alice'
+    expect(await deleteTimelineEntryByUri(user, 'https://mastodon.example/notes/1', alice)).toBe(true)
+    expect(await deleteTimelineEntryByUri(user, 'https://mastodon.example/notes/1', alice)).toBe(false)
     expect((await listTimelineEntries(user, 10)).map((e) => e.object_uri)).toEqual([
       'https://mastodon.example/notes/2',
+    ])
+  })
+
+  test('does not delete an entry when the Delete is from a different actor (spoofed Delete)', async () => {
+    const user = getTestUser()
+    await upsertTimelineEntry(user, entry(1))
+    // A signed Delete from some other actor must not evict alice's post.
+    const attacker = 'https://evil.example/users/mallory'
+    expect(await deleteTimelineEntryByUri(user, 'https://mastodon.example/notes/1', attacker)).toBe(false)
+    expect((await listTimelineEntries(user, 10)).map((e) => e.object_uri)).toEqual([
+      'https://mastodon.example/notes/1',
     ])
   })
 

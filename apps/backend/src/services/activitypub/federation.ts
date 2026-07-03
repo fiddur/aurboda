@@ -97,6 +97,11 @@ const localFollowerIdentifier = async (
  * non-Notes are ignored, and a missing DB never 500s (which would invite retries).
  */
 const ingestFeedActivity = async (ctx: InboxContext<void>, activity: Create | Update): Promise<void> => {
+  // The recipient (whose timeline this is) comes from the personal inbox owner.
+  // Unlike Accept/Reject there's no inner Follow to derive it from, so this relies
+  // on personal-inbox delivery; `ctx.recipient` is null on a shared inbox. That's
+  // fine today (the actor advertises no `sharedInbox`), but shared-inbox support
+  // would need fanning a single delivery out to every local follower of the actor.
   const me = ctx.recipient
   if (me == null || !isValidUsername(me) || activity.actorId == null) return
   try {
@@ -248,11 +253,14 @@ export const createFeedFederation = (origin: string, apiBaseUrl: string): Federa
     .on(Update, (ctx, update) => ingestFeedActivity(ctx, update))
     .on(Delete, async (ctx, del) => {
       // Delete of a post we received → drop it from the timeline. `del.objectId`
-      // is the removed object's id (a Tombstone or bare id); we key on it.
+      // is the removed object's id (a Tombstone or bare id); we key on it, but
+      // scope the delete to the sender (`del.actorId`) so a signed `Delete` from
+      // some other actor can't evict a post it didn't author — mirroring how
+      // `Undo{Follow}` is scoped to its own actor.
       const me = ctx.recipient
-      if (me == null || !isValidUsername(me) || del.objectId == null) return
+      if (me == null || !isValidUsername(me) || del.objectId == null || del.actorId == null) return
       try {
-        await deleteTimelineEntryByUri(me, del.objectId.href)
+        await deleteTimelineEntryByUri(me, del.objectId.href, del.actorId.href)
       } catch (error) {
         if (isMissingDatabase(error)) return
         throw error

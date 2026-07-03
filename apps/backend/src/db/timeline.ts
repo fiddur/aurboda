@@ -102,9 +102,21 @@ export const listTimelineEntries = async (
   return result.rows
 }
 
-/** Remove a received post by its remote object id (on an inbound `Delete`). */
-export const deleteTimelineEntryByUri = async (user: string, objectUri: string): Promise<boolean> => {
-  const result = await query(user, `DELETE FROM timeline_entry WHERE object_uri = $1`, [objectUri])
+/**
+ * Remove a received post by its remote object id (on an inbound `Delete`), scoped
+ * to the actor that authored it. The `actor_uri` guard is an authorization check:
+ * an inbound `Delete` is only signed by *some* actor, so without it any actor
+ * could evict another author's post from the timeline by its (guessable) id.
+ */
+export const deleteTimelineEntryByUri = async (
+  user: string,
+  objectUri: string,
+  actorUri: string,
+): Promise<boolean> => {
+  const result = await query(user, `DELETE FROM timeline_entry WHERE object_uri = $1 AND actor_uri = $2`, [
+    objectUri,
+    actorUri,
+  ])
   return (result.rowCount ?? 0) > 0
 }
 
