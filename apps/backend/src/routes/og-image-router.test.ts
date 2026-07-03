@@ -72,6 +72,21 @@ describe('GET /u/:username/:slug/opengraph-image.png', () => {
     expect(deps.renderImage).toHaveBeenCalledTimes(1)
   })
 
+  test('still renders a public card when the avatar fails to load', async () => {
+    const { app, deps } = buildApp({
+      loadAvatarDataUri: vi.fn(async () => {
+        throw new Error('avatar db blip')
+      }),
+      resolveDashboard: async () => ({ is_public: true, name: 'Training' }),
+    })
+    const res = await supertest(app).get('/u/fiddur/abc/opengraph-image.png')
+    expect(res.status).toBe(200)
+    expect(res.type).toBe('image/png')
+    expect(deps.renderImage).toHaveBeenCalledWith(
+      expect.objectContaining({ avatarDataUri: undefined, kind: 'dashboard' }),
+    )
+  })
+
   test('degrades to the default image when a render fails', async () => {
     const { app } = buildApp({
       renderImage: vi.fn(async () => {

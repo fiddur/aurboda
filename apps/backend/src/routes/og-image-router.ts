@@ -38,6 +38,18 @@ const MAX_CACHE_ENTRIES = 200
 export const createOgImageRouter = (deps: OgImageDeps): Router => {
   const { loadAvatarDataUri, profileExists, renderImage, resolveChallenge, resolveDashboard, webHost } = deps
   const router = Router()
+
+  // The avatar is decorative, so a transient avatar-load failure must not drop
+  // an otherwise-renderable public card to the generic default — render without
+  // it instead.
+  const avatarOrUndefined = async (username: string): Promise<string | undefined> => {
+    try {
+      return await loadAvatarDataUri(username)
+    } catch (error) {
+      console.error('OG avatar load failed, rendering card without it:', error)
+      return undefined
+    }
+  }
   const cache = new Map<string, Buffer>()
   // Collapses concurrent misses for the same key into a single render, so a
   // fresh share hit by several crawlers at once doesn't run N identical
@@ -98,7 +110,7 @@ export const createOgImageRouter = (deps: OgImageDeps): Router => {
     const dashboard = await resolveDashboard(username, slug)
     if (dashboard?.is_public) {
       return sendImage(res, `d:${username}/${slug}:${dashboard.name}`, async () => ({
-        avatarDataUri: await loadAvatarDataUri(username),
+        avatarDataUri: await avatarOrUndefined(username),
         kind: 'dashboard',
         title: dashboard.name,
       }))
@@ -107,7 +119,7 @@ export const createOgImageRouter = (deps: OgImageDeps): Router => {
     const challenge = dashboard ? null : await resolveChallenge(username, slug)
     if (challenge?.is_public) {
       return sendImage(res, `c:${username}/${slug}:${challenge.name}`, async () => ({
-        avatarDataUri: await loadAvatarDataUri(username),
+        avatarDataUri: await avatarOrUndefined(username),
         kind: 'challenge',
         title: challenge.name,
       }))
@@ -120,7 +132,7 @@ export const createOgImageRouter = (deps: OgImageDeps): Router => {
     const { username } = req.params
     if (isValidUsername(username) && (await profileExists(username))) {
       return sendImage(res, `p:${username}`, async () => ({
-        avatarDataUri: await loadAvatarDataUri(username),
+        avatarDataUri: await avatarOrUndefined(username),
         kind: 'profile',
         title: username,
       }))
