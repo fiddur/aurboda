@@ -171,6 +171,29 @@ export const socialTables: Record<string, string> = {
     )
   `,
 
+  // Remote (or local) actors this user follows. Keyed by a local `id` (used to
+  // build the outbound `Follow`/`Undo{Follow}` activity id and to unfollow from
+  // the UI); `actor_uri` is UNIQUE so a re-follow upserts rather than duplicates.
+  // We cache the followee's inbox (+ optional shared inbox) so an `Undo{Follow}`
+  // can be delivered without re-resolving the actor, plus their handle / display
+  // name / avatar for the following list. `accepted` flips to true when the
+  // followee's server answers our Follow with an `Accept` (a `Reject` drops the
+  // row). Pending (`accepted = false`) rows are shown to the owner but kept out
+  // of the public `following` collection until confirmed.
+  feed_following: `
+    CREATE TABLE IF NOT EXISTS feed_following (
+      id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      actor_uri        TEXT NOT NULL UNIQUE,
+      inbox_uri        TEXT NOT NULL,
+      shared_inbox_uri TEXT,
+      handle           TEXT,
+      display_name     TEXT,
+      avatar_url       TEXT,
+      accepted         BOOLEAN NOT NULL DEFAULT false,
+      created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `,
+
   // The user's public profile avatar. One per user (the profile owner), so a
   // `singleton` PK + CHECK pins it to a single row. Surfaced on the public
   // profile, shared-page OG cards, and the ActivityPub actor `icon`.

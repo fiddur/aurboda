@@ -162,6 +162,58 @@ export const feedPostsResponseSchema = baseResponseSchema
 export type FeedPostsResponse = z.infer<typeof feedPostsResponseSchema>
 
 // =============================================================================
+// Following (the actors this user follows — inbound feed direction)
+// =============================================================================
+
+/** Body for following an actor. */
+export const followActorBodySchema = z
+  .object({
+    handle: z.string().trim().min(1).max(512).meta({
+      description: 'The actor to follow: a fediverse handle (`@user@host` or `user@host`) or an actor URL',
+      example: '@alice@mastodon.social',
+    }),
+  })
+  .meta({ id: 'FollowActorBody' })
+
+export type FollowActorBody = z.infer<typeof followActorBodySchema>
+
+/**
+ * An actor this user follows. Internal delivery details (the followee's inbox /
+ * shared-inbox URIs) are deliberately NOT exposed — only presentation fields and
+ * the acceptance state. `accepted` is false while a sent Follow awaits the
+ * followee's `Accept`.
+ */
+export const followingActorSchema = z
+  .object({
+    accepted: z
+      .boolean()
+      .meta({ description: 'Whether the followee has accepted the follow (else pending)' }),
+    actor_uri: z.string().meta({ description: "The followee's ActivityPub actor URI" }),
+    avatar_url: z.string().nullable().meta({ description: "The followee's avatar URL, if known" }),
+    created_at: iso8601DateTimeSchema.meta({ description: 'When the follow was initiated (ISO 8601)' }),
+    display_name: z.string().nullable().meta({ description: "The followee's display name, if known" }),
+    handle: z.string().nullable().meta({ description: "The followee's `@user@host` handle, if resolvable" }),
+    id: z.string().uuid().meta({ description: 'Local id of the follow (used to unfollow)' }),
+  })
+  .meta({ id: 'FollowingActor' })
+
+export type FollowingActor = z.infer<typeof followingActorSchema>
+
+/** Response wrapping a single follow (e.g. the result of following an actor). */
+export const followActorResponseSchema = baseResponseSchema
+  .extend({ actor: followingActorSchema.optional() })
+  .meta({ id: 'FollowActorResponse' })
+
+export type FollowActorResponse = z.infer<typeof followActorResponseSchema>
+
+/** Response wrapping the owner's list of followed actors. */
+export const followingResponseSchema = baseResponseSchema
+  .extend({ following: z.array(followingActorSchema) })
+  .meta({ id: 'FollowingResponse' })
+
+export type FollowingResponse = z.infer<typeof followingResponseSchema>
+
+// =============================================================================
 // Public series endpoint (unauthenticated, data-scoped)
 // =============================================================================
 

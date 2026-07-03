@@ -1,5 +1,5 @@
 import { createFederation, type Federation, MemoryKvStore } from '@fedify/fedify'
-import { Accept, type Create, Follow, Image, Note, Person, Undo } from '@fedify/fedify/vocab'
+import { Accept, type Create, Follow, Image, Note, Person, Reject, Undo } from '@fedify/fedify/vocab'
 
 /**
  * The Fedify `Federation` object for the activity feed.
@@ -12,21 +12,29 @@ import { Accept, type Create, Follow, Image, Note, Person, Undo } from '@fedify/
  * - WebFinger (`acct:<user>@<host>` → the actor), via `mapHandle`,
  * - key-pairs dispatcher backed by the per-user `feed_actor` keypair,
  * - inbound inbox: `Follow` → persist follower + `Accept`; `Undo{Follow}` →
- *   drop the follower (Fedify verifies the HTTP Signature first).
+ *   drop the follower; `Accept`/`Reject` → resolve a Follow WE sent (mark the
+ *   `feed_following` row accepted, or drop it). Fedify verifies the HTTP
+ *   Signature first.
+ * - followers + following collections (the latter lists this user's *accepted*
+ *   follows), both backed by Postgres.
  *
  * Delivery is synchronous (no message queue — see `createFeedFederation`); a
  * persistent Postgres queue for retried, durable delivery is a later slice.
  */
 import { isValidUsername } from '../../api/auth-routes.ts'
 import {
+  countAcceptedFeedFollowing,
   countFeedFollowers,
   countPublicFeedPosts,
   getFeedPostById,
   getOrCreateActorKeyPair,
   isMissingDatabase,
+  listAcceptedFeedFollowing,
   listFeedFollowers,
   listPublicFeedPostsPage,
+  markFeedFollowingAccepted,
   removeFeedFollower,
+  removeFeedFollowingByActor,
   upsertFeedFollower,
 } from '../../db/index.ts'
 import { resolveFeedActivity } from '../feed.ts'
@@ -70,6 +78,7 @@ export const createFeedFederation = (origin: string, apiBaseUrl: string): Federa
       if (keys.length === 0) return null
       return new Person({
         followers: ctx.getFollowersUri(identifier),
+        following: ctx.getFollowingUri(identifier),
         // Avatar served on the web host; always resolves (identicon fallback),
         // so remote servers like Mastodon always have an actor icon to show.
         icon: new Image({ url: new URL(`${buildProfileUrl(origin, identifier)}/avatar.png`) }),
@@ -139,6 +148,31 @@ export const createFeedFederation = (origin: string, apiBaseUrl: string): Federa
       if (target?.type !== 'actor' || !isValidUsername(target.identifier)) return
       try {
         await removeFeedFollower(target.identifier, undo.actorId.href)
+      } catch (error) {
+        if (isMissingDatabase(error)) return
+        throw error
+      }
+    })
+    .on(Accept, async (ctx, accept) => {
+      // Accept of a Follow WE sent — the followee's server confirms the follow.
+      // `ctx.recipient` is the identifier of the inbox that received it (us, the
+      // follower); `accept.actorId` is the followee we followed, matching the
+      // `actor_uri` of our pending row. No need to fetch the inner Follow object.
+      const me = ctx.recipient
+      if (me == null || !isValidUsername(me) || accept.actorId == null) return
+      try {
+        await markFeedFollowingAccepted(me, accept.actorId.href)
+      } catch (error) {
+        if (isMissingDatabase(error)) return
+        throw error
+      }
+    })
+    .on(Reject, async (ctx, reject) => {
+      // Reject of a Follow we sent — the followee declined; drop our pending row.
+      const me = ctx.recipient
+      if (me == null || !isValidUsername(me) || reject.actorId == null) return
+      try {
+        await removeFeedFollowingByActor(me, reject.actorId.href)
       } catch (error) {
         if (isMissingDatabase(error)) return
         throw error
@@ -251,6 +285,30 @@ export const createFeedFederation = (origin: string, apiBaseUrl: string): Federa
       if (!isValidUsername(identifier)) return 0
       try {
         return await countFeedFollowers(identifier)
+      } catch (error) {
+        if (isMissingDatabase(error)) return 0
+        throw error
+      }
+    })
+
+  // The actors this user follows, backed by feed_following. Only *accepted*
+  // follows are published (a pending follow isn't a confirmed relationship yet).
+  // Items are the followees' actor URIs.
+  federation
+    .setFollowingDispatcher('/users/{identifier}/following', async (_ctx, identifier) => {
+      if (!isValidUsername(identifier)) return { items: [] }
+      try {
+        const following = await listAcceptedFeedFollowing(identifier)
+        return { items: following.map((f) => new URL(f.actor_uri)) }
+      } catch (error) {
+        if (isMissingDatabase(error)) return { items: [] }
+        throw error
+      }
+    })
+    .setCounter(async (_ctx, identifier) => {
+      if (!isValidUsername(identifier)) return 0
+      try {
+        return await countAcceptedFeedFollowing(identifier)
       } catch (error) {
         if (isMissingDatabase(error)) return 0
         throw error

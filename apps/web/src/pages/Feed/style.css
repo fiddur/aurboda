@@ -33,6 +33,116 @@
   color: #991b1b;
 }
 
+.feed-section-title {
+  margin: 1.5rem 0 0.75rem;
+  font-size: 1.1rem;
+}
+
+/* Following management panel. */
+.following-panel {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 0.875rem 1rem;
+  margin-bottom: 1rem;
+  background: #f9fafb;
+}
+
+.following-title {
+  margin: 0 0 0.6rem;
+  font-size: 1.05rem;
+}
+
+.following-form {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.following-input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 0.9rem;
+}
+
+.following-error {
+  margin: 0.5rem 0 0;
+  color: #991b1b;
+  font-size: 0.85rem;
+}
+
+.following-empty {
+  margin: 0.75rem 0 0;
+  color: #6b7280;
+  font-size: 0.9rem;
+}
+
+.following-list {
+  list-style: none;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.following-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.following-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: #e5e7eb;
+  flex-shrink: 0;
+}
+
+.following-avatar--blank {
+  display: inline-block;
+}
+
+.following-ident {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.following-name {
+  font-weight: 600;
+  color: #1f2937;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.following-handle {
+  font-size: 0.8rem;
+  color: #6b7280;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.following-pending {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #92400e;
+  background: #fef3c7;
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.following-unfollow {
+  flex-shrink: 0;
+}
+
 /* Native post card — mirrors how the post federates. */
 .feed-post {
   border: 1px solid #e5e7eb;
@@ -126,5 +236,24 @@
   .feed-empty {
     background: #1f2937;
     color: #d1d5db;
+  }
+
+  .following-panel {
+    border-color: #374151;
+    background: #1f2937;
+  }
+
+  .following-name {
+    color: #e5e7eb;
+  }
+
+  .following-input {
+    background: #111827;
+    border-color: #374151;
+    color: #e5e7eb;
+  }
+
+  .following-avatar {
+    background: #374151;
   }
 }
