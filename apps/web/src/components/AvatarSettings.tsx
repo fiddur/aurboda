@@ -47,8 +47,11 @@ export function AvatarSettings() {
   const src = `${avatarUrl(username)}${cacheBust ? `?t=${cacheBust}` : ''}`
 
   const onFileChange = (e: Event) => {
-    const file = (e.target as HTMLInputElement).files?.[0]
+    const input = e.target as HTMLInputElement
+    const file = input.files?.[0]
     if (file) uploadMut.mutate(file)
+    // Reset so re-picking the same file (e.g. retry after a failure) re-fires onChange.
+    input.value = ''
   }
 
   return (
