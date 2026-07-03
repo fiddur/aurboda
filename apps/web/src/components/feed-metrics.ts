@@ -31,6 +31,26 @@ export const SERIES_METRICS: { key: MetricType; label: string }[] = [
   { key: 'stress_level', label: 'Stress' },
 ]
 
+/** Fallback default summary selection when the activity's chart metrics aren't known. */
+export const DEFAULT_SUMMARY = ['duration', 'distance', 'heart_rate_avg', 'heart_rate_max', 'calories']
+
+/**
+ * Seed the share dialog's initial selection from the metrics currently shown on
+ * the activity's chart: `duration` (always) plus every summary whose source
+ * metric is on the chart, and the full series for each charted metric. Falls
+ * back to {@link DEFAULT_SUMMARY} (no series) when the chart selection is unknown.
+ */
+export const defaultsFromChart = (chartMetrics?: string[]): { summary: string[]; series: MetricType[] } => {
+  if (!chartMetrics || chartMetrics.length === 0) return { series: [], summary: DEFAULT_SUMMARY }
+  return {
+    series: SERIES_METRICS.filter((m) => chartMetrics.includes(m.key)).map((m) => m.key),
+    summary: [
+      'duration',
+      ...SUMMARY_METRICS.filter((m) => m.source && chartMetrics.includes(m.source)).map((m) => m.key),
+    ],
+  }
+}
+
 /** Human label for a stored `included_metrics` key (falls back to the raw key). */
 export const summaryLabel = (key: string): string => SUMMARY_METRICS.find((m) => m.key === key)?.label ?? key
 
