@@ -8,7 +8,7 @@
  */
 import type { DashboardConfig, DashboardSection, DashboardWidget, SectionType } from '@aurboda/api-spec'
 
-import { useState } from 'preact/hooks'
+import { useEffect, useState } from 'preact/hooks'
 
 import { DashboardEditor } from '../DashboardEditor'
 import { WidgetRenderer } from '../widgets'
@@ -24,6 +24,7 @@ function DashboardSectionComponent({
   onAddWidgetClick,
   onDeleteSection,
   onRenameSection,
+  onDescriptionChange,
 }: {
   section: DashboardSection
   isEditing: boolean
@@ -33,10 +34,20 @@ function DashboardSectionComponent({
   onAddWidgetClick?: () => void
   onDeleteSection?: () => void
   onRenameSection?: (title: string) => void
+  onDescriptionChange?: (description: string | undefined) => void
 }) {
   const [collapsed, setCollapsed] = useState(section.collapsed ?? false)
   const [editingTitle, setEditingTitle] = useState(false)
   const [titleDraft, setTitleDraft] = useState(section.title)
+  const [descDraft, setDescDraft] = useState(section.description ?? '')
+  // Re-sync the draft when the underlying value changes (e.g. reset elsewhere),
+  // so a stale draft can't re-persist removed text on blur.
+  useEffect(() => setDescDraft(section.description ?? ''), [section.description])
+
+  const commitDescription = () => {
+    const next = descDraft.trim() || undefined
+    if (next !== section.description) onDescriptionChange?.(next)
+  }
 
   const gridClass =
     section.type === 'links' ? 'links-grid' : section.type === 'charts' ? 'charts-grid' : 'metrics-grid'
@@ -112,6 +123,18 @@ function DashboardSectionComponent({
           </div>
         )}
       </div>
+      {isEditing ? (
+        <textarea
+          class="section-intro-input"
+          value={descDraft}
+          placeholder="Optional intro text shown above this section…"
+          onInput={(e) => setDescDraft((e.target as HTMLTextAreaElement).value)}
+          onBlur={commitDescription}
+          rows={2}
+        />
+      ) : section.description ? (
+        <p class="section-intro">{section.description}</p>
+      ) : null}
       {!collapsed && (
         <div class={gridClass}>
           {section.widgets.map((widget, index) => (
@@ -273,6 +296,23 @@ interface EditableDashboardProps {
 export function EditableDashboard({ config, isEditing, onChange, boardId }: EditableDashboardProps) {
   const [showWidgetPicker, setShowWidgetPicker] = useState<string | null>(null) // section id or null
   const [showAddSection, setShowAddSection] = useState(false)
+  const [descDraft, setDescDraft] = useState(config.description ?? '')
+  // Re-sync when config changes under a still-mounted editor (home "Reset to
+  // Default", or navigating between shared dashboards), so the draft can't go
+  // stale and re-persist stale text on blur.
+  useEffect(() => setDescDraft(config.description ?? ''), [config.description])
+
+  const commitDescription = () => {
+    const next = descDraft.trim() || undefined
+    if (next !== config.description) onChange({ ...config, description: next })
+  }
+
+  const handleSectionDescription = (sectionId: string, description: string | undefined) => {
+    onChange({
+      ...config,
+      sections: config.sections.map((s) => (s.id === sectionId ? { ...s, description } : s)),
+    })
+  }
 
   const handleRemoveWidget = (sectionId: string, widgetId: string) => {
     onChange({
@@ -347,6 +387,19 @@ export function EditableDashboard({ config, isEditing, onChange, boardId }: Edit
 
   return (
     <div class="sections-grid">
+      {isEditing ? (
+        <textarea
+          class="dashboard-intro-input"
+          value={descDraft}
+          placeholder="Optional dashboard description — shown on the page and in link previews…"
+          onInput={(e) => setDescDraft((e.target as HTMLTextAreaElement).value)}
+          onBlur={commitDescription}
+          rows={2}
+        />
+      ) : config.description ? (
+        <p class="dashboard-intro">{config.description}</p>
+      ) : null}
+
       {config.sections.map((section) => (
         <DashboardSectionComponent
           key={section.id}
@@ -358,6 +411,7 @@ export function EditableDashboard({ config, isEditing, onChange, boardId }: Edit
           onAddWidgetClick={() => setShowWidgetPicker(section.id)}
           onDeleteSection={() => handleDeleteSection(section.id)}
           onRenameSection={(title) => handleRenameSection(section.id, title)}
+          onDescriptionChange={(description) => handleSectionDescription(section.id, description)}
         />
       ))}
 

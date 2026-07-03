@@ -89,6 +89,9 @@ get the full SPA and hydrate normally — only the head is enriched.
 
 - **Dashboards** and **challenges** get a title (resource name), a description, and
   a canonical URL; profiles get a `profile`-typed card with `ProfilePage` JSON-LD.
+  A dashboard's description uses the author-provided text when set (see
+  [Dashboard → Descriptive text](./dashboard.md#descriptive-text)), else a generated
+  fallback.
 - Every public resource has a **dynamically rendered 1200×630 preview image** at
   `<resource-url>/opengraph-image.png`. Satori renders a branded card (title +
   DASHBOARD/CHALLENGE/PROFILE eyebrow + the owner's avatar + Aurboda wordmark) to
