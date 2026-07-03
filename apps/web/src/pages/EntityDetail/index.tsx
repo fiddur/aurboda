@@ -295,6 +295,9 @@ const ActivityDetailContent = ({
   // Badge link: exercise sub-type or activity type
   const badgeHref = `/activity-type/${encodeURIComponent(exerciseType ?? activity.activity_type)}`
 
+  // User-typed description (first comment), shown as a markdown block under the title
+  const description = getUserNotesContent(activity)
+
   return (
     <>
       {hasSourceRecords && (
@@ -331,10 +334,10 @@ const ActivityDetailContent = ({
           durationLabel={hasSleepStages ? 'In Bed' : undefined}
         />
 
-        {!isEditing && getUserNotesContent(activity) && (
+        {!isEditing && description && (
           <div
             class="entity-description note-content"
-            dangerouslySetInnerHTML={{ __html: marked.parse(getUserNotesContent(activity)) as string }}
+            dangerouslySetInnerHTML={{ __html: marked.parse(description) as string }}
           />
         )}
 
