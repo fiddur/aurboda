@@ -282,8 +282,11 @@ export const renderRoutePng = async (
     try {
       const map = await renderRouteWithBasemap(pts, bbox, opts.fetchTile)
       if (map) return map
-    } catch {
-      // Any compositing/fetch failure falls back to the bare shape below.
+    } catch (error) {
+      // Fall back to the bare shape below. Log it: a bare shape is also the
+      // *offline* fallback, so a genuine basemap regression would otherwise
+      // silently degrade every route map with no signal.
+      console.warn('⚠️ route basemap render failed, using bare shape:', error)
     }
   }
   return renderBareRoute(pts, bbox)
