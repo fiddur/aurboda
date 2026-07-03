@@ -24,14 +24,19 @@ export const ShareActivityButton = ({
   const [open, setOpen] = useState(false)
   return (
     <>
-      <button
-        type="button"
-        class="btn-secondary"
-        onClick={() => setOpen(true)}
-        title="Share this activity to your federated feed"
-      >
-        Share to feed
-      </button>
+      {/* Wrap in `.entity-actions` (like ResyncDetailButton) so the button sits
+          compactly in an action row instead of stretching full-width as a bare
+          flex child of the detail page column (#872). */}
+      <div class="entity-actions">
+        <button
+          type="button"
+          class="btn-secondary"
+          onClick={() => setOpen(true)}
+          title="Share this activity to your federated feed"
+        >
+          Share to feed
+        </button>
+      </div>
       {open && (
         <ShareActivityDialog
           activityId={activityId}

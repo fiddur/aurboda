@@ -103,6 +103,11 @@ export const socialTables: Record<string, string> = {
   // endpoint. `activity_id` is a soft reference (no FK): activities are
   // soft-deleted, and the series endpoint re-checks `deleted_at` at query time,
   // so a removed activity simply stops resolving.
+  // `image_token` is an unguessable per-post capability token. A `followers`-only
+  // post's rendered chart/route image URLs carry it (`?token=…`), so a follower's
+  // server can fetch them even though the endpoint is otherwise unauthenticated —
+  // the fediverse fetches media without HTTP signatures, so a signed-request gate
+  // wouldn't be exercised. `public`/`unlisted` images need no token.
   feed_posts: `
     CREATE TABLE IF NOT EXISTS feed_posts (
       id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -112,6 +117,7 @@ export const socialTables: Record<string, string> = {
       visibility        VARCHAR(12) NOT NULL DEFAULT 'public',
       include_map       BOOLEAN NOT NULL DEFAULT false,
       include_chart     BOOLEAN NOT NULL DEFAULT false,
+      image_token       TEXT NOT NULL DEFAULT gen_random_uuid()::text,
       created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
