@@ -48,9 +48,9 @@ export const renderChartPng = async (
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${CHART_W}" height="${CHART_H}" viewBox="0 0 ${CHART_W} ${CHART_H}">
   <rect width="${CHART_W}" height="${CHART_H}" fill="#0b0f19" rx="16"/>
   ${pts.length >= 2 ? `<polyline points="${polyline}" fill="none" stroke="${color}" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>` : ''}
-  <text x="${PAD}" y="${PAD - 12}" fill="#e5e7eb" font-family="sans-serif" font-size="26" font-weight="700">${escapeXml(opts.label ?? 'Heart rate')}</text>
-  <text x="${CHART_W - PAD}" y="${PAD}" fill="#9ca3af" font-family="sans-serif" font-size="22" text-anchor="end">${Number.isFinite(vMax) ? Math.round(vMax) : ''}</text>
-  <text x="${CHART_W - PAD}" y="${CHART_H - PAD}" fill="#9ca3af" font-family="sans-serif" font-size="22" text-anchor="end">${Number.isFinite(vMin) ? Math.round(vMin) : ''}</text>
+  <text x="${PAD}" y="${PAD - 12}" fill="#e5e7eb" font-family="Liberation Sans, sans-serif" font-size="26" font-weight="700">${escapeXml(opts.label ?? 'Heart rate')}</text>
+  <text x="${CHART_W - PAD}" y="${PAD}" fill="#9ca3af" font-family="Liberation Sans, sans-serif" font-size="22" text-anchor="end">${Number.isFinite(vMax) ? Math.round(vMax) : ''}</text>
+  <text x="${CHART_W - PAD}" y="${CHART_H - PAD}" fill="#9ca3af" font-family="Liberation Sans, sans-serif" font-size="22" text-anchor="end">${Number.isFinite(vMin) ? Math.round(vMin) : ''}</text>
 </svg>`
   return svgToPng(svg)
 }

@@ -26,8 +26,9 @@ RUN pnpm --filter @aurboda/api-spec generate:openapi && pnpm --filter @aurboda/a
 # Production stage
 FROM node:25-alpine
 
-# Install nginx
-RUN apk add --no-cache nginx
+# Install nginx + fontconfig (librsvg, via sharp, needs a registered font to
+# rasterize SVG <text> in server-rendered images — the base image ships none).
+RUN apk add --no-cache nginx fontconfig
 
 # Install pnpm
 RUN npm install -g pnpm@10
@@ -46,6 +47,12 @@ COPY --from=builder /app/packages/api-spec/dist ./packages/api-spec/dist
 # Copy backend source (Node 25 runs TypeScript directly via built-in type stripping)
 COPY tsconfig.json ./
 COPY apps/backend/src ./apps/backend/src
+
+# Register the bundled Liberation fonts so librsvg/sharp can render SVG text
+# (feed chart images) instead of tofu boxes — the base image has no fonts.
+RUN mkdir -p /usr/share/fonts/liberation \
+ && cp apps/backend/src/assets/fonts/*.ttf /usr/share/fonts/liberation/ \
+ && fc-cache -f
 
 # Copy built web frontend
 COPY --from=builder /app/apps/web/dist /usr/share/nginx/html
