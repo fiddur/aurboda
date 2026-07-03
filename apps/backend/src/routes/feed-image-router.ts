@@ -1,17 +1,21 @@
+import { type Response, Router } from 'express'
 /**
  * Public feed-post image endpoints (UNAUTHENTICATED).
  *
  * Handles: GET /public/:username/feed/:postId/chart.png
  *          GET /public/:username/feed/:postId/route.png
  *
- * Rendered on demand from the shared activity's data. Like the public `/series`
- * endpoint there is no auth token, so the gating below is the whole privacy
- * boundary: an image is served only for a `public`/`unlisted` post that opted
- * into that attachment (`include_chart` / `include_map`). `no-store` keeps the
- * images revocable (unshare / flip to followers / clear the flag takes effect
- * immediately). Mounted before the generic `/public/:username/:slug` resolver.
+ * Rendered on demand from the shared activity's data. An image is served for a
+ * `public`/`unlisted` post that opted into that attachment (`include_chart` /
+ * `include_map`); a `followers`-only post is served only when the request carries
+ * the post's unguessable capability `?token=` (embedded solely in the Note
+ * delivered to followers — #893), since the fediverse fetches media unsigned and
+ * a signed-request gate wouldn't be exercised. `no-store` keeps the images
+ * revocable (unshare / clear the flag / flip a public post to followers all take
+ * effect immediately — the untoken'd public URL then 404s). Mounted before the
+ * generic `/public/:username/:slug` resolver.
  */
-import { type Response, Router } from 'express'
+import { timingSafeEqual } from 'node:crypto'
 
 import type { FeedPostRecord } from '../db/index.ts'
 
@@ -20,6 +24,22 @@ import { isMissingDatabase } from '../db/index.ts'
 import { isPubliclyVisible } from '../services/activitypub/object.ts'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/** Constant-time string compare (avoids leaking the token via response timing). */
+const tokenMatches = (provided: string, expected: string): boolean => {
+  const a = Buffer.from(provided)
+  const b = Buffer.from(expected)
+  return a.length === b.length && timingSafeEqual(a, b)
+}
+
+/**
+ * Whether an image request may see this post: `public`/`unlisted` are always
+ * served; a `followers`-only post is served only when the request carries the
+ * post's unguessable capability token (`?token=…`), which is embedded only in
+ * the Note delivered to followers (#893).
+ */
+const isImageAuthorized = (post: FeedPostRecord, token: string | undefined): boolean =>
+  isPubliclyVisible(post.visibility) || (token != null && tokenMatches(token, post.image_token))
 
 /** The window an image renders over. */
 export interface ImageActivity {
@@ -73,15 +93,17 @@ export const createRenderCache = (maxEntries = 200) => {
 
 /**
  * Resolve the activity window an image may render over, or `null` if the request
- * isn't eligible: invalid username / non-UUID id, missing DB, missing or
- * non-public post, the attachment flag not opted in, no linked activity, or an
- * open-ended activity (no bounded window). Pure of Express — unit-testable.
+ * isn't eligible: invalid username / non-UUID id, missing DB, missing post, a
+ * `followers`-only post without a matching capability `token`, the attachment
+ * flag not opted in, no linked activity, or an open-ended activity (no bounded
+ * window). Pure of Express — unit-testable.
  */
 export const resolveImageWindow = async (
   deps: Pick<FeedImageDeps, 'getPost' | 'getActivity'>,
   username: string,
   postId: string,
   flag: 'include_chart' | 'include_map',
+  token?: string,
 ): Promise<ImageActivity | null> => {
   if (!isValidUsername(username) || !UUID_RE.test(postId)) return null
   let post: FeedPostRecord | null
@@ -91,7 +113,7 @@ export const resolveImageWindow = async (
     if (isMissingDatabase(error)) return null
     throw error
   }
-  if (post == null || !isPubliclyVisible(post.visibility) || !post[flag] || post.activity_id == null) {
+  if (post == null || !isImageAuthorized(post, token) || !post[flag] || post.activity_id == null) {
     return null
   }
   const activity = await deps.getActivity(username, post.activity_id)
@@ -114,7 +136,8 @@ export const createFeedImageRouter = (deps: FeedImageDeps): Router => {
 
   router.get('/public/:username/feed/:postId/chart.png', async (req, res) => {
     const { postId, username } = req.params
-    const activity = await resolveImageWindow(deps, username, postId, 'include_chart')
+    const token = typeof req.query.token === 'string' ? req.query.token : undefined
+    const activity = await resolveImageWindow(deps, username, postId, 'include_chart', token)
     if (!activity?.end_time) return notFound(res)
     const { end_time, start_time } = activity
     const png = await cached(`chart:${username}:${postId}`, async () => {
@@ -127,7 +150,8 @@ export const createFeedImageRouter = (deps: FeedImageDeps): Router => {
 
   router.get('/public/:username/feed/:postId/route.png', async (req, res) => {
     const { postId, username } = req.params
-    const activity = await resolveImageWindow(deps, username, postId, 'include_map')
+    const token = typeof req.query.token === 'string' ? req.query.token : undefined
+    const activity = await resolveImageWindow(deps, username, postId, 'include_map', token)
     if (!activity?.end_time) return notFound(res)
     const { end_time, start_time } = activity
     const png = await cached(`route:${username}:${postId}`, async () => {

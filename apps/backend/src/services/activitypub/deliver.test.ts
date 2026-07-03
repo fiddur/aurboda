@@ -34,6 +34,7 @@ describe('buildFeedDelete', () => {
   const deliverablePost = (visibility: DeliverablePost['visibility']): DeliverablePost => ({
     created_at: new Date('2026-07-01T00:00:00Z'),
     id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    image_token: 'secret-token',
     include_chart: false,
     include_map: false,
     included_metrics: [],
@@ -77,6 +78,7 @@ describe('imageAttachments', () => {
   const post = (overrides: Partial<DeliverablePost>): DeliverablePost => ({
     created_at: new Date('2026-07-01T00:00:00Z'),
     id: POST_ID,
+    image_token: 'secret-token',
     include_chart: false,
     include_map: false,
     included_metrics: [],
@@ -85,7 +87,7 @@ describe('imageAttachments', () => {
     ...overrides,
   })
 
-  test('attaches only the opted-in images, at the public endpoints', () => {
+  test('attaches only the opted-in images, at the public endpoints (no token for public)', () => {
     const chartOnly = imageAttachments(apiBaseUrl, 'fiddur', post({ include_chart: true }))
     expect(chartOnly.map((a) => a.url?.href)).toEqual([`${base}/chart.png`])
 
@@ -93,13 +95,21 @@ describe('imageAttachments', () => {
     expect(both.map((a) => a.url?.href)).toEqual([`${base}/chart.png`, `${base}/route.png`])
   })
 
-  test('attaches nothing for a followers-only post (image endpoint is unauthenticated)', () => {
+  test('attaches unlisted images without a token', () => {
+    const atts = imageAttachments(apiBaseUrl, 'fiddur', post({ include_chart: true, visibility: 'unlisted' }))
+    expect(atts.map((a) => a.url?.href)).toEqual([`${base}/chart.png`])
+  })
+
+  test('attaches followers-only images carrying the capability token (#893)', () => {
     const atts = imageAttachments(
       apiBaseUrl,
       'fiddur',
       post({ include_chart: true, include_map: true, visibility: 'followers' }),
     )
-    expect(atts).toEqual([])
+    expect(atts.map((a) => a.url?.href)).toEqual([
+      `${base}/chart.png?token=secret-token`,
+      `${base}/route.png?token=secret-token`,
+    ])
   })
 
   test('attaches nothing when neither flag is set', () => {

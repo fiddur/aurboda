@@ -22,6 +22,8 @@ export interface FeedPostRecord {
   visibility: FeedVisibility
   include_map: boolean
   include_chart: boolean
+  /** Unguessable capability token for `followers`-only image URLs (see schema). */
+  image_token: string
   created_at: Date
   updated_at: Date
 }
@@ -44,7 +46,7 @@ export interface FeedPostPatch {
 }
 
 const FEED_POST_COLUMNS =
-  'id, activity_id, included_metrics, series_metrics, visibility, include_map, include_chart, created_at, updated_at'
+  'id, activity_id, included_metrics, series_metrics, visibility, include_map, include_chart, image_token, created_at, updated_at'
 
 interface FeedPostRow {
   id: string
@@ -54,6 +56,7 @@ interface FeedPostRow {
   visibility: FeedVisibility
   include_map: boolean
   include_chart: boolean
+  image_token: string
   created_at: Date
   updated_at: Date
 }

@@ -55,6 +55,8 @@ export interface DeliverablePost {
   include_chart: boolean
   /** Attach a rendered GPS route-map image. */
   include_map: boolean
+  /** Capability token appended to `followers`-only image URLs (see `imageAttachments`). */
+  image_token: string
 }
 
 /**
@@ -63,16 +65,18 @@ export interface DeliverablePost {
  * built against the actor's origin so it matches the deployed API base. Fedify's
  * `Image` carries `url` + `mediaType` + intrinsic size so Mastodon lays it out.
  *
- * Only `public`/`unlisted` posts get attachments: the image endpoint is
- * unauthenticated and (like the object/series endpoints) refuses `followers`-only
- * posts, so attaching a URL that would 404 for a follower is worse than omitting
- * it. (Authenticated per-follower image delivery is a possible later slice.)
+ * `public`/`unlisted` images are served unauthenticated. A `followers`-only
+ * post's URLs instead carry the post's unguessable **capability token**
+ * (`?token=…`): the fediverse fetches media without HTTP signatures, so the
+ * endpoint can't verify a signed request — the token is what lets a follower's
+ * server fetch the image while an untoken'd guess 404s. The token is only ever
+ * embedded in the Note delivered to followers, never in the public object/outbox.
  */
 export const imageAttachments = (apiBaseUrl: string, user: string, post: DeliverablePost): Image[] => {
-  if (!isPubliclyVisible(post.visibility)) return []
   // Same base as the series links (feed-activity.ts) — the configured API base,
   // NOT a hardcoded `<origin>/api`, so it stays correct if the two ever diverge.
   const base = `${apiBaseUrl.replace(/\/+$/, '')}/public/${encodeURIComponent(user)}/feed/${post.id}`
+  const query = isPubliclyVisible(post.visibility) ? '' : `?token=${encodeURIComponent(post.image_token)}`
   const images: Image[] = []
   if (post.include_chart) {
     images.push(
@@ -80,7 +84,7 @@ export const imageAttachments = (apiBaseUrl: string, user: string, post: Deliver
         height: 420,
         mediaType: 'image/png',
         name: 'Heart rate',
-        url: new URL(`${base}/chart.png`),
+        url: new URL(`${base}/chart.png${query}`),
         width: 1000,
       }),
     )
@@ -91,7 +95,7 @@ export const imageAttachments = (apiBaseUrl: string, user: string, post: Deliver
         height: 700,
         mediaType: 'image/png',
         name: 'Route',
-        url: new URL(`${base}/route.png`),
+        url: new URL(`${base}/route.png${query}`),
         width: 700,
       }),
     )

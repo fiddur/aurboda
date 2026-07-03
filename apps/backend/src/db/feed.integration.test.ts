@@ -76,6 +76,17 @@ describe('Feed posts integration', () => {
     expect(await getFeedPostById(user, '00000000-0000-0000-0000-000000000000')).toBeNull()
   })
 
+  test('assigns an unguessable image_token that round-trips (#893)', async () => {
+    const user = getTestUser()
+    const created = await createFeedPost(user, postInput())
+    // Non-empty and unguessable (a UUID by default).
+    expect(created.image_token).toMatch(/^[0-9a-f-]{36}$/)
+    // Distinct per post, and stable on re-read.
+    const other = await createFeedPost(user, postInput())
+    expect(other.image_token).not.toBe(created.image_token)
+    expect((await getFeedPostById(user, created.id))?.image_token).toBe(created.image_token)
+  })
+
   test('lists posts newest-first', async () => {
     const user = getTestUser()
     const first = await createFeedPost(user, postInput())

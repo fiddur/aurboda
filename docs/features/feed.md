@@ -121,16 +121,22 @@ GET /api/public/:username/feed/:postId/chart.png
 GET /api/public/:username/feed/:postId/route.png
 ```
 
-The gating mirrors the object endpoint (public/unlisted only, and only when the
-matching flag was opted into) and responses are `no-store` so an unshare/visibility
-change takes effect immediately. A `followers`-only post therefore carries **no** image
-attachments — the endpoint is unauthenticated and can't safely serve them, so attaching
-a URL that would 404 for a follower is omitted (authenticated per-follower delivery is a
-possible later slice). The route is drawn as a bare, aspect-correct shape —
-no street basemap (a later enhancement) and **no privacy trimming** (area masking is a
-planned follow-up), so a public route map reveals the approximate area. The share
-dialog only offers the chart toggle when the activity has heart-rate data and the map
-toggle when it has an actual GPS track.
+An image is served when the matching flag was opted into. `public`/`unlisted` posts
+serve their images unauthenticated. A `followers`-only post's image URLs instead carry
+the post's **unguessable capability token** (`?token=<image_token>`), which is embedded
+only in the `Note` delivered to followers; a request without a matching token 404s. This
+is a deliberate capability-URL model (like the shared-dashboard slugs), chosen because
+the fediverse fetches media **without** HTTP signatures — Mastodon's "authorized fetch"
+signs ActivityPub object/actor requests, not media downloads — so a signed-request gate
+wouldn't be exercised and followers would just see a broken image. The tradeoff is that a
+leaked image URL grants access to that one rendered image (a chart or a bare route shape,
+not the underlying high-resolution series, which stays `followers`-excluded entirely).
+Responses are `no-store`, so an unshare / cleared flag / a public→followers flip takes
+effect immediately (the now-untoken'd public URL 404s). The route is drawn as a bare,
+aspect-correct shape — no street basemap (a later enhancement) and **no privacy trimming**
+(area masking is a planned follow-up), so a route map reveals the approximate area. The
+share dialog only offers the chart toggle when the activity has heart-rate data and the
+map toggle when it has an actual GPS track.
 
 ## Public series endpoint (the privacy boundary)
 
@@ -186,8 +192,8 @@ Public / federation (unauthenticated):
 | Method & path                                  | Purpose                                                     |
 | ---------------------------------------------- | ----------------------------------------------------------- |
 | `GET /public/:username/series`                 | Bucketed samples for a **shared** series within its window  |
-| `GET /public/:username/feed/:postId/chart.png` | Rendered HR chart for an opted-in post                      |
-| `GET /public/:username/feed/:postId/route.png` | Rendered GPS route map for an opted-in post                 |
+| `GET /public/:username/feed/:postId/chart.png` | Rendered HR chart for an opted-in post (`?token=` for followers-only) |
+| `GET /public/:username/feed/:postId/route.png` | Rendered GPS route map for an opted-in post (`?token=` for followers-only) |
 | `GET /.well-known/webfinger`                   | Resolve `acct:<username>@<host>` → the actor                |
 | `GET /users/:username`                         | The actor document (`Person`)                               |
 | `GET /users/:username/outbox`                  | Public + unlisted posts as `Create` activities              |
@@ -205,7 +211,9 @@ Feed posts live in the user's own database in the `feed_posts` table. `activity_
 **soft reference** (no foreign key): activities are soft-deleted and the series lookup
 re-checks `deleted_at` at query time, so a removed activity simply stops resolving rather
 than cascading a delete. A GIN index over `series_metrics` backs the public series
-endpoint's authorization check. Deleting a `public`/`unlisted` post hard-deletes its row
+endpoint's authorization check. Each post also holds an unguessable `image_token`
+(defaulted at insert) that gates its `followers`-only image URLs. Deleting a
+`public`/`unlisted` post hard-deletes its row
 and, in the same statement, records its id in `feed_tombstone` so the object id can still
 answer `410 Gone`. Followers live in `feed_follower`; the actor's RSA keypair in
 `feed_actor`.

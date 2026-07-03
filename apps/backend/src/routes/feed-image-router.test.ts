@@ -16,6 +16,7 @@ const makePost = (overrides: Partial<FeedPostRecord> = {}): FeedPostRecord => ({
   activity_id: ACTIVITY_ID,
   created_at: new Date('2026-07-01T08:00:00Z'),
   id: POST_ID,
+  image_token: 'secret-token',
   include_chart: true,
   include_map: true,
   included_metrics: [],
@@ -44,9 +45,29 @@ describe('resolveImageWindow', () => {
     expect(await resolveImageWindow(deps(null), 'fiddur', POST_ID, 'include_chart')).toBeNull()
   })
 
-  test('null for a followers-only post', async () => {
-    const post = makePost({ visibility: 'followers' })
+  test('null for a followers-only post without a token', async () => {
+    const post = makePost({ image_token: 'secret-token', visibility: 'followers' })
     expect(await resolveImageWindow(deps(post), 'fiddur', POST_ID, 'include_chart')).toBeNull()
+  })
+
+  test('null for a followers-only post with the wrong token', async () => {
+    const post = makePost({ image_token: 'secret-token', visibility: 'followers' })
+    expect(await resolveImageWindow(deps(post), 'fiddur', POST_ID, 'include_chart', 'wrong')).toBeNull()
+    // A prefix of the real token must not pass (length-checked constant-time compare).
+    expect(await resolveImageWindow(deps(post), 'fiddur', POST_ID, 'include_chart', 'secret')).toBeNull()
+  })
+
+  test('resolves a followers-only post when the capability token matches (#893)', async () => {
+    const post = makePost({ image_token: 'secret-token', visibility: 'followers' })
+    expect(await resolveImageWindow(deps(post), 'fiddur', POST_ID, 'include_chart', 'secret-token')).toEqual(
+      activity,
+    )
+  })
+
+  test('a token is ignored for a public post (already unauthenticated)', async () => {
+    expect(
+      await resolveImageWindow(deps(makePost()), 'fiddur', POST_ID, 'include_chart', 'anything'),
+    ).toEqual(activity)
   })
 
   test('null when the requested attachment was not opted into', async () => {
