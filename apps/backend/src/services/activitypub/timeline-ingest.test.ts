@@ -126,4 +126,24 @@ describe('noteToTimelineInput', () => {
     })
     expect(noteToTimelineInput(note, author)?.object_uri).toBe('https://mastodon.example/notes/10')
   })
+
+  test('clamps a far-future published_at to now (anti-pin), leaving past timestamps intact', () => {
+    const now = new Date('2026-07-02T12:00:00Z').getTime()
+    const future = new Note({
+      content: '<p>pinned</p>',
+      id: new URL('https://mastodon.example/notes/11'),
+      published: published('3000-01-01T00:00:00Z'),
+    })
+    expect(noteToTimelineInput(future, author, now)?.published_at.toISOString()).toBe(
+      '2026-07-02T12:00:00.000Z',
+    )
+    const past = new Note({
+      content: '<p>ok</p>',
+      id: new URL('https://mastodon.example/notes/12'),
+      published: published('2026-07-01T08:00:00Z'),
+    })
+    expect(noteToTimelineInput(past, author, now)?.published_at.toISOString()).toBe(
+      '2026-07-01T08:00:00.000Z',
+    )
+  })
 })

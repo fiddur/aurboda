@@ -78,7 +78,11 @@ export const sanitizeRemoteHtml = (html: string): string =>
  * the sender-scoped inbound `Delete`. The author's presentation (handle / name /
  * avatar) comes from the cached `feed_following` row (no extra network).
  */
-export const noteToTimelineInput = (note: Note, author: FeedFollowingRecord): TimelineEntryInput | null => {
+export const noteToTimelineInput = (
+  note: Note,
+  author: FeedFollowingRecord,
+  now: number = Date.now(),
+): TimelineEntryInput | null => {
   if (note.id == null || note.published == null) return null
   // The sender (this Note's author) is `author.actor_uri` — the accepted followee
   // the inbox handler looked up by the activity's actor id.
@@ -86,6 +90,10 @@ export const noteToTimelineInput = (note: Note, author: FeedFollowingRecord): Ti
   if (note.id.host !== senderHost) return null
   const attributions = note.attributionIds
   if (attributions.length > 0 && !attributions.some((uri) => uri.href === author.actor_uri)) return null
+  // Clamp `published_at` to "not in the future": it's the timeline sort key, so a
+  // far-future timestamp would otherwise let a followed actor pin a post to the top
+  // indefinitely (and re-pin via Update). Same guard Mastodon applies on ingest.
+  const publishedAt = temporalInstantToDate(note.published)
   return {
     actor_uri: author.actor_uri,
     avatar_url: author.avatar_url,
@@ -93,7 +101,7 @@ export const noteToTimelineInput = (note: Note, author: FeedFollowingRecord): Ti
     display_name: author.display_name,
     handle: author.handle,
     object_uri: note.id.href,
-    published_at: temporalInstantToDate(note.published),
+    published_at: new Date(Math.min(publishedAt.getTime(), now)),
     url: note.url instanceof URL ? note.url.href : note.id.href,
   }
 }
