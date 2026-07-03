@@ -120,7 +120,8 @@ export const buildDashboardShareMeta = ({
   description,
 }: DashboardMetaInput): ShareMeta => ({
   description: clampDescription(
-    description ?? `${name} — a public dashboard shared by ${username} on ${SITE_NAME}.`,
+    // A stored empty/whitespace description (possible via the API) falls back.
+    description?.trim() ? description : `${name} — a public dashboard shared by ${username} on ${SITE_NAME}.`,
   ),
   image: resourceOgImage(url),
   imageAlt: `${SITE_NAME} dashboard: ${name}`,

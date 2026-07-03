@@ -127,12 +127,15 @@ function ReadOnlyDashboard({
         </a>
       </div>
 
+      {config.description ? <p class="dashboard-intro">{config.description}</p> : null}
+
       <div class="sections-grid">
         {config.sections.map((section) => (
           <section key={section.id} class="metrics-section">
             <div class="section-header">
               <h2>{section.title}</h2>
             </div>
+            {section.description ? <p class="section-intro">{section.description}</p> : null}
             <div class={gridClass(section.type)}>
               {section.widgets.map((widget) => (
                 <PublicWidgetRenderer key={widget.id} widget={widget} data={widgetData?.[widget.id]} />

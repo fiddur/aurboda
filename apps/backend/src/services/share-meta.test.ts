@@ -89,6 +89,17 @@ describe('builders', () => {
     expect(m.description).toContain('Training')
   })
 
+  test('dashboard meta falls back when the description is empty/whitespace', () => {
+    const m = buildDashboardShareMeta({
+      description: '   ',
+      name: 'Training',
+      url: 'https://aurboda.net/u/fiddur/abc',
+      username: 'fiddur',
+    })
+    expect(m.description).toContain('Training')
+    expect(m.description.trim()).not.toBe('')
+  })
+
   test('dashboard meta prefers an author description', () => {
     const m = buildDashboardShareMeta({
       description: 'Two years of training and effect.',

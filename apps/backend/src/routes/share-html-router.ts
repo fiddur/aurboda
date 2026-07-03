@@ -30,6 +30,8 @@ import { buildProfileUrl, buildShareUrl } from '../services/share-urls.ts'
 interface ResolvedResource {
   name: string
   is_public: boolean
+  /** Author-provided description (dashboards only), for the meta description. */
+  description?: string
 }
 
 export interface ShareHtmlDeps {
@@ -78,7 +80,13 @@ export const createShareResolvers = (): Pick<
   resolveDashboard: async (username, slug) => {
     try {
       const dashboard = await getSharedDashboardBySlug(username, slug)
-      return dashboard ? { is_public: dashboard.is_public, name: dashboard.name } : null
+      return dashboard
+        ? {
+            description: dashboard.config.description,
+            is_public: dashboard.is_public,
+            name: dashboard.name,
+          }
+        : null
     } catch (error) {
       if (isMissingDatabase(error)) return null
       throw error
@@ -129,7 +137,12 @@ export const createShareHtmlRouter = (deps: ShareHtmlDeps): Router => {
     if (dashboard?.is_public) {
       return sendHtml(
         loadTemplate,
-        buildDashboardShareMeta({ name: dashboard.name, url, username }),
+        buildDashboardShareMeta({
+          description: dashboard.description,
+          name: dashboard.name,
+          url,
+          username,
+        }),
         true,
         res,
       )

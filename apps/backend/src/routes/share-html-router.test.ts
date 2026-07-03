@@ -34,6 +34,20 @@ describe('GET /u/:username/:slug', () => {
     expect(res.headers['cache-control']).toBe('public, max-age=300')
   })
 
+  test("uses the dashboard's author description in the meta when present", async () => {
+    const app = buildApp({
+      resolveDashboard: async () => ({
+        description: 'Two years of training and its effect on sleep.',
+        is_public: true,
+        name: 'My Training',
+      }),
+    })
+    const res = await supertest(app).get('/u/fiddur/abc123')
+    expect(res.text).toContain(
+      'property="og:description" content="Two years of training and its effect on sleep."',
+    )
+  })
+
   test('does not leak an unlisted (non-public) dashboard name', async () => {
     const app = buildApp({
       resolveDashboard: async () => ({ is_public: false, name: 'Secret Dashboard' }),
