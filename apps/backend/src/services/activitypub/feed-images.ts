@@ -25,6 +25,29 @@ const PAD = 40
 const ROUTE_BG = '#0b0f19'
 /** Guard against a pathological tile grid (chooseZoom keeps the route ≤ ~3 tiles wide). */
 const MAX_TILES = 25
+/** Max concurrent tile fetches — OSM's tile policy asks for ≤ ~2 connections. */
+const TILE_FETCH_CONCURRENCY = 2
+
+/**
+ * Map over `items` running at most `limit` async calls at once, preserving order.
+ * A tiny fixed-pool scheduler — no big `Promise.all` burst.
+ */
+const mapWithConcurrency = async <T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> => {
+  const results = Array.from<R>({ length: items.length })
+  let next = 0
+  const worker = async (): Promise<void> => {
+    while (next < items.length) {
+      const i = next++
+      results[i] = await fn(items[i])
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker))
+  return results
+}
 
 const svgToPng = (svg: string): Promise<Buffer> => sharp(Buffer.from(svg)).png().toBuffer()
 
@@ -159,13 +182,18 @@ const renderRouteWithBasemap = async (
   const rows = tileMaxY - tileMinY + 1
   if (cols * rows > MAX_TILES) return null
 
-  const jobs: Promise<{ tx: number; ty: number; buf: Buffer | null }>[] = []
+  const coords: { tx: number; ty: number }[] = []
   for (let tx = tileMinX; tx <= tileMaxX; tx++) {
-    for (let ty = tileMinY; ty <= tileMaxY; ty++) {
-      jobs.push(fetchTile(zoom, tx, ty).then((buf) => ({ buf, tx, ty })))
-    }
+    for (let ty = tileMinY; ty <= tileMaxY; ty++) coords.push({ tx, ty })
   }
-  const tiles = await Promise.all(jobs)
+  // Fetch through a small pool (not one big burst): OSM's tile policy asks for at
+  // most ~2 concurrent download connections. Renders are cached per post, so the
+  // extra latency is paid at most once per route.
+  const tiles = await mapWithConcurrency(coords, TILE_FETCH_CONCURRENCY, async ({ tx, ty }) => ({
+    buf: await fetchTile(zoom, tx, ty),
+    tx,
+    ty,
+  }))
   const loaded = tiles.filter((t): t is { tx: number; ty: number; buf: Buffer } => t.buf != null)
   if (loaded.length === 0) return null
 
