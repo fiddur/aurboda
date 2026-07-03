@@ -94,3 +94,22 @@
     background: #1e1b4b;
   }
 }
+
+.public-profile-header .share-link-btn {
+  margin-left: auto;
+}
+
+.public-profile .share-link-btn {
+  padding: 0.4rem 0.9rem;
+  border: 1px solid #673ab8;
+  border-radius: 6px;
+  background: transparent;
+  color: #673ab8;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.public-profile .share-link-btn:hover {
+  background: #673ab8;
+  color: #fff;
+}
