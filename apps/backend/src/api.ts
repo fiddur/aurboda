@@ -70,6 +70,7 @@ import {
 import { createDetectionTrigger, type DetectionTrigger } from './services/detection-trigger.ts'
 import { runDetectionForUser } from './services/detection-worker.ts'
 import { expandFeedActivityWindow, resolveFeedActivity } from './services/feed.ts'
+import { type FollowActions, followActor, unfollowActor } from './services/following.ts'
 import { createGeocodeQueue } from './services/geocode-queue.ts'
 import { createInvitationAuth } from './services/invitation.ts'
 import { getPlaceVisits } from './services/locations.ts'
@@ -338,6 +339,12 @@ const main = async () => {
       })().catch(onDeliverError('update', user, post.id))
     },
   }
+  // The network-requiring follow operations, bound to the same federation +
+  // origin, shared by the REST following router and the MCP follow tools.
+  const followActions: FollowActions = {
+    follow: (user, handle) => followActor(feedDeps, user, handle),
+    unfollow: (user, id) => unfollowActor(feedDeps, user, id),
+  }
 
   // Mount MCP server BEFORE body-parser (MCP SDK needs raw body)
   // Stateless mode — no session tracking needed (tools only, no subscriptions)
@@ -349,6 +356,7 @@ const main = async () => {
       deductionQueue: deductionQueue ?? undefined,
       engineDeps,
       feedDeliver,
+      followActions,
       garmin,
       onActivityMutated: activityNotifier,
       oura,
@@ -483,6 +491,7 @@ const main = async () => {
     deductionQueue,
     engineDeps,
     feedDeliver,
+    followActions,
     garmin,
     httpd,
     invitationAuth,

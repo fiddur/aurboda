@@ -12,6 +12,7 @@ import type { GarminClient } from '../integrations/garmin/client.ts'
 import type { CentralDb } from '../services/central-db.ts'
 import type { DeductionEngineDeps } from '../services/deduction-engine.ts'
 import type { ActivityNotifier, DeductionQueue } from '../services/deduction-queue.ts'
+import type { FollowActions } from '../services/following.ts'
 import type { InvitationAuth } from '../services/invitation.ts'
 import type { OuraWebhookManager } from '../services/oura-webhook-manager.ts'
 import type { SyncProvider } from '../services/queries/index.ts'
@@ -30,6 +31,7 @@ import { createChartDataRouter } from '../routes/chart-data-router.ts'
 import { createCorrelationsRouter } from '../routes/correlations-router.ts'
 import { createDashboardRouter } from '../routes/dashboard-router.ts'
 import { createDeductionRulesRouter } from '../routes/deduction-rules-router.ts'
+import { createFeedFollowingRouter } from '../routes/feed-following-router.ts'
 import { createFeedImageRouter } from '../routes/feed-image-router.ts'
 import { createFeedPublicRouter } from '../routes/feed-public-router.ts'
 import { createFeedRouter, type FeedDeliver } from '../routes/feed-router.ts'
@@ -85,6 +87,7 @@ interface RestRoutesDeps {
   wellKnown: WellKnownConfig
   userDb: Client
   feedDeliver: FeedDeliver
+  followActions: FollowActions
 }
 
 export const mountRestRouters = ({
@@ -102,6 +105,7 @@ export const mountRestRouters = ({
   engineDeps,
   deductionQueue,
   feedDeliver,
+  followActions,
   ouraWebhookManager,
   auth,
   webAuthn,
@@ -143,6 +147,9 @@ export const mountRestRouters = ({
   httpd.use('/dashboard', createDashboardRouter(authMiddleware))
   httpd.use('/shared-dashboards', createSharedDashboardsRouter(authMiddleware, webHost))
   httpd.use('/profile', createProfileRouter(authMiddleware, webHost))
+  // Mount the following router before `/feed` so `/feed/following/*` (two path
+  // segments) resolves here and never touches the feed router's `/:postId`.
+  httpd.use('/feed/following', createFeedFollowingRouter(authMiddleware, followActions))
   httpd.use('/feed', createFeedRouter(authMiddleware, feedDeliver))
   httpd.use('/challenges', createChallengesRouter(authMiddleware, webHost, apiBaseUrl))
   httpd.use(createChallengeDataRouter())
