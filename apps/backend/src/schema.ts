@@ -147,6 +147,8 @@ export const tableCreationOrder = [
   'feed_actor',
   'feed_follower',
   'feed_following',
+  'timeline_entry',
+  'timeline_entry_indexes',
   'profile_avatar',
   'mcp_sessions',
   'mcp_sessions_indexes',

@@ -300,6 +300,17 @@ export {
   upsertFeedFollowing,
 } from './feed-following.ts'
 
+// Home timeline (posts received from followed actors)
+export {
+  deleteTimelineEntriesByActor,
+  deleteTimelineEntryByUri,
+  listTimelineEntries,
+  type TimelineCursor,
+  type TimelineEntryInput,
+  type TimelineEntryRecord,
+  upsertTimelineEntry,
+} from './timeline.ts'
+
 // Feed posts
 export {
   countPublicFeedPosts,
