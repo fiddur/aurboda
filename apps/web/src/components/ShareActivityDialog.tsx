@@ -46,12 +46,19 @@ const toggle = <T extends string>(set: Set<T>, key: T): Set<T> => {
 }
 
 /**
- * Which summary/series options to offer for an activity: only those whose source
- * metric has data in the given window (e.g. no Distance on a yoga session). One
- * coarse bucketed fetch; while it loads (or without a window) every option is
- * offered.
+ * Which summary/series options to offer for an activity: those whose source
+ * metric has data in the given window (e.g. no Distance on a yoga session),
+ * plus `keepSummary`/`keepSeries` — metrics the post already shares, always kept
+ * so an edit over a narrower window can never silently drop an existing choice.
+ * One coarse bucketed fetch; while it loads (or without a window) every option
+ * is offered.
  */
-const useShareableMetricOptions = (activityStart?: Date, activityEnd?: Date) => {
+const useShareableMetricOptions = (
+  activityStart?: Date,
+  activityEnd?: Date,
+  keepSummary: string[] = [],
+  keepSeries: string[] = [],
+) => {
   const availabilityQuery = useQuery({
     // The `??` fallbacks never run — `enabled` gates the fetch on both being set.
     enabled: activityStart != null && activityEnd != null,
@@ -64,9 +71,13 @@ const useShareableMetricOptions = (activityStart?: Date, activityEnd?: Date) => 
     ? new Set(availabilityQuery.data.buckets.flatMap((b) => Object.keys(b.metrics)))
     : undefined
   return {
-    seriesOptions: present ? SERIES_METRICS.filter((m) => present.has(m.key)) : SERIES_METRICS,
+    seriesOptions: present
+      ? SERIES_METRICS.filter((m) => present.has(m.key) || keepSeries.includes(m.key))
+      : SERIES_METRICS,
     summaryOptions: present
-      ? SUMMARY_METRICS.filter((m) => m.source === undefined || present.has(m.source))
+      ? SUMMARY_METRICS.filter(
+          (m) => m.source === undefined || present.has(m.source) || keepSummary.includes(m.key),
+        )
       : SUMMARY_METRICS,
   }
 }
@@ -91,7 +102,12 @@ export function ShareActivityDialog({
     () => new Set(SERIES_METRICS.map((m) => m.key).filter((k) => post?.series_metrics.includes(k) ?? false)),
   )
   const [visibility, setVisibility] = useState<FeedVisibility>(post?.visibility ?? 'public')
-  const { summaryOptions, seriesOptions } = useShareableMetricOptions(activityStart, activityEnd)
+  const { summaryOptions, seriesOptions } = useShareableMetricOptions(
+    activityStart,
+    activityEnd,
+    post?.included_metrics,
+    post?.series_metrics,
+  )
 
   const mutation = useMutation({
     mutationFn: () => {
