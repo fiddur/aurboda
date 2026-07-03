@@ -28,7 +28,6 @@ import { setupOuraWebhook, setupStravaWebhook } from './api/webhooks-setup.ts'
 import { createAuth } from './auth.ts'
 import {
   deleteRuleActivities,
-  getActivityById,
   getDeductionRulesByIds,
   getDetectedLocationById,
   getEnabledDeductionRules,
@@ -70,6 +69,7 @@ import {
 } from './services/deduction-queue.ts'
 import { createDetectionTrigger, type DetectionTrigger } from './services/detection-trigger.ts'
 import { runDetectionForUser } from './services/detection-worker.ts'
+import { expandFeedActivityWindow, resolveFeedActivity } from './services/feed.ts'
 import { createGeocodeQueue } from './services/geocode-queue.ts'
 import { createInvitationAuth } from './services/invitation.ts'
 import { getPlaceVisits } from './services/locations.ts'
@@ -317,18 +317,23 @@ const main = async () => {
   const onDeliverError = (op: string, user: string, postId: string) => (err: unknown) =>
     console.error(`⚠️ feed ${op} delivery failed for ${user}/${postId}:`, err)
   const feedDeliver: FeedDeliver = {
+    // Expand the already-resolved activity to its merged span so the delivered
+    // Note reports what the user shared, not just the anchor sub-activity (#881).
     created: (user, post, activity) => {
-      void deliverFeedPost(feedDeps, user, post, activity).catch(onDeliverError('create', user, post.id))
+      void (async () => {
+        const resolved = await expandFeedActivityWindow(user, activity)
+        await deliverFeedPost(feedDeps, user, post, resolved)
+      })().catch(onDeliverError('create', user, post.id))
     },
     deleted: (user, post) => {
       void deliverFeedDelete(feedDeps, user, post).catch(onDeliverError('delete', user, post.id))
     },
-    // Resolve the activity inside the fire-and-forget boundary so a lookup
-    // failure never bubbles into the (already-committed) edit's response.
+    // Resolve the (merged-span) activity inside the fire-and-forget boundary so a
+    // lookup failure never bubbles into the (already-committed) edit's response.
     updated: (user, post) => {
       void (async () => {
         if (!post.activity_id) return
-        const activity = await getActivityById(user, post.activity_id)
+        const activity = await resolveFeedActivity(user, post.activity_id)
         if (activity) await deliverFeedUpdate(feedDeps, user, post, activity)
       })().catch(onDeliverError('update', user, post.id))
     },

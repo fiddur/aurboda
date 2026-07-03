@@ -18,13 +18,7 @@ import type { SyncProvider } from '../services/queries/index.ts'
 import type { WebAuthnService } from '../services/webauthn.ts'
 import type { AnyMiddleware } from '../typed-router.ts'
 
-import {
-  getActivityById,
-  getFeedPostById,
-  getLocations,
-  getTimeSeries,
-  markActivityDetailSynced,
-} from '../db/index.ts'
+import { getFeedPostById, getLocations, getTimeSeries, markActivityDetailSynced } from '../db/index.ts'
 import { processActivityDetail } from '../integrations/garmin/process.ts'
 import { createActivitiesRouter } from '../routes/activities-router.ts'
 import { createActivityTypesRouter } from '../routes/activity-types-router.ts'
@@ -66,6 +60,7 @@ import { createWebAuthnRouter } from '../routes/webauthn-router.ts'
 import { createWellKnownRouter, type WellKnownConfig } from '../routes/well-known-router.ts'
 import { renderChartPng, renderRoutePng } from '../services/activitypub/feed-images.ts'
 import { loadAvatarDataUri } from '../services/avatar-resolve.ts'
+import { resolveFeedActivity } from '../services/feed.ts'
 import { createOgImageRenderer } from '../services/og-image.ts'
 import { createTemplateLoader } from '../services/web-template.ts'
 
@@ -157,7 +152,9 @@ export const mountRestRouters = ({
   // public/unlisted posts. Mounted alongside the series router (same guard).
   httpd.use(
     createFeedImageRouter({
-      getActivity: getActivityById,
+      // Merged-span window so the rendered chart/route cover what the user
+      // shared, matching the Note's duration/metrics (#881).
+      getActivity: resolveFeedActivity,
       getPost: getFeedPostById,
       getRoute: async (user, start, end) =>
         (await getLocations(user, start, end)).locations.map((l) => l.coordinates),

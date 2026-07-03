@@ -21,7 +21,6 @@ import { isValidUsername } from '../../api/auth-routes.ts'
 import {
   countFeedFollowers,
   countPublicFeedPosts,
-  getActivityById,
   getFeedPostById,
   getOrCreateActorKeyPair,
   isMissingDatabase,
@@ -30,6 +29,7 @@ import {
   removeFeedFollower,
   upsertFeedFollower,
 } from '../../db/index.ts'
+import { resolveFeedActivity } from '../feed.ts'
 import { buildProfileUrl } from '../share-urls.ts'
 import { buildFeedCreate, buildFeedNote } from './deliver.ts'
 import { toCryptoKeyPair } from './keys.ts'
@@ -163,7 +163,9 @@ export const createFeedFederation = (origin: string, apiBaseUrl: string): Federa
         throw error
       }
       if (post == null || post.activity_id == null || !isPubliclyVisible(post.visibility)) return null
-      const activity = await getActivityById(identifier, post.activity_id)
+      // Resolve the merged-span activity so the served Note matches what the user
+      // shared (and what we delivered), not just the anchor sub-activity (#881).
+      const activity = await resolveFeedActivity(identifier, post.activity_id)
       if (activity == null) return null
       return buildFeedNote(ctx, identifier, post, activity, apiBaseUrl)
     },
@@ -194,7 +196,7 @@ export const createFeedFederation = (origin: string, apiBaseUrl: string): Federa
         await Promise.all(
           posts.map(async (post) => {
             if (post.activity_id == null) return null
-            const activity = await getActivityById(identifier, post.activity_id)
+            const activity = await resolveFeedActivity(identifier, post.activity_id)
             return activity == null ? null : buildFeedCreate(ctx, identifier, post, activity, apiBaseUrl)
           }),
         )

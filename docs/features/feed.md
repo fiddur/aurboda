@@ -80,6 +80,14 @@ shared scalar summaries, plus a `name` headline, addressed per the post's visibi
 → followers only). The custom structured `aurboda:` extension (typed metrics + series
 links) is a separate, richer representation for Aurboda-to-Aurboda consumers.
 
+**Merged activities.** A post stores only `activity_id` (the plain anchor uuid). When that
+activity is part of a **merge group** (overlapping cross-source records, shown in the
+detail view as `merged:<anchor>`), the delivered/served/listed scalars and the rendered
+chart/route images are resolved over the **full merged span** — the same window the detail
+view and share dialog present — not the anchor sub-activity's narrower slice. The window is
+resolved at query time (via the same `resolveActivityWindow` the `merged:` detail view
+uses), so nothing denormalised is persisted on the post.
+
 ### Outbox & object serving
 
 - **Outbox** (`/users/<username>/outbox`) — a **cursor-paginated** `OrderedCollection`
@@ -168,7 +176,7 @@ Owner-facing (authenticated, scoped to the caller):
 
 | Method & path                     | Purpose                                            |
 | --------------------------------- | -------------------------------------------------- |
-| `GET /feed`                       | List my feed posts                                 |
+| `GET /feed`                       | List my feed posts (each enriched with the shared activity's title/type and merged-span window, resolved at query time) |
 | `POST /feed/activities/:id/share` | Publish an activity with a chosen metric selection |
 | `PATCH /feed/:postId`             | Edit selection / visibility / attachments          |
 | `DELETE /feed/:postId`            | Unpublish (its public series stops resolving)      |
@@ -210,6 +218,13 @@ These are known and intentional for the current implementation:
   post to `followers` federates an `Update` addressed only to followers; servers that
   showed it to non-followers keep their copy. This is an inherent ActivityPub limitation
   (Mastodon behaves the same) — there is no addressable "public" inbox to retract from.
+- **The public series endpoint uses the anchor window for merged shares.** The delivered
+  Note's scalar summary and the rendered images cover the full merged span, but
+  `GET /public/:username/series` still authorizes only the shared activity's *own* window
+  (`findCoveringSharedSeriesWindow` joins on `activity_id`). Since the delivered
+  Mastodon `Note` carries no series links, this is latent — expanding series
+  authorization across a merge group (which needs the merge algorithm at query time) is a
+  planned follow-up.
 - **Route maps have no basemap and no privacy trimming.** The route is a bare shape
   (no street tiles) and shows the full track, so a public route map reveals the
   approximate area; a street basemap and start/area masking are planned follow-ups.
