@@ -507,3 +507,45 @@
     min-width: auto;
   }
 }
+
+.avatar-settings {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+}
+
+.avatar-settings__preview {
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: #0002;
+  flex-shrink: 0;
+}
+
+.avatar-settings__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  align-items: flex-start;
+}
+
+.avatar-settings__upload {
+  display: inline-block;
+  padding: 0.4rem 0.9rem;
+  border-radius: 6px;
+  background: #673ab8;
+  color: #fff;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.avatar-settings__upload input {
+  display: none;
+}
+
+.avatar-settings__error {
+  color: #c0392b;
+  margin-top: 0.5rem;
+  font-size: 0.9rem;
+}

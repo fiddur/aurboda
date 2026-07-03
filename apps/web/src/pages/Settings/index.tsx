@@ -3,6 +3,7 @@ import { useCallback, useState } from 'preact/hooks'
 
 import type { BiologicalSex, HrZoneThresholds, UpdateSettingsInput } from '../../state/api'
 
+import { AvatarSettings } from '../../components/AvatarSettings'
 import { MealPreferencesSettings } from '../../components/MealPreferencesSettings'
 import { PasskeySettings } from '../../components/PasskeySettings'
 import { type SaveStatus, SaveStatusIndicator } from '../../components/SaveStatusIndicator'
@@ -140,6 +141,8 @@ export function Settings() {
   return (
     <div class="settings-page">
       <h1>Settings</h1>
+
+      <AvatarSettings />
 
       <SettingsSection
         title="Personal Information"
