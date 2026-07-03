@@ -68,11 +68,11 @@ Sharing, editing, or unsharing a post federates the matching activity to the use
 followers (best-effort, fire-and-forget; delivery is synchronous — a durable retry queue
 is a later slice):
 
-| Action        | Federated activity   | Effect on followers                          |
-| ------------- | -------------------- | -------------------------------------------- |
-| Share         | `Create{Note}`       | The post appears in their timeline           |
-| Edit          | `Update{Note}`       | Their stored copy is replaced                |
-| Unshare       | `Delete{Tombstone}`  | The post is retracted from their timeline    |
+| Action  | Federated activity  | Effect on followers                       |
+| ------- | ------------------- | ----------------------------------------- |
+| Share   | `Create{Note}`      | The post appears in their timeline        |
+| Edit    | `Update{Note}`      | Their stored copy is replaced             |
+| Unshare | `Delete{Tombstone}` | The post is retracted from their timeline |
 
 The `Note` is Mastodon-compatible: an HTML `content` summary flattening the title and the
 shared scalar summaries, plus a `name` headline, addressed per the post's visibility
@@ -106,7 +106,10 @@ GET /api/public/:username/feed/:postId/route.png
 
 The gating mirrors the object endpoint (public/unlisted only, and only when the
 matching flag was opted into) and responses are `no-store` so an unshare/visibility
-change takes effect immediately. The route is drawn as a bare, aspect-correct shape —
+change takes effect immediately. A `followers`-only post therefore carries **no** image
+attachments — the endpoint is unauthenticated and can't safely serve them, so attaching
+a URL that would 404 for a follower is omitted (authenticated per-follower delivery is a
+possible later slice). The route is drawn as a bare, aspect-correct shape —
 no street basemap (a later enhancement) and **no privacy trimming** (area masking is a
 planned follow-up), so a public route map reveals the approximate area. The share
 dialog only offers the chart toggle when the activity has heart-rate data and the map
@@ -122,7 +125,7 @@ GET /public/:username/series?metric=<key>&start=<iso>&end=<iso>&bucket=<5s|60s|�
 ```
 
 Like a shared-dashboard slug, it takes **no auth token** — so the scoping below is the
-*entire* privacy boundary, and it is **data-driven, not obscurity-based**. A request
+_entire_ privacy boundary, and it is **data-driven, not obscurity-based**. A request
 resolves only when **all** of these hold:
 
 1. some feed post shared **that exact metric as a series** (`series_metrics`) — sharing
@@ -163,17 +166,17 @@ Owner-facing (authenticated, scoped to the caller):
 
 Public / federation (unauthenticated):
 
-| Method & path                              | Purpose                                                    |
-| ------------------------------------------ | ---------------------------------------------------------- |
-| `GET /public/:username/series`             | Bucketed samples for a **shared** series within its window |
-| `GET /public/:username/feed/:postId/chart.png` | Rendered HR chart for an opted-in post                 |
-| `GET /public/:username/feed/:postId/route.png` | Rendered GPS route map for an opted-in post            |
-| `GET /.well-known/webfinger`               | Resolve `acct:<username>@<host>` → the actor               |
-| `GET /users/:username`                     | The actor document (`Person`)                              |
-| `GET /users/:username/outbox`              | Public + unlisted posts as `Create` activities             |
-| `GET /users/:username/followers`           | The actor's followers collection                           |
-| `GET /users/:username/feed/:postId`        | A single post's `Note`                                     |
-| `POST /users/:username/inbox` (+ `/inbox`) | Inbound `Follow` / `Undo{Follow}` (HTTP-Signature verified) |
+| Method & path                                  | Purpose                                                     |
+| ---------------------------------------------- | ----------------------------------------------------------- |
+| `GET /public/:username/series`                 | Bucketed samples for a **shared** series within its window  |
+| `GET /public/:username/feed/:postId/chart.png` | Rendered HR chart for an opted-in post                      |
+| `GET /public/:username/feed/:postId/route.png` | Rendered GPS route map for an opted-in post                 |
+| `GET /.well-known/webfinger`                   | Resolve `acct:<username>@<host>` → the actor                |
+| `GET /users/:username`                         | The actor document (`Person`)                               |
+| `GET /users/:username/outbox`                  | Public + unlisted posts as `Create` activities              |
+| `GET /users/:username/followers`               | The actor's followers collection                            |
+| `GET /users/:username/feed/:postId`            | A single post's `Note`                                      |
+| `POST /users/:username/inbox` (+ `/inbox`)     | Inbound `Follow` / `Undo{Follow}` (HTTP-Signature verified) |
 
 The owner-facing capability is also available over MCP as `list_feed`, `share_activity`,
 `update_feed_post`, and `delete_feed_post` — sharing/editing/deleting over MCP federates

@@ -23,7 +23,7 @@ import type { Context, Federation } from '@fedify/fedify'
 import { Create, Delete, Image, Note, Tombstone, Update } from '@fedify/fedify/vocab'
 
 import { resolveActivityScalars } from './feed-activity.ts'
-import { addressingFor, feedPostContent } from './object.ts'
+import { addressingFor, feedPostContent, isPubliclyVisible } from './object.ts'
 
 /**
  * AS2 `to`/`cc` addressing (as URLs) for a post's visibility — the same table
@@ -59,8 +59,14 @@ export interface DeliverablePost {
  * on-demand image endpoint (`/api/public/<user>/feed/<id>/{chart,route}.png`),
  * built against the actor's origin so it matches the deployed API base. Fedify's
  * `Image` carries `url` + `mediaType` + intrinsic size so Mastodon lays it out.
+ *
+ * Only `public`/`unlisted` posts get attachments: the image endpoint is
+ * unauthenticated and (like the object/series endpoints) refuses `followers`-only
+ * posts, so attaching a URL that would 404 for a follower is worse than omitting
+ * it. (Authenticated per-follower image delivery is a possible later slice.)
  */
-const imageAttachments = (actorUri: URL, user: string, post: DeliverablePost): Image[] => {
+export const imageAttachments = (actorUri: URL, user: string, post: DeliverablePost): Image[] => {
+  if (!isPubliclyVisible(post.visibility)) return []
   const base = new URL(`/api/public/${encodeURIComponent(user)}/feed/${post.id}`, actorUri)
   const images: Image[] = []
   if (post.include_chart) {
