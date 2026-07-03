@@ -14,11 +14,15 @@ import { formatDistanceToNow } from 'date-fns'
 
 import { fetchTimeline } from '../../state/api'
 
-/** A fallback avatar (a neutral silhouette) for actors without an icon. */
+/**
+ * A fallback avatar (a neutral silhouette) for actors without an icon. Colours use
+ * raw `#` — `encodeURIComponent` percent-encodes them exactly once (writing `%23`
+ * here too would double-encode to `%2523` and render the fills black).
+ */
 const FALLBACK_AVATAR =
   'data:image/svg+xml;utf8,' +
   encodeURIComponent(
-    '<svg xmlns="http://www.w3.org/2000/svg" width="44" height="44" viewBox="0 0 44 44"><rect width="44" height="44" rx="22" fill="%23cbd5e1"/><circle cx="22" cy="17" r="8" fill="%23fff"/><path d="M8 40c0-8 6-12 14-12s14 4 14 12" fill="%23fff"/></svg>',
+    '<svg xmlns="http://www.w3.org/2000/svg" width="44" height="44" viewBox="0 0 44 44"><rect width="44" height="44" rx="22" fill="#cbd5e1"/><circle cx="22" cy="17" r="8" fill="#fff"/><path d="M8 40c0-8 6-12 14-12s14 4 14 12" fill="#fff"/></svg>',
   )
 
 function TimelineCard({ entry }: { entry: TimelineEntry }) {
