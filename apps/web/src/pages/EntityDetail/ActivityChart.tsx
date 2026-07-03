@@ -594,10 +594,14 @@ export const ActivityChart = ({
   const enabledMetrics = new Set(availableMetrics.filter((m) => !disabledMetrics.has(m)))
 
   // Surface the currently-shown metrics so a parent (the share dialog) can mirror
-  // the user's chart selection. Runs on load and each toggle (deps change ref).
+  // the user's chart selection. Keyed on the enabled set's *contents* (a stable
+  // string) — NOT the `availableMetrics`/`disabledMetrics` refs: `availableMetrics`
+  // is a fresh `[]` every render while the query has no data, which would loop.
+  // Metric names never contain `|`, so the key round-trips cleanly.
+  const enabledKey = [...enabledMetrics].join('|')
   useEffect(() => {
-    onEnabledMetricsChange?.(availableMetrics.filter((m) => !disabledMetrics.has(m)))
-  }, [availableMetrics, disabledMetrics, onEnabledMetricsChange])
+    onEnabledMetricsChange?.(enabledKey ? enabledKey.split('|') : [])
+  }, [enabledKey, onEnabledMetricsChange])
 
   // Compute which metrics get axes (last MAX_RIGHT_AXES in toggleOrder that are enabled)
   const metricsWithAxes = new Set(toggleOrder.filter((m) => enabledMetrics.has(m)).slice(-MAX_RIGHT_AXES))
