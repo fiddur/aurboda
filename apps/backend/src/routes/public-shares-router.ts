@@ -45,6 +45,9 @@ const MAX_CHALLENGE_MEMBERS = 200
  * Quick links point into the owner's private app, so neutralize their hrefs.
  */
 export const sanitizeConfig = (config: DashboardConfig): DashboardConfig => ({
+  // Author prose is meant for public viewers — preserve it (section descriptions
+  // survive via the section spread below).
+  description: config.description,
   sections: config.sections.map((section) => ({
     ...section,
     widgets: section.widgets.map((widget) =>
