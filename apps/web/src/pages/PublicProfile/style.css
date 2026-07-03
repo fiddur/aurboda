@@ -99,7 +99,7 @@
   margin-left: auto;
 }
 
-.share-link-btn {
+.public-profile .share-link-btn {
   padding: 0.4rem 0.9rem;
   border: 1px solid #673ab8;
   border-radius: 6px;
@@ -109,7 +109,7 @@
   font-size: 0.9rem;
 }
 
-.share-link-btn:hover {
+.public-profile .share-link-btn:hover {
   background: #673ab8;
   color: #fff;
 }

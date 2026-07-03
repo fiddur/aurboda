@@ -13,8 +13,10 @@ export function ShareLinkButton({ url, title }: { url: string; title?: string })
       try {
         await navigator.share({ title, url })
         return
-      } catch {
-        // User cancelled or share failed — fall through to clipboard copy.
+      } catch (err) {
+        // A deliberate cancel (AbortError) is a no-op; only a real failure
+        // falls through to the clipboard copy.
+        if (err instanceof Error && err.name === 'AbortError') return
       }
     }
     try {
