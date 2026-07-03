@@ -5,7 +5,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useRoute } from 'preact-iso'
 
-import { fetchPublicProfile } from '../../state/api'
+import { avatarUrl, fetchPublicProfile } from '../../state/api'
 import './style.css'
 
 export function PublicProfile() {
@@ -47,7 +47,16 @@ export function PublicProfile() {
 
   return (
     <div class="public-profile">
-      <h1>@{username}</h1>
+      <header class="public-profile-header">
+        <img
+          class="public-avatar"
+          src={avatarUrl(username)}
+          alt={`${username}'s avatar`}
+          width={80}
+          height={80}
+        />
+        <h1>@{username}</h1>
+      </header>
 
       <section class="public-section">
         <h2>Dashboards</h2>

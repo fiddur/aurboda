@@ -8,6 +8,26 @@
   margin: 0 0 1rem;
 }
 
+.public-profile-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.public-profile-header h1 {
+  margin: 0;
+}
+
+.public-avatar {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: #0001;
+  flex-shrink: 0;
+}
+
 .public-profile .public-muted {
   color: #6b7280;
 }
