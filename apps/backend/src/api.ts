@@ -32,6 +32,7 @@ import {
   getDeductionRulesByIds,
   getDetectedLocationById,
   getEnabledDeductionRules,
+  getFeedTombstone,
   getNamedLocations,
   insertActivities,
   insertActivity,
@@ -52,6 +53,7 @@ import { ouraClient } from './integrations/oura/client.ts'
 import { createOwnTracksRouter } from './integrations/owntracks/router.ts'
 import { stravaClient } from './integrations/strava/client.ts'
 import { createMcpRouter } from './mcp.ts'
+import { createFeedTombstoneRouter } from './routes/feed-tombstone-router.ts'
 import { createOAuthRouter } from './routes/oauth-router.ts'
 import { deliverFeedDelete, deliverFeedPost, deliverFeedUpdate } from './services/activitypub/deliver.ts'
 import { createFeedFederation } from './services/activitypub/federation.ts'
@@ -361,6 +363,11 @@ const main = async () => {
   // spoof them.
   httpd.set('trust proxy', 'loopback')
   httpd.use(integrateFederation(feedFederation, () => undefined))
+
+  // `410 Gone` Tombstone for dereferenced deleted objects. Mounted right after
+  // the federation integration: when the object dispatcher returns null for a
+  // since-deleted post, `@fedify/express` calls next(), and this catches it.
+  httpd.use(createFeedTombstoneRouter({ getTombstone: getFeedTombstone, origin: webHost }))
 
   httpd.use(json({ limit: '10mb' }))
 

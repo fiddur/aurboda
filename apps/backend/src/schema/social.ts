@@ -123,6 +123,20 @@ export const socialTables: Record<string, string> = {
     CREATE INDEX IF NOT EXISTS idx_feed_posts_series ON feed_posts USING GIN (series_metrics)
   `,
 
+  // Tombstones for deleted public/unlisted feed posts. A post row is hard-deleted
+  // on unshare, but a remote server may still dereference its object id; AS2 wants
+  // a `410 Gone` Tombstone there (a `404` reads as transient/unknown). We record
+  // only `public`/`unlisted` deletions — a `followers`-only object id never
+  // resolved publicly, so tombstoning it would leak that a post once existed. The
+  // pushed `Delete{Tombstone}` still handles timeline retraction; this backs only
+  // the direct dereference of an already-known id.
+  feed_tombstone: `
+    CREATE TABLE IF NOT EXISTS feed_tombstone (
+      post_id     UUID PRIMARY KEY,
+      deleted_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `,
+
   // The user's ActivityPub actor keypair. Each per-user database has a single
   // actor (the user), so this is a singleton table: the `singleton` PK + CHECK
   // pins it to one row. The RSA keypair (PKCS#8 private / SPKI public PEM) signs

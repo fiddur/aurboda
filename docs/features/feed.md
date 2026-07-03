@@ -89,7 +89,14 @@ links) is a separate, richer representation for Aurboda-to-Aurboda consumers.
   `followers`-only posts are never listed.
 - **Object** (`/users/<username>/feed/<postId>`) — the post's `Note`, served at its
   canonical id so a remote server can dereference it. Only `public`/`unlisted` resolve;
-  `followers`-only and unknown ids return 404.
+  `followers`-only and unknown ids return 404. Once a `public`/`unlisted` post is
+  **deleted**, that id returns **`410 Gone` with an AS2 `Tombstone`** (recorded in
+  `feed_tombstone`) so a dereferencing server learns the object is *permanently* gone
+  rather than transiently missing. A `followers`-only id is never tombstoned — it never
+  resolved publicly, so a 410 would leak that a post once existed.
+
+The `Note` carries `published` = the post's share time (its `created_at`), so remote
+servers order and timestamp it correctly instead of stamping it at receipt.
 
 The object we deliver, list in the outbox, and serve at that id are all built from one
 place, so they can't drift.
@@ -177,7 +184,7 @@ Public / federation (unauthenticated):
 | `GET /users/:username`                         | The actor document (`Person`)                               |
 | `GET /users/:username/outbox`                  | Public + unlisted posts as `Create` activities              |
 | `GET /users/:username/followers`               | The actor's followers collection                            |
-| `GET /users/:username/feed/:postId`            | A single post's `Note`                                      |
+| `GET /users/:username/feed/:postId`            | A single post's `Note` (or `410` Tombstone once deleted)    |
 | `POST /users/:username/inbox` (+ `/inbox`)     | Inbound `Follow` / `Undo{Follow}` (HTTP-Signature verified) |
 
 The owner-facing capability is also available over MCP as `list_feed`, `share_activity`,
@@ -190,8 +197,10 @@ Feed posts live in the user's own database in the `feed_posts` table. `activity_
 **soft reference** (no foreign key): activities are soft-deleted and the series lookup
 re-checks `deleted_at` at query time, so a removed activity simply stops resolving rather
 than cascading a delete. A GIN index over `series_metrics` backs the public series
-endpoint's authorization check. Followers live in `feed_follower`; the actor's RSA
-keypair in `feed_actor`.
+endpoint's authorization check. Deleting a `public`/`unlisted` post hard-deletes its row
+and, in the same statement, records its id in `feed_tombstone` so the object id can still
+answer `410 Gone`. Followers live in `feed_follower`; the actor's RSA keypair in
+`feed_actor`.
 
 ## Caveats & limitations
 
@@ -201,11 +210,6 @@ These are known and intentional for the current implementation:
   post to `followers` federates an `Update` addressed only to followers; servers that
   showed it to non-followers keep their copy. This is an inherent ActivityPub limitation
   (Mastodon behaves the same) — there is no addressable "public" inbox to retract from.
-- **No `410 Tombstone` on GET of a deleted object.** A deleted post's object id returns
-  `404` (the row is hard-deleted). The pushed `Delete{Tombstone}` is what retracts it
-  from followers' timelines.
-- **`published` is omitted** on the delivered `Note` (a Fedify/Temporal type-interop
-  detail), so remote servers timestamp posts at receipt (≈ share time).
 - **Route maps have no basemap and no privacy trimming.** The route is a bare shape
   (no street tiles) and shows the full track, so a public route map reveals the
   approximate area; a street basemap and start/area masking are planned follow-ups.

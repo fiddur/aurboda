@@ -2,12 +2,16 @@
  * Integration tests for the Fedify actor + WebFinger surface, exercised through
  * `federation.fetch` against a real per-user database (no Express/nginx needed).
  */
+import { integrateFederation } from '@fedify/express'
 import { Note } from '@fedify/fedify/vocab'
+import express from 'express'
+import supertest from 'supertest'
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import { insertActivity } from '../../db/activities/index.ts'
 import { upsertFeedFollower } from '../../db/feed-follower.ts'
-import { createFeedPost, type FeedPostInput } from '../../db/feed.ts'
+import { createFeedPost, deleteFeedPost, type FeedPostInput, getFeedTombstone } from '../../db/feed.ts'
+import { createFeedTombstoneRouter } from '../../routes/feed-tombstone-router.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../../test/db-test-helper.ts'
 import { buildFeedUpdate } from './deliver.ts'
 import { createFeedFederation } from './federation.ts'
@@ -159,10 +163,19 @@ describe('Feed federation actor + WebFinger', () => {
 
     const res = await fetchAs2(`/users/${user}/feed/${post.id}`)
     expect(res.status).toBe(200)
-    const doc = (await res.json()) as { type: string; id: string; attributedTo?: string }
+    const doc = (await res.json()) as {
+      type: string
+      id: string
+      attributedTo?: string
+      published?: string
+    }
     expect(doc.type).toBe('Note')
     expect(doc.id).toBe(`${ORIGIN}/users/${user}/feed/${post.id}`)
     expect(doc.attributedTo).toBe(`${ORIGIN}/users/${user}`)
+    // `published` is the post's share time (created_at), not the fetch time, so
+    // remote servers order it correctly.
+    expect(doc.published).toBeDefined()
+    expect(new Date(doc.published ?? '').getTime()).toBe(post.created_at.getTime())
   })
 
   test('excludes followers-only posts from the outbox and 404s their object', async () => {
@@ -210,6 +223,51 @@ describe('Feed federation actor + WebFinger', () => {
   test('404s a post object for a non-UUID id without touching the database', async () => {
     const user = getTestUser()
     const res = await fetchAs2(`/users/${user}/feed/not-a-uuid`)
+    expect(res.status).toBe(404)
+  })
+
+  // The 410-Tombstone slice lives in an Express router mounted after the Fedify
+  // integration; exercise the two together so the "dispatcher returns null →
+  // @fedify/express next() → tombstone router" fall-through is covered.
+  const buildFederatedApp = () => {
+    const app = express()
+    app.set('trust proxy', 'loopback')
+    app.use(integrateFederation(fed, () => undefined))
+    app.use(createFeedTombstoneRouter({ getTombstone: getFeedTombstone, origin: ORIGIN }))
+    return app
+  }
+
+  const getObject = (app: express.Express, path: string) =>
+    supertest(app).get(path).set('Accept', 'application/activity+json')
+
+  test('serves a 410 Tombstone after a public post is deleted (Fedify falls through)', async () => {
+    const user = getTestUser()
+    const activityId = await insertExercise(user)
+    const post = await sharePost(user, activityId)
+    const app = buildFederatedApp()
+
+    // Live: the object dispatcher serves the Note (200).
+    const live = await getObject(app, `/users/${user}/feed/${post.id}`)
+    expect(live.status).toBe(200)
+
+    // Unshare, then the same id returns 410 Gone with a Tombstone at the same id.
+    await deleteFeedPost(user, post.id)
+    const gone = await getObject(app, `/users/${user}/feed/${post.id}`)
+    expect(gone.status).toBe(410)
+    expect(gone.type).toBe('application/activity+json')
+    expect(gone.body.type).toBe('Tombstone')
+    expect(gone.body.id).toBe(`${ORIGIN}/users/${user}/feed/${post.id}`)
+  })
+
+  test('a deleted followers-only object stays 404 (no public tombstone)', async () => {
+    const user = getTestUser()
+    const activityId = await insertExercise(user)
+    const post = await sharePost(user, activityId, { visibility: 'followers' })
+    const app = buildFederatedApp()
+
+    await deleteFeedPost(user, post.id)
+    expect(await getFeedTombstone(user, post.id)).toBeNull()
+    const res = await getObject(app, `/users/${user}/feed/${post.id}`)
     expect(res.status).toBe(404)
   })
 
