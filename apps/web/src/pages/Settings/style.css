@@ -540,8 +540,23 @@
   font-size: 0.9rem;
 }
 
+/* Visually hidden but still focusable/tabbable (unlike display:none), so
+   keyboard users can reach the control; the label shows the focus ring. */
 .avatar-settings__upload input {
-  display: none;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.avatar-settings__upload:focus-within {
+  outline: 2px solid #8b5cf6;
+  outline-offset: 2px;
 }
 
 .avatar-settings__error {
