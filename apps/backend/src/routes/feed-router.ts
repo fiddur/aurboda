@@ -11,7 +11,6 @@ import type { RequestHandler } from 'express'
  * the public read surface lives in `feed-public-router.ts`.
  */
 import {
-  type FeedPost,
   type FeedPostResponse,
   type FeedPostsResponse,
   type ShareActivityBody,
@@ -30,6 +29,7 @@ import {
   listFeedPosts,
   updateFeedPost,
 } from '../db/index.ts'
+import { serializeFeedPost } from '../services/feed.ts'
 import { type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody } from '../validation.ts'
 
@@ -52,25 +52,14 @@ export interface FeedDeliver {
   deleted: (user: string, post: FeedPostRecord) => void
 }
 
-const serialize = (record: FeedPostRecord): FeedPost => ({
-  activity_id: record.activity_id,
-  created_at: record.created_at.toISOString(),
-  id: record.id,
-  include_chart: record.include_chart,
-  include_map: record.include_map,
-  included_metrics: record.included_metrics,
-  series_metrics: record.series_metrics,
-  updated_at: record.updated_at.toISOString(),
-  visibility: record.visibility,
-})
-
 export const createFeedRouter = (authMiddleware: RequestHandler, deliver?: FeedDeliver): TypedRouter => {
   const router = typedRouter()
 
   router.get<Record<string, never>, FeedPostsResponse>('/', authMiddleware, async (req, res) => {
     const user = req.user!
     const records = await listFeedPosts(user)
-    res.json({ posts: records.map(serialize), success: true })
+    const posts = await Promise.all(records.map((record) => serializeFeedPost(user, record)))
+    res.json({ posts, success: true })
   })
 
   router.post<{ id: string }, FeedPostResponse, ShareActivityBody>(
@@ -93,7 +82,7 @@ export const createFeedRouter = (authMiddleware: RequestHandler, deliver?: FeedD
       })
       // Fan the post out to followers (best-effort; never blocks the response).
       deliver?.created(user, record, activity)
-      res.json({ post: serialize(record), success: true })
+      res.json({ post: await serializeFeedPost(user, record), success: true })
     },
   )
 
@@ -116,7 +105,7 @@ export const createFeedRouter = (authMiddleware: RequestHandler, deliver?: FeedD
       // Federate the edit as an Update so followers replace the stored object.
       // Fire-and-forget: the impl resolves the activity, so it can't 500 here.
       deliver?.updated(user, record)
-      res.json({ post: serialize(record), success: true })
+      res.json({ post: await serializeFeedPost(user, record), success: true })
     },
   )
 

@@ -178,6 +178,31 @@ describe('Feed federation actor + WebFinger', () => {
     expect(new Date(doc.published ?? '').getTime()).toBe(post.created_at.getTime())
   })
 
+  test('serves the merged-span duration for a shared merged activity (#881)', async () => {
+    const user = getTestUser()
+    // Anchor 08:00–08:40 (40m) overlaps a second 08:20–09:00 → merged span is 1h.
+    const anchorId = await insertActivity(user, {
+      activity_type: 'exercise',
+      end_time: new Date('2026-07-01T08:40:00Z'),
+      source: 'garmin',
+      start_time: new Date('2026-07-01T08:00:00Z'),
+      title: 'Merged run',
+    })
+    await insertActivity(user, {
+      activity_type: 'exercise',
+      end_time: new Date('2026-07-01T09:00:00Z'),
+      source: 'strava',
+      start_time: new Date('2026-07-01T08:20:00Z'),
+      title: 'Second half',
+    })
+    const post = await sharePost(user, anchorId) // included_metrics: ['duration']
+
+    const doc = (await (await fetchAs2(`/users/${user}/feed/${post.id}`)).json()) as { content: string }
+    // The served Note reports the merged span the user saw, not the 40m anchor slice.
+    expect(doc.content).toContain('Duration 1h')
+    expect(doc.content).not.toContain('40m')
+  })
+
   test('excludes followers-only posts from the outbox and 404s their object', async () => {
     const user = getTestUser()
     const activityId = await insertExercise(user)

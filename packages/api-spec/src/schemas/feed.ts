@@ -105,6 +105,27 @@ export const feedPostSchema = z
       .uuid()
       .nullable()
       .meta({ description: 'The shared activity, or null for a non-activity post' }),
+    // Resolved from the shared activity at query time (not stored on the post, so
+    // a rename stays consistent). The window is the *merged* span — the same one
+    // the detail view and share dialog present — so a client can show the title
+    // and edit the metric selection without a second per-post activity fetch.
+    // Absent when there is no activity, or it was deleted.
+    activity_end_time: z
+      .string()
+      .optional()
+      .meta({ description: "The shared activity's merged-span end (ISO 8601)" }),
+    activity_start_time: z
+      .string()
+      .optional()
+      .meta({ description: "The shared activity's merged-span start (ISO 8601)" }),
+    activity_title: z
+      .string()
+      .optional()
+      .meta({ description: "The shared activity's title, resolved at query time" }),
+    activity_type: z
+      .string()
+      .optional()
+      .meta({ description: "The shared activity's type (e.g. `exercise`)" }),
     created_at: z.string().meta({ description: 'Creation timestamp (ISO 8601)' }),
     id: z.string().uuid().meta({ description: 'Feed post ID' }),
     include_chart: z.boolean().meta({ description: 'Whether a chart image is attached' }),

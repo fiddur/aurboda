@@ -12,7 +12,7 @@ import { useState } from 'preact/hooks'
 
 import { seriesLabel, summaryLabel } from '../../components/feed-metrics'
 import { ShareActivityDialog } from '../../components/ShareActivityDialog'
-import { deleteFeedPost, fetchActivityById, fetchFeed } from '../../state/api'
+import { deleteFeedPost, fetchFeed } from '../../state/api'
 import { toDisplayName } from '../../utils/displayName'
 import './style.css'
 
@@ -30,23 +30,18 @@ function FeedPostCard({ post }: { post: FeedPost }) {
   const [editing, setEditing] = useState(false)
   const activityId = post.activity_id
 
-  // Fetch the merged view (`merged:` prefix) so `merged_start_time/end` are
-  // populated — the same window the detail view uses when sharing, so the edit
-  // dialog offers the same metrics rather than a narrower anchor-only set.
-  const activityQuery = useQuery({
-    enabled: activityId != null,
-    queryFn: () => fetchActivityById(activityId ? `merged:${activityId}` : ''),
-    queryKey: ['activity', 'merged', activityId],
-    staleTime: 5 * 60 * 1000,
-  })
-
   const deleteMutation = useMutation({
     mutationFn: () => deleteFeedPost(post.id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['feed'] }),
   })
 
-  const activity = activityQuery.data?.activity
-  const title = activity?.title || (activity ? toDisplayName(activity.activity_type) : 'Shared activity')
+  // The activity's title + merged-span window are resolved server-side into the
+  // feed response (no per-card fetch). The window is the same merged span the
+  // detail view shows, so the edit dialog offers the same metrics.
+  const title =
+    post.activity_title || (post.activity_type ? toDisplayName(post.activity_type) : 'Shared activity')
+  const activityStart = post.activity_start_time ? new Date(post.activity_start_time) : undefined
+  const activityEnd = post.activity_end_time ? new Date(post.activity_end_time) : undefined
 
   const onUnshare = () => {
     if (window.confirm('Unshare this post? It is removed from your feed and retracted from followers.')) {
@@ -107,9 +102,9 @@ function FeedPostCard({ post }: { post: FeedPost }) {
       {editing && activityId && (
         <ShareActivityDialog
           activityId={activityId}
-          activityTitle={activity?.title}
-          activityStart={activity?.merged_start_time ?? activity?.start_time}
-          activityEnd={activity?.merged_end_time ?? activity?.end_time}
+          activityTitle={post.activity_title}
+          activityStart={activityStart}
+          activityEnd={activityEnd}
           post={post}
           onClose={() => setEditing(false)}
         />

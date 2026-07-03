@@ -5,7 +5,6 @@
 import { shareActivityBodySchema, updateFeedPostBodySchema } from '@aurboda/api-spec'
 import { z } from 'zod'
 
-import type { FeedPostRecord } from '../db/index.ts'
 import type { FeedDeliver } from '../routes/feed-router.ts'
 
 import {
@@ -16,19 +15,8 @@ import {
   listFeedPosts,
   updateFeedPost,
 } from '../db/index.ts'
+import { serializeFeedPost } from '../services/feed.ts'
 import { errorResponse, jsonResponse, type McpServer } from './helpers.ts'
-
-const serialize = (record: FeedPostRecord) => ({
-  activity_id: record.activity_id,
-  created_at: record.created_at.toISOString(),
-  id: record.id,
-  include_chart: record.include_chart,
-  include_map: record.include_map,
-  included_metrics: record.included_metrics,
-  series_metrics: record.series_metrics,
-  updated_at: record.updated_at.toISOString(),
-  visibility: record.visibility,
-})
 
 export const registerFeedTools = (server: McpServer, user: string, deliver?: FeedDeliver) => {
   server.tool(
@@ -37,7 +25,7 @@ export const registerFeedTools = (server: McpServer, user: string, deliver?: Fee
     {},
     async () => {
       const records = await listFeedPosts(user)
-      return jsonResponse(records.map(serialize))
+      return jsonResponse(await Promise.all(records.map((record) => serializeFeedPost(user, record))))
     },
   )
 
@@ -58,7 +46,7 @@ export const registerFeedTools = (server: McpServer, user: string, deliver?: Fee
       })
       // Fan out to followers (best-effort), same as the REST share route.
       deliver?.created(user, record, activity)
-      return jsonResponse(serialize(record))
+      return jsonResponse(await serializeFeedPost(user, record))
     },
   )
 
@@ -77,7 +65,7 @@ export const registerFeedTools = (server: McpServer, user: string, deliver?: Fee
       if (!record) return errorResponse('Feed post not found')
       // Federate the edit as an Update, same as the REST update route.
       deliver?.updated(user, record)
-      return jsonResponse(serialize(record))
+      return jsonResponse(await serializeFeedPost(user, record))
     },
   )
 
