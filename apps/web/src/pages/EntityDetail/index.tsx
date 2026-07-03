@@ -8,6 +8,7 @@
 import { isExerciseActivityType } from '@aurboda/api-spec'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
+import { marked } from 'marked'
 import { useLocation, useRoute } from 'preact-iso'
 import { useCallback, useEffect, useState } from 'preact/hooks'
 
@@ -327,6 +328,13 @@ const ActivityDetailContent = ({
           durationLabel={hasSleepStages ? 'In Bed' : undefined}
         />
 
+        {!isEditing && getUserNotesContent(activity) && (
+          <div
+            class="entity-description note-content"
+            dangerouslySetInnerHTML={{ __html: marked.parse(getUserNotesContent(activity)) as string }}
+          />
+        )}
+
         {/* Schema data fields — editable in edit mode, read-only otherwise */}
         {typeDef?.data_schema && (isEditing || activity.data) && (
           <SchemaDataFields
@@ -348,7 +356,6 @@ const ActivityDetailContent = ({
               durationLabel={hasSleepStages ? 'In Bed' : 'Duration'}
               totalCalories={totalCalories}
               sleepMinutes={sleepMinutes}
-              notes={getUserNotesContent(activity)}
             />
             {hasHrZones && <HrZoneBar zones={hrZoneSecs!} />}
           </>

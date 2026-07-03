@@ -19,7 +19,6 @@ const input = (overrides: Partial<Parameters<typeof buildActivityStatRows>[0]> =
   durationLabel: 'Duration',
   totalCalories: undefined,
   sleepMinutes: undefined,
-  notes: '',
   ...overrides,
 })
 
@@ -79,16 +78,10 @@ describe('buildActivityStatRows', () => {
     expect(rows.find((r) => r.label === 'Avg Pace')).toBeUndefined()
     expect(rows.find((r) => r.label === 'Avg Cadence')).toBeUndefined()
     expect(rows.find((r) => r.label === 'Active Calories')).toBeUndefined()
-    expect(rows.find((r) => r.label === 'Notes')).toBeUndefined()
   })
 
   test('emits Asleep row when sleepMinutes provided', () => {
     const rows = buildActivityStatRows(input({ sleepMinutes: 425 }))
     expect(rows.find((r) => r.label === 'Asleep')?.value).toBe('7h 5m')
-  })
-
-  test('emits Notes row when notes are non-empty', () => {
-    const rows = buildActivityStatRows(input({ notes: 'Felt great' }))
-    expect(rows.at(-1)).toEqual({ label: 'Notes', value: 'Felt great' })
   })
 })
