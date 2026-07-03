@@ -6,6 +6,7 @@ import type {
   FollowingActor,
   FollowingResponse,
   ShareActivityBody,
+  TimelineResponse,
   UpdateFeedPostBody,
 } from '@aurboda/api-spec'
 
@@ -69,4 +70,17 @@ export const followActor = async (handle: string): Promise<FollowingActor> => {
 /** Unfollow an actor by its local follow id. */
 export const unfollowActor = async (id: string): Promise<void> => {
   await axios.delete(`${API_URL}/feed/following/${id}`, { headers: authHeaders() })
+}
+
+/**
+ * Fetch one page of the home timeline (posts from the actors the user follows,
+ * newest-first). Pass the previous page's `next_cursor` to page; a null cursor
+ * (in the response) means there are no more.
+ */
+export const fetchTimeline = async (cursor?: string): Promise<TimelineResponse> => {
+  const response = await axios.get<TimelineResponse>(`${API_URL}/feed/timeline`, {
+    headers: authHeaders(),
+    params: cursor ? { cursor } : {},
+  })
+  return response.data
 }

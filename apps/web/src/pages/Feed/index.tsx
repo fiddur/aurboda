@@ -14,6 +14,7 @@ import { avatarUrl, deleteFeedPost, fetchFeed } from '../../state/api'
 import { auth } from '../../state/auth'
 import { FeedPostCard, type PostAuthor } from './FeedPostCard'
 import { FollowingPanel } from './FollowingPanel'
+import { HomeTimeline } from './HomeTimeline'
 import './style.css'
 
 function OwnPostCard({ post, author }: { post: FeedPost; author: PostAuthor }) {
@@ -89,6 +90,8 @@ export function Feed() {
       </p>
 
       <FollowingPanel />
+
+      <HomeTimeline />
 
       <h2 class="feed-section-title">Your posts</h2>
       {isLoading && <p>Loading…</p>}

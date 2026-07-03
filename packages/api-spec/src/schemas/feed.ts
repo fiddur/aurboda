@@ -214,6 +214,61 @@ export const followingResponseSchema = baseResponseSchema
 export type FollowingResponse = z.infer<typeof followingResponseSchema>
 
 // =============================================================================
+// Home timeline (posts received from followed actors)
+// =============================================================================
+
+/** A post received from a followed actor, as shown in the home timeline. */
+export const timelineEntrySchema = z
+  .object({
+    actor_uri: z.string().meta({ description: "The author's ActivityPub actor URI" }),
+    avatar_url: z.string().nullable().meta({ description: "The author's avatar URL, if known" }),
+    content: z
+      .string()
+      .meta({ description: 'The post HTML (already sanitised server-side; safe to render)' }),
+    display_name: z.string().nullable().meta({ description: "The author's display name, if known" }),
+    handle: z.string().nullable().meta({ description: "The author's `@user@host` handle, if known" }),
+    id: z.string().uuid().meta({ description: 'Local id of the timeline entry' }),
+    object_uri: z.string().meta({ description: "The remote post's canonical id" }),
+    published_at: iso8601DateTimeSchema.meta({ description: 'When the post was published (ISO 8601)' }),
+    url: z.string().nullable().meta({ description: 'Link to the original post' }),
+  })
+  .meta({ id: 'TimelineEntry' })
+
+export type TimelineEntry = z.infer<typeof timelineEntrySchema>
+
+/** Query for the home-timeline endpoint (keyset pagination). */
+export const timelineQuerySchema = z
+  .object({
+    cursor: z
+      .string()
+      .optional()
+      .meta({ description: "Opaque cursor from a previous page's `next_cursor`" }),
+    limit: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(50)
+      .default(20)
+      .meta({ description: 'Max entries to return (1–50, default 20)' }),
+  })
+  .meta({ id: 'TimelineQuery' })
+
+export type TimelineQuery = z.infer<typeof timelineQuerySchema>
+
+/** A page of the home timeline, newest first, with an opaque cursor for the next page. */
+export const timelineResponseSchema = baseResponseSchema
+  .extend({
+    entries: z.array(timelineEntrySchema),
+    next_cursor: z
+      .string()
+      .nullable()
+      .meta({ description: 'Cursor for the next page, or null if this is the last page' }),
+  })
+  .meta({ id: 'TimelineResponse' })
+
+export type TimelineResponse = z.infer<typeof timelineResponseSchema>
+
+// =============================================================================
 // Public series endpoint (unauthenticated, data-scoped)
 // =============================================================================
 

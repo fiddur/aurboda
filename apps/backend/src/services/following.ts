@@ -24,7 +24,12 @@ import { Follow, isActor, Undo } from '@fedify/fedify/vocab'
 
 import type { FeedFollowingInput, FeedFollowingRecord } from '../db/index.ts'
 
-import { getFeedFollowing, removeFeedFollowing, upsertFeedFollowing } from '../db/index.ts'
+import {
+  deleteTimelineEntriesByActor,
+  getFeedFollowing,
+  removeFeedFollowing,
+  upsertFeedFollowing,
+} from '../db/index.ts'
 
 export interface FollowDeps {
   federation: Federation<void>
@@ -184,5 +189,8 @@ export const unfollowActor = async (deps: FollowDeps, user: string, id: string):
   }
 
   await removeFeedFollowing(user, id)
+  // Their posts leave the home timeline too (no point keeping posts from someone
+  // you no longer follow).
+  await deleteTimelineEntriesByActor(user, existing.actor_uri)
   return true
 }

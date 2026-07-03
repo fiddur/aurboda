@@ -194,6 +194,31 @@ export const socialTables: Record<string, string> = {
     )
   `,
 
+  // The user's home timeline: posts received from actors they follow (inbound
+  // `Create`/`Update`/`Delete` on the feed). Keyed by a local `id`; `object_uri`
+  // (the remote Note's id) is UNIQUE so a re-delivery / edit upserts. `content`
+  // is the remote HTML AFTER server-side sanitisation (untrusted fediverse HTML);
+  // `published_at` is the remote post's own timestamp and drives timeline order.
+  timeline_entry: `
+    CREATE TABLE IF NOT EXISTS timeline_entry (
+      id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      object_uri    TEXT NOT NULL UNIQUE,
+      actor_uri     TEXT NOT NULL,
+      handle        TEXT,
+      display_name  TEXT,
+      avatar_url    TEXT,
+      content       TEXT NOT NULL DEFAULT '',
+      url           TEXT,
+      published_at  TIMESTAMPTZ NOT NULL,
+      received_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `,
+  // Timeline ordering / keyset pagination is by (published_at DESC, id DESC).
+  timeline_entry_indexes: `
+    CREATE INDEX IF NOT EXISTS idx_timeline_entry_published
+      ON timeline_entry (published_at DESC, id DESC)
+  `,
+
   // The user's public profile avatar. One per user (the profile owner), so a
   // `singleton` PK + CHECK pins it to a single row. Surfaced on the public
   // profile, shared-page OG cards, and the ActivityPub actor `icon`.
