@@ -1,8 +1,8 @@
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 
 import type { FeedPostRecord } from '../db/index.ts'
 
-import { type ImageActivity, resolveImageWindow } from './feed-image-router.ts'
+import { createRenderCache, type ImageActivity, resolveImageWindow } from './feed-image-router.ts'
 
 const POST_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
 const ACTIVITY_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
@@ -65,5 +65,51 @@ describe('resolveImageWindow', () => {
   test('null for an open-ended activity (no bounded window)', async () => {
     const openEnded = { start_time: activity.start_time }
     expect(await resolveImageWindow(deps(makePost(), openEnded), 'fiddur', POST_ID, 'include_map')).toBeNull()
+  })
+})
+
+describe('createRenderCache', () => {
+  const png = (s: string) => Buffer.from(s)
+
+  test('renders once per key, then serves the cached buffer', async () => {
+    const cached = createRenderCache()
+    const produce = vi.fn(async () => png('a'))
+    expect(await cached('k', produce)).toEqual(png('a'))
+    expect(await cached('k', produce)).toEqual(png('a'))
+    expect(produce).toHaveBeenCalledTimes(1)
+  })
+
+  test('de-duplicates concurrent misses into a single render', async () => {
+    const cached = createRenderCache()
+    const produce = vi.fn(async () => png('b'))
+    const [a, b] = await Promise.all([cached('k', produce), cached('k', produce)])
+    expect(a).toEqual(png('b'))
+    expect(b).toEqual(png('b'))
+    expect(produce).toHaveBeenCalledTimes(1)
+  })
+
+  test('renders separately per key', async () => {
+    const cached = createRenderCache()
+    const produce = vi.fn(async (): Promise<Buffer | null> => png('x'))
+    await cached('k1', produce)
+    await cached('k2', produce)
+    expect(produce).toHaveBeenCalledTimes(2)
+  })
+
+  test('does not cache a null (no-data) result', async () => {
+    const cached = createRenderCache()
+    const produce = vi.fn(async (): Promise<Buffer | null> => null)
+    expect(await cached('k', produce)).toBeNull()
+    expect(await cached('k', produce)).toBeNull()
+    expect(produce).toHaveBeenCalledTimes(2)
+  })
+
+  test('evicts the oldest entry past the bound', async () => {
+    const cached = createRenderCache(1)
+    const produce = vi.fn(async (): Promise<Buffer | null> => png('v'))
+    await cached('k1', produce) // cached
+    await cached('k2', produce) // evicts k1
+    await cached('k1', produce) // re-renders (was evicted)
+    expect(produce).toHaveBeenCalledTimes(3)
   })
 })

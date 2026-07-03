@@ -64,6 +64,7 @@ import { createTrainingLoadRouter } from '../routes/training-load-router.ts'
 import { createTrendsRouter } from '../routes/trends-router.ts'
 import { createWebAuthnRouter } from '../routes/webauthn-router.ts'
 import { createWellKnownRouter, type WellKnownConfig } from '../routes/well-known-router.ts'
+import { renderChartPng, renderRoutePng } from '../services/activitypub/feed-images.ts'
 import { loadAvatarDataUri } from '../services/avatar-resolve.ts'
 import { createOgImageRenderer } from '../services/og-image.ts'
 import { createTemplateLoader } from '../services/web-template.ts'
@@ -161,6 +162,8 @@ export const mountRestRouters = ({
       getRoute: async (user, start, end) =>
         (await getLocations(user, start, end)).locations.map((l) => l.coordinates),
       getSeries: getTimeSeries,
+      renderChart: renderChartPng,
+      renderRoute: renderRoutePng,
     }),
   )
   httpd.use(createPublicSharesRouter(webHost))
