@@ -1,5 +1,5 @@
 import sharp from 'sharp'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 
 import { renderChartPng, renderRoutePng } from './feed-images.ts'
 
@@ -80,11 +80,19 @@ describe('renderRoutePng', () => {
   })
 
   test('falls back to the bare shape when every tile fails to load', async () => {
-    const png = await renderRoutePng(coords, { fetchTile: async () => null })
-    expect(isPng(png)).toBe(true)
-    // No basemap → the dark background shows through at the corner.
-    const p = await pixelAt(png, 40, 40)
-    expect(p.g).toBeLessThan(60)
+    // An OSM outage/block (every tile null) must be observable, not silent.
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const png = await renderRoutePng(coords, { fetchTile: async () => null })
+      expect(isPng(png)).toBe(true)
+      // No basemap → the dark background shows through at the corner.
+      const p = await pixelAt(png, 40, 40)
+      expect(p.g).toBeLessThan(60)
+      // ...and a warning is logged so the degradation isn't invisible.
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('all'))
+    } finally {
+      warn.mockRestore()
+    }
   })
 
   test('renders a plain background for an empty route without throwing', async () => {

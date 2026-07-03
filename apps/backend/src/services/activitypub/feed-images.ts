@@ -195,7 +195,16 @@ const renderRouteWithBasemap = async (
     ty,
   }))
   const loaded = tiles.filter((t): t is { tx: number; ty: number; buf: Buffer } => t.buf != null)
-  if (loaded.length === 0) return null
+  if (loaded.length === 0) {
+    // Every covering tile failed to fetch — an OSM outage or block (e.g. 429), not
+    // an expected case like the MAX_TILES guard above. `fetchTile` swallows each
+    // failure to null, so this is the only place a real outage surfaces: log it so
+    // the silent degradation to a bare shape is observable rather than invisible.
+    console.warn(
+      `⚠️ OSM basemap: all ${coords.length} tiles failed to fetch (zoom ${zoom}); using bare route`,
+    )
+    return null
+  }
 
   // Composite tiles onto a grid canvas (all non-negative offsets), then crop the
   // 700×700 viewport out of it — avoids negative composite offsets entirely.
