@@ -20,7 +20,7 @@ import type { FeedVisibility } from '@aurboda/api-spec'
  */
 import type { Context, Federation } from '@fedify/fedify'
 
-import { Create, Delete, Note, Tombstone, Update } from '@fedify/fedify/vocab'
+import { Create, Delete, Image, Note, Tombstone, Update } from '@fedify/fedify/vocab'
 
 import { resolveActivityScalars } from './feed-activity.ts'
 import { addressingFor, feedPostContent } from './object.ts'
@@ -48,6 +48,44 @@ export interface DeliverablePost {
   created_at: Date
   /** Last-edited time; makes each `Update` activity id unique (see `buildFeedUpdate`). */
   updated_at: Date
+  /** Attach a rendered heart-rate chart image. */
+  include_chart: boolean
+  /** Attach a rendered GPS route-map image. */
+  include_map: boolean
+}
+
+/**
+ * Image attachments for a post's opted-in chart/route. Each points at the public
+ * on-demand image endpoint (`/api/public/<user>/feed/<id>/{chart,route}.png`),
+ * built against the actor's origin so it matches the deployed API base. Fedify's
+ * `Image` carries `url` + `mediaType` + intrinsic size so Mastodon lays it out.
+ */
+const imageAttachments = (actorUri: URL, user: string, post: DeliverablePost): Image[] => {
+  const base = new URL(`/api/public/${encodeURIComponent(user)}/feed/${post.id}`, actorUri)
+  const images: Image[] = []
+  if (post.include_chart) {
+    images.push(
+      new Image({
+        height: 420,
+        mediaType: 'image/png',
+        name: 'Heart rate',
+        url: new URL(`${base.href}/chart.png`),
+        width: 1000,
+      }),
+    )
+  }
+  if (post.include_map) {
+    images.push(
+      new Image({
+        height: 700,
+        mediaType: 'image/png',
+        name: 'Route',
+        url: new URL(`${base.href}/route.png`),
+        width: 700,
+      }),
+    )
+  }
+  return images
 }
 
 export interface DeliverableActivity {
@@ -77,10 +115,12 @@ export const buildFeedNote = async (
 ): Promise<Note> => {
   const scalars = await resolveActivityScalars(user, activity, post.included_metrics)
   const { content, name } = feedPostContent(activity.title, activity.activity_type, scalars)
+  const actorUri = ctx.getActorUri(user)
   const noteId = ctx.getObjectUri(Note, { identifier: user, postId: post.id })
   const { cc, to } = recipients(post.visibility, ctx.getFollowersUri(user))
   return new Note({
-    attribution: ctx.getActorUri(user),
+    attachments: imageAttachments(actorUri, user, post),
+    attribution: actorUri,
     ccs: cc,
     content,
     id: noteId,

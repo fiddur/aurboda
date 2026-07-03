@@ -34,6 +34,8 @@ describe('buildFeedDelete', () => {
   const deliverablePost = (visibility: DeliverablePost['visibility']): DeliverablePost => ({
     created_at: new Date('2026-07-01T00:00:00Z'),
     id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    include_chart: false,
+    include_map: false,
     included_metrics: [],
     updated_at: new Date('2026-07-01T00:00:00Z'),
     visibility,

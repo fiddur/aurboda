@@ -28,7 +28,8 @@ selection that bounds what is shared:
   revealing than an average, so series are **off unless deliberately chosen**, even for
   a metric whose scalar summary is shared.
 - **`visibility`** — `public`, `unlisted`, or `followers`.
-- **`include_map` / `include_chart`** — flags for the (deferred) image attachments.
+- **`include_chart` / `include_map`** — attach a rendered heart-rate chart and/or
+  GPS route-map image to the post (see [Images](#images)).
 
 Defaults are privacy-conservative: sharing an activity with no explicit selection
 shares no scalars and, crucially, **no series**.
@@ -91,6 +92,26 @@ links) is a separate, richer representation for Aurboda-to-Aurboda consumers.
 The object we deliver, list in the outbox, and serve at that id are all built from one
 place, so they can't drift.
 
+### Images
+
+A post can carry a rendered **heart-rate chart** (`include_chart`) and/or a **GPS
+route map** (`include_map`) as AS2 `Image` attachments, so Mastodon shows them inline.
+Both are rendered on demand (SVG → PNG) from the activity's data at public,
+unauthenticated endpoints:
+
+```
+GET /api/public/:username/feed/:postId/chart.png
+GET /api/public/:username/feed/:postId/route.png
+```
+
+The gating mirrors the object endpoint (public/unlisted only, and only when the
+matching flag was opted into) and responses are `no-store` so an unshare/visibility
+change takes effect immediately. The route is drawn as a bare, aspect-correct shape —
+no street basemap (a later enhancement) and **no privacy trimming** (area masking is a
+planned follow-up), so a public route map reveals the approximate area. The share
+dialog only offers the chart toggle when the activity has heart-rate data and the map
+toggle when it has a GPS signal.
+
 ## Public series endpoint (the privacy boundary)
 
 High-resolution series are **never** embedded in a post. Instead each shared series is
@@ -145,6 +166,8 @@ Public / federation (unauthenticated):
 | Method & path                              | Purpose                                                    |
 | ------------------------------------------ | ---------------------------------------------------------- |
 | `GET /public/:username/series`             | Bucketed samples for a **shared** series within its window |
+| `GET /public/:username/feed/:postId/chart.png` | Rendered HR chart for an opted-in post                 |
+| `GET /public/:username/feed/:postId/route.png` | Rendered GPS route map for an opted-in post            |
 | `GET /.well-known/webfinger`               | Resolve `acct:<username>@<host>` → the actor               |
 | `GET /users/:username`                     | The actor document (`Person`)                              |
 | `GET /users/:username/outbox`              | Public + unlisted posts as `Create` activities             |
@@ -180,6 +203,9 @@ These are known and intentional for the current implementation:
   detail), so remote servers timestamp posts at receipt (≈ share time).
 - **The outbox is not paginated** — it serves all public posts inline. Fine at feed
   scale; cursor pagination is a follow-up.
+- **Route maps have no basemap and no privacy trimming.** The route is a bare shape
+  (no street tiles) and shows the full track, so a public route map reveals the
+  approximate area; a street basemap and start/area masking are planned follow-ups.
 
 ## Related
 

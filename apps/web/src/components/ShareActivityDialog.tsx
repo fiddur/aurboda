@@ -53,11 +53,14 @@ const toggle = <T extends string>(set: Set<T>, key: T): Set<T> => {
  * One coarse bucketed fetch; while it loads (or without a window) every option
  * is offered.
  */
+// eslint-disable-next-line complexity -- availability gating across summary/series/chart/map
 const useShareableMetricOptions = (
   activityStart?: Date,
   activityEnd?: Date,
   keepSummary: string[] = [],
   keepSeries: string[] = [],
+  keepChart = false,
+  keepMap = false,
 ) => {
   const availabilityQuery = useQuery({
     // The `??` fallbacks never run — `enabled` gates the fetch on both being set.
@@ -71,6 +74,11 @@ const useShareableMetricOptions = (
     ? new Set(availabilityQuery.data.buckets.flatMap((b) => Object.keys(b.metrics)))
     : undefined
   return {
+    // The chart renders heart rate; the route map needs a GPS signal (distance /
+    // speed). While availability is unknown, offer both. `keepChart`/`keepMap`
+    // keep an already-attached image toggleable when editing.
+    canChart: present ? present.has('heart_rate') || keepChart : true,
+    canMap: present ? present.has('distance') || present.has('speed') || keepMap : true,
     seriesOptions: present
       ? SERIES_METRICS.filter((m) => present.has(m.key) || keepSeries.includes(m.key))
       : SERIES_METRICS,
@@ -82,6 +90,7 @@ const useShareableMetricOptions = (
   }
 }
 
+// eslint-disable-next-line complexity -- composite share/edit form (metrics, series, images, visibility)
 export function ShareActivityDialog({
   activityId,
   activityTitle,
@@ -102,30 +111,30 @@ export function ShareActivityDialog({
     () => new Set(SERIES_METRICS.map((m) => m.key).filter((k) => post?.series_metrics.includes(k) ?? false)),
   )
   const [visibility, setVisibility] = useState<FeedVisibility>(post?.visibility ?? 'public')
-  const { summaryOptions, seriesOptions } = useShareableMetricOptions(
+  const [includeChart, setIncludeChart] = useState(post?.include_chart ?? false)
+  const [includeMap, setIncludeMap] = useState(post?.include_map ?? false)
+  const { summaryOptions, seriesOptions, canChart, canMap } = useShareableMetricOptions(
     activityStart,
     activityEnd,
     post?.included_metrics,
     post?.series_metrics,
+    post?.include_chart,
+    post?.include_map,
   )
 
   const mutation = useMutation({
     mutationFn: () => {
       // Only send metrics the dialog actually offered (drops defaults hidden as
-      // irrelevant); the backend still ignores any with no data.
-      const included_metrics = summaryOptions.map((m) => m.key).filter((k) => summary.has(k))
-      const series_metrics = seriesOptions.map((m) => m.key).filter((k) => series.has(k))
-      // Edit mode leaves include_chart/include_map untouched (both optional on
-      // UpdateFeedPostBody); only the create path sets their defaults.
-      return post
-        ? updateFeedPost(post.id, { included_metrics, series_metrics, visibility })
-        : shareActivity(activityId, {
-            include_chart: false,
-            include_map: false,
-            included_metrics,
-            series_metrics,
-            visibility,
-          })
+      // irrelevant); the backend still ignores any with no data. Attachments are
+      // only requested when their toggle is offered (chart needs HR, map needs GPS).
+      const body = {
+        include_chart: canChart && includeChart,
+        include_map: canMap && includeMap,
+        included_metrics: summaryOptions.map((m) => m.key).filter((k) => summary.has(k)),
+        series_metrics: seriesOptions.map((m) => m.key).filter((k) => series.has(k)),
+        visibility,
+      }
+      return post ? updateFeedPost(post.id, body) : shareActivity(activityId, body)
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['feed'] })
@@ -182,6 +191,34 @@ export function ShareActivityDialog({
                   {label}
                 </label>
               ))}
+            </div>
+          </fieldset>
+        )}
+
+        {(canChart || canMap) && (
+          <fieldset class="share-dialog-group">
+            <legend>Images</legend>
+            <div class="share-dialog-options">
+              {canChart && (
+                <label class="share-dialog-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={includeChart}
+                    onChange={(e) => setIncludeChart((e.target as HTMLInputElement).checked)}
+                  />
+                  Heart-rate chart
+                </label>
+              )}
+              {canMap && (
+                <label class="share-dialog-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={includeMap}
+                    onChange={(e) => setIncludeMap((e.target as HTMLInputElement).checked)}
+                  />
+                  Route map
+                </label>
+              )}
             </div>
           </fieldset>
         )}

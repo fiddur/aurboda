@@ -18,7 +18,13 @@ import type { SyncProvider } from '../services/queries/index.ts'
 import type { WebAuthnService } from '../services/webauthn.ts'
 import type { AnyMiddleware } from '../typed-router.ts'
 
-import { markActivityDetailSynced } from '../db/index.ts'
+import {
+  getActivityById,
+  getFeedPostById,
+  getLocations,
+  getTimeSeries,
+  markActivityDetailSynced,
+} from '../db/index.ts'
 import { processActivityDetail } from '../integrations/garmin/process.ts'
 import { createActivitiesRouter } from '../routes/activities-router.ts'
 import { createActivityTypesRouter } from '../routes/activity-types-router.ts'
@@ -30,6 +36,7 @@ import { createChartDataRouter } from '../routes/chart-data-router.ts'
 import { createCorrelationsRouter } from '../routes/correlations-router.ts'
 import { createDashboardRouter } from '../routes/dashboard-router.ts'
 import { createDeductionRulesRouter } from '../routes/deduction-rules-router.ts'
+import { createFeedImageRouter } from '../routes/feed-image-router.ts'
 import { createFeedPublicRouter } from '../routes/feed-public-router.ts'
 import { createFeedRouter, type FeedDeliver } from '../routes/feed-router.ts'
 import { createFoodItemsRouter } from '../routes/food-items-router.ts'
@@ -144,6 +151,17 @@ export const mountRestRouters = ({
   // Public feed series must be mounted before the generic /public/:username/:slug
   // resolver so `series` is not matched as a share slug.
   httpd.use(createFeedPublicRouter())
+  // Public feed-post images (chart / route map), rendered on demand for opted-in
+  // public/unlisted posts. Mounted alongside the series router (same guard).
+  httpd.use(
+    createFeedImageRouter({
+      getActivity: getActivityById,
+      getPost: getFeedPostById,
+      getRoute: async (user, start, end) =>
+        (await getLocations(user, start, end)).locations.map((l) => l.coordinates),
+      getSeries: getTimeSeries,
+    }),
+  )
   httpd.use(createPublicSharesRouter(webHost))
   // Mounted before the share-html router so `/u/.../opengraph-image.png` and
   // `/u/:username/avatar.png` win over the generic `/u/:username/:slug` HTML route.
