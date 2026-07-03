@@ -15,7 +15,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'preact/hooks'
 
 import { fetchBucketedMetrics, fetchRawLocations, shareActivity, updateFeedPost } from '../state/api'
-import { SERIES_METRICS, SUMMARY_METRICS } from './feed-metrics'
+import { defaultsFromChart, SERIES_METRICS, SUMMARY_METRICS } from './feed-metrics'
 import './ShareActivityDialog.css'
 
 interface Props {
@@ -24,6 +24,8 @@ interface Props {
   /** Activity window — when given, the dialog offers only metrics with data in it. */
   activityStart?: Date
   activityEnd?: Date
+  /** Metrics currently shown on the activity's chart; mirrored into the defaults. */
+  chartMetrics?: string[]
   /** When present, edit this existing post instead of sharing anew. */
   post?: FeedPost
   onClose: () => void
@@ -35,8 +37,6 @@ const VISIBILITIES: { value: FeedVisibility; label: string; hint: string }[] = [
   { hint: 'Anyone with the link; kept out of public timelines.', label: 'Unlisted', value: 'unlisted' },
   { hint: 'Only your followers.', label: 'Followers only', value: 'followers' },
 ]
-
-const DEFAULT_SUMMARY = ['duration', 'distance', 'heart_rate_avg', 'heart_rate_max', 'calories']
 
 const toggle = <T extends string>(set: Set<T>, key: T): Set<T> => {
   const next = new Set(set)
@@ -106,19 +106,27 @@ export function ShareActivityDialog({
   activityTitle,
   activityStart,
   activityEnd,
+  chartMetrics,
   post,
   onClose,
   onShared,
 }: Props) {
   const queryClient = useQueryClient()
+  // Create mode mirrors the chart's shown metrics; edit mode uses the post's saved selection.
+  const defaults = defaultsFromChart(chartMetrics)
   const [summary, setSummary] = useState<Set<string>>(
-    () => new Set(post ? post.included_metrics : DEFAULT_SUMMARY),
+    () => new Set(post ? post.included_metrics : defaults.summary),
   )
-  // Preselect from the post's shared series, intersected with the keys this
-  // dialog can represent — keeps the state typed as `Set<MetricType>` without a
-  // cast (the dialog only offers `SERIES_METRICS` anyway).
+  // Preselect from the post's shared series (edit) or the charted metrics (create),
+  // intersected with keys this dialog can represent — keeps the state typed as
+  // `Set<MetricType>` without a cast.
   const [series, setSeries] = useState<Set<MetricType>>(
-    () => new Set(SERIES_METRICS.map((m) => m.key).filter((k) => post?.series_metrics.includes(k) ?? false)),
+    () =>
+      new Set(
+        post
+          ? SERIES_METRICS.map((m) => m.key).filter((k) => post.series_metrics.includes(k))
+          : defaults.series,
+      ),
   )
   const [visibility, setVisibility] = useState<FeedVisibility>(post?.visibility ?? 'public')
   const [includeChart, setIncludeChart] = useState(post?.include_chart ?? false)

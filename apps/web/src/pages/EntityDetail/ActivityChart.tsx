@@ -23,6 +23,8 @@ interface ActivityChartProps {
   stages?: SleepStage[]
   defaultMetrics?: string[]
   onHoverTime?: (time: Date | null) => void
+  /** Notified with the metrics currently shown on the chart (for the share dialog). */
+  onEnabledMetricsChange?: (metrics: string[]) => void
 }
 
 const CHART_HEIGHT = 260
@@ -532,6 +534,7 @@ export const ActivityChart = ({
   stages,
   defaultMetrics = [],
   onHoverTime,
+  onEnabledMetricsChange,
 }: ActivityChartProps) => {
   const containerRef = useRef<HTMLDivElement>(null)
   const svgRef = useRef<SVGSVGElement>(null)
@@ -589,6 +592,12 @@ export const ActivityChart = ({
   }, [])
 
   const enabledMetrics = new Set(availableMetrics.filter((m) => !disabledMetrics.has(m)))
+
+  // Surface the currently-shown metrics so a parent (the share dialog) can mirror
+  // the user's chart selection. Runs on load and each toggle (deps change ref).
+  useEffect(() => {
+    onEnabledMetricsChange?.(availableMetrics.filter((m) => !disabledMetrics.has(m)))
+  }, [availableMetrics, disabledMetrics, onEnabledMetricsChange])
 
   // Compute which metrics get axes (last MAX_RIGHT_AXES in toggleOrder that are enabled)
   const metricsWithAxes = new Set(toggleOrder.filter((m) => enabledMetrics.has(m)).slice(-MAX_RIGHT_AXES))
