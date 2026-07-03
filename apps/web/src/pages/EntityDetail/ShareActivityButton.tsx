@@ -13,11 +13,13 @@ export const ShareActivityButton = ({
   activityTitle,
   activityStart,
   activityEnd,
+  chartMetrics,
 }: {
   activityId: string
   activityTitle?: string
   activityStart?: Date
   activityEnd?: Date
+  chartMetrics?: string[]
 }) => {
   const [open, setOpen] = useState(false)
   return (
@@ -36,6 +38,7 @@ export const ShareActivityButton = ({
           activityTitle={activityTitle}
           activityStart={activityStart}
           activityEnd={activityEnd}
+          chartMetrics={chartMetrics}
           onClose={() => setOpen(false)}
         />
       )}
