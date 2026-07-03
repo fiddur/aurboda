@@ -105,6 +105,26 @@ export const listPublicFeedPosts = async (user: string): Promise<FeedPostRecord[
   return result.rows.map(mapFeedPost)
 }
 
+/**
+ * One page of public outbox posts, newest-first, for the cursor-paginated
+ * ActivityPub outbox. `limit`/`offset` are clamped by the caller.
+ */
+export const listPublicFeedPostsPage = async (
+  user: string,
+  limit: number,
+  offset: number,
+): Promise<FeedPostRecord[]> => {
+  const result = await query<FeedPostRow>(
+    user,
+    `SELECT ${FEED_POST_COLUMNS} FROM feed_posts
+      WHERE visibility IN ('public', 'unlisted')
+      ORDER BY created_at DESC, id DESC
+      LIMIT $1 OFFSET $2`,
+    [limit, offset],
+  )
+  return result.rows.map(mapFeedPost)
+}
+
 /** Total number of posts on the public outbox (see `listPublicFeedPosts`). */
 export const countPublicFeedPosts = async (user: string): Promise<number> => {
   const result = await query<{ count: number }>(

@@ -125,16 +125,26 @@ describe('Feed federation actor + WebFinger', () => {
     expect(doc.orderedItems).toContain('https://mastodon.example/users/alice')
   })
 
-  test('serves the outbox with public posts as Create activities', async () => {
+  test('serves a paginated outbox: root has totalItems + first page link, page has the Create', async () => {
     const user = getTestUser()
     const activityId = await insertExercise(user)
     const post = await sharePost(user, activityId)
 
-    const res = await fetchAs2(`/users/${user}/outbox`)
-    expect(res.status).toBe(200)
-    const doc = (await res.json()) as { totalItems?: number; orderedItems?: unknown[] }
-    expect(doc.totalItems).toBe(1)
-    const items = doc.orderedItems ?? []
+    // Root collection: totalItems + a `first` page link (items live on the page).
+    const root = (await (await fetchAs2(`/users/${user}/outbox`)).json()) as {
+      totalItems?: number
+      first?: string
+      orderedItems?: unknown[]
+    }
+    expect(root.totalItems).toBe(1)
+    expect(root.first).toBe(`${ORIGIN}/users/${user}/outbox?cursor=0`)
+    expect(root.orderedItems).toBeUndefined()
+
+    // First page: the Create for the shared post.
+    const page = (await (await fetchAs2(`/users/${user}/outbox?cursor=0`)).json()) as {
+      orderedItems?: unknown[]
+    }
+    const items = page.orderedItems ?? []
     expect(items).toHaveLength(1)
     const create = items[0] as { type: string; object: string | { id: string; type: string } }
     expect(create.type).toBe('Create')
@@ -160,15 +170,35 @@ describe('Feed federation actor + WebFinger', () => {
     const activityId = await insertExercise(user)
     const post = await sharePost(user, activityId, { visibility: 'followers' })
 
-    const outbox = (await (await fetchAs2(`/users/${user}/outbox`)).json()) as {
-      totalItems?: number
+    const outbox = (await (await fetchAs2(`/users/${user}/outbox`)).json()) as { totalItems?: number }
+    expect(outbox.totalItems).toBe(0)
+    const page = (await (await fetchAs2(`/users/${user}/outbox?cursor=0`)).json()) as {
       orderedItems?: unknown[]
     }
-    expect(outbox.totalItems).toBe(0)
-    expect(outbox.orderedItems ?? []).toHaveLength(0)
+    expect(page.orderedItems ?? []).toHaveLength(0)
 
     const object = await fetchAs2(`/users/${user}/feed/${post.id}`)
     expect(object.status).toBe(404)
+  })
+
+  test('paginates the outbox past the page size', async () => {
+    const user = getTestUser()
+    const activityId = await insertExercise(user)
+    for (let i = 0; i < 21; i++) await sharePost(user, activityId)
+
+    const page1 = (await (await fetchAs2(`/users/${user}/outbox?cursor=0`)).json()) as {
+      orderedItems?: unknown[]
+      next?: string
+    }
+    expect((page1.orderedItems ?? []).length).toBe(20)
+    expect(page1.next).toBe(`${ORIGIN}/users/${user}/outbox?cursor=20`)
+
+    const page2 = (await (await fetchAs2(`/users/${user}/outbox?cursor=20`)).json()) as {
+      orderedItems?: unknown[]
+      next?: string
+    }
+    expect((page2.orderedItems ?? []).length).toBe(1)
+    expect(page2.next).toBeUndefined()
   })
 
   test('404s a post object for a non-UUID id without touching the database', async () => {

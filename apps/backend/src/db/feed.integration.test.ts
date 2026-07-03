@@ -15,6 +15,7 @@ import {
   getFeedPostById,
   listFeedPosts,
   listPublicFeedPosts,
+  listPublicFeedPostsPage,
   updateFeedPost,
 } from './feed.ts'
 
@@ -125,6 +126,17 @@ describe('Feed posts integration', () => {
       await createFeedPost(user, postInput({ visibility: 'followers' }))
       expect(await listPublicFeedPosts(user)).toEqual([])
       expect(await countPublicFeedPosts(user)).toBe(0)
+    })
+
+    test('listPublicFeedPostsPage returns newest-first pages by limit/offset', async () => {
+      const user = getTestUser()
+      const a = await createFeedPost(user, postInput())
+      const b = await createFeedPost(user, postInput())
+      const c = await createFeedPost(user, postInput())
+      // Newest-first: c, b, a
+      expect((await listPublicFeedPostsPage(user, 2, 0)).map((p) => p.id)).toEqual([c.id, b.id])
+      expect((await listPublicFeedPostsPage(user, 2, 2)).map((p) => p.id)).toEqual([a.id])
+      expect(await listPublicFeedPostsPage(user, 2, 4)).toEqual([])
     })
   })
 

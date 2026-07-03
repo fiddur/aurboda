@@ -297,6 +297,7 @@ export {
   getFeedPostById,
   listFeedPosts,
   listPublicFeedPosts,
+  listPublicFeedPostsPage,
   updateFeedPost,
 } from './feed.ts'
 
