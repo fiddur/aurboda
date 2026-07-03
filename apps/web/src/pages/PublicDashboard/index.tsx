@@ -15,6 +15,7 @@ import { useRoute } from 'preact-iso'
 import { useState } from 'preact/hooks'
 
 import { EditableDashboard } from '../../components/EditableDashboard'
+import { ShareLinkButton } from '../../components/ShareLinkButton'
 import { PublicWidgetRenderer } from '../../components/widgets'
 import { avatarUrl, fetchPublicResource, listSharedDashboards, updateSharedDashboard } from '../../state/api'
 import { auth } from '../../state/auth'
@@ -125,6 +126,7 @@ function ReadOnlyDashboard({
           <img class="public-attribution__avatar" src={avatarUrl(username)} alt="" width={28} height={28} />@
           {username}
         </a>
+        <ShareLinkButton url={window.location.href} title={`${name} — Aurboda`} />
       </div>
 
       {config.description ? <p class="dashboard-intro">{config.description}</p> : null}

@@ -40,6 +40,7 @@ import { createMealsRouter } from '../routes/meals-router.ts'
 import { createMetricsRouter } from '../routes/metrics-router.ts'
 import { createNotesRouter } from '../routes/notes-router.ts'
 import { createNutrientRecommendationsRouter } from '../routes/nutrient-recommendations-router.ts'
+import { createOEmbedRouter } from '../routes/oembed-router.ts'
 import { createOgImageRouter } from '../routes/og-image-router.ts'
 import { createProductivityRouter } from '../routes/productivity-router.ts'
 import { createProfileRouter } from '../routes/profile-router.ts'
@@ -148,6 +149,7 @@ export const mountRestRouters = ({
   // Mounted before the share-html router so `/u/.../opengraph-image.png` and
   // `/u/:username/avatar.png` win over the generic `/u/:username/:slug` HTML route.
   httpd.use(createPublicAvatarRouter())
+  httpd.use(createOEmbedRouter({ webHost, ...createShareResolvers() }))
   httpd.use(
     createOgImageRouter({
       loadAvatarDataUri,
