@@ -20,3 +20,10 @@ import { Temporal as TemporalPolyfill } from '@js-temporal/polyfill'
 
 export const dateToTemporalInstant = (date: Date): Temporal.Instant =>
   TemporalPolyfill.Instant.fromEpochMilliseconds(date.getTime()) as unknown as Temporal.Instant
+
+/**
+ * The reverse: an ambient `Temporal.Instant` (e.g. a received Note's `published`)
+ * to a JS `Date`. `epochMilliseconds` is present on both the polyfill and the
+ * ambient type, so no cast is needed.
+ */
+export const temporalInstantToDate = (instant: Temporal.Instant): Date => new Date(instant.epochMilliseconds)

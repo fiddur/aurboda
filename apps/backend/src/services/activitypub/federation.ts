@@ -1,5 +1,16 @@
 import { createFederation, type Federation, type InboxContext, MemoryKvStore } from '@fedify/fedify'
-import { Accept, type Create, Follow, Image, Note, Person, Reject, Undo } from '@fedify/fedify/vocab'
+import {
+  Accept,
+  Create,
+  Delete,
+  Follow,
+  Image,
+  Note,
+  Person,
+  Reject,
+  Undo,
+  Update,
+} from '@fedify/fedify/vocab'
 
 /**
  * The Fedify `Federation` object for the activity feed.
@@ -13,8 +24,9 @@ import { Accept, type Create, Follow, Image, Note, Person, Reject, Undo } from '
  * - key-pairs dispatcher backed by the per-user `feed_actor` keypair,
  * - inbound inbox: `Follow` → persist follower + `Accept`; `Undo{Follow}` →
  *   drop the follower; `Accept`/`Reject` → resolve a Follow WE sent (mark the
- *   `feed_following` row accepted, or drop it). Fedify verifies the HTTP
- *   Signature first.
+ *   `feed_following` row accepted, or drop it); `Create`/`Update` of a `Note`
+ *   from an *accepted followee* → ingest into the home timeline (sanitised);
+ *   `Delete` → drop the received post. Fedify verifies the HTTP Signature first.
  * - followers + following collections (the latter lists this user's *accepted*
  *   follows), both backed by Postgres.
  *
@@ -26,6 +38,8 @@ import {
   countAcceptedFeedFollowing,
   countFeedFollowers,
   countPublicFeedPosts,
+  deleteTimelineEntryByUri,
+  getFeedFollowingByActor,
   getFeedPostById,
   getOrCreateActorKeyPair,
   isMissingDatabase,
@@ -36,12 +50,14 @@ import {
   removeFeedFollower,
   removeFeedFollowingByActor,
   upsertFeedFollower,
+  upsertTimelineEntry,
 } from '../../db/index.ts'
 import { resolveFeedActivity } from '../feed.ts'
 import { buildProfileUrl } from '../share-urls.ts'
 import { buildFeedCreate, buildFeedNote } from './deliver.ts'
 import { toCryptoKeyPair } from './keys.ts'
 import { isPubliclyVisible } from './object.ts'
+import { noteToTimelineInput } from './timeline-ingest.ts'
 
 /** Posts per outbox page (cursor pagination). */
 const OUTBOX_PAGE_SIZE = 20
@@ -70,6 +86,31 @@ const localFollowerIdentifier = async (
   }
   const recipient = ctx.recipient
   return recipient != null && isValidUsername(recipient) ? recipient : null
+}
+
+/**
+ * Ingest a `Create`/`Update` of a `Note` into the recipient's home timeline —
+ * but ONLY if the sender is an *accepted* followee (so the timeline can't be
+ * injected into by a stranger who delivers to our inbox). The author's
+ * presentation comes from the cached `feed_following` row; the Note's HTML is
+ * sanitised in `noteToTimelineInput`. Best-effort: unresolvable objects and
+ * non-Notes are ignored, and a missing DB never 500s (which would invite retries).
+ */
+const ingestFeedActivity = async (ctx: InboxContext<void>, activity: Create | Update): Promise<void> => {
+  const me = ctx.recipient
+  if (me == null || !isValidUsername(me) || activity.actorId == null) return
+  try {
+    const follow = await getFeedFollowingByActor(me, activity.actorId.href)
+    if (follow == null || !follow.accepted) return
+    const object = await activity.getObject({ suppressError: true })
+    if (!(object instanceof Note)) return
+    const input = noteToTimelineInput(object, follow)
+    if (input == null) return
+    await upsertTimelineEntry(me, input)
+  } catch (error) {
+    if (isMissingDatabase(error)) return
+    throw error
+  }
 }
 
 export const createFeedFederation = (origin: string, apiBaseUrl: string): Federation<void> => {
@@ -194,6 +235,24 @@ export const createFeedFederation = (origin: string, apiBaseUrl: string): Federa
       if (me == null || reject.actorId == null) return
       try {
         await removeFeedFollowingByActor(me, reject.actorId.href)
+      } catch (error) {
+        if (isMissingDatabase(error)) return
+        throw error
+      }
+    })
+    // Create / Update of a Note from an actor we follow → ingest into our home
+    // timeline. Update reuses the same upsert (keyed on the Note's object id), so
+    // an edit replaces the stored copy. Only *accepted* followees are ingested, so
+    // a stranger who somehow delivers here can't inject into the timeline.
+    .on(Create, (ctx, create) => ingestFeedActivity(ctx, create))
+    .on(Update, (ctx, update) => ingestFeedActivity(ctx, update))
+    .on(Delete, async (ctx, del) => {
+      // Delete of a post we received → drop it from the timeline. `del.objectId`
+      // is the removed object's id (a Tombstone or bare id); we key on it.
+      const me = ctx.recipient
+      if (me == null || !isValidUsername(me) || del.objectId == null) return
+      try {
+        await deleteTimelineEntryByUri(me, del.objectId.href)
       } catch (error) {
         if (isMissingDatabase(error)) return
         throw error
