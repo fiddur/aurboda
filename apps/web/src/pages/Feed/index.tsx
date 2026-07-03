@@ -24,15 +24,19 @@ const VISIBILITY_LABEL: Record<FeedVisibility, string> = {
 
 const formatWhen = (iso: string): string => format(new Date(iso), 'PP')
 
+// eslint-disable-next-line complexity -- render-heavy card: title resolution, edit/unshare actions, chips
 function FeedPostCard({ post }: { post: FeedPost }) {
   const queryClient = useQueryClient()
   const [editing, setEditing] = useState(false)
   const activityId = post.activity_id
 
+  // Fetch the merged view (`merged:` prefix) so `merged_start_time/end` are
+  // populated — the same window the detail view uses when sharing, so the edit
+  // dialog offers the same metrics rather than a narrower anchor-only set.
   const activityQuery = useQuery({
     enabled: activityId != null,
-    queryFn: () => fetchActivityById(activityId ?? ''),
-    queryKey: ['activity', activityId],
+    queryFn: () => fetchActivityById(activityId ? `merged:${activityId}` : ''),
+    queryKey: ['activity', 'merged', activityId],
     staleTime: 5 * 60 * 1000,
   })
 
@@ -104,6 +108,8 @@ function FeedPostCard({ post }: { post: FeedPost }) {
         <ShareActivityDialog
           activityId={activityId}
           activityTitle={activity?.title}
+          activityStart={activity?.merged_start_time ?? activity?.start_time}
+          activityEnd={activity?.merged_end_time ?? activity?.end_time}
           post={post}
           onClose={() => setEditing(false)}
         />
