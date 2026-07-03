@@ -8,7 +8,7 @@
  */
 import type { DashboardConfig, DashboardSection, DashboardWidget, SectionType } from '@aurboda/api-spec'
 
-import { useState } from 'preact/hooks'
+import { useEffect, useState } from 'preact/hooks'
 
 import { DashboardEditor } from '../DashboardEditor'
 import { WidgetRenderer } from '../widgets'
@@ -40,6 +40,9 @@ function DashboardSectionComponent({
   const [editingTitle, setEditingTitle] = useState(false)
   const [titleDraft, setTitleDraft] = useState(section.title)
   const [descDraft, setDescDraft] = useState(section.description ?? '')
+  // Re-sync the draft when the underlying value changes (e.g. reset elsewhere),
+  // so a stale draft can't re-persist removed text on blur.
+  useEffect(() => setDescDraft(section.description ?? ''), [section.description])
 
   const commitDescription = () => {
     const next = descDraft.trim() || undefined
@@ -294,6 +297,10 @@ export function EditableDashboard({ config, isEditing, onChange, boardId }: Edit
   const [showWidgetPicker, setShowWidgetPicker] = useState<string | null>(null) // section id or null
   const [showAddSection, setShowAddSection] = useState(false)
   const [descDraft, setDescDraft] = useState(config.description ?? '')
+  // Re-sync when config changes under a still-mounted editor (home "Reset to
+  // Default", or navigating between shared dashboards), so the draft can't go
+  // stale and re-persist stale text on blur.
+  useEffect(() => setDescDraft(config.description ?? ''), [config.description])
 
   const commitDescription = () => {
     const next = descDraft.trim() || undefined
