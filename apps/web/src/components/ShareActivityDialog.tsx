@@ -14,7 +14,7 @@ import type { FeedPost, FeedVisibility, MetricType } from '@aurboda/api-spec'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'preact/hooks'
 
-import { fetchBucketedMetrics, shareActivity, updateFeedPost } from '../state/api'
+import { fetchBucketedMetrics, fetchRawLocations, shareActivity, updateFeedPost } from '../state/api'
 import { SERIES_METRICS, SUMMARY_METRICS } from './feed-metrics'
 import './ShareActivityDialog.css'
 
@@ -70,15 +70,25 @@ const useShareableMetricOptions = (
     queryKey: ['share-activity-metrics', activityStart?.toISOString(), activityEnd?.toISOString()],
     staleTime: 5 * 60 * 1000,
   })
+  // The route map is rendered from actual GPS points, so gate its toggle on real
+  // location data — not a distance/speed proxy (a treadmill run has those but no
+  // GPS, and would otherwise attach a route.png that 404s).
+  const locationsQuery = useQuery({
+    enabled: activityStart != null && activityEnd != null,
+    queryFn: () => fetchRawLocations(activityStart ?? new Date(), activityEnd ?? new Date()),
+    queryKey: ['share-activity-locations', activityStart?.toISOString(), activityEnd?.toISOString()],
+    staleTime: 5 * 60 * 1000,
+  })
+  const hasGps = (locationsQuery.data?.length ?? 0) > 0
+
   const present = availabilityQuery.data?.buckets
     ? new Set(availabilityQuery.data.buckets.flatMap((b) => Object.keys(b.metrics)))
     : undefined
   return {
-    // The chart renders heart rate; the route map needs a GPS signal (distance /
-    // speed). While availability is unknown, offer both. `keepChart`/`keepMap`
-    // keep an already-attached image toggleable when editing.
+    // The chart renders heart rate (a time-series metric, so presence is exact).
+    // `keepChart`/`keepMap` keep an already-attached image toggleable when editing.
     canChart: present ? present.has('heart_rate') || keepChart : true,
-    canMap: present ? present.has('distance') || present.has('speed') || keepMap : true,
+    canMap: hasGps || keepMap,
     seriesOptions: present
       ? SERIES_METRICS.filter((m) => present.has(m.key) || keepSeries.includes(m.key))
       : SERIES_METRICS,

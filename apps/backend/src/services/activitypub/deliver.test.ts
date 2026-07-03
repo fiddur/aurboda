@@ -43,7 +43,7 @@ describe('buildFeedDelete', () => {
 
   // No DB: builds a Fedify context off the federation's registered dispatchers
   // (URL builders only), so the Delete/Tombstone shape is unit-testable.
-  const contextFor = () => createFeedFederation(ORIGIN).createContext(new URL(ORIGIN))
+  const contextFor = () => createFeedFederation(ORIGIN, `${ORIGIN}/api`).createContext(new URL(ORIGIN))
 
   test('wraps a Tombstone at the post object id, addressed by visibility', async () => {
     const ctx = await contextFor()
@@ -71,7 +71,7 @@ describe('buildFeedDelete', () => {
 })
 
 describe('imageAttachments', () => {
-  const actorUri = new URL('https://aurboda.example/users/fiddur')
+  const apiBaseUrl = 'https://aurboda.example/api'
   const POST_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
   const base = `https://aurboda.example/api/public/fiddur/feed/${POST_ID}`
   const post = (overrides: Partial<DeliverablePost>): DeliverablePost => ({
@@ -86,16 +86,16 @@ describe('imageAttachments', () => {
   })
 
   test('attaches only the opted-in images, at the public endpoints', () => {
-    const chartOnly = imageAttachments(actorUri, 'fiddur', post({ include_chart: true }))
+    const chartOnly = imageAttachments(apiBaseUrl, 'fiddur', post({ include_chart: true }))
     expect(chartOnly.map((a) => a.url?.href)).toEqual([`${base}/chart.png`])
 
-    const both = imageAttachments(actorUri, 'fiddur', post({ include_chart: true, include_map: true }))
+    const both = imageAttachments(apiBaseUrl, 'fiddur', post({ include_chart: true, include_map: true }))
     expect(both.map((a) => a.url?.href)).toEqual([`${base}/chart.png`, `${base}/route.png`])
   })
 
   test('attaches nothing for a followers-only post (image endpoint is unauthenticated)', () => {
     const atts = imageAttachments(
-      actorUri,
+      apiBaseUrl,
       'fiddur',
       post({ include_chart: true, include_map: true, visibility: 'followers' }),
     )
@@ -103,6 +103,6 @@ describe('imageAttachments', () => {
   })
 
   test('attaches nothing when neither flag is set', () => {
-    expect(imageAttachments(actorUri, 'fiddur', post({}))).toEqual([])
+    expect(imageAttachments(apiBaseUrl, 'fiddur', post({}))).toEqual([])
   })
 })

@@ -39,6 +39,8 @@ export interface FeedDeliveryDeps {
   federation: Federation<void>
   /** Canonical web origin, e.g. `https://aurboda.net`. */
   origin: string
+  /** Public API base, e.g. `https://aurboda.net/api` — image attachment URLs hang off this. */
+  apiBaseUrl: string
 }
 
 export interface DeliverablePost {
@@ -65,9 +67,11 @@ export interface DeliverablePost {
  * posts, so attaching a URL that would 404 for a follower is worse than omitting
  * it. (Authenticated per-follower image delivery is a possible later slice.)
  */
-export const imageAttachments = (actorUri: URL, user: string, post: DeliverablePost): Image[] => {
+export const imageAttachments = (apiBaseUrl: string, user: string, post: DeliverablePost): Image[] => {
   if (!isPubliclyVisible(post.visibility)) return []
-  const base = new URL(`/api/public/${encodeURIComponent(user)}/feed/${post.id}`, actorUri)
+  // Same base as the series links (feed-activity.ts) — the configured API base,
+  // NOT a hardcoded `<origin>/api`, so it stays correct if the two ever diverge.
+  const base = `${apiBaseUrl.replace(/\/+$/, '')}/public/${encodeURIComponent(user)}/feed/${post.id}`
   const images: Image[] = []
   if (post.include_chart) {
     images.push(
@@ -75,7 +79,7 @@ export const imageAttachments = (actorUri: URL, user: string, post: DeliverableP
         height: 420,
         mediaType: 'image/png',
         name: 'Heart rate',
-        url: new URL(`${base.href}/chart.png`),
+        url: new URL(`${base}/chart.png`),
         width: 1000,
       }),
     )
@@ -86,7 +90,7 @@ export const imageAttachments = (actorUri: URL, user: string, post: DeliverableP
         height: 700,
         mediaType: 'image/png',
         name: 'Route',
-        url: new URL(`${base.href}/route.png`),
+        url: new URL(`${base}/route.png`),
         width: 700,
       }),
     )
@@ -118,6 +122,7 @@ export const buildFeedNote = async (
   user: string,
   post: DeliverablePost,
   activity: DeliverableActivity,
+  apiBaseUrl: string,
 ): Promise<Note> => {
   const scalars = await resolveActivityScalars(user, activity, post.included_metrics)
   const { content, name } = feedPostContent(activity.title, activity.activity_type, scalars)
@@ -125,7 +130,7 @@ export const buildFeedNote = async (
   const noteId = ctx.getObjectUri(Note, { identifier: user, postId: post.id })
   const { cc, to } = recipients(post.visibility, ctx.getFollowersUri(user))
   return new Note({
-    attachments: imageAttachments(actorUri, user, post),
+    attachments: imageAttachments(apiBaseUrl, user, post),
     attribution: actorUri,
     ccs: cc,
     content,
@@ -147,8 +152,9 @@ export const buildFeedCreate = async (
   user: string,
   post: DeliverablePost,
   activity: DeliverableActivity,
+  apiBaseUrl: string,
 ): Promise<Create> => {
-  const note = await buildFeedNote(ctx, user, post, activity)
+  const note = await buildFeedNote(ctx, user, post, activity, apiBaseUrl)
   const noteId = ctx.getObjectUri(Note, { identifier: user, postId: post.id })
   const { cc, to } = recipients(post.visibility, ctx.getFollowersUri(user))
   return new Create({
@@ -173,8 +179,9 @@ export const buildFeedUpdate = async (
   user: string,
   post: DeliverablePost,
   activity: DeliverableActivity,
+  apiBaseUrl: string,
 ): Promise<Update> => {
-  const note = await buildFeedNote(ctx, user, post, activity)
+  const note = await buildFeedNote(ctx, user, post, activity, apiBaseUrl)
   const noteId = ctx.getObjectUri(Note, { identifier: user, postId: post.id })
   const { cc, to } = recipients(post.visibility, ctx.getFollowersUri(user))
   return new Update({
@@ -212,7 +219,7 @@ export const deliverFeedPost = async (
   activity: DeliverableActivity,
 ): Promise<void> => {
   const ctx = await deps.federation.createContext(new URL(deps.origin))
-  const create = await buildFeedCreate(ctx, user, post, activity)
+  const create = await buildFeedCreate(ctx, user, post, activity, deps.apiBaseUrl)
   await ctx.sendActivity({ identifier: user }, 'followers', create)
 }
 
@@ -224,7 +231,7 @@ export const deliverFeedUpdate = async (
   activity: DeliverableActivity,
 ): Promise<void> => {
   const ctx = await deps.federation.createContext(new URL(deps.origin))
-  const update = await buildFeedUpdate(ctx, user, post, activity)
+  const update = await buildFeedUpdate(ctx, user, post, activity, deps.apiBaseUrl)
   await ctx.sendActivity({ identifier: user }, 'followers', update)
 }
 

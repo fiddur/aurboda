@@ -36,7 +36,7 @@ const sharePost = (user: string, activityId: string, overrides: Partial<FeedPost
   })
 
 const notFound = () => new Response('nope', { status: 404 })
-const fed = createFeedFederation(ORIGIN)
+const fed = createFeedFederation(ORIGIN, `${ORIGIN}/api`)
 
 const fetchAs2 = (path: string) =>
   fed.fetch(new Request(`${ORIGIN}${path}`, { headers: { Accept: 'application/activity+json' } }), {
@@ -183,12 +183,18 @@ describe('Feed federation actor + WebFinger', () => {
     const post = await sharePost(user, activityId)
 
     const ctx = await fed.createContext(new URL(ORIGIN))
-    const update = await buildFeedUpdate(ctx, user, post, {
-      activity_type: 'exercise',
-      end_time: new Date('2026-07-01T07:11:00Z'),
-      start_time: new Date('2026-07-01T06:30:00Z'),
-      title: 'Morning run',
-    })
+    const update = await buildFeedUpdate(
+      ctx,
+      user,
+      post,
+      {
+        activity_type: 'exercise',
+        end_time: new Date('2026-07-01T07:11:00Z'),
+        start_time: new Date('2026-07-01T06:30:00Z'),
+        title: 'Morning run',
+      },
+      `${ORIGIN}/api`,
+    )
 
     const noteId = `${ORIGIN}/users/${user}/feed/${post.id}`
     expect(update.id?.href).toBe(`${noteId}#update-${post.updated_at.getTime()}`)

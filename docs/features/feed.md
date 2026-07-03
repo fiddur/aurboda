@@ -113,7 +113,7 @@ possible later slice). The route is drawn as a bare, aspect-correct shape —
 no street basemap (a later enhancement) and **no privacy trimming** (area masking is a
 planned follow-up), so a public route map reveals the approximate area. The share
 dialog only offers the chart toggle when the activity has heart-rate data and the map
-toggle when it has a GPS signal.
+toggle when it has an actual GPS track.
 
 ## Public series endpoint (the privacy boundary)
 
