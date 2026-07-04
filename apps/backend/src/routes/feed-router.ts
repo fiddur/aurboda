@@ -9,6 +9,7 @@
  * the public read surface lives in `feed-public-router.ts`.
  */
 import {
+  type BaseResponse,
   type FeedPostResponse,
   type FeedPostsResponse,
   type ShareActivityBody,
@@ -73,54 +74,50 @@ export const createFeedRouter = (
   // means "a new post arrived — refetch the newest page"; the payload is empty so
   // no post content crosses the wire. The client falls back to polling if this
   // stream can't be opened or drops. Registered before `/:postId`-style routes.
-  router.get<Record<string, never>, { success: false; error: string }>(
-    '/timeline/stream',
-    authMiddleware,
-    async (req, res) => {
-      const user = req.user!
-      if (!hub) return res.status(503).json({ error: 'Live updates unavailable', success: false })
+  router.get<Record<string, never>, BaseResponse>('/timeline/stream', authMiddleware, async (req, res) => {
+    const user = req.user!
+    if (!hub) return res.status(503).json({ error: 'Live updates unavailable', success: false })
 
-      // `X-Accel-Buffering: no` tells nginx not to buffer the stream (SSE needs
-      // each event flushed immediately, not held back for a full response body).
-      res.writeHead(200, {
-        'Cache-Control': 'no-cache, no-transform',
-        Connection: 'keep-alive',
-        'Content-Type': 'text/event-stream',
-        'X-Accel-Buffering': 'no',
-      })
-      const write = (chunk: string) => {
-        if (res.writableEnded) return
-        try {
-          res.write(chunk)
-        } catch {
-          /* client vanished mid-write */
-        }
-      }
-      write(': connected\n\n')
-
-      // Comment heartbeats keep the connection from being reaped as idle.
-      const heartbeat = setInterval(() => write(': ping\n\n'), 25_000)
-      let unsubscribe: (() => Promise<void>) | null = null
-      let closed = false
-      const cleanup = async () => {
-        if (closed) return
-        closed = true
-        clearInterval(heartbeat)
-        if (unsubscribe) await unsubscribe().catch(() => {})
-      }
-      req.on('close', () => void cleanup())
-
+    // `X-Accel-Buffering: no` tells nginx not to buffer the stream (SSE needs
+    // each event flushed immediately, not held back for a full response body).
+    res.writeHead(200, {
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+      'Content-Type': 'text/event-stream',
+      'X-Accel-Buffering': 'no',
+    })
+    const write = (chunk: string) => {
+      if (res.writableEnded) return
       try {
-        unsubscribe = await hub.subscribe(user, () => write('event: new\ndata: {}\n\n'))
-        // The client may have disconnected while the channel was opening.
-        if (closed) await unsubscribe().catch(() => {})
+        res.write(chunk)
       } catch {
-        // Couldn't open the live channel — end the stream so the client polls instead.
-        await cleanup()
-        if (!res.writableEnded) res.end()
+        /* client vanished mid-write */
       }
-    },
-  )
+    }
+    write(': connected\n\n')
+
+    // Comment heartbeats keep the connection from being reaped as idle.
+    const heartbeat = setInterval(() => write(': ping\n\n'), 25_000)
+    let unsubscribe: (() => Promise<void>) | null = null
+    let closed = false
+    const cleanup = async () => {
+      if (closed) return
+      closed = true
+      clearInterval(heartbeat)
+      if (unsubscribe) await unsubscribe().catch(() => {})
+    }
+    req.on('close', () => void cleanup())
+
+    try {
+      unsubscribe = await hub.subscribe(user, () => write('event: new\ndata: {}\n\n'))
+      // The client may have disconnected while the channel was opening.
+      if (closed) await unsubscribe().catch(() => {})
+    } catch {
+      // Couldn't open the live channel — end the stream so the client polls instead.
+      await cleanup()
+      if (!res.writableEnded) res.end()
+    }
+  })
 
   router.get<Record<string, never>, TimelineResponse, unknown, TimelineQuery>(
     '/timeline',

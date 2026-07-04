@@ -53,8 +53,12 @@ describe('Timeline store integration', () => {
 
   test('re-delivering the same object upserts in place (an edit replaces content)', async () => {
     const user = getTestUser()
-    await upsertTimelineEntry(user, entry(1))
+    // `inserted` drives "ping live subscribers only for a genuinely new post": true
+    // on the first insert, false on the re-delivery (the ON CONFLICT update path).
+    const first = await upsertTimelineEntry(user, entry(1))
+    expect(first.inserted).toBe(true)
     const edited = await upsertTimelineEntry(user, entry(1, { content: '<p>edited</p>' }))
+    expect(edited.inserted).toBe(false)
     expect(edited.content).toBe('<p>edited</p>')
     expect(await listTimelineEntries(user, 10)).toHaveLength(1)
   })
