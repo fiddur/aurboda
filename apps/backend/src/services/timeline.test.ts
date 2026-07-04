@@ -14,6 +14,7 @@ const record = (over: Partial<TimelineEntryRecord> = {}): TimelineEntryRecord =>
   object_uri: 'https://remote.example/notes/1',
   published_at: new Date('2026-07-01T08:00:00.000Z'),
   received_at: new Date('2026-07-01T08:00:05.000Z'),
+  structured: null,
   url: 'https://remote.example/@alice/1',
   ...over,
 })

@@ -43,6 +43,7 @@ export const serializeTimelineEntry = (record: TimelineEntryRecord): TimelineEnt
   id: record.id,
   object_uri: record.object_uri,
   published_at: record.published_at.toISOString(),
+  ...(record.structured == null ? {} : { structured: record.structured }),
   url: record.url,
 })
 

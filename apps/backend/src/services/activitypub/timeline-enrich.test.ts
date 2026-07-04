@@ -1,0 +1,109 @@
+import type { FeedStructured, WellKnownAurboda } from '@aurboda/api-spec'
+
+import { describe, expect, test } from 'vitest'
+
+import { type AurbodaEnrichDeps, enrichFromAurboda, parseAurbodaFeedUrl } from './timeline-enrich.ts'
+
+const UUID = '11111111-2222-4333-8444-555555555555'
+
+describe('parseAurbodaFeedUrl', () => {
+  test('parses an Aurboda feed-post object URI', () => {
+    expect(parseAurbodaFeedUrl(`https://aurboda.net/users/fredrik/feed/${UUID}`)).toEqual({
+      origin: 'https://aurboda.net',
+      postId: UUID,
+      user: 'fredrik',
+    })
+  })
+
+  test('decodes a percent-encoded username', () => {
+    expect(parseAurbodaFeedUrl(`https://h.example/users/a%20b/feed/${UUID}`)?.user).toBe('a b')
+  })
+
+  test('returns null for a Mastodon status URL (no /feed/<uuid> path)', () => {
+    expect(parseAurbodaFeedUrl('https://mastodon.social/users/alice/statuses/12345')).toBeNull()
+  })
+
+  test('returns null when the postId is not a UUID', () => {
+    expect(parseAurbodaFeedUrl('https://aurboda.net/users/fredrik/feed/not-a-uuid')).toBeNull()
+  })
+
+  test('returns null for a non-URL', () => {
+    expect(parseAurbodaFeedUrl('not a url')).toBeNull()
+  })
+})
+
+const wellKnown: WellKnownAurboda = {
+  api_base: 'https://aurboda.net/api',
+  federation: true,
+  product: 'aurboda',
+  version: '1.0.0',
+}
+
+const structured: FeedStructured = {
+  activity_type: 'exercise',
+  metrics: [{ key: 'heart_rate_avg', unit: 'bpm', value: 142 }],
+  series: [],
+  start_time: '2026-07-01T08:00:00.000Z',
+}
+
+describe('enrichFromAurboda', () => {
+  test('discovers the peer, fetches the structured endpoint, and returns the payload', async () => {
+    const calls: string[] = []
+    const deps: AurbodaEnrichDeps = {
+      discover: async (base) => {
+        calls.push(`discover:${base}`)
+        return wellKnown
+      },
+      fetchStructured: async (url) => {
+        calls.push(`fetch:${url}`)
+        return { structured, success: true }
+      },
+    }
+    const result = await enrichFromAurboda(`https://aurboda.net/users/fredrik/feed/${UUID}`, deps)
+    expect(result).toEqual(structured)
+    // Discovery uses the object's origin; the structured URL uses the discovered api_base.
+    expect(calls).toEqual([
+      'discover:https://aurboda.net',
+      `fetch:https://aurboda.net/api/public/fredrik/feed/${UUID}`,
+    ])
+  })
+
+  test('returns null (no fetch) for a non-Aurboda-shaped object URI', async () => {
+    let fetched = false
+    const deps: AurbodaEnrichDeps = {
+      discover: async () => wellKnown,
+      fetchStructured: async () => {
+        fetched = true
+        return { structured, success: true }
+      },
+    }
+    expect(await enrichFromAurboda('https://mastodon.social/users/a/statuses/1', deps)).toBeNull()
+    expect(fetched).toBe(false)
+  })
+
+  test('returns null when the host does not federate (discover throws)', async () => {
+    const deps: AurbodaEnrichDeps = {
+      discover: async () => {
+        throw new Error('not an Aurboda host')
+      },
+      fetchStructured: async () => ({ structured, success: true }),
+    }
+    expect(await enrichFromAurboda(`https://mastodon.social/users/a/feed/${UUID}`, deps)).toBeNull()
+  })
+
+  test('returns null when the response has no structured payload (404-style body)', async () => {
+    const deps: AurbodaEnrichDeps = {
+      discover: async () => wellKnown,
+      fetchStructured: async () => ({ error: 'Not found', success: false }),
+    }
+    expect(await enrichFromAurboda(`https://aurboda.net/users/fredrik/feed/${UUID}`, deps)).toBeNull()
+  })
+
+  test('returns null when the response is malformed (schema mismatch)', async () => {
+    const deps: AurbodaEnrichDeps = {
+      discover: async () => wellKnown,
+      fetchStructured: async () => ({ structured: { nope: true }, success: true }),
+    }
+    expect(await enrichFromAurboda(`https://aurboda.net/users/fredrik/feed/${UUID}`, deps)).toBeNull()
+  })
+})

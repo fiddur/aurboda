@@ -63,6 +63,60 @@ describe('Timeline store integration', () => {
     expect(await listTimelineEntries(user, 10)).toHaveLength(1)
   })
 
+  test('stores + reads back the structured payload (JSONB); plain posts are null', async () => {
+    const user = getTestUser()
+    const structured = {
+      activity_type: 'exercise',
+      duration_seconds: 1800,
+      end_time: '2026-07-01T08:30:00.000Z',
+      metrics: [
+        { key: 'heart_rate_avg', unit: 'bpm', value: 142 },
+        { key: 'hr_zone_minutes', value: { z2: 22, z3: 8 } },
+      ],
+      series: [
+        {
+          bucket: '5s',
+          metric: 'heart_rate',
+          samples: [
+            {
+              avg: 140,
+              count: 3,
+              end: '2026-07-01T08:00:05.000Z',
+              max: 145,
+              min: 138,
+              start: '2026-07-01T08:00:00.000Z',
+            },
+          ],
+          unit: 'bpm',
+        },
+      ],
+      start_time: '2026-07-01T08:00:00.000Z',
+    }
+    const rec = await upsertTimelineEntry(user, entry(1, { structured }))
+    expect(rec.structured).toEqual(structured)
+    expect((await listTimelineEntries(user, 10))[0].structured).toEqual(structured)
+
+    // A post without structured data stores null (Mastodon / non-Aurboda).
+    const plain = await upsertTimelineEntry(user, entry(2))
+    expect(plain.structured).toBeNull()
+  })
+
+  test('a re-delivery without structured keeps the last-known structured (COALESCE)', async () => {
+    const user = getTestUser()
+    const structured = {
+      activity_type: 'exercise',
+      metrics: [{ key: 'distance', unit: 'km', value: 5 }],
+      series: [],
+      start_time: '2026-07-01T08:00:00.000Z',
+    }
+    await upsertTimelineEntry(user, entry(1, { structured }))
+    // An edit/redelivery whose enrichment failed (structured undefined) must not
+    // wipe the working chart.
+    const edited = await upsertTimelineEntry(user, entry(1, { content: '<p>edited</p>' }))
+    expect(edited.content).toBe('<p>edited</p>')
+    expect(edited.structured).toEqual(structured)
+  })
+
   test('lists newest-first and keyset-paginates by (published_at, id)', async () => {
     const user = getTestUser()
     for (const n of [1, 2, 3, 4, 5]) await upsertTimelineEntry(user, entry(n))

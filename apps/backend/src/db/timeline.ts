@@ -8,6 +8,8 @@
  * responsible for cleaning untrusted fediverse HTML before it reaches here).
  * Ordering + pagination is keyset by `(published_at DESC, id DESC)`.
  */
+import type { FeedStructured } from '@aurboda/api-spec'
+
 import { query } from './connection.ts'
 
 export interface TimelineEntryRecord {
@@ -21,6 +23,8 @@ export interface TimelineEntryRecord {
   url: string | null
   published_at: Date
   received_at: Date
+  /** Native structured payload from an Aurboda peer, or null for non-Aurboda posts. */
+  structured: FeedStructured | null
 }
 
 export interface TimelineEntryInput {
@@ -33,6 +37,8 @@ export interface TimelineEntryInput {
   content: string
   url?: string | null
   published_at: Date
+  /** Native structured payload fetched from an Aurboda peer on ingest, if any. */
+  structured?: FeedStructured | null
 }
 
 /** Opaque keyset cursor: the last row's `(published_at, id)`. */
@@ -42,7 +48,7 @@ export interface TimelineCursor {
 }
 
 const TIMELINE_COLUMNS =
-  'id, object_uri, actor_uri, handle, display_name, avatar_url, content, url, published_at, received_at'
+  'id, object_uri, actor_uri, handle, display_name, avatar_url, content, url, published_at, received_at, structured'
 
 /**
  * Insert or update a received post by `object_uri`. A re-delivered or edited post
@@ -61,8 +67,8 @@ export const upsertTimelineEntry = async (
   const result = await query<TimelineEntryRecord & { inserted: boolean }>(
     user,
     `INSERT INTO timeline_entry
-       (object_uri, actor_uri, handle, display_name, avatar_url, content, url, published_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       (object_uri, actor_uri, handle, display_name, avatar_url, content, url, published_at, structured)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
      ON CONFLICT (object_uri)
      DO UPDATE SET actor_uri = EXCLUDED.actor_uri,
                    handle = EXCLUDED.handle,
@@ -70,7 +76,11 @@ export const upsertTimelineEntry = async (
                    avatar_url = EXCLUDED.avatar_url,
                    content = EXCLUDED.content,
                    url = EXCLUDED.url,
-                   published_at = EXCLUDED.published_at
+                   published_at = EXCLUDED.published_at,
+                   -- Keep the last-known structured payload if a refresh/edit
+                   -- couldn't re-fetch it (transient enrich failure), rather
+                   -- than wiping a working chart.
+                   structured = COALESCE(EXCLUDED.structured, timeline_entry.structured)
      RETURNING ${TIMELINE_COLUMNS}, (xmax = 0) AS inserted`,
     [
       input.object_uri,
@@ -81,6 +91,7 @@ export const upsertTimelineEntry = async (
       input.content,
       input.url ?? null,
       input.published_at,
+      input.structured == null ? null : JSON.stringify(input.structured),
     ],
   )
   return result.rows[0]
