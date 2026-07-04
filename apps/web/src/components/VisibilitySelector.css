@@ -1,0 +1,80 @@
+.visibility-selector {
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 0.75rem;
+  margin: 0 0 0.75rem;
+}
+
+.visibility-selector legend {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #1f2937;
+  padding: 0 0.375rem;
+}
+
+.visibility-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+  margin-top: 0.4rem;
+}
+
+.visibility-option:first-of-type {
+  margin-top: 0;
+}
+
+.visibility-option span {
+  display: flex;
+  flex-direction: column;
+}
+
+.visibility-hint {
+  font-size: 0.75rem;
+  color: #6b7280;
+}
+
+.visibility-option input[type='radio'] {
+  accent-color: #673ab8;
+  margin-top: 0.15rem;
+}
+
+/* Compact: inline, borderless, labels only — for dense list rows. */
+.visibility-selector.compact {
+  border: none;
+  padding: 0;
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.visibility-selector.compact legend {
+  padding: 0;
+  color: #6b7280;
+  font-size: 0.8rem;
+}
+
+.visibility-selector.compact .visibility-option {
+  margin-top: 0;
+  align-items: center;
+}
+
+.visibility-selector.compact .visibility-option input[type='radio'] {
+  margin-top: 0;
+}
+
+@media (prefers-color-scheme: dark) {
+  .visibility-selector {
+    border-color: #374151;
+  }
+
+  .visibility-selector legend {
+    color: #e5e7eb;
+  }
+
+  .visibility-hint {
+    color: #9ca3af;
+  }
+}

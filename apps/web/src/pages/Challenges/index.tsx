@@ -10,6 +10,7 @@ import type {
   ChallengeBucketSizeChoice,
   ChallengeParticipation,
   CreateChallengeBody,
+  ShareVisibility,
 } from '@aurboda/api-spec'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -17,6 +18,7 @@ import { useState } from 'preact/hooks'
 
 import { ActivityTypePicker } from '../../components/ActivityTypePicker'
 import { MetricPicker } from '../../components/MetricPicker'
+import { SHARE_VISIBILITY_OPTIONS, VisibilitySelector } from '../../components/VisibilitySelector'
 import {
   createChallenge,
   deleteChallenge,
@@ -45,7 +47,7 @@ function CreateChallengeForm({ onCreated }: { onCreated: () => void }) {
   const [startDate, setStartDate] = useState(initialRange.start)
   const [endDate, setEndDate] = useState(initialRange.end)
   const [bucketSize, setBucketSize] = useState<ChallengeBucketSizeChoice>('auto')
-  const [isPublic, setIsPublic] = useState(false)
+  const [visibility, setVisibility] = useState<ShareVisibility>('unlisted')
 
   const createMutation = useMutation({
     mutationFn: (body: CreateChallengeBody) => createChallenge(body),
@@ -70,7 +72,6 @@ function CreateChallengeForm({ onCreated }: { onCreated: () => void }) {
     if (!canSubmit) return
     createMutation.mutate({
       end_ts: dateToEndIso(endDate),
-      is_public: isPublic,
       name: name.trim(),
       spec: {
         aggregation,
@@ -81,6 +82,7 @@ function CreateChallengeForm({ onCreated }: { onCreated: () => void }) {
       },
       start_ts: dateToStartIso(startDate),
       timezone: browserTz(),
+      visibility,
     })
   }
 
@@ -140,11 +142,19 @@ function CreateChallengeForm({ onCreated }: { onCreated: () => void }) {
       <div class="challenge-create-row">
         <label>
           From
-          <input type="date" value={startDate} onInput={(e) => setStartDate((e.target as HTMLInputElement).value)} />
+          <input
+            type="date"
+            value={startDate}
+            onInput={(e) => setStartDate((e.target as HTMLInputElement).value)}
+          />
         </label>
         <label>
           To
-          <input type="date" value={endDate} onInput={(e) => setEndDate((e.target as HTMLInputElement).value)} />
+          <input
+            type="date"
+            value={endDate}
+            onInput={(e) => setEndDate((e.target as HTMLInputElement).value)}
+          />
         </label>
       </div>
       <div class="challenge-quick-spans">
@@ -169,10 +179,12 @@ function CreateChallengeForm({ onCreated }: { onCreated: () => void }) {
         </select>
       </label>
 
-      <label class="challenge-public-toggle">
-        <input type="checkbox" checked={isPublic} onChange={(e) => setIsPublic((e.target as HTMLInputElement).checked)} />
-        List on my public profile
-      </label>
+      <VisibilitySelector
+        name="challenge-visibility"
+        options={SHARE_VISIBILITY_OPTIONS}
+        value={visibility}
+        onChange={setVisibility}
+      />
 
       <button type="submit" class="btn-primary" disabled={!canSubmit}>
         Create challenge
@@ -209,7 +221,7 @@ function HostedRow({ challenge }: { challenge: Challenge }) {
           {challenge.name}
         </a>
         <span class="challenge-row-meta">
-          {challenge.spec.pattern} · {challenge.spec.aggregation} · {challenge.is_public ? 'public' : 'unlisted'}
+          {challenge.spec.pattern} · {challenge.spec.aggregation} · {challenge.visibility}
         </span>
       </div>
       <div class="challenge-row-actions">
@@ -247,7 +259,10 @@ function JoinedRow({ participation }: { participation: ChallengeParticipation })
         <a class="btn-secondary" href={participation.challenge_url}>
           View
         </a>
-        <button class="btn-danger" onClick={() => confirm(`Leave "${participation.name}"?`) && leave.mutate()}>
+        <button
+          class="btn-danger"
+          onClick={() => confirm(`Leave "${participation.name}"?`) && leave.mutate()}
+        >
           Leave
         </button>
       </div>
@@ -283,7 +298,8 @@ export function Challenges() {
       <h1>Challenges</h1>
       <p class="challenges-intro">
         Compete with others on a metric or activity type over a date range — including people on other Aurboda
-        instances. Public challenges are listed on your profile; unlisted ones are reachable only by their link.
+        instances. Public challenges are listed on your profile; unlisted ones are reachable only by their
+        link.
       </p>
 
       <div class="challenges-join">

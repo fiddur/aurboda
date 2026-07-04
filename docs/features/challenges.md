@@ -22,8 +22,11 @@ base-URL federation identity, and the bucketed-data engine behind dashboards.
 - **Same instance is just an optimization:** when a member's host is this instance,
   the aggregator reads their data in-process instead of over HTTP. One join protocol,
   one data shape.
-- **Visibility:** public challenges are listed on the host's `/u/<user>` profile;
-  unlisted ones are reachable only by their slug.
+- **Visibility:** the `visibility` field is the shared `ShareVisibility` vocabulary
+  (`public`/`unlisted`) also used by shared dashboards and the feed (see
+  [Sharing](./sharing.md)). `public` challenges are listed on the host's `/u/<user>`
+  profile; `unlisted` ones are reachable only by their slug. Stored as an `is_public`
+  boolean and mapped at the API boundary.
 - **Chart granularity (`spec.bucket_size`):** controls only the race chart's
   resolution — never the score (the cumulative total is bucket-size-independent).
   `auto` (default) adapts to the window so short challenges show intraday progress and

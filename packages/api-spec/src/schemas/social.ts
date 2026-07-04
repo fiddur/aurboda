@@ -20,6 +20,7 @@ import { baseResponseSchema } from './common.ts'
 import { dashboardConfigSchema } from './dashboard.ts'
 import { goalProgressSchema } from './goals.ts'
 import { trendHistoryPointSchema } from './trends.ts'
+import { shareVisibilitySchema } from './visibility.ts'
 
 // =============================================================================
 // Shared dashboard (owner-facing CRUD)
@@ -41,11 +42,13 @@ export const sharedDashboardSchema = z
     config: dashboardConfigSchema.meta({ description: 'The dashboard configuration' }),
     created_at: z.string().meta({ description: 'Creation timestamp (ISO 8601)' }),
     id: z.string().uuid().meta({ description: 'Shared dashboard ID' }),
-    is_public: z.boolean().meta({ description: 'If true, listed on the public profile' }),
     name: sharedDashboardNameSchema,
     share_url: z.string().meta({ description: 'Absolute URL of the shared dashboard' }),
     slug: z.string().meta({ description: 'URL-safe public slug' }),
     updated_at: z.string().meta({ description: 'Last update timestamp (ISO 8601)' }),
+    visibility: shareVisibilitySchema.meta({
+      description: 'public → listed on the public profile; unlisted → reachable only by its link',
+    }),
   })
   .meta({ id: 'SharedDashboard' })
 
@@ -55,8 +58,10 @@ export type SharedDashboard = z.infer<typeof sharedDashboardSchema>
 export const createSharedDashboardBodySchema = z
   .object({
     config: dashboardConfigSchema.meta({ description: 'The dashboard configuration to publish' }),
-    is_public: z.boolean().default(false).meta({ description: 'Whether to list it on the public profile' }),
     name: sharedDashboardNameSchema,
+    visibility: shareVisibilitySchema
+      .default('unlisted')
+      .meta({ description: 'public → listed on the public profile; unlisted (default) → link-only' }),
   })
   .meta({ id: 'CreateSharedDashboardBody' })
 
@@ -66,8 +71,10 @@ export type CreateSharedDashboardBody = z.infer<typeof createSharedDashboardBody
 export const updateSharedDashboardBodySchema = z
   .object({
     config: dashboardConfigSchema.optional().meta({ description: 'Replacement dashboard configuration' }),
-    is_public: z.boolean().optional().meta({ description: 'Whether to list it on the public profile' }),
     name: sharedDashboardNameSchema.optional(),
+    visibility: shareVisibilitySchema
+      .optional()
+      .meta({ description: 'public → listed on the public profile; unlisted → link-only' }),
   })
   .meta({ id: 'UpdateSharedDashboardBody' })
 
@@ -250,9 +257,7 @@ export type HrZonesData = z.infer<typeof hrZonesDataSchema>
 export type GoalProgressData = z.infer<typeof goalProgressDataSchema>
 
 /** Map of widget id → resolved widget data. */
-export const widgetDataMapSchema = z
-  .record(z.string(), widgetDataSchema)
-  .meta({ id: 'WidgetDataMap' })
+export const widgetDataMapSchema = z.record(z.string(), widgetDataSchema).meta({ id: 'WidgetDataMap' })
 
 export type WidgetDataMap = z.infer<typeof widgetDataMapSchema>
 

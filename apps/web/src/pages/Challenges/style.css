@@ -141,12 +141,6 @@
   gap: 0.5rem;
 }
 
-.challenge-public-toggle {
-  flex-direction: row !important;
-  align-items: center;
-  gap: 0.4rem !important;
-}
-
 /* Public challenge view */
 .public-challenge .challenge-view-actions {
   display: flex;

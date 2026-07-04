@@ -27,7 +27,10 @@ selection that bounds what is shared:
   series (e.g. per-5-second heart rate or stress). A per-sample trace is far more
   revealing than an average, so series are **off unless deliberately chosen**, even for
   a metric whose scalar summary is shared.
-- **`visibility`** — `public`, `unlisted`, or `followers`.
+- **`visibility`** — `public`, `unlisted`, or `followers`. The `public`/`unlisted`
+  pair is the shared `ShareVisibility` vocabulary (see [Sharing](./sharing.md)) that
+  [challenges](./challenges.md) and shared dashboards also use; the feed extends it
+  with the `followers` audience.
 - **`include_chart` / `include_map`** — attach a rendered heart-rate chart and/or
   GPS route-map image to the post (see [Images](#images)).
 

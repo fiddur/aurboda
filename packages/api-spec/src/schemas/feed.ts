@@ -25,19 +25,21 @@
 import { z } from 'zod'
 
 import { baseResponseSchema, iso8601DateTimeSchema, metricTypeSchema } from './common.ts'
+import { shareVisibilityValues } from './visibility.ts'
 
 /**
  * Who a feed post is addressed to.
  *
  * - `public` — listed on the public timeline and deliverable to the wider fediverse.
- * - `followers` — only the actor's followers.
  * - `unlisted` — reachable but not surfaced on public timelines.
+ * - `followers` — only the actor's followers.
  *
- * Only non-`followers` posts back the public `/series` endpoint, since that
- * endpoint has no viewer authentication.
+ * This is the shared `ShareVisibility` vocabulary (`public`/`unlisted`) plus the
+ * feed-only `followers` audience. Only non-`followers` posts back the public
+ * `/series` endpoint, since that endpoint has no viewer authentication.
  */
 export const feedVisibilitySchema = z
-  .enum(['public', 'followers', 'unlisted'])
+  .enum([...shareVisibilityValues, 'followers'])
   .meta({ description: 'Audience for a feed post', id: 'FeedVisibility' })
 
 export type FeedVisibility = z.infer<typeof feedVisibilitySchema>
@@ -239,10 +241,7 @@ export type TimelineEntry = z.infer<typeof timelineEntrySchema>
 /** Query for the home-timeline endpoint (keyset pagination). */
 export const timelineQuerySchema = z
   .object({
-    cursor: z
-      .string()
-      .optional()
-      .meta({ description: "Opaque cursor from a previous page's `next_cursor`" }),
+    cursor: z.string().optional().meta({ description: "Opaque cursor from a previous page's `next_cursor`" }),
     limit: z.coerce
       .number()
       .int()

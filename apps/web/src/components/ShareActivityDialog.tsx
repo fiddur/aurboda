@@ -16,6 +16,7 @@ import { useState } from 'preact/hooks'
 
 import { fetchBucketedMetrics, fetchRawLocations, shareActivity, updateFeedPost } from '../state/api'
 import { defaultsFromChart, SERIES_METRICS, SUMMARY_METRICS } from './feed-metrics'
+import { FEED_VISIBILITY_OPTIONS, VisibilitySelector } from './VisibilitySelector'
 import './ShareActivityDialog.css'
 
 interface Props {
@@ -31,12 +32,6 @@ interface Props {
   onClose: () => void
   onShared?: (post: FeedPost) => void
 }
-
-const VISIBILITIES: { value: FeedVisibility; label: string; hint: string }[] = [
-  { hint: 'Anyone can see it; appears in public timelines.', label: 'Public', value: 'public' },
-  { hint: 'Anyone with the link; kept out of public timelines.', label: 'Unlisted', value: 'unlisted' },
-  { hint: 'Only your followers.', label: 'Followers only', value: 'followers' },
-]
 
 const toggle = <T extends string>(set: Set<T>, key: T): Set<T> => {
   const next = new Set(set)
@@ -244,23 +239,12 @@ export function ShareActivityDialog({
           </fieldset>
         )}
 
-        <fieldset class="share-dialog-group">
-          <legend>Visibility</legend>
-          {VISIBILITIES.map(({ value, label, hint }) => (
-            <label key={value} class="share-dialog-radio">
-              <input
-                type="radio"
-                name="visibility"
-                checked={visibility === value}
-                onChange={() => setVisibility(value)}
-              />
-              <span>
-                <strong>{label}</strong>
-                <span class="share-dialog-hint">{hint}</span>
-              </span>
-            </label>
-          ))}
-        </fieldset>
+        <VisibilitySelector
+          name="feed-visibility"
+          options={FEED_VISIBILITY_OPTIONS}
+          value={visibility}
+          onChange={setVisibility}
+        />
 
         {mutation.error && (
           <p class="share-dialog-error">
