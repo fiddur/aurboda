@@ -4,10 +4,10 @@ import { useCallback, useEffect, useState } from 'preact/hooks'
 import { auth, logout } from '../state/auth'
 import {
   DATA_SOURCE_LINKS,
+  isSharingActive,
   NAV_LINKS_PRIMARY,
   NAV_LINKS_SECONDARY,
   SHARING_LINKS,
-  SHARING_PATHS,
 } from './nav-links'
 
 // eslint-disable-next-line complexity -- navigation component with many branches
@@ -21,7 +21,7 @@ export function Header() {
   const [sharingExpandedInDrawer, setSharingExpandedInDrawer] = useState(true)
 
   const isDataSourcesActive = url.startsWith('/data-sources')
-  const isSharingActive = SHARING_PATHS.some((p) => url === p || url.startsWith(`${p}/`))
+  const sharingActive = isSharingActive(url)
 
   const handleLogout = (e: Event) => {
     e.preventDefault()
@@ -93,7 +93,7 @@ export function Header() {
             ))}
             {/* Sharing inline expand */}
             <button
-              class={`drawer-section-toggle${isSharingActive ? ' active' : ''}`}
+              class={`drawer-section-toggle${sharingActive ? ' active' : ''}`}
               onClick={() => setSharingExpandedInDrawer((v) => !v)}
               type="button"
             >

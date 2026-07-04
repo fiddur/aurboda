@@ -4,14 +4,12 @@ import { useState } from 'preact/hooks'
 import { auth, logout } from '../state/auth'
 import {
   DATA_SOURCE_LINKS,
+  isSharingActive,
   NAV_LINKS_PRIMARY,
   NAV_LINKS_SECONDARY,
   SHARING_LINKS,
-  SHARING_PATHS,
 } from './nav-links'
 import './Sidebar.css'
-
-const isSharingActive = (url: string) => SHARING_PATHS.some((p) => url === p || url.startsWith(`${p}/`))
 
 const COLLAPSED_KEY = 'sidebar-collapsed'
 

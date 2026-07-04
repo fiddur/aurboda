@@ -24,6 +24,10 @@ export const SHARING_LINKS = [
 /** Routes that make the "Sharing" section count as active. */
 export const SHARING_PATHS = SHARING_LINKS.map((l) => l.href)
 
+/** Whether the current URL is within the Sharing section (a surface or a sub-route of one). */
+export const isSharingActive = (url: string): boolean =>
+  SHARING_PATHS.some((p) => url === p || url.startsWith(`${p}/`))
+
 export const NAV_LINKS_SECONDARY = [
   { href: '/correlations', label: 'Analyze', icon: '🔬' },
   { href: '/places', label: 'Places', icon: '📍' },
