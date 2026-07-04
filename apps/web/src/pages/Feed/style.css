@@ -197,6 +197,25 @@
   margin: 0.25rem auto 1rem;
 }
 
+/* "N new posts" pill — appears above the list when live updates arrive. */
+.timeline-new-pill {
+  display: block;
+  margin: 0 auto 0.75rem;
+  padding: 0.4rem 1rem;
+  border: none;
+  border-radius: 999px;
+  background: #673ab8;
+  color: #fff;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(103, 58, 184, 0.3);
+}
+
+.timeline-new-pill:hover {
+  background: #5a2fa0;
+}
+
 .feed-post-content {
   margin-top: 0.5rem;
   color: #1f2937;

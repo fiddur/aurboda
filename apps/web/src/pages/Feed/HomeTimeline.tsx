@@ -11,8 +11,23 @@ import type { InfiniteData } from '@tanstack/react-query'
 
 import { useInfiniteQuery } from '@tanstack/react-query'
 import { formatDistanceToNow } from 'date-fns'
+import { useState } from 'preact/hooks'
 
 import { fetchTimeline } from '../../state/api'
+import { useTimelineLive } from './useTimelineLive'
+
+/** De-duplicate entries by `object_uri`, keeping the first (newest) occurrence. */
+const dedupByUri = (list: TimelineEntry[]): TimelineEntry[] => {
+  const seen = new Set<string>()
+  const out: TimelineEntry[] = []
+  for (const entry of list) {
+    if (!seen.has(entry.object_uri)) {
+      seen.add(entry.object_uri)
+      out.push(entry)
+    }
+  }
+  return out
+}
 
 /**
  * A fallback avatar (a neutral silhouette) for actors without an icon. Colours use
@@ -76,17 +91,50 @@ export function HomeTimeline() {
 
   const entries = data?.pages.flatMap((page) => page.entries) ?? []
 
+  // Posts that arrived live (or via the polling fallback) since the page loaded:
+  // buffered in `pending` (shown as a pill) until the user reveals them, then
+  // prepended via `revealed`. Both are de-duped against the query data on render.
+  const [pending, setPending] = useState<TimelineEntry[]>([])
+  const [revealed, setRevealed] = useState<TimelineEntry[]>([])
+
+  // On a live ping (or poll tick), refetch the newest page and buffer anything we
+  // aren't already showing. Cheap: one page, and only when the server says so.
+  const checkForNew = async () => {
+    try {
+      const { entries: latest } = await fetchTimeline()
+      const known = new Set([...revealed, ...pending, ...entries].map((entry) => entry.object_uri))
+      const fresh = latest.filter((entry) => !known.has(entry.object_uri))
+      if (fresh.length > 0) setPending((prev) => dedupByUri([...fresh, ...prev]))
+    } catch {
+      // A transient refetch failure just means the pill doesn't update this tick.
+    }
+  }
+  useTimelineLive(() => void checkForNew())
+
+  const reveal = () => {
+    setRevealed((prev) => dedupByUri([...pending, ...prev]))
+    setPending([])
+    window.scrollTo({ behavior: 'smooth', top: 0 })
+  }
+
+  const displayed = dedupByUri([...revealed, ...entries])
+
   return (
     <section class="timeline-section">
       <h2 class="feed-section-title">Home timeline</h2>
+      {pending.length > 0 && (
+        <button type="button" class="timeline-new-pill" onClick={reveal}>
+          {pending.length} new post{pending.length === 1 ? '' : 's'}
+        </button>
+      )}
       {isLoading && <p>Loading…</p>}
       {error && <p class="feed-error">Couldn't load your timeline. Please try again.</p>}
-      {!isLoading && !error && entries.length === 0 && (
+      {!isLoading && !error && displayed.length === 0 && (
         <p class="feed-empty">
           No posts yet. Follow some fediverse accounts above and their posts will appear here.
         </p>
       )}
-      {entries.map((entry) => (
+      {displayed.map((entry) => (
         <TimelineCard key={entry.object_uri} entry={entry} />
       ))}
       {hasNextPage && (
