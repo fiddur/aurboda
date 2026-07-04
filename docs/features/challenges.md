@@ -42,20 +42,20 @@ base-URL federation identity, and the bucketed-data engine behind dashboards.
   as shared dashboards. The public resolver `/public/:username/:slug` returns a
   `type` (`dashboard` | `challenge`); slugs are unique across both per user.
 - Challenges + members live in the **host's** per-user DB; a joiner's
-  *participations* live in the **joiner's** DB, each backed by an unguessable
+  _participations_ live in the **joiner's** DB, each backed by an unguessable
   `data_token`. No central-DB tables.
 
 ## Federation protocol
 
 Endpoints (under each instance's API base):
 
-| Endpoint | Auth | Purpose |
-| --- | --- | --- |
-| `GET /.well-known/aurboda` | none | Discovery: `{ product, version, federation, api_base }` |
-| `GET /public/:username/:slug` | none | Resolve a slug → dashboard or challenge spec (incl. `join_token`, public member list) |
-| `POST /public/:username/:slug/members` | none | Register-back: a joining instance adds itself as a remote member |
-| `GET /public/:username/:slug/standings` | none (slug-gated) | Host-aggregated standings (`?refresh=1` busts the cache) |
-| `GET /challenge-data/:username/:token` | none (token) | A member instance serves its own series for one challenge |
+| Endpoint                                | Auth              | Purpose                                                                               |
+| --------------------------------------- | ----------------- | ------------------------------------------------------------------------------------- |
+| `GET /.well-known/aurboda`              | none              | Discovery: `{ product, version, federation, api_base }`                               |
+| `GET /public/:username/:slug`           | none              | Resolve a slug → dashboard or challenge spec (incl. `join_token`, public member list) |
+| `POST /public/:username/:slug/members`  | none              | Register-back: a joining instance adds itself as a remote member                      |
+| `GET /public/:username/:slug/standings` | none (slug-gated) | Host-aggregated standings (`?refresh=1` busts the cache)                              |
+| `GET /challenge-data/:username/:token`  | none (token)      | A member instance serves its own series for one challenge                             |
 
 **Join (canonical: "join by challenge URL on your own instance B", host = A):**
 
@@ -75,7 +75,7 @@ persisted per member; a failed fetch falls back to last-known data flagged `stal
 and computes local members in-process.
 
 Each standing carries a **`last_updated`** — the timestamp of that member's most
-recent *contributing* data point within the challenge window (`MAX(time)` of the
+recent _contributing_ data point within the challenge window (`MAX(time)` of the
 measured metric/activity, using the same source filter as the total). A member with
 no data yet reports `null` (rendered as "—"), never the request time — so members on
 0 don't all share a bogus "just now". Remote members report their own `last_updated`;
@@ -102,7 +102,7 @@ the backend directly need no extra config.
 
 ## Using it in the web app
 
-- **Manage** at `/challenges` (sidebar "Challenges"): create a challenge (name,
+- **Manage** at `/challenges` ("Challenges" under the sidebar **Sharing** section): create a challenge (name,
   metric or activity type, sum/count, unit, date range with This-week/This-month
   quick-sets, public/unlisted), copy its link, delete it; see challenges you've
   joined; and **join by URL** (paste any challenge link — local or remote).
@@ -130,7 +130,7 @@ the backend directly need no extra config.
   register-back gaps below.
 - Register-back is capped per challenge (`MAX_CHALLENGE_MEMBERS`) to bound growth,
   but within the v1 trust model a slug+`join_token` holder can still re-register an
-  existing *remote* member (overwriting its data-endpoint URL). Accepted for now.
+  existing _remote_ member (overwriting its data-endpoint URL). Accepted for now.
 - Standings has no in-flight de-duplication, so concurrent requests on a cold/expired
   cache each fan out to every remote member (thundering herd, bounded by the TTL +
   8s per-fetch timeout). A shared in-flight promise per challenge would remove it.

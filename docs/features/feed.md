@@ -102,7 +102,7 @@ uses), so nothing denormalised is persisted on the post.
   canonical id so a remote server can dereference it. Only `public`/`unlisted` resolve;
   `followers`-only and unknown ids return 404. Once a `public`/`unlisted` post is
   **deleted**, that id returns **`410 Gone` with an AS2 `Tombstone`** (recorded in
-  `feed_tombstone`) so a dereferencing server learns the object is *permanently* gone
+  `feed_tombstone`) so a dereferencing server learns the object is _permanently_ gone
   rather than transiently missing. A `followers`-only id is never tombstoned — it never
   resolved publicly, so a 410 would leak that a post once existed.
 
@@ -115,7 +115,7 @@ place, so they can't drift.
 ### Following other actors (inbound)
 
 The feed also runs the **inbound** direction: a user can follow other fediverse actors
-(remote *or* another local Aurboda user). Following `@alice@mastodon.social`:
+(remote _or_ another local Aurboda user). Following `@alice@mastodon.social`:
 
 1. resolves the target actor (WebFinger + actor fetch) to its inbox + presentation,
 2. records a **pending** follow in `feed_following`, then
@@ -133,7 +133,7 @@ over loopback), so there is no special-casing. Delivery is best-effort/synchrono
 the rest of the feed — a failed `Follow` POST leaves the pending row so the user can retry.
 
 The actor advertises a **following collection** (`/users/<username>/following`) listing only
-*accepted* follows (a pending follow isn't a confirmed relationship yet). The followee's
+_accepted_ follows (a pending follow isn't a confirmed relationship yet). The followee's
 inbox URIs are internal delivery details and are never exposed on the owner-facing API.
 
 ### Home timeline (inbound)
@@ -247,7 +247,8 @@ resolving.
 
 - **Share** — an activity's detail page has a **Share to feed** button. It opens a dialog
   to pick the summary metrics, optionally opt into full series, and choose the audience.
-- **Manage** — the **Feed** page (`/feed`, the 📣 item in the sidebar) lists everything
+- **Manage** — the **Feed** page (`/feed`, the 📣 item under the **Sharing** section in
+  the sidebar) lists everything
   you've shared, with each post's audience and metrics. From there you can **Edit** a
   post (re-opens the dialog; saving federates an `Update`) or **Unshare** it (federates a
   `Delete`).
@@ -263,31 +264,31 @@ resolving.
 
 Owner-facing (authenticated, scoped to the caller):
 
-| Method & path                     | Purpose                                            |
-| --------------------------------- | -------------------------------------------------- |
+| Method & path                     | Purpose                                                                                                                 |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | `GET /feed`                       | List my feed posts (each enriched with the shared activity's title/type and merged-span window, resolved at query time) |
-| `POST /feed/activities/:id/share` | Publish an activity with a chosen metric selection |
-| `PATCH /feed/:postId`             | Edit selection / visibility / attachments          |
-| `DELETE /feed/:postId`            | Unpublish (its public series stops resolving)      |
-| `GET /feed/following`             | List the actors I follow (accepted + pending)      |
-| `POST /feed/following`            | Follow an actor by handle (`@user@host` or actor URL) |
-| `DELETE /feed/following/:id`      | Unfollow (sends `Undo{Follow}`)                    |
-| `GET /feed/timeline`              | My home timeline (posts from followees), newest-first, `?cursor=` to page |
-| `GET /feed/timeline/stream`       | Server-Sent Events stream of live "new posts" pings (falls back to polling) |
+| `POST /feed/activities/:id/share` | Publish an activity with a chosen metric selection                                                                      |
+| `PATCH /feed/:postId`             | Edit selection / visibility / attachments                                                                               |
+| `DELETE /feed/:postId`            | Unpublish (its public series stops resolving)                                                                           |
+| `GET /feed/following`             | List the actors I follow (accepted + pending)                                                                           |
+| `POST /feed/following`            | Follow an actor by handle (`@user@host` or actor URL)                                                                   |
+| `DELETE /feed/following/:id`      | Unfollow (sends `Undo{Follow}`)                                                                                         |
+| `GET /feed/timeline`              | My home timeline (posts from followees), newest-first, `?cursor=` to page                                               |
+| `GET /feed/timeline/stream`       | Server-Sent Events stream of live "new posts" pings (falls back to polling)                                             |
 
 Public / federation (unauthenticated):
 
-| Method & path                                  | Purpose                                                     |
-| ---------------------------------------------- | ----------------------------------------------------------- |
-| `GET /public/:username/series`                 | Bucketed samples for a **shared** series within its window  |
-| `GET /public/:username/feed/:postId/chart.png` | Rendered HR chart for an opted-in post (`?token=` for followers-only) |
-| `GET /public/:username/feed/:postId/route.png` | Rendered GPS route map for an opted-in post (`?token=` for followers-only) |
-| `GET /.well-known/webfinger`                   | Resolve `acct:<username>@<host>` → the actor                |
-| `GET /users/:username`                         | The actor document (`Person`)                               |
-| `GET /users/:username/outbox`                  | Public + unlisted posts as `Create` activities              |
-| `GET /users/:username/followers`               | The actor's followers collection                            |
-| `GET /users/:username/following`               | The actor's following collection (accepted follows only)    |
-| `GET /users/:username/feed/:postId`            | A single post's `Note` (or `410` Tombstone once deleted)    |
+| Method & path                                  | Purpose                                                                           |
+| ---------------------------------------------- | --------------------------------------------------------------------------------- |
+| `GET /public/:username/series`                 | Bucketed samples for a **shared** series within its window                        |
+| `GET /public/:username/feed/:postId/chart.png` | Rendered HR chart for an opted-in post (`?token=` for followers-only)             |
+| `GET /public/:username/feed/:postId/route.png` | Rendered GPS route map for an opted-in post (`?token=` for followers-only)        |
+| `GET /.well-known/webfinger`                   | Resolve `acct:<username>@<host>` → the actor                                      |
+| `GET /users/:username`                         | The actor document (`Person`)                                                     |
+| `GET /users/:username/outbox`                  | Public + unlisted posts as `Create` activities                                    |
+| `GET /users/:username/followers`               | The actor's followers collection                                                  |
+| `GET /users/:username/following`               | The actor's following collection (accepted follows only)                          |
+| `GET /users/:username/feed/:postId`            | A single post's `Note` (or `410` Tombstone once deleted)                          |
 | `POST /users/:username/inbox` (+ `/inbox`)     | Inbound `Follow` / `Undo{Follow}` / `Accept` / `Reject` (HTTP-Signature verified) |
 
 The owner-facing capability is also available over MCP as `list_feed`, `share_activity`,
@@ -322,7 +323,7 @@ These are known and intentional for the current implementation:
   (Mastodon behaves the same) — there is no addressable "public" inbox to retract from.
 - **The public series endpoint uses the anchor window for merged shares.** The delivered
   Note's scalar summary and the rendered images cover the full merged span, but
-  `GET /public/:username/series` still authorizes only the shared activity's *own* window
+  `GET /public/:username/series` still authorizes only the shared activity's _own_ window
   (`findCoveringSharedSeriesWindow` joins on `activity_id`). Since the delivered
   Mastodon `Note` carries no series links, this is latent — expanding series
   authorization across a merge group (which needs the merge algorithm at query time) is a
