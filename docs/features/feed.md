@@ -160,6 +160,33 @@ attribute to the sender (so an accepted followee can't overwrite another actor's
 colliding its id); and `published_at` is **clamped to "not in the future"** on ingest (it's the
 sort key, so a far-future timestamp would otherwise pin a post to the top).
 
+### Native charts from Aurboda peers (structured enrichment)
+
+A delivered `Note` carries only the Mastodon-compatible HTML — Fedify's typed vocab drops the
+`aurboda:` extension, so the structured metrics/series don't survive federation on the object
+itself. To render a **native interactive chart** (with real, hoverable values) instead of the
+plain HTML when a post comes from **another Aurboda instance**, the receiver fetches the
+structured data out-of-band on ingest:
+
+1. **Emit.** Every instance serves `GET /public/:username/feed/:postId` — a native JSON payload
+   (`FeedStructured`: activity type/window, typed scalar `metrics`, and inline high-resolution
+   `series` samples). It reuses the exact same scalar resolution as delivery and the same
+   data-scoped series resolution as the [public series endpoint](#public-series-endpoint-the-privacy-boundary),
+   so a peer can never read more than the author shared; only `public`/`unlisted` posts resolve.
+2. **Detect + fetch.** On ingesting a `Create`/`Update`, if the note's id matches Aurboda's own
+   object path (`/users/{user}/feed/{postId}` — a Mastodon status id never does, so no needless
+   request is made), the receiver discovers the peer via `/.well-known/aurboda` and fetches its
+   structured endpoint. All fetches are **SSRF-guarded** (`safe-fetch`: public hosts only, no
+   redirects, size + time bounded) and time-boxed; the origin is the accepted followee's own
+   host. Any failure (non-Aurboda host, 404, malformed, timeout) is swallowed — the post still
+   shows with its HTML.
+3. **Store + render.** The payload is stored on `timeline_entry.structured` (JSONB, NULL for
+   non-Aurboda posts; a redelivery that can't re-fetch keeps the last-known value). The web
+   timeline card renders a native `TrendLineChart` per shared series when `structured` is present.
+
+Enrichment is strictly best-effort and additive: it never blocks or fails basic ingest, and
+series that weren't shared (the opt-in) simply produce no chart.
+
 ### Live updates
 
 New posts appear **without a refresh**. When a genuinely new `timeline_entry` is inserted, the
@@ -281,6 +308,7 @@ Public / federation (unauthenticated):
 | Method & path                                  | Purpose                                                                           |
 | ---------------------------------------------- | --------------------------------------------------------------------------------- |
 | `GET /public/:username/series`                 | Bucketed samples for a **shared** series within its window                        |
+| `GET /public/:username/feed/:postId`           | Native structured post (`FeedStructured`: typed metrics + inline series) for Aurboda-to-Aurboda enrichment |
 | `GET /public/:username/feed/:postId/chart.png` | Rendered HR chart for an opted-in post (`?token=` for followers-only)             |
 | `GET /public/:username/feed/:postId/route.png` | Rendered GPS route map for an opted-in post (`?token=` for followers-only)        |
 | `GET /.well-known/webfinger`                   | Resolve `acct:<username>@<host>` → the actor                                      |
@@ -311,7 +339,11 @@ display name / avatar and an `accepted` flag); the actor's RSA keypair in `feed_
 Posts received from followees are stored in `timeline_entry` (keyed by the remote note's
 `object_uri` so an `Update`/redelivery replaces in place), holding the **already-sanitised**
 content plus the author's cached handle / display name / avatar, indexed on
-`(published_at DESC, id DESC)` for the keyset-paginated home timeline.
+`(published_at DESC, id DESC)` for the keyset-paginated home timeline. A nullable
+`structured` JSONB column carries the native Aurboda payload (`FeedStructured`: typed
+metrics + inline series) fetched during enrichment — NULL for non-Aurboda posts. On a
+re-delivery whose enrichment failed, the upsert `COALESCE`s so the last-known `structured`
+is preserved rather than wiped.
 
 ## Caveats & limitations
 

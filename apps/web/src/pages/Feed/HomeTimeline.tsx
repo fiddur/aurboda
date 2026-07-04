@@ -14,6 +14,7 @@ import { formatDistanceToNow } from 'date-fns'
 import { useState } from 'preact/hooks'
 
 import { fetchTimeline } from '../../state/api'
+import { TimelineStructured } from './TimelineStructured'
 import { useTimelineLive } from './useTimelineLive'
 
 /** De-duplicate entries by `object_uri`, keeping the first (newest) occurrence. */
@@ -71,6 +72,9 @@ function TimelineCard({ entry }: { entry: TimelineEntry }) {
 
       {/* Sanitised server-side on ingest (timeline-ingest.ts) — safe to render. */}
       <div class="feed-post-content" dangerouslySetInnerHTML={{ __html: entry.content }} />
+
+      {/* Aurboda-to-Aurboda posts carry native structured data → a real chart. */}
+      {entry.structured && <TimelineStructured structured={entry.structured} />}
     </article>
   )
 }

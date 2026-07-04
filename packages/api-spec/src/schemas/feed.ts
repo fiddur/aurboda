@@ -25,6 +25,7 @@
 import { z } from 'zod'
 
 import { baseResponseSchema, iso8601DateTimeSchema, metricTypeSchema } from './common.ts'
+import { feedStructuredSchema, publicSeriesSampleSchema } from './feed-structured.ts'
 import { shareVisibilityValues } from './visibility.ts'
 
 /**
@@ -232,6 +233,10 @@ export const timelineEntrySchema = z
     id: z.string().uuid().meta({ description: 'Local id of the timeline entry' }),
     object_uri: z.string().meta({ description: "The remote post's canonical id" }),
     published_at: iso8601DateTimeSchema.meta({ description: 'When the post was published (ISO 8601)' }),
+    structured: feedStructuredSchema.optional().meta({
+      description:
+        'Native structured data (typed metrics + series), present only for posts from Aurboda instances — drives a native chart instead of the HTML.',
+    }),
     url: z.string().nullable().meta({ description: 'Link to the original post' }),
   })
   .meta({ id: 'TimelineEntry' })
@@ -304,27 +309,6 @@ export const publicSeriesQuerySchema = z
 
 export type PublicSeriesQuery = z.infer<typeof publicSeriesQuerySchema>
 
-/**
- * One bucketed sample. Individual-measurement timestamps are deliberately
- * omitted (only the bucket window is exposed) to limit resolution leakage.
- */
-export const publicSeriesSampleSchema = z
-  .object({
-    avg: z.number().meta({ description: 'Average value in the bucket' }),
-    count: z.number().int().meta({ description: 'Number of measurements in the bucket' }),
-    end: iso8601DateTimeSchema.meta({ description: 'Bucket end time' }),
-    max: z.number().meta({ description: 'Maximum value in the bucket' }),
-    min: z.number().meta({ description: 'Minimum value in the bucket' }),
-    start: iso8601DateTimeSchema.meta({ description: 'Bucket start time' }),
-    sum: z
-      .number()
-      .optional()
-      .meta({ description: 'Sum of values in the bucket (present for cumulative metrics)' }),
-  })
-  .meta({ id: 'PublicSeriesSample' })
-
-export type PublicSeriesSample = z.infer<typeof publicSeriesSampleSchema>
-
 /** Response for the public series endpoint. Payload fields optional so 404s type-check. */
 export const publicSeriesResponseSchema = baseResponseSchema
   .extend({
@@ -338,3 +322,14 @@ export const publicSeriesResponseSchema = baseResponseSchema
   .meta({ id: 'PublicSeriesResponse' })
 
 export type PublicSeriesResponse = z.infer<typeof publicSeriesResponseSchema>
+
+/**
+ * Response for the public *structured post* endpoint (`GET /public/:username/feed/:postId`).
+ * `structured` is absent (with `success: false`) for unknown / non-public / non-exercise posts.
+ * Consumed by another Aurboda instance on ingest to render a native chart.
+ */
+export const feedPostStructuredResponseSchema = baseResponseSchema
+  .extend({ structured: feedStructuredSchema.optional() })
+  .meta({ id: 'FeedPostStructuredResponse' })
+
+export type FeedPostStructuredResponse = z.infer<typeof feedPostStructuredResponseSchema>

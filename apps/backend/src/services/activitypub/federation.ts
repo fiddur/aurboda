@@ -1,3 +1,5 @@
+import type { FeedStructured } from '@aurboda/api-spec'
+
 import { createFederation, type Federation, type InboxContext, MemoryKvStore } from '@fedify/fedify'
 import {
   Accept,
@@ -57,6 +59,7 @@ import { buildProfileUrl } from '../share-urls.ts'
 import { buildFeedCreate, buildFeedNote } from './deliver.ts'
 import { toCryptoKeyPair } from './keys.ts'
 import { isPubliclyVisible } from './object.ts'
+import { createAurbodaEnricher } from './timeline-enrich.ts'
 import { noteToTimelineInput } from './timeline-ingest.ts'
 
 /** Posts per outbox page (cursor pagination). */
@@ -100,6 +103,8 @@ const ingestFeedActivity = async (
   ctx: InboxContext<void>,
   activity: Create | Update,
   onNewEntry?: (user: string) => void,
+  /** Best-effort fetch of the post's native Aurboda structured data (null if not an Aurboda post). */
+  enrich: (objectUri: string) => Promise<FeedStructured | null> = async () => null,
 ): Promise<void> => {
   // The recipient (whose timeline this is) comes from the personal inbox owner.
   // Unlike Accept/Reject there's no inner Follow to derive it from, so this relies
@@ -115,7 +120,10 @@ const ingestFeedActivity = async (
     if (!(object instanceof Note)) return
     const input = noteToTimelineInput(object, follow)
     if (input == null) return
-    const { inserted } = await upsertTimelineEntry(me, input)
+    // Best-effort: fetch the native structured payload if this is an Aurboda post
+    // (null otherwise). Stored on the entry so the web can render a native chart.
+    const structured = await enrich(input.object_uri)
+    const { inserted } = await upsertTimelineEntry(me, { ...input, structured })
     // Ping live subscribers only for a genuinely new post (not an edit/redelivery).
     if (inserted) onNewEntry?.(me)
   } catch (error) {
@@ -143,6 +151,10 @@ export const createFeedFederation = (
     // Create on share) would never send. A persistent Postgres queue + worker is
     // a later reliability slice; synchronous delivery is correct for now.
   })
+
+  // Fetches native structured data (typed metrics + series) for ingested posts
+  // that come from Aurboda instances, so the web can render a native chart.
+  const enrich = createAurbodaEnricher()
 
   federation
     .setActorDispatcher('/users/{identifier}', async (ctx, identifier) => {
@@ -260,8 +272,8 @@ export const createFeedFederation = (
     // timeline. Update reuses the same upsert (keyed on the Note's object id), so
     // an edit replaces the stored copy. Only *accepted* followees are ingested, so
     // a stranger who somehow delivers here can't inject into the timeline.
-    .on(Create, (ctx, create) => ingestFeedActivity(ctx, create, onNewTimelineEntry))
-    .on(Update, (ctx, update) => ingestFeedActivity(ctx, update, onNewTimelineEntry))
+    .on(Create, (ctx, create) => ingestFeedActivity(ctx, create, onNewTimelineEntry, enrich))
+    .on(Update, (ctx, update) => ingestFeedActivity(ctx, update, onNewTimelineEntry, enrich))
     .on(Delete, async (ctx, del) => {
       // Delete of a post we received → drop it from the timeline. `del.objectId`
       // is the removed object's id (a Tombstone or bare id); we key on it, but
