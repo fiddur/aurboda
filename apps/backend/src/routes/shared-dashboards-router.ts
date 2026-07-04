@@ -29,6 +29,7 @@ import {
   updateSharedDashboard,
 } from '../db/index.ts'
 import { buildShareUrl } from '../services/share-urls.ts'
+import { isPublicToVisibility, visibilityToIsPublic } from '../services/visibility.ts'
 import { type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody } from '../validation.ts'
 
@@ -36,11 +37,11 @@ const serialize = (record: SharedDashboardRecord, webHost: string, username: str
   config: record.config,
   created_at: record.created_at.toISOString(),
   id: record.id,
-  is_public: record.is_public,
   name: record.name,
   share_url: buildShareUrl(webHost, username, record.slug),
   slug: record.slug,
   updated_at: record.updated_at.toISOString(),
+  visibility: isPublicToVisibility(record.is_public),
 })
 
 export const createSharedDashboardsRouter = (
@@ -63,7 +64,7 @@ export const createSharedDashboardsRouter = (
       const user = req.user!
       const record = await createSharedDashboard(user, {
         config: req.body.config,
-        is_public: req.body.is_public,
+        is_public: visibilityToIsPublic(req.body.visibility),
         name: req.body.name,
       })
       res.json({ dashboard: serialize(record, webHost, user), success: true })
@@ -87,7 +88,7 @@ export const createSharedDashboardsRouter = (
       const user = req.user!
       const record = await updateSharedDashboard(user, req.params.id, {
         config: req.body.config,
-        is_public: req.body.is_public,
+        is_public: req.body.visibility === undefined ? undefined : visibilityToIsPublic(req.body.visibility),
         name: req.body.name,
       })
       if (!record) {

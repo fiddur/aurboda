@@ -16,6 +16,7 @@ import { z } from 'zod'
 
 import { chartDataBucketSchema } from './chart-data.ts'
 import { baseResponseSchema } from './common.ts'
+import { shareVisibilitySchema } from './visibility.ts'
 
 // =============================================================================
 // Measurement spec
@@ -91,7 +92,6 @@ export const challengeSchema = z
     created_at: z.string().meta({ description: 'Creation timestamp (ISO 8601)' }),
     end_ts: z.string().meta({ description: 'End instant, exclusive (ISO 8601)' }),
     id: z.string().uuid().meta({ description: 'Challenge ID' }),
-    is_public: z.boolean().meta({ description: 'If true, listed on the public profile' }),
     name: challengeNameSchema,
     share_url: z.string().meta({ description: 'Absolute URL of the challenge' }),
     slug: z.string().meta({ description: 'URL-safe public slug' }),
@@ -99,6 +99,9 @@ export const challengeSchema = z
     start_ts: z.string().meta({ description: 'Start instant, inclusive (ISO 8601)' }),
     timezone: z.string().meta({ description: 'IANA timezone the date range was chosen in' }),
     updated_at: z.string().meta({ description: 'Last update timestamp (ISO 8601)' }),
+    visibility: shareVisibilitySchema.meta({
+      description: 'public → listed on the public profile; unlisted → reachable only by its link',
+    }),
   })
   .meta({ id: 'Challenge' })
 
@@ -107,11 +110,13 @@ export type Challenge = z.infer<typeof challengeSchema>
 export const createChallengeBodySchema = z
   .object({
     end_ts: z.iso.datetime().meta({ description: 'End instant, exclusive (ISO 8601)' }),
-    is_public: z.boolean().default(false),
     name: challengeNameSchema,
     spec: challengeSpecSchema,
     start_ts: z.iso.datetime().meta({ description: 'Start instant, inclusive (ISO 8601)' }),
     timezone: z.string().min(1).meta({ description: 'IANA timezone the date range was chosen in' }),
+    visibility: shareVisibilitySchema
+      .default('unlisted')
+      .meta({ description: 'public → listed on the public profile; unlisted (default) → link-only' }),
   })
   .meta({ id: 'CreateChallengeBody' })
 
@@ -120,11 +125,13 @@ export type CreateChallengeBody = z.infer<typeof createChallengeBodySchema>
 export const updateChallengeBodySchema = z
   .object({
     end_ts: z.iso.datetime().optional(),
-    is_public: z.boolean().optional(),
     name: challengeNameSchema.optional(),
     spec: challengeSpecSchema.optional(),
     start_ts: z.iso.datetime().optional(),
     timezone: z.string().min(1).optional(),
+    visibility: shareVisibilitySchema
+      .optional()
+      .meta({ description: 'public → listed on the public profile; unlisted → link-only' }),
   })
   .meta({ id: 'UpdateChallengeBody' })
 
@@ -208,7 +215,6 @@ export const publicChallengeSchema = z
     }),
     end_ts: z.string(),
     host_identity: z.string().meta({ description: 'Host public profile base URL' }),
-    is_public: z.boolean(),
     join_token: z.string().meta({ description: 'Token a joining instance presents when registering' }),
     members: z.array(challengeMemberSchema),
     name: challengeNameSchema,
@@ -217,6 +223,7 @@ export const publicChallengeSchema = z
     spec: challengeSpecSchema,
     start_ts: z.string(),
     timezone: z.string(),
+    visibility: shareVisibilitySchema,
   })
   .meta({ id: 'PublicChallenge' })
 
@@ -286,7 +293,9 @@ export type ChallengeParticipationResponse = z.infer<typeof challengeParticipati
 /** Members list (owner-facing management). */
 export const challengeMembersResponseSchema = baseResponseSchema
   .extend({
-    members: z.array(challengeMemberSchema.extend({ id: z.string().uuid(), status: z.enum(['active', 'withdrawn']) })),
+    members: z.array(
+      challengeMemberSchema.extend({ id: z.string().uuid(), status: z.enum(['active', 'withdrawn']) }),
+    ),
   })
   .meta({ id: 'ChallengeMembersResponse' })
 

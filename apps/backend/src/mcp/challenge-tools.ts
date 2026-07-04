@@ -24,6 +24,7 @@ import {
 import { joinChallenge } from '../services/challenge-federation.ts'
 import { specToApi } from '../services/challenge-spec.ts'
 import { buildProfileUrl, buildShareUrl } from '../services/share-urls.ts'
+import { isPublicToVisibility, visibilityToIsPublic } from '../services/visibility.ts'
 import { errorResponse, jsonResponse, type McpServer } from './helpers.ts'
 
 const toSpecFields = (spec: ChallengeSpec): ChallengeSpecFields => ({
@@ -39,13 +40,13 @@ const serialize = (record: ChallengeRecord, webHost: string | undefined, user: s
   created_at: record.created_at.toISOString(),
   end_ts: record.end_ts.toISOString(),
   id: record.id,
-  is_public: record.is_public,
   name: record.name,
   share_url: webHost ? buildShareUrl(webHost, user, record.slug) : undefined,
   slug: record.slug,
   spec: specToApi(record.spec),
   start_ts: record.start_ts.toISOString(),
   timezone: record.timezone,
+  visibility: isPublicToVisibility(record.is_public),
 })
 
 export const registerChallengeTools = (
@@ -70,7 +71,7 @@ export const registerChallengeTools = (
     async (params) => {
       const record = await createChallenge(user, {
         end_ts: new Date(params.end_ts),
-        is_public: params.is_public,
+        is_public: visibilityToIsPublic(params.visibility),
         name: params.name,
         spec: toSpecFields(params.spec),
         start_ts: new Date(params.start_ts),
@@ -95,7 +96,7 @@ export const registerChallengeTools = (
     async ({ id, ...body }) => {
       const record = await updateChallenge(user, id, {
         end_ts: body.end_ts ? new Date(body.end_ts) : undefined,
-        is_public: body.is_public,
+        is_public: body.visibility === undefined ? undefined : visibilityToIsPublic(body.visibility),
         name: body.name,
         spec: body.spec ? toSpecFields(body.spec) : undefined,
         start_ts: body.start_ts ? new Date(body.start_ts) : undefined,

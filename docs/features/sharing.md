@@ -28,14 +28,21 @@ A shared dashboard is an **independent, named copy** of a dashboard config (see
 shared dashboard never affects your home dashboard, and you can create any number of
 them.
 
-Each shared dashboard has a url-safe random **slug** and a visibility:
+Each shared dashboard has a url-safe random **slug** and a `visibility`:
 
-- **Public** — listed on your public profile (`/u/<username>`) and reachable by slug.
-- **Unlisted** — not listed anywhere; reachable only by its unguessable slug. Share
+- **`public`** — listed on your public profile (`/u/<username>`) and reachable by slug.
+- **`unlisted`** — not listed anywhere; reachable only by its unguessable slug. Share
   the link with whoever you want; anyone without it cannot discover it.
 
 Visibility only governs the profile listing. Both public and unlisted shares are
 served by their slug.
+
+`visibility` is the shared **`ShareVisibility`** vocabulary (`public`/`unlisted`)
+used across the API, MCP tools, and web UI — the same words hosted
+[challenges](./challenges.md) use, and the base the [feed](./feed.md) extends with
+a `followers` audience. It is stored as an `is_public` boolean column and mapped
+to/from the vocabulary at the API boundary (backend `services/visibility.ts`), so
+storage stays a boolean while the surface is consistent.
 
 ## What a viewer can see (hard backend security)
 

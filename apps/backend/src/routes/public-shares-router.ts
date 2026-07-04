@@ -34,6 +34,7 @@ import { effectiveBucketSize, specToApi } from '../services/challenge-spec.ts'
 import { getChallengeStandings } from '../services/challenge-standings.ts'
 import { buildProfileUrl, buildShareUrl } from '../services/share-urls.ts'
 import { resolveDashboardData } from '../services/shared-dashboard-data.ts'
+import { isPublicToVisibility } from '../services/visibility.ts'
 import { type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody } from '../validation.ts'
 
@@ -214,7 +215,6 @@ export const createPublicSharesRouter = (webHost: string): TypedRouter => {
               ),
               end_ts: challenge.end_ts.toISOString(),
               host_identity: buildProfileUrl(webHost, username),
-              is_public: challenge.is_public,
               join_token: challenge.join_token,
               members: members
                 .filter((m) => m.status === 'active')
@@ -225,6 +225,7 @@ export const createPublicSharesRouter = (webHost: string): TypedRouter => {
               spec: specToApi(challenge.spec),
               start_ts: challenge.start_ts.toISOString(),
               timezone: challenge.timezone,
+              visibility: isPublicToVisibility(challenge.is_public),
             },
             success: true,
             type: 'challenge',

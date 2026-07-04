@@ -43,6 +43,7 @@ import { JoinChallengeError, joinChallenge } from '../services/challenge-federat
 import { specToApi } from '../services/challenge-spec.ts'
 import { getChallengeStandings } from '../services/challenge-standings.ts'
 import { buildProfileUrl, buildShareUrl } from '../services/share-urls.ts'
+import { isPublicToVisibility, visibilityToIsPublic } from '../services/visibility.ts'
 import { type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody } from '../validation.ts'
 
@@ -63,7 +64,6 @@ const serialize = (record: ChallengeRecord, webHost: string, username: string): 
   created_at: record.created_at.toISOString(),
   end_ts: record.end_ts.toISOString(),
   id: record.id,
-  is_public: record.is_public,
   name: record.name,
   share_url: buildShareUrl(webHost, username, record.slug),
   slug: record.slug,
@@ -71,6 +71,7 @@ const serialize = (record: ChallengeRecord, webHost: string, username: string): 
   start_ts: record.start_ts.toISOString(),
   timezone: record.timezone,
   updated_at: record.updated_at.toISOString(),
+  visibility: isPublicToVisibility(record.is_public),
 })
 
 export const createChallengesRouter = (
@@ -94,7 +95,7 @@ export const createChallengesRouter = (
       const user = req.user!
       const record = await createChallenge(user, {
         end_ts: new Date(req.body.end_ts),
-        is_public: req.body.is_public,
+        is_public: visibilityToIsPublic(req.body.visibility),
         name: req.body.name,
         spec: {
           activity_type_id: req.body.spec.activity_type_id ?? null,
@@ -134,7 +135,7 @@ export const createChallengesRouter = (
       const b = req.body
       const record = await updateChallenge(user, req.params.id, {
         end_ts: b.end_ts ? new Date(b.end_ts) : undefined,
-        is_public: b.is_public,
+        is_public: b.visibility === undefined ? undefined : visibilityToIsPublic(b.visibility),
         name: b.name,
         spec: b.spec
           ? {

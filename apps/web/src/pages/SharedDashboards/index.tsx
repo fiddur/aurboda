@@ -6,11 +6,12 @@
  * Per-widget editing of a shared dashboard is a follow-up; today a share is
  * seeded from the home dashboard's current layout.
  */
-import type { DashboardConfig, SharedDashboard } from '@aurboda/api-spec'
+import type { DashboardConfig, ShareVisibility, SharedDashboard } from '@aurboda/api-spec'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'preact/hooks'
 
+import { SHARE_VISIBILITY_OPTIONS, VisibilitySelector } from '../../components/VisibilitySelector'
 import {
   createSharedDashboard,
   deleteSharedDashboard,
@@ -27,7 +28,8 @@ function SharedDashboardRow({ dashboard }: { dashboard: SharedDashboard }) {
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['sharedDashboards'] })
 
   const updateMutation = useMutation({
-    mutationFn: (body: { name?: string; is_public?: boolean }) => updateSharedDashboard(dashboard.id, body),
+    mutationFn: (body: { name?: string; visibility?: ShareVisibility }) =>
+      updateSharedDashboard(dashboard.id, body),
     onError: () => alert('Failed to update the shared dashboard. Please try again.'),
     onSuccess: invalidate,
   })
@@ -74,14 +76,13 @@ function SharedDashboardRow({ dashboard }: { dashboard: SharedDashboard }) {
         onBlur={handleRename}
         aria-label="Dashboard name"
       />
-      <label class="shared-dashboard-public">
-        <input
-          type="checkbox"
-          checked={dashboard.is_public}
-          onChange={(e) => updateMutation.mutate({ is_public: (e.target as HTMLInputElement).checked })}
-        />
-        Public
-      </label>
+      <VisibilitySelector
+        compact
+        name={`dashboard-visibility-${dashboard.id}`}
+        options={SHARE_VISIBILITY_OPTIONS}
+        value={dashboard.visibility}
+        onChange={(visibility) => updateMutation.mutate({ visibility })}
+      />
       <div class="shared-dashboard-actions">
         <a class="btn-secondary" href={dashboard.share_url} target="_blank" rel="noopener noreferrer">
           View
@@ -111,7 +112,11 @@ export function SharedDashboards() {
     mutationFn: async (seedFromHome: boolean) => {
       const emptyConfig: DashboardConfig = { sections: [], version: 1 }
       const config = seedFromHome ? await fetchDashboard() : emptyConfig
-      return createSharedDashboard({ config, is_public: false, name: name.trim() || 'Shared dashboard' })
+      return createSharedDashboard({
+        config,
+        name: name.trim() || 'Shared dashboard',
+        visibility: 'unlisted',
+      })
     },
     onError: () => alert('Failed to create the shared dashboard. Please try again.'),
     onSuccess: () => {

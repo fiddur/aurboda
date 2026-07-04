@@ -18,16 +18,17 @@ import {
   listSharedDashboards,
   updateSharedDashboard,
 } from '../db/index.ts'
+import { isPublicToVisibility, visibilityToIsPublic } from '../services/visibility.ts'
 import { errorResponse, jsonResponse, type McpServer } from './helpers.ts'
 
 const serialize = (record: SharedDashboardRecord) => ({
   config: record.config,
   created_at: record.created_at.toISOString(),
   id: record.id,
-  is_public: record.is_public,
   name: record.name,
   slug: record.slug,
   updated_at: record.updated_at.toISOString(),
+  visibility: isPublicToVisibility(record.is_public),
 })
 
 export const registerSharedDashboardTools = (server: McpServer, user: string) => {
@@ -43,12 +44,12 @@ export const registerSharedDashboardTools = (server: McpServer, user: string) =>
 
   server.tool(
     'create_shared_dashboard',
-    'Create a shared dashboard from a dashboard config. Set is_public to list it on the public profile; otherwise it is unlisted and reachable only via its slug.',
+    'Create a shared dashboard from a dashboard config. Set visibility to "public" to list it on the public profile; "unlisted" (default) keeps it reachable only via its slug.',
     { ...createSharedDashboardBodySchema.shape },
     async (params) => {
       const record = await createSharedDashboard(user, {
         config: params.config,
-        is_public: params.is_public,
+        is_public: visibilityToIsPublic(params.visibility),
         name: params.name,
       })
       return jsonResponse(serialize(record))
@@ -59,8 +60,11 @@ export const registerSharedDashboardTools = (server: McpServer, user: string) =>
     'update_shared_dashboard',
     'Update a shared dashboard’s name, config, and/or visibility. The slug never changes. Only provided fields are modified.',
     { id: z.string().uuid().describe('The shared dashboard ID'), ...updateSharedDashboardBodySchema.shape },
-    async ({ id, ...patch }) => {
-      const record = await updateSharedDashboard(user, id, patch)
+    async ({ id, visibility, ...patch }) => {
+      const record = await updateSharedDashboard(user, id, {
+        ...patch,
+        is_public: visibility === undefined ? undefined : visibilityToIsPublic(visibility),
+      })
       if (!record) return errorResponse('Shared dashboard not found')
       return jsonResponse(serialize(record))
     },
