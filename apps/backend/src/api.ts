@@ -20,6 +20,7 @@ import { Client } from 'pg'
 import type { FeedDeliver } from './routes/feed-router.ts'
 
 import { registerAuthRoutes } from './api/auth-routes.ts'
+import { gateFederation } from './api/federation-gate.ts'
 import { createAdminMiddleware, createAuditLogMiddleware, createAuthMiddleware } from './api/middleware.ts'
 import { registerOAuthRoutes } from './api/oauth-routes.ts'
 import { mountRestRouters } from './api/rest-routes.ts'
@@ -378,15 +379,18 @@ const main = async () => {
   )
 
   // ActivityPub federation (actor + WebFinger). Mounted BEFORE the JSON body
-  // parser so Fedify owns the raw body of signed inbox POSTs; it passes through
-  // (next()) any request that isn't one of its own routes. `trust proxy` lets
-  // Fedify reconstruct the external https URL from nginx's X-Forwarded-* headers.
+  // parser so Fedify owns the raw body of signed inbox POSTs. `gateFederation`
+  // restricts it to federation-owned paths: `integrateFederation` otherwise
+  // wraps EVERY non-GET body with `Readable.toWeb(req)` and next()s without
+  // consuming it, hanging `express.json()` on any large non-federation POST
+  // (e.g. a Health Connect batch > ~64 KB). `trust proxy` lets Fedify
+  // reconstruct the external https URL from nginx's X-Forwarded-* headers.
   // Scope it to `loopback`: nginx proxies to the backend over loopback
   // (proxy_pass http://127.0.0.1:3000), so Express trusts X-Forwarded-* only when
   // the immediate peer is loopback — a direct remote client isn't, so it can't
   // spoof them.
   httpd.set('trust proxy', 'loopback')
-  httpd.use(integrateFederation(feedFederation, () => undefined))
+  httpd.use(gateFederation(integrateFederation(feedFederation, () => undefined)))
 
   // `410 Gone` Tombstone for dereferenced deleted objects. Mounted right after
   // the federation integration: when the object dispatcher returns null for a
