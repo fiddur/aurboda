@@ -146,6 +146,28 @@ opaque `next_cursor` — the same cursor style as the outbox — via `GET /feed/
 `list_timeline` MCP tool. Because the content was sanitised on ingest, the web client renders
 it directly.
 
+Two ingest guards keep the timeline honest given `object_uri` is a **globally-unique** upsert
+key: the note's id must be on the **sender's host** and, when it declares `attributedTo`, must
+attribute to the sender (so an accepted followee can't overwrite another actor's post by
+colliding its id); and `published_at` is **clamped to "not in the future"** on ingest (it's the
+sort key, so a far-future timestamp would otherwise pin a post to the top).
+
+### Live updates
+
+New posts appear **without a refresh**. When a genuinely new `timeline_entry` is inserted, the
+ingest path emits a Postgres `NOTIFY` ping on the user's DB (each user has one long-lived
+connection, so the ping is received in-process). The web client holds an **SSE** stream open at
+`GET /feed/timeline/stream`; each ping is forwarded as an empty `event: new` (no post content on
+the wire — just "your timeline changed"). The client then refetches the newest page and shows a
+**"N new posts"** pill; clicking it prepends the new posts.
+
+The stream uses `fetch` (not `EventSource`) so the bearer token rides in the `Authorization`
+header rather than the URL, and sends `X-Accel-Buffering: no` so nginx flushes each event
+immediately. If the stream can't be opened or drops, the client **falls back to polling** the
+same newest page every 30s — so the pill still works without a live connection. In-process
+fan-out is handled by a single `TimelineHub` that keeps one `LISTEN` channel open per user
+regardless of how many tabs are streaming.
+
 ### Images
 
 A post can carry a rendered **heart-rate chart** (`include_chart`) and/or a **GPS
@@ -226,7 +248,8 @@ resolving.
   server accepts and an **Unfollow** button.
 - **Home timeline** — below the Following panel, the Feed page shows your **Home timeline**:
   posts from the actors you follow, newest-first, as native cards with a **Load more** button
-  to page further back.
+  to page further back. New posts arrive **live** (or via polling fallback) as a **"N new
+  posts"** pill at the top; click it to reveal them.
 
 ## API
 
@@ -242,6 +265,7 @@ Owner-facing (authenticated, scoped to the caller):
 | `POST /feed/following`            | Follow an actor by handle (`@user@host` or actor URL) |
 | `DELETE /feed/following/:id`      | Unfollow (sends `Undo{Follow}`)                    |
 | `GET /feed/timeline`              | My home timeline (posts from followees), newest-first, `?cursor=` to page |
+| `GET /feed/timeline/stream`       | Server-Sent Events stream of live "new posts" pings (falls back to polling) |
 
 Public / federation (unauthenticated):
 

@@ -16,6 +16,7 @@ import type { FollowActions } from '../services/following.ts'
 import type { InvitationAuth } from '../services/invitation.ts'
 import type { OuraWebhookManager } from '../services/oura-webhook-manager.ts'
 import type { SyncProvider } from '../services/queries/index.ts'
+import type { TimelineHub } from '../services/timeline-hub.ts'
 import type { WebAuthnService } from '../services/webauthn.ts'
 import type { AnyMiddleware } from '../typed-router.ts'
 
@@ -88,6 +89,7 @@ interface RestRoutesDeps {
   userDb: Client
   feedDeliver: FeedDeliver
   followActions: FollowActions
+  timelineHub: TimelineHub
 }
 
 export const mountRestRouters = ({
@@ -106,6 +108,7 @@ export const mountRestRouters = ({
   deductionQueue,
   feedDeliver,
   followActions,
+  timelineHub,
   ouraWebhookManager,
   auth,
   webAuthn,
@@ -150,7 +153,7 @@ export const mountRestRouters = ({
   // Mount the following router before `/feed` so `/feed/following/*` (two path
   // segments) resolves here and never touches the feed router's `/:postId`.
   httpd.use('/feed/following', createFeedFollowingRouter(authMiddleware, followActions))
-  httpd.use('/feed', createFeedRouter(authMiddleware, feedDeliver))
+  httpd.use('/feed', createFeedRouter(authMiddleware, feedDeliver, timelineHub))
   httpd.use('/challenges', createChallengesRouter(authMiddleware, webHost, apiBaseUrl))
   httpd.use(createChallengeDataRouter())
   // Public feed series must be mounted before the generic /public/:username/:slug
