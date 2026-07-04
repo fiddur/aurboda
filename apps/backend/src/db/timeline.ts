@@ -48,12 +48,17 @@ const TIMELINE_COLUMNS =
  * Insert or update a received post by `object_uri`. A re-delivered or edited post
  * (same object id) refreshes the content/presentation in place; `received_at`
  * stays at first receipt while `published_at` tracks the remote timestamp.
+ *
+ * `inserted` distinguishes a brand-new post from an in-place refresh via the
+ * `xmax = 0` trick (freshly-inserted tuples have xmax 0; the ON CONFLICT update
+ * path locks the existing row, so its xmax is non-zero). The ingest path uses it
+ * to notify live subscribers only about genuinely new posts, not edits.
  */
 export const upsertTimelineEntry = async (
   user: string,
   input: TimelineEntryInput,
-): Promise<TimelineEntryRecord> => {
-  const result = await query<TimelineEntryRecord>(
+): Promise<TimelineEntryRecord & { inserted: boolean }> => {
+  const result = await query<TimelineEntryRecord & { inserted: boolean }>(
     user,
     `INSERT INTO timeline_entry
        (object_uri, actor_uri, handle, display_name, avatar_url, content, url, published_at)
@@ -66,7 +71,7 @@ export const upsertTimelineEntry = async (
                    content = EXCLUDED.content,
                    url = EXCLUDED.url,
                    published_at = EXCLUDED.published_at
-     RETURNING ${TIMELINE_COLUMNS}`,
+     RETURNING ${TIMELINE_COLUMNS}, (xmax = 0) AS inserted`,
     [
       input.object_uri,
       input.actor_uri,

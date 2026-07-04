@@ -310,6 +310,7 @@ export {
   type TimelineEntryRecord,
   upsertTimelineEntry,
 } from './timeline.ts'
+export { emitTimelineNotify, openTimelineChannel } from './timeline-notify.ts'
 
 // Feed posts
 export {
