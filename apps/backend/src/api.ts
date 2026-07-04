@@ -28,6 +28,7 @@ import { setupOuraWebhook, setupStravaWebhook } from './api/webhooks-setup.ts'
 import { createAuth } from './auth.ts'
 import {
   deleteRuleActivities,
+  emitTimelineNotify,
   getDeductionRulesByIds,
   getDetectedLocationById,
   getEnabledDeductionRules,
@@ -41,6 +42,7 @@ import {
   insertRawRecord,
   insertTimeSeries,
   loginToUserDb,
+  openTimelineChannel,
   resolveOrCreateActivityType,
   softDeleteLocationRange,
   updateDetectedLocation,
@@ -78,6 +80,7 @@ import { createPgBoss } from './services/pg-boss.ts'
 import { initSentry, Sentry } from './services/sentry.ts'
 import { createStravaQueue, type StravaQueue } from './services/strava-queue.ts'
 import { createSyncProvider } from './services/sync-provider.ts'
+import { createTimelineHub } from './services/timeline-hub.ts'
 import { createWebAuthnService } from './services/webauthn.ts'
 
 declare global {
@@ -309,11 +312,19 @@ const main = async () => {
   // Mount OAuth endpoints BEFORE body-parser (uses its own parsers)
   httpd.use(createOAuthRouter({ centralDb, loginToUserDb, webHost }))
 
+  // Live home-timeline updates: one in-process hub fans Postgres NOTIFY pings out
+  // to a user's open SSE streams. Injected into the feed router (SSE endpoint) and
+  // the federation ingest (which pings it when a new post is received).
+  const timelineHub = createTimelineHub({ emit: emitTimelineNotify, openChannel: openTimelineChannel })
+  const onNewTimelineEntry = (user: string) => {
+    void timelineHub.notify(user).catch((err) => console.error(`⚠️ timeline notify failed for ${user}:`, err))
+  }
+
   // ActivityPub federation object (one instance, shared by the actor mount, the
   // MCP feed tools, and the REST feed router). `feedDeliver` fans a shared post
   // out to followers, fire-and-forget, so it's identical whether a post is
   // created via MCP or REST.
-  const feedFederation = createFeedFederation(webHost, apiBaseUrl)
+  const feedFederation = createFeedFederation(webHost, apiBaseUrl, onNewTimelineEntry)
   const feedDeps = { apiBaseUrl, federation: feedFederation, origin: webHost }
   const onDeliverError = (op: string, user: string, postId: string) => (err: unknown) =>
     console.error(`⚠️ feed ${op} delivery failed for ${user}/${postId}:`, err)
@@ -497,6 +508,7 @@ const main = async () => {
     invitationAuth,
     ouraWebhookManager,
     syncProvider,
+    timelineHub,
     userDb,
     webAuthn,
     webHost,

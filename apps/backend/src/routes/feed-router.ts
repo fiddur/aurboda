@@ -21,6 +21,7 @@ import {
 } from '@aurboda/api-spec'
 
 import type { Activity, FeedPostRecord } from '../db/index.ts'
+import type { TimelineHub } from '../services/timeline-hub.ts'
 
 import {
   createFeedPost,
@@ -54,7 +55,11 @@ export interface FeedDeliver {
   deleted: (user: string, post: FeedPostRecord) => void
 }
 
-export const createFeedRouter = (authMiddleware: AnyMiddleware, deliver?: FeedDeliver): TypedRouter => {
+export const createFeedRouter = (
+  authMiddleware: AnyMiddleware,
+  deliver?: FeedDeliver,
+  hub?: TimelineHub,
+): TypedRouter => {
   const router = typedRouter()
 
   router.get<Record<string, never>, FeedPostsResponse>('/', authMiddleware, async (req, res) => {
@@ -63,6 +68,59 @@ export const createFeedRouter = (authMiddleware: AnyMiddleware, deliver?: FeedDe
     const posts = await Promise.all(records.map((record) => serializeFeedPost(user, record)))
     res.json({ posts, success: true })
   })
+
+  // Live home-timeline updates over Server-Sent Events. Each ping (`event: new`)
+  // means "a new post arrived — refetch the newest page"; the payload is empty so
+  // no post content crosses the wire. The client falls back to polling if this
+  // stream can't be opened or drops. Registered before `/:postId`-style routes.
+  router.get<Record<string, never>, { success: false; error: string }>(
+    '/timeline/stream',
+    authMiddleware,
+    async (req, res) => {
+      const user = req.user!
+      if (!hub) return res.status(503).json({ error: 'Live updates unavailable', success: false })
+
+      // `X-Accel-Buffering: no` tells nginx not to buffer the stream (SSE needs
+      // each event flushed immediately, not held back for a full response body).
+      res.writeHead(200, {
+        'Cache-Control': 'no-cache, no-transform',
+        Connection: 'keep-alive',
+        'Content-Type': 'text/event-stream',
+        'X-Accel-Buffering': 'no',
+      })
+      const write = (chunk: string) => {
+        if (res.writableEnded) return
+        try {
+          res.write(chunk)
+        } catch {
+          /* client vanished mid-write */
+        }
+      }
+      write(': connected\n\n')
+
+      // Comment heartbeats keep the connection from being reaped as idle.
+      const heartbeat = setInterval(() => write(': ping\n\n'), 25_000)
+      let unsubscribe: (() => Promise<void>) | null = null
+      let closed = false
+      const cleanup = async () => {
+        if (closed) return
+        closed = true
+        clearInterval(heartbeat)
+        if (unsubscribe) await unsubscribe().catch(() => {})
+      }
+      req.on('close', () => void cleanup())
+
+      try {
+        unsubscribe = await hub.subscribe(user, () => write('event: new\ndata: {}\n\n'))
+        // The client may have disconnected while the channel was opening.
+        if (closed) await unsubscribe().catch(() => {})
+      } catch {
+        // Couldn't open the live channel — end the stream so the client polls instead.
+        await cleanup()
+        if (!res.writableEnded) res.end()
+      }
+    },
+  )
 
   router.get<Record<string, never>, TimelineResponse, unknown, TimelineQuery>(
     '/timeline',

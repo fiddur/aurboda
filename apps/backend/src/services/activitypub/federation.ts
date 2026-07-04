@@ -96,7 +96,11 @@ const localFollowerIdentifier = async (
  * sanitised in `noteToTimelineInput`. Best-effort: unresolvable objects and
  * non-Notes are ignored, and a missing DB never 500s (which would invite retries).
  */
-const ingestFeedActivity = async (ctx: InboxContext<void>, activity: Create | Update): Promise<void> => {
+const ingestFeedActivity = async (
+  ctx: InboxContext<void>,
+  activity: Create | Update,
+  onNewEntry?: (user: string) => void,
+): Promise<void> => {
   // The recipient (whose timeline this is) comes from the personal inbox owner.
   // Unlike Accept/Reject there's no inner Follow to derive it from, so this relies
   // on personal-inbox delivery; `ctx.recipient` is null on a shared inbox. That's
@@ -111,14 +115,21 @@ const ingestFeedActivity = async (ctx: InboxContext<void>, activity: Create | Up
     if (!(object instanceof Note)) return
     const input = noteToTimelineInput(object, follow)
     if (input == null) return
-    await upsertTimelineEntry(me, input)
+    const { inserted } = await upsertTimelineEntry(me, input)
+    // Ping live subscribers only for a genuinely new post (not an edit/redelivery).
+    if (inserted) onNewEntry?.(me)
   } catch (error) {
     if (isMissingDatabase(error)) return
     throw error
   }
 }
 
-export const createFeedFederation = (origin: string, apiBaseUrl: string): Federation<void> => {
+export const createFeedFederation = (
+  origin: string,
+  apiBaseUrl: string,
+  /** Fire-and-forget: called with the recipient when a genuinely new post is ingested. */
+  onNewTimelineEntry?: (user: string) => void,
+): Federation<void> => {
   const federation = createFederation<void>({
     kv: new MemoryKvStore(),
     // Pin the canonical origin (the public base URL) so actor ids, WebFinger
@@ -249,8 +260,8 @@ export const createFeedFederation = (origin: string, apiBaseUrl: string): Federa
     // timeline. Update reuses the same upsert (keyed on the Note's object id), so
     // an edit replaces the stored copy. Only *accepted* followees are ingested, so
     // a stranger who somehow delivers here can't inject into the timeline.
-    .on(Create, (ctx, create) => ingestFeedActivity(ctx, create))
-    .on(Update, (ctx, update) => ingestFeedActivity(ctx, update))
+    .on(Create, (ctx, create) => ingestFeedActivity(ctx, create, onNewTimelineEntry))
+    .on(Update, (ctx, update) => ingestFeedActivity(ctx, update, onNewTimelineEntry))
     .on(Delete, async (ctx, del) => {
       // Delete of a post we received → drop it from the timeline. `del.objectId`
       // is the removed object's id (a Tombstone or bare id); we key on it, but
