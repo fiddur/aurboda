@@ -5,6 +5,7 @@
  */
 import {
   followActorBodySchema,
+  followersQuerySchema,
   shareActivityBodySchema,
   timelineQuerySchema,
   updateFeedPostBodySchema,
@@ -12,6 +13,7 @@ import {
 import { z } from 'zod'
 
 import type { FeedDeliver } from '../routes/feed-router.ts'
+import type { FollowerActions } from '../services/followers.ts'
 import type { FollowActions } from '../services/following.ts'
 
 import {
@@ -19,20 +21,30 @@ import {
   deleteFeedPost,
   getActivityById,
   getFeedPostById,
+  listFeedFollowers,
   listFeedFollowing,
   listFeedPosts,
   updateFeedPost,
 } from '../db/index.ts'
 import { serializeFeedPost } from '../services/feed.ts'
+import { serializeFollower } from '../services/followers.ts'
 import { serializeFollowing } from '../services/following.ts'
 import { getTimelinePage } from '../services/timeline.ts'
 import { errorResponse, jsonResponse, type McpServer } from './helpers.ts'
+
+/** Map the `status` filter to the follower-list DB options. */
+const followerStatusFilter = (status: 'accepted' | 'all' | 'pending'): { accepted?: boolean } => {
+  if (status === 'pending') return { accepted: false }
+  if (status === 'accepted') return { accepted: true }
+  return {}
+}
 
 export const registerFeedTools = (
   server: McpServer,
   user: string,
   deliver?: FeedDeliver,
   followActions?: FollowActions,
+  followerActions?: FollowerActions,
 ) => {
   server.tool(
     'list_feed',
@@ -136,6 +148,40 @@ export const registerFeedTools = (
       const removed = await followActions.unfollow(user, id)
       if (!removed) return errorResponse('Not following that actor')
       return jsonResponse({ id, unfollowed: true })
+    },
+  )
+
+  server.tool(
+    'list_followers',
+    'List the actors that follow you, with their handle, display name, and acceptance state. Pass `status` to see only `pending` follow requests or only `accepted` followers (default `all`). Requests are pending only when you have enabled manual follower approval.',
+    { ...followersQuerySchema.shape },
+    async ({ status }) => {
+      const records = await listFeedFollowers(user, followerStatusFilter(status))
+      return jsonResponse(records.map(serializeFollower))
+    },
+  )
+
+  server.tool(
+    'approve_follower',
+    'Approve a pending follow request by the local follower id (from `list_followers`). Marks them an accepted follower and sends the Accept.',
+    { id: z.string().uuid().describe('Local follower id (the `id` from list_followers)') },
+    async ({ id }) => {
+      if (!followerActions) return errorResponse('Follower management is not available')
+      const follower = await followerActions.approve(user, id)
+      if (!follower) return errorResponse('No such follower')
+      return jsonResponse(follower)
+    },
+  )
+
+  server.tool(
+    'reject_follower',
+    'Reject a pending follow request, or remove an existing follower, by the local follower id (from `list_followers`). Sends a Reject and drops them.',
+    { id: z.string().uuid().describe('Local follower id (the `id` from list_followers)') },
+    async ({ id }) => {
+      if (!followerActions) return errorResponse('Follower management is not available')
+      const removed = await followerActions.reject(user, id)
+      if (!removed) return errorResponse('No such follower')
+      return jsonResponse({ id, rejected: true })
     },
   )
 }

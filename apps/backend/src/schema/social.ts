@@ -159,16 +159,37 @@ export const socialTables: Record<string, string> = {
 
   // Remote actors that follow this user's ActivityPub actor. Keyed by the
   // follower's actor URI; we cache their (personal) inbox and optional shared
-  // inbox so the delivery slice can fan posts out to them. `accepted` records
-  // that we answered their Follow with an Accept.
+  // inbox so the delivery slice can fan posts out to them, plus their handle /
+  // display name / avatar so a follow-request UI can show who is asking.
+  // `accepted` records whether we answered their Follow with an Accept — in
+  // manual-approval mode it stays false (pending) until the owner approves, and
+  // pending followers are kept out of the followers collection + count and
+  // receive no `followers`-only delivery. `follow_activity_uri` is the id of the
+  // Follow they sent, echoed back in the deferred Accept/Reject so their server
+  // matches it to the original request. `id` is a stable local handle for the
+  // approve/reject API + UI (the actor_uri is unwieldy as a path param).
   feed_follower: `
     CREATE TABLE IF NOT EXISTS feed_follower (
-      actor_uri        TEXT PRIMARY KEY,
-      inbox_uri        TEXT NOT NULL,
-      shared_inbox_uri TEXT,
-      accepted         BOOLEAN NOT NULL DEFAULT false,
-      created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      actor_uri           TEXT PRIMARY KEY,
+      id                  UUID NOT NULL DEFAULT gen_random_uuid() UNIQUE,
+      inbox_uri           TEXT NOT NULL,
+      shared_inbox_uri    TEXT,
+      handle              TEXT,
+      display_name        TEXT,
+      avatar_url          TEXT,
+      follow_activity_uri TEXT,
+      accepted            BOOLEAN NOT NULL DEFAULT false,
+      created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
+  `,
+  // Additive migrations for pre-existing feed_follower tables (all idempotent).
+  feed_follower_columns: `
+    ALTER TABLE feed_follower ADD COLUMN IF NOT EXISTS id UUID NOT NULL DEFAULT gen_random_uuid();
+    ALTER TABLE feed_follower ADD COLUMN IF NOT EXISTS handle TEXT;
+    ALTER TABLE feed_follower ADD COLUMN IF NOT EXISTS display_name TEXT;
+    ALTER TABLE feed_follower ADD COLUMN IF NOT EXISTS avatar_url TEXT;
+    ALTER TABLE feed_follower ADD COLUMN IF NOT EXISTS follow_activity_uri TEXT;
+    CREATE UNIQUE INDEX IF NOT EXISTS feed_follower_id_key ON feed_follower (id);
   `,
 
   // Remote (or local) actors this user follows. Keyed by a local `id` (used to

@@ -73,6 +73,12 @@ import {
 import { createDetectionTrigger, type DetectionTrigger } from './services/detection-trigger.ts'
 import { runDetectionForUser } from './services/detection-worker.ts'
 import { expandFeedActivityWindow, resolveFeedActivity } from './services/feed.ts'
+import {
+  approveFollower,
+  type FollowerActions,
+  rejectFollower,
+  serializeFollower,
+} from './services/followers.ts'
 import { type FollowActions, followActor, unfollowActor } from './services/following.ts'
 import { createGeocodeQueue } from './services/geocode-queue.ts'
 import { createInvitationAuth } from './services/invitation.ts'
@@ -357,6 +363,15 @@ const main = async () => {
     follow: (user, handle) => followActor(feedDeps, user, handle),
     unfollow: (user, id) => unfollowActor(feedDeps, user, id),
   }
+  // The follower-management operations (approve/reject a follow request), sharing
+  // the same federation + origin. Approve returns the serialised follower.
+  const followerActions: FollowerActions = {
+    approve: async (user, id) => {
+      const record = await approveFollower(feedDeps, user, id)
+      return record ? serializeFollower(record) : null
+    },
+    reject: (user, id) => rejectFollower(feedDeps, user, id),
+  }
 
   // Mount MCP server BEFORE body-parser (MCP SDK needs raw body)
   // Stateless mode — no session tracking needed (tools only, no subscriptions)
@@ -369,6 +384,7 @@ const main = async () => {
       engineDeps,
       feedDeliver,
       followActions,
+      followerActions,
       garmin,
       onActivityMutated: activityNotifier,
       oura,
@@ -507,6 +523,7 @@ const main = async () => {
     engineDeps,
     feedDeliver,
     followActions,
+    followerActions,
     garmin,
     httpd,
     invitationAuth,

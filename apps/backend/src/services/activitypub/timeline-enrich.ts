@@ -26,8 +26,8 @@ import {
 } from '@aurboda/api-spec'
 
 import { discoverInstance } from '../challenge-federation.ts'
-import { withTimeout } from '../following.ts'
 import { safeFetchGet } from '../safe-fetch.ts'
+import { withTimeout } from '../with-timeout.ts'
 
 /** Aurboda's object-dispatcher path: `/users/{identifier}/feed/{postId}` (postId is a UUID). */
 const FEED_OBJECT_PATH =

@@ -3,6 +3,10 @@ import type {
   FeedPostResponse,
   FeedPostsResponse,
   FollowActorResponse,
+  FollowerActor,
+  FollowerResponse,
+  FollowersQuery,
+  FollowersResponse,
   FollowingActor,
   FollowingResponse,
   ShareActivityBody,
@@ -87,6 +91,31 @@ export const followActor = async (handle: string): Promise<FollowingActor> => {
 /** Unfollow an actor by its local follow id. */
 export const unfollowActor = async (id: string): Promise<void> => {
   await axios.delete(`${API_URL}/feed/following/${id}`, { headers: authHeaders() })
+}
+
+/** List the actors that follow the user, optionally filtered by acceptance state. */
+export const fetchFollowers = async (status: FollowersQuery['status'] = 'all'): Promise<FollowerActor[]> => {
+  const response = await axios.get<FollowersResponse>(`${API_URL}/feed/followers`, {
+    headers: authHeaders(),
+    params: { status },
+  })
+  return response.data.followers
+}
+
+/** Approve a pending follow request by the local follower id. */
+export const approveFollower = async (id: string): Promise<FollowerActor> => {
+  const response = await axios.post<FollowerResponse>(
+    `${API_URL}/feed/followers/${id}/approve`,
+    {},
+    { headers: authHeaders() },
+  )
+  if (!response.data.follower) throw new Error('Approve failed: no follower returned')
+  return response.data.follower
+}
+
+/** Reject a pending follow request, or remove a follower, by the local follower id. */
+export const rejectFollower = async (id: string): Promise<void> => {
+  await axios.delete(`${API_URL}/feed/followers/${id}`, { headers: authHeaders() })
 }
 
 /**

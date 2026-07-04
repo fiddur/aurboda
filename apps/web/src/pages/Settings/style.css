@@ -78,6 +78,22 @@
   margin-bottom: 0.5rem;
 }
 
+/* Inline checkbox + label row (e.g. the manual-follower-approval toggle). */
+.checkbox-field {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.checkbox-field input[type='checkbox'] {
+  width: 1.05rem;
+  height: 1.05rem;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
 .field-header-row {
   display: flex;
   align-items: baseline;

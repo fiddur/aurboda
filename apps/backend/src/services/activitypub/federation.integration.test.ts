@@ -12,6 +12,7 @@ import { insertActivity } from '../../db/activities/index.ts'
 import { upsertFeedFollower } from '../../db/feed-follower.ts'
 import { markFeedFollowingAccepted, upsertFeedFollowing } from '../../db/feed-following.ts'
 import { createFeedPost, deleteFeedPost, type FeedPostInput, getFeedTombstone } from '../../db/feed.ts'
+import { upsertUserSettings } from '../../db/settings.ts'
 import { createFeedTombstoneRouter } from '../../routes/feed-tombstone-router.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../../test/db-test-helper.ts'
 import { buildFeedUpdate } from './deliver.ts'
@@ -81,6 +82,17 @@ describe('Feed federation actor + WebFinger', () => {
     const publicKey = doc.publicKey as { owner?: string; publicKeyPem?: string }
     expect(publicKey.owner).toBe(`${ORIGIN}/users/${user}`)
     expect(publicKey.publicKeyPem).toContain('BEGIN PUBLIC KEY')
+    // Default account is open — not a locked (manual-approval) account.
+    expect(doc.manuallyApprovesFollowers).toBe(false)
+  })
+
+  test('advertises manuallyApprovesFollowers when the user requires manual approval', async () => {
+    const user = getTestUser()
+    await upsertUserSettings(user, { manually_approve_followers: true })
+    const res = await fetchAs2(`/users/${user}`)
+    expect(res.status).toBe(200)
+    const doc = (await res.json()) as Record<string, unknown>
+    expect(doc.manuallyApprovesFollowers).toBe(true)
   })
 
   test('builds https URLs from the canonical origin even when the request arrives over http', async () => {
@@ -118,18 +130,26 @@ describe('Feed federation actor + WebFinger', () => {
     expect(res.status).toBe(404)
   })
 
-  test('serves the followers collection from feed_follower', async () => {
+  test('serves the followers collection from feed_follower (accepted only)', async () => {
     const user = getTestUser()
     await upsertFeedFollower(user, {
+      accepted: true,
       actor_uri: 'https://mastodon.example/users/alice',
       inbox_uri: 'https://mastodon.example/users/alice/inbox',
       shared_inbox_uri: 'https://mastodon.example/inbox',
+    })
+    // A pending (unapproved) follower is excluded from the public collection + count.
+    await upsertFeedFollower(user, {
+      accepted: false,
+      actor_uri: 'https://mastodon.example/users/pending',
+      inbox_uri: 'https://mastodon.example/users/pending/inbox',
     })
     const res = await fetchAs2(`/users/${user}/followers`)
     expect(res.status).toBe(200)
     const doc = (await res.json()) as { totalItems?: number; orderedItems?: string[] }
     expect(doc.totalItems).toBe(1)
     expect(doc.orderedItems).toContain('https://mastodon.example/users/alice')
+    expect(doc.orderedItems).not.toContain('https://mastodon.example/users/pending')
   })
 
   test('serves the following collection with only accepted follows', async () => {

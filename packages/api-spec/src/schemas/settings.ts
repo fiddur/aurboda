@@ -210,6 +210,10 @@ export const updateSettingsInputSchema = z
     lastfm_username: lastFmUsernameSchema.nullable().optional().meta({
       description: 'Last.fm username for scrobble sync (set to null to clear)',
     }),
+    manually_approve_followers: z.boolean().nullable().optional().meta({
+      description:
+        'When true, incoming follows are held as pending requests you approve or reject; when false (default), anyone can follow you automatically (set to null to reset to the default).',
+    }),
     rescue_time_key: rescueTimeKeySchema.nullable().optional().meta({
       description: 'RescueTime API key (set to null to clear)',
     }),
@@ -276,6 +280,9 @@ export const userSettingsResponseSchema = baseResponseSchema
       .nullable()
       .default(null)
       .meta({ description: 'Last.fm username for scrobble sync' }),
+    manually_approve_followers: z.boolean().default(false).meta({
+      description: 'Whether incoming follows are held for manual approval (locked account)',
+    }),
     meal_slots: mealSlotsSchema.default([]).meta({ description: 'Configured meal slots for quick-logging' }),
     oura_configured: z
       .boolean()

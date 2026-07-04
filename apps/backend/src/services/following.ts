@@ -30,6 +30,12 @@ import {
   removeFeedFollowing,
   upsertFeedFollowing,
 } from '../db/index.ts'
+import { extractActorPresentation } from './activitypub/actor-presentation.ts'
+import { withTimeout } from './with-timeout.ts'
+
+// Re-exported for existing importers (the follow tools + tests) — the util now
+// lives in its own leaf module so `actor-presentation` can share it cycle-free.
+export { withTimeout }
 
 export interface FollowDeps {
   federation: Federation<void>
@@ -57,59 +63,21 @@ export type FollowResult =
   | { ok: true; record: FeedFollowingRecord }
   | { ok: false; status: number; error: string }
 
-/** Map a `LanguageString | string | null` (Fedify vocab value) to a plain string or null. */
-const toPlainString = (value: unknown): string | null => {
-  if (value == null) return null
-  const str = String(value).trim()
-  return str.length > 0 ? str : null
-}
-
-/** How long to wait for an actor's icon before giving up (avatar is non-essential). */
-const ICON_FETCH_TIMEOUT_MS = 3000
-
-/** Reject `promise` if it doesn't settle within `ms` (clearing the timer either way). Exported for testing. */
-export const withTimeout = async <T>(promise: Promise<T>, ms: number): Promise<T> => {
-  let timer: ReturnType<typeof setTimeout> | undefined
-  try {
-    return await Promise.race([
-      promise,
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new Error('timeout')), ms)
-      }),
-    ])
-  } finally {
-    if (timer) clearTimeout(timer)
-  }
-}
-
 /**
  * Extract the persisted fields of a followee from a resolved Fedify actor, or
- * null if it lacks the id/inbox we require to follow + later unfollow it.
- *
- * The handle is derived from `preferredUsername` + the actor id's host rather
- * than `getActorHandle` (which may WebFinger the host): this is deterministic and
- * offline — good enough for a display handle, and it can't hang. The avatar comes
- * from the actor's embedded `icon` — Mastodon inlines it (no fetch), but a server
- * that only links it would make `getIcon()` dereference a URL, so it's bounded by
- * a timeout: a slow icon host must not hang the synchronous follow. Unit-tested
- * with a constructed `Person`.
+ * null if it lacks the id/inbox we require to follow + later unfollow it. The
+ * presentation (handle / display name / avatar) is resolved by the shared
+ * `extractActorPresentation` (offline handle; timeout-bounded icon deref).
+ * Unit-tested with a constructed `Person`.
  */
 export const actorToFollowingInput = async (actor: Actor): Promise<FeedFollowingInput | null> => {
   if (actor.id == null || actor.inboxId == null) return null
-  const username = toPlainString(actor.preferredUsername)
-  const handle = username == null ? null : `@${username}@${actor.id.host}`
-  let avatarUrl: string | null = null
-  try {
-    const icon = await withTimeout(actor.getIcon(), ICON_FETCH_TIMEOUT_MS)
-    avatarUrl = icon?.url instanceof URL ? icon.url.href : null
-  } catch {
-    avatarUrl = null
-  }
+  const presentation = await extractActorPresentation(actor)
   return {
     actor_uri: actor.id.href,
-    avatar_url: avatarUrl,
-    display_name: toPlainString(actor.name),
-    handle,
+    avatar_url: presentation.avatar_url,
+    display_name: presentation.display_name,
+    handle: presentation.handle,
     inbox_uri: actor.inboxId.href,
     shared_inbox_uri: actor.endpoints?.sharedInbox?.href ?? null,
   }

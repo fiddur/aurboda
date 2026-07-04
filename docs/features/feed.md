@@ -57,9 +57,11 @@ acct:<username>@<host>                  e.g. @fiddur@aurboda.net
 
 so anyone on Mastodon (or any fediverse server) can search for `@fiddur@aurboda.net`,
 open the profile, and **Follow**. A `Follow` arrives at the actor's inbox; Aurboda
-verifies its HTTP Signature, records the follower (`feed_follower`), and replies with an
-`Accept` so the remote server marks the relationship established. `Undo{Follow}` removes
-the follower.
+verifies its HTTP Signature and records the follower (`feed_follower`). By default it
+replies immediately with an `Accept` so the remote server marks the relationship
+established; if the user has enabled **manual approval** the follow is held as a pending
+request instead (see [Follower approval](#follower-approval-inbound)). `Undo{Follow}`
+removes the follower.
 
 Canonical absolute URLs (actor id, inbox/outbox, object ids, WebFinger self-link) are
 always built from the configured public base (`WEB_HOST`) as **https**, so they stay
@@ -135,6 +137,32 @@ the rest of the feed — a failed `Follow` POST leaves the pending row so the us
 The actor advertises a **following collection** (`/users/<username>/following`) listing only
 _accepted_ follows (a pending follow isn't a confirmed relationship yet). The followee's
 inbox URIs are internal delivery details and are never exposed on the owner-facing API.
+
+### Follower approval (inbound)
+
+By default an account is **open**: an inbound `Follow` is auto-accepted and answered with an
+`Accept` immediately. A user can instead switch on **manual approval** (the
+`manually_approve_followers` setting) — a "locked account", advertised to the fediverse via
+`manuallyApprovesFollowers: true` on the actor document, so Mastodon shows a follow _request_
+and holds it pending.
+
+With manual approval on, an inbound `Follow`:
+
+1. is recorded in `feed_follower` as **pending** (`accepted = false`) — caching the
+   follower's handle / display name / avatar (so the approval UI can show _who_ is asking)
+   and the id of their `Follow` activity, but **no** `Accept` is sent yet;
+2. surfaces as a request the owner can **approve** or **reject**.
+
+**Approving** flips the row to accepted and sends the deferred `Accept` — echoing the
+original `Follow` id so the follower's server matches it to its pending request.
+**Rejecting** (or later **removing** an accepted follower) sends a `Reject` and drops the
+row. Both are best-effort/synchronous like the rest of the feed. A re-delivered `Follow`
+from an already-accepted follower never demotes them back to pending.
+
+Only **accepted** followers appear in the followers collection + count and receive
+`followers`-only posts — a pending request is not yet a follower. Switching the setting off
+does not retroactively accept the already-pending requests; new follows simply auto-accept
+again. The follower's inbox URIs are internal and never exposed on the owner-facing API.
 
 ### Home timeline (inbound)
 
@@ -282,6 +310,10 @@ resolving.
 - **Follow** — the Feed page's **Following** panel lets you follow a fediverse actor by
   handle (`@user@host`) and see who you follow, with a **Pending** badge until the remote
   server accepts and an **Unfollow** button.
+- **Followers** — the Feed page's **Followers** panel lists who follows you. If you've turned
+  on **Manually approve new followers** (Settings → _Feed & Followers_), incoming follows show
+  up here as **follow requests** with **Approve** / **Reject** buttons; accepted followers can
+  be **Removed**. With approval off (the default), anyone can follow you automatically.
 - **Home timeline** — below the Following panel, the Feed page shows your **Home timeline**:
   posts from the actors you follow, newest-first, as native cards with a **Load more** button
   to page further back. New posts arrive **live** (or via polling fallback) as a **"N new
@@ -300,6 +332,9 @@ Owner-facing (authenticated, scoped to the caller):
 | `GET /feed/following`             | List the actors I follow (accepted + pending)                                                                           |
 | `POST /feed/following`            | Follow an actor by handle (`@user@host` or actor URL)                                                                   |
 | `DELETE /feed/following/:id`      | Unfollow (sends `Undo{Follow}`)                                                                                         |
+| `GET /feed/followers`             | List my followers; `?status=pending\|accepted\|all` (default `all`)                                                     |
+| `POST /feed/followers/:id/approve`| Approve a pending follow request (sends the deferred `Accept`)                                                          |
+| `DELETE /feed/followers/:id`      | Reject a request / remove a follower (sends `Reject`)                                                                   |
 | `GET /feed/timeline`              | My home timeline (posts from followees), newest-first, `?cursor=` to page                                               |
 | `GET /feed/timeline/stream`       | Server-Sent Events stream of live "new posts" pings (falls back to polling)                                             |
 
@@ -321,7 +356,9 @@ Public / federation (unauthenticated):
 
 The owner-facing capability is also available over MCP as `list_feed`, `share_activity`,
 `update_feed_post`, `delete_feed_post`, `list_following`, `follow_actor`, `unfollow_actor`,
-and `list_timeline` — all backed by the same services as the REST routes.
+`list_followers`, `approve_follower`, `reject_follower`, and `list_timeline` — all backed by
+the same services as the REST routes. Manual follower approval is toggled with the
+`manually_approve_followers` user setting (`get_user_settings` / `update_user_settings`).
 
 ## Storage
 
@@ -333,8 +370,11 @@ endpoint's authorization check. Each post also holds an unguessable `image_token
 (defaulted at insert) that gates its `followers`-only image URLs. Deleting a
 `public`/`unlisted` post hard-deletes its row
 and, in the same statement, records its id in `feed_tombstone` so the object id can still
-answer `410 Gone`. Followers live in `feed_follower`; the actors this user **follows** live
-in `feed_following` (keyed by a local `id`, with the followee's cached inbox + handle /
+answer `410 Gone`. Followers live in `feed_follower` (keyed by the follower's `actor_uri`,
+with a local `id` for the approve/reject API, the cached inbox + handle / display name /
+avatar, the id of the `Follow` they sent — echoed in a deferred `Accept`/`Reject` — and an
+`accepted` flag that is false while a request is pending); the actors this user **follows**
+live in `feed_following` (keyed by a local `id`, with the followee's cached inbox + handle /
 display name / avatar and an `accepted` flag); the actor's RSA keypair in `feed_actor`.
 Posts received from followees are stored in `timeline_entry` (keyed by the remote note's
 `object_uri` so an `Update`/redelivery replaces in place), holding the **already-sanitised**
