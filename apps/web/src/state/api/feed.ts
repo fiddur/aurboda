@@ -57,13 +57,29 @@ export const fetchFollowing = async (): Promise<FollowingActor[]> => {
   return response.data.following
 }
 
+/** Pull the server's `{ error }` message off a failed request, or fall back to `fallback`. */
+const apiErrorMessage = (error: unknown, fallback: string): string => {
+  if (axios.isAxiosError(error)) {
+    const serverError = (error.response?.data as { error?: unknown } | undefined)?.error
+    if (typeof serverError === 'string' && serverError.trim()) return serverError
+  }
+  return fallback
+}
+
 /** Follow a fediverse actor by handle (`@user@host`, `user@host`, or actor URL). */
 export const followActor = async (handle: string): Promise<FollowingActor> => {
-  const response = await axios.post<FollowActorResponse>(
-    `${API_URL}/feed/following`,
-    { handle },
-    { headers: authHeaders() },
-  )
+  let response
+  try {
+    response = await axios.post<FollowActorResponse>(
+      `${API_URL}/feed/following`,
+      { handle },
+      { headers: authHeaders() },
+    )
+  } catch (error) {
+    // Surface the server's specific reason (e.g. "You can't follow yourself.",
+    // "Could not resolve an actor for …") instead of a generic message.
+    throw new Error(apiErrorMessage(error, 'Couldn’t follow that handle. Check it and try again.'))
+  }
   if (!response.data.actor) throw new Error('Follow failed: no actor returned')
   return response.data.actor
 }

@@ -3,7 +3,7 @@ import { describe, expect, test } from 'vitest'
 
 import type { FeedFollowingRecord } from '../db/index.ts'
 
-import { actorToFollowingInput, serializeFollowing } from './following.ts'
+import { actorToFollowingInput, serializeFollowing, withTimeout } from './following.ts'
 
 describe('actorToFollowingInput', () => {
   test('extracts uri, inbox, shared inbox, handle, name, and avatar from a full actor', async () => {
@@ -76,5 +76,16 @@ describe('serializeFollowing', () => {
     // Internal delivery details must not leak to the owner-facing surface.
     expect(dto).not.toHaveProperty('inbox_uri')
     expect(dto).not.toHaveProperty('shared_inbox_uri')
+  })
+})
+
+describe('withTimeout', () => {
+  test('resolves with the value when the promise settles in time', async () => {
+    await expect(withTimeout(Promise.resolve('icon'), 1000)).resolves.toBe('icon')
+  })
+
+  test('rejects when the promise does not settle within the timeout', async () => {
+    // A never-settling promise (like a hung icon deref) must not hang the follow.
+    await expect(withTimeout(new Promise(() => {}), 20)).rejects.toThrow('timeout')
   })
 })

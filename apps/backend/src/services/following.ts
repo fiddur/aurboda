@@ -64,6 +64,24 @@ const toPlainString = (value: unknown): string | null => {
   return str.length > 0 ? str : null
 }
 
+/** How long to wait for an actor's icon before giving up (avatar is non-essential). */
+const ICON_FETCH_TIMEOUT_MS = 3000
+
+/** Reject `promise` if it doesn't settle within `ms` (clearing the timer either way). Exported for testing. */
+export const withTimeout = async <T>(promise: Promise<T>, ms: number): Promise<T> => {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('timeout')), ms)
+      }),
+    ])
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
+}
+
 /**
  * Extract the persisted fields of a followee from a resolved Fedify actor, or
  * null if it lacks the id/inbox we require to follow + later unfollow it.
@@ -71,8 +89,10 @@ const toPlainString = (value: unknown): string | null => {
  * The handle is derived from `preferredUsername` + the actor id's host rather
  * than `getActorHandle` (which may WebFinger the host): this is deterministic and
  * offline — good enough for a display handle, and it can't hang. The avatar comes
- * from the actor's embedded `icon` (Mastodon inlines it, so `getIcon()` needs no
- * fetch). Unit-tested with a constructed `Person`.
+ * from the actor's embedded `icon` — Mastodon inlines it (no fetch), but a server
+ * that only links it would make `getIcon()` dereference a URL, so it's bounded by
+ * a timeout: a slow icon host must not hang the synchronous follow. Unit-tested
+ * with a constructed `Person`.
  */
 export const actorToFollowingInput = async (actor: Actor): Promise<FeedFollowingInput | null> => {
   if (actor.id == null || actor.inboxId == null) return null
@@ -80,7 +100,7 @@ export const actorToFollowingInput = async (actor: Actor): Promise<FeedFollowing
   const handle = username == null ? null : `@${username}@${actor.id.host}`
   let avatarUrl: string | null = null
   try {
-    const icon = await actor.getIcon()
+    const icon = await withTimeout(actor.getIcon(), ICON_FETCH_TIMEOUT_MS)
     avatarUrl = icon?.url instanceof URL ? icon.url.href : null
   } catch {
     avatarUrl = null
@@ -128,6 +148,12 @@ export const followActor = async (deps: FollowDeps, user: string, handle: string
   }
   if (actor == null) {
     return { error: `Could not resolve an actor for “${handle}”.`, ok: false, status: 404 }
+  }
+
+  // Following yourself would deliver a Follow to your own inbox and clutter the
+  // timeline with your own posts — reject it before persisting a pending row.
+  if (actor.id != null && actor.id.href === ctx.getActorUri(user).href) {
+    return { error: 'You can’t follow yourself.', ok: false, status: 422 }
   }
 
   const input = await actorToFollowingInput(actor)
