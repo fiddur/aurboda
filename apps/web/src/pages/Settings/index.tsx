@@ -28,16 +28,19 @@ export function Settings() {
   const [birthDate, setBirthDate] = useState<string>('')
   const [sex, setSex] = useState<BiologicalSex | null>(null)
   const [hrZones, setHrZones] = useState<HrZoneThresholds | null>(null)
+  const [manualApproval, setManualApproval] = useState(false)
 
   // Save status for each section
   const [personalInfoStatus, setPersonalInfoStatus] = useState<SaveStatus>({ status: 'idle' })
   const [hrZonesStatus, setHrZonesStatus] = useState<SaveStatus>({ status: 'idle' })
+  const [followersStatus, setFollowersStatus] = useState<SaveStatus>({ status: 'idle' })
 
   // Initialize form when data loads
   const initializeForm = () => {
     setBirthDate(userSettings?.birth_date ?? '')
     setSex(userSettings?.sex ?? null)
     setHrZones(userSettings?.hr_zone_start ?? null)
+    setManualApproval(userSettings?.manually_approve_followers ?? false)
   }
 
   // Track if form has been initialized
@@ -116,6 +119,12 @@ export function Settings() {
   const handleResetZones = () => {
     setHrZones(null)
     saveSection({ hr_zone_start: null }, setHrZonesStatus)
+  }
+
+  const handleManualApprovalChange = (e: Event) => {
+    const checked = (e.target as HTMLInputElement).checked
+    setManualApproval(checked)
+    saveSection({ manually_approve_followers: checked }, setFollowersStatus)
   }
 
   if (!isLoggedIn) {
@@ -207,6 +216,24 @@ export function Settings() {
         {hrZones === null && (
           <p class="field-description">Using default thresholds (or age-based if birth date is set).</p>
         )}
+      </SettingsSection>
+
+      <SettingsSection
+        title="Feed & Followers"
+        description="Control who can follow your federated feed."
+        headerExtra={<SaveStatusIndicator state={followersStatus} />}
+      >
+        <div class="form-field">
+          <label class="checkbox-field">
+            <input type="checkbox" checked={manualApproval} onChange={handleManualApprovalChange} />
+            <span>Manually approve new followers</span>
+          </label>
+          <p class="field-description">
+            When on, incoming follows become requests you approve or reject, and only approved followers see
+            your <code>followers</code>-only posts. When off (the default), anyone can follow you
+            automatically.
+          </p>
+        </div>
       </SettingsSection>
 
       <MealPreferencesSettings />

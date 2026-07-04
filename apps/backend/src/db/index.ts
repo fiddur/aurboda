@@ -280,8 +280,12 @@ export {
   countFeedFollowers,
   type FeedFollowerInput,
   type FeedFollowerRecord,
+  getFeedFollowerByActor,
+  getFeedFollowerById,
   listFeedFollowers,
   removeFeedFollower,
+  removeFeedFollowerById,
+  setFeedFollowerAccepted,
   upsertFeedFollower,
 } from './feed-follower.ts'
 

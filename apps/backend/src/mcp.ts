@@ -18,6 +18,7 @@ import type { FeedDeliver } from './routes/feed-router.ts'
 import type { CentralDb } from './services/central-db.ts'
 import type { DeductionEngineDeps } from './services/deduction-engine.ts'
 import type { ActivityNotifier, DeductionQueue } from './services/deduction-queue.ts'
+import type { FollowerActions } from './services/followers.ts'
 import type { FollowActions } from './services/following.ts'
 import type { SyncProvider } from './services/queries/index.ts'
 import type { StravaQueue } from './services/strava-queue.ts'
@@ -59,6 +60,7 @@ interface McpDeps {
   engineDeps?: DeductionEngineDeps
   feedDeliver?: FeedDeliver
   followActions?: FollowActions
+  followerActions?: FollowerActions
   garmin?: GarminClient
   onActivityMutated?: ActivityNotifier
   oura?: OuraClientType
@@ -97,7 +99,7 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
   }
   registerReportTools(server, user)
   registerSharedDashboardTools(server, user)
-  registerFeedTools(server, user, deps.feedDeliver, deps.followActions)
+  registerFeedTools(server, user, deps.feedDeliver, deps.followActions, deps.followerActions)
   registerChallengeTools(server, user, { apiBaseUrl: deps.apiBaseUrl, webHost: deps.webHost })
   registerScreentimeCategoryTools(server, user)
   registerDebugTools(server, user)

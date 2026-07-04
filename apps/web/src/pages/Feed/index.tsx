@@ -13,6 +13,7 @@ import { ShareActivityDialog } from '../../components/ShareActivityDialog'
 import { avatarUrl, deleteFeedPost, fetchFeed } from '../../state/api'
 import { auth } from '../../state/auth'
 import { FeedPostCard, type PostAuthor } from './FeedPostCard'
+import { FollowersPanel } from './FollowersPanel'
 import { FollowingPanel } from './FollowingPanel'
 import { HomeTimeline } from './HomeTimeline'
 import './style.css'
@@ -90,6 +91,8 @@ export function Feed() {
       </p>
 
       <FollowingPanel />
+
+      <FollowersPanel />
 
       <HomeTimeline />
 

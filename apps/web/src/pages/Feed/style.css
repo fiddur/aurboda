@@ -143,6 +143,31 @@
   flex-shrink: 0;
 }
 
+/* Followers panel — pending-request subsection + approve/reject actions. */
+.followers-subtitle {
+  margin: 0.75rem 0 0;
+  font-size: 0.9rem;
+  color: #374151;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.followers-count {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #fff;
+  background: #d97706;
+  padding: 0.05rem 0.45rem;
+  border-radius: 999px;
+}
+
+.followers-actions {
+  display: flex;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}
+
 /* Native post card — mirrors how the post federates. */
 .feed-post {
   border: 1px solid #e5e7eb;
@@ -289,5 +314,9 @@
 
   .following-avatar {
     background: #374151;
+  }
+
+  .followers-subtitle {
+    color: #d1d5db;
   }
 }

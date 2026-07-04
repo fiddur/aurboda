@@ -212,6 +212,7 @@ const settingsWithDefaultsSchema = userSettingsResponseSchema.pick({
   garmin_disabled_data_types: true,
   item_icons: true,
   lastfm_username: true,
+  manually_approve_followers: true,
   meal_slots: true,
   rescue_time_key: true,
   sensitivity_areas: true,

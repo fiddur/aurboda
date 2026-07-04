@@ -217,6 +217,68 @@ export const followingResponseSchema = baseResponseSchema
 export type FollowingResponse = z.infer<typeof followingResponseSchema>
 
 // =============================================================================
+// Followers (remote actors that follow this user — owner-facing management)
+// =============================================================================
+
+/** Acceptance state of a follower, and the filter used when listing them. */
+export const followerStatusValues = ['pending', 'accepted', 'all'] as const
+
+export const followerStatusSchema = z.enum(followerStatusValues).meta({
+  description:
+    'Follower acceptance filter: `pending` (awaiting your approval), `accepted` (approved), or `all`.',
+  id: 'FollowerStatus',
+})
+
+export type FollowerStatus = z.infer<typeof followerStatusSchema>
+
+/** Query for listing followers, optionally filtered by acceptance state. */
+export const followersQuerySchema = z
+  .object({
+    status: followerStatusSchema.default('all').meta({
+      description: 'Which followers to return (defaults to `all`).',
+    }),
+  })
+  .meta({ id: 'FollowersQuery' })
+
+export type FollowersQuery = z.infer<typeof followersQuerySchema>
+
+/**
+ * A remote actor that follows this user. Internal delivery details (the
+ * follower's inbox / shared-inbox URIs) are deliberately NOT exposed — only
+ * presentation fields and the acceptance state. `accepted` is false while their
+ * Follow awaits the owner's approval (manual-approval mode).
+ */
+export const followerActorSchema = z
+  .object({
+    accepted: z
+      .boolean()
+      .meta({ description: 'Whether you have approved this follower (else a pending request)' }),
+    actor_uri: z.string().meta({ description: "The follower's ActivityPub actor URI" }),
+    avatar_url: z.string().nullable().meta({ description: "The follower's avatar URL, if known" }),
+    created_at: iso8601DateTimeSchema.meta({ description: 'When the Follow arrived (ISO 8601)' }),
+    display_name: z.string().nullable().meta({ description: "The follower's display name, if known" }),
+    handle: z.string().nullable().meta({ description: "The follower's `@user@host` handle, if resolvable" }),
+    id: z.string().uuid().meta({ description: 'Local id of the follower (used to approve/reject)' }),
+  })
+  .meta({ id: 'FollowerActor' })
+
+export type FollowerActor = z.infer<typeof followerActorSchema>
+
+/** Response wrapping the owner's list of followers (pending and/or accepted). */
+export const followersResponseSchema = baseResponseSchema
+  .extend({ followers: z.array(followerActorSchema) })
+  .meta({ id: 'FollowersResponse' })
+
+export type FollowersResponse = z.infer<typeof followersResponseSchema>
+
+/** Response wrapping a single follower (e.g. the result of approving a request). */
+export const followerResponseSchema = baseResponseSchema
+  .extend({ follower: followerActorSchema.optional() })
+  .meta({ id: 'FollowerResponse' })
+
+export type FollowerResponse = z.infer<typeof followerResponseSchema>
+
+// =============================================================================
 // Home timeline (posts received from followed actors)
 // =============================================================================
 

@@ -478,6 +478,7 @@ export interface UserSettings {
   device_timezone?: string // IANA timezone from the Android device (e.g. "Europe/Stockholm")
   hr_zone_start?: { 1: number; 2: number; 3: number; 4: number; 5: number }
   lastfm_username?: string // Last.fm username for scrobble sync
+  manually_approve_followers?: boolean // Hold incoming follows for manual approval (locked account)
   rescue_time_key?: string // RescueTime API key (personal token)
   sex?: BiologicalSex // Biological sex for calorie calculation
   item_icons?: Record<string, string> // Unified icon mappings for all timeline items (tags, activities, exercise types)

@@ -146,6 +146,7 @@ export const tableCreationOrder = [
   'feed_tombstone',
   'feed_actor',
   'feed_follower',
+  'feed_follower_columns',
   'feed_following',
   'timeline_entry',
   'timeline_entry_structured',

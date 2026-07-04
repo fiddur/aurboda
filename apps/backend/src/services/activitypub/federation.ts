@@ -1,4 +1,5 @@
 import type { FeedStructured } from '@aurboda/api-spec'
+import type { Actor } from '@fedify/fedify/vocab'
 
 import { createFederation, type Federation, type InboxContext, MemoryKvStore } from '@fedify/fedify'
 import {
@@ -24,11 +25,12 @@ import {
  * - actor document (`Person`) with the user's published RSA public key,
  * - WebFinger (`acct:<user>@<host>` → the actor), via `mapHandle`,
  * - key-pairs dispatcher backed by the per-user `feed_actor` keypair,
- * - inbound inbox: `Follow` → persist follower + `Accept`; `Undo{Follow}` →
- *   drop the follower; `Accept`/`Reject` → resolve a Follow WE sent (mark the
- *   `feed_following` row accepted, or drop it); `Create`/`Update` of a `Note`
- *   from an *accepted followee* → ingest into the home timeline (sanitised);
- *   `Delete` → drop the received post. Fedify verifies the HTTP Signature first.
+ * - inbound inbox: `Follow` → persist follower + (unless the user requires
+ *   manual approval) `Accept`; `Undo{Follow}` → drop the follower; `Accept`/
+ *   `Reject` → resolve a Follow WE sent (mark the `feed_following` row accepted,
+ *   or drop it); `Create`/`Update` of a `Note` from an *accepted followee* →
+ *   ingest into the home timeline (sanitised); `Delete` → drop the received
+ *   post. Fedify verifies the HTTP Signature first.
  * - followers + following collections (the latter lists this user's *accepted*
  *   follows), both backed by Postgres.
  *
@@ -41,9 +43,11 @@ import {
   countFeedFollowers,
   countPublicFeedPosts,
   deleteTimelineEntryByUri,
+  getFeedFollowerByActor,
   getFeedFollowingByActor,
   getFeedPostById,
   getOrCreateActorKeyPair,
+  getUserSettings,
   isMissingDatabase,
   listAcceptedFeedFollowing,
   listFeedFollowers,
@@ -56,6 +60,7 @@ import {
 } from '../../db/index.ts'
 import { resolveFeedActivity } from '../feed.ts'
 import { buildProfileUrl } from '../share-urls.ts'
+import { extractActorPresentation } from './actor-presentation.ts'
 import { buildFeedCreate, buildFeedNote } from './deliver.ts'
 import { toCryptoKeyPair } from './keys.ts'
 import { isPubliclyVisible } from './object.ts'
@@ -89,6 +94,43 @@ const localFollowerIdentifier = async (
   }
   const recipient = ctx.recipient
   return recipient != null && isValidUsername(recipient) ? recipient : null
+}
+
+/**
+ * Persist an inbound follower and decide whether to accept it now. Auto-accepts
+ * unless the target user requires manual approval — but an already *accepted*
+ * follower re-sending a Follow stays accepted (a re-delivery never demotes them).
+ * Caches the follower's presentation (so the approval UI can show who's asking)
+ * and the Follow's id (echoed in a deferred Accept/Reject). Returns the acceptance
+ * decision, or null if the target user's DB doesn't exist (a Follow to a
+ * nonexistent actor — ignore it) or the sender lacks an id/inbox.
+ */
+const recordInboundFollow = async (
+  user: string,
+  sender: Actor,
+  followActivityUri: string | null,
+): Promise<boolean | null> => {
+  if (sender.id == null || sender.inboxId == null) return null
+  try {
+    const settings = await getUserSettings(user)
+    const existing = await getFeedFollowerByActor(user, sender.id.href)
+    const accepted = existing?.accepted === true || settings?.manually_approve_followers !== true
+    const presentation = await extractActorPresentation(sender)
+    await upsertFeedFollower(user, {
+      accepted,
+      actor_uri: sender.id.href,
+      avatar_url: presentation.avatar_url,
+      display_name: presentation.display_name,
+      follow_activity_uri: followActivityUri,
+      handle: presentation.handle,
+      inbox_uri: sender.inboxId.href,
+      shared_inbox_uri: sender.endpoints?.sharedInbox?.href ?? null,
+    })
+    return accepted
+  } catch (error) {
+    if (isMissingDatabase(error)) return null
+    throw error
+  }
 }
 
 /**
@@ -167,6 +209,10 @@ export const createFeedFederation = (
         throw error
       }
       if (keys.length === 0) return null
+      // Advertise "locked account" when the user requires manual approval, so
+      // Mastodon et al. show a follow *request* and hold the follow pending
+      // (matching our own inbox behaviour of deferring the Accept).
+      const settings = await getUserSettings(identifier)
       return new Person({
         followers: ctx.getFollowersUri(identifier),
         following: ctx.getFollowingUri(identifier),
@@ -175,6 +221,7 @@ export const createFeedFederation = (
         icon: new Image({ url: new URL(`${buildProfileUrl(origin, identifier)}/avatar.png`) }),
         id: ctx.getActorUri(identifier),
         inbox: ctx.getInboxUri(identifier),
+        manuallyApprovesFollowers: settings?.manually_approve_followers === true,
         outbox: ctx.getOutboxUri(identifier),
         preferredUsername: identifier,
         publicKey: keys[0].cryptographicKey,
@@ -206,22 +253,12 @@ export const createFeedFederation = (
       const sender = await follow.getActor(ctx)
       if (sender?.id == null || sender.inboxId == null) return
 
-      try {
-        await upsertFeedFollower(target.identifier, {
-          accepted: true,
-          actor_uri: sender.id.href,
-          inbox_uri: sender.inboxId.href,
-          shared_inbox_uri: sender.endpoints?.sharedInbox?.href ?? null,
-        })
-      } catch (error) {
-        // A syntactically-valid username with no database is a Follow to a
-        // nonexistent actor — ignore it (don't 500 and invite retries), and
-        // don't answer with an Accept.
-        if (isMissingDatabase(error)) return
-        throw error
-      }
-
-      // Answer the Follow so the remote server marks it established.
+      const accepted = await recordInboundFollow(target.identifier, sender, follow.id?.href ?? null)
+      // In manual-approval mode a new/pending follow gets no Accept yet — the
+      // owner approves it later (which sends the Accept). `null` means no such
+      // user (missing DB). Only an accepted follow is answered now, so the remote
+      // server marks it established.
+      if (accepted !== true) return
       await ctx.sendActivity(
         { identifier: target.identifier },
         sender,
@@ -379,7 +416,9 @@ export const createFeedFederation = (
     .setFollowersDispatcher('/users/{identifier}/followers', async (_ctx, identifier) => {
       if (!isValidUsername(identifier)) return { items: [] }
       try {
-        const followers = await listFeedFollowers(identifier)
+        // Only *accepted* followers are published + delivered to (a pending
+        // request isn't a confirmed follower and gets no `followers`-only posts).
+        const followers = await listFeedFollowers(identifier, { accepted: true })
         return {
           items: followers.map((f) => ({
             endpoints: f.shared_inbox_uri ? { sharedInbox: new URL(f.shared_inbox_uri) } : null,
