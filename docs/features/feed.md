@@ -118,6 +118,11 @@ The feed also runs the **inbound** direction: a user can follow other fediverse 
 2. records a **pending** follow in `feed_following`, then
 3. sends a signed `Follow` from the user's actor to the followee's inbox.
 
+Following **yourself** is rejected (it would deliver a `Follow` to your own inbox and echo your
+posts into your timeline). Resolving the actor's avatar is bounded by a short timeout, so a slow
+icon host can't hang the (synchronous) follow. When a follow fails, the web panel surfaces the
+server's specific reason (e.g. an unresolvable handle) rather than a generic message.
+
 When the followee's server answers with an `Accept`, the inbox marks the follow
 **accepted**; a `Reject` drops it. Unfollowing sends an `Undo{Follow}` to the cached inbox
 and removes the row. Local follows use the exact same path (delivered to the local inbox

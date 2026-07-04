@@ -83,7 +83,13 @@ export function FollowingPanel() {
           {follow.isPending ? 'Following…' : 'Follow'}
         </button>
       </form>
-      {follow.isError && <p class="following-error">Couldn't follow that handle. Check it and try again.</p>}
+      {follow.isError && (
+        <p class="following-error">
+          {follow.error instanceof Error && follow.error.message
+            ? follow.error.message
+            : "Couldn't follow that handle. Check it and try again."}
+        </p>
+      )}
 
       {isLoading && <p>Loading…</p>}
       {following && following.length === 0 && <p class="following-empty">You aren't following anyone yet.</p>}
