@@ -64,9 +64,10 @@ beyond the saved widgets.
 
 ## Using it in the web app
 
-- **Manage** your shared dashboards at `/shared-dashboards` (the "Share" item in
-  the sidebar): create a copy from your current home dashboard (or a blank one),
-  rename it, toggle public/unlisted, copy its link, or delete it.
+- **Manage** your shared dashboards at `/shared-dashboards` ("Dashboards" under the
+  **Sharing** section in the sidebar, alongside Feed and Challenges): create a copy
+  from your current home dashboard (or a blank one), rename it, set its visibility,
+  copy its link, or delete it.
 - **View** a shared dashboard at `/u/<username>/<slug>` and a profile at
   `/u/<username>`. For anonymous visitors these public pages render without the
   app header/sidebar (but keep the standard site footer) — a clean, standalone
@@ -136,7 +137,7 @@ OG cards, and as the ActivityPub actor `icon` (so Mastodon and friends show it).
 ## oEmbed & sharability
 
 - **oEmbed**: public share pages advertise a `<link rel="alternate"
-  type="application/json+oembed">` pointing at `GET /oembed?url=<share url>`, which
+type="application/json+oembed">` pointing at `GET /oembed?url=<share url>`, which
   returns a `type: "link"` document (title, author, provider, OG-image thumbnail).
   Only public resources resolve — unlisted/unknown/private URLs 404, so nothing
   private is exposed. Primarily benefits Mastodon and other oEmbed-aware consumers.

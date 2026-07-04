@@ -2,7 +2,13 @@ import { useLocation } from 'preact-iso'
 import { useState } from 'preact/hooks'
 
 import { auth, logout } from '../state/auth'
-import { DATA_SOURCE_LINKS, NAV_LINKS } from './nav-links'
+import {
+  DATA_SOURCE_LINKS,
+  isSharingActive,
+  NAV_LINKS_PRIMARY,
+  NAV_LINKS_SECONDARY,
+  SHARING_LINKS,
+} from './nav-links'
 import './Sidebar.css'
 
 const COLLAPSED_KEY = 'sidebar-collapsed'
@@ -15,6 +21,8 @@ export function Sidebar() {
 
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(COLLAPSED_KEY) === '1')
   const [dsExpanded, setDsExpanded] = useState(() => url.startsWith('/data-sources'))
+  // Sharing group is open by default so its surfaces stay one click away.
+  const [sharingExpanded, setSharingExpanded] = useState(true)
 
   const toggleCollapsed = () => {
     const next = !collapsed
@@ -30,6 +38,7 @@ export function Sidebar() {
   }
 
   const isDataSourcesActive = url.startsWith('/data-sources')
+  const sharingActive = isSharingActive(url)
 
   return (
     <aside class={`sidebar${collapsed ? ' collapsed' : ''}`}>
@@ -48,7 +57,60 @@ export function Sidebar() {
       <nav class="sidebar-nav">
         {isLoggedIn ? (
           <>
-            {NAV_LINKS.map((link) => (
+            {NAV_LINKS_PRIMARY.map((link) => (
+              <a
+                key={link.href}
+                href={link.href}
+                class={`sidebar-link${url === link.href ? ' active' : ''}`}
+                title={collapsed ? link.label : undefined}
+              >
+                <span class="sidebar-icon">{link.icon}</span>
+                <span class="sidebar-label">{link.label}</span>
+              </a>
+            ))}
+
+            {/* Sharing group (collapsed sidebar: the three surfaces as plain links) */}
+            {collapsed ? (
+              SHARING_LINKS.map((link) => (
+                <a
+                  key={link.href}
+                  href={link.href}
+                  class={`sidebar-link${url === link.href ? ' active' : ''}`}
+                  title={link.label}
+                >
+                  <span class="sidebar-icon">{link.icon}</span>
+                  <span class="sidebar-label">{link.label}</span>
+                </a>
+              ))
+            ) : (
+              <>
+                <button
+                  class={`sidebar-section-btn${sharingActive ? ' active' : ''}`}
+                  onClick={() => setSharingExpanded((v) => !v)}
+                  type="button"
+                >
+                  <span class="sidebar-icon">🌐</span>
+                  <span class="sidebar-label">Sharing</span>
+                  <span class="sidebar-section-arrow">{sharingExpanded ? '▴' : '▾'}</span>
+                </button>
+                {sharingExpanded && (
+                  <div class="sidebar-sub-links">
+                    {SHARING_LINKS.map((link) => (
+                      <a
+                        key={link.href}
+                        href={link.href}
+                        class={`sidebar-link${url === link.href ? ' active' : ''}`}
+                      >
+                        <span class="sidebar-icon">{link.icon}</span>
+                        <span class="sidebar-label">{link.label}</span>
+                      </a>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+
+            {NAV_LINKS_SECONDARY.map((link) => (
               <a
                 key={link.href}
                 href={link.href}

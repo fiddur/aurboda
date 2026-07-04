@@ -2,7 +2,13 @@ import { useLocation } from 'preact-iso'
 import { useCallback, useEffect, useState } from 'preact/hooks'
 
 import { auth, logout } from '../state/auth'
-import { DATA_SOURCE_LINKS, NAV_LINKS } from './nav-links'
+import {
+  DATA_SOURCE_LINKS,
+  isSharingActive,
+  NAV_LINKS_PRIMARY,
+  NAV_LINKS_SECONDARY,
+  SHARING_LINKS,
+} from './nav-links'
 
 // eslint-disable-next-line complexity -- navigation component with many branches
 export function Header() {
@@ -12,8 +18,10 @@ export function Header() {
 
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [dsExpandedInDrawer, setDsExpandedInDrawer] = useState(false)
+  const [sharingExpandedInDrawer, setSharingExpandedInDrawer] = useState(true)
 
   const isDataSourcesActive = url.startsWith('/data-sources')
+  const sharingActive = isSharingActive(url)
 
   const handleLogout = (e: Event) => {
     e.preventDefault()
@@ -73,7 +81,36 @@ export function Header() {
             <a href="/" class={url === '/' ? 'active' : undefined} onClick={closeDrawer}>
               Home
             </a>
-            {NAV_LINKS.filter((l) => l.href !== '/').map((link) => (
+            {NAV_LINKS_PRIMARY.filter((l) => l.href !== '/').map((link) => (
+              <a
+                key={link.href}
+                href={link.href}
+                class={url === link.href ? 'active' : undefined}
+                onClick={closeDrawer}
+              >
+                {link.label}
+              </a>
+            ))}
+            {/* Sharing inline expand */}
+            <button
+              class={`drawer-section-toggle${sharingActive ? ' active' : ''}`}
+              onClick={() => setSharingExpandedInDrawer((v) => !v)}
+              type="button"
+            >
+              Sharing <span class="dropdown-arrow">{sharingExpandedInDrawer ? '▴' : '▾'}</span>
+            </button>
+            {sharingExpandedInDrawer &&
+              SHARING_LINKS.map((link) => (
+                <a
+                  key={link.href}
+                  href={link.href}
+                  class={`drawer-sub-link${url === link.href ? ' active' : ''}`}
+                  onClick={closeDrawer}
+                >
+                  {link.label}
+                </a>
+              ))}
+            {NAV_LINKS_SECONDARY.map((link) => (
               <a
                 key={link.href}
                 href={link.href}
