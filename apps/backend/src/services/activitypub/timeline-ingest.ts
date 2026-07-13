@@ -108,20 +108,23 @@ export const noteToTimelineInput = (
   }
 }
 
-/** Resolve an attachment's `url` (a `URL` or a `Link`) to an http(s) `URL`, or null. */
-const httpUrl = (raw: URL | Link | null): URL | null => {
+/**
+ * Resolve an attachment's `url` (a `URL` or a `Link`) to an **https** `URL`, or
+ * null. https-only: an `http:` image would be blocked as mixed content on the
+ * https web app, so storing it is dead weight that never renders.
+ */
+const httpsUrl = (raw: URL | Link | null): URL | null => {
   const url = raw instanceof URL ? raw : raw instanceof Link ? raw.href : null
-  if (url == null) return null
-  return url.protocol === 'https:' || url.protocol === 'http:' ? url : null
+  return url?.protocol === 'https:' ? url : null
 }
 
-/** Map one attachment to a `TimelineImage`, or null if it isn't an http(s) image. */
+/** Map one attachment to a `TimelineImage`, or null if it isn't an https image. */
 const attachmentToImage = (att: unknown): TimelineImage | null => {
   // `Image` (our charts / route maps) is a `Document` subtype; Mastodon photos
   // are `Document`s with an `image/*` media type. Both are covered by `Document`.
   if (!(att instanceof Document)) return null
   const rawUrl = att.url
-  const url = httpUrl(rawUrl)
+  const url = httpsUrl(rawUrl)
   if (url == null) return null
   const mediaType = att.mediaType ?? (rawUrl instanceof Link ? rawUrl.mediaType : null) ?? undefined
   if (!(att instanceof Image) && !mediaType?.startsWith('image/')) return null
@@ -141,6 +144,10 @@ const attachmentToImage = (att: unknown): TimelineImage | null => {
  * are kept; anything else is skipped. Non-image and malformed attachments (and a
  * Note with none) yield an empty array.
  */
+/** Cap on kept image attachments per post (matches Mastodon), bounding what a
+ * hostile followee could make us store + render in one card. */
+const MAX_TIMELINE_IMAGES = 4
+
 export const extractNoteImages = async (note: Note): Promise<TimelineImage[]> => {
   const images: TimelineImage[] = []
   // `suppressError` so a referenced attachment whose dereference fails (unreachable
@@ -150,6 +157,7 @@ export const extractNoteImages = async (note: Note): Promise<TimelineImage[]> =>
   for await (const att of note.getAttachments({ suppressError: true })) {
     const image = attachmentToImage(att)
     if (image) images.push(image)
+    if (images.length >= MAX_TIMELINE_IMAGES) break
   }
   return images
 }

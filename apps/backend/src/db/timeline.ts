@@ -85,6 +85,10 @@ export const upsertTimelineEntry = async (
                    -- couldn't re-fetch it (transient enrich failure), rather
                    -- than wiping a working chart.
                    structured = COALESCE(EXCLUDED.structured, timeline_entry.structured),
+                   -- images always arrives as a concrete array from the ingest
+                   -- path, so this COALESCE never actually preserves a prior value
+                   -- (an edit that drops attachments clears them) -- it is defensive
+                   -- parity with structured for any caller that omits the field.
                    images = COALESCE(EXCLUDED.images, timeline_entry.images)
      RETURNING ${TIMELINE_COLUMNS}, (xmax = 0) AS inserted`,
     [

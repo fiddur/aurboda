@@ -175,7 +175,7 @@ describe('extractNoteImages', () => {
     ])
   })
 
-  test('keeps a Mastodon-style Document with an image media type, and skips non-image + non-http attachments', async () => {
+  test('keeps an https image Document, and skips non-image / non-https / data attachments', async () => {
     const note = new Note({
       attachments: [
         new Document({
@@ -184,7 +184,9 @@ describe('extractNoteImages', () => {
         }),
         // A non-image document is skipped.
         new Document({ mediaType: 'video/mp4', url: new URL('https://mastodon.example/media/clip.mp4') }),
-        // A non-http(s) URL is skipped.
+        // An http image is skipped (would be blocked as mixed content on the https app).
+        new Image({ mediaType: 'image/png', url: new URL('http://insecure.example/x.png') }),
+        // A data: URL is skipped.
         new Image({ mediaType: 'image/png', url: new URL('data:image/png;base64,AAAA') }),
       ],
       content: '<p>pics</p>',
@@ -193,6 +195,27 @@ describe('extractNoteImages', () => {
     })
     expect(await extractNoteImages(note)).toEqual([
       { media_type: 'image/jpeg', url: 'https://mastodon.example/media/photo.jpg' },
+    ])
+  })
+
+  test('caps the number of kept images at 4 (bounds a hostile followee)', async () => {
+    const note = new Note({
+      attachments: Array.from(
+        { length: 7 },
+        (_, i) =>
+          new Image({ mediaType: 'image/png', url: new URL(`https://mastodon.example/media/${i}.png`) }),
+      ),
+      content: '<p>many</p>',
+      id: new URL('https://mastodon.example/notes/8'),
+      published: published('2026-07-02T08:30:00Z'),
+    })
+    const images = await extractNoteImages(note)
+    expect(images).toHaveLength(4)
+    expect(images.map((i) => i.url)).toEqual([
+      'https://mastodon.example/media/0.png',
+      'https://mastodon.example/media/1.png',
+      'https://mastodon.example/media/2.png',
+      'https://mastodon.example/media/3.png',
     ])
   })
 
