@@ -138,6 +138,10 @@ export function ShareActivityDialog({
     post?.include_chart,
     post?.include_map,
   )
+  // The series fieldset also renders for activities with only non-HR series (e.g.
+  // speed/power, no heart rate); only mention the chart image when heart rate is
+  // actually offered as a control here.
+  const offersHeartRate = seriesOptions.some((m) => m.key === 'heart_rate')
 
   const mutation = useMutation({
     mutationFn: () => {
@@ -196,8 +200,9 @@ export function ShareActivityDialog({
             <legend>Share full time-series</legend>
             <p class="share-dialog-note">
               {mirroredFromChart
-                ? 'Higher resolution — more revealing than a summary. Pre-checked to match the activity chart; uncheck any you would rather not share. Heart rate is also shared as a chart image.'
-                : 'Higher resolution — more revealing than a summary. Off by default. Heart rate is also shared as a chart image.'}
+                ? 'Higher resolution — more revealing than a summary. Pre-checked to match the activity chart; uncheck any you would rather not share.'
+                : 'Higher resolution — more revealing than a summary. Off by default.'}
+              {offersHeartRate && ' Heart rate is also shared as a chart image.'}
             </p>
             <div class="share-dialog-options">
               {seriesOptions.map(({ key, label }) => (
