@@ -12,6 +12,7 @@ import type { FollowerActor } from '@aurboda/api-spec'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { approveFollower, fetchFollowers, rejectFollower } from '../../state/api'
+import { localProfilePath } from './profile-link'
 
 const Avatar = ({ actor }: { actor: FollowerActor }) =>
   actor.avatar_url ? (
@@ -22,9 +23,10 @@ const Avatar = ({ actor }: { actor: FollowerActor }) =>
 
 const Ident = ({ actor }: { actor: FollowerActor }) => {
   const name = actor.display_name ?? actor.handle ?? actor.actor_uri
+  const profilePath = localProfilePath(actor.actor_uri, window.location.host)
   return (
     <span class="following-ident">
-      <span class="following-name">{name}</span>
+      <span class="following-name">{profilePath ? <a href={profilePath}>{name}</a> : name}</span>
       {actor.handle && <span class="following-handle">{actor.handle}</span>}
     </span>
   )

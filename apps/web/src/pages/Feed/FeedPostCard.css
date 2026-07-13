@@ -1,0 +1,103 @@
+/* Native post card — mirrors how the post federates. Owned by FeedPostCard so
+   every page that renders the card (the feed, the home timeline, the public
+   profile) is styled without depending on any one page's stylesheet. */
+.feed-post {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 0.875rem 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.feed-post-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.feed-post-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: #f3f4f6;
+  flex-shrink: 0;
+}
+
+.feed-post-ident {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.feed-post-name {
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.feed-post-handle {
+  font-size: 0.8rem;
+  color: #6b7280;
+}
+
+.feed-post-handle a,
+.feed-post-name a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.feed-post-handle a:hover,
+.feed-post-name a:hover {
+  text-decoration: underline;
+}
+
+.feed-post-content {
+  margin-top: 0.5rem;
+  color: #1f2937;
+  overflow-wrap: anywhere;
+}
+
+.feed-post-content p {
+  margin: 0 0 0.4rem;
+}
+
+.feed-post-content p:last-child {
+  margin-bottom: 0;
+}
+
+.feed-post-media {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.6rem;
+}
+
+.feed-post-image {
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+}
+
+.feed-post-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  .feed-post {
+    border-color: #374151;
+  }
+
+  .feed-post-name,
+  .feed-post-content {
+    color: #e5e7eb;
+  }
+
+  .feed-post-avatar,
+  .feed-post-image {
+    border-color: #374151;
+    background: #1f2937;
+  }
+}

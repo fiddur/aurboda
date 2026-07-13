@@ -338,41 +338,48 @@ resolving.
   posts from the actors you follow, newest-first, as native cards with a **Load more** button
   to page further back. New posts arrive **live** (or via polling fallback) as a **"N new
   posts"** pill at the top; click it to reveal them.
+- **Public profile** — a user's `/u/<username>` page shows their public feed (their
+  `public`/`unlisted` posts, newest-first, as the same post card) alongside their shared
+  dashboards and challenges. It's unauthenticated, so anyone — including a follower who saw
+  a post in their timeline — can browse a person's public posts and info. A **local**
+  author's name in the home timeline / Following / Followers lists links to their
+  `/u/<username>` page; a remote (Mastodon &c.) author isn't linked (they have no page here).
 
 ## API
 
 Owner-facing (authenticated, scoped to the caller):
 
-| Method & path                     | Purpose                                                                                                                 |
-| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `GET /feed`                       | List my feed posts (each enriched with the shared activity's title/type and merged-span window, resolved at query time) |
-| `POST /feed/activities/:id/share` | Publish an activity with a chosen metric selection                                                                      |
-| `PATCH /feed/:postId`             | Edit selection / visibility / attachments                                                                               |
-| `DELETE /feed/:postId`            | Unpublish (its public series stops resolving)                                                                           |
-| `GET /feed/following`             | List the actors I follow (accepted + pending)                                                                           |
-| `POST /feed/following`            | Follow an actor by handle (`@user@host` or actor URL)                                                                   |
-| `DELETE /feed/following/:id`      | Unfollow (sends `Undo{Follow}`)                                                                                         |
-| `GET /feed/followers`             | List my followers; `?status=pending\|accepted\|all` (default `all`)                                                     |
-| `POST /feed/followers/:id/approve`| Approve a pending follow request (sends the deferred `Accept`)                                                          |
-| `DELETE /feed/followers/:id`      | Reject a request / remove a follower (sends `Reject`)                                                                   |
-| `GET /feed/timeline`              | My home timeline (posts from followees), newest-first, `?cursor=` to page                                               |
-| `GET /feed/timeline/stream`       | Server-Sent Events stream of live "new posts" pings (falls back to polling)                                             |
+| Method & path                      | Purpose                                                                                                                 |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `GET /feed`                        | List my feed posts (each enriched with the shared activity's title/type and merged-span window, resolved at query time) |
+| `POST /feed/activities/:id/share`  | Publish an activity with a chosen metric selection                                                                      |
+| `PATCH /feed/:postId`              | Edit selection / visibility / attachments                                                                               |
+| `DELETE /feed/:postId`             | Unpublish (its public series stops resolving)                                                                           |
+| `GET /feed/following`              | List the actors I follow (accepted + pending)                                                                           |
+| `POST /feed/following`             | Follow an actor by handle (`@user@host` or actor URL)                                                                   |
+| `DELETE /feed/following/:id`       | Unfollow (sends `Undo{Follow}`)                                                                                         |
+| `GET /feed/followers`              | List my followers; `?status=pending\|accepted\|all` (default `all`)                                                     |
+| `POST /feed/followers/:id/approve` | Approve a pending follow request (sends the deferred `Accept`)                                                          |
+| `DELETE /feed/followers/:id`       | Reject a request / remove a follower (sends `Reject`)                                                                   |
+| `GET /feed/timeline`               | My home timeline (posts from followees), newest-first, `?cursor=` to page                                               |
+| `GET /feed/timeline/stream`        | Server-Sent Events stream of live "new posts" pings (falls back to polling)                                             |
 
 Public / federation (unauthenticated):
 
-| Method & path                                  | Purpose                                                                           |
-| ---------------------------------------------- | --------------------------------------------------------------------------------- |
-| `GET /public/:username/series`                 | Bucketed samples for a **shared** series within its window                        |
+| Method & path                                  | Purpose                                                                                                    |
+| ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `GET /public/:username/series`                 | Bucketed samples for a **shared** series within its window                                                 |
 | `GET /public/:username/feed/:postId`           | Native structured post (`FeedStructured`: typed metrics + inline series) for Aurboda-to-Aurboda enrichment |
-| `GET /public/:username/feed/:postId/chart.png` | Rendered HR chart for an opted-in post (`?token=` for followers-only)             |
-| `GET /public/:username/feed/:postId/route.png` | Rendered GPS route map for an opted-in post (`?token=` for followers-only)        |
-| `GET /.well-known/webfinger`                   | Resolve `acct:<username>@<host>` → the actor                                      |
-| `GET /users/:username`                         | The actor document (`Person`)                                                     |
-| `GET /users/:username/outbox`                  | Public + unlisted posts as `Create` activities                                    |
-| `GET /users/:username/followers`               | The actor's followers collection                                                  |
-| `GET /users/:username/following`               | The actor's following collection (accepted follows only)                          |
-| `GET /users/:username/feed/:postId`            | A single post's `Note` (or `410` Tombstone once deleted)                          |
-| `POST /users/:username/inbox` (+ `/inbox`)     | Inbound `Follow` / `Undo{Follow}` / `Accept` / `Reject` (HTTP-Signature verified) |
+| `GET /public/:username/feed/:postId/chart.png` | Rendered HR chart for an opted-in post (`?token=` for followers-only)                                      |
+| `GET /public/:username/feed/:postId/route.png` | Rendered GPS route map for an opted-in post (`?token=` for followers-only)                                 |
+| `GET /public/:username/posts`                  | A user's public/unlisted posts (newest-first, latest page) for their profile feed                          |
+| `GET /.well-known/webfinger`                   | Resolve `acct:<username>@<host>` → the actor                                                               |
+| `GET /users/:username`                         | The actor document (`Person`)                                                                              |
+| `GET /users/:username/outbox`                  | Public + unlisted posts as `Create` activities                                                             |
+| `GET /users/:username/followers`               | The actor's followers collection                                                                           |
+| `GET /users/:username/following`               | The actor's following collection (accepted follows only)                                                   |
+| `GET /users/:username/feed/:postId`            | A single post's `Note` (or `410` Tombstone once deleted)                                                   |
+| `POST /users/:username/inbox` (+ `/inbox`)     | Inbound `Follow` / `Undo{Follow}` / `Accept` / `Reject` (HTTP-Signature verified)                          |
 
 The owner-facing capability is also available over MCP as `list_feed`, `share_activity`,
 `update_feed_post`, `delete_feed_post`, `list_following`, `follow_actor`, `unfollow_actor`,

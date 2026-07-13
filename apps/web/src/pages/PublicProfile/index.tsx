@@ -1,12 +1,15 @@
+import { useQuery } from '@tanstack/react-query'
+import { useRoute } from 'preact-iso'
+
 /**
  * PublicProfile - a user's public page at /u/:username, listing their public
  * shared dashboards and challenges. Unauthenticated; rendered without app chrome.
  */
-import { useQuery } from '@tanstack/react-query'
-import { useRoute } from 'preact-iso'
+import type { PostAuthor } from '../Feed/FeedPostCard'
 
 import { ShareLinkButton } from '../../components/ShareLinkButton'
-import { avatarUrl, fetchPublicProfile } from '../../state/api'
+import { avatarUrl, fetchPublicPosts, fetchPublicProfile } from '../../state/api'
+import { FeedPostCard } from '../Feed/FeedPostCard'
 import './style.css'
 
 export function PublicProfile() {
@@ -16,6 +19,13 @@ export function PublicProfile() {
   const query = useQuery({
     queryFn: () => fetchPublicProfile(username),
     queryKey: ['publicProfile', username],
+    retry: false,
+    staleTime: 60 * 1000,
+  })
+
+  const postsQuery = useQuery({
+    queryFn: () => fetchPublicPosts(username),
+    queryKey: ['publicPosts', username],
     retry: false,
     staleTime: 60 * 1000,
   })
@@ -39,6 +49,17 @@ export function PublicProfile() {
 
   const dashboards = query.data.dashboards ?? []
   const challenges = query.data.challenges ?? []
+  const posts = postsQuery.data ?? []
+
+  // The profile owner is the author of every post shown here; the same identity
+  // the owner's own feed builds (`@user@host`, avatar on this host).
+  const author: PostAuthor = {
+    avatarUrl: avatarUrl(username),
+    displayName: username,
+    handle: `@${username}@${window.location.host}`,
+    profileUrl: `/u/${encodeURIComponent(username)}`,
+    username,
+  }
 
   const renderItem = (item: { name: string; slug: string }) => (
     <li key={item.slug}>
@@ -61,6 +82,17 @@ export function PublicProfile() {
         <h1>@{username}</h1>
         <ShareLinkButton url={window.location.href} title={`@${username} on Aurboda`} />
       </div>
+
+      <section class="public-section">
+        <h2>Posts</h2>
+        {postsQuery.isLoading ? (
+          <p class="public-muted">Loading…</p>
+        ) : posts.length === 0 ? (
+          <p class="public-muted">This user has no public posts.</p>
+        ) : (
+          posts.map((post) => <FeedPostCard key={post.id} post={post} author={author} />)
+        )}
+      </section>
 
       <section class="public-section">
         <h2>Dashboards</h2>
