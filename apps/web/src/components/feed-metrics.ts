@@ -3,7 +3,7 @@
  * view), so the labels a post is created with match the labels it's displayed
  * with.
  */
-import type { MetricType } from '@aurboda/api-spec'
+import type { FeedPost, FeedVisibility, MetricType, ShareActivityBody } from '@aurboda/api-spec'
 
 /**
  * Scalar summaries the backend knows how to resolve (see
@@ -50,6 +50,55 @@ export const defaultsFromChart = (chartMetrics?: string[]): { summary: string[];
     ],
   }
 }
+
+/**
+ * The heart-rate chart image and the heart-rate *series* are the same data in two
+ * formats, so the share dialog offers a single heart-rate control. Opting into the
+ * heart-rate series therefore also attaches the rendered chart image — an
+ * interactive native chart for Aurboda followers plus a PNG for Mastodon and other
+ * peers. `include_chart` is derived here, never toggled separately.
+ */
+const HEART_RATE: MetricType = 'heart_rate'
+
+/**
+ * Which heart-rate series a post starts with in edit mode. A post that attached
+ * the chart image but predates the unified control (no `heart_rate` in
+ * `series_metrics`) is still treated as sharing heart rate, so the one control
+ * shows checked — and re-saving backfills the series the image already implied.
+ */
+export const initialSeriesSelection = (
+  post: Pick<FeedPost, 'include_chart' | 'series_metrics'>,
+): MetricType[] => {
+  const keys = SERIES_METRICS.map((m) => m.key).filter((k) => post.series_metrics.includes(k))
+  if (post.include_chart && !keys.includes(HEART_RATE)) keys.push(HEART_RATE)
+  return keys
+}
+
+/** The dialog's current selection, resolved against what the activity can offer. */
+export interface ShareSelection {
+  summary: Set<string>
+  series: Set<MetricType>
+  includeMap: boolean
+  visibility: FeedVisibility
+  summaryOptions: readonly { key: string }[]
+  seriesOptions: readonly { key: MetricType }[]
+  canChart: boolean
+  canMap: boolean
+}
+
+/**
+ * Build the share/update request body from the dialog selection. Only metrics the
+ * dialog actually offered are sent (unavailable ones are dropped, not defaulted),
+ * and `include_chart` follows the heart-rate series toggle — the chart image is
+ * the image format of that one shared series, so the two can't diverge.
+ */
+export const buildShareBody = (sel: ShareSelection): ShareActivityBody => ({
+  include_chart: sel.canChart && sel.series.has(HEART_RATE),
+  include_map: sel.canMap && sel.includeMap,
+  included_metrics: sel.summaryOptions.map((m) => m.key).filter((k) => sel.summary.has(k)),
+  series_metrics: sel.seriesOptions.map((m) => m.key).filter((k) => sel.series.has(k)),
+  visibility: sel.visibility,
+})
 
 /** Human label for a stored `included_metrics` key (falls back to the raw key). */
 export const summaryLabel = (key: string): string => SUMMARY_METRICS.find((m) => m.key === key)?.label ?? key

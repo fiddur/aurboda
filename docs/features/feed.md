@@ -269,9 +269,16 @@ not the underlying high-resolution series, which stays `followers`-excluded enti
 Responses are `no-store`, so an unshare / cleared flag / a public→followers flip takes
 effect immediately (the now-untoken'd public URL 404s). The route is drawn over an
 **OpenStreetMap street basemap** (see below); **no privacy trimming** is applied (area
-masking is a planned follow-up), so a route map reveals the precise area. The share dialog
-only offers the chart toggle when the activity has heart-rate data and the map toggle when
-it has an actual GPS track.
+masking is a planned follow-up), so a route map reveals the precise area.
+
+The chart image and the heart-rate **series** are the same data in two formats, so the
+share dialog exposes them as **one control**: opting into the heart-rate series
+(`series_metrics` ∋ `heart_rate`) also sets `include_chart`, so Aurboda followers get the
+native interactive chart (from the series) and Mastodon/other peers get the rendered PNG.
+The dialog derives `include_chart` from that one toggle rather than offering it separately
+(the REST/MCP fields stay independent for programmatic callers). It only offers the
+heart-rate control when the activity has heart-rate data, and the map toggle when it has an
+actual GPS track.
 
 **Route basemap.** The route map projects the GPS track into Web Mercator, fetches the
 covering OpenStreetMap tiles, and composites them behind the track (with a white halo for
