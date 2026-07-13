@@ -41,6 +41,7 @@ export const serializeTimelineEntry = (record: TimelineEntryRecord): TimelineEnt
   display_name: record.display_name,
   handle: record.handle,
   id: record.id,
+  ...(record.images == null || record.images.length === 0 ? {} : { images: record.images }),
   object_uri: record.object_uri,
   published_at: record.published_at.toISOString(),
   ...(record.structured == null ? {} : { structured: record.structured }),

@@ -15,8 +15,10 @@
  * The inbox handler that calls these (in `federation.ts`) is thin: it checks the
  * sender is a followed, accepted actor and upserts the result.
  */
+import type { TimelineImage } from '@aurboda/api-spec'
 import type { Note } from '@fedify/fedify/vocab'
 
+import { Document, Image, Link } from '@fedify/fedify/vocab'
 import sanitizeHtml from 'sanitize-html'
 
 import type { FeedFollowingRecord, TimelineEntryInput } from '../../db/index.ts'
@@ -104,4 +106,46 @@ export const noteToTimelineInput = (
     published_at: new Date(Math.min(publishedAt.getTime(), now)),
     url: note.url instanceof URL ? note.url.href : note.id.href,
   }
+}
+
+/** Resolve an attachment's `url` (a `URL` or a `Link`) to an http(s) `URL`, or null. */
+const httpUrl = (raw: URL | Link | null): URL | null => {
+  const url = raw instanceof URL ? raw : raw instanceof Link ? raw.href : null
+  if (url == null) return null
+  return url.protocol === 'https:' || url.protocol === 'http:' ? url : null
+}
+
+/** Map one attachment to a `TimelineImage`, or null if it isn't an http(s) image. */
+const attachmentToImage = (att: unknown): TimelineImage | null => {
+  // `Image` (our charts / route maps) is a `Document` subtype; Mastodon photos
+  // are `Document`s with an `image/*` media type. Both are covered by `Document`.
+  if (!(att instanceof Document)) return null
+  const rawUrl = att.url
+  const url = httpUrl(rawUrl)
+  if (url == null) return null
+  const mediaType = att.mediaType ?? (rawUrl instanceof Link ? rawUrl.mediaType : null) ?? undefined
+  if (!(att instanceof Image) && !mediaType?.startsWith('image/')) return null
+  const name = att.name?.toString()
+  const image: TimelineImage = { url: url.href }
+  if (mediaType != null) image.media_type = mediaType
+  if (name != null && name !== '') image.name = name
+  if (typeof att.width === 'number') image.width = att.width
+  if (typeof att.height === 'number') image.height = att.height
+  return image
+}
+
+/**
+ * Extract a received Note's image attachments (rendered chart / route map, or a
+ * Mastodon photo) so the home timeline can show them — the fallback when a post
+ * carries no native structured chart. Best-effort: only inline http(s) images
+ * are kept; anything else is skipped. Non-image and malformed attachments (and a
+ * Note with none) yield an empty array.
+ */
+export const extractNoteImages = async (note: Note): Promise<TimelineImage[]> => {
+  const images: TimelineImage[] = []
+  for await (const att of note.getAttachments()) {
+    const image = attachmentToImage(att)
+    if (image) images.push(image)
+  }
+  return images
 }

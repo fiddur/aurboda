@@ -73,8 +73,23 @@ function TimelineCard({ entry }: { entry: TimelineEntry }) {
       {/* Sanitised server-side on ingest (timeline-ingest.ts) — safe to render. */}
       <div class="feed-post-content" dangerouslySetInnerHTML={{ __html: entry.content }} />
 
-      {/* Aurboda-to-Aurboda posts carry native structured data → a real chart. */}
-      {entry.structured && <TimelineStructured structured={entry.structured} />}
+      {/* Native structured data (Aurboda peers) → a real chart; otherwise fall
+          back to the delivered image attachment(s), the way Mastodon shows them. */}
+      {entry.structured ? (
+        <TimelineStructured structured={entry.structured} />
+      ) : (
+        entry.images?.map((img) => (
+          <img
+            key={img.url}
+            class="feed-post-image"
+            src={img.url}
+            alt={img.name ?? ''}
+            width={img.width}
+            height={img.height}
+            loading="lazy"
+          />
+        ))
+      )}
     </article>
   )
 }
