@@ -148,13 +148,21 @@ const attachmentToImage = (att: unknown): TimelineImage | null => {
  * hostile followee could make us store + render in one card. */
 const MAX_TIMELINE_IMAGES = 4
 
+/** Hard cap on attachments *scanned* (not just kept). The kept-image cap alone
+ * doesn't bound work: a Note stuffed with non-image or reference-URI attachments
+ * would never hit it, so every attachment would be iterated (and each reference
+ * URI dereferenced). This bounds that amplification. */
+const MAX_ATTACHMENTS_SCANNED = 20
+
 export const extractNoteImages = async (note: Note): Promise<TimelineImage[]> => {
   const images: TimelineImage[] = []
+  let scanned = 0
   // `suppressError` so a referenced attachment whose dereference fails (unreachable
   // host, timeout, or `validatePublicUrl` rejecting a private-IP URL) yields null
   // instead of throwing out of the best-effort ingest path (never-500 invariant).
   // Inline attachments — our own chart `Image`s and Mastodon photos — don't deref.
   for await (const att of note.getAttachments({ suppressError: true })) {
+    if (++scanned > MAX_ATTACHMENTS_SCANNED) break
     const image = attachmentToImage(att)
     if (image) images.push(image)
     if (images.length >= MAX_TIMELINE_IMAGES) break
