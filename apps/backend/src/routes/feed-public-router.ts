@@ -73,10 +73,12 @@ export const createFeedPublicRouter = (): TypedRouter => {
   // A user's public feed for their profile page: the most recent `public`/
   // `unlisted` posts, newest-first (same set as the ActivityPub outbox — never
   // `followers`-only). Serialized exactly like the authenticated `/feed`, so the
-  // web renders them with the same post card. Bounded to the latest page; a
-  // short cache matches the other public read surfaces (a deleted / hidden post
-  // drops within a minute). Mounted before the generic `/public/:username/:slug`
-  // resolver so `posts` is never mistaken for a share slug.
+  // web renders them with the same post card. Bounded to the latest page.
+  // `no-store` like the sibling `/series` and `/feed/:postId` endpoints: sharing
+  // is revocable, so flipping a post to `followers` or deleting it must drop it
+  // from the profile immediately, never linger in a shared cache. Mounted before
+  // the generic `/public/:username/:slug` resolver so `posts` is never mistaken
+  // for a share slug.
   router.get<{ username: string }, FeedPostsResponse>('/public/:username/posts', async (req, res) => {
     const { username } = req.params
     // The response reuses the authed `/feed` shape (which requires `posts`), so a
@@ -87,7 +89,7 @@ export const createFeedPublicRouter = (): TypedRouter => {
     try {
       const records = await listPublicFeedPostsPage(username, PROFILE_FEED_LIMIT, 0)
       const posts = await Promise.all(records.map((record) => serializeFeedPost(username, record)))
-      res.setHeader('Cache-Control', 'public, max-age=60')
+      res.setHeader('Cache-Control', 'no-store')
       res.json({ posts, success: true })
     } catch (error) {
       if (isMissingDatabase(error)) {
