@@ -143,7 +143,11 @@ const attachmentToImage = (att: unknown): TimelineImage | null => {
  */
 export const extractNoteImages = async (note: Note): Promise<TimelineImage[]> => {
   const images: TimelineImage[] = []
-  for await (const att of note.getAttachments()) {
+  // `suppressError` so a referenced attachment whose dereference fails (unreachable
+  // host, timeout, or `validatePublicUrl` rejecting a private-IP URL) yields null
+  // instead of throwing out of the best-effort ingest path (never-500 invariant).
+  // Inline attachments — our own chart `Image`s and Mastodon photos — don't deref.
+  for await (const att of note.getAttachments({ suppressError: true })) {
     const image = attachmentToImage(att)
     if (image) images.push(image)
   }
