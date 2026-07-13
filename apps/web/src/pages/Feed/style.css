@@ -121,6 +121,17 @@
   white-space: nowrap;
 }
 
+/* A local actor's name links to their /u/ profile; match the name's colour
+   rather than the default blue link (mirrors `.feed-post-name a`). */
+.following-name a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.following-name a:hover {
+  text-decoration: underline;
+}
+
 .following-handle {
   font-size: 0.8rem;
   color: #6b7280;
