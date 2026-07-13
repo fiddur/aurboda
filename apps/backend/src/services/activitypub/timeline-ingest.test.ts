@@ -1,10 +1,10 @@
-import { Note } from '@fedify/fedify/vocab'
+import { Document, Image, Note } from '@fedify/fedify/vocab'
 import { describe, expect, test } from 'vitest'
 
 import type { FeedFollowingRecord } from '../../db/index.ts'
 
 import { dateToTemporalInstant } from './temporal-interop.ts'
-import { noteToTimelineInput, sanitizeRemoteHtml } from './timeline-ingest.ts'
+import { extractNoteImages, noteToTimelineInput, sanitizeRemoteHtml } from './timeline-ingest.ts'
 
 /** Build the ambient `Temporal.Instant` a `Note` expects from an ISO string. */
 const published = (iso: string) => dateToTemporalInstant(new Date(iso))
@@ -145,5 +145,86 @@ describe('noteToTimelineInput', () => {
     expect(noteToTimelineInput(past, author, now)?.published_at.toISOString()).toBe(
       '2026-07-01T08:00:00.000Z',
     )
+  })
+})
+
+describe('extractNoteImages', () => {
+  test('extracts an Image attachment (rendered chart) with its url, media type, alt, and size', async () => {
+    const note = new Note({
+      attachments: [
+        new Image({
+          height: 420,
+          mediaType: 'image/png',
+          name: 'Heart rate',
+          url: new URL('https://aurboda.net/api/public/bob/feed/abc/chart.png?token=t'),
+          width: 1000,
+        }),
+      ],
+      content: '<p>Slept</p>',
+      id: new URL('https://aurboda.net/users/bob/feed/abc'),
+      published: published('2026-07-02T08:30:00Z'),
+    })
+    expect(await extractNoteImages(note)).toEqual([
+      {
+        height: 420,
+        media_type: 'image/png',
+        name: 'Heart rate',
+        url: 'https://aurboda.net/api/public/bob/feed/abc/chart.png?token=t',
+        width: 1000,
+      },
+    ])
+  })
+
+  test('keeps an https image Document, and skips non-image / non-https / data attachments', async () => {
+    const note = new Note({
+      attachments: [
+        new Document({
+          mediaType: 'image/jpeg',
+          url: new URL('https://mastodon.example/media/photo.jpg'),
+        }),
+        // A non-image document is skipped.
+        new Document({ mediaType: 'video/mp4', url: new URL('https://mastodon.example/media/clip.mp4') }),
+        // An http image is skipped (would be blocked as mixed content on the https app).
+        new Image({ mediaType: 'image/png', url: new URL('http://insecure.example/x.png') }),
+        // A data: URL is skipped.
+        new Image({ mediaType: 'image/png', url: new URL('data:image/png;base64,AAAA') }),
+      ],
+      content: '<p>pics</p>',
+      id: new URL('https://mastodon.example/notes/9'),
+      published: published('2026-07-02T08:30:00Z'),
+    })
+    expect(await extractNoteImages(note)).toEqual([
+      { media_type: 'image/jpeg', url: 'https://mastodon.example/media/photo.jpg' },
+    ])
+  })
+
+  test('caps the number of kept images at 4 (bounds a hostile followee)', async () => {
+    const note = new Note({
+      attachments: Array.from(
+        { length: 7 },
+        (_, i) =>
+          new Image({ mediaType: 'image/png', url: new URL(`https://mastodon.example/media/${i}.png`) }),
+      ),
+      content: '<p>many</p>',
+      id: new URL('https://mastodon.example/notes/8'),
+      published: published('2026-07-02T08:30:00Z'),
+    })
+    const images = await extractNoteImages(note)
+    expect(images).toHaveLength(4)
+    expect(images.map((i) => i.url)).toEqual([
+      'https://mastodon.example/media/0.png',
+      'https://mastodon.example/media/1.png',
+      'https://mastodon.example/media/2.png',
+      'https://mastodon.example/media/3.png',
+    ])
+  })
+
+  test('returns an empty array for a Note with no attachments', async () => {
+    const note = new Note({
+      content: '<p>text only</p>',
+      id: new URL('https://mastodon.example/notes/7'),
+      published: published('2026-07-02T08:30:00Z'),
+    })
+    expect(await extractNoteImages(note)).toEqual([])
   })
 })

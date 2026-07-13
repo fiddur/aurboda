@@ -11,6 +11,7 @@ const record = (over: Partial<TimelineEntryRecord> = {}): TimelineEntryRecord =>
   display_name: 'Alice',
   handle: '@alice@remote.example',
   id: '00000000-0000-0000-0000-000000000001',
+  images: null,
   object_uri: 'https://remote.example/notes/1',
   published_at: new Date('2026-07-01T08:00:00.000Z'),
   received_at: new Date('2026-07-01T08:00:05.000Z'),

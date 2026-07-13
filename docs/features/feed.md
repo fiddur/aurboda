@@ -173,8 +173,15 @@ When a `Create` or `Update` for a `Note` is delivered, the inbox:
    anyone else are ignored, so an unsolicited `Create` can't inject into the timeline,
 2. **sanitises** the note's HTML content server-side (`sanitize-html`, a strict tag/attribute
    allowlist) — remote content is untrusted, so this is the XSS boundary, then
-3. upserts a `timeline_entry` (keyed by the note's `object_uri`, so an `Update` or a
+3. captures the note's **image attachments** (rendered chart / route map, or a Mastodon
+   photo) — only inline `http(s)` images survive, then
+4. upserts a `timeline_entry` (keyed by the note's `object_uri`, so an `Update` or a
    redelivery replaces in place rather than duplicating).
+
+Each card renders the sanitised HTML plus, below it, the **native structured chart** when the
+post carried one (Aurboda peers, see below) — otherwise the delivered **image attachment(s)**,
+the way Mastodon shows them. So a `followers`-only share (whose structured data isn't
+federated) still shows its chart *image*, and a Mastodon photo post shows its photos.
 
 A `Delete` removes the matching entry; unfollowing removes all of that actor's entries. The
 timeline is read back **newest-first**, keyset-paginated on `(published_at, id)` behind an
@@ -383,7 +390,9 @@ content plus the author's cached handle / display name / avatar, indexed on
 `structured` JSONB column carries the native Aurboda payload (`FeedStructured`: typed
 metrics + inline series) fetched during enrichment — NULL for non-Aurboda posts. On a
 re-delivery whose enrichment failed, the upsert `COALESCE`s so the last-known `structured`
-is preserved rather than wiped.
+is preserved rather than wiped. A nullable `images` JSONB column holds the delivered
+image attachments (`TimelineImage[]`: url + optional media type / alt / size), rendered as
+the fallback when a post has no native structured chart.
 
 ## Caveats & limitations
 

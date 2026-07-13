@@ -101,6 +101,25 @@ describe('Timeline store integration', () => {
     expect(plain.structured).toBeNull()
   })
 
+  test('stores + reads back image attachments (JSONB); plain posts are null', async () => {
+    const user = getTestUser()
+    const images = [
+      {
+        height: 420,
+        media_type: 'image/png',
+        name: 'Heart rate',
+        url: 'https://aurboda.net/api/public/bob/feed/abc/chart.png?token=t',
+        width: 1000,
+      },
+    ]
+    const rec = await upsertTimelineEntry(user, entry(1, { images }))
+    expect(rec.images).toEqual(images)
+    expect((await listTimelineEntries(user, 10))[0].images).toEqual(images)
+
+    const plain = await upsertTimelineEntry(user, entry(2))
+    expect(plain.images).toBeNull()
+  })
+
   test('a re-delivery without structured keeps the last-known structured (COALESCE)', async () => {
     const user = getTestUser()
     const structured = {

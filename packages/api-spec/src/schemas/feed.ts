@@ -282,6 +282,25 @@ export type FollowerResponse = z.infer<typeof followerResponseSchema>
 // Home timeline (posts received from followed actors)
 // =============================================================================
 
+/**
+ * An image attached to a received post (e.g. a rendered chart or route map, or a
+ * Mastodon photo). Captured from the delivered Note's `attachment`s so the home
+ * timeline can show it — the fallback when a post carries no native structured
+ * chart. The `url` is served by the author's origin instance (a `followers`-only
+ * post's URL carries its capability token).
+ */
+export const timelineImageSchema = z
+  .object({
+    height: z.number().int().optional().meta({ description: 'Intrinsic height in px, if known' }),
+    media_type: z.string().optional().meta({ description: 'MIME type, e.g. `image/png`' }),
+    name: z.string().optional().meta({ description: 'Alt text / caption, if any' }),
+    url: z.string().meta({ description: 'Image URL (served by the author’s origin instance)' }),
+    width: z.number().int().optional().meta({ description: 'Intrinsic width in px, if known' }),
+  })
+  .meta({ id: 'TimelineImage' })
+
+export type TimelineImage = z.infer<typeof timelineImageSchema>
+
 /** A post received from a followed actor, as shown in the home timeline. */
 export const timelineEntrySchema = z
   .object({
@@ -293,6 +312,10 @@ export const timelineEntrySchema = z
     display_name: z.string().nullable().meta({ description: "The author's display name, if known" }),
     handle: z.string().nullable().meta({ description: "The author's `@user@host` handle, if known" }),
     id: z.string().uuid().meta({ description: 'Local id of the timeline entry' }),
+    images: z.array(timelineImageSchema).optional().meta({
+      description:
+        'Image attachments (e.g. a rendered chart or route map), shown when the post carries no native structured chart.',
+    }),
     object_uri: z.string().meta({ description: "The remote post's canonical id" }),
     published_at: iso8601DateTimeSchema.meta({ description: 'When the post was published (ISO 8601)' }),
     structured: feedStructuredSchema.optional().meta({

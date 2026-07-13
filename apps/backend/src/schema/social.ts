@@ -235,12 +235,18 @@ export const socialTables: Record<string, string> = {
       -- Native structured payload (typed metrics + series) fetched from Aurboda
       -- peers on ingest; NULL for Mastodon / non-Aurboda posts. Drives a native
       -- chart instead of the sanitised HTML.
-      structured    JSONB
+      structured    JSONB,
+      -- Image attachments (rendered chart / route map, or a Mastodon photo)
+      -- captured from the delivered Note; shown when there's no native chart.
+      images        JSONB
     )
   `,
-  // Additive column for DBs created before the structured-timeline feature.
+  // Additive columns for DBs created before the structured-timeline / media features.
   timeline_entry_structured: `
     ALTER TABLE timeline_entry ADD COLUMN IF NOT EXISTS structured JSONB
+  `,
+  timeline_entry_images: `
+    ALTER TABLE timeline_entry ADD COLUMN IF NOT EXISTS images JSONB
   `,
   // Timeline ordering / keyset pagination is by (published_at DESC, id DESC).
   timeline_entry_indexes: `

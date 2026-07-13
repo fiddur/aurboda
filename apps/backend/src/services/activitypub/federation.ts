@@ -65,7 +65,7 @@ import { buildFeedCreate, buildFeedNote } from './deliver.ts'
 import { toCryptoKeyPair } from './keys.ts'
 import { isPubliclyVisible } from './object.ts'
 import { createAurbodaEnricher } from './timeline-enrich.ts'
-import { noteToTimelineInput } from './timeline-ingest.ts'
+import { extractNoteImages, noteToTimelineInput } from './timeline-ingest.ts'
 
 /** Posts per outbox page (cursor pagination). */
 const OUTBOX_PAGE_SIZE = 20
@@ -162,10 +162,13 @@ const ingestFeedActivity = async (
     if (!(object instanceof Note)) return
     const input = noteToTimelineInput(object, follow)
     if (input == null) return
+    // Capture the Note's image attachments (rendered chart / route map, or a
+    // Mastodon photo) so the timeline can show them when there's no native chart.
+    const images = await extractNoteImages(object)
     // Best-effort: fetch the native structured payload if this is an Aurboda post
     // (null otherwise). Stored on the entry so the web can render a native chart.
     const structured = await enrich(input.object_uri)
-    const { inserted } = await upsertTimelineEntry(me, { ...input, structured })
+    const { inserted } = await upsertTimelineEntry(me, { ...input, images, structured })
     // Ping live subscribers only for a genuinely new post (not an edit/redelivery).
     if (inserted) onNewEntry?.(me)
   } catch (error) {
