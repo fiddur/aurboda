@@ -1,4 +1,5 @@
 import { type Response, Router } from 'express'
+
 /**
  * Public feed-post image endpoints (UNAUTHENTICATED).
  *
@@ -15,31 +16,13 @@ import { type Response, Router } from 'express'
  * effect immediately — the untoken'd public URL then 404s). Mounted before the
  * generic `/public/:username/:slug` resolver.
  */
-import { timingSafeEqual } from 'node:crypto'
-
 import type { FeedPostRecord } from '../db/index.ts'
 
 import { isValidUsername } from '../api/auth-routes.ts'
 import { isMissingDatabase } from '../db/index.ts'
-import { isPubliclyVisible } from '../services/activitypub/object.ts'
+import { isCapabilityAuthorized } from '../services/feed-capability.ts'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-
-/** Constant-time string compare (avoids leaking the token via response timing). */
-const tokenMatches = (provided: string, expected: string): boolean => {
-  const a = Buffer.from(provided)
-  const b = Buffer.from(expected)
-  return a.length === b.length && timingSafeEqual(a, b)
-}
-
-/**
- * Whether an image request may see this post: `public`/`unlisted` are always
- * served; a `followers`-only post is served only when the request carries the
- * post's unguessable capability token (`?token=…`), which is embedded only in
- * the Note delivered to followers (#893).
- */
-const isImageAuthorized = (post: FeedPostRecord, token: string | undefined): boolean =>
-  isPubliclyVisible(post.visibility) || (token != null && tokenMatches(token, post.image_token))
 
 /** The window an image renders over. */
 export interface ImageActivity {
@@ -113,7 +96,7 @@ export const resolveImageWindow = async (
     if (isMissingDatabase(error)) return null
     throw error
   }
-  if (post == null || !isImageAuthorized(post, token) || !post[flag] || post.activity_id == null) {
+  if (post == null || !isCapabilityAuthorized(post, token) || !post[flag] || post.activity_id == null) {
     return null
   }
   const activity = await deps.getActivity(username, post.activity_id)

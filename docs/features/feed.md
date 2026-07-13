@@ -180,8 +180,9 @@ When a `Create` or `Update` for a `Note` is delivered, the inbox:
 
 Each card renders the sanitised HTML plus, below it, the **native structured chart** when the
 post carried one (Aurboda peers, see below) — otherwise the delivered **image attachment(s)**,
-the way Mastodon shows them. So a `followers`-only share (whose structured data isn't
-federated) still shows its chart *image*, and a Mastodon photo post shows its photos.
+the way Mastodon shows them. A `followers`-only Aurboda share federates its native chart to
+accepted followers too (via the capability token, see below), so a follower gets the
+interactive chart rather than just the flat image; a Mastodon photo post shows its photos.
 
 A `Delete` removes the matching entry; unfollowing removes all of that actor's entries. The
 timeline is read back **newest-first**, keyset-paginated on `(published_at, id)` behind an
@@ -207,14 +208,19 @@ structured data out-of-band on ingest:
    (`FeedStructured`: activity type/window, typed scalar `metrics`, and inline high-resolution
    `series` samples). It reuses the exact same scalar resolution as delivery and the same
    data-scoped series resolution as the [public series endpoint](#public-series-endpoint-the-privacy-boundary),
-   so a peer can never read more than the author shared; only `public`/`unlisted` posts resolve.
+   so a peer can never read more than the author shared. `public`/`unlisted` posts resolve
+   unconditionally; a `followers`-only post resolves only with a matching `?token=<image_token>`
+   — the **same capability token** that authorizes its followers-only images (below), so the
+   structured chart and the image share one authorization boundary.
 2. **Detect + fetch.** On ingesting a `Create`/`Update`, if the note's id matches Aurboda's own
    object path (`/users/{user}/feed/{postId}` — a Mastodon status id never does, so no needless
    request is made), the receiver discovers the peer via `/.well-known/aurboda` and fetches its
-   structured endpoint. All fetches are **SSRF-guarded** (`safe-fetch`: public hosts only, no
-   redirects, size + time bounded) and time-boxed; the origin is the accepted followee's own
-   host. Any failure (non-Aurboda host, 404, malformed, timeout) is swallowed — the post still
-   shows with its HTML.
+   structured endpoint. For a `followers`-only post it lifts the capability token from the
+   delivered image URL (the `?token=` embedded only in the follower's `Note`) and forwards it,
+   so an accepted follower fetches the native chart while a public guess still 404s. All fetches
+   are **SSRF-guarded** (`safe-fetch`: public hosts only, no redirects, size + time bounded) and
+   time-boxed; the origin is the accepted followee's own host. Any failure (non-Aurboda host,
+   404, malformed, timeout) is swallowed — the post still shows with its HTML.
 3. **Store + render.** The payload is stored on `timeline_entry.structured` (JSONB, NULL for
    non-Aurboda posts; a redelivery that can't re-fetch keeps the last-known value). The web
    timeline card renders a native `TrendLineChart` per shared series when `structured` is present.

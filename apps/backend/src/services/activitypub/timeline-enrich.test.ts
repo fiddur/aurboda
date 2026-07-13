@@ -2,7 +2,12 @@ import type { FeedStructured, WellKnownAurboda } from '@aurboda/api-spec'
 
 import { describe, expect, test } from 'vitest'
 
-import { type AurbodaEnrichDeps, enrichFromAurboda, parseAurbodaFeedUrl } from './timeline-enrich.ts'
+import {
+  type AurbodaEnrichDeps,
+  capabilityTokenFrom,
+  enrichFromAurboda,
+  parseAurbodaFeedUrl,
+} from './timeline-enrich.ts'
 
 const UUID = '11111111-2222-4333-8444-555555555555'
 
@@ -105,5 +110,39 @@ describe('enrichFromAurboda', () => {
       fetchStructured: async () => ({ structured: { nope: true }, success: true }),
     }
     expect(await enrichFromAurboda(`https://aurboda.net/users/fredrik/feed/${UUID}`, deps)).toBeNull()
+  })
+
+  test('passes the capability token as ?token= so a followers-only post authorizes', async () => {
+    let fetchedUrl = ''
+    const deps: AurbodaEnrichDeps = {
+      discover: async () => wellKnown,
+      fetchStructured: async (url) => {
+        fetchedUrl = url
+        return { structured, success: true }
+      },
+    }
+    await enrichFromAurboda(`https://aurboda.net/users/fredrik/feed/${UUID}`, deps, 'secret token/&')
+    expect(fetchedUrl).toBe(`https://aurboda.net/api/public/fredrik/feed/${UUID}?token=secret%20token%2F%26`)
+  })
+})
+
+describe('capabilityTokenFrom', () => {
+  const image = (url: string) => ({ url })
+
+  test('lifts the token from a followers-only image URL', () => {
+    expect(
+      capabilityTokenFrom([image('https://aurboda.net/api/public/bob/feed/abc/chart.png?token=t0k')]),
+    ).toBe('t0k')
+  })
+
+  test('returns undefined for a public image URL (no token) or no images', () => {
+    expect(
+      capabilityTokenFrom([image('https://aurboda.net/api/public/bob/feed/abc/chart.png')]),
+    ).toBeUndefined()
+    expect(capabilityTokenFrom([])).toBeUndefined()
+  })
+
+  test('skips a malformed URL and finds the token on a later image', () => {
+    expect(capabilityTokenFrom([image('not a url'), image('https://h.example/x.png?token=abc')])).toBe('abc')
   })
 })

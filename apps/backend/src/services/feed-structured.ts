@@ -12,9 +12,9 @@
  */
 import { type FeedStructured, type FeedStructuredSeries, metricTypeSchema } from '@aurboda/api-spec'
 
-import { findCoveringSharedSeriesWindow, getFeedPostById } from '../db/index.ts'
+import { getFeedPostById } from '../db/index.ts'
 import { resolveActivityScalars } from './activitypub/feed-activity.ts'
-import { isPubliclyVisible } from './activitypub/object.ts'
+import { isCapabilityAuthorized } from './feed-capability.ts'
 import { resolvePublicSeries } from './feed-series.ts'
 import { resolveFeedActivity } from './feed.ts'
 import { queryMetricsBucketed } from './queries/index.ts'
@@ -23,8 +23,15 @@ import { queryMetricsBucketed } from './queries/index.ts'
 const SERIES_BUCKET = '5s'
 
 /**
- * Resolve a post's shared series to inline samples, reusing the public-series
- * data-scoping (an unshared/uncovered metric resolves to nothing, never leaks).
+ * Resolve a post's opted-in series to inline samples over its activity window.
+ *
+ * The authorization boundary is the post itself: `resolveStructuredPost` has
+ * already checked the caller may see this post, and we only ever iterate the
+ * post's own `seriesMetrics` over its own `[start, end]`. So the covering window
+ * *is* that window — we don't route through the public-only
+ * `findCoveringSharedSeriesWindow` (which correctly rejects a `followers`-only
+ * share for the public `/series` endpoint, but would wrongly blank the chart
+ * here for a token-authorized follower).
  */
 const resolveStructuredSeries = async (
   user: string,
@@ -37,7 +44,7 @@ const resolveStructuredSeries = async (
     const parsed = metricTypeSchema.safeParse(raw)
     if (!parsed.success) continue
     const result = await resolvePublicSeries(parsed.data, start, end, SERIES_BUCKET, {
-      findCoveringWindow: (m, s, e) => findCoveringSharedSeriesWindow(user, m, s, e),
+      findCoveringWindow: async () => ({ end_time: end, start_time: start }),
       queryBucketed: (m, s, e, b) => queryMetricsBucketed(user, [m], s, e, b, {}),
     })
     if (result) {
@@ -54,11 +61,19 @@ const resolveStructuredSeries = async (
 
 /**
  * Build the structured payload for one of `user`'s feed posts, or null if it is
- * unknown, has no resolvable activity, or is not publicly visible.
+ * unknown, has no resolvable activity, or the requester isn't authorized to see
+ * it. `public`/`unlisted` posts resolve unconditionally; a `followers`-only post
+ * resolves only with a matching capability `token` (the same token that
+ * authorizes its followers-only images), so an accepted follower's instance can
+ * render the native chart while a public guess still 404s.
  */
-export const resolveStructuredPost = async (user: string, postId: string): Promise<FeedStructured | null> => {
+export const resolveStructuredPost = async (
+  user: string,
+  postId: string,
+  token?: string,
+): Promise<FeedStructured | null> => {
   const post = await getFeedPostById(user, postId)
-  if (post == null || post.activity_id == null || !isPubliclyVisible(post.visibility)) return null
+  if (post == null || post.activity_id == null || !isCapabilityAuthorized(post, token)) return null
 
   const activity = await resolveFeedActivity(user, post.activity_id)
   if (activity == null) return null

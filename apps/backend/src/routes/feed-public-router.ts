@@ -67,17 +67,21 @@ export const createFeedPublicRouter = (): TypedRouter => {
 
   // The native structured post (typed metrics + inline series) another Aurboda
   // instance fetches on ingest to render a chart. Same data-scoping as `/series`
-  // — only public/unlisted posts and only the metrics/series actually shared.
+  // and only the metrics/series actually shared. `public`/`unlisted` resolve
+  // unconditionally; a `followers`-only post resolves only with a matching
+  // capability `?token=` (the same token that authorizes its followers-only
+  // images), so an accepted follower's instance can render the native chart.
   // `no-store` for the same revocability reason as the series endpoint.
-  router.get<{ username: string; postId: string }, FeedPostStructuredResponse>(
+  router.get<{ username: string; postId: string }, FeedPostStructuredResponse, unknown, { token?: string }>(
     '/public/:username/feed/:postId',
     async (req, res) => {
       const { postId, username } = req.params
       if (!isValidUsername(username) || !UUID_RE.test(postId)) {
         return res.status(404).json({ error: 'Not found', success: false })
       }
+      const token = typeof req.query.token === 'string' ? req.query.token : undefined
       try {
-        const structured = await resolveStructuredPost(username, postId)
+        const structured = await resolveStructuredPost(username, postId, token)
         if (!structured) {
           return res.status(404).json({ error: 'Not found', success: false })
         }
