@@ -15,7 +15,13 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'preact/hooks'
 
 import { fetchBucketedMetrics, fetchRawLocations, shareActivity, updateFeedPost } from '../state/api'
-import { defaultsFromChart, SERIES_METRICS, SUMMARY_METRICS } from './feed-metrics'
+import {
+  buildShareBody,
+  defaultsFromChart,
+  initialSeriesSelection,
+  SERIES_METRICS,
+  SUMMARY_METRICS,
+} from './feed-metrics'
 import { FEED_VISIBILITY_OPTIONS, VisibilitySelector } from './VisibilitySelector'
 import './ShareActivityDialog.css'
 
@@ -115,39 +121,40 @@ export function ShareActivityDialog({
   )
   // Preselect from the post's shared series (edit) or the charted metrics (create),
   // intersected with keys this dialog can represent — keeps the state typed as
-  // `Set<MetricType>` without a cast.
+  // `Set<MetricType>` without a cast. `initialSeriesSelection` folds a legacy
+  // chart-image post into the heart-rate series (one control governs both).
   const [series, setSeries] = useState<Set<MetricType>>(
-    () =>
-      new Set(
-        post
-          ? SERIES_METRICS.map((m) => m.key).filter((k) => post.series_metrics.includes(k))
-          : defaults.series,
-      ),
+    () => new Set(post ? initialSeriesSelection(post) : defaults.series),
   )
   const [visibility, setVisibility] = useState<FeedVisibility>(post?.visibility ?? 'public')
-  const [includeChart, setIncludeChart] = useState(post?.include_chart ?? false)
   const [includeMap, setIncludeMap] = useState(post?.include_map ?? false)
   const { summaryOptions, seriesOptions, canChart, canMap } = useShareableMetricOptions(
     activityStart,
     activityEnd,
     post?.included_metrics,
-    post?.series_metrics,
+    // Offer the heart-rate series on an edit whenever the post shares it in either
+    // format, so the unified control is always toggleable (never stuck checked).
+    post ? initialSeriesSelection(post) : undefined,
     post?.include_chart,
     post?.include_map,
   )
+  // The series fieldset also renders for activities with only non-HR series (e.g.
+  // speed/power, no heart rate); only mention the chart image when heart rate is
+  // actually offered as a control here.
+  const offersHeartRate = seriesOptions.some((m) => m.key === 'heart_rate')
 
   const mutation = useMutation({
     mutationFn: () => {
-      // Only send metrics the dialog actually offered (drops defaults hidden as
-      // irrelevant); the backend still ignores any with no data. Attachments are
-      // only requested when their toggle is offered (chart needs HR, map needs GPS).
-      const body = {
-        include_chart: canChart && includeChart,
-        include_map: canMap && includeMap,
-        included_metrics: summaryOptions.map((m) => m.key).filter((k) => summary.has(k)),
-        series_metrics: seriesOptions.map((m) => m.key).filter((k) => series.has(k)),
+      const body = buildShareBody({
+        canChart,
+        canMap,
+        includeMap,
+        series,
+        seriesOptions,
+        summary,
+        summaryOptions,
         visibility,
-      }
+      })
       return post ? updateFeedPost(post.id, body) : shareActivity(activityId, body)
     },
     onSuccess: (result) => {
@@ -195,6 +202,7 @@ export function ShareActivityDialog({
               {mirroredFromChart
                 ? 'Higher resolution — more revealing than a summary. Pre-checked to match the activity chart; uncheck any you would rather not share.'
                 : 'Higher resolution — more revealing than a summary. Off by default.'}
+              {offersHeartRate && ' Heart rate is also shared as a chart image.'}
             </p>
             <div class="share-dialog-options">
               {seriesOptions.map(({ key, label }) => (
@@ -211,30 +219,18 @@ export function ShareActivityDialog({
           </fieldset>
         )}
 
-        {(canChart || canMap) && (
+        {canMap && (
           <fieldset class="share-dialog-group">
             <legend>Images</legend>
             <div class="share-dialog-options">
-              {canChart && (
-                <label class="share-dialog-checkbox">
-                  <input
-                    type="checkbox"
-                    checked={includeChart}
-                    onChange={(e) => setIncludeChart((e.target as HTMLInputElement).checked)}
-                  />
-                  Heart-rate chart
-                </label>
-              )}
-              {canMap && (
-                <label class="share-dialog-checkbox">
-                  <input
-                    type="checkbox"
-                    checked={includeMap}
-                    onChange={(e) => setIncludeMap((e.target as HTMLInputElement).checked)}
-                  />
-                  Route map
-                </label>
-              )}
+              <label class="share-dialog-checkbox">
+                <input
+                  type="checkbox"
+                  checked={includeMap}
+                  onChange={(e) => setIncludeMap((e.target as HTMLInputElement).checked)}
+                />
+                Route map
+              </label>
             </div>
           </fieldset>
         )}
