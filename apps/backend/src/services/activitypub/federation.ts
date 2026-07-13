@@ -64,7 +64,7 @@ import { extractActorPresentation } from './actor-presentation.ts'
 import { buildFeedCreate, buildFeedNote } from './deliver.ts'
 import { toCryptoKeyPair } from './keys.ts'
 import { isPubliclyVisible } from './object.ts'
-import { createAurbodaEnricher } from './timeline-enrich.ts'
+import { capabilityTokenFrom, createAurbodaEnricher } from './timeline-enrich.ts'
 import { extractNoteImages, noteToTimelineInput } from './timeline-ingest.ts'
 
 /** Posts per outbox page (cursor pagination). */
@@ -146,7 +146,7 @@ const ingestFeedActivity = async (
   activity: Create | Update,
   onNewEntry?: (user: string) => void,
   /** Best-effort fetch of the post's native Aurboda structured data (null if not an Aurboda post). */
-  enrich: (objectUri: string) => Promise<FeedStructured | null> = async () => null,
+  enrich: (objectUri: string, token?: string) => Promise<FeedStructured | null> = async () => null,
 ): Promise<void> => {
   // The recipient (whose timeline this is) comes from the personal inbox owner.
   // Unlike Accept/Reject there's no inner Follow to derive it from, so this relies
@@ -166,8 +166,10 @@ const ingestFeedActivity = async (
     // Mastodon photo) so the timeline can show them when there's no native chart.
     const images = await extractNoteImages(object)
     // Best-effort: fetch the native structured payload if this is an Aurboda post
-    // (null otherwise). Stored on the entry so the web can render a native chart.
-    const structured = await enrich(input.object_uri)
+    // (null otherwise). A followers-only post authorizes the fetch with the same
+    // capability token embedded in its delivered image URL. Stored on the entry so
+    // the web can render a native chart in place of the image.
+    const structured = await enrich(input.object_uri, capabilityTokenFrom(images))
     const { inserted } = await upsertTimelineEntry(me, { ...input, images, structured })
     // Ping live subscribers only for a genuinely new post (not an edit/redelivery).
     if (inserted) onNewEntry?.(me)

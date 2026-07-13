@@ -99,7 +99,7 @@ describe('resolveStructuredPost', () => {
     expect(structured?.series).toEqual([])
   })
 
-  test('returns null for a followers-only post (not publicly visible)', async () => {
+  test('gates a followers-only post on the capability token', async () => {
     const user = getTestUser()
     const activityId = await seedActivityWithHeartRate(user)
     const post = await createFeedPost(user, {
@@ -110,7 +110,13 @@ describe('resolveStructuredPost', () => {
       series_metrics: ['heart_rate'],
       visibility: 'followers',
     })
+    // No token / wrong token → not authorized.
     expect(await resolveStructuredPost(user, post.id)).toBeNull()
+    expect(await resolveStructuredPost(user, post.id, 'wrong')).toBeNull()
+    // The post's own capability token (delivered to followers) → resolves.
+    const structured = await resolveStructuredPost(user, post.id, post.image_token)
+    expect(structured?.series.map((s) => s.metric)).toEqual(['heart_rate'])
+    expect(structured?.metrics.map((m) => m.key)).toEqual(['heart_rate_avg'])
   })
 
   test('returns null for an unknown post id', async () => {

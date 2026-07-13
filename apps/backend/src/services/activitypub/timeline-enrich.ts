@@ -22,6 +22,7 @@
 import {
   type FeedStructured,
   feedPostStructuredResponseSchema,
+  type TimelineImage,
   type WellKnownAurboda,
 } from '@aurboda/api-spec'
 
@@ -65,18 +66,41 @@ export interface AurbodaEnrichDeps {
 const trimSlashes = (s: string): string => s.replace(/\/+$/, '')
 
 /**
+ * The capability token embedded in a `followers`-only post's delivered image URL
+ * (`…/chart.png?token=…`), reused to authorize the structured fetch for the same
+ * post — or undefined for a public post (no token) or a post with no images. It's
+ * the same `image_token` the origin instance checks, so an accepted follower's
+ * instance can fetch the native chart it was already allowed to see the image of.
+ */
+export const capabilityTokenFrom = (images: TimelineImage[]): string | undefined => {
+  for (const img of images) {
+    try {
+      const token = new URL(img.url).searchParams.get('token')
+      if (token) return token
+    } catch {
+      // A malformed image URL carries no usable token — skip it.
+    }
+  }
+  return undefined
+}
+
+/**
  * Fetch the structured payload for an Aurboda feed-post object URI, or null if
  * the post isn't an Aurboda post, the host doesn't federate, or anything fails.
+ * `token` (lifted from the delivered image URL) authorizes a `followers`-only
+ * post; a public post needs none.
  */
 export const enrichFromAurboda = async (
   objectUri: string,
   deps: AurbodaEnrichDeps,
+  token?: string,
 ): Promise<FeedStructured | null> => {
   const parsed = parseAurbodaFeedUrl(objectUri)
   if (parsed == null) return null
   try {
     const wellKnown = await deps.discover(parsed.origin)
-    const url = `${trimSlashes(wellKnown.api_base)}/public/${encodeURIComponent(parsed.user)}/feed/${parsed.postId}`
+    const base = `${trimSlashes(wellKnown.api_base)}/public/${encodeURIComponent(parsed.user)}/feed/${parsed.postId}`
+    const url = token == null ? base : `${base}?token=${encodeURIComponent(token)}`
     const body = await deps.fetchStructured(url)
     const result = feedPostStructuredResponseSchema.safeParse(body)
     if (!result.success || !result.data.structured) return null
@@ -94,14 +118,17 @@ const ENRICH_TIMEOUT_MS = 12_000
  * fetch, bounded by a total timeout so a slow peer can't stall ingest, and
  * swallowing every error to `null` (enrichment is never allowed to fail ingest).
  */
-export const createAurbodaEnricher = (): ((objectUri: string) => Promise<FeedStructured | null>) => {
+export const createAurbodaEnricher = (): ((
+  objectUri: string,
+  token?: string,
+) => Promise<FeedStructured | null>) => {
   const deps: AurbodaEnrichDeps = {
     discover: discoverInstance,
     fetchStructured: async (url) => (await safeFetchGet(url)).data,
   }
-  return async (objectUri) => {
+  return async (objectUri, token) => {
     try {
-      return await withTimeout(enrichFromAurboda(objectUri, deps), ENRICH_TIMEOUT_MS)
+      return await withTimeout(enrichFromAurboda(objectUri, deps, token), ENRICH_TIMEOUT_MS)
     } catch {
       return null
     }
