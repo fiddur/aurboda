@@ -14,6 +14,7 @@
  * never mistaken for a share slug.
  */
 import {
+  type FeedPostsResponse,
   type FeedPostStructuredResponse,
   type PublicSeriesQuery,
   publicSeriesQuerySchema,
@@ -21,14 +22,18 @@ import {
 } from '@aurboda/api-spec'
 
 import { isValidUsername } from '../api/auth-routes.ts'
-import { findCoveringSharedSeriesWindow, isMissingDatabase } from '../db/index.ts'
+import { findCoveringSharedSeriesWindow, isMissingDatabase, listPublicFeedPostsPage } from '../db/index.ts'
 import { resolvePublicSeries } from '../services/feed-series.ts'
 import { resolveStructuredPost } from '../services/feed-structured.ts'
+import { serializeFeedPost } from '../services/feed.ts'
 import { queryMetricsBucketed } from '../services/queries/index.ts'
 import { type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateQuery } from '../validation.ts'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/** Most recent public/unlisted posts returned for a profile's feed (newest-first). */
+const PROFILE_FEED_LIMIT = 50
 
 export const createFeedPublicRouter = (): TypedRouter => {
   const router = typedRouter()
@@ -64,6 +69,33 @@ export const createFeedPublicRouter = (): TypedRouter => {
       }
     },
   )
+
+  // A user's public feed for their profile page: the most recent `public`/
+  // `unlisted` posts, newest-first (same set as the ActivityPub outbox — never
+  // `followers`-only). Serialized exactly like the authenticated `/feed`, so the
+  // web renders them with the same post card. Bounded to the latest page; a
+  // short cache matches the other public read surfaces (a deleted / hidden post
+  // drops within a minute). Mounted before the generic `/public/:username/:slug`
+  // resolver so `posts` is never mistaken for a share slug.
+  router.get<{ username: string }, FeedPostsResponse>('/public/:username/posts', async (req, res) => {
+    const { username } = req.params
+    // The response reuses the authed `/feed` shape (which requires `posts`), so a
+    // 404 carries an empty list rather than a bare error body.
+    if (!isValidUsername(username)) {
+      return res.status(404).json({ error: 'Not found', posts: [], success: false })
+    }
+    try {
+      const records = await listPublicFeedPostsPage(username, PROFILE_FEED_LIMIT, 0)
+      const posts = await Promise.all(records.map((record) => serializeFeedPost(username, record)))
+      res.setHeader('Cache-Control', 'public, max-age=60')
+      res.json({ posts, success: true })
+    } catch (error) {
+      if (isMissingDatabase(error)) {
+        return res.status(404).json({ error: 'Not found', posts: [], success: false })
+      }
+      throw error
+    }
+  })
 
   // The native structured post (typed metrics + inline series) another Aurboda
   // instance fetches on ingest to render a chart. Same data-scoping as `/series`

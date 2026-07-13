@@ -1,5 +1,7 @@
 import type {
   CreateSharedDashboardBody,
+  FeedPost,
+  FeedPostsResponse,
   PublicProfileResponse,
   SharedDashboard,
   SharedDashboardResponse,
@@ -57,4 +59,12 @@ export const fetchPublicProfile = async (username: string): Promise<PublicProfil
     `${API_URL}/public/${encodeURIComponent(username)}/dashboards`,
   )
   return response.data
+}
+
+/** A user's public/unlisted feed posts (newest-first) for their profile page. */
+export const fetchPublicPosts = async (username: string): Promise<FeedPost[]> => {
+  const response = await axios.get<FeedPostsResponse>(
+    `${API_URL}/public/${encodeURIComponent(username)}/posts`,
+  )
+  return response.data.posts
 }

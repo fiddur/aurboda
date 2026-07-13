@@ -13,6 +13,7 @@ import type { ComponentChildren } from 'preact'
 import { formatDistanceToNow } from 'date-fns'
 
 import { API_URL } from '../../config'
+import './FeedPostCard.css'
 
 export interface PostAuthor {
   displayName: string
