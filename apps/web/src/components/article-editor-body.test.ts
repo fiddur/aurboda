@@ -50,13 +50,24 @@ describe('buildArticleBody', () => {
     }
   })
 
-  it('rejects a chart block whose metric is not a valid MetricType', () => {
+  it('prompts to pick a metric when a chart block has none', () => {
     const result = buildArticleBody(
-      state({
-        blocks: [{ bucket: '', caption: '', end: '', metric: 'not_a_metric', start: '', type: 'chart' }],
-      }),
+      state({ blocks: [{ bucket: '', caption: '', end: '', metric: '', start: '', type: 'chart' }] }),
     )
     expect(result).toEqual({ error: 'Pick a metric for chart block 1.', ok: false })
+  })
+
+  it('rejects an unsupported (custom) metric with a clear message', () => {
+    const result = buildArticleBody(
+      state({
+        blocks: [{ bucket: '', caption: '', end: '', metric: 'my_custom_metric', start: '', type: 'chart' }],
+      }),
+    )
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.error).toContain('my_custom_metric')
+      expect(result.error).toContain("custom metrics aren't supported")
+    }
   })
 
   it('omits empty optional fields on a chart block', () => {

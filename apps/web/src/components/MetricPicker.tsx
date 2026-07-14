@@ -27,13 +27,34 @@ const buildEntries = (customMetrics: CustomMetricDefinition[]): MetricEntry[] =>
   return [...builtin, ...custom]
 }
 
+/**
+ * The label to show in the closed input for the selected value: the built-in
+ * display name, else the matching custom metric's description, else the raw value.
+ */
+const displayNameForValue = (value: string, customMetrics: CustomMetricDefinition[]): string => {
+  const displayValue = value ? getMetricDisplayName(value) : ''
+  const customDisplayValue =
+    value && !displayValue.includes(value)
+      ? displayValue
+      : (customMetrics.find((m) => m.name === value)?.description ?? displayValue)
+  return customDisplayValue || value
+}
+
 interface MetricPickerProps {
   value: string
   onChange: (metric: string) => void
   placeholder?: string
+  /** Offer only built-in metrics (hide the user's custom metrics) — e.g. article
+   *  chart blocks accept only built-in `MetricType`s. */
+  builtinOnly?: boolean
 }
 
-export function MetricPicker({ value, onChange, placeholder = 'Search metrics...' }: MetricPickerProps) {
+export function MetricPicker({
+  value,
+  onChange,
+  placeholder = 'Search metrics...',
+  builtinOnly = false,
+}: MetricPickerProps) {
   const [inputValue, setInputValue] = useState('')
   const [isOpen, setIsOpen] = useState(false)
   const [highlightedIndex, setHighlightedIndex] = useState(0)
@@ -46,7 +67,7 @@ export function MetricPicker({ value, onChange, placeholder = 'Search metrics...
     staleTime: 5 * 60 * 1000,
   })
 
-  const entries = buildEntries(customMetrics ?? [])
+  const entries = buildEntries(builtinOnly ? [] : (customMetrics ?? []))
 
   const filtered = entries.filter(
     (entry) =>
@@ -97,13 +118,7 @@ export function MetricPicker({ value, onChange, placeholder = 'Search metrics...
     }
   }
 
-  const displayValue = value ? getMetricDisplayName(value) : ''
-  // Check custom metrics for display name too
-  const customDisplayValue =
-    value && !displayValue.includes(value)
-      ? displayValue
-      : ((customMetrics ?? []).find((m) => m.name === value)?.description ?? displayValue)
-  const shownValue = isOpen ? inputValue : customDisplayValue || value
+  const shownValue = isOpen ? inputValue : displayNameForValue(value, customMetrics ?? [])
 
   return (
     <div class="metric-picker" ref={containerRef}>

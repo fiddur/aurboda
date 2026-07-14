@@ -99,7 +99,15 @@ export const buildArticleBody = (state: ArticleEditorState): BuildResult => {
       blocks.push({ markdown: b.markdown, type: 'prose' })
       continue
     }
-    if (!isValidMetric(b.metric)) return { error: `Pick a metric for chart block ${i + 1}.`, ok: false }
+    if (!isValidMetric(b.metric)) {
+      // An empty pick vs. an unsupported (custom) metric — article charts accept
+      // only built-in metric types (the picker offers only those, but an article
+      // edited elsewhere could still carry one).
+      const error = b.metric
+        ? `Chart block ${i + 1}: “${b.metric}” can't be charted in an article (custom metrics aren't supported yet).`
+        : `Pick a metric for chart block ${i + 1}.`
+      return { error, ok: false }
+    }
     blocks.push({
       metric: b.metric,
       type: 'chart',

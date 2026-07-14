@@ -77,7 +77,7 @@ const ArticleBlockEditor = ({
       <div class="article-chart-fields">
         <label class="article-field">
           <span class="article-field-label">Metric</span>
-          <MetricPicker value={block.metric} onChange={(m) => onPatch({ metric: m })} />
+          <MetricPicker builtinOnly value={block.metric} onChange={(m) => onPatch({ metric: m })} />
         </label>
         <div class="article-window">
           <label class="article-field">
