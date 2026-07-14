@@ -1,7 +1,7 @@
 import type { FeedPost, FeedVisibility } from '@aurboda/api-spec'
 
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'preact/hooks'
+import { useRef, useState } from 'preact/hooks'
 
 /**
  * Compose or edit a long-form **article** feed post: a title, an optional
@@ -22,6 +22,14 @@ import './ShareActivityDialog.css'
 import './ArticleEditorDialog.css'
 
 type BlockPatch = Partial<ChartDraft> & Partial<ProseDraft>
+
+/**
+ * A draft block plus a stable identity, used only as the React `key`. Blocks are
+ * reorderable and their children (MarkdownEditor) hold internal tab/focus state,
+ * so a positional key would strand that state on the wrong block after a move —
+ * hence a per-block id that travels with the block instead of the array index.
+ */
+type KeyedBlock = { key: string; block: BlockDraft }
 
 /** One editable content block (prose or chart) with its reorder / remove controls. */
 const ArticleBlockEditor = ({
@@ -121,12 +129,16 @@ export const ArticleEditorDialog = ({ post, onClose }: { post?: FeedPost; onClos
   const [title, setTitle] = useState(initial.title)
   const [defaultStart, setDefaultStart] = useState(initial.defaultStart)
   const [defaultEnd, setDefaultEnd] = useState(initial.defaultEnd)
-  const [blocks, setBlocks] = useState<BlockDraft[]>(initial.blocks)
+  const nextKey = useRef(0)
+  const keyed = (block: BlockDraft): KeyedBlock => ({ block, key: String(nextKey.current++) })
+  const [blocks, setBlocks] = useState<KeyedBlock[]>(() => initial.blocks.map(keyed))
   const [visibility, setVisibility] = useState<FeedVisibility>(initial.visibility)
   const [validationError, setValidationError] = useState<string | null>(null)
 
   const patchBlock = (i: number, patch: BlockPatch) =>
-    setBlocks((bs) => bs.map((b, j) => (j === i ? ({ ...b, ...patch } as BlockDraft) : b)))
+    setBlocks((bs) =>
+      bs.map((kb, j) => (j === i ? { ...kb, block: { ...kb.block, ...patch } as BlockDraft } : kb)),
+    )
   const removeBlock = (i: number) => setBlocks((bs) => bs.filter((_, j) => j !== i))
   const moveBlock = (i: number, dir: -1 | 1) =>
     setBlocks((bs) => {
@@ -136,13 +148,22 @@ export const ArticleEditorDialog = ({ post, onClose }: { post?: FeedPost; onClos
       ;[next[i], next[j]] = [next[j], next[i]]
       return next
     })
-  const addProse = () => setBlocks((bs) => [...bs, { markdown: '', type: 'prose' }])
+  const addProse = () => setBlocks((bs) => [...bs, keyed({ markdown: '', type: 'prose' })])
   const addChart = () =>
-    setBlocks((bs) => [...bs, { bucket: '', caption: '', end: '', metric: '', start: '', type: 'chart' }])
+    setBlocks((bs) => [
+      ...bs,
+      keyed({ bucket: '', caption: '', end: '', metric: '', start: '', type: 'chart' }),
+    ])
 
   const mutation = useMutation({
     mutationFn: () => {
-      const result = buildArticleBody({ blocks, defaultEnd, defaultStart, title, visibility })
+      const result = buildArticleBody({
+        blocks: blocks.map((kb) => kb.block),
+        defaultEnd,
+        defaultStart,
+        title,
+        visibility,
+      })
       if (!result.ok) {
         setValidationError(result.error)
         return Promise.reject(new Error('validation'))
@@ -207,10 +228,10 @@ export const ArticleEditorDialog = ({ post, onClose }: { post?: FeedPost; onClos
         </fieldset>
 
         <div class="article-blocks">
-          {blocks.map((block, i) => (
+          {blocks.map((kb, i) => (
             <ArticleBlockEditor
-              key={i}
-              block={block}
+              key={kb.key}
+              block={kb.block}
               index={i}
               total={blocks.length}
               onPatch={(patch) => patchBlock(i, patch)}
