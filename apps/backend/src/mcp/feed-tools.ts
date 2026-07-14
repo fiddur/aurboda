@@ -4,10 +4,12 @@
  * and `/feed/following` capabilities.
  */
 import {
+  createArticleBodySchema,
   followActorBodySchema,
   followersQuerySchema,
   shareActivityBodySchema,
   timelineQuerySchema,
+  updateArticleBodySchema,
   updateFeedPostBodySchema,
 } from '@aurboda/api-spec'
 import { z } from 'zod'
@@ -17,6 +19,7 @@ import type { FollowerActions } from '../services/followers.ts'
 import type { FollowActions } from '../services/following.ts'
 
 import {
+  createArticlePost,
   createFeedPost,
   deleteFeedPost,
   getActivityById,
@@ -26,6 +29,7 @@ import {
   listFeedPosts,
   updateFeedPost,
 } from '../db/index.ts'
+import { buildArticleContent, mergeArticleContent } from '../services/article.ts'
 import { serializeFeedPost } from '../services/feed.ts'
 import { serializeFollower } from '../services/followers.ts'
 import { serializeFollowing } from '../services/following.ts'
@@ -97,8 +101,42 @@ export const registerFeedTools = (
   )
 
   server.tool(
+    'create_article',
+    'Publish a long-form ARTICLE to your feed: a title, markdown prose, and inline chart blocks over locked time windows. `blocks` is an ordered list of `{type:"prose", markdown}` or `{type:"chart", metric, start?, end?, bucket?, caption?}`. A chart block over `[start, end]` re-resolves live against that window; omit its start/end to inherit `default_start`/`default_end`. Use this (not `share_activity`) for a written analysis spanning multiple charts.',
+    { ...createArticleBodySchema.shape },
+    async (body) => {
+      const built = buildArticleContent({
+        blocks: body.blocks,
+        default_end: body.default_end,
+        default_start: body.default_start,
+        title: body.title,
+      })
+      if (!built.ok) return errorResponse(built.error)
+      const record = await createArticlePost(user, { article: built.article, visibility: body.visibility })
+      return jsonResponse(await serializeFeedPost(user, record))
+    },
+  )
+
+  server.tool(
+    'update_article',
+    'Update an ARTICLE post (title, blocks, default window, visibility). Provided fields replace the stored ones; omitted fields are unchanged. The `blocks` array, when given, replaces the whole ordered block list.',
+    { id: z.string().uuid().describe('Feed post ID'), ...updateArticleBodySchema.shape },
+    async ({ id, ...body }) => {
+      const existing = await getFeedPostById(user, id)
+      if (!existing || existing.kind !== 'article' || existing.article == null) {
+        return errorResponse('Article not found')
+      }
+      const built = buildArticleContent(mergeArticleContent(existing.article, body))
+      if (!built.ok) return errorResponse(built.error)
+      const record = await updateFeedPost(user, id, { article: built.article, visibility: body.visibility })
+      if (!record) return errorResponse('Article not found')
+      return jsonResponse(await serializeFeedPost(user, record))
+    },
+  )
+
+  server.tool(
     'delete_feed_post',
-    'Delete a feed post by ID. Unpublishes it and stops its public series from resolving.',
+    'Delete a feed post (activity share or article) by ID. Unpublishes it and stops its public series from resolving.',
     { id: z.string().uuid().describe('Feed post ID') },
     async ({ id }) => {
       const existing = await getFeedPostById(user, id)

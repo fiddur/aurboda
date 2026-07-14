@@ -318,7 +318,9 @@ export { emitTimelineNotify, openTimelineChannel } from './timeline-notify.ts'
 
 // Feed posts
 export {
+  type ArticlePostInput,
   countPublicFeedPosts,
+  createArticlePost,
   createFeedPost,
   deleteFeedPost,
   type FeedPostInput,

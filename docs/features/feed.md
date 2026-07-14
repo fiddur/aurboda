@@ -26,9 +26,11 @@ A feed post has a **`kind`**:
   default window unless they override it). Charts re-resolve **live** against their
   locked window — no data snapshot. Modelled as a post kind on the same storage, so an
   article reuses the whole feed (visibility, federation, timeline, permalinks). The
-  ordered blocks live in an `article` JSONB column. _Storage + schema foundation is in
-  place; the create/edit API, MCP tools, and web rendering land in follow-up slices
-  (#935 → #937)._
+  ordered blocks live in an `article` JSONB column. Authored via `POST /feed/articles`
+  / `PATCH /feed/articles/:postId` (and the `create_article` / `update_article` MCP
+  tools). _Web rendering + editor and federation land in the remaining slices
+  (#935 → #937); an article is authored and shown on the owner's own feed but does not
+  yet fan out to followers._
 
 An **`activity`** feed post references one of the user's activities and records the
 explicit metric selection that bounds what is shared:
@@ -387,8 +389,10 @@ Owner-facing (authenticated, scoped to the caller):
 | ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | `GET /feed`                        | List my feed posts (each enriched with the shared activity's title/type and merged-span window, resolved at query time) |
 | `POST /feed/activities/:id/share`  | Publish an activity with a chosen metric selection                                                                      |
-| `PATCH /feed/:postId`              | Edit selection / visibility / attachments                                                                               |
-| `DELETE /feed/:postId`             | Unpublish (its public series stops resolving)                                                                           |
+| `POST /feed/articles`              | Publish a long-form **article** (title + prose + inline chart blocks)                                                    |
+| `PATCH /feed/articles/:postId`     | Edit an article (title / blocks / default window / visibility)                                                           |
+| `PATCH /feed/:postId`              | Edit an activity post's selection / visibility / attachments                                                            |
+| `DELETE /feed/:postId`             | Unpublish any post (an activity post's public series stops resolving)                                                    |
 | `GET /feed/following`              | List the actors I follow (accepted + pending)                                                                           |
 | `POST /feed/following`             | Follow an actor by handle (`@user@host` or actor URL)                                                                   |
 | `DELETE /feed/following/:id`       | Unfollow (sends `Undo{Follow}`)                                                                                         |
@@ -417,9 +421,11 @@ Public / federation (unauthenticated):
 | `POST /users/:username/inbox` (+ `/inbox`)     | Inbound `Follow` / `Undo{Follow}` / `Accept` / `Reject` (HTTP-Signature verified)                          |
 
 The owner-facing capability is also available over MCP as `list_feed`, `share_activity`,
-`update_feed_post`, `delete_feed_post`, `list_following`, `follow_actor`, `unfollow_actor`,
-`list_followers`, `approve_follower`, `reject_follower`, and `list_timeline` — all backed by
-the same services as the REST routes. Manual follower approval is toggled with the
+`create_article`, `update_article`, `update_feed_post`, `delete_feed_post`, `list_following`,
+`follow_actor`, `unfollow_actor`, `list_followers`, `approve_follower`, `reject_follower`, and
+`list_timeline` — all backed by the same services as the REST routes (`create_article` /
+`update_article` ↔ `POST /feed/articles` / `PATCH /feed/articles/:postId`), so an article can
+be drafted conversationally by Claude via the same tools. Manual follower approval is toggled with the
 `manually_approve_followers` user setting (`get_user_settings` / `update_user_settings`).
 
 ## Storage
