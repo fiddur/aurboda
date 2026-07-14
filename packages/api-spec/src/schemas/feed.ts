@@ -25,6 +25,7 @@
 import { z } from 'zod'
 
 import { baseResponseSchema, iso8601DateTimeSchema, metricTypeSchema } from './common.ts'
+import { selectorSchema } from './correlations.ts'
 import { feedStructuredSchema, publicSeriesSampleSchema } from './feed-structured.ts'
 import { shareVisibilityValues } from './visibility.ts'
 
@@ -155,26 +156,58 @@ export const articleChartBlockSchema = z
   })
   .meta({ description: 'A metric chart over a locked window', id: 'ArticleChartBlock' })
 
-/** An ordered content block of an article. Correlation blocks arrive in a later slice (#936). */
+/**
+ * A correlation block: a scatter of two data dimensions (a `trigger` predictor
+ * against an `outcome`) over a locked `[start, end]` window, reusing the
+ * exploratory correlation engine's selectors. Like a chart block, the window is
+ * re-resolved live (never snapshotted) and inherits the article's default window
+ * when `start`/`end` are omitted. `lag_days` shifts the outcome forward relative
+ * to the trigger (e.g. does today's training load predict tomorrow's HRV).
+ */
+export const articleCorrelationBlockSchema = z
+  .object({
+    caption: z.string().max(280).optional().meta({ description: 'Optional caption shown under the scatter' }),
+    end: iso8601DateTimeSchema
+      .optional()
+      .meta({ description: "Window end (ISO 8601); inherits the article's default window if omitted" }),
+    lag_days: z
+      .number()
+      .int()
+      .optional()
+      .meta({ description: 'Days the outcome lags the trigger (default: 0)' }),
+    outcome: selectorSchema.meta({ description: 'Outcome dimension' }),
+    start: iso8601DateTimeSchema
+      .optional()
+      .meta({ description: "Window start (ISO 8601); inherits the article's default window if omitted" }),
+    trigger: selectorSchema.meta({ description: 'Trigger / predictor dimension' }),
+    type: z.literal('correlation'),
+  })
+  .meta({ description: 'A correlation scatter over a locked window', id: 'ArticleCorrelationBlock' })
+
+/** An ordered content block of an article. */
 export const articleBlockSchema = z
-  .discriminatedUnion('type', [articleProseBlockSchema, articleChartBlockSchema])
-  .meta({ description: 'An article content block (prose or chart)', id: 'ArticleBlock' })
+  .discriminatedUnion('type', [
+    articleProseBlockSchema,
+    articleChartBlockSchema,
+    articleCorrelationBlockSchema,
+  ])
+  .meta({ description: 'An article content block (prose, chart, or correlation)', id: 'ArticleBlock' })
 
 export type ArticleBlock = z.infer<typeof articleBlockSchema>
 
 /**
  * The stored content of an article post: a title, an optional article-level
- * default window that chart blocks inherit, and the ordered blocks.
+ * default window that chart and correlation blocks inherit, and the ordered blocks.
  */
 export const articleContentSchema = z
   .object({
     blocks: z.array(articleBlockSchema).max(100).meta({ description: 'Ordered content blocks' }),
     default_end: iso8601DateTimeSchema
       .optional()
-      .meta({ description: 'Default window end inherited by chart blocks (ISO 8601)' }),
+      .meta({ description: 'Default window end inherited by chart and correlation blocks (ISO 8601)' }),
     default_start: iso8601DateTimeSchema
       .optional()
-      .meta({ description: 'Default window start inherited by chart blocks (ISO 8601)' }),
+      .meta({ description: 'Default window start inherited by chart and correlation blocks (ISO 8601)' }),
     title: z.string().min(1).max(200).meta({ description: 'Article title' }),
   })
   .meta({ id: 'ArticleContent' })
@@ -261,13 +294,13 @@ export const createArticleBodySchema = z
       .array(articleBlockSchema)
       .max(100)
       .default([])
-      .meta({ description: 'Ordered content blocks (prose + charts)' }),
+      .meta({ description: 'Ordered content blocks (prose, charts, correlations)' }),
     default_end: iso8601DateTimeSchema
       .optional()
-      .meta({ description: 'Default window end inherited by chart blocks (ISO 8601)' }),
+      .meta({ description: 'Default window end inherited by chart and correlation blocks (ISO 8601)' }),
     default_start: iso8601DateTimeSchema
       .optional()
-      .meta({ description: 'Default window start inherited by chart blocks (ISO 8601)' }),
+      .meta({ description: 'Default window start inherited by chart and correlation blocks (ISO 8601)' }),
     title: z.string().min(1).max(200).meta({ description: 'Article title' }),
     visibility: feedVisibilitySchema.default('public'),
   })

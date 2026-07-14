@@ -2,19 +2,19 @@
  * Article business logic shared by the REST `/feed/articles` routes and the MCP
  * `create_article` / `update_article` tools (parity).
  *
- * An article's chart blocks each render over a locked `[start, end]` window. A
- * block may carry its own window or inherit the article-level default; this
- * module resolves that inheritance and validates that every chart block ends up
- * with a sane bounded window, so a malformed article is rejected at the write
- * boundary rather than failing later at render time. Pure and synchronous —
- * unit-testable without a DB.
+ * An article's chart and correlation blocks each render over a locked
+ * `[start, end]` window. A block may carry its own window or inherit the
+ * article-level default; this module resolves that inheritance and validates
+ * that every windowed block ends up with a sane bounded window, so a malformed
+ * article is rejected at the write boundary rather than failing later at render
+ * time. Pure and synchronous — unit-testable without a DB.
  */
-import type { ArticleContent, UpdateArticleBody } from '@aurboda/api-spec'
+import type { ArticleBlock, ArticleContent, UpdateArticleBody } from '@aurboda/api-spec'
 
 export type BuildArticleResult = { ok: true; article: ArticleContent } | { ok: false; error: string }
 
-/** A chart block's effective window: its own override, else the article default. */
-export const chartBlockWindow = (
+/** A windowed block's effective window: its own override, else the article default. */
+export const blockWindow = (
   block: { start?: string; end?: string },
   content: { default_start?: string; default_end?: string },
 ): { start?: string; end?: string } => ({
@@ -22,23 +22,28 @@ export const chartBlockWindow = (
   start: block.start ?? content.default_start,
 })
 
+/** A human label for a block in a validation error (1-based, with the block's subject). */
+const blockLabel = (block: ArticleBlock, index: number): string =>
+  block.type === 'chart' ? `Chart block ${index + 1} (${block.metric})` : `Correlation block ${index + 1}`
+
 /**
- * Validate a fully-formed article's content: every chart block must resolve to a
- * bounded window (its own override or the article default) with start < end.
- * Returns the content to persist, or an error message for a 400.
+ * Validate a fully-formed article's content: every chart and correlation block
+ * must resolve to a bounded window (its own override or the article default)
+ * with start < end. Returns the content to persist, or an error message for a 400.
  */
 export const buildArticleContent = (content: ArticleContent): BuildArticleResult => {
   for (const [i, block] of content.blocks.entries()) {
-    if (block.type !== 'chart') continue
-    const { end, start } = chartBlockWindow(block, content)
+    if (block.type !== 'chart' && block.type !== 'correlation') continue
+    const { end, start } = blockWindow(block, content)
+    const label = blockLabel(block, i)
     if (start == null || end == null) {
       return {
-        error: `Chart block ${i + 1} (${block.metric}) has no time window — set its start/end or an article default_start/default_end.`,
+        error: `${label} has no time window — set its start/end or an article default_start/default_end.`,
         ok: false,
       }
     }
     if (new Date(start).getTime() >= new Date(end).getTime()) {
-      return { error: `Chart block ${i + 1} (${block.metric}) has start on or after end.`, ok: false }
+      return { error: `${label} has start on or after end.`, ok: false }
     }
   }
   return { article: content, ok: true }

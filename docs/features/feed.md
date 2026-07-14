@@ -21,18 +21,23 @@ A feed post has a **`kind`**:
 - **`activity`** (the default) — references one of the user's activities and shares a
   bounded metric selection (below). This is the original and, so far, only end-to-end
   kind.
-- **`article`** — a long-form post: a `title`, markdown prose, and inline **chart
-  blocks**, each over a locked `[start, end]` window (blocks inherit an article-level
-  default window unless they override it). Charts re-resolve **live** against their
-  locked window — no data snapshot. Modelled as a post kind on the same storage, so an
-  article reuses the whole feed (visibility, federation, timeline, permalinks). The
-  ordered blocks live in an `article` JSONB column. Authored via `POST /feed/articles`
-  / `PATCH /feed/articles/:postId` (and the `create_article` / `update_article` MCP
-  tools), or in the web app's article composer; prose renders through the shared
-  markdown sanitiser and each chart block draws its metric live over the locked window.
-  _Federation as an AS2 `Article` + Reddit/markdown export is the remaining slice
-  (#937); an article is authored and shown on the owner's own feed but does not yet fan
-  out to followers._
+- **`article`** — a long-form post: a `title`, markdown prose, and inline **chart** and
+  **correlation** blocks, each over a locked `[start, end]` window (blocks inherit an
+  article-level default window unless they override it). Data re-resolves **live**
+  against the locked window — no data snapshot. A **chart block** draws one metric; a
+  **correlation block** pairs a `trigger` and an `outcome` selector (the exploratory
+  correlation engine's dimensions, with an optional `lag_days`) and renders as a scatter
+  with the Pearson/Spearman coefficients and n. Modelled as a post kind on the same
+  storage, so an article reuses the whole feed (visibility, federation, timeline,
+  permalinks). The ordered blocks live in an `article` JSONB column. Authored via
+  `POST /feed/articles` / `PATCH /feed/articles/:postId` (and the `create_article` /
+  `update_article` MCP tools), or in the web app's article composer; prose renders
+  through the shared markdown sanitiser and each windowed block resolves its data live
+  over the locked window.
+  _The correlation-block scatter render and its composer UI land within this slice
+  (#936); federation as an AS2 `Article` + Reddit/markdown export is the remaining slice
+  (#937), so an article is authored and shown on the owner's own feed but does not yet
+  fan out to followers._
 
 An **`activity`** feed post references one of the user's activities and records the
 explicit metric selection that bounds what is shared:
@@ -395,7 +400,7 @@ Owner-facing (authenticated, scoped to the caller):
 | ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | `GET /feed`                        | List my feed posts (each enriched with the shared activity's title/type and merged-span window, resolved at query time) |
 | `POST /feed/activities/:id/share`  | Publish an activity with a chosen metric selection                                                                      |
-| `POST /feed/articles`              | Publish a long-form **article** (title + prose + inline chart blocks)                                                    |
+| `POST /feed/articles`              | Publish a long-form **article** (title + prose + inline chart/correlation blocks)                                        |
 | `PATCH /feed/articles/:postId`     | Edit an article (title / blocks / default window / visibility)                                                           |
 | `PATCH /feed/:postId`              | Edit an activity post's selection / visibility / attachments                                                            |
 | `DELETE /feed/:postId`             | Unpublish any post (an activity post's public series stops resolving)                                                    |
