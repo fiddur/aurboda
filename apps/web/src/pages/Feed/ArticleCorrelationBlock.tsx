@@ -38,12 +38,14 @@ const CorrelationScatterSvg = ({ data }: { data: ContinuousCorrelationData }) =>
   const sy = (y: number) => H - PAD.bottom - ((y - yMin) / (yMax - yMin || 1)) * (H - PAD.top - PAD.bottom)
   const reg = linearRegression(xs, ys)
 
+  const label = `Scatter of ${describeSelectorAxis(data.trigger)} versus ${describeSelectorAxis(data.outcome)}; r=${fmt(data.pearson)}, n=${data.n}`
+
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} class="article-scatter" role="img">
+    <svg viewBox={`0 0 ${W} ${H}`} class="article-scatter" role="img" aria-label={label}>
       <line x1={PAD.left} y1={H - PAD.bottom} x2={W - PAD.right} y2={H - PAD.bottom} stroke="#ccc" />
       <line x1={PAD.left} y1={PAD.top} x2={PAD.left} y2={H - PAD.bottom} stroke="#ccc" />
       {data.series.map((p) => (
-        <circle cx={sx(p.trigger)} cy={sy(p.outcome)} r={3} fill={POINT_COLOR} opacity={0.45} />
+        <circle key={p.date} cx={sx(p.trigger)} cy={sy(p.outcome)} r={3} fill={POINT_COLOR} opacity={0.45} />
       ))}
       {reg && (
         <line
@@ -74,8 +76,13 @@ const CorrelationScatterSvg = ({ data }: { data: ContinuousCorrelationData }) =>
   )
 }
 
-/** ISO instant → inclusive `YYYY-MM-DD` regime bound for the correlation query. */
-const toDay = (iso: string): string => new Date(iso).toISOString().slice(0, 10)
+/**
+ * ISO instant → inclusive `YYYY-MM-DD` regime bound for the correlation query.
+ * Take the date straight off the ISO string (every ISO 8601 datetime starts with
+ * `YYYY-MM-DD`) so the bound is the author's wall-clock day — not a UTC day that
+ * could roll back for a window authored with a non-UTC offset near midnight.
+ */
+const toDay = (iso: string): string => iso.slice(0, 10)
 
 export const ArticleCorrelationBlock = ({
   trigger,
