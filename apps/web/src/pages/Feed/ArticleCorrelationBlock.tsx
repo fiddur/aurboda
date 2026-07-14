@@ -38,7 +38,14 @@ const CorrelationScatterSvg = ({ data }: { data: ContinuousCorrelationData }) =>
   const sy = (y: number) => H - PAD.bottom - ((y - yMin) / (yMax - yMin || 1)) * (H - PAD.top - PAD.bottom)
   const reg = linearRegression(xs, ys)
 
-  const label = `Scatter of ${describeSelectorAxis(data.trigger)} versus ${describeSelectorAxis(data.outcome)}; r=${fmt(data.pearson)}, n=${data.n}`
+  // For a binary/presence trigger (0/1 — tags, activities, apps) a Pearson r is
+  // misleading, so lead with the present-vs-absent group comparison instead, the
+  // same call the Correlations explorer makes.
+  const gc = data.group_comparison
+  const headline = gc?.trigger_is_binary
+    ? `Δ(present−absent)=${fmt(gc.difference)} · d=${fmt(gc.cohens_d)} · n=${data.n} · p=${fmtP(gc.welch?.p_value)}`
+    : `r=${fmt(data.pearson)} · ρ=${fmt(data.spearman)} · n=${data.n} · p=${fmtP(data.pearson_p)}`
+  const label = `Scatter of ${describeSelectorAxis(data.trigger)} versus ${describeSelectorAxis(data.outcome)}; ${headline}`
 
   return (
     <svg viewBox={`0 0 ${W} ${H}`} class="article-scatter" role="img" aria-label={label}>
@@ -58,7 +65,7 @@ const CorrelationScatterSvg = ({ data }: { data: ContinuousCorrelationData }) =>
         />
       )}
       <text x={PAD.left + 6} y={PAD.top + 12} class="article-scatter-annot">
-        r={fmt(data.pearson)} · ρ={fmt(data.spearman)} · n={data.n} · p={fmtP(data.pearson_p)}
+        {headline}
       </text>
       <text x={(PAD.left + (W - PAD.right)) / 2} y={H - 8} text-anchor="middle" class="article-scatter-axis">
         {describeSelectorAxis(data.trigger)}
