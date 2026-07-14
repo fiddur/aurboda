@@ -139,6 +139,21 @@
   text-align: center;
 }
 
+.article-scatter {
+  width: 100%;
+  height: auto;
+}
+
+.article-scatter-annot {
+  font-size: 12px;
+  fill: #4b5563;
+}
+
+.article-scatter-axis {
+  font-size: 11px;
+  fill: #6b7280;
+}
+
 @media (prefers-color-scheme: dark) {
   .feed-post {
     border-color: #374151;
@@ -156,6 +171,14 @@
 
   .article-chart-title {
     color: #d1d5db;
+  }
+
+  .article-scatter-annot {
+    fill: #d1d5db;
+  }
+
+  .article-scatter-axis {
+    fill: #9ca3af;
   }
 
   .feed-post-avatar,

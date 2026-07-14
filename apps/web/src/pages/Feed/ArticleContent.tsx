@@ -2,14 +2,15 @@
  * Render an article post inline: its title followed by the ordered content
  * blocks. Prose blocks go through the shared markdown sanitiser (#910 — the XSS
  * boundary; article prose may be authored by AI or, later, a different user).
- * Chart blocks resolve their effective window (own override else the article
- * default) and render live via `ArticleChartBlock`. Correlation-block rendering
- * (a live scatter) lands in a follow-up; they're skipped here for now.
+ * Chart and correlation blocks resolve their effective window (own override else
+ * the article default) and render live via `ArticleChartBlock` /
+ * `ArticleCorrelationBlock`.
  */
 import type { ArticleContent as ArticleContentType } from '@aurboda/api-spec'
 
 import { renderMarkdown } from '../../utils/markdown'
 import { ArticleChartBlock } from './ArticleChartBlock'
+import { ArticleCorrelationBlock } from './ArticleCorrelationBlock'
 
 export const ArticleContent = ({ article }: { article: ArticleContentType }) => (
   <div class="article-content">
@@ -24,10 +25,28 @@ export const ArticleContent = ({ article }: { article: ArticleContentType }) => 
           />
         )
       }
-      // Correlation-block rendering (a live scatter) lands in a follow-up.
-      if (block.type === 'correlation') return null
       const start = block.start ?? article.default_start
       const end = block.end ?? article.default_end
+      if (block.type === 'correlation') {
+        if (start == null || end == null) {
+          return (
+            <p key={`corr-${i}`} class="article-chart-note">
+              This correlation has no time window.
+            </p>
+          )
+        }
+        return (
+          <ArticleCorrelationBlock
+            key={`corr-${i}`}
+            caption={block.caption}
+            end={end}
+            lagDays={block.lag_days}
+            outcome={block.outcome}
+            start={start}
+            trigger={block.trigger}
+          />
+        )
+      }
       if (start == null || end == null) {
         return (
           <p key={`chart-${i}`} class="article-chart-note">
