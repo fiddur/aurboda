@@ -31,7 +31,11 @@ type BlockPatch = Partial<ChartDraft> & Partial<ProseDraft>
  */
 type KeyedBlock = { key: string; block: BlockDraft }
 
-/** One editable content block (prose or chart) with its reorder / remove controls. */
+/**
+ * One content block with its reorder / remove controls. Prose and chart blocks
+ * are editable inline; a correlation block is shown read-only for now (authored
+ * over MCP/API) but can still be reordered or removed.
+ */
 const ArticleBlockEditor = ({
   block,
   index,
@@ -49,7 +53,9 @@ const ArticleBlockEditor = ({
 }) => (
   <div class="article-block">
     <div class="article-block-head">
-      <span class="article-block-kind">{block.type === 'prose' ? '¶ Prose' : '📈 Chart'}</span>
+      <span class="article-block-kind">
+        {block.type === 'prose' ? '¶ Prose' : block.type === 'correlation' ? '🔗 Correlation' : '📈 Chart'}
+      </span>
       <div class="article-block-controls">
         <button
           type="button"
@@ -81,6 +87,11 @@ const ArticleBlockEditor = ({
         onChange={(v) => onPatch({ markdown: v })}
         placeholder="Write your analysis (markdown supported)…"
       />
+    ) : block.type === 'correlation' ? (
+      <p class="share-dialog-note">
+        Correlation block — authored via Claude/MCP for now. You can reorder or remove it here; editing its
+        selectors in the composer is coming soon.
+      </p>
     ) : (
       <div class="article-chart-fields">
         <label class="article-field">

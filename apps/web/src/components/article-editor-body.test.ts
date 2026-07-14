@@ -1,4 +1,4 @@
-import type { FeedPost } from '@aurboda/api-spec'
+import type { ArticleBlock, FeedPost } from '@aurboda/api-spec'
 
 import { describe, expect, it } from 'vitest'
 
@@ -114,6 +114,27 @@ describe('deriveSubmitError', () => {
     expect(deriveSubmitError(null, new Error('Server said no'))).toBe('Server said no')
     expect(deriveSubmitError(null, new Error('validation'))).toBeNull()
     expect(deriveSubmitError(null, null)).toBeNull()
+  })
+})
+
+const correlationBlock: Extract<ArticleBlock, { type: 'correlation' }> = {
+  end: '2026-07-07T00:00:00.000Z',
+  outcome: { kind: 'metric', metric: 'sleep_score' },
+  start: '2026-07-01T00:00:00.000Z',
+  trigger: { kind: 'activity', pattern: 'exercise' },
+  type: 'correlation',
+}
+
+describe('correlation passthrough', () => {
+  it('seeds a verbatim passthrough draft from a stored correlation block', () => {
+    const post = { article: { blocks: [correlationBlock], title: 'T' }, kind: 'article' } as FeedPost
+    expect(draftsFromPost(post)).toEqual([{ block: correlationBlock, type: 'correlation' }])
+  })
+
+  it('emits the stored correlation block back unchanged (lossless round-trip)', () => {
+    const result = buildArticleBody(state({ blocks: [{ block: correlationBlock, type: 'correlation' }] }))
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.body.blocks[0]).toEqual(correlationBlock)
   })
 })
 
