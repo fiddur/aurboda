@@ -13,10 +13,17 @@
   align-items: center;
   gap: 1rem;
   margin-bottom: 1rem;
+  /* Let the Share button wrap to a new line instead of being pushed off-screen
+     by a long, non-wrapping `@handle` on narrow viewports (#906). */
+  flex-wrap: wrap;
 }
 
 .public-profile-header h1 {
   margin: 0;
+  /* A long handle has no spaces to break on; allow it to wrap and shrink within
+     the row rather than forcing the row wider than the viewport. */
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .public-avatar {

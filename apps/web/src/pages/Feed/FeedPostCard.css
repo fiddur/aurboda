@@ -12,6 +12,10 @@
   display: flex;
   align-items: center;
   gap: 0.6rem;
+  /* This is a semantic <header>, which the global `header` rule paints purple
+     (a hidden legacy top-bar, re-shown here by `display: flex`). Clear it so the
+     card doesn't get a purple banner behind the handle (#916). */
+  background: none;
 }
 
 .feed-post-avatar {
