@@ -7,7 +7,9 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import { deleteActivity, insertActivity } from './activities/index.ts'
 import {
+  type ArticlePostInput,
   countPublicFeedPosts,
+  createArticlePost,
   createFeedPost,
   deleteFeedPost,
   type FeedPostInput,
@@ -44,6 +46,27 @@ const postInput = (overrides: Partial<FeedPostInput> = {}): FeedPostInput => ({
   ...overrides,
 })
 
+const articleInput = (overrides: Partial<ArticlePostInput> = {}): ArticlePostInput => ({
+  article: {
+    blocks: [
+      { markdown: '# Sleep vs HRV\n\nA look at the last week.', type: 'prose' },
+      {
+        bucket: '1h',
+        caption: 'Resting HR over the week',
+        end: '2026-07-07T00:00:00.000Z',
+        metric: 'heart_rate',
+        start: '2026-07-01T00:00:00.000Z',
+        type: 'chart',
+      },
+    ],
+    default_end: '2026-07-07T00:00:00.000Z',
+    default_start: '2026-07-01T00:00:00.000Z',
+    title: 'A week of sleep and HRV',
+  },
+  visibility: 'public',
+  ...overrides,
+})
+
 describe('Feed posts integration', () => {
   beforeAll(async () => {
     await startTestDb()
@@ -70,6 +93,9 @@ describe('Feed posts integration', () => {
     expect(created.included_metrics).toEqual(['duration', 'distance', 'heart_rate_avg'])
     expect(created.series_metrics).toEqual(['heart_rate'])
     expect(created.visibility).toBe('public')
+    // An activity share defaults to the `activity` kind and carries no article.
+    expect(created.kind).toBe('activity')
+    expect(created.article).toBeNull()
 
     const fetched = await getFeedPostById(user, created.id)
     expect(fetched?.id).toBe(created.id)
@@ -182,6 +208,63 @@ describe('Feed posts integration', () => {
       expect((await listPublicFeedPostsPage(user, 2, 0)).map((p) => p.id)).toEqual([c.id, b.id])
       expect((await listPublicFeedPostsPage(user, 2, 2)).map((p) => p.id)).toEqual([a.id])
       expect(await listPublicFeedPostsPage(user, 2, 4)).toEqual([])
+    })
+  })
+
+  describe('article posts', () => {
+    test('creates an article and round-trips the JSONB payload by id', async () => {
+      const user = getTestUser()
+      const created = await createArticlePost(user, articleInput())
+
+      expect(created.kind).toBe('article')
+      expect(created.activity_id).toBeNull()
+      expect(created.included_metrics).toEqual([])
+      expect(created.series_metrics).toEqual([])
+      expect(created.article?.title).toBe('A week of sleep and HRV')
+      expect(created.article?.blocks).toHaveLength(2)
+      expect(created.article?.blocks[0]).toEqual({
+        markdown: '# Sleep vs HRV\n\nA look at the last week.',
+        type: 'prose',
+      })
+      expect(created.article?.default_start).toBe('2026-07-01T00:00:00.000Z')
+
+      // The parsed JSONB survives a fresh read.
+      const fetched = await getFeedPostById(user, created.id)
+      expect(fetched?.kind).toBe('article')
+      expect(fetched?.article).toEqual(created.article)
+    })
+
+    test('replaces the whole article payload on update, touching updated_at', async () => {
+      const user = getTestUser()
+      const created = await createArticlePost(user, articleInput())
+
+      const nextArticle = {
+        blocks: [{ markdown: 'Rewritten.', type: 'prose' as const }],
+        title: 'Revised analysis',
+      }
+      const updated = await updateFeedPost(user, created.id, {
+        article: nextArticle,
+        visibility: 'unlisted',
+      })
+      expect(updated?.article).toEqual(nextArticle)
+      expect(updated?.article?.default_start).toBeUndefined() // replaced, not merged
+      expect(updated?.visibility).toBe('unlisted')
+      expect(updated?.updated_at.getTime()).toBeGreaterThanOrEqual(created.updated_at.getTime())
+    })
+
+    test('appears in the owner feed and the public outbox listings', async () => {
+      const user = getTestUser()
+      const article = await createArticlePost(user, articleInput({ visibility: 'public' }))
+      expect((await listFeedPosts(user)).map((p) => p.id)).toContain(article.id)
+      const publicPosts = await listPublicFeedPosts(user)
+      expect(publicPosts.map((p) => p.id)).toContain(article.id)
+      expect(publicPosts.find((p) => p.id === article.id)?.article?.title).toBe('A week of sleep and HRV')
+    })
+
+    test('a followers-only article stays out of the public outbox', async () => {
+      const user = getTestUser()
+      await createArticlePost(user, articleInput({ visibility: 'followers' }))
+      expect(await listPublicFeedPosts(user)).toEqual([])
     })
   })
 

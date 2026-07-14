@@ -142,6 +142,7 @@ export const tableCreationOrder = [
   'challenge_participations',
   'challenge_participations_indexes',
   'feed_posts',
+  'feed_posts_article_columns',
   'feed_posts_indexes',
   'feed_tombstone',
   'feed_actor',

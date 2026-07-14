@@ -108,19 +108,32 @@ export const socialTables: Record<string, string> = {
   // server can fetch them even though the endpoint is otherwise unauthenticated —
   // the fediverse fetches media without HTTP signatures, so a signed-request gate
   // wouldn't be exercised. `public`/`unlisted` images need no token.
+  // `kind` discriminates an `activity` post (shares an activity — the default and
+  // the only kind before articles) from an `article` post (long-form prose + inline
+  // chart blocks). An article's content — title, default window, ordered blocks —
+  // lives in the `article` JSONB and its `activity_id`/metric columns stay empty;
+  // an activity post leaves `article` NULL. Modelled as a kind on the same table so
+  // articles reuse the whole feed (visibility, federation, timeline, permalinks).
   feed_posts: `
     CREATE TABLE IF NOT EXISTS feed_posts (
       id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      kind              VARCHAR(12) NOT NULL DEFAULT 'activity',
       activity_id       UUID,
       included_metrics  TEXT[] NOT NULL DEFAULT '{}',
       series_metrics    TEXT[] NOT NULL DEFAULT '{}',
       visibility        VARCHAR(12) NOT NULL DEFAULT 'public',
       include_map       BOOLEAN NOT NULL DEFAULT false,
       include_chart     BOOLEAN NOT NULL DEFAULT false,
+      article           JSONB,
       image_token       TEXT NOT NULL DEFAULT gen_random_uuid()::text,
       created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
+  `,
+  // Additive columns for feed_posts tables created before the article kind (all idempotent).
+  feed_posts_article_columns: `
+    ALTER TABLE feed_posts ADD COLUMN IF NOT EXISTS kind VARCHAR(12) NOT NULL DEFAULT 'activity';
+    ALTER TABLE feed_posts ADD COLUMN IF NOT EXISTS article JSONB;
   `,
   // `idx_feed_posts_series` is a GIN index over the shared-series set — the hot
   // path for the public series endpoint's `metric = ANY(series_metrics)` check.

@@ -99,12 +99,16 @@ export const serializeFeedPost = async (user: string, record: FeedPostRecord): P
     activity_start_time: activity?.start_time.toISOString(),
     activity_title: activity?.title,
     activity_type: activity?.activity_type,
+    // The stored article payload (title + default window + blocks); present only
+    // for `article` posts, which carry no activity and so no resolved `content`.
+    article: record.article ?? undefined,
     content,
     created_at: record.created_at.toISOString(),
     id: record.id,
     include_chart: record.include_chart,
     include_map: record.include_map,
     included_metrics: record.included_metrics,
+    kind: record.kind,
     series_metrics: record.series_metrics,
     updated_at: record.updated_at.toISOString(),
     visibility: record.visibility,

@@ -14,12 +14,14 @@ const activity: ImageActivity = {
 
 const makePost = (overrides: Partial<FeedPostRecord> = {}): FeedPostRecord => ({
   activity_id: ACTIVITY_ID,
+  article: null,
   created_at: new Date('2026-07-01T08:00:00Z'),
   id: POST_ID,
   image_token: 'secret-token',
   include_chart: true,
   include_map: true,
   included_metrics: [],
+  kind: 'activity',
   series_metrics: [],
   updated_at: new Date('2026-07-01T08:00:00Z'),
   visibility: 'public',
