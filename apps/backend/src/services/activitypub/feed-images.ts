@@ -2,7 +2,9 @@
  * Render feed-post attachment images (a metric line chart and a GPS route map)
  * as PNGs, from raw series / coordinate data.
  *
- * The chart is a pure, self-contained SVG rasterized with `sharp`. The route map
+ * The chart SVG is built by the shared `buildChartSvg` renderer (so the feed PNG
+ * and the crisp `image/svg+xml` path stay one implementation) and rasterized here
+ * with `sharp`. The route map
  * is drawn over an **OpenStreetMap street basemap**: the track is projected into
  * Web Mercator (the tiles' projection), the covering tiles are fetched and
  * composited behind it, and the required "© OpenStreetMap contributors"
@@ -14,10 +16,9 @@
  */
 import sharp from 'sharp'
 
+import { buildChartSvg } from '../charts/chart-svg.ts'
 import { chooseZoom, latToWorldY, lonToWorldX, TILE_SIZE, type TileFetcher } from './osm-tiles.ts'
 
-const CHART_W = 1000
-const CHART_H = 420
 const ROUTE_W = 700
 const ROUTE_H = 700
 const PAD = 40
@@ -51,45 +52,16 @@ const mapWithConcurrency = async <T, R>(
 
 const svgToPng = (svg: string): Promise<Buffer> => sharp(Buffer.from(svg)).png().toBuffer()
 
-/** Scale a value from `[min, max]` into `[lo, hi]`; collapses to the midpoint when the range is empty. */
-const scale = (v: number, min: number, max: number, lo: number, hi: number): number =>
-  max === min ? (lo + hi) / 2 : lo + ((v - min) / (max - min)) * (hi - lo)
-
 /**
- * A metric line chart (e.g. heart rate). `series` is `[time, value]` pairs,
- * assumed time-ordered; non-finite values are dropped. Renders a bg, a smooth
- * polyline, and min/max value labels.
+ * A metric line chart (e.g. heart rate) rasterized to PNG for the feed
+ * attachment. The SVG itself is built by the shared `buildChartSvg` renderer (so
+ * the `image/svg+xml` and PNG paths stay one implementation); this only adds the
+ * `sharp` rasterization.
  */
-export const renderChartPng = async (
+export const renderChartPng = (
   series: [Date, number][],
   opts: { color?: string; label?: string } = {},
-): Promise<Buffer> => {
-  const color = opts.color ?? '#ef4444'
-  const pts = series.filter(([, v]) => Number.isFinite(v))
-  const times = pts.map(([t]) => t.getTime())
-  const vals = pts.map(([, v]) => v)
-  const tMin = Math.min(...times)
-  const tMax = Math.max(...times)
-  const vMin = Math.min(...vals)
-  const vMax = Math.max(...vals)
-
-  const x = (t: number) => scale(t, tMin, tMax, PAD, CHART_W - PAD)
-  const y = (v: number) => scale(v, vMin, vMax, CHART_H - PAD, PAD)
-  const polyline = pts.map(([t, v]) => `${x(t.getTime()).toFixed(1)},${y(v).toFixed(1)}`).join(' ')
-
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${CHART_W}" height="${CHART_H}" viewBox="0 0 ${CHART_W} ${CHART_H}">
-  <rect width="${CHART_W}" height="${CHART_H}" fill="#0b0f19" rx="16"/>
-  ${pts.length >= 2 ? `<polyline points="${polyline}" fill="none" stroke="${color}" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>` : ''}
-  <text x="${PAD}" y="${PAD - 12}" fill="#e5e7eb" font-family="Liberation Sans, sans-serif" font-size="26" font-weight="700">${escapeXml(opts.label ?? 'Heart rate')}</text>
-  <text x="${CHART_W - PAD}" y="${PAD}" fill="#9ca3af" font-family="Liberation Sans, sans-serif" font-size="22" text-anchor="end">${Number.isFinite(vMax) ? Math.round(vMax) : ''}</text>
-  <text x="${CHART_W - PAD}" y="${CHART_H - PAD}" fill="#9ca3af" font-family="Liberation Sans, sans-serif" font-size="22" text-anchor="end">${Number.isFinite(vMin) ? Math.round(vMin) : ''}</text>
-</svg>`
-  return svgToPng(svg)
-}
-
-/** Escape text for safe inclusion in SVG. */
-const escapeXml = (s: string): string =>
-  s.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;')
+): Promise<Buffer> => svgToPng(buildChartSvg(series, opts))
 
 const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, v))
 
