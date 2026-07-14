@@ -10,6 +10,8 @@
  */
 import {
   type BaseResponse,
+  type CreateArticleBody,
+  createArticleBodySchema,
   type FeedPostResponse,
   type FeedPostsResponse,
   type ShareActivityBody,
@@ -17,6 +19,8 @@ import {
   type TimelineQuery,
   timelineQuerySchema,
   type TimelineResponse,
+  type UpdateArticleBody,
+  updateArticleBodySchema,
   type UpdateFeedPostBody,
   updateFeedPostBodySchema,
 } from '@aurboda/api-spec'
@@ -25,6 +29,7 @@ import type { Activity, FeedPostRecord } from '../db/index.ts'
 import type { TimelineHub } from '../services/timeline-hub.ts'
 
 import {
+  createArticlePost,
   createFeedPost,
   deleteFeedPost,
   getActivityById,
@@ -32,6 +37,7 @@ import {
   listFeedPosts,
   updateFeedPost,
 } from '../db/index.ts'
+import { buildArticleContent, mergeArticleContent } from '../services/article.ts'
 import { serializeFeedPost } from '../services/feed.ts'
 import { getTimelinePage } from '../services/timeline.ts'
 import { type AnyMiddleware, type TypedRouter, typedRouter } from '../typed-router.ts'
@@ -150,6 +156,53 @@ export const createFeedRouter = (
       })
       // Fan the post out to followers (best-effort; never blocks the response).
       deliver?.created(user, record, activity)
+      res.json({ post: await serializeFeedPost(user, record), success: true })
+    },
+  )
+
+  // Article posts (long-form: title + prose + inline chart blocks). Create/edit
+  // have their own body shape; delete reuses `DELETE /:postId`. Registered before
+  // the generic `/:postId` routes. Federation of articles is a later slice, so
+  // these do not (yet) call `deliver` — an article is authored and shown on the
+  // owner's feed but does not fan out to followers until then.
+  router.post<Record<string, never>, FeedPostResponse, CreateArticleBody>(
+    '/articles',
+    authMiddleware,
+    validateBody(createArticleBodySchema),
+    async (req, res) => {
+      const user = req.user!
+      const built = buildArticleContent({
+        blocks: req.body.blocks,
+        default_end: req.body.default_end,
+        default_start: req.body.default_start,
+        title: req.body.title,
+      })
+      if (!built.ok) return res.status(400).json({ error: built.error, success: false })
+      const record = await createArticlePost(user, {
+        article: built.article,
+        visibility: req.body.visibility,
+      })
+      res.json({ post: await serializeFeedPost(user, record), success: true })
+    },
+  )
+
+  router.patch<{ postId: string }, FeedPostResponse, UpdateArticleBody>(
+    '/articles/:postId',
+    authMiddleware,
+    validateBody(updateArticleBodySchema),
+    async (req, res) => {
+      const user = req.user!
+      const existing = await getFeedPostById(user, req.params.postId)
+      if (!existing || existing.kind !== 'article' || existing.article == null) {
+        return res.status(404).json({ error: 'Article not found', success: false })
+      }
+      const built = buildArticleContent(mergeArticleContent(existing.article, req.body))
+      if (!built.ok) return res.status(400).json({ error: built.error, success: false })
+      const record = await updateFeedPost(user, req.params.postId, {
+        article: built.article,
+        visibility: req.body.visibility,
+      })
+      if (!record) return res.status(404).json({ error: 'Article not found', success: false })
       res.json({ post: await serializeFeedPost(user, record), success: true })
     },
   )
