@@ -196,6 +196,19 @@ attribute to the sender (so an accepted followee can't overwrite another actor's
 colliding its id); and `published_at` is **clamped to "not in the future"** on ingest (it's the
 sort key, so a far-future timestamp would otherwise pin a post to the top).
 
+**Backfill on follow.** So the timeline isn't empty until a new followee next posts, accepting
+a follow triggers a one-off **backfill**: the followee's recent **public** posts are fetched
+from their ActivityPub **outbox** and ingested through the exact same path as live delivery
+(same sanitisation, image capture, structured enrichment, and `object_uri` upsert — so a
+backfilled post that later arrives live just updates in place). It's driven off the `Accept`,
+so it covers **remote** followees (on their server's Accept) and **local** ones alike (a local
+follow auto-accepts through the same handler). Only the **outbox** is read, so `followers`-only
+and older private posts are never backfilled — exactly what a non-follower could already see.
+Backfill is **best-effort and bounded**: fire-and-forget (a slow or unreachable outbox never
+blocks the follow), capped at the latest ~20 posts, and time-boxed. Backfilled posts are
+historical, so they don't trigger the live **"N new posts"** pill — they simply appear in the
+timeline on the next load, in their published order.
+
 ### Native charts from Aurboda peers (structured enrichment)
 
 A delivered `Note` carries only the Mastodon-compatible HTML — Fedify's typed vocab drops the

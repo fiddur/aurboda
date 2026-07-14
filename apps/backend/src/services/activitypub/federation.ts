@@ -43,6 +43,7 @@ import {
   countFeedFollowers,
   countPublicFeedPosts,
   deleteTimelineEntryByUri,
+  type FeedFollowingRecord,
   getFeedFollowerByActor,
   getFeedFollowingByActor,
   getFeedPostById,
@@ -141,6 +142,38 @@ const recordInboundFollow = async (
  * sanitised in `noteToTimelineInput`. Best-effort: unresolvable objects and
  * non-Notes are ignored, and a missing DB never 500s (which would invite retries).
  */
+/**
+ * Ingest one `Note` from an accepted followee into `user`'s home timeline: map it
+ * to a timeline entry (author from the cached `feed_following` row, content
+ * sanitised), capture its image attachments, best-effort fetch the native Aurboda
+ * structured chart, and upsert keyed on the Note's id (so a redelivery or edit
+ * replaces in place). `onNewEntry` fires only for a genuinely new row — the
+ * on-follow backfill omits it, since its historical posts aren't "new".
+ *
+ * Shared by inbound `Create`/`Update` delivery and the backfill, so both build a
+ * timeline entry identically.
+ */
+export const ingestNoteForRecipient = async (
+  user: string,
+  note: Note,
+  followee: FeedFollowingRecord,
+  enrich: (objectUri: string, token?: string) => Promise<FeedStructured | null>,
+  onNewEntry?: (user: string) => void,
+): Promise<void> => {
+  const input = noteToTimelineInput(note, followee)
+  if (input == null) return
+  // Capture the Note's image attachments (rendered chart / route map, or a
+  // Mastodon photo) so the timeline can show them when there's no native chart.
+  const images = await extractNoteImages(note)
+  // Best-effort: fetch the native structured payload if this is an Aurboda post
+  // (null otherwise). A followers-only post authorizes the fetch with the same
+  // capability token embedded in its delivered image URL. Stored on the entry so
+  // the web can render a native chart in place of the image.
+  const structured = await enrich(input.object_uri, capabilityTokenFrom(images))
+  const { inserted } = await upsertTimelineEntry(user, { ...input, images, structured })
+  if (inserted) onNewEntry?.(user)
+}
+
 const ingestFeedActivity = async (
   ctx: InboxContext<void>,
   activity: Create | Update,
@@ -160,19 +193,7 @@ const ingestFeedActivity = async (
     if (follow == null || !follow.accepted) return
     const object = await activity.getObject({ suppressError: true })
     if (!(object instanceof Note)) return
-    const input = noteToTimelineInput(object, follow)
-    if (input == null) return
-    // Capture the Note's image attachments (rendered chart / route map, or a
-    // Mastodon photo) so the timeline can show them when there's no native chart.
-    const images = await extractNoteImages(object)
-    // Best-effort: fetch the native structured payload if this is an Aurboda post
-    // (null otherwise). A followers-only post authorizes the fetch with the same
-    // capability token embedded in its delivered image URL. Stored on the entry so
-    // the web can render a native chart in place of the image.
-    const structured = await enrich(input.object_uri, capabilityTokenFrom(images))
-    const { inserted } = await upsertTimelineEntry(me, { ...input, images, structured })
-    // Ping live subscribers only for a genuinely new post (not an edit/redelivery).
-    if (inserted) onNewEntry?.(me)
+    await ingestNoteForRecipient(me, object, follow, enrich, onNewEntry)
   } catch (error) {
     if (isMissingDatabase(error)) return
     throw error
@@ -184,6 +205,11 @@ export const createFeedFederation = (
   apiBaseUrl: string,
   /** Fire-and-forget: called with the recipient when a genuinely new post is ingested. */
   onNewTimelineEntry?: (user: string) => void,
+  /**
+   * Fire-and-forget: called with `(recipient, followeeActorUri)` when a follow WE
+   * sent becomes accepted, to backfill the followee's recent public posts.
+   */
+  onFollowAccepted?: (user: string, actorUri: string) => void,
 ): Federation<void> => {
   const federation = createFederation<void>({
     kv: new MemoryKvStore(),
@@ -298,6 +324,12 @@ export const createFeedFederation = (
         if (isMissingDatabase(error)) return
         throw error
       }
+      // The follow is now established → backfill the followee's recent public
+      // posts so the timeline isn't empty until they next post. Fire-and-forget
+      // (a slow/large outbox must never block inbox processing), and after the
+      // accept is durably recorded. Covers remote *and* local follows: a local
+      // followee's auto-Accept loops back through this same handler.
+      onFollowAccepted?.(me, accept.actorId.href)
     })
     .on(Reject, async (ctx, reject) => {
       // Reject of a Follow we sent — the followee declined; drop our pending row.

@@ -59,6 +59,7 @@ import { createFeedTombstoneRouter } from './routes/feed-tombstone-router.ts'
 import { createOAuthRouter } from './routes/oauth-router.ts'
 import { deliverFeedDelete, deliverFeedPost, deliverFeedUpdate } from './services/activitypub/deliver.ts'
 import { createFeedFederation } from './services/activitypub/federation.ts'
+import { createTimelineBackfiller } from './services/activitypub/timeline-backfill.ts'
 import { auditError } from './services/audit-log.ts'
 import { triggerCalorieComputation } from './services/calorie-computation.ts'
 import { createCalorieQueue, type CalorieQueue } from './services/calorie-queue.ts'
@@ -331,7 +332,14 @@ const main = async () => {
   // MCP feed tools, and the REST feed router). `feedDeliver` fans a shared post
   // out to followers, fire-and-forget, so it's identical whether a post is
   // created via MCP or REST.
-  const feedFederation = createFeedFederation(webHost, apiBaseUrl, onNewTimelineEntry)
+  // On a follow being accepted, backfill the followee's recent public posts into
+  // the follower's timeline (fire-and-forget, time-boxed). `backfill` is defined
+  // just below and only invoked later (on an inbound Accept), so the forward
+  // reference is safe.
+  const feedFederation = createFeedFederation(webHost, apiBaseUrl, onNewTimelineEntry, (user, actorUri) =>
+    backfill(user, actorUri),
+  )
+  const backfill = createTimelineBackfiller(feedFederation, webHost)
   const feedDeps = { apiBaseUrl, federation: feedFederation, origin: webHost }
   const onDeliverError = (op: string, user: string, postId: string) => (err: unknown) =>
     console.error(`⚠️ feed ${op} delivery failed for ${user}/${postId}:`, err)
