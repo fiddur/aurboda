@@ -1,0 +1,118 @@
+/* Article composer — reuses the .share-dialog-* shell (see ShareActivityDialog.css)
+   and adds the block-list layout. */
+.article-editor {
+  max-width: 640px;
+}
+
+.article-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0.5rem 0;
+  flex: 1;
+  min-width: 0;
+}
+
+.article-field-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #4b5563;
+}
+
+.article-input {
+  padding: 0.45rem 0.6rem;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font: inherit;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.article-window {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.article-blocks {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin: 0.75rem 0;
+}
+
+.article-block {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 0.6rem 0.75rem;
+  background: #fafafa;
+}
+
+.article-block-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.4rem;
+}
+
+.article-block-kind {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #4b5563;
+}
+
+.article-block-controls {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.btn-icon {
+  border: 1px solid #d1d5db;
+  background: #fff;
+  border-radius: 6px;
+  width: 1.9rem;
+  height: 1.9rem;
+  line-height: 1;
+  cursor: pointer;
+  color: #4b5563;
+}
+
+.btn-icon:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.article-chart-fields {
+  display: flex;
+  flex-direction: column;
+}
+
+.article-add-block {
+  display: flex;
+  gap: 0.5rem;
+  margin: 0.5rem 0 0.75rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  .article-field-label,
+  .article-block-kind {
+    color: #d1d5db;
+  }
+
+  .article-input {
+    background: #111827;
+    border-color: #374151;
+    color: #e5e7eb;
+  }
+
+  .article-block {
+    background: #1f2937;
+    border-color: #374151;
+  }
+
+  .btn-icon {
+    background: #111827;
+    border-color: #374151;
+    color: #d1d5db;
+  }
+}

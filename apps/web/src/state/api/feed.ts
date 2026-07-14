@@ -1,4 +1,5 @@
 import type {
+  CreateArticleBody,
   FeedPost,
   FeedPostResponse,
   FeedPostsResponse,
@@ -11,6 +12,7 @@ import type {
   FollowingResponse,
   ShareActivityBody,
   TimelineResponse,
+  UpdateArticleBody,
   UpdateFeedPostBody,
 } from '@aurboda/api-spec'
 
@@ -44,6 +46,36 @@ export const updateFeedPost = async (postId: string, body: UpdateFeedPostBody): 
   const response = await axios.patch<FeedPostResponse>(`${API_URL}/feed/${postId}`, body, {
     headers: authHeaders(),
   })
+  if (!response.data.post) throw new Error('Update failed: no post returned')
+  return response.data.post
+}
+
+/** Publish a long-form article (title + prose + inline chart blocks) to the feed. */
+export const createArticle = async (body: CreateArticleBody): Promise<FeedPost> => {
+  let response
+  try {
+    response = await axios.post<FeedPostResponse>(`${API_URL}/feed/articles`, body, {
+      headers: authHeaders(),
+    })
+  } catch (error) {
+    // Surface the server's window-validation reason (e.g. "Chart block 1
+    // (heart_rate) has start on or after end.") instead of a generic HTTP string.
+    throw new Error(apiErrorMessage(error, 'Couldn’t publish the article. Please try again.'))
+  }
+  if (!response.data.post) throw new Error('Create failed: no post returned')
+  return response.data.post
+}
+
+/** Edit an article post (title, blocks, default window, visibility). */
+export const updateArticle = async (postId: string, body: UpdateArticleBody): Promise<FeedPost> => {
+  let response
+  try {
+    response = await axios.patch<FeedPostResponse>(`${API_URL}/feed/articles/${postId}`, body, {
+      headers: authHeaders(),
+    })
+  } catch (error) {
+    throw new Error(apiErrorMessage(error, 'Couldn’t save the article. Please try again.'))
+  }
   if (!response.data.post) throw new Error('Update failed: no post returned')
   return response.data.post
 }

@@ -38,6 +38,14 @@
   font-size: 1.1rem;
 }
 
+.feed-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
 /* Following management panel. */
 .following-panel {
   border: 1px solid #e5e7eb;

@@ -89,14 +89,73 @@
   margin-top: 0.75rem;
 }
 
+/* Article posts: title + prose/chart blocks rendered inline in the card. */
+.article-content {
+  margin-top: 0.5rem;
+  color: #1f2937;
+  overflow-wrap: anywhere;
+}
+
+.article-title {
+  font-size: 1.2rem;
+  font-weight: 700;
+  margin: 0 0 0.5rem;
+  color: #111827;
+}
+
+.article-prose {
+  margin: 0.5rem 0;
+}
+
+.article-prose p {
+  margin: 0 0 0.4rem;
+}
+
+.article-prose p:last-child {
+  margin-bottom: 0;
+}
+
+.article-chart {
+  margin: 0.75rem 0;
+}
+
+.article-chart-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #4b5563;
+  margin-bottom: 0.2rem;
+}
+
+.article-chart-note {
+  font-size: 0.85rem;
+  color: #6b7280;
+  font-style: italic;
+}
+
+.article-chart-caption {
+  font-size: 0.8rem;
+  color: #6b7280;
+  margin-top: 0.25rem;
+  text-align: center;
+}
+
 @media (prefers-color-scheme: dark) {
   .feed-post {
     border-color: #374151;
   }
 
   .feed-post-name,
-  .feed-post-content {
+  .feed-post-content,
+  .article-content {
     color: #e5e7eb;
+  }
+
+  .article-title {
+    color: #f3f4f6;
+  }
+
+  .article-chart-title {
+    color: #d1d5db;
   }
 
   .feed-post-avatar,
