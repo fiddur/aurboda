@@ -66,6 +66,7 @@ import { createWellKnownRouter, type WellKnownConfig } from '../routes/well-know
 import { renderChartPng, renderRoutePng } from '../services/activitypub/feed-images.ts'
 import { fetchOsmTile } from '../services/activitypub/osm-tiles.ts'
 import { loadAvatarDataUri } from '../services/avatar-resolve.ts'
+import { buildChartSvg } from '../services/charts/chart-svg.ts'
 import { resolveFeedActivity } from '../services/feed.ts'
 import { createOgImageRenderer } from '../services/og-image.ts'
 import { createTemplateLoader } from '../services/web-template.ts'
@@ -177,6 +178,7 @@ export const mountRestRouters = ({
         (await getLocations(user, start, end)).locations.map((l) => l.coordinates),
       getSeries: getTimeSeries,
       renderChart: renderChartPng,
+      renderChartSvg: buildChartSvg,
       // Draw the route over the OSM basemap; falls back to a bare shape if tiles
       // can't be fetched (e.g. offline).
       renderRoute: (coords) => renderRoutePng(coords, { fetchTile: fetchOsmTile }),

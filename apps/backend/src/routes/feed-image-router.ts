@@ -4,9 +4,13 @@ import { type Response, Router } from 'express'
  * Public feed-post image endpoints (UNAUTHENTICATED).
  *
  * Handles: GET /public/:username/feed/:postId/chart.png
+ *          GET /public/:username/feed/:postId/chart.svg
  *          GET /public/:username/feed/:postId/route.png
  *
- * Rendered on demand from the shared activity's data. An image is served for a
+ * The chart is offered both ways from the same series over the same window: a
+ * rasterised PNG that every consumer understands (Mastodon attaches it) and a
+ * crisp, scalable `image/svg+xml` for Aurboda-native rendering (#901). Rendered
+ * on demand from the shared activity's data. An image is served for a
  * `public`/`unlisted` post that opted into that attachment (`include_chart` /
  * `include_map`); a `followers`-only post is served only when the request carries
  * the post's unguessable capability `?token=` (embedded solely in the Note
@@ -36,6 +40,8 @@ export interface FeedImageDeps {
   getSeries: (user: string, metric: string, start: Date, end: Date) => Promise<[Date, number][]>
   getRoute: (user: string, start: Date, end: Date) => Promise<[number, number][]>
   renderChart: (series: [Date, number][]) => Promise<Buffer>
+  /** Build the crisp `image/svg+xml` chart (same data as `renderChart`, no raster). */
+  renderChartSvg: (series: [Date, number][]) => string
   renderRoute: (coords: [number, number][]) => Promise<Buffer>
 }
 
@@ -113,6 +119,11 @@ const sendPng = (res: Response, png: Buffer) => {
   res.type('png').send(png)
 }
 
+const sendSvg = (res: Response, svg: Buffer) => {
+  res.setHeader('Cache-Control', 'no-store') // revocable, same as the PNG
+  res.type('image/svg+xml').send(svg)
+}
+
 export const createFeedImageRouter = (deps: FeedImageDeps): Router => {
   const router = Router()
   const cached = createRenderCache()
@@ -129,6 +140,23 @@ export const createFeedImageRouter = (deps: FeedImageDeps): Router => {
     })
     if (!png) return notFound(res)
     sendPng(res, png)
+  })
+
+  router.get('/public/:username/feed/:postId/chart.svg', async (req, res) => {
+    const { postId, username } = req.params
+    const token = typeof req.query.token === 'string' ? req.query.token : undefined
+    const activity = await resolveImageWindow(deps, username, postId, 'include_chart', token)
+    if (!activity?.end_time) return notFound(res)
+    const { end_time, start_time } = activity
+    // Cached under a distinct key from the PNG; the built SVG string is stored as
+    // its UTF-8 bytes so it shares the same buffer LRU (the DB series fetch is the
+    // cost worth caching, not the string build).
+    const svg = await cached(`chartsvg:${username}:${postId}`, async () => {
+      const series = await deps.getSeries(username, 'heart_rate', start_time, end_time)
+      return series.length === 0 ? null : Buffer.from(deps.renderChartSvg(series), 'utf8')
+    })
+    if (!svg) return notFound(res)
+    sendSvg(res, svg)
   })
 
   router.get('/public/:username/feed/:postId/route.png', async (req, res) => {
