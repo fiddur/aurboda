@@ -7,6 +7,7 @@ import {
   buildArticleBody,
   deriveSubmitError,
   draftsFromPost,
+  emptyCorrelationDraft,
   toInputValue,
   toIso,
 } from './article-editor-body'
@@ -118,23 +119,60 @@ describe('deriveSubmitError', () => {
 })
 
 const correlationBlock: Extract<ArticleBlock, { type: 'correlation' }> = {
+  caption: 'HRV vs training',
   end: '2026-07-07T00:00:00.000Z',
+  lag_days: 1,
   outcome: { kind: 'metric', metric: 'sleep_score' },
   start: '2026-07-01T00:00:00.000Z',
   trigger: { kind: 'activity', pattern: 'exercise' },
   type: 'correlation',
 }
 
-describe('correlation passthrough', () => {
-  it('seeds a verbatim passthrough draft from a stored correlation block', () => {
+const completeCorrelationDraft = () => ({
+  ...emptyCorrelationDraft(),
+  outcome: { kind: 'metric' as const, metric: 'sleep_score' },
+  trigger: { kind: 'activity' as const, pattern: 'exercise' },
+})
+
+describe('correlation drafts', () => {
+  it('seeds an editable draft from a stored correlation block', () => {
     const post = { article: { blocks: [correlationBlock], title: 'T' }, kind: 'article' } as FeedPost
-    expect(draftsFromPost(post)).toEqual([{ block: correlationBlock, type: 'correlation' }])
+    expect(draftsFromPost(post)).toEqual([
+      {
+        caption: 'HRV vs training',
+        end: toInputValue('2026-07-07T00:00:00.000Z'),
+        lagDays: '1',
+        outcome: { kind: 'metric', metric: 'sleep_score' },
+        start: toInputValue('2026-07-01T00:00:00.000Z'),
+        trigger: { kind: 'activity', pattern: 'exercise' },
+        type: 'correlation',
+      },
+    ])
   })
 
-  it('emits the stored correlation block back unchanged (lossless round-trip)', () => {
-    const result = buildArticleBody(state({ blocks: [{ block: correlationBlock, type: 'correlation' }] }))
+  it('round-trips a stored correlation block through seed → build (lossless)', () => {
+    const post = { article: { blocks: [correlationBlock], title: 'T' }, kind: 'article' } as FeedPost
+    const result = buildArticleBody(state({ blocks: draftsFromPost(post) }))
     expect(result.ok).toBe(true)
     if (result.ok) expect(result.body.blocks[0]).toEqual(correlationBlock)
+  })
+
+  it('rejects a correlation block with an unfilled trigger', () => {
+    const result = buildArticleBody(state({ blocks: [emptyCorrelationDraft()] }))
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.error).toContain('trigger')
+  })
+
+  it('omits empty optional fields (no window / lag / caption)', () => {
+    const result = buildArticleBody(state({ blocks: [completeCorrelationDraft()] }))
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.body.blocks[0]).toEqual({
+        outcome: { kind: 'metric', metric: 'sleep_score' },
+        trigger: { kind: 'activity', pattern: 'exercise' },
+        type: 'correlation',
+      })
+    }
   })
 })
 

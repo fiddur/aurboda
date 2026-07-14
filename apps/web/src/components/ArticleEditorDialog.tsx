@@ -1,27 +1,34 @@
-import type { FeedPost, FeedVisibility } from '@aurboda/api-spec'
+import type { CorrelationSelectorsData, FeedPost, FeedVisibility } from '@aurboda/api-spec'
 
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRef, useState } from 'preact/hooks'
 
 /**
  * Compose or edit a long-form **article** feed post: a title, an optional
- * article-level default time window, and an ordered list of prose / chart blocks.
- * Passing an existing `post` (kind `article`) switches to edit mode (PATCH);
- * otherwise it creates one (POST). Prose is written in the shared MarkdownEditor;
- * a chart block picks a metric and an optional window (inheriting the article
- * default when left blank) — the same shape Claude drafts over MCP.
+ * article-level default time window, and an ordered list of prose / chart /
+ * correlation blocks. Passing an existing `post` (kind `article`) switches to
+ * edit mode (PATCH); otherwise it creates one (POST). Prose is written in the
+ * shared MarkdownEditor; a chart block picks a metric and an optional window; a
+ * correlation block picks a trigger + outcome selector — the same shapes Claude
+ * drafts over MCP. Windowed blocks inherit the article default when left blank.
  */
-import type { BlockDraft, ChartDraft, ProseDraft } from './article-editor-body'
+import type { BlockDraft, ChartDraft, CorrelationDraft, ProseDraft } from './article-editor-body'
 
-import { createArticle, updateArticle } from '../state/api'
-import { buildArticleBody, deriveSubmitError, initialArticleEditorState } from './article-editor-body'
+import { createArticle, fetchCorrelationSelectors, updateArticle } from '../state/api'
+import {
+  buildArticleBody,
+  deriveSubmitError,
+  emptyCorrelationDraft,
+  initialArticleEditorState,
+} from './article-editor-body'
 import { MarkdownEditor } from './MarkdownEditor'
 import { MetricPicker } from './MetricPicker'
+import { ALL_SELECTOR_KINDS, SelectorPicker } from './SelectorPicker'
 import { FEED_VISIBILITY_OPTIONS, VisibilitySelector } from './VisibilitySelector'
 import './ShareActivityDialog.css'
 import './ArticleEditorDialog.css'
 
-type BlockPatch = Partial<ChartDraft> & Partial<ProseDraft>
+type BlockPatch = Partial<ChartDraft> & Partial<CorrelationDraft> & Partial<ProseDraft>
 
 /**
  * A draft block plus a stable identity, used only as the React `key`. Blocks are
@@ -31,15 +38,86 @@ type BlockPatch = Partial<ChartDraft> & Partial<ProseDraft>
  */
 type KeyedBlock = { key: string; block: BlockDraft }
 
+/** The editable fields of a correlation block: trigger + outcome selectors, window, lag, caption. */
+const CorrelationBlockFields = ({
+  block,
+  selectors,
+  onPatch,
+}: {
+  block: CorrelationDraft
+  selectors: CorrelationSelectorsData | undefined
+  onPatch: (patch: BlockPatch) => void
+}) => (
+  <div class="article-chart-fields">
+    <label class="article-field">
+      <span class="article-field-label">Trigger (predictor)</span>
+      <SelectorPicker
+        value={block.trigger}
+        onChange={(s) => onPatch({ trigger: s })}
+        selectors={selectors}
+        allowedKinds={ALL_SELECTOR_KINDS}
+      />
+    </label>
+    <label class="article-field">
+      <span class="article-field-label">Outcome</span>
+      <SelectorPicker
+        value={block.outcome}
+        onChange={(s) => onPatch({ outcome: s })}
+        selectors={selectors}
+        allowedKinds={ALL_SELECTOR_KINDS}
+      />
+    </label>
+    <div class="article-window">
+      <label class="article-field">
+        <span class="article-field-label">From (optional)</span>
+        <input
+          type="datetime-local"
+          class="article-input"
+          value={block.start}
+          onInput={(e) => onPatch({ start: (e.target as HTMLInputElement).value })}
+        />
+      </label>
+      <label class="article-field">
+        <span class="article-field-label">To (optional)</span>
+        <input
+          type="datetime-local"
+          class="article-input"
+          value={block.end}
+          onInput={(e) => onPatch({ end: (e.target as HTMLInputElement).value })}
+        />
+      </label>
+    </div>
+    <label class="article-field">
+      <span class="article-field-label">Lag days (optional)</span>
+      <input
+        type="number"
+        class="article-input"
+        value={block.lagDays}
+        placeholder="0 — days the outcome lags the trigger"
+        onInput={(e) => onPatch({ lagDays: (e.target as HTMLInputElement).value })}
+      />
+    </label>
+    <label class="article-field">
+      <span class="article-field-label">Caption (optional)</span>
+      <input
+        type="text"
+        class="article-input"
+        value={block.caption}
+        onInput={(e) => onPatch({ caption: (e.target as HTMLInputElement).value })}
+      />
+    </label>
+  </div>
+)
+
 /**
- * One content block with its reorder / remove controls. Prose and chart blocks
- * are editable inline; a correlation block is shown read-only for now (authored
- * over MCP/API) but can still be reordered or removed.
+ * One content block with its reorder / remove controls. Prose, chart, and
+ * correlation blocks are all editable inline.
  */
 const ArticleBlockEditor = ({
   block,
   index,
   total,
+  selectors,
   onPatch,
   onMove,
   onRemove,
@@ -47,6 +125,7 @@ const ArticleBlockEditor = ({
   block: BlockDraft
   index: number
   total: number
+  selectors: CorrelationSelectorsData | undefined
   onPatch: (patch: BlockPatch) => void
   onMove: (dir: -1 | 1) => void
   onRemove: () => void
@@ -88,10 +167,7 @@ const ArticleBlockEditor = ({
         placeholder="Write your analysis (markdown supported)…"
       />
     ) : block.type === 'correlation' ? (
-      <p class="share-dialog-note">
-        Correlation block — authored via Claude/MCP for now. You can reorder or remove it here; editing its
-        selectors in the composer is coming soon.
-      </p>
+      <CorrelationBlockFields block={block} selectors={selectors} onPatch={onPatch} />
     ) : (
       <div class="article-chart-fields">
         <label class="article-field">
@@ -136,6 +212,11 @@ export const ArticleEditorDialog = ({ post, onClose }: { post?: FeedPost; onClos
   const queryClient = useQueryClient()
   const editing = post?.kind === 'article'
   const [initial] = useState(() => initialArticleEditorState(post))
+  const { data: selectors } = useQuery({
+    queryFn: fetchCorrelationSelectors,
+    queryKey: ['correlationSelectors'],
+    staleTime: 5 * 60 * 1000,
+  })
 
   const [title, setTitle] = useState(initial.title)
   const [defaultStart, setDefaultStart] = useState(initial.defaultStart)
@@ -165,6 +246,7 @@ export const ArticleEditorDialog = ({ post, onClose }: { post?: FeedPost; onClos
       ...bs,
       keyed({ bucket: '', caption: '', end: '', metric: '', start: '', type: 'chart' }),
     ])
+  const addCorrelation = () => setBlocks((bs) => [...bs, keyed(emptyCorrelationDraft())])
 
   const mutation = useMutation({
     mutationFn: () => {
@@ -245,6 +327,7 @@ export const ArticleEditorDialog = ({ post, onClose }: { post?: FeedPost; onClos
               block={kb.block}
               index={i}
               total={blocks.length}
+              selectors={selectors}
               onPatch={(patch) => patchBlock(i, patch)}
               onMove={(dir) => moveBlock(i, dir)}
               onRemove={() => removeBlock(i)}
@@ -258,6 +341,9 @@ export const ArticleEditorDialog = ({ post, onClose }: { post?: FeedPost; onClos
           </button>
           <button type="button" class="btn-secondary" onClick={addChart}>
             + Chart
+          </button>
+          <button type="button" class="btn-secondary" onClick={addCorrelation}>
+            + Correlation
           </button>
         </div>
 

@@ -4,7 +4,13 @@
  * `buildShareBody`). Handles the `datetime-local` ⇄ ISO conversion, seeding the
  * editor from an existing post, and building/validating the create/update body.
  */
-import type { ArticleBlock, CreateArticleBody, FeedPost, FeedVisibility } from '@aurboda/api-spec'
+import type {
+  ArticleBlock,
+  CorrelationSelector,
+  CreateArticleBody,
+  FeedPost,
+  FeedVisibility,
+} from '@aurboda/api-spec'
 
 import { isValidMetric } from '@aurboda/api-spec'
 
@@ -21,17 +27,34 @@ export interface ChartDraft {
   bucket: string
   caption: string
 }
-/**
- * A correlation block, kept verbatim. The web composer can't yet author or edit
- * correlation blocks (they're created over MCP/API); this passthrough lets the
- * editor round-trip an existing one — reorder/remove it — without dropping it.
- * A dedicated editing UI (selector pickers) lands in a follow-up.
- */
+/** A correlation block: a trigger×outcome scatter over the block's (or article's) window. */
 export interface CorrelationDraft {
   type: 'correlation'
-  block: Extract<ArticleBlock, { type: 'correlation' }>
+  trigger: CorrelationSelector
+  outcome: CorrelationSelector
+  /** `datetime-local` value ('' = inherit the article default window). */
+  start: string
+  end: string
+  /** Number-input value ('' = no lag). */
+  lagDays: string
+  caption: string
 }
 export type BlockDraft = ChartDraft | CorrelationDraft | ProseDraft
+
+/** A fresh correlation draft for the "+ Correlation" button (empty selectors). */
+export const emptyCorrelationDraft = (): CorrelationDraft => ({
+  caption: '',
+  end: '',
+  lagDays: '',
+  outcome: { kind: 'metric', metric: '' },
+  start: '',
+  trigger: { kind: 'activity', pattern: '' },
+  type: 'correlation',
+})
+
+/** A selector the author hasn't finished filling in (no metric / no pattern). */
+const selectorIncomplete = (s: CorrelationSelector): boolean =>
+  s.kind === 'metric' ? !s.metric.trim() : s.kind === 'nutrition' ? false : !s.pattern.trim()
 
 export interface ArticleEditorState {
   title: string
@@ -61,7 +84,17 @@ export const draftsFromPost = (post?: FeedPost): BlockDraft[] => {
   if (!post?.article) return []
   return post.article.blocks.map((b): BlockDraft => {
     if (b.type === 'prose') return { markdown: b.markdown, type: 'prose' }
-    if (b.type === 'correlation') return { block: b, type: 'correlation' }
+    if (b.type === 'correlation') {
+      return {
+        caption: b.caption ?? '',
+        end: toInputValue(b.end),
+        lagDays: b.lag_days != null ? String(b.lag_days) : '',
+        outcome: b.outcome,
+        start: toInputValue(b.start),
+        trigger: b.trigger,
+        type: 'correlation',
+      }
+    }
     return {
       bucket: b.bucket ?? '',
       caption: b.caption ?? '',
@@ -93,11 +126,55 @@ export const deriveSubmitError = (validationError: string | null, mutationError:
   return null
 }
 
+type BlockResult = { block: ArticleBlock } | { error: string }
+
+/** Build one chart block from its draft, or a validation error. */
+const buildChartBlock = (b: ChartDraft, i: number): BlockResult => {
+  if (!isValidMetric(b.metric)) {
+    // An empty pick vs. an unsupported (custom) metric — article charts accept
+    // only built-in metric types (the picker offers only those, but an article
+    // edited elsewhere could still carry one).
+    const error = b.metric
+      ? `Chart block ${i + 1}: “${b.metric}” can't be charted in an article (custom metrics aren't supported yet).`
+      : `Pick a metric for chart block ${i + 1}.`
+    return { error }
+  }
+  return {
+    block: {
+      metric: b.metric,
+      type: 'chart',
+      ...(toIso(b.start) ? { start: toIso(b.start) } : {}),
+      ...(toIso(b.end) ? { end: toIso(b.end) } : {}),
+      ...(b.bucket ? { bucket: b.bucket } : {}),
+      ...(b.caption.trim() ? { caption: b.caption.trim() } : {}),
+    },
+  }
+}
+
+/** Build one correlation block from its draft, or a validation error. */
+const buildCorrelationBlock = (b: CorrelationDraft, i: number): BlockResult => {
+  const missing = selectorIncomplete(b.trigger) ? 'trigger' : selectorIncomplete(b.outcome) ? 'outcome' : null
+  if (missing) return { error: `Correlation block ${i + 1}: choose a ${missing} (metric or pattern).` }
+  const lag = Number(b.lagDays)
+  return {
+    block: {
+      outcome: b.outcome,
+      trigger: b.trigger,
+      type: 'correlation',
+      ...(toIso(b.start) ? { start: toIso(b.start) } : {}),
+      ...(toIso(b.end) ? { end: toIso(b.end) } : {}),
+      ...(b.lagDays.trim() && Number.isFinite(lag) && lag !== 0 ? { lag_days: lag } : {}),
+      ...(b.caption.trim() ? { caption: b.caption.trim() } : {}),
+    },
+  }
+}
+
 /**
  * Build the create/update request body from the editor state, or return a
- * validation error. Requires a title and a valid metric on every chart block;
- * empty optional fields are omitted. The server re-validates chart windows
- * (`buildArticleContent`), so this only guards what the form can catch early.
+ * validation error. Requires a title, a valid metric on every chart block, and a
+ * filled-in trigger + outcome on every correlation block; empty optional fields
+ * are omitted. The server re-validates windows (`buildArticleContent`), so this
+ * only guards what the form can catch early.
  */
 export const buildArticleBody = (state: ArticleEditorState): BuildResult => {
   if (!state.title.trim()) return { error: 'Give your article a title.', ok: false }
@@ -108,27 +185,9 @@ export const buildArticleBody = (state: ArticleEditorState): BuildResult => {
       blocks.push({ markdown: b.markdown, type: 'prose' })
       continue
     }
-    if (b.type === 'correlation') {
-      blocks.push(b.block)
-      continue
-    }
-    if (!isValidMetric(b.metric)) {
-      // An empty pick vs. an unsupported (custom) metric — article charts accept
-      // only built-in metric types (the picker offers only those, but an article
-      // edited elsewhere could still carry one).
-      const error = b.metric
-        ? `Chart block ${i + 1}: “${b.metric}” can't be charted in an article (custom metrics aren't supported yet).`
-        : `Pick a metric for chart block ${i + 1}.`
-      return { error, ok: false }
-    }
-    blocks.push({
-      metric: b.metric,
-      type: 'chart',
-      ...(toIso(b.start) ? { start: toIso(b.start) } : {}),
-      ...(toIso(b.end) ? { end: toIso(b.end) } : {}),
-      ...(b.bucket ? { bucket: b.bucket } : {}),
-      ...(b.caption.trim() ? { caption: b.caption.trim() } : {}),
-    })
+    const built = b.type === 'correlation' ? buildCorrelationBlock(b, i) : buildChartBlock(b, i)
+    if ('error' in built) return { error: built.error, ok: false }
+    blocks.push(built.block)
   }
 
   return {
