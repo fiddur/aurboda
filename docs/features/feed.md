@@ -266,8 +266,15 @@ unauthenticated endpoints:
 
 ```
 GET /api/public/:username/feed/:postId/chart.png
+GET /api/public/:username/feed/:postId/chart.svg
 GET /api/public/:username/feed/:postId/route.png
 ```
+
+The chart is offered in two formats over the same series and window: the **PNG** is
+what Mastodon and other peers attach, while **`chart.svg`** serves the same chart as
+crisp, scalable `image/svg+xml` for **Aurboda-native** rendering (it stays sharp at
+any size). Both share the same eligibility gate, capability-token model, and
+`no-store` revocability.
 
 An image is served when the matching flag was opted into. `public`/`unlisted` posts
 serve their images unauthenticated. A `followers`-only post's image URLs instead carry
@@ -383,7 +390,8 @@ Public / federation (unauthenticated):
 | ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
 | `GET /public/:username/series`                 | Bucketed samples for a **shared** series within its window                                                 |
 | `GET /public/:username/feed/:postId`           | Native structured post (`FeedStructured`: typed metrics + inline series) for Aurboda-to-Aurboda enrichment |
-| `GET /public/:username/feed/:postId/chart.png` | Rendered HR chart for an opted-in post (`?token=` for followers-only)                                      |
+| `GET /public/:username/feed/:postId/chart.png` | Rendered HR chart (PNG) for an opted-in post (`?token=` for followers-only)                                |
+| `GET /public/:username/feed/:postId/chart.svg` | Same HR chart as crisp `image/svg+xml` for Aurboda-native rendering (`?token=` for followers-only)         |
 | `GET /public/:username/feed/:postId/route.png` | Rendered GPS route map for an opted-in post (`?token=` for followers-only)                                 |
 | `GET /public/:username/posts`                  | A user's public/unlisted posts (newest-first, latest page) for their profile feed                          |
 | `GET /.well-known/webfinger`                   | Resolve `acct:<username>@<host>` → the actor                                                               |
