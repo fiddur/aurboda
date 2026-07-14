@@ -1,4 +1,4 @@
-import type { FeedVisibility } from '@aurboda/api-spec'
+import type { ArticleContent, FeedPostKind, FeedVisibility } from '@aurboda/api-spec'
 
 /**
  * Feed posts — activities a user published to their federated feed.
@@ -16,12 +16,16 @@ import { query } from './connection.ts'
 
 export interface FeedPostRecord {
   id: string
+  /** `activity` (shares an activity) or `article` (long-form prose + chart blocks). */
+  kind: FeedPostKind
   activity_id: string | null
   included_metrics: string[]
   series_metrics: string[]
   visibility: FeedVisibility
   include_map: boolean
   include_chart: boolean
+  /** Stored article payload (title + default window + blocks); null for `activity` posts. */
+  article: ArticleContent | null
   /** Unguessable capability token for `followers`-only image URLs (see schema). */
   image_token: string
   created_at: Date
@@ -37,25 +41,36 @@ export interface FeedPostInput {
   include_chart: boolean
 }
 
+/** Input for creating an `article` post (no activity anchor / shared metrics). */
+export interface ArticlePostInput {
+  visibility: FeedVisibility
+  article: ArticleContent
+}
+
 export interface FeedPostPatch {
   included_metrics?: string[]
   series_metrics?: string[]
   visibility?: FeedVisibility
   include_map?: boolean
   include_chart?: boolean
+  /** Replacement article payload (whole `article` JSONB), for editing an article post. */
+  article?: ArticleContent
 }
 
 const FEED_POST_COLUMNS =
-  'id, activity_id, included_metrics, series_metrics, visibility, include_map, include_chart, image_token, created_at, updated_at'
+  'id, kind, activity_id, included_metrics, series_metrics, visibility, include_map, include_chart, article, image_token, created_at, updated_at'
 
 interface FeedPostRow {
   id: string
+  kind: FeedPostKind
   activity_id: string | null
   included_metrics: string[]
   series_metrics: string[]
   visibility: FeedVisibility
   include_map: boolean
   include_chart: boolean
+  // pg parses a jsonb column to its JS value on read (null for `activity` posts).
+  article: ArticleContent | null
   image_token: string
   created_at: Date
   updated_at: Date
@@ -78,6 +93,22 @@ export const createFeedPost = async (user: string, input: FeedPostInput): Promis
       input.include_map,
       input.include_chart,
     ],
+  )
+  return mapFeedPost(result.rows[0])
+}
+
+/**
+ * Create an `article` post: no activity anchor and no shared metrics, just the
+ * article payload (title + default window + blocks) in the `article` JSONB. The
+ * `kind`/`activity_id`/metric columns fall to their table defaults where not set.
+ */
+export const createArticlePost = async (user: string, input: ArticlePostInput): Promise<FeedPostRecord> => {
+  const result = await query<FeedPostRow>(
+    user,
+    `INSERT INTO feed_posts (kind, visibility, article)
+     VALUES ('article', $1, $2)
+     RETURNING ${FEED_POST_COLUMNS}`,
+    [input.visibility, JSON.stringify(input.article)],
   )
   return mapFeedPost(result.rows[0])
 }
@@ -162,6 +193,7 @@ export const updateFeedPost = async (
   if (patch.visibility !== undefined) set('visibility', patch.visibility)
   if (patch.include_map !== undefined) set('include_map', patch.include_map)
   if (patch.include_chart !== undefined) set('include_chart', patch.include_chart)
+  if (patch.article !== undefined) set('article', JSON.stringify(patch.article))
 
   if (sets.length === 0) return getFeedPostById(user, id)
 

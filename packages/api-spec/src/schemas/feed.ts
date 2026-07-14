@@ -100,6 +100,87 @@ export const updateFeedPostBodySchema = z
 
 export type UpdateFeedPostBody = z.infer<typeof updateFeedPostBodySchema>
 
+// =============================================================================
+// Article posts (long-form: title + markdown prose + inline chart blocks)
+// =============================================================================
+
+/**
+ * The kind of a feed post. `activity` (the default) shares one of the user's
+ * activities; `article` is a long-form post carrying markdown prose and inline
+ * chart blocks over locked time windows. Modelled as a post *kind* rather than a
+ * separate entity so articles reuse the whole feed (visibility, federation, home
+ * timeline, the public-profile feed, permalinks).
+ */
+export const feedPostKindSchema = z
+  .enum(['activity', 'article'])
+  .meta({ description: 'Feed post kind: an activity share or a long-form article', id: 'FeedPostKind' })
+
+export type FeedPostKind = z.infer<typeof feedPostKindSchema>
+
+/** A prose block: a run of markdown, rendered through the shared sanitiser (#910). */
+export const articleProseBlockSchema = z
+  .object({
+    markdown: z
+      .string()
+      .max(20_000)
+      .meta({ description: 'Markdown prose (rendered to sanitised HTML at the sink)' }),
+    type: z.literal('prose'),
+  })
+  .meta({ description: 'A markdown prose block', id: 'ArticleProseBlock' })
+
+/**
+ * A chart block: one shared metric drawn over a locked `[start, end]` window.
+ * The window is what makes the chart stable and citable — data is re-resolved
+ * live against it, never snapshotted. When `start`/`end` are omitted the block
+ * inherits the article's default window.
+ */
+export const articleChartBlockSchema = z
+  .object({
+    bucket: z
+      .string()
+      .regex(/^\d+[smhd]$/, 'Must be {number}{unit} where unit is s, m, h, or d')
+      .optional()
+      .meta({
+        description: 'Bucket granularity (e.g. `5s`, `1h`, `1d`); the server picks a default if omitted',
+      }),
+    caption: z.string().max(280).optional().meta({ description: 'Optional caption shown under the chart' }),
+    end: iso8601DateTimeSchema
+      .optional()
+      .meta({ description: "Window end (ISO 8601); inherits the article's default window if omitted" }),
+    metric: metricTypeSchema.meta({ description: 'The metric to chart' }),
+    start: iso8601DateTimeSchema
+      .optional()
+      .meta({ description: "Window start (ISO 8601); inherits the article's default window if omitted" }),
+    type: z.literal('chart'),
+  })
+  .meta({ description: 'A metric chart over a locked window', id: 'ArticleChartBlock' })
+
+/** An ordered content block of an article. Correlation blocks arrive in a later slice (#936). */
+export const articleBlockSchema = z
+  .discriminatedUnion('type', [articleProseBlockSchema, articleChartBlockSchema])
+  .meta({ description: 'An article content block (prose or chart)', id: 'ArticleBlock' })
+
+export type ArticleBlock = z.infer<typeof articleBlockSchema>
+
+/**
+ * The stored content of an article post: a title, an optional article-level
+ * default window that chart blocks inherit, and the ordered blocks.
+ */
+export const articleContentSchema = z
+  .object({
+    blocks: z.array(articleBlockSchema).max(100).meta({ description: 'Ordered content blocks' }),
+    default_end: iso8601DateTimeSchema
+      .optional()
+      .meta({ description: 'Default window end inherited by chart blocks (ISO 8601)' }),
+    default_start: iso8601DateTimeSchema
+      .optional()
+      .meta({ description: 'Default window start inherited by chart blocks (ISO 8601)' }),
+    title: z.string().min(1).max(200).meta({ description: 'Article title' }),
+  })
+  .meta({ id: 'ArticleContent' })
+
+export type ArticleContent = z.infer<typeof articleContentSchema>
+
 /** A feed post as seen by its owner. */
 export const feedPostSchema = z
   .object({
@@ -129,6 +210,11 @@ export const feedPostSchema = z
       .string()
       .optional()
       .meta({ description: "The shared activity's type (e.g. `exercise`)" }),
+    // Present only for `article` posts (the stored title + default window +
+    // ordered blocks); absent for `activity` posts.
+    article: articleContentSchema
+      .optional()
+      .meta({ description: 'Article content, present only for `article` posts' }),
     // The exact HTML `content` that federates for this post (headline + shared
     // scalar summary), so a client can render the post WYSIWYG — matching what
     // Mastodon shows — instead of reconstructing it from the metric keys. Absent
@@ -142,6 +228,7 @@ export const feedPostSchema = z
     include_chart: z.boolean().meta({ description: 'Whether a chart image is attached' }),
     include_map: z.boolean().meta({ description: 'Whether a route-map image is attached' }),
     included_metrics: z.array(z.string()).meta({ description: 'Shared scalar-summary metric keys' }),
+    kind: feedPostKindSchema.meta({ description: 'Post kind (`activity` or `article`)' }),
     series_metrics: z.array(z.string()).meta({ description: 'Explicitly-shared series metrics' }),
     updated_at: z.string().meta({ description: 'Last update timestamp (ISO 8601)' }),
     visibility: feedVisibilitySchema,
@@ -163,6 +250,47 @@ export const feedPostsResponseSchema = baseResponseSchema
   .meta({ id: 'FeedPostsResponse' })
 
 export type FeedPostsResponse = z.infer<typeof feedPostsResponseSchema>
+
+/**
+ * Body for creating an article post. No activity anchor and no shared
+ * metrics/series — an article carries its own title, default window, and blocks.
+ */
+export const createArticleBodySchema = z
+  .object({
+    blocks: z
+      .array(articleBlockSchema)
+      .max(100)
+      .default([])
+      .meta({ description: 'Ordered content blocks (prose + charts)' }),
+    default_end: iso8601DateTimeSchema
+      .optional()
+      .meta({ description: 'Default window end inherited by chart blocks (ISO 8601)' }),
+    default_start: iso8601DateTimeSchema
+      .optional()
+      .meta({ description: 'Default window start inherited by chart blocks (ISO 8601)' }),
+    title: z.string().min(1).max(200).meta({ description: 'Article title' }),
+    visibility: feedVisibilitySchema.default('public'),
+  })
+  .meta({ id: 'CreateArticleBody' })
+
+export type CreateArticleBody = z.infer<typeof createArticleBodySchema>
+
+/** Body for editing an article post (all fields optional; a given field replaces the stored one). */
+export const updateArticleBodySchema = z
+  .object({
+    blocks: z
+      .array(articleBlockSchema)
+      .max(100)
+      .optional()
+      .meta({ description: 'Replacement ordered content blocks' }),
+    default_end: iso8601DateTimeSchema.optional().meta({ description: 'Default window end (ISO 8601)' }),
+    default_start: iso8601DateTimeSchema.optional().meta({ description: 'Default window start (ISO 8601)' }),
+    title: z.string().min(1).max(200).optional().meta({ description: 'Article title' }),
+    visibility: feedVisibilitySchema.optional(),
+  })
+  .meta({ id: 'UpdateArticleBody' })
+
+export type UpdateArticleBody = z.infer<typeof updateArticleBodySchema>
 
 // =============================================================================
 // Following (the actors this user follows — inbound feed direction)

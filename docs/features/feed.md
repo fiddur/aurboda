@@ -16,8 +16,22 @@ The feed is built on [Fedify](https://fedify.dev). It has three layers:
 
 ## Feed posts
 
-A **feed post** references one of the user's activities and records the explicit metric
-selection that bounds what is shared:
+A feed post has a **`kind`**:
+
+- **`activity`** (the default) — references one of the user's activities and shares a
+  bounded metric selection (below). This is the original and, so far, only end-to-end
+  kind.
+- **`article`** — a long-form post: a `title`, markdown prose, and inline **chart
+  blocks**, each over a locked `[start, end]` window (blocks inherit an article-level
+  default window unless they override it). Charts re-resolve **live** against their
+  locked window — no data snapshot. Modelled as a post kind on the same storage, so an
+  article reuses the whole feed (visibility, federation, timeline, permalinks). The
+  ordered blocks live in an `article` JSONB column. _Storage + schema foundation is in
+  place; the create/edit API, MCP tools, and web rendering land in follow-up slices
+  (#935 → #937)._
+
+An **`activity`** feed post references one of the user's activities and records the
+explicit metric selection that bounds what is shared:
 
 - **`included_metrics`** — the scalar summaries the user opted to share (e.g.
   `duration`, `distance`, `heart_rate_avg`, `heart_rate_max`, `hr_zone_minutes`,
@@ -410,7 +424,10 @@ the same services as the REST routes. Manual follower approval is toggled with t
 
 ## Storage
 
-Feed posts live in the user's own database in the `feed_posts` table. `activity_id` is a
+Feed posts live in the user's own database in the `feed_posts` table. A `kind` column
+discriminates an `activity` post from an `article` post; an article's content (title +
+default window + ordered blocks) lives in a nullable `article` JSONB column, and its
+`activity_id`/metric columns stay empty. `activity_id` is a
 **soft reference** (no foreign key): activities are soft-deleted and the series lookup
 re-checks `deleted_at` at query time, so a removed activity simply stops resolving rather
 than cascading a delete. A GIN index over `series_metrics` backs the public series
