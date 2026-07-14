@@ -1,4 +1,5 @@
 import type {
+  CreateArticleBody,
   FeedPost,
   FeedPostResponse,
   FeedPostsResponse,
@@ -11,6 +12,7 @@ import type {
   FollowingResponse,
   ShareActivityBody,
   TimelineResponse,
+  UpdateArticleBody,
   UpdateFeedPostBody,
 } from '@aurboda/api-spec'
 
@@ -42,6 +44,24 @@ export const fetchFeed = async (): Promise<FeedPost[]> => {
 /** Update a shared post's metric selection, series opt-in, or visibility. */
 export const updateFeedPost = async (postId: string, body: UpdateFeedPostBody): Promise<FeedPost> => {
   const response = await axios.patch<FeedPostResponse>(`${API_URL}/feed/${postId}`, body, {
+    headers: authHeaders(),
+  })
+  if (!response.data.post) throw new Error('Update failed: no post returned')
+  return response.data.post
+}
+
+/** Publish a long-form article (title + prose + inline chart blocks) to the feed. */
+export const createArticle = async (body: CreateArticleBody): Promise<FeedPost> => {
+  const response = await axios.post<FeedPostResponse>(`${API_URL}/feed/articles`, body, {
+    headers: authHeaders(),
+  })
+  if (!response.data.post) throw new Error('Create failed: no post returned')
+  return response.data.post
+}
+
+/** Edit an article post (title, blocks, default window, visibility). */
+export const updateArticle = async (postId: string, body: UpdateArticleBody): Promise<FeedPost> => {
+  const response = await axios.patch<FeedPostResponse>(`${API_URL}/feed/articles/${postId}`, body, {
     headers: authHeaders(),
   })
   if (!response.data.post) throw new Error('Update failed: no post returned')

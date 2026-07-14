@@ -28,9 +28,11 @@ A feed post has a **`kind`**:
   article reuses the whole feed (visibility, federation, timeline, permalinks). The
   ordered blocks live in an `article` JSONB column. Authored via `POST /feed/articles`
   / `PATCH /feed/articles/:postId` (and the `create_article` / `update_article` MCP
-  tools). _Web rendering + editor and federation land in the remaining slices
-  (#935 → #937); an article is authored and shown on the owner's own feed but does not
-  yet fan out to followers._
+  tools), or in the web app's article composer; prose renders through the shared
+  markdown sanitiser and each chart block draws its metric live over the locked window.
+  _Federation as an AS2 `Article` + Reddit/markdown export is the remaining slice
+  (#937); an article is authored and shown on the owner's own feed but does not yet fan
+  out to followers._
 
 An **`activity`** feed post references one of the user's activities and records the
 explicit metric selection that bounds what is shared:
@@ -358,11 +360,15 @@ resolving.
 
 - **Share** — an activity's detail page has a **Share to feed** button. It opens a dialog
   to pick the summary metrics, optionally opt into full series, and choose the audience.
+- **New article** — the **Feed** page has a **New article** button that opens the article
+  composer: a title, an optional default time window, and an ordered list of **prose**
+  (markdown) and **chart** blocks (a metric + optional per-block window + caption), plus
+  the audience. Each chart draws its metric live over the locked window.
 - **Manage** — the **Feed** page (`/feed`, the 📣 item under the **Sharing** section in
   the sidebar) lists everything
   you've shared, with each post's audience and metrics. From there you can **Edit** a
-  post (re-opens the dialog; saving federates an `Update`) or **Unshare** it (federates a
-  `Delete`).
+  post — an activity share re-opens the share dialog (saving federates an `Update`); an
+  article re-opens the article composer — or **Unshare** it (federates a `Delete`).
 - **Follow** — the Feed page's **Following** panel lets you follow a fediverse actor by
   handle (`@user@host`) and see who you follow, with a **Pending** badge until the remote
   server accepts and an **Unfollow** button.

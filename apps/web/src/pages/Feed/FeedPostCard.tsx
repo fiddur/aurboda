@@ -13,6 +13,7 @@ import type { ComponentChildren } from 'preact'
 import { formatDistanceToNow } from 'date-fns'
 
 import { API_URL } from '../../config'
+import { ArticleContent } from './ArticleContent'
 import './FeedPostCard.css'
 
 export interface PostAuthor {
@@ -69,9 +70,13 @@ export const FeedPostCard = ({
         </div>
       </header>
 
-      {/* Server-generated, HTML-escaped `content` (see serializeFeedPost) — safe
-          to render directly. Remote timeline content will need sanitising. */}
-      {post.content ? (
+      {/* An article renders its own title + prose/chart blocks (prose sanitised
+          via the shared sanitiser). Otherwise the activity post's server-built,
+          HTML-escaped `content` (see serializeFeedPost) is safe to render
+          directly; remote timeline content will need sanitising. */}
+      {post.kind === 'article' && post.article ? (
+        <ArticleContent article={post.article} />
+      ) : post.content ? (
         <div class="feed-post-content" dangerouslySetInnerHTML={{ __html: post.content }} />
       ) : (
         <div class="feed-post-content">{post.activity_title ?? 'Shared activity'}</div>

@@ -9,6 +9,7 @@ import type { FeedPost } from '@aurboda/api-spec'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'preact/hooks'
 
+import { ArticleEditorDialog } from '../../components/ArticleEditorDialog'
 import { ShareActivityDialog } from '../../components/ShareActivityDialog'
 import { avatarUrl, deleteFeedPost, fetchFeed } from '../../state/api'
 import { auth } from '../../state/auth'
@@ -22,6 +23,7 @@ function OwnPostCard({ post, author }: { post: FeedPost; author: PostAuthor }) {
   const queryClient = useQueryClient()
   const [editing, setEditing] = useState(false)
   const activityId = post.activity_id
+  const isArticle = post.kind === 'article'
 
   const deleteMutation = useMutation({
     mutationFn: () => deleteFeedPost(post.id),
@@ -41,7 +43,7 @@ function OwnPostCard({ post, author }: { post: FeedPost; author: PostAuthor }) {
         author={author}
         footer={
           <>
-            {activityId && (
+            {(activityId || isArticle) && (
               <button type="button" class="btn-secondary" onClick={() => setEditing(true)}>
                 Edit
               </button>
@@ -53,7 +55,9 @@ function OwnPostCard({ post, author }: { post: FeedPost; author: PostAuthor }) {
         }
       />
 
-      {editing && activityId && (
+      {editing && isArticle && <ArticleEditorDialog post={post} onClose={() => setEditing(false)} />}
+
+      {editing && !isArticle && activityId && (
         <ShareActivityDialog
           activityId={activityId}
           activityTitle={post.activity_title}
@@ -69,6 +73,7 @@ function OwnPostCard({ post, author }: { post: FeedPost; author: PostAuthor }) {
 
 export function Feed() {
   const { data: posts, isLoading, error } = useQuery({ queryFn: fetchFeed, queryKey: ['feed'] })
+  const [composing, setComposing] = useState(false)
 
   const username = auth.value.user ?? ''
   // The actor handle host is the web host the user is browsing (`<user>@<host>`);
@@ -96,7 +101,13 @@ export function Feed() {
 
       <HomeTimeline />
 
-      <h2 class="feed-section-title">Your posts</h2>
+      <div class="feed-section-header">
+        <h2 class="feed-section-title">Your posts</h2>
+        <button type="button" class="btn-primary" onClick={() => setComposing(true)}>
+          New article
+        </button>
+      </div>
+      {composing && <ArticleEditorDialog onClose={() => setComposing(false)} />}
       {isLoading && <p>Loading…</p>}
       {error && <p class="feed-error">Couldn't load your feed. Please try again.</p>}
       {posts && posts.length === 0 && (
