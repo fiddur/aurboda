@@ -1,6 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
-import { marked } from 'marked'
 import { useCallback, useState } from 'preact/hooks'
 
 import type { EntityType } from './EntityActions'
@@ -8,6 +7,7 @@ import type { EntityType } from './EntityActions'
 import { MarkdownEditor } from '../../components/MarkdownEditor/index.jsx'
 import { SaveCancelRow } from '../../components/SaveCancelRow'
 import { addNote, deleteNote, fetchNotes, type NoteData, updateNote } from '../../state/api'
+import { renderMarkdown } from '../../utils/markdown'
 
 export const NotesSection = ({
   entityType,
@@ -104,7 +104,7 @@ export const NotesSection = ({
                 <>
                   <div
                     class="note-content"
-                    dangerouslySetInnerHTML={{ __html: marked.parse(note.content) as string }}
+                    dangerouslySetInnerHTML={{ __html: renderMarkdown(note.content) }}
                   />
                   <div class="note-footer">
                     <span class="note-date">{format(new Date(note.created_at), 'yyyy-MM-dd HH:mm')}</span>
