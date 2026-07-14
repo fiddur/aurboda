@@ -1,16 +1,10 @@
 /**
  * Reusable Markdown editor with Write / Preview tabs.
  */
-import { marked } from 'marked'
 import { useCallback, useState } from 'preact/hooks'
 
+import { renderMarkdown } from '../../utils/markdown'
 import './style.css'
-
-// Configure marked for safe rendering (no HTML passthrough)
-marked.setOptions({
-  breaks: true,
-  gfm: true,
-})
 
 interface MarkdownEditorProps {
   value: string
@@ -29,7 +23,7 @@ export const MarkdownEditor = ({ value, onChange, placeholder, rows = 4 }: Markd
     [onChange],
   )
 
-  const rendered = tab === 'preview' ? marked.parse(value || '*Nothing to preview*') : ''
+  const rendered = tab === 'preview' ? renderMarkdown(value || '*Nothing to preview*') : ''
 
   return (
     <div class="md-editor">

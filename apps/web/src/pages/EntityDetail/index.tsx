@@ -8,7 +8,6 @@
 import { isExerciseActivityType } from '@aurboda/api-spec'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
-import { marked } from 'marked'
 import { useLocation, useRoute } from 'preact-iso'
 import { useCallback, useEffect, useState } from 'preact/hooks'
 
@@ -28,6 +27,7 @@ import {
 } from '../../state/api'
 import { toDisplayName } from '../../utils/displayName'
 import { resolveItemIcon } from '../../utils/emojiLookup'
+import { renderMarkdown } from '../../utils/markdown'
 import { ActivityChart } from './ActivityChart'
 import { ActivityMap } from './ActivityMap'
 import { type BuildActivityStatRowsInput, buildActivityStatRows } from './activityStats'
@@ -337,7 +337,7 @@ const ActivityDetailContent = ({
         {!isEditing && description && (
           <div
             class="entity-description note-content"
-            dangerouslySetInnerHTML={{ __html: marked.parse(description) as string }}
+            dangerouslySetInnerHTML={{ __html: renderMarkdown(description) }}
           />
         )}
 
