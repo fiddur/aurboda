@@ -135,14 +135,6 @@ const recordInboundFollow = async (
 }
 
 /**
- * Ingest a `Create`/`Update` of a `Note` into the recipient's home timeline —
- * but ONLY if the sender is an *accepted* followee (so the timeline can't be
- * injected into by a stranger who delivers to our inbox). The author's
- * presentation comes from the cached `feed_following` row; the Note's HTML is
- * sanitised in `noteToTimelineInput`. Best-effort: unresolvable objects and
- * non-Notes are ignored, and a missing DB never 500s (which would invite retries).
- */
-/**
  * Ingest one `Note` from an accepted followee into `user`'s home timeline: map it
  * to a timeline entry (author from the cached `feed_following` row, content
  * sanitised), capture its image attachments, best-effort fetch the native Aurboda
@@ -174,6 +166,14 @@ export const ingestNoteForRecipient = async (
   if (inserted) onNewEntry?.(user)
 }
 
+/**
+ * Ingest a `Create`/`Update` of a `Note` into the recipient's home timeline —
+ * but ONLY if the sender is an *accepted* followee (so the timeline can't be
+ * injected into by a stranger who delivers to our inbox). Resolves the recipient
+ * and the cached followee row, then hands off to `ingestNoteForRecipient`.
+ * Best-effort: unresolvable objects and non-Notes are ignored, and a missing DB
+ * never 500s (which would invite retries).
+ */
 const ingestFeedActivity = async (
   ctx: InboxContext<void>,
   activity: Create | Update,
