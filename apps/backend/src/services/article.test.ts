@@ -2,10 +2,18 @@ import type { ArticleContent } from '@aurboda/api-spec'
 
 import { describe, expect, test } from 'vitest'
 
-import { buildArticleContent, chartBlockWindow, mergeArticleContent } from './article.ts'
+import { blockWindow, buildArticleContent, mergeArticleContent } from './article.ts'
 
 const WEEK_START = '2026-07-01T00:00:00.000Z'
 const WEEK_END = '2026-07-07T00:00:00.000Z'
+
+/** A valid correlation block: exercise (trigger) against sleep score (outcome), with an optional window. */
+const corrBlock = (window: { start?: string; end?: string } = {}): ArticleContent['blocks'][number] => ({
+  outcome: { kind: 'metric', metric: 'sleep_score' },
+  trigger: { kind: 'activity', pattern: 'exercise' },
+  type: 'correlation',
+  ...window,
+})
 
 const content = (overrides: Partial<ArticleContent> = {}): ArticleContent => ({
   blocks: [],
@@ -15,9 +23,9 @@ const content = (overrides: Partial<ArticleContent> = {}): ArticleContent => ({
   ...overrides,
 })
 
-describe('chartBlockWindow', () => {
+describe('blockWindow', () => {
   test('uses the block override when present', () => {
-    const win = chartBlockWindow(
+    const win = blockWindow(
       { end: '2026-07-03T00:00:00.000Z', start: '2026-07-02T00:00:00.000Z' },
       { default_end: WEEK_END, default_start: WEEK_START },
     )
@@ -26,7 +34,7 @@ describe('chartBlockWindow', () => {
 
   test('falls back to the article default per-edge', () => {
     // Only `start` is overridden; `end` inherits the article default.
-    const win = chartBlockWindow(
+    const win = blockWindow(
       { start: '2026-07-02T00:00:00.000Z' },
       { default_end: WEEK_END, default_start: WEEK_START },
     )
@@ -111,6 +119,43 @@ describe('buildArticleContent', () => {
     )
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.error).toContain('Chart block 2')
+  })
+
+  test('accepts a correlation block that inherits the article default window', () => {
+    const result = buildArticleContent(content({ blocks: [corrBlock()] }))
+    expect(result.ok).toBe(true)
+  })
+
+  test('accepts a correlation block with its own window even without an article default', () => {
+    const result = buildArticleContent(
+      content({
+        blocks: [corrBlock({ end: '2026-07-02T00:00:00.000Z', start: '2026-07-01T00:00:00.000Z' })],
+        default_end: undefined,
+        default_start: undefined,
+      }),
+    )
+    expect(result.ok).toBe(true)
+  })
+
+  test('rejects a correlation block with no window and no article default', () => {
+    const result = buildArticleContent(
+      content({ blocks: [corrBlock()], default_end: undefined, default_start: undefined }),
+    )
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.error).toContain('Correlation block 1')
+      expect(result.error).toContain('no time window')
+    }
+  })
+
+  test('rejects a correlation block whose start is on or after its end', () => {
+    const result = buildArticleContent(
+      content({
+        blocks: [corrBlock({ end: '2026-07-01T00:00:00.000Z', start: '2026-07-02T00:00:00.000Z' })],
+      }),
+    )
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.error).toContain('Correlation block 1')
   })
 })
 

@@ -21,7 +21,17 @@ export interface ChartDraft {
   bucket: string
   caption: string
 }
-export type BlockDraft = ChartDraft | ProseDraft
+/**
+ * A correlation block, kept verbatim. The web composer can't yet author or edit
+ * correlation blocks (they're created over MCP/API); this passthrough lets the
+ * editor round-trip an existing one — reorder/remove it — without dropping it.
+ * A dedicated editing UI (selector pickers) lands in a follow-up.
+ */
+export interface CorrelationDraft {
+  type: 'correlation'
+  block: Extract<ArticleBlock, { type: 'correlation' }>
+}
+export type BlockDraft = ChartDraft | CorrelationDraft | ProseDraft
 
 export interface ArticleEditorState {
   title: string
@@ -49,19 +59,18 @@ export const toIso = (local: string): string | undefined =>
 /** Seed the editor's block drafts from an existing article post (edit mode). */
 export const draftsFromPost = (post?: FeedPost): BlockDraft[] => {
   if (!post?.article) return []
-  return post.article.blocks.map(
-    (b): BlockDraft =>
-      b.type === 'prose'
-        ? { markdown: b.markdown, type: 'prose' }
-        : {
-            bucket: b.bucket ?? '',
-            caption: b.caption ?? '',
-            end: toInputValue(b.end),
-            metric: b.metric,
-            start: toInputValue(b.start),
-            type: 'chart',
-          },
-  )
+  return post.article.blocks.map((b): BlockDraft => {
+    if (b.type === 'prose') return { markdown: b.markdown, type: 'prose' }
+    if (b.type === 'correlation') return { block: b, type: 'correlation' }
+    return {
+      bucket: b.bucket ?? '',
+      caption: b.caption ?? '',
+      end: toInputValue(b.end),
+      metric: b.metric,
+      start: toInputValue(b.start),
+      type: 'chart',
+    }
+  })
 }
 
 /** Seed the whole editor state from an existing post (edit mode) or empty (compose). */
@@ -97,6 +106,10 @@ export const buildArticleBody = (state: ArticleEditorState): BuildResult => {
   for (const [i, b] of state.blocks.entries()) {
     if (b.type === 'prose') {
       blocks.push({ markdown: b.markdown, type: 'prose' })
+      continue
+    }
+    if (b.type === 'correlation') {
+      blocks.push(b.block)
       continue
     }
     if (!isValidMetric(b.metric)) {

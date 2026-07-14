@@ -3,7 +3,8 @@
  * blocks. Prose blocks go through the shared markdown sanitiser (#910 — the XSS
  * boundary; article prose may be authored by AI or, later, a different user).
  * Chart blocks resolve their effective window (own override else the article
- * default) and render live via `ArticleChartBlock`.
+ * default) and render live via `ArticleChartBlock`. Correlation-block rendering
+ * (a live scatter) lands in a follow-up; they're skipped here for now.
  */
 import type { ArticleContent as ArticleContentType } from '@aurboda/api-spec'
 
@@ -23,6 +24,8 @@ export const ArticleContent = ({ article }: { article: ArticleContentType }) => 
           />
         )
       }
+      // Correlation-block rendering (a live scatter) lands in a follow-up.
+      if (block.type === 'correlation') return null
       const start = block.start ?? article.default_start
       const end = block.end ?? article.default_end
       if (start == null || end == null) {
