@@ -34,8 +34,9 @@ A feed post has a **`kind`**:
   `update_article` MCP tools), or in the web app's article composer; prose renders
   through the shared markdown sanitiser and each windowed block resolves its data live
   over the locked window.
-  _The correlation-block scatter render and its composer UI land within this slice
-  (#936); federation as an AS2 `Article` + Reddit/markdown export is the remaining slice
+  _The correlation-block composer UI (selector pickers) lands within this slice (#936) —
+  correlation blocks already render as a live scatter and are authorable over MCP/API;
+  federation as an AS2 `Article` + Reddit/markdown export is the remaining slice
   (#937), so an article is authored and shown on the owner's own feed but does not yet
   fan out to followers._
 
