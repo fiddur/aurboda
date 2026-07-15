@@ -4,12 +4,17 @@ import { signal } from '@preact/signals'
 import axios from 'axios'
 
 import { API_URL } from '../config'
+import { readNativeAuth } from '../embed'
 
 export type SignupMode = 'open' | 'invite_only' | 'closed'
 
+// When running embedded in the native app, seed auth from the WebView bridge so
+// the app's bearer token is shared without a second login; otherwise fall back
+// to browser-stored credentials.
+const nativeAuth = readNativeAuth()
 const savedAuth = localStorage.getItem('auth')
 export const auth = signal<{ user?: string; token?: string; is_admin?: boolean }>(
-  savedAuth ? JSON.parse(savedAuth) : {},
+  nativeAuth ?? (savedAuth ? JSON.parse(savedAuth) : {}),
 )
 auth.subscribe((value) => localStorage.setItem('auth', JSON.stringify(value)))
 

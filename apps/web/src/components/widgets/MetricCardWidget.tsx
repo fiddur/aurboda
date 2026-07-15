@@ -46,7 +46,11 @@ const baselineToData = (baseline: BaselineData | null, metric: BaselineMetric): 
     case 'hrv_30day':
       return { ...empty, trend_percent: null, value: baseline.hrv.avg30day }
     case 'rhr_7day':
-      return { ...empty, trend_percent: baseline.resting_hr.trend_percent, value: baseline.resting_hr.avg7day }
+      return {
+        ...empty,
+        trend_percent: baseline.resting_hr.trend_percent,
+        value: baseline.resting_hr.avg7day,
+      }
     case 'rhr_30day':
       return { ...empty, trend_percent: null, value: baseline.resting_hr.avg30day }
   }

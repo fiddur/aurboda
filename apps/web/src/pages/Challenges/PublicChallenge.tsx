@@ -130,10 +130,7 @@ export function PublicChallenge({
             // end_ts is the exclusive window end (midnight after the last day); step back
             // one ms so the axis ends on the inclusive last competing day (matching the
             // header) rather than drawing a trailing tick on the day after.
-            xDomain={[
-              new Date(challenge.start_ts),
-              new Date(new Date(challenge.end_ts).getTime() - 1),
-            ]}
+            xDomain={[new Date(challenge.start_ts), new Date(new Date(challenge.end_ts).getTime() - 1)]}
           />
         ) : (
           <p class="public-muted">No data yet.</p>
