@@ -34,9 +34,7 @@ A feed post has a **`kind`**:
   `update_article` MCP tools), or in the web app's article composer; prose renders
   through the shared markdown sanitiser and each windowed block resolves its data live
   over the locked window.
-  _The correlation-block composer UI (selector pickers) lands within this slice (#936) —
-  correlation blocks already render as a live scatter and are authorable over MCP/API;
-  federation as an AS2 `Article` + Reddit/markdown export is the remaining slice
+  _Federation as an AS2 `Article` + Reddit/markdown export is the remaining slice
   (#937), so an article is authored and shown on the owner's own feed but does not yet
   fan out to followers._
 
@@ -368,8 +366,10 @@ resolving.
   to pick the summary metrics, optionally opt into full series, and choose the audience.
 - **New article** — the **Feed** page has a **New article** button that opens the article
   composer: a title, an optional default time window, and an ordered list of **prose**
-  (markdown) and **chart** blocks (a metric + optional per-block window + caption), plus
-  the audience. Each chart draws its metric live over the locked window.
+  (markdown), **chart** (a metric + optional per-block window + caption), and **correlation**
+  (a trigger + outcome selector + optional lag/window/caption) blocks, plus the audience.
+  Each chart draws its metric live over the locked window; each correlation draws a live
+  scatter (with the coefficients) over its window.
 - **Manage** — the **Feed** page (`/feed`, the 📣 item under the **Sharing** section in
   the sidebar) lists everything
   you've shared, with each post's audience and metrics. From there you can **Edit** a

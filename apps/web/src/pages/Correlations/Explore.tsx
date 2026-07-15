@@ -1,18 +1,17 @@
 import type {
   ContinuousCorrelationData,
   CorrelationSelector,
-  CorrelationSelectorsData,
   EventOutcome,
   GenericCorrelationData,
   GroupComparison,
   LagExposureResultData,
-  NutrientKey,
   TriggerCondition,
 } from '@aurboda/api-spec'
 
 import { signal } from '@preact/signals'
 import { useQuery } from '@tanstack/react-query'
 
+import { SelectorPicker } from '../../components/SelectorPicker'
 import {
   fetchContinuousCorrelation,
   fetchCorrelationSelectors,
@@ -49,8 +48,6 @@ const periodDays = signal(365)
 // Bumped on each Run to trigger the query.
 const runToken = signal(0)
 
-const NUTRIENTS: NutrientKey[] = ['calories', 'protein', 'carbs', 'fat', 'fiber']
-
 // Trigger kinds offered in the picker (event mode has no metric trigger). The
 // legacy 'tag' kind is intentionally omitted — tags were merged into activities,
 // so 'activity' already matches them (and its picker autocompletes every
@@ -64,13 +61,6 @@ const EVENT_TRIGGER_KINDS: CorrelationSelector['kind'][] = [
 
 // Every selector kind (continuous mode allows a metric on either side).
 const ALL_SELECTOR_KINDS: CorrelationSelector['kind'][] = ['metric', ...EVENT_TRIGGER_KINDS]
-
-/** Human labels for selector kinds (the raw kind is opaque in a dropdown). */
-const KIND_LABELS: Partial<Record<CorrelationSelector['kind'], string>> = {
-  activity: 'activity / tag',
-  productivity_app: 'productivity app',
-  productivity_category: 'productivity category',
-}
 
 /** Switch mode, clamping the trigger to a kind valid in the new mode. */
 const setMode = (next: Mode) => {
@@ -162,101 +152,6 @@ const buildRequest = () => {
     return { outcome, triggerCondition }
   }
   return null
-}
-
-// --- Selector picker (kind + value) ---
-function SelectorPicker({
-  value,
-  onChange,
-  selectors,
-  allowedKinds,
-}: {
-  value: CorrelationSelector
-  onChange: (s: CorrelationSelector) => void
-  selectors: CorrelationSelectorsData | undefined
-  allowedKinds: CorrelationSelector['kind'][]
-}) {
-  const setKind = (kind: CorrelationSelector['kind']) => {
-    switch (kind) {
-      case 'metric':
-        return onChange({ kind: 'metric', metric: '' })
-      case 'nutrition':
-        return onChange({ kind: 'nutrition', nutrient: 'carbs' })
-      case 'activity':
-        return onChange({ kind: 'activity', pattern: '' })
-      case 'productivity_category':
-      case 'productivity_app':
-        return onChange({ kind, pattern: '' })
-      default:
-        return onChange({ kind: 'activity', pattern: '' })
-    }
-  }
-
-  return (
-    <div class="selector-picker">
-      <select
-        value={value.kind}
-        onChange={(e) => setKind((e.target as HTMLSelectElement).value as CorrelationSelector['kind'])}
-      >
-        {allowedKinds.map((k) => (
-          <option value={k}>{KIND_LABELS[k] ?? k}</option>
-        ))}
-      </select>
-
-      {value.kind === 'metric' && (
-        <>
-          <input
-            list="metric-options"
-            placeholder="metric (e.g. sleep_score)"
-            value={value.metric}
-            onInput={(e) => onChange({ ...value, metric: (e.target as HTMLInputElement).value })}
-          />
-          <datalist id="metric-options">
-            {selectors?.metrics.map((m) => (
-              <option value={m.value}>{m.label}</option>
-            ))}
-          </datalist>
-        </>
-      )}
-
-      {value.kind === 'nutrition' && (
-        <select
-          value={value.nutrient}
-          onChange={(e) =>
-            onChange({ kind: 'nutrition', nutrient: (e.target as HTMLSelectElement).value as NutrientKey })
-          }
-        >
-          {NUTRIENTS.map((n) => (
-            <option value={n}>{n}</option>
-          ))}
-        </select>
-      )}
-
-      {(value.kind === 'tag' ||
-        value.kind === 'activity' ||
-        value.kind === 'productivity_category' ||
-        value.kind === 'productivity_app') && (
-        <>
-          <input
-            list={`pattern-options-${value.kind}`}
-            placeholder="pattern (regex)"
-            value={value.pattern}
-            onInput={(e) => onChange({ ...value, pattern: (e.target as HTMLInputElement).value })}
-          />
-          <datalist id={`pattern-options-${value.kind}`}>
-            {(value.kind === 'productivity_category'
-              ? selectors?.productivity_categories
-              : value.kind === 'tag'
-                ? selectors?.tags
-                : selectors?.activity_types
-            )?.map((o) => (
-              <option value={o.value}>{o.label}</option>
-            ))}
-          </datalist>
-        </>
-      )}
-    </div>
-  )
 }
 
 // --- Results: per-lag relative-risk bars with 95% CI whiskers ---
