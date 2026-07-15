@@ -6,6 +6,7 @@ import { LocationProvider, Route, Router, useLocation } from 'preact-iso'
 import { Footer } from './components/Footer.jsx'
 import { Header } from './components/Header.jsx'
 import { Sidebar } from './components/Sidebar.jsx'
+import { isEmbedded } from './embed.js'
 import { NotFound } from './pages/_404.jsx'
 import { ActivityTypeMeta } from './pages/ActivityTypeMeta/index.jsx'
 import { ActivityTypes } from './pages/ActivityTypes/index.jsx'
@@ -67,7 +68,10 @@ function AppShell() {
   // standalone page), but a logged-in user keeps their nav so they can navigate
   // away without the browser back button. The footer renders on every page.
   const { path } = useLocation()
-  const showNav = shouldShowNav(path, Boolean(auth.value.token))
+  // Embedded in the native app's WebView: the app supplies navigation, so hide
+  // all web chrome (header, sidebar, footer) and just render page content.
+  const embedded = isEmbedded()
+  const showNav = !embedded && shouldShowNav(path, Boolean(auth.value.token))
 
   return (
     <>
@@ -130,7 +134,7 @@ function AppShell() {
             <Route default component={NotFound} />
           </Router>
         </main>
-        <Footer />
+        {!embedded && <Footer />}
       </div>
     </>
   )

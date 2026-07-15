@@ -302,6 +302,15 @@ fun AurbodaApp(initialTab: MainTab? = null) {
               modifier = modifier,
             )
           },
+          feedContent = { modifier ->
+            net.aurboda.ui.screens.EmbeddedWebScreen(
+              url = "${credentials.serverUrl.trimEnd('/')}/feed?embed=1",
+              baseUrl = credentials.serverUrl,
+              username = credentials.username,
+              authToken = credentials.authToken,
+              modifier = modifier,
+            )
+          },
           liveContent = { modifier ->
             net.aurboda.ui.screens.LiveScreen(
               modifier = modifier,

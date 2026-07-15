@@ -27,26 +27,17 @@ interface PublicWidgetRendererProps {
 export function PublicWidgetRenderer({ widget, data }: PublicWidgetRendererProps) {
   switch (widget.type) {
     case 'metric_card':
-      return (
-        <MetricCardView config={widget.config} data={data?.type === 'metric_card' ? data.data : null} />
-      )
+      return <MetricCardView config={widget.config} data={data?.type === 'metric_card' ? data.data : null} />
     case 'sparkline_card':
       return (
-        <SparklineCardView
-          config={widget.config}
-          data={data?.type === 'sparkline_card' ? data.data : null}
-        />
+        <SparklineCardView config={widget.config} data={data?.type === 'sparkline_card' ? data.data : null} />
       )
     case 'trend_chart':
-      return (
-        <TrendChartView config={widget.config} data={data?.type === 'trend_chart' ? data.data : null} />
-      )
+      return <TrendChartView config={widget.config} data={data?.type === 'trend_chart' ? data.data : null} />
     case 'bar_chart':
       return <BarChartView config={widget.config} data={data?.type === 'bar_chart' ? data.data : null} />
     case 'correlation':
-      return (
-        <CorrelationView config={widget.config} data={data?.type === 'correlation' ? data.data : null} />
-      )
+      return <CorrelationView config={widget.config} data={data?.type === 'correlation' ? data.data : null} />
     case 'activity_summary':
       return (
         <ActivitySummaryView
