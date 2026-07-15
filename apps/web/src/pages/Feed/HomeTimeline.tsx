@@ -14,7 +14,7 @@ import { formatDistanceToNow } from 'date-fns'
 import { useState } from 'preact/hooks'
 
 import { fetchTimeline } from '../../state/api'
-import { localProfilePath } from './profile-link'
+import { ActorName } from './ActorName'
 import { TimelineStructured } from './TimelineStructured'
 import { useTimelineLive } from './useTimelineLive'
 
@@ -45,8 +45,6 @@ const FALLBACK_AVATAR =
 function TimelineCard({ entry }: { entry: TimelineEntry }) {
   const when = formatDistanceToNow(new Date(entry.published_at), { addSuffix: true })
   const name = entry.display_name ?? entry.handle ?? entry.actor_uri
-  // Local authors get an in-app profile link; remote (Mastodon &c.) authors don't.
-  const profilePath = localProfilePath(entry.actor_uri, window.location.host)
   return (
     <article class="feed-post">
       <header class="feed-post-head">
@@ -59,7 +57,9 @@ function TimelineCard({ entry }: { entry: TimelineEntry }) {
           loading="lazy"
         />
         <div class="feed-post-ident">
-          <span class="feed-post-name">{profilePath ? <a href={profilePath}>{name}</a> : name}</span>
+          <span class="feed-post-name">
+            <ActorName name={name} actorUri={entry.actor_uri} />
+          </span>
           <span class="feed-post-handle">
             {entry.handle && <>{entry.handle} · </>}
             {entry.url ? (
