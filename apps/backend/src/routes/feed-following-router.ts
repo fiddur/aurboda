@@ -16,9 +16,11 @@ import {
   followActorBodySchema,
   type FollowActorResponse,
   type FollowingResponse,
+  type UpdateFollowingBody,
+  updateFollowingBodySchema,
 } from '@aurboda/api-spec'
 
-import { listFeedFollowing } from '../db/index.ts'
+import { listFeedFollowing, updateFeedFollowingNotify } from '../db/index.ts'
 import { type FollowActions, serializeFollowing } from '../services/following.ts'
 import { type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody } from '../validation.ts'
@@ -46,6 +48,20 @@ export const createFeedFollowingRouter = (
         return res.status(result.status).json({ error: result.error, success: false })
       }
       res.json({ actor: serializeFollowing(result.record), success: true })
+    },
+  )
+
+  router.patch<{ id: string }, FollowActorResponse, UpdateFollowingBody>(
+    '/:id',
+    authMiddleware,
+    validateBody(updateFollowingBodySchema),
+    async (req, res) => {
+      const user = req.user!
+      const record = await updateFeedFollowingNotify(user, req.params.id, req.body.notify_on_post)
+      if (!record) {
+        return res.status(404).json({ error: 'Not following that actor', success: false })
+      }
+      res.json({ actor: serializeFollowing(record), success: true })
     },
   )
 

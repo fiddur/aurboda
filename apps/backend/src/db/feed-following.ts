@@ -21,6 +21,7 @@ export interface FeedFollowingRecord {
   display_name: string | null
   avatar_url: string | null
   accepted: boolean
+  notify_on_post: boolean
   created_at: Date
 }
 
@@ -34,7 +35,7 @@ export interface FeedFollowingInput {
 }
 
 const FEED_FOLLOWING_COLUMNS =
-  'id, actor_uri, inbox_uri, shared_inbox_uri, handle, display_name, avatar_url, accepted, created_at'
+  'id, actor_uri, inbox_uri, shared_inbox_uri, handle, display_name, avatar_url, accepted, notify_on_post, created_at'
 
 /**
  * Insert or update a followee by actor URI. Re-following refreshes the cached
@@ -136,6 +137,20 @@ export const removeFeedFollowing = async (user: string, id: string): Promise<Fee
 export const removeFeedFollowingByActor = async (user: string, actorUri: string): Promise<boolean> => {
   const result = await query(user, `DELETE FROM feed_following WHERE actor_uri = $1`, [actorUri])
   return (result.rowCount ?? 0) > 0
+}
+
+/** Set whether new posts from a followee (by local id) should notify. */
+export const updateFeedFollowingNotify = async (
+  user: string,
+  id: string,
+  notifyOnPost: boolean,
+): Promise<FeedFollowingRecord | null> => {
+  const result = await query<FeedFollowingRecord>(
+    user,
+    `UPDATE feed_following SET notify_on_post = $1 WHERE id = $2 RETURNING ${FEED_FOLLOWING_COLUMNS}`,
+    [notifyOnPost, id],
+  )
+  return result.rows[0] ?? null
 }
 
 /** Mark a pending follow accepted (the followee's server answered with `Accept`). */

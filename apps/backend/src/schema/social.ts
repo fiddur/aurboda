@@ -224,8 +224,13 @@ export const socialTables: Record<string, string> = {
       display_name     TEXT,
       avatar_url       TEXT,
       accepted         BOOLEAN NOT NULL DEFAULT false,
+      notify_on_post   BOOLEAN NOT NULL DEFAULT true,
       created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
+  `,
+  // Additive migration for pre-existing feed_following tables (idempotent).
+  feed_following_notify: `
+    ALTER TABLE feed_following ADD COLUMN IF NOT EXISTS notify_on_post BOOLEAN NOT NULL DEFAULT true
   `,
 
   // The user's home timeline: posts received from actors they follow (inbound

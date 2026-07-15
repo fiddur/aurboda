@@ -11,6 +11,7 @@ import {
   timelineQuerySchema,
   updateArticleBodySchema,
   updateFeedPostBodySchema,
+  updateFollowingBodySchema,
 } from '@aurboda/api-spec'
 import { z } from 'zod'
 
@@ -27,6 +28,7 @@ import {
   listFeedFollowers,
   listFeedFollowing,
   listFeedPosts,
+  updateFeedFollowingNotify,
   updateFeedPost,
 } from '../db/index.ts'
 import { buildArticleContent, mergeArticleContent } from '../services/article.ts'
@@ -186,6 +188,20 @@ export const registerFeedTools = (
       const removed = await followActions.unfollow(user, id)
       if (!removed) return errorResponse('Not following that actor')
       return jsonResponse({ id, unfollowed: true })
+    },
+  )
+
+  server.tool(
+    'set_following_notify',
+    'Enable or disable notifications for new posts from a followed actor (by the local follow id from `list_following`).',
+    {
+      id: z.string().uuid().describe('Local follow id (the `id` from list_following)'),
+      ...updateFollowingBodySchema.shape,
+    },
+    async ({ id, notify_on_post }) => {
+      const record = await updateFeedFollowingNotify(user, id, notify_on_post)
+      if (!record) return errorResponse('Not following that actor')
+      return jsonResponse(serializeFollowing(record))
     },
   )
 

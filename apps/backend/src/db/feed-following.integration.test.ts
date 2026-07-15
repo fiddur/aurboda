@@ -13,6 +13,7 @@ import {
   markFeedFollowingAccepted,
   removeFeedFollowing,
   removeFeedFollowingByActor,
+  updateFeedFollowingNotify,
   upsertFeedFollowing,
 } from './feed-following.ts'
 
@@ -129,6 +130,23 @@ describe('Feed following integration', () => {
     expect(await getFeedFollowing(user, rec.id)).toBeNull()
     // Removing again returns null.
     expect(await removeFeedFollowing(user, rec.id)).toBeNull()
+  })
+
+  test('notify_on_post defaults to true and can be toggled, preserved across re-follow', async () => {
+    const user = getTestUser()
+    const rec = await upsertFeedFollowing(user, alice)
+    expect(rec.notify_on_post).toBe(true)
+
+    const muted = await updateFeedFollowingNotify(user, rec.id, false)
+    expect(muted?.notify_on_post).toBe(false)
+    expect((await getFeedFollowing(user, rec.id))?.notify_on_post).toBe(false)
+
+    // Re-following must not silently re-enable notifications the user muted.
+    const again = await upsertFeedFollowing(user, alice)
+    expect(again.notify_on_post).toBe(false)
+
+    // Toggling an unknown follow returns null.
+    expect(await updateFeedFollowingNotify(user, '00000000-0000-0000-0000-000000000000', true)).toBeNull()
   })
 
   test('removes by actor uri (e.g. on a Reject)', async () => {

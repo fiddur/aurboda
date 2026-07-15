@@ -9,14 +9,21 @@ import type { FollowingActor } from '@aurboda/api-spec'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'preact/hooks'
 
-import { fetchFollowing, followActor, unfollowActor } from '../../state/api'
+import { fetchFollowing, followActor, unfollowActor, updateFollowingNotify } from '../../state/api'
 import { ActorName } from './ActorName'
 
 const FollowingRow = ({ actor }: { actor: FollowingActor }) => {
   const queryClient = useQueryClient()
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['following'] })
   const unfollow = useMutation({
     mutationFn: () => unfollowActor(actor.id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['following'] }),
+    onSuccess: invalidate,
+  })
+  // Per-actor notification toggle (used by the app to decide which followed
+  // accounts' new posts push a notification).
+  const notify = useMutation({
+    mutationFn: () => updateFollowingNotify(actor.id, !actor.notify_on_post),
+    onSuccess: invalidate,
   })
 
   const name = actor.display_name ?? actor.handle ?? actor.actor_uri
@@ -38,6 +45,16 @@ const FollowingRow = ({ actor }: { actor: FollowingActor }) => {
           Pending
         </span>
       )}
+      <button
+        type="button"
+        class="following-notify"
+        aria-pressed={actor.notify_on_post}
+        onClick={() => notify.mutate()}
+        disabled={notify.isPending}
+        title={actor.notify_on_post ? 'Notifications on — tap to mute' : 'Muted — tap to notify on new posts'}
+      >
+        {actor.notify_on_post ? '🔔' : '🔕'}
+      </button>
       <button
         type="button"
         class="btn-secondary following-unfollow"

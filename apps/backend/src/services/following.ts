@@ -92,6 +92,7 @@ export const serializeFollowing = (record: FeedFollowingRecord): FollowingActor 
   display_name: record.display_name,
   handle: record.handle,
   id: record.id,
+  notify_on_post: record.notify_on_post,
 })
 
 /** The AS2 id we mint for our outbound Follow of a followee (stable per row). */

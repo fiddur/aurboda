@@ -17,7 +17,6 @@ import {
   type WellKnownAurboda,
   wellKnownAurbodaSchema,
 } from '@aurboda/api-spec'
-
 import { isAxiosError } from 'axios'
 
 import { isValidUsername } from '../api/auth-routes.ts'

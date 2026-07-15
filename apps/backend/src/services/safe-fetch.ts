@@ -39,8 +39,9 @@ const isBlockedIPv6 = (raw: string): boolean => {
   // real hosts are unaffected while embedded-IPv4 tricks are all blocked.
   if (ip.startsWith('::')) return true
   if (ip.startsWith('64:ff9b:')) return true // NAT64 (embeds an IPv4 in the low bits)
-  if (ip.startsWith('fe8') || ip.startsWith('fe9') || ip.startsWith('fea') || ip.startsWith('feb'))
-    {return true} // fe80::/10 link-local
+  if (ip.startsWith('fe8') || ip.startsWith('fe9') || ip.startsWith('fea') || ip.startsWith('feb')) {
+    return true
+  } // fe80::/10 link-local
   if (ip.startsWith('fc') || ip.startsWith('fd')) return true // fc00::/7 unique-local
   return false
 }

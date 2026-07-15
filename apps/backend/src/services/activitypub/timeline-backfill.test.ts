@@ -16,6 +16,7 @@ const followee = (accepted: boolean): FeedFollowingRecord => ({
   handle: '@alice@mastodon.example',
   id: 'follow-1',
   inbox_uri: `${ACTOR}/inbox`,
+  notify_on_post: true,
   shared_inbox_uri: null,
 })
 

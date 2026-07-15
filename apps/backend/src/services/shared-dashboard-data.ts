@@ -176,7 +176,9 @@ const resolveBarChart = async (
         ? [
             {
               bucket_start: b.bucket_start,
-              series: Object.fromEntries(Object.entries(b.series).map(([name, value]) => [mask(name), value])),
+              series: Object.fromEntries(
+                Object.entries(b.series).map(([name, value]) => [mask(name), value]),
+              ),
             },
           ]
         : [],
