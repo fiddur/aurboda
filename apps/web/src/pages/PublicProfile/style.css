@@ -1,4 +1,6 @@
 .public-profile {
+  box-sizing: border-box;
+  width: 100%;
   max-width: 720px;
   margin: 0 auto;
   padding: 2rem 1.5rem;
