@@ -19,6 +19,29 @@ The REST API and MCP tools should have the same capabilities:
 
 When adding new features, implement both the MCP tool and REST API endpoint.
 
+## Native (Android) and Web Parity
+
+The Android app should offer the same functionality as the web app. To avoid
+maintaining (and testing) two implementations of the same UI, the app is a
+**hybrid**: it embeds web pages in a WebView for read/config-heavy screens and
+implements screens natively only when device APIs require it (Health Connect
+sync, BLE/live heart rate, background sync, notifications). See
+`docs/android-app.md`.
+
+Rules:
+
+- **Prefer embedding the web page** (via `EmbeddedWebScreen`, `/<path>?embed=1`)
+  over reimplementing it natively. Build a native screen only when it needs
+  device APIs or must work offline / logged out (e.g. the login and server-URL
+  screens).
+- **Keep native and web counterparts in sync.** When you change a web page that
+  has a native equivalent (e.g. settings), or vice versa, update both in the
+  same change — same fields, same behavior, backed by the same `@aurboda/api-spec`
+  schemas and `apps/backend/src/services/`. If you can't update both at once,
+  file a GitHub issue tracking the gap rather than letting them silently diverge.
+- A native screen that duplicates web functionality is a candidate to **replace
+  with an embedded web view** unless it has a device-API reason to stay native.
+
 ## Shared Schemas and Types (`packages/api-spec`)
 
 `@aurboda/api-spec` is the single source of truth for validation schemas and type definitions. All layers import from it — never duplicate schema definitions.
