@@ -30,6 +30,19 @@ hub (after any embedded page has exhausted its own WebView history). Keep
 A tab can move from embedded to native later (e.g. if the feed becomes a heavily
 used, interaction-rich screen) without affecting the other tabs.
 
+## Post notifications
+
+A native background poller (`NotificationWorker`, a periodic WorkManager job)
+notifies the user when accounts they follow post to their home timeline. Each
+run fetches `/feed/following` and `/feed/timeline`, then the pure, unit-tested
+`decideNotifications` (`PostNotifications.kt`) picks which posts to notify: those
+newer than a stored high-water mark and from a followed actor whose server-side
+`notify_on_post` flag is on (toggled per-account on the web Feed page). The first
+run only records the high-water mark, so enabling the feature doesn't dump the
+backlog. The user opts in with the **"Notify me about new posts"** switch on the
+Account screen, which requests `POST_NOTIFICATIONS` (Android 13+) and
+schedules/cancels the worker; tapping a notification opens the Feed tab.
+
 ## Embedded web views
 
 `ui/screens/EmbeddedWebScreen.kt` is the reusable WebView host: it enables

@@ -143,6 +143,7 @@ class MainActivity : ComponentActivity() {
   companion object {
     const val EXTRA_OPEN_TAB = "open_tab"
     const val TAB_ADD = "add"
+    const val TAB_FEED = "feed"
   }
 
   override fun onCreate(savedInstanceState: Bundle?) {
@@ -150,6 +151,7 @@ class MainActivity : ComponentActivity() {
     val initialTab =
       when (intent?.getStringExtra(EXTRA_OPEN_TAB)) {
         TAB_ADD -> MainTab.Add
+        TAB_FEED -> MainTab.Feed
         else -> null
       }
     setContent {
