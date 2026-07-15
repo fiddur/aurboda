@@ -26,6 +26,11 @@ class AurbodaApplication : Application() {
     } else {
       Log.d(TAG, "Background sync is not enabled")
     }
+
+    // Resume the home-timeline post notifier across restarts if the user left it on.
+    if (isPostNotificationsEnabled(this)) {
+      NotificationWorker.schedule(this)
+    }
   }
 
   private fun isBackgroundSyncEnabled(context: Context): Boolean {
