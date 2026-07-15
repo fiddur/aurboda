@@ -159,6 +159,14 @@ fun EmbeddedWebScreen(
                             canGoBack = view.canGoBack()
                         }
 
+                        override fun doUpdateVisitedHistory(view: WebView, url: String?, isReload: Boolean) {
+                            // The embedded app is a client-side SPA: in-app
+                            // navigation happens via pushState, which does not
+                            // fire onPageFinished. Refresh here too so the back
+                            // gesture walks WebView history instead of leaving.
+                            canGoBack = view.canGoBack()
+                        }
+
                         override fun onReceivedError(
                             view: WebView,
                             request: WebResourceRequest,
