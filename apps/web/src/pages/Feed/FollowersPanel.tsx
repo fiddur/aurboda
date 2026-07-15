@@ -11,8 +11,8 @@ import type { FollowerActor } from '@aurboda/api-spec'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { approveFollower, fetchFollowers, rejectFollower } from '../../state/api'
-import { localProfilePath } from './profile-link'
+import { approveFollower, fetchFollowers, fetchFollowing, followActor, rejectFollower } from '../../state/api'
+import { ActorName } from './ActorName'
 
 const Avatar = ({ actor }: { actor: FollowerActor }) =>
   actor.avatar_url ? (
@@ -23,10 +23,11 @@ const Avatar = ({ actor }: { actor: FollowerActor }) =>
 
 const Ident = ({ actor }: { actor: FollowerActor }) => {
   const name = actor.display_name ?? actor.handle ?? actor.actor_uri
-  const profilePath = localProfilePath(actor.actor_uri, window.location.host)
   return (
     <span class="following-ident">
-      <span class="following-name">{profilePath ? <a href={profilePath}>{name}</a> : name}</span>
+      <span class="following-name">
+        <ActorName name={name} actorUri={actor.actor_uri} />
+      </span>
       {actor.handle && <span class="following-handle">{actor.handle}</span>}
     </span>
   )
@@ -55,25 +56,45 @@ const PendingRow = ({ actor }: { actor: FollowerActor }) => {
   )
 }
 
-const AcceptedRow = ({ actor }: { actor: FollowerActor }) => {
+const AcceptedRow = ({ actor, isFollowing }: { actor: FollowerActor; isFollowing: boolean }) => {
   const queryClient = useQueryClient()
   const remove = useMutation({
     mutationFn: () => rejectFollower(actor.id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['followers'] }),
+  })
+  // Follow back with the follower's handle (or actor URI — the endpoint accepts
+  // either). Once it lands, the ['following'] list refetches and `isFollowing`
+  // flips true, hiding this button.
+  const followBack = useMutation({
+    mutationFn: () => followActor(actor.handle ?? actor.actor_uri),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['following'] }),
   })
 
   return (
     <li class="following-row">
       <Avatar actor={actor} />
       <Ident actor={actor} />
-      <button
-        type="button"
-        class="btn-secondary following-unfollow"
-        onClick={() => remove.mutate()}
-        disabled={remove.isPending}
-      >
-        {remove.isPending ? 'Removing…' : 'Remove'}
-      </button>
+      <span class="followers-actions">
+        {!isFollowing && (
+          <button
+            type="button"
+            class="btn-primary"
+            onClick={() => followBack.mutate()}
+            disabled={followBack.isPending}
+            title="Follow this account back"
+          >
+            {followBack.isPending ? 'Following…' : 'Follow back'}
+          </button>
+        )}
+        <button
+          type="button"
+          class="btn-secondary following-unfollow"
+          onClick={() => remove.mutate()}
+          disabled={remove.isPending}
+        >
+          {remove.isPending ? 'Removing…' : 'Remove'}
+        </button>
+      </span>
     </li>
   )
 }
@@ -83,6 +104,10 @@ export function FollowersPanel() {
     queryFn: () => fetchFollowers('all'),
     queryKey: ['followers'],
   })
+  // Who you already follow — drives whether an accepted follower shows "Follow
+  // back". Shares the ['following'] key with FollowingPanel, so it's one fetch.
+  const { data: following } = useQuery({ queryFn: fetchFollowing, queryKey: ['following'] })
+  const followingUris = new Set((following ?? []).map((f) => f.actor_uri))
 
   const pending = followers?.filter((f) => !f.accepted) ?? []
   const accepted = followers?.filter((f) => f.accepted) ?? []
@@ -113,7 +138,7 @@ export function FollowersPanel() {
       {accepted.length > 0 && (
         <ul class="following-list">
           {accepted.map((actor) => (
-            <AcceptedRow key={actor.id} actor={actor} />
+            <AcceptedRow key={actor.id} actor={actor} isFollowing={followingUris.has(actor.actor_uri)} />
           ))}
         </ul>
       )}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { localProfilePath } from './profile-link'
+import { actorProfileLink, localProfilePath } from './profile-link'
 
 describe('localProfilePath', () => {
   const HOST = 'aurboda.net'
@@ -22,5 +22,28 @@ describe('localProfilePath', () => {
 
   it('returns null for a malformed URI', () => {
     expect(localProfilePath('not a url', HOST)).toBeNull()
+  })
+})
+
+describe('actorProfileLink', () => {
+  const HOST = 'aurboda.net'
+
+  it('links a local actor to its /u/:username page, not external', () => {
+    expect(actorProfileLink('https://aurboda.net/users/fredrik', HOST)).toEqual({
+      external: false,
+      href: '/u/fredrik',
+    })
+  })
+
+  it('links a remote actor to its own URL, flagged external', () => {
+    expect(actorProfileLink('https://mastodon.social/users/alice', HOST)).toEqual({
+      external: true,
+      href: 'https://mastodon.social/users/alice',
+    })
+  })
+
+  it('returns null for a non-http(s) or malformed actor URI', () => {
+    expect(actorProfileLink('mailto:alice@mastodon.social', HOST)).toBeNull()
+    expect(actorProfileLink('not a url', HOST)).toBeNull()
   })
 })

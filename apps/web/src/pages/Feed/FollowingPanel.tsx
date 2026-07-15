@@ -10,7 +10,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'preact/hooks'
 
 import { fetchFollowing, followActor, unfollowActor } from '../../state/api'
-import { localProfilePath } from './profile-link'
+import { ActorName } from './ActorName'
 
 const FollowingRow = ({ actor }: { actor: FollowingActor }) => {
   const queryClient = useQueryClient()
@@ -20,7 +20,6 @@ const FollowingRow = ({ actor }: { actor: FollowingActor }) => {
   })
 
   const name = actor.display_name ?? actor.handle ?? actor.actor_uri
-  const profilePath = localProfilePath(actor.actor_uri, window.location.host)
   return (
     <li class="following-row">
       {actor.avatar_url ? (
@@ -29,7 +28,9 @@ const FollowingRow = ({ actor }: { actor: FollowingActor }) => {
         <span class="following-avatar following-avatar--blank" aria-hidden="true" />
       )}
       <span class="following-ident">
-        <span class="following-name">{profilePath ? <a href={profilePath}>{name}</a> : name}</span>
+        <span class="following-name">
+          <ActorName name={name} actorUri={actor.actor_uri} />
+        </span>
         {actor.handle && <span class="following-handle">{actor.handle}</span>}
       </span>
       {!actor.accepted && (

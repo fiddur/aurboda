@@ -7,7 +7,6 @@ import { useRoute } from 'preact-iso'
  */
 import type { PostAuthor } from '../Feed/FeedPostCard'
 
-import { ShareLinkButton } from '../../components/ShareLinkButton'
 import { avatarUrl, fetchPublicPosts, fetchPublicProfile } from '../../state/api'
 import { FeedPostCard } from '../Feed/FeedPostCard'
 import './style.css'
@@ -70,7 +69,8 @@ export function PublicProfile() {
   return (
     <div class="public-profile">
       {/* A <div>, not <header>: the global `header` rule paints a #673ab8 bar
-          (mobile nav style) that made the purple Share button invisible (#883). */}
+          (mobile nav style) behind the content, so avoid the semantic element
+          here (#883). */}
       <div class="public-profile-header">
         <img
           class="public-avatar"
@@ -80,7 +80,6 @@ export function PublicProfile() {
           height={80}
         />
         <h1>@{username}</h1>
-        <ShareLinkButton url={window.location.href} title={`@${username} on Aurboda`} />
       </div>
 
       <section class="public-section">
