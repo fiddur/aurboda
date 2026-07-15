@@ -25,7 +25,9 @@ used, interaction-rich screen) without affecting the other tabs.
 
 `ui/screens/EmbeddedWebScreen.kt` is the reusable WebView host: it enables
 JavaScript + DOM storage, shows a native loading spinner and a retry-able error
-state, and lets the system back gesture walk the WebView history first.
+state (covering both network failures and main-frame HTTP errors such as a `401`
+from an expired token), and lets the system back gesture walk the WebView
+history first.
 
 ### The embed contract (web ↔ native)
 
@@ -35,12 +37,19 @@ The web app supports an **embed mode** (`apps/web/src/embed.ts`):
   own chrome (header, sidebar, footer) because the native app provides
   navigation. The flag is persisted to `sessionStorage` so it survives
   client-side navigation that drops the query string.
-- **Auth is shared, not re-entered.** The WebView injects a JavaScript bridge,
+- **Auth is shared, not re-entered.** The WebView exposes a JavaScript bridge,
   `window.AurbodaNative.getAuth()`, returning `{ user, token }` JSON. The web app
   reads it at startup (`readNativeAuth`) and seeds its bearer-token auth from it,
   falling back to browser-stored credentials when the bridge is absent. This
   works because both the web app (localStorage) and the Android app
   (EncryptedSharedPreferences) authenticate with the same stateless bearer token.
+  The bridge is installed as a **document-start script scoped to the trusted
+  origin** (`WebViewCompat.addDocumentStartJavaScript` with `allowedOriginRules`),
+  so the token reaches only that origin's frames — a cross-origin iframe never
+  receives it. Older WebViews without document-start-script support fall back to
+  `addJavascriptInterface`; that is safe because the feed sanitiser strips
+  `<iframe>`/`<script>` and external navigation opens in the browser. Keep that
+  invariant: never allow-list `<iframe>` into the feed sanitiser.
 
 ### External links
 

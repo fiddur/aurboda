@@ -6,6 +6,7 @@ import android.graphics.Bitmap
 import android.webkit.JavascriptInterface
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
@@ -27,21 +28,22 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.webkit.WebViewCompat
+import androidx.webkit.WebViewFeature
 import org.json.JSONObject
 
 /**
- * Bridge exposed to the embedded web app as `window.AurbodaNative`. The web app
- * reads [getAuth] at startup to share the native app's bearer token instead of
- * prompting for a second login (see apps/web/src/embed.ts).
+ * Fallback bridge exposed to the embedded web app as `window.AurbodaNative` on
+ * WebViews that lack document-start script support (see [installAuthBridge]).
+ * The web app reads [getAuth] at startup to share the native app's bearer token
+ * instead of prompting for a second login (see apps/web/src/embed.ts).
  *
- * Security: [getAuth] hands the bearer token to any JavaScript running
- * same-origin in this WebView. That is acceptable under the current threat
- * model — we only load our own first-party pages, external navigations are sent
- * to the browser ([isExternalLink] + shouldOverrideUrlLoading), and the web app
- * seeds the same token into localStorage anyway, so same-origin scripts gain no
- * new access. Reconsider (e.g. a short-lived/scoped token, or dropping the
- * bridge) before the embedded pages render any third-party or user-embedded
- * content that could run scripts on our origin.
+ * Security: added via `addJavascriptInterface`, [getAuth] is reachable from
+ * every frame the WebView loads, including cross-origin iframes. That is
+ * acceptable because the feed sanitiser strips `<iframe>`/`<script>` and
+ * external navigation is punted to the browser, so no untrusted origin renders
+ * here. The preferred path ([installAuthBridge] via `WebViewCompat`) avoids the
+ * cross-origin exposure by scoping injection to the trusted origin.
  */
 private class AuthBridge(private val authJson: String) {
     @JavascriptInterface
@@ -49,13 +51,38 @@ private class AuthBridge(private val authJson: String) {
 }
 
 /**
+ * Install the auth bridge (`window.AurbodaNative.getAuth()`) the embedded web
+ * app reads at startup.
+ *
+ * Preferred path: a document-start script scoped to [origin] via `WebViewCompat`
+ * so the token reaches only the trusted origin's frames (a cross-origin iframe
+ * never receives it) and is present before the page's own scripts run. Falls
+ * back to `addJavascriptInterface` when the WebView lacks document-start-script
+ * support or [origin] is unknown; that path injects into all frames, which is
+ * safe because the feed sanitiser strips `<iframe>`/`<script>` and external
+ * navigation opens in the browser.
+ */
+private fun installAuthBridge(webView: WebView, authJson: String, origin: String?) {
+    if (origin != null && WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
+        val script = "window.AurbodaNative={getAuth:function(){return ${JSONObject.quote(authJson)};}};"
+        val installed = runCatching {
+            WebViewCompat.addDocumentStartJavaScript(webView, script, setOf(origin))
+        }.isSuccess
+        if (installed) return
+    }
+    webView.addJavascriptInterface(AuthBridge(authJson), "AurbodaNative")
+}
+
+/**
  * Hosts a page of the web app inside a WebView so native and web share one
  * implementation. The native app supplies navigation, the web app renders in
- * embed mode (chrome hidden). Links to other domains open in the external
- * browser; same-origin links stay in the WebView.
+ * embed mode (chrome hidden). Auth is shared through an origin-scoped bridge
+ * ([installAuthBridge]); links to other domains open in the external browser,
+ * same-origin links stay in the WebView.
  *
  * @param url the web page to load (already carrying `?embed=1`)
- * @param baseUrl the server origin, used to decide which links are external
+ * @param baseUrl the server origin, used to decide which links are external and
+ *   to scope the auth bridge to the trusted origin
  */
 @Suppress("ASSIGNED_VALUE_IS_NEVER_READ") // Compose state vars trigger false "assigned but never read" warnings
 @SuppressLint("SetJavaScriptEnabled")
@@ -90,7 +117,7 @@ fun EmbeddedWebScreen(
                 WebView(ctx).apply {
                     settings.javaScriptEnabled = true
                     settings.domStorageEnabled = true
-                    addJavascriptInterface(AuthBridge(authJson), "AurbodaNative")
+                    installAuthBridge(this, authJson, originOf(baseUrl))
                     webViewClient = object : WebViewClient() {
                         override fun shouldOverrideUrlLoading(
                             view: WebView,
@@ -125,6 +152,20 @@ fun EmbeddedWebScreen(
                         ) {
                             // Only the main frame failing is a page load error;
                             // ignore failed sub-resources (images, tiles, etc.).
+                            if (request.isForMainFrame) {
+                                loading = false
+                                errorMessage = "Could not load page"
+                            }
+                        }
+
+                        override fun onReceivedHttpError(
+                            view: WebView,
+                            request: WebResourceRequest,
+                            errorResponse: WebResourceResponse,
+                        ) {
+                            // A main-frame HTTP error (e.g. 401 on an expired
+                            // token) would otherwise render the server's error
+                            // body; show the native retry state instead.
                             if (request.isForMainFrame) {
                                 loading = false
                                 errorMessage = "Could not load page"
