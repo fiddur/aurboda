@@ -8,16 +8,24 @@ implementations of the same UI.
 ## Navigation
 
 A bottom navigation bar (`ui/screens/MainScreen.kt`, tabs in `AppState.kt`'s
-`MainTab`) hosts the tabs:
+`MainTab`) hosts five tabs:
 
-| Tab     | Kind      | Why                                                        |
-| ------- | --------- | ---------------------------------------------------------- |
-| Home    | Embedded  | Renders the web app's `/` (the dashboard) in a WebView; the default tab on launch |
-| Sync    | Native    | Health Connect permissions, background sync management     |
-| Add     | Native    | Native date/time pickers, offline entry queue              |
-| Feed    | Embedded  | Renders the web app's `/feed` in a WebView                 |
-| Live    | Native    | Bluetooth (BLE) sensor scanning + live heart rate          |
-| Account | Native    | Server URL, logout                                         |
+| Tab  | Kind     | Why                                                                     |
+| ---- | -------- | ----------------------------------------------------------------------- |
+| Home | Embedded | Web `/` (the dashboard); the default tab on launch                      |
+| Add  | Native   | Native date/time pickers, offline entry queue                           |
+| Feed | Embedded | Web `/feed`                                                             |
+| Sync | Native   | Health Connect permissions, background sync management                  |
+| More | Hub      | Native list of everything else (`ui/screens/MoreScreen.kt`)             |
+
+There are far more web pages than fit on a bottom bar, so the **More** tab is a
+hub (`MoreScreen.kt`, `moreGroups`): a grouped list where each entry opens the
+corresponding web page in an embedded WebView (Timeline, Data, Chart, Meals,
+Reports, Settings, Data sources, …). The two native-only screens — **Live**
+sensors (BLE) and **Account** (server URL, logout) — also live in the hub.
+Selecting an entry pushes it in place; the system back gesture returns to the
+hub (after any embedded page has exhausted its own WebView history). Keep
+`moreGroups` in sync with the web navigation (`apps/web/src/components/nav-links.ts`).
 
 A tab can move from embedded to native later (e.g. if the feed becomes a heavily
 used, interaction-rich screen) without affecting the other tabs.

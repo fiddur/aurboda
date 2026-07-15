@@ -15,11 +15,10 @@ enum class AppScreen {
 
 enum class MainTab {
     Home,
-    Sync,
     Add,
     Feed,
-    Live,
-    Account
+    Sync,
+    More
 }
 
 class AppState(

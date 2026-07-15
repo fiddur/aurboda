@@ -320,15 +320,9 @@ fun AurbodaApp(initialTab: MainTab? = null) {
               modifier = modifier,
             )
           },
-          liveContent = { modifier ->
-            net.aurboda.ui.screens.LiveScreen(
-              modifier = modifier,
-            )
-          },
-          accountContent = { modifier ->
-            net.aurboda.ui.screens.AccountScreen(
-              username = credentials.username,
-              serverUrl = credentials.serverUrl,
+          moreContent = { modifier ->
+            net.aurboda.ui.screens.MoreScreen(
+              credentials = credentials,
               onServerUrlChange = { newUrl -> appState.changeServerUrl(newUrl) },
               onLogout = { appState.logout() },
               modifier = modifier,
