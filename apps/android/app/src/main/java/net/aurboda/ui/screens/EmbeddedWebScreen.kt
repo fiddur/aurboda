@@ -163,9 +163,11 @@ fun EmbeddedWebScreen(
                             request: WebResourceRequest,
                             errorResponse: WebResourceResponse,
                         ) {
-                            // A main-frame HTTP error (e.g. 401 on an expired
-                            // token) would otherwise render the server's error
-                            // body; show the native retry state instead.
+                            // A main-frame HTTP error (e.g. a 5xx or 404 on the
+                            // page shell) would otherwise render the server's
+                            // error body; show the native retry state instead.
+                            // (Token-expiry 401s hit client-side fetches to
+                            // /api, not the main-frame load, so not this branch.)
                             if (request.isForMainFrame) {
                                 loading = false
                                 errorMessage = "Could not load page"

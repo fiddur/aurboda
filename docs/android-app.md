@@ -25,9 +25,10 @@ used, interaction-rich screen) without affecting the other tabs.
 
 `ui/screens/EmbeddedWebScreen.kt` is the reusable WebView host: it enables
 JavaScript + DOM storage, shows a native loading spinner and a retry-able error
-state (covering both network failures and main-frame HTTP errors such as a `401`
-from an expired token), and lets the system back gesture walk the WebView
-history first.
+state (covering both network failures and main-frame HTTP errors such as a `5xx`
+or `404` on the page shell — a client-rendered SPA returns `200` for `/feed`, so
+token-expiry `401`s surface on client-side `fetch`, not the main-frame load), and
+lets the system back gesture walk the WebView history first.
 
 ### The embed contract (web ↔ native)
 
