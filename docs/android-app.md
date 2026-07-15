@@ -12,6 +12,7 @@ A bottom navigation bar (`ui/screens/MainScreen.kt`, tabs in `AppState.kt`'s
 
 | Tab     | Kind      | Why                                                        |
 | ------- | --------- | ---------------------------------------------------------- |
+| Home    | Embedded  | Renders the web app's `/` (the dashboard) in a WebView; the default tab on launch |
 | Sync    | Native    | Health Connect permissions, background sync management     |
 | Add     | Native    | Native date/time pickers, offline entry queue              |
 | Feed    | Embedded  | Renders the web app's `/feed` in a WebView                 |

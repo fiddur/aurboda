@@ -14,6 +14,7 @@ enum class AppScreen {
 }
 
 enum class MainTab {
+    Home,
     Sync,
     Add,
     Feed,
@@ -24,7 +25,7 @@ enum class MainTab {
 class AppState(
     private val context: Context,
     initialScreen: AppScreen,
-    initialTab: MainTab = MainTab.Sync
+    initialTab: MainTab = MainTab.Home
 ) {
     var currentScreen by mutableStateOf(initialScreen)
         private set
@@ -45,7 +46,7 @@ class AppState(
 
     fun logout() {
         CredentialsManager.clearCredentials(context)
-        currentTab = MainTab.Sync
+        currentTab = MainTab.Home
         currentScreen = AppScreen.Login
     }
 
@@ -67,7 +68,7 @@ fun rememberAppState(initialTab: MainTab? = null): AppState {
         AppState(
             context = context,
             initialScreen = if (hasCredentials) AppScreen.Main else AppScreen.Login,
-            initialTab = initialTab ?: MainTab.Sync
+            initialTab = initialTab ?: MainTab.Home
         )
     }
 }
