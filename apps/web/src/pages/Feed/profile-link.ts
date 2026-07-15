@@ -17,3 +17,29 @@ export const localProfilePath = (actorUri: string, host: string): string | null 
     return null
   }
 }
+
+export interface ActorProfileLink {
+  /** Where the actor's name should link. */
+  href: string
+  /** True for a remote actor — the link leaves this instance, so it should open
+   *  externally (a new tab in the browser, the system browser from the app). */
+  external: boolean
+}
+
+/**
+ * A link to an actor's profile: the local `/u/:username` page when the actor
+ * lives on `host`, otherwise the actor's own (remote) URL flagged `external`.
+ * Only http(s) actor URIs are linkable; anything else returns null so callers
+ * render plain text.
+ */
+export const actorProfileLink = (actorUri: string, host: string): ActorProfileLink | null => {
+  const local = localProfilePath(actorUri, host)
+  if (local) return { external: false, href: local }
+  try {
+    const url = new URL(actorUri)
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return null
+    return { external: true, href: actorUri }
+  } catch {
+    return null
+  }
+}
