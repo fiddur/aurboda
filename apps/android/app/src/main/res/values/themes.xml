@@ -2,4 +2,13 @@
 <resources>
 
     <style name="Theme.Aurboda" parent="android:Theme.Material.Light.NoActionBar" />
+
+    <!--
+      Day/night theme used only as the context for the embedded WebView, so its
+      `isLightTheme` follows the system dark-mode setting. That drives the
+      WebView's `prefers-color-scheme`, letting the embedded web app render dark
+      like it does in the browser (see EmbeddedWebScreen). The native UI keeps
+      the light Theme.Aurboda above.
+    -->
+    <style name="Theme.Aurboda.WebView" parent="android:Theme.DeviceDefault.DayNight" />
 </resources>

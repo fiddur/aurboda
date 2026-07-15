@@ -1,4 +1,6 @@
 .feed-page {
+  box-sizing: border-box;
+  width: 100%;
   max-width: 720px;
   margin: 0 auto;
   padding: 1rem;

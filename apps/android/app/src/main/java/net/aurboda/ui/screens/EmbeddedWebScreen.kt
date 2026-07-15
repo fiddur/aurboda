@@ -3,6 +3,7 @@ package net.aurboda.ui.screens
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.graphics.Bitmap
+import android.view.ContextThemeWrapper
 import android.webkit.JavascriptInterface
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
@@ -28,8 +29,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
+import net.aurboda.R
 import org.json.JSONObject
 
 /**
@@ -114,9 +117,20 @@ fun EmbeddedWebScreen(
         AndroidView(
             modifier = Modifier.fillMaxSize(),
             factory = { ctx ->
-                WebView(ctx).apply {
+                // Build the WebView against a day/night-themed context so its
+                // `isLightTheme` (and thus the page's `prefers-color-scheme`)
+                // follows the system dark-mode setting, even though the native
+                // app UI stays on the light Theme.Aurboda.
+                val webViewContext = ContextThemeWrapper(ctx, R.style.Theme_Aurboda_WebView)
+                WebView(webViewContext).apply {
                     settings.javaScriptEnabled = true
                     settings.domStorageEnabled = true
+                    // Let the embedded web app's own dark styles apply when the
+                    // system is in dark mode (the page declares color-scheme
+                    // support, so WebView uses its CSS rather than auto-inverting).
+                    if (WebViewFeature.isFeatureSupported(WebViewFeature.ALGORITHMIC_DARKENING)) {
+                        WebSettingsCompat.setAlgorithmicDarkeningAllowed(settings, true)
+                    }
                     installAuthBridge(this, authJson, originOf(baseUrl))
                     webViewClient = object : WebViewClient() {
                         override fun shouldOverrideUrlLoading(
