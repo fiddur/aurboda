@@ -163,6 +163,18 @@ describe('correlation drafts', () => {
     if (!result.ok) expect(result.error).toContain('trigger')
   })
 
+  it('rejects a non-integer lag (caught early, not left to the server)', () => {
+    const result = buildArticleBody(state({ blocks: [{ ...completeCorrelationDraft(), lagDays: '1.5' }] }))
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.error).toContain('whole number')
+  })
+
+  it('keeps an integer lag on the built block', () => {
+    const result = buildArticleBody(state({ blocks: [{ ...completeCorrelationDraft(), lagDays: '2' }] }))
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.body.blocks[0]).toMatchObject({ lag_days: 2 })
+  })
+
   it('omits empty optional fields (no window / lag / caption)', () => {
     const result = buildArticleBody(state({ blocks: [completeCorrelationDraft()] }))
     expect(result.ok).toBe(true)

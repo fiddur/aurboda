@@ -156,6 +156,9 @@ const buildCorrelationBlock = (b: CorrelationDraft, i: number): BlockResult => {
   const missing = selectorIncomplete(b.trigger) ? 'trigger' : selectorIncomplete(b.outcome) ? 'outcome' : null
   if (missing) return { error: `Correlation block ${i + 1}: choose a ${missing} (metric or pattern).` }
   const lag = Number(b.lagDays)
+  if (b.lagDays.trim() && !Number.isInteger(lag)) {
+    return { error: `Correlation block ${i + 1}: lag days must be a whole number.` }
+  }
   return {
     block: {
       outcome: b.outcome,
@@ -163,7 +166,7 @@ const buildCorrelationBlock = (b: CorrelationDraft, i: number): BlockResult => {
       type: 'correlation',
       ...(toIso(b.start) ? { start: toIso(b.start) } : {}),
       ...(toIso(b.end) ? { end: toIso(b.end) } : {}),
-      ...(b.lagDays.trim() && Number.isFinite(lag) && lag !== 0 ? { lag_days: lag } : {}),
+      ...(b.lagDays.trim() && lag !== 0 ? { lag_days: lag } : {}),
       ...(b.caption.trim() ? { caption: b.caption.trim() } : {}),
     },
   }

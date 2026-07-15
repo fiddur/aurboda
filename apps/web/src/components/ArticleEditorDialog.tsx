@@ -91,6 +91,7 @@ const CorrelationBlockFields = ({
       <span class="article-field-label">Lag days (optional)</span>
       <input
         type="number"
+        step="1"
         class="article-input"
         value={block.lagDays}
         placeholder="0 — days the outcome lags the trigger"
