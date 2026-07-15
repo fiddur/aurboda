@@ -288,6 +288,15 @@ fun AurbodaApp(initialTab: MainTab? = null) {
         net.aurboda.ui.screens.MainScreen(
           currentTab = appState.currentTab,
           onTabSelected = { appState.selectTab(it) },
+          homeContent = { modifier ->
+            net.aurboda.ui.screens.EmbeddedWebScreen(
+              url = "${credentials.serverUrl.trimEnd('/')}/?embed=1",
+              baseUrl = credentials.serverUrl,
+              username = credentials.username,
+              authToken = credentials.authToken,
+              modifier = modifier,
+            )
+          },
           syncContent = { modifier ->
             HealthConnectScreen(
               apiUrl = credentials.apiUrl,

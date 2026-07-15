@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
@@ -27,6 +28,7 @@ data class BottomNavItem(
 fun MainScreen(
     currentTab: MainTab,
     onTabSelected: (MainTab) -> Unit,
+    homeContent: @Composable (Modifier) -> Unit,
     syncContent: @Composable (Modifier) -> Unit,
     addContent: @Composable (Modifier) -> Unit,
     feedContent: @Composable (Modifier) -> Unit,
@@ -34,6 +36,7 @@ fun MainScreen(
     accountContent: @Composable (Modifier) -> Unit
 ) {
     val navItems = listOf(
+        BottomNavItem(MainTab.Home, "Home", Icons.Default.Home),
         BottomNavItem(MainTab.Sync, "Sync", Icons.Default.Refresh),
         BottomNavItem(MainTab.Add, "Add", Icons.Default.Add),
         BottomNavItem(MainTab.Feed, "Feed", Icons.AutoMirrored.Filled.List),
@@ -56,6 +59,7 @@ fun MainScreen(
         }
     ) { innerPadding ->
         when (currentTab) {
+            MainTab.Home -> homeContent(Modifier.padding(innerPadding))
             MainTab.Sync -> syncContent(Modifier.padding(innerPadding))
             MainTab.Add -> addContent(Modifier.padding(innerPadding))
             MainTab.Feed -> feedContent(Modifier.padding(innerPadding))
