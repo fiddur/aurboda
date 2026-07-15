@@ -101,6 +101,17 @@
   display: flex;
   align-items: center;
   gap: 0.6rem;
+  /* Lets a full-width child (e.g. a follow-back error) drop to its own line
+     without disturbing the avatar/name/actions on the first line. */
+  flex-wrap: wrap;
+}
+
+/* Follow-back failure message, shown on its own line under the follower row. */
+.following-row-error {
+  flex-basis: 100%;
+  margin: 0.15rem 0 0;
+  color: #991b1b;
+  font-size: 0.8rem;
 }
 
 .following-avatar {

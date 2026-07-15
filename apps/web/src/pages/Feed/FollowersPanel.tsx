@@ -95,6 +95,13 @@ const AcceptedRow = ({ actor, isFollowing }: { actor: FollowerActor; isFollowing
           {remove.isPending ? 'Removing…' : 'Remove'}
         </button>
       </span>
+      {followBack.isError && (
+        <span class="following-row-error" role="alert">
+          {followBack.error instanceof Error && followBack.error.message
+            ? followBack.error.message
+            : "Couldn't follow back. Try again."}
+        </span>
+      )}
     </li>
   )
 }
