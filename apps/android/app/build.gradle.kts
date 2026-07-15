@@ -142,6 +142,10 @@ dependencies {
   // WorkManager for background sync
   implementation("androidx.work:work-runtime-ktx:2.9.0")
 
+  // WebView helpers: origin-scoped document-start script injection for the
+  // embedded web screens (EmbeddedWebScreen)
+  implementation("androidx.webkit:webkit:1.12.1")
+
   testImplementation(libs.junit)
   testImplementation("io.mockk:mockk:1.13.9")
   testImplementation("androidx.work:work-testing:2.9.0")

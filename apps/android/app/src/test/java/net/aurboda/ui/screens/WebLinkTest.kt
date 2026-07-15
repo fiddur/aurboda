@@ -1,6 +1,8 @@
 package net.aurboda.ui.screens
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -40,5 +42,21 @@ class WebLinkTest {
     @Test
     fun `same host different port stays internal`() {
         assertFalse(isExternalLink("http://192.168.1.5:3000", "http://192.168.1.5:8080/feed"))
+    }
+
+    @Test
+    fun `originOf keeps scheme and host without a port`() {
+        assertEquals("https://aurboda.net", originOf("https://aurboda.net/feed?embed=1"))
+    }
+
+    @Test
+    fun `originOf keeps an explicit port`() {
+        assertEquals("http://192.168.1.5:3000", originOf("http://192.168.1.5:3000/feed"))
+    }
+
+    @Test
+    fun `originOf returns null without a host`() {
+        assertNull(originOf("/feed"))
+        assertNull(originOf("not a url"))
     }
 }

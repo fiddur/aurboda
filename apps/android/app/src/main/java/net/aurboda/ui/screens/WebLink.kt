@@ -18,3 +18,16 @@ fun isExternalLink(base: String, target: String): Boolean {
     val targetHost = targetUri.host ?: return false
     return !targetHost.equals(baseHost, ignoreCase = true)
 }
+
+/**
+ * The origin (`scheme://host[:port]`) of [url], suitable as a WebView
+ * `allowedOriginRules` entry so a document-start script is injected only into
+ * the trusted origin's frames. Returns null when [url] lacks a scheme or host.
+ */
+fun originOf(url: String): String? {
+    val uri = runCatching { URI(url) }.getOrNull() ?: return null
+    val scheme = uri.scheme ?: return null
+    val host = uri.host ?: return null
+    val port = if (uri.port != -1) ":${uri.port}" else ""
+    return "$scheme://$host$port"
+}
