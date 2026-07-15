@@ -54,6 +54,27 @@ private class AuthBridge(private val authJson: String) {
 }
 
 /**
+ * Pins the app-shell height to `window.innerHeight`. Android WebView can resolve
+ * CSS viewport units (`100vh`) and the `%` height chain to 0 even when the
+ * viewport is sized correctly, which collapses full-height pages (the timeline).
+ * `window.innerHeight` stays reliable, so we set `<html>` to it (in px) and let
+ * `body`/`#app` fill via `%`, re-applying on resize. Injected only in the
+ * WebView, so browsers are unaffected.
+ */
+private const val VIEWPORT_FIX_JS =
+    "(function(){function f(){document.documentElement.style.height=window.innerHeight+'px';" +
+        "if(document.body){document.body.style.height='100%';var a=document.getElementById('app');if(a)a.style.height='100%';}}" +
+        "window.addEventListener('resize',f);document.addEventListener('DOMContentLoaded',f);f();})();"
+
+private fun installViewportFix(webView: WebView, origin: String?) {
+    if (origin != null && WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
+        runCatching { WebViewCompat.addDocumentStartJavaScript(webView, VIEWPORT_FIX_JS, setOf(origin)) }
+    }
+    // Re-applied in onPageFinished too (covers WebViews without document-start
+    // support, and pages that finish after the initial DOMContentLoaded).
+}
+
+/**
  * Install the auth bridge (`window.AurbodaNative.getAuth()`) the embedded web
  * app reads at startup.
  *
@@ -164,6 +185,10 @@ fun EmbeddedWebScreen(
                         override fun onPageFinished(view: WebView, url: String?) {
                             loading = false
                             canGoBack = view.canGoBack()
+                            // Re-assert the viewport-height workaround (see
+                            // installViewportFix): covers WebViews without
+                            // document-start support and post-load layout.
+                            view.evaluateJavascript(VIEWPORT_FIX_JS, null)
                         }
 
                         override fun doUpdateVisitedHistory(view: WebView, url: String?, isReload: Boolean) {
@@ -203,6 +228,7 @@ fun EmbeddedWebScreen(
                             }
                         }
                     }
+                    installViewportFix(this, originOf(baseUrl))
                     webView = this
                     loadUrl(url)
                 }
