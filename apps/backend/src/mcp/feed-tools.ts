@@ -11,6 +11,7 @@ import {
   timelineQuerySchema,
   updateArticleBodySchema,
   updateFeedPostBodySchema,
+  updateFollowingBodySchema,
 } from '@aurboda/api-spec'
 import { z } from 'zod'
 
@@ -195,7 +196,7 @@ export const registerFeedTools = (
     'Enable or disable notifications for new posts from a followed actor (by the local follow id from `list_following`).',
     {
       id: z.string().uuid().describe('Local follow id (the `id` from list_following)'),
-      notify_on_post: z.boolean().describe('Whether new posts from this actor should notify'),
+      ...updateFollowingBodySchema.shape,
     },
     async ({ id, notify_on_post }) => {
       const record = await updateFeedFollowingNotify(user, id, notify_on_post)
