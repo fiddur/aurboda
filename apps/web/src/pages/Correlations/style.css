@@ -416,14 +416,7 @@
   font-weight: 600;
   color: #374151;
 }
-.selector-picker {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  align-items: center;
-}
-.selector-picker select,
-.selector-picker input,
+/* `.selector-picker` styling lives with the shared SelectorPicker component. */
 .explore-regime input,
 .explore-row > input {
   padding: 6px 8px;
