@@ -125,6 +125,13 @@ fun EmbeddedWebScreen(
                 WebView(webViewContext).apply {
                     settings.javaScriptEnabled = true
                     settings.domStorageEnabled = true
+                    // Establish a proper layout viewport from the page's
+                    // `<meta viewport>` (width=device-width, initial-scale=1).
+                    // Without this the WebView doesn't give viewport-height /
+                    // flex-fill layouts a stable height, collapsing full-height
+                    // pages like the timeline (scale stays 1:1 either way).
+                    settings.useWideViewPort = true
+                    settings.loadWithOverviewMode = true
                     // Let the embedded web app's own dark styles apply when the
                     // system is in dark mode (the page declares color-scheme
                     // support, so WebView uses its CSS rather than auto-inverting).
