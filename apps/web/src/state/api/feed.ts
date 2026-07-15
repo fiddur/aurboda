@@ -125,6 +125,17 @@ export const unfollowActor = async (id: string): Promise<void> => {
   await axios.delete(`${API_URL}/feed/following/${id}`, { headers: authHeaders() })
 }
 
+/** Toggle whether new posts from a followed actor notify (by its local follow id). */
+export const updateFollowingNotify = async (id: string, notify_on_post: boolean): Promise<FollowingActor> => {
+  const response = await axios.patch<FollowActorResponse>(
+    `${API_URL}/feed/following/${id}`,
+    { notify_on_post },
+    { headers: authHeaders() },
+  )
+  if (!response.data.actor) throw new Error('Update failed: no actor returned')
+  return response.data.actor
+}
+
 /** List the actors that follow the user, optionally filtered by acceptance state. */
 export const fetchFollowers = async (status: FollowersQuery['status'] = 'all'): Promise<FollowerActor[]> => {
   const response = await axios.get<FollowersResponse>(`${API_URL}/feed/followers`, {

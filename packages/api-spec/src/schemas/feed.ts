@@ -358,10 +358,24 @@ export const followingActorSchema = z
     display_name: z.string().nullable().meta({ description: "The followee's display name, if known" }),
     handle: z.string().nullable().meta({ description: "The followee's `@user@host` handle, if resolvable" }),
     id: z.string().uuid().meta({ description: 'Local id of the follow (used to unfollow)' }),
+    notify_on_post: z.boolean().meta({
+      description: "Whether to notify on this actor's new posts (used by the app for push notifications)",
+    }),
   })
   .meta({ id: 'FollowingActor' })
 
 export type FollowingActor = z.infer<typeof followingActorSchema>
+
+/** Body for updating a follow's per-actor settings (currently the notify toggle). */
+export const updateFollowingBodySchema = z
+  .object({
+    notify_on_post: z.boolean().meta({
+      description: "Whether to notify on this actor's new posts",
+    }),
+  })
+  .meta({ id: 'UpdateFollowingBody' })
+
+export type UpdateFollowingBody = z.infer<typeof updateFollowingBodySchema>
 
 /** Response wrapping a single follow (e.g. the result of following an actor). */
 export const followActorResponseSchema = baseResponseSchema

@@ -301,6 +301,7 @@ export {
   markFeedFollowingAccepted,
   removeFeedFollowing,
   removeFeedFollowingByActor,
+  updateFeedFollowingNotify,
   upsertFeedFollowing,
 } from './feed-following.ts'
 

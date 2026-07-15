@@ -1,6 +1,6 @@
-import type * as TimeSeriesModule from '../db/time-series.ts'
-
 import { beforeEach, describe, expect, test, vi } from 'vitest'
+
+import type * as TimeSeriesModule from '../db/time-series.ts'
 
 import * as db from '../db/index.ts'
 import { buildBucketExpr, getChartData } from './chart-data.ts'

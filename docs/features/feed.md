@@ -156,6 +156,11 @@ and removes the row. Local follows use the exact same path (delivered to the loc
 over loopback), so there is no special-casing. Delivery is best-effort/synchronous, matching
 the rest of the feed — a failed `Follow` POST leaves the pending row so the user can retry.
 
+Each follow carries a **`notify_on_post`** flag (default `true`), toggled per-actor with the
+bell in the web Following panel (or the `set_following_notify` MCP tool / `PATCH
+/feed/following/:id`). It controls whether the Android app raises a notification for that
+actor's new home-timeline posts; muting is preserved across a re-follow.
+
 The actor advertises a **following collection** (`/users/<username>/following`) listing only
 _accepted_ follows (a pending follow isn't a confirmed relationship yet). The followee's
 inbox URIs are internal delivery details and are never exposed on the owner-facing API.

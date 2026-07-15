@@ -149,6 +149,7 @@ export const tableCreationOrder = [
   'feed_follower',
   'feed_follower_columns',
   'feed_following',
+  'feed_following_notify',
   'timeline_entry',
   'timeline_entry_structured',
   'timeline_entry_images',

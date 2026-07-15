@@ -34,7 +34,10 @@ export const serverStatusResponseSchema = baseResponseSchema
       .boolean()
       .optional()
       .meta({ description: 'Whether this instance supports cross-instance federation' }),
-    product: z.literal('aurboda').optional().meta({ description: 'Product identifier for federation discovery' }),
+    product: z
+      .literal('aurboda')
+      .optional()
+      .meta({ description: 'Product identifier for federation discovery' }),
     // For backwards compatibility
     signup_allowed: z
       .boolean()

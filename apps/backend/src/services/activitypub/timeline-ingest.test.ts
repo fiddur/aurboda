@@ -59,6 +59,7 @@ describe('noteToTimelineInput', () => {
     handle: '@alice@mastodon.example',
     id: '11111111-1111-1111-1111-111111111111',
     inbox_uri: 'https://mastodon.example/users/alice/inbox',
+    notify_on_post: true,
     shared_inbox_uri: null,
   }
 

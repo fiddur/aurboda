@@ -1,6 +1,6 @@
-import type * as TimeSeriesModule from '../db/time-series.ts'
-
 import { beforeEach, describe, expect, test, vi } from 'vitest'
+
+import type * as TimeSeriesModule from '../db/time-series.ts'
 
 import * as db from '../db/index.ts'
 import { parseMetricEntityId, toMetricEntityId } from './metric-entity-id.ts'
@@ -683,7 +683,12 @@ describe('bulkAddMetrics', () => {
     const result = await bulkAddMetrics('testuser', [
       // Default source 'aurboda' is allowed for cumulative metrics.
       { metric: 'steps', time: new Date('2026-05-27T00:00:00Z'), value: 5000 },
-      { metric: 'steps', source: 'health_connect_aggregate', time: new Date('2026-05-28T00:00:00Z'), value: 6000 },
+      {
+        metric: 'steps',
+        source: 'health_connect_aggregate',
+        time: new Date('2026-05-28T00:00:00Z'),
+        value: 6000,
+      },
     ])
 
     expect(result.inserted).toBe(2)

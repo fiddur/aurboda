@@ -60,6 +60,7 @@ describe('serializeFollowing', () => {
       handle: '@alice@mastodon.example',
       id: '11111111-1111-1111-1111-111111111111',
       inbox_uri: 'https://mastodon.example/users/alice/inbox',
+      notify_on_post: false,
       shared_inbox_uri: 'https://mastodon.example/inbox',
     }
 
@@ -72,6 +73,7 @@ describe('serializeFollowing', () => {
       display_name: 'Alice',
       handle: '@alice@mastodon.example',
       id: '11111111-1111-1111-1111-111111111111',
+      notify_on_post: false,
     })
     // Internal delivery details must not leak to the owner-facing surface.
     expect(dto).not.toHaveProperty('inbox_uri')
