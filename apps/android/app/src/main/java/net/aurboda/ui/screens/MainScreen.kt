@@ -5,8 +5,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
@@ -29,19 +28,17 @@ fun MainScreen(
     currentTab: MainTab,
     onTabSelected: (MainTab) -> Unit,
     homeContent: @Composable (Modifier) -> Unit,
-    syncContent: @Composable (Modifier) -> Unit,
     addContent: @Composable (Modifier) -> Unit,
     feedContent: @Composable (Modifier) -> Unit,
-    liveContent: @Composable (Modifier) -> Unit,
-    accountContent: @Composable (Modifier) -> Unit
+    syncContent: @Composable (Modifier) -> Unit,
+    moreContent: @Composable (Modifier) -> Unit
 ) {
     val navItems = listOf(
         BottomNavItem(MainTab.Home, "Home", Icons.Default.Home),
-        BottomNavItem(MainTab.Sync, "Sync", Icons.Default.Refresh),
         BottomNavItem(MainTab.Add, "Add", Icons.Default.Add),
         BottomNavItem(MainTab.Feed, "Feed", Icons.AutoMirrored.Filled.List),
-        BottomNavItem(MainTab.Live, "Live", Icons.Default.PlayArrow),
-        BottomNavItem(MainTab.Account, "Account", Icons.Default.Person)
+        BottomNavItem(MainTab.Sync, "Sync", Icons.Default.Refresh),
+        BottomNavItem(MainTab.More, "More", Icons.Default.Menu)
     )
 
     Scaffold(
@@ -60,11 +57,10 @@ fun MainScreen(
     ) { innerPadding ->
         when (currentTab) {
             MainTab.Home -> homeContent(Modifier.padding(innerPadding))
-            MainTab.Sync -> syncContent(Modifier.padding(innerPadding))
             MainTab.Add -> addContent(Modifier.padding(innerPadding))
             MainTab.Feed -> feedContent(Modifier.padding(innerPadding))
-            MainTab.Live -> liveContent(Modifier.padding(innerPadding))
-            MainTab.Account -> accountContent(Modifier.padding(innerPadding))
+            MainTab.Sync -> syncContent(Modifier.padding(innerPadding))
+            MainTab.More -> moreContent(Modifier.padding(innerPadding))
         }
     }
 }
