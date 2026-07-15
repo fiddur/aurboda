@@ -30,6 +30,12 @@ or `404` on the page shell — a client-rendered SPA returns `200` for `/feed`, 
 token-expiry `401`s surface on client-side `fetch`, not the main-frame load), and
 lets the system back gesture walk the WebView history first.
 
+The WebView follows the **system dark-mode** setting even though the native UI
+stays light: it is built against a day/night-themed context
+(`Theme.Aurboda.WebView`) with algorithmic darkening allowed, so the embedded web
+app's `prefers-color-scheme` resolves to dark when the system is dark and its own
+dark CSS applies (the page declares `color-scheme: light dark`).
+
 ### The embed contract (web ↔ native)
 
 The web app supports an **embed mode** (`apps/web/src/embed.ts`):
