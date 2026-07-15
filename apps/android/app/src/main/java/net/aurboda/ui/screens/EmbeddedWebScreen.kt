@@ -33,6 +33,15 @@ import org.json.JSONObject
  * Bridge exposed to the embedded web app as `window.AurbodaNative`. The web app
  * reads [getAuth] at startup to share the native app's bearer token instead of
  * prompting for a second login (see apps/web/src/embed.ts).
+ *
+ * Security: [getAuth] hands the bearer token to any JavaScript running
+ * same-origin in this WebView. That is acceptable under the current threat
+ * model — we only load our own first-party pages, external navigations are sent
+ * to the browser ([isExternalLink] + shouldOverrideUrlLoading), and the web app
+ * seeds the same token into localStorage anyway, so same-origin scripts gain no
+ * new access. Reconsider (e.g. a short-lived/scoped token, or dropping the
+ * bridge) before the embedded pages render any third-party or user-embedded
+ * content that could run scripts on our origin.
  */
 private class AuthBridge(private val authJson: String) {
     @JavascriptInterface
