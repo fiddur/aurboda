@@ -7,6 +7,7 @@ import type { ActivityImpactResult, TimeWindowStats } from './types.ts'
 
 import { getAllActivitiesInRange, getProductivity, getTimeSeries } from '../../db/index.ts'
 import { getPlaceVisits } from '../locations.ts'
+import { triggerCorrelationSyncs } from './background-sync.ts'
 import { getDataInRange, mean, stddev } from './utils.ts'
 
 /**
@@ -27,15 +28,9 @@ export async function getActivityImpact(
   start.setDate(start.getDate() - periodDays)
   start.setHours(0, 0, 0, 0)
 
-  // Auto-sync if provider available
-  if (sync) {
-    await Promise.all([
-      sync.syncOuraIfNeeded(user, 'tags'),
-      sync.syncOuraIfNeeded(user, 'sessions'),
-      sync.syncRescueTimeIfNeeded(user),
-      sync.syncCalendarsIfNeeded(user),
-    ])
-  }
+  // Freshness syncs run in the background — never block this retrospective
+  // analysis on a slow external sync (see background-sync.ts).
+  triggerCorrelationSyncs(sync, user)
 
   // Fetch HRV/HR/stress data
   const [hrvData, hrData, stressData] = await Promise.all([
