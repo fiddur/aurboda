@@ -32,6 +32,13 @@ const CONTEXT_METRIC_LABELS: Record<HrvContextMetric, string> = {
   stress_level: 'Stress',
 }
 
+// The metric phrased for the intro sentence ("…correlate with your <phrase>.").
+const CONTEXT_METRIC_PHRASES: Record<HrvContextMetric, string> = {
+  heart_rate: 'heart rate',
+  hrv_rmssd: 'heart rate variability (HRV)',
+  stress_level: 'stress level',
+}
+
 // Active tab
 const activeTab = signal<'hrv' | 'explore'>('hrv')
 
@@ -392,7 +399,7 @@ export function Correlations() {
 
       <div class="analyze-tabs">
         <button class={activeTab.value === 'hrv' ? 'active' : ''} onClick={() => (activeTab.value = 'hrv')}>
-          HRV context
+          {CONTEXT_METRIC_LABELS[contextMetric.value]} context
         </button>
         <button
           class={activeTab.value === 'explore' ? 'active' : ''}
@@ -407,7 +414,7 @@ export function Correlations() {
       {activeTab.value === 'hrv' && (
         <>
           <p class="intro-text">
-            Analyze how different activities correlate with your heart rate variability (HRV) and heart rate.
+            Analyze how different activities correlate with your {CONTEXT_METRIC_PHRASES[contextMetric.value]}.
             Click a row to see the detailed before/during/after timeline.
           </p>
 
