@@ -16,6 +16,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -105,8 +106,13 @@ fun MoreScreen(
     onServerUrlChange: (String) -> Unit,
     onLogout: () -> Unit,
     modifier: Modifier = Modifier,
+    initialPath: String? = null,
+    onInitialPathConsumed: () -> Unit = {},
 ) {
-    var destination by remember { mutableStateOf<MoreDestination?>(null) }
+    // A deep link (e.g. the goals widget) can open this hub directly on a web
+    // page; consumed once so a later manual visit to More shows the hub.
+    var destination by remember { mutableStateOf<MoreDestination?>(initialPath?.let { MoreDestination.Web(it) }) }
+    LaunchedEffect(Unit) { if (initialPath != null) onInitialPathConsumed() }
 
     when (val dest = destination) {
         null -> MoreHub(onSelect = { destination = it }, modifier = modifier)

@@ -144,23 +144,33 @@ class MainActivity : ComponentActivity() {
     const val EXTRA_OPEN_TAB = "open_tab"
     const val TAB_ADD = "add"
     const val TAB_FEED = "feed"
+    const val TAB_MORE = "more"
+
+    /** With [EXTRA_OPEN_TAB] = [TAB_MORE], the More web page to open (e.g. "/goals"). */
+    const val EXTRA_MORE_PATH = "more_path"
   }
 
+  // Deep links (widget / notification) only steer the initial screen on a cold
+  // start. The activity is `singleTop`, so when it's already open the launch is
+  // delivered to onNewIntent (not overridden) and the current screen is kept.
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
+    val openTab = intent?.getStringExtra(EXTRA_OPEN_TAB)
     val initialTab =
-      when (intent?.getStringExtra(EXTRA_OPEN_TAB)) {
+      when (openTab) {
         TAB_ADD -> MainTab.Add
         TAB_FEED -> MainTab.Feed
+        TAB_MORE -> MainTab.More
         else -> null
       }
+    val initialMorePath = if (openTab == TAB_MORE) intent?.getStringExtra(EXTRA_MORE_PATH) else null
     setContent {
       AurbodaAppTheme {
         Surface(
           modifier = Modifier.fillMaxSize(),
           color = MaterialTheme.colorScheme.background,
         ) {
-          AurbodaApp(initialTab = initialTab)
+          AurbodaApp(initialTab = initialTab, initialMorePath = initialMorePath)
         }
       }
     }
@@ -171,8 +181,11 @@ private const val VERSION_JSON_URL = "https://github.com/fiddur/aurboda/releases
 
 @Suppress("ASSIGNED_VALUE_IS_NEVER_READ") // Compose state vars trigger false "assigned but never read" warnings
 @Composable
-fun AurbodaApp(initialTab: MainTab? = null) {
+fun AurbodaApp(initialTab: MainTab? = null, initialMorePath: String? = null) {
   val appState = rememberAppState(initialTab = initialTab)
+  // Consumed once: a widget/notification deep link into a More web page opens it
+  // on first composition, then clears so returning to More later shows the hub.
+  var pendingMorePath by remember { mutableStateOf(initialMorePath) }
   val context = LocalContext.current
   val scope = rememberCoroutineScope()
   val ktorHttpClient = remember { syncHttpClient() }
@@ -327,6 +340,8 @@ fun AurbodaApp(initialTab: MainTab? = null) {
               credentials = credentials,
               onServerUrlChange = { newUrl -> appState.changeServerUrl(newUrl) },
               onLogout = { appState.logout() },
+              initialPath = pendingMorePath,
+              onInitialPathConsumed = { pendingMorePath = null },
               modifier = modifier,
             )
           },
