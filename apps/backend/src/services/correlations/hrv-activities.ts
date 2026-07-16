@@ -14,6 +14,7 @@ import type {
 
 import { getAllActivitiesInRange, getProductivity, getTimeSeries } from '../../db/index.ts'
 import { getPlaceVisits } from '../locations.ts'
+import { triggerCorrelationSyncs } from './background-sync.ts'
 import { addBaselineDelta, calculateHrvStats, getDataInRange, pearsonCorrelation } from './utils.ts'
 
 /**
@@ -32,15 +33,10 @@ export async function getHrvActivitiesCorrelation(
   start.setDate(start.getDate() - periodDays)
   start.setHours(0, 0, 0, 0)
 
-  // Auto-sync if provider available
-  if (sync) {
-    await Promise.all([
-      sync.syncOuraIfNeeded(user, 'tags'),
-      sync.syncOuraIfNeeded(user, 'sessions'),
-      sync.syncRescueTimeIfNeeded(user),
-      sync.syncCalendarsIfNeeded(user),
-    ])
-  }
+  // Freshness syncs run in the background — never block the (retrospective)
+  // analysis on a slow external sync, which could take minutes (see
+  // background-sync.ts). Data is fresh for the next request.
+  triggerCorrelationSyncs(sync, user)
 
   // Fetch all data in parallel
   const [hrvData, hrData, stressData, productivity, locations, activities] = await Promise.all([
