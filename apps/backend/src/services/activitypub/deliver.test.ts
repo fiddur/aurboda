@@ -1,12 +1,11 @@
 import type { ArticleContent } from '@aurboda/api-spec'
 
-import { Article, Tombstone } from '@fedify/fedify/vocab'
+import { Note, Tombstone } from '@fedify/fedify/vocab'
 import { describe, expect, test } from 'vitest'
 
 import {
-  buildFeedArticle,
-  buildFeedArticleCreate,
-  buildFeedArticleDelete,
+  buildArticleNote,
+  buildArticleNoteCreate,
   buildFeedDelete,
   type DeliverableArticle,
   type DeliverablePost,
@@ -154,20 +153,23 @@ describe('article delivery', () => {
   })
 
   const contextFor = () => createFeedFederation(ORIGIN, `${ORIGIN}/api`).createContext(new URL(ORIGIN))
-  // Articles serve at a path distinct from the Note object dispatcher.
-  const articleId = `${ORIGIN}/users/fiddur/feed/${POST_ID}/article`
+  // An article's Note shares the standard Note object id (a post is an article OR
+  // an activity, never both), so a deleted article tombstones there like any post.
+  const noteId = `${ORIGIN}/users/fiddur/feed/${POST_ID}`
   // Attachments are embedded Image objects, iterated (not URL refs in attachmentIds).
-  const countAttachments = async (object: Article): Promise<number> => {
+  const countAttachments = async (object: Note): Promise<number> => {
     let n = 0
     for await (const _ of object.getAttachments()) n++
     return n
   }
 
-  test('buildFeedArticle is an AS2 Article with title, prose HTML, one attachment per chart block', async () => {
+  test('buildArticleNote is a Note with title, prose HTML, one attachment per chart block', async () => {
     const ctx = await contextFor()
-    const object = buildFeedArticle(ctx, 'fiddur', deliverableArticle('public'), `${ORIGIN}/api`)
-    expect(object).toBeInstanceOf(Article)
-    expect(object.id?.href).toBe(articleId)
+    const object = buildArticleNote(ctx, 'fiddur', deliverableArticle('public'), `${ORIGIN}/api`)
+    // A Note (not an AS2 Article) — Mastodon discards Article content, so a Note is
+    // what renders the prose + images inline.
+    expect(object).toBeInstanceOf(Note)
+    expect(object.id?.href).toBe(noteId)
     expect(object.name?.toString()).toBe('Caffeine & sleep')
     expect(object.content?.toString()).toContain('<strong>better</strong>')
     // One attachment for the single chart block; its URL/token logic is asserted
@@ -177,27 +179,18 @@ describe('article delivery', () => {
 
   test('a followers-only article addresses followers, never Public', async () => {
     const ctx = await contextFor()
-    const object = buildFeedArticle(ctx, 'fiddur', deliverableArticle('followers'), `${ORIGIN}/api`)
+    const object = buildArticleNote(ctx, 'fiddur', deliverableArticle('followers'), `${ORIGIN}/api`)
     expect(hrefs([...object.toIds])).toEqual([`${ORIGIN}/users/fiddur/followers`])
     expect(hrefs([...object.ccIds])).toEqual([])
   })
 
-  test('buildFeedArticleCreate wraps the Article in a Create at the #create fragment', async () => {
+  test('buildArticleNoteCreate wraps the Note in a Create at the #create fragment', async () => {
     const ctx = await contextFor()
-    const create = await buildFeedArticleCreate(ctx, 'fiddur', deliverableArticle('public'), `${ORIGIN}/api`)
-    expect(create.id?.href).toBe(`${articleId}#create`)
+    const create = buildArticleNoteCreate(ctx, 'fiddur', deliverableArticle('public'), `${ORIGIN}/api`)
+    expect(create.id?.href).toBe(`${noteId}#create`)
     expect(create.actorId?.href).toBe(`${ORIGIN}/users/fiddur`)
     const object = await create.getObject()
-    expect(object).toBeInstanceOf(Article)
-    expect(object?.id?.href).toBe(articleId)
-  })
-
-  test('buildFeedArticleDelete tombstones the article object id', async () => {
-    const ctx = await contextFor()
-    const del = buildFeedArticleDelete(ctx, 'fiddur', deliverableArticle('public'))
-    expect(del.id?.href).toBe(`${articleId}#delete`)
-    const object = await del.getObject()
-    expect(object).toBeInstanceOf(Tombstone)
-    expect(object?.id?.href).toBe(articleId)
+    expect(object).toBeInstanceOf(Note)
+    expect(object?.id?.href).toBe(noteId)
   })
 })

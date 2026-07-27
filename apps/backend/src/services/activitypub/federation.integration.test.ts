@@ -229,7 +229,7 @@ describe('Feed federation actor + WebFinger', () => {
     expect(new Date(doc.published ?? '').getTime()).toBe(post.created_at.getTime())
   })
 
-  test('federates an article as a Create{Article} in the outbox and serves its object (#937)', async () => {
+  test('federates an article as a Create{Note} in the outbox and serves its object (#937)', async () => {
     const user = getTestUser()
     const post = await createArticlePost(user, {
       article: {
@@ -247,9 +247,10 @@ describe('Feed federation actor + WebFinger', () => {
       },
       visibility: 'public',
     })
-    const articleId = `${ORIGIN}/users/${user}/feed/${post.id}/article`
+    // An article federates as a Note at the standard post object id (Mastodon
+    // discards Article content, so a Note is what renders the prose).
+    const noteId = `${ORIGIN}/users/${user}/feed/${post.id}`
 
-    // The outbox lists the article as a Create{Article} at the article object id.
     const page = (await (await fetchAs2(`/users/${user}/outbox?cursor=0`)).json()) as {
       orderedItems?: unknown[]
     }
@@ -258,15 +259,17 @@ describe('Feed federation actor + WebFinger', () => {
     const create = items[0] as { type: string; object: string | { id: string; type: string } }
     expect(create.type).toBe('Create')
     const object = typeof create.object === 'string' ? { id: create.object, type: '' } : create.object
-    expect(object.id).toBe(articleId)
+    expect(object.id).toBe(noteId)
 
-    // The article object dispatcher serves it as an AS2 Article with its title.
-    const res = await fetchAs2(`/users/${user}/feed/${post.id}/article`)
+    // The object dispatcher serves the article as a Note: title in `name`, the
+    // prose (rendered markdown) in `content` so Mastodon shows it.
+    const res = await fetchAs2(`/users/${user}/feed/${post.id}`)
     expect(res.status).toBe(200)
-    const doc = (await res.json()) as { type: string; id: string; name?: string }
-    expect(doc.type).toBe('Article')
-    expect(doc.id).toBe(articleId)
+    const doc = (await res.json()) as { type: string; id: string; name?: string; content?: string }
+    expect(doc.type).toBe('Note')
+    expect(doc.id).toBe(noteId)
     expect(doc.name).toBe('Weekly review')
+    expect(doc.content).toContain('<strong>analysis</strong>')
   })
 
   test('serves the merged-span duration for a shared merged activity (#881)', async () => {
@@ -375,25 +378,27 @@ describe('Feed federation actor + WebFinger', () => {
     expect(gone.body.id).toBe(`${ORIGIN}/users/${user}/feed/${post.id}`)
   })
 
-  test('serves a 410 Tombstone (formerType Article) after a public article is deleted (#937)', async () => {
+  test('serves a 410 Tombstone after a public article is deleted (#937)', async () => {
     const user = getTestUser()
     const post = await createArticlePost(user, {
       article: { blocks: [{ markdown: 'Gone soon.', type: 'prose' }], title: 'Ephemeral' },
       visibility: 'public',
     })
     const app = buildFederatedApp()
-    const articlePath = `/users/${user}/feed/${post.id}/article`
+    // An article's Note is served at the standard post object id.
+    const notePath = `/users/${user}/feed/${post.id}`
 
-    // Live: the article object dispatcher serves the Article (200).
-    expect((await getObject(app, articlePath)).status).toBe(200)
+    // Live: the object dispatcher serves the article as a Note (200).
+    const live = await getObject(app, notePath)
+    expect(live.status).toBe(200)
+    expect(live.body.type).toBe('Note')
 
-    // Unshare, then the article id returns 410 Gone with formerType Article.
+    // Unshare, then the same id returns 410 Gone with a Tombstone.
     await deleteFeedPost(user, post.id)
-    const gone = await getObject(app, articlePath)
+    const gone = await getObject(app, notePath)
     expect(gone.status).toBe(410)
     expect(gone.body.type).toBe('Tombstone')
-    expect(gone.body.formerType).toBe('Article')
-    expect(gone.body.id).toBe(`${ORIGIN}/users/${user}/feed/${post.id}/article`)
+    expect(gone.body.id).toBe(`${ORIGIN}/users/${user}/feed/${post.id}`)
   })
 
   test('a deleted followers-only object stays 404 (no public tombstone)', async () => {

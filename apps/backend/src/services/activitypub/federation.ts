@@ -4,7 +4,6 @@ import type { Actor } from '@fedify/fedify/vocab'
 import { createFederation, type Federation, type InboxContext, MemoryKvStore } from '@fedify/fedify'
 import {
   Accept,
-  Article,
   Create,
   Delete,
   Follow,
@@ -64,8 +63,8 @@ import { resolveFeedActivity } from '../feed.ts'
 import { buildProfileUrl } from '../share-urls.ts'
 import { extractActorPresentation } from './actor-presentation.ts'
 import {
-  buildFeedArticle,
-  buildFeedArticleCreate,
+  buildArticleNote,
+  buildArticleNoteCreate,
   buildFeedCreate,
   buildFeedNote,
   toDeliverableArticle,
@@ -388,34 +387,17 @@ export const createFeedFederation = (
         if (isMissingDatabase(error)) return null
         throw error
       }
-      if (post == null || post.activity_id == null || !isPubliclyVisible(post.visibility)) return null
+      if (post == null || !isPubliclyVisible(post.visibility)) return null
+      // An article and an activity share this Note id (a post is one or the
+      // other). An article's Note is built from its stored content — no activity.
+      const article = toDeliverableArticle(post)
+      if (article != null) return buildArticleNote(ctx, identifier, article, apiBaseUrl)
+      if (post.activity_id == null) return null
       // Resolve the merged-span activity so the served Note matches what the user
       // shared (and what we delivered), not just the anchor sub-activity (#881).
       const activity = await resolveFeedActivity(identifier, post.activity_id)
       if (activity == null) return null
       return buildFeedNote(ctx, identifier, post, activity, apiBaseUrl)
-    },
-  )
-
-  // Individual article object, served at its own path (distinct from the Note
-  // dispatcher above) as an AS2 `Article`. Same public/unlisted-only gate: a
-  // `followers`-only article is delivered with its object inline, so its id never
-  // needs an unauthenticated fetch.
-  federation.setObjectDispatcher(
-    Article,
-    '/users/{identifier}/feed/{postId}/article',
-    async (ctx, { identifier, postId }) => {
-      if (!isValidUsername(identifier) || !UUID_RE.test(postId)) return null
-      let post
-      try {
-        post = await getFeedPostById(identifier, postId)
-      } catch (error) {
-        if (isMissingDatabase(error)) return null
-        throw error
-      }
-      if (post == null || !isPubliclyVisible(post.visibility)) return null
-      const article = toDeliverableArticle(post)
-      return article == null ? null : buildFeedArticle(ctx, identifier, article, apiBaseUrl)
     },
   )
 
@@ -443,10 +425,11 @@ export const createFeedFederation = (
       const items = (
         await Promise.all(
           posts.map(async (post) => {
-            // Articles federate as `Create{Article}` (no linked activity); every
-            // other post as `Create{Note}` from its resolved activity.
+            // Articles federate as `Create{Note}` built from their stored content
+            // (no linked activity); every other post as `Create{Note}` from its
+            // resolved activity.
             const article = toDeliverableArticle(post)
-            if (article != null) return buildFeedArticleCreate(ctx, identifier, article, apiBaseUrl)
+            if (article != null) return buildArticleNoteCreate(ctx, identifier, article, apiBaseUrl)
             if (post.activity_id == null) return null
             const activity = await resolveFeedActivity(identifier, post.activity_id)
             return activity == null ? null : buildFeedCreate(ctx, identifier, post, activity, apiBaseUrl)

@@ -1,9 +1,11 @@
 /**
  * The AS2 representation of an article's prose and inline blocks for federation.
  *
- * An article federates as an AS2 `Article` (built in `deliver.ts`): the title is
- * its `name`, the prose is HTML `content`, and each chart/correlation block is an
- * attached PNG so a plain fediverse client (Mastodon) shows prose + images. Aurboda
+ * An article federates as a `Note` (built in `deliver.ts`): the title is its
+ * `name`, the prose is HTML `content`, and each chart/correlation block is an
+ * attached PNG so a plain fediverse client (Mastodon) shows the prose + images
+ * inline. (A `Note`, not an AS2 `Article`: Mastodon treats `Article` as a
+ * converted type and discards its `content`, rendering only name + link.) Aurboda
  * peers get the richer inline render via the structured-enrichment channel (a
  * later slice); this module builds only the Mastodon-compatible surface.
  *
@@ -22,7 +24,7 @@ import { Image } from '@fedify/fedify/vocab'
 import { marked } from 'marked'
 import sanitizeHtml from 'sanitize-html'
 
-import { CHART_HEIGHT, CHART_WIDTH } from '../charts/chart-svg.ts'
+import { CHART_HEIGHT, CHART_WIDTH, escapeXml } from '../charts/chart-svg.ts'
 import { SCATTER_HEIGHT, SCATTER_WIDTH } from '../charts/scatter-svg.ts'
 import { isPubliclyVisible } from './object.ts'
 
@@ -93,10 +95,6 @@ const sanitizeArticleHtml = (html: string): string =>
 const renderProse = (markdown: string): string =>
   sanitizeArticleHtml(marked.parse(markdown, { async: false, breaks: true, gfm: true }))
 
-/** Escape text for safe inclusion as HTML character data. */
-const escapeHtml = (s: string): string =>
-  s.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;')
-
 /**
  * The AS2 `content` HTML for an article: each prose block rendered from markdown,
  * and each chart/correlation block's caption (when set) as a paragraph. A caption
@@ -108,7 +106,7 @@ export const renderArticleContentHtml = (article: ArticleContent): string =>
   article.blocks
     .map((block) => {
       if (block.type === 'prose') return renderProse(block.markdown)
-      return block.caption ? `<p>${escapeHtml(block.caption)}</p>` : ''
+      return block.caption ? `<p>${escapeXml(block.caption)}</p>` : ''
     })
     .filter((html) => html.length > 0)
     .join('\n')

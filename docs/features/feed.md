@@ -33,11 +33,13 @@ A feed post has a **`kind`**:
   `POST /feed/articles` / `PATCH /feed/articles/:postId` (and the `create_article` /
   `update_article` MCP tools), or in the web app's article composer; prose renders
   through the shared markdown sanitiser and each windowed block resolves its data live
-  over the locked window. An article **federates as an AS2 `Article`** (title, prose
-  HTML, and a rendered PNG per chart/correlation block) so followers on Mastodon see the
-  prose and images. A richer inline render for Aurboda peers — inbound `Article`
-  ingestion plus structured enrichment — is a later slice (**#968**); until then an
-  Aurboda follower doesn't yet see a federated article.
+  over the locked window. An article **federates as a `Note`** (title in `name`, prose
+  HTML in `content`, and a rendered PNG per chart/correlation block attached) so followers
+  on Mastodon see the prose and images inline. (A `Note`, not an AS2 `Article`: Mastodon
+  treats `Article` as a converted type and discards its `content`, rendering only a title
+  and link.) A richer inline render for Aurboda peers — inbound ingestion plus structured
+  enrichment — is a later slice (**#968**); until then an Aurboda follower doesn't yet see
+  a federated article.
   _Reddit/markdown export is the remaining part of #937._
 
 An **`activity`** feed post references one of the user's activities and records the
@@ -120,15 +122,15 @@ uses), so nothing denormalised is persisted on the post.
 ### Outbox & object serving
 
 - **Outbox** (`/users/<username>/outbox`) — a **cursor-paginated** `OrderedCollection`
-  of the user's `public` + `unlisted` posts as `Create` activities, newest-first, so the
-  actor's profile shows their posts. An activity share is a `Create{Note}`; an article is
-  a `Create{Article}`. The root returns `totalItems` + `first`/`last` page links; each
-  page (`?cursor=<offset>`) serves up to a fixed page size with a `next` link.
-  `followers`-only posts are never listed.
+  of the user's `public` + `unlisted` posts as `Create{Note}` activities, newest-first, so
+  the actor's profile shows their posts — both an activity share and an article are a
+  `Create{Note}`. The root returns `totalItems` + `first`/`last` page links; each page
+  (`?cursor=<offset>`) serves up to a fixed page size with a `next` link. `followers`-only
+  posts are never listed.
 - **Object** (`/users/<username>/feed/<postId>`) — the post's `Note`, served at its
-  canonical id so a remote server can dereference it. An **article** is served as an AS2
-  `Article` at a distinct id (`…/feed/<postId>/article`). Only `public`/`unlisted` resolve;
-  `followers`-only and unknown ids return 404. Once a `public`/`unlisted` post is
+  canonical id so a remote server can dereference it (an article's Note carries its prose
+  in `content`; an activity's carries the shared-scalars summary). Only `public`/`unlisted`
+  resolve; `followers`-only and unknown ids return 404. Once a `public`/`unlisted` post is
   **deleted**, that id returns **`410 Gone` with an AS2 `Tombstone`** (recorded in
   `feed_tombstone`) so a dereferencing server learns the object is _permanently_ gone
   rather than transiently missing. A `followers`-only id is never tombstoned — it never
@@ -332,7 +334,7 @@ on every hit. The AS2 `Image` attachment URL also carries `?v=<updated_at>` so a
 media cache (which re-hosts the PNG at receipt) re-fetches after an edit.
 
 A block image endpoint **404s** when the block is too sparse to draw (a chart with < 2
-points, a correlation with n < 3) or has a zero-duration bucket. The AS2 `Article`
+points, a correlation with n < 3) or has a zero-duration bucket. The article's `Note`
 attaches one `Image` per chart/correlation block **unconditionally** (the attachment list
 is built without a synchronous pre-render), so a sparse block ships an attachment URL
 that resolves to 404 — a plain fediverse client just shows one fewer image.
@@ -470,8 +472,7 @@ Public / federation (unauthenticated):
 | `GET /users/:username/outbox`                                | Public + unlisted posts as `Create` activities                                                             |
 | `GET /users/:username/followers`                             | The actor's followers collection                                                                           |
 | `GET /users/:username/following`                             | The actor's following collection (accepted follows only)                                                   |
-| `GET /users/:username/feed/:postId`                          | A single post's `Note` (or `410` Tombstone once deleted)                                                   |
-| `GET /users/:username/feed/:postId/article`                  | A single article post's AS2 `Article` object (public/unlisted only)                                        |
+| `GET /users/:username/feed/:postId`                          | A single post's `Note` — an activity share or an article (or `410` Tombstone once deleted)                 |
 | `POST /users/:username/inbox` (+ `/inbox`)                   | Inbound `Follow` / `Undo{Follow}` / `Accept` / `Reject` (HTTP-Signature verified)                          |
 
 The owner-facing capability is also available over MCP as `list_feed`, `share_activity`,

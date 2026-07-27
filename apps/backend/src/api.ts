@@ -58,7 +58,6 @@ import { createMcpRouter } from './mcp.ts'
 import { createFeedTombstoneRouter } from './routes/feed-tombstone-router.ts'
 import { createOAuthRouter } from './routes/oauth-router.ts'
 import {
-  deliverFeedArticleDelete,
   deliverFeedArticlePost,
   deliverFeedArticleUpdate,
   deliverFeedDelete,
@@ -360,14 +359,10 @@ const main = async () => {
         await deliverFeedPost(feedDeps, user, post, resolved)
       })().catch(onDeliverError('create', user, post.id))
     },
-    // An article has no linked activity, so its Delete is tombstoned from the
-    // article object id; every other post from the Note id.
+    // Articles and activities share the Note object id, so a deleted post of
+    // either kind tombstones there — one path.
     deleted: (user, post) => {
-      const article = toDeliverableArticle(post)
-      const run = article
-        ? deliverFeedArticleDelete(feedDeps, user, article)
-        : deliverFeedDelete(feedDeps, user, post)
-      void run.catch(onDeliverError('delete', user, post.id))
+      void deliverFeedDelete(feedDeps, user, post).catch(onDeliverError('delete', user, post.id))
     },
     // Resolve the (merged-span) activity inside the fire-and-forget boundary so a
     // lookup failure never bubbles into the (already-committed) edit's response.

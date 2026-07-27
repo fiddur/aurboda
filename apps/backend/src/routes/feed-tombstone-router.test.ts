@@ -35,11 +35,6 @@ describe('buildTombstoneJsonLd', () => {
       type: 'Tombstone',
     })
   })
-
-  test('emits formerType Article when asked (deleted article id)', () => {
-    const id = 'https://aurboda.net/users/fiddur/feed/' + POST_ID + '/article'
-    expect(buildTombstoneJsonLd(id, DELETED_AT, 'Article')).toMatchObject({ formerType: 'Article', id })
-  })
 })
 
 describe('GET /users/:username/feed/:postId (tombstone)', () => {
@@ -53,18 +48,6 @@ describe('GET /users/:username/feed/:postId (tombstone)', () => {
       deleted: DELETED_AT.toISOString(),
       formerType: 'Note',
       id: `https://aurboda.net/users/fiddur/feed/${POST_ID}`,
-      type: 'Tombstone',
-    })
-  })
-
-  test('serves 410 with formerType Article at the article id for a tombstoned article', async () => {
-    const res = await supertest(buildApp()).get(`/users/fiddur/feed/${POST_ID}/article`)
-    expect(res.status).toBe(410)
-    expect(res.body).toEqual({
-      '@context': 'https://www.w3.org/ns/activitystreams',
-      deleted: DELETED_AT.toISOString(),
-      formerType: 'Article',
-      id: `https://aurboda.net/users/fiddur/feed/${POST_ID}/article`,
       type: 'Tombstone',
     })
   })

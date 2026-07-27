@@ -20,7 +20,7 @@ import type { ArticleContent, FeedVisibility } from '@aurboda/api-spec'
  */
 import type { Context, Federation } from '@fedify/fedify'
 
-import { Article, Create, Delete, Image, Note, Tombstone, Update } from '@fedify/fedify/vocab'
+import { Create, Delete, Image, Note, Tombstone, Update } from '@fedify/fedify/vocab'
 
 import type { FeedPostRecord } from '../../db/index.ts'
 
@@ -256,10 +256,13 @@ export const deliverFeedDelete = async (
 }
 
 // ---------------------------------------------------------------------------
-// Articles (long-form posts). An article federates as an AS2 `Article` object
-// (title + prose HTML + attached block PNGs) rather than a `Note`. It has no
-// linked activity, so its object/`Create`/`Update`/`Delete` are built purely
-// from the stored article content — no scalar resolution.
+// Articles (long-form posts). An article federates as a `Note` — Mastodon
+// discards `content` for AS2 `Article` (a converted type) and renders only
+// name + url, so a Note is what actually shows the prose + attached images. The
+// article's Note is served on the SAME object path as an activity's Note (they
+// never collide — a post is one or the other), so a deleted article tombstones
+// there like any post. Aurboda peers get the richer inline render via structured
+// enrichment (a later slice), not the AS2 object type. No activity to resolve.
 // ---------------------------------------------------------------------------
 
 /** The delivery-facing view of an article post (its `article` guaranteed present). */
@@ -286,28 +289,20 @@ export const toDeliverableArticle = (post: FeedPostRecord): DeliverableArticle |
     : null
 
 /**
- * The article's canonical object id/url — its own object-dispatcher path, distinct
- * from the `Note` path so an article and an activity post never collide. The
- * delivered object, the outbox item, and the object served at this URL are all
- * built by `buildFeedArticle`, so they stay identical.
+ * Build the Fedify `Note` for an article: the Mastodon-compatible object (title
+ * `name` + prose HTML `content` + chart/correlation PNG attachments), at the
+ * post's canonical Note id, addressed per visibility. Synchronous — an article
+ * carries no activity to resolve. A deleted article tombstones at this same id.
  */
-const articleObjectUri = (ctx: Context<void>, user: string, postId: string): URL =>
-  ctx.getObjectUri(Article, { identifier: user, postId })
-
-/**
- * Build the Fedify `Article` for a post: the Mastodon-compatible object (title
- * `name` + prose HTML `content` + chart/correlation PNG attachments), addressed
- * per visibility. Synchronous — an article carries no activity to resolve.
- */
-export const buildFeedArticle = (
+export const buildArticleNote = (
   ctx: Context<void>,
   user: string,
   post: DeliverableArticle,
   apiBaseUrl: string,
-): Article => {
-  const objectId = articleObjectUri(ctx, user, post.id)
+): Note => {
+  const noteId = ctx.getObjectUri(Note, { identifier: user, postId: post.id })
   const { cc, to } = recipients(post.visibility, ctx.getFollowersUri(user))
-  return new Article({
+  return new Note({
     attachments: articleImageAttachments(
       apiBaseUrl,
       user,
@@ -320,69 +315,52 @@ export const buildFeedArticle = (
     attribution: ctx.getActorUri(user),
     ccs: cc,
     content: renderArticleContentHtml(post.article),
-    id: objectId,
+    id: noteId,
     name: post.article.title,
     published: dateToTemporalInstant(post.created_at),
     tos: to,
-    url: objectId,
+    url: noteId,
   })
 }
 
-/** Wrap the article in the `Create` delivered to followers and listed in the outbox. */
-export const buildFeedArticleCreate = (
+/** Wrap the article's Note in the `Create` delivered to followers and listed in the outbox. */
+export const buildArticleNoteCreate = (
   ctx: Context<void>,
   user: string,
   post: DeliverableArticle,
   apiBaseUrl: string,
 ): Create => {
-  const objectId = articleObjectUri(ctx, user, post.id)
+  const noteId = ctx.getObjectUri(Note, { identifier: user, postId: post.id })
   const { cc, to } = recipients(post.visibility, ctx.getFollowersUri(user))
   return new Create({
     actor: ctx.getActorUri(user),
     ccs: cc,
-    id: new URL(`${objectId.href}#create`),
-    object: buildFeedArticle(ctx, user, post, apiBaseUrl),
+    id: new URL(`${noteId.href}#create`),
+    object: buildArticleNote(ctx, user, post, apiBaseUrl),
     published: dateToTemporalInstant(post.created_at),
     tos: to,
   })
 }
 
-/** Wrap the (re-resolved) article in an `Update`; id carries `updated_at` so each edit is distinct. */
-export const buildFeedArticleUpdate = (
+/** Wrap the (re-resolved) article Note in an `Update`; id carries `updated_at` so each edit is distinct. */
+export const buildArticleNoteUpdate = (
   ctx: Context<void>,
   user: string,
   post: DeliverableArticle,
   apiBaseUrl: string,
 ): Update => {
-  const objectId = articleObjectUri(ctx, user, post.id)
+  const noteId = ctx.getObjectUri(Note, { identifier: user, postId: post.id })
   const { cc, to } = recipients(post.visibility, ctx.getFollowersUri(user))
   return new Update({
     actor: ctx.getActorUri(user),
     ccs: cc,
-    id: new URL(`${objectId.href}#update-${post.updated_at.getTime()}`),
-    object: buildFeedArticle(ctx, user, post, apiBaseUrl),
+    id: new URL(`${noteId.href}#update-${post.updated_at.getTime()}`),
+    object: buildArticleNote(ctx, user, post, apiBaseUrl),
     tos: to,
   })
 }
 
-/** The `Delete{Tombstone}` for a removed article — tombstones the article object id. */
-export const buildFeedArticleDelete = (
-  ctx: Context<void>,
-  user: string,
-  post: DeliverableArticle,
-): Delete => {
-  const objectId = articleObjectUri(ctx, user, post.id)
-  const { cc, to } = recipients(post.visibility, ctx.getFollowersUri(user))
-  return new Delete({
-    actor: ctx.getActorUri(user),
-    ccs: cc,
-    id: new URL(`${objectId.href}#delete`),
-    object: new Tombstone({ id: objectId }),
-    tos: to,
-  })
-}
-
-/** Build and send the `Create{Article}` for a freshly-published article to its followers. */
+/** Build and send the `Create{Note}` for a freshly-published article to its followers. */
 export const deliverFeedArticlePost = async (
   deps: FeedDeliveryDeps,
   user: string,
@@ -392,11 +370,11 @@ export const deliverFeedArticlePost = async (
   await ctx.sendActivity(
     { identifier: user },
     'followers',
-    buildFeedArticleCreate(ctx, user, post, deps.apiBaseUrl),
+    buildArticleNoteCreate(ctx, user, post, deps.apiBaseUrl),
   )
 }
 
-/** Build and send the `Update{Article}` for an edited article to its followers. */
+/** Build and send the `Update{Note}` for an edited article to its followers. */
 export const deliverFeedArticleUpdate = async (
   deps: FeedDeliveryDeps,
   user: string,
@@ -406,16 +384,6 @@ export const deliverFeedArticleUpdate = async (
   await ctx.sendActivity(
     { identifier: user },
     'followers',
-    buildFeedArticleUpdate(ctx, user, post, deps.apiBaseUrl),
+    buildArticleNoteUpdate(ctx, user, post, deps.apiBaseUrl),
   )
-}
-
-/** Build and send the `Delete{Tombstone}` for a removed article to its followers. */
-export const deliverFeedArticleDelete = async (
-  deps: FeedDeliveryDeps,
-  user: string,
-  post: DeliverableArticle,
-): Promise<void> => {
-  const ctx = await deps.federation.createContext(new URL(deps.origin))
-  await ctx.sendActivity({ identifier: user }, 'followers', buildFeedArticleDelete(ctx, user, post))
 }
