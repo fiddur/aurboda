@@ -11,7 +11,13 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 import { insertActivity } from '../../db/activities/index.ts'
 import { upsertFeedFollower } from '../../db/feed-follower.ts'
 import { markFeedFollowingAccepted, upsertFeedFollowing } from '../../db/feed-following.ts'
-import { createFeedPost, deleteFeedPost, type FeedPostInput, getFeedTombstone } from '../../db/feed.ts'
+import {
+  createArticlePost,
+  createFeedPost,
+  deleteFeedPost,
+  type FeedPostInput,
+  getFeedTombstone,
+} from '../../db/feed.ts'
 import { upsertUserSettings } from '../../db/settings.ts'
 import { createFeedTombstoneRouter } from '../../routes/feed-tombstone-router.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../../test/db-test-helper.ts'
@@ -221,6 +227,46 @@ describe('Feed federation actor + WebFinger', () => {
     // remote servers order it correctly.
     expect(doc.published).toBeDefined()
     expect(new Date(doc.published ?? '').getTime()).toBe(post.created_at.getTime())
+  })
+
+  test('federates an article as a Create{Article} in the outbox and serves its object (#937)', async () => {
+    const user = getTestUser()
+    const post = await createArticlePost(user, {
+      article: {
+        blocks: [
+          { markdown: 'My **analysis**.', type: 'prose' },
+          {
+            caption: 'HR',
+            end: '2026-07-02T00:00:00Z',
+            metric: 'heart_rate',
+            start: '2026-07-01T00:00:00Z',
+            type: 'chart',
+          },
+        ],
+        title: 'Weekly review',
+      },
+      visibility: 'public',
+    })
+    const articleId = `${ORIGIN}/users/${user}/feed/${post.id}/article`
+
+    // The outbox lists the article as a Create{Article} at the article object id.
+    const page = (await (await fetchAs2(`/users/${user}/outbox?cursor=0`)).json()) as {
+      orderedItems?: unknown[]
+    }
+    const items = page.orderedItems ?? []
+    expect(items).toHaveLength(1)
+    const create = items[0] as { type: string; object: string | { id: string; type: string } }
+    expect(create.type).toBe('Create')
+    const object = typeof create.object === 'string' ? { id: create.object, type: '' } : create.object
+    expect(object.id).toBe(articleId)
+
+    // The article object dispatcher serves it as an AS2 Article with its title.
+    const res = await fetchAs2(`/users/${user}/feed/${post.id}/article`)
+    expect(res.status).toBe(200)
+    const doc = (await res.json()) as { type: string; id: string; name?: string }
+    expect(doc.type).toBe('Article')
+    expect(doc.id).toBe(articleId)
+    expect(doc.name).toBe('Weekly review')
   })
 
   test('serves the merged-span duration for a shared merged activity (#881)', async () => {

@@ -57,7 +57,15 @@ import { stravaClient } from './integrations/strava/client.ts'
 import { createMcpRouter } from './mcp.ts'
 import { createFeedTombstoneRouter } from './routes/feed-tombstone-router.ts'
 import { createOAuthRouter } from './routes/oauth-router.ts'
-import { deliverFeedDelete, deliverFeedPost, deliverFeedUpdate } from './services/activitypub/deliver.ts'
+import {
+  deliverFeedArticleDelete,
+  deliverFeedArticlePost,
+  deliverFeedArticleUpdate,
+  deliverFeedDelete,
+  deliverFeedPost,
+  deliverFeedUpdate,
+  toDeliverableArticle,
+} from './services/activitypub/deliver.ts'
 import { createFeedFederation } from './services/activitypub/federation.ts'
 import { createTimelineBackfiller } from './services/activitypub/timeline-backfill.ts'
 import { auditError } from './services/audit-log.ts'
@@ -352,8 +360,14 @@ const main = async () => {
         await deliverFeedPost(feedDeps, user, post, resolved)
       })().catch(onDeliverError('create', user, post.id))
     },
+    // An article has no linked activity, so its Delete is tombstoned from the
+    // article object id; every other post from the Note id.
     deleted: (user, post) => {
-      void deliverFeedDelete(feedDeps, user, post).catch(onDeliverError('delete', user, post.id))
+      const article = toDeliverableArticle(post)
+      const run = article
+        ? deliverFeedArticleDelete(feedDeps, user, article)
+        : deliverFeedDelete(feedDeps, user, post)
+      void run.catch(onDeliverError('delete', user, post.id))
     },
     // Resolve the (merged-span) activity inside the fire-and-forget boundary so a
     // lookup failure never bubbles into the (already-committed) edit's response.
@@ -363,6 +377,20 @@ const main = async () => {
         const activity = await resolveFeedActivity(user, post.activity_id)
         if (activity) await deliverFeedUpdate(feedDeps, user, post, activity)
       })().catch(onDeliverError('update', user, post.id))
+    },
+    // Articles fan out as an AS2 Article (built purely from stored content — no
+    // activity to resolve). Best-effort, same as the Note path.
+    createdArticle: (user, post) => {
+      const article = toDeliverableArticle(post)
+      if (article) {
+        void deliverFeedArticlePost(feedDeps, user, article).catch(onDeliverError('create', user, post.id))
+      }
+    },
+    updatedArticle: (user, post) => {
+      const article = toDeliverableArticle(post)
+      if (article) {
+        void deliverFeedArticleUpdate(feedDeps, user, article).catch(onDeliverError('update', user, post.id))
+      }
     },
   }
   // The network-requiring follow operations, bound to the same federation +

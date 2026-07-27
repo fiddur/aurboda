@@ -4,6 +4,7 @@ import type { Actor } from '@fedify/fedify/vocab'
 import { createFederation, type Federation, type InboxContext, MemoryKvStore } from '@fedify/fedify'
 import {
   Accept,
+  Article,
   Create,
   Delete,
   Follow,
@@ -62,7 +63,13 @@ import {
 import { resolveFeedActivity } from '../feed.ts'
 import { buildProfileUrl } from '../share-urls.ts'
 import { extractActorPresentation } from './actor-presentation.ts'
-import { buildFeedCreate, buildFeedNote } from './deliver.ts'
+import {
+  buildFeedArticle,
+  buildFeedArticleCreate,
+  buildFeedCreate,
+  buildFeedNote,
+  toDeliverableArticle,
+} from './deliver.ts'
 import { toCryptoKeyPair } from './keys.ts'
 import { isPubliclyVisible } from './object.ts'
 import { capabilityTokenFrom, createAurbodaEnricher } from './timeline-enrich.ts'
@@ -390,6 +397,28 @@ export const createFeedFederation = (
     },
   )
 
+  // Individual article object, served at its own path (distinct from the Note
+  // dispatcher above) as an AS2 `Article`. Same public/unlisted-only gate: a
+  // `followers`-only article is delivered with its object inline, so its id never
+  // needs an unauthenticated fetch.
+  federation.setObjectDispatcher(
+    Article,
+    '/users/{identifier}/feed/{postId}/article',
+    async (ctx, { identifier, postId }) => {
+      if (!isValidUsername(identifier) || !UUID_RE.test(postId)) return null
+      let post
+      try {
+        post = await getFeedPostById(identifier, postId)
+      } catch (error) {
+        if (isMissingDatabase(error)) return null
+        throw error
+      }
+      if (post == null || !isPubliclyVisible(post.visibility)) return null
+      const article = toDeliverableArticle(post)
+      return article == null ? null : buildFeedArticle(ctx, identifier, article, apiBaseUrl)
+    },
+  )
+
   // Outbox: the user's public + unlisted posts as `Create` activities, so a
   // Mastodon profile shows them. Cursor-paginated (`OUTBOX_PAGE_SIZE` per page)
   // so an unauthenticated fetch never resolves every post's scalars at once; the
@@ -414,6 +443,10 @@ export const createFeedFederation = (
       const items = (
         await Promise.all(
           posts.map(async (post) => {
+            // Articles federate as `Create{Article}` (no linked activity); every
+            // other post as `Create{Note}` from its resolved activity.
+            const article = toDeliverableArticle(post)
+            if (article != null) return buildFeedArticleCreate(ctx, identifier, article, apiBaseUrl)
             if (post.activity_id == null) return null
             const activity = await resolveFeedActivity(identifier, post.activity_id)
             return activity == null ? null : buildFeedCreate(ctx, identifier, post, activity, apiBaseUrl)

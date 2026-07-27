@@ -33,10 +33,10 @@ A feed post has a **`kind`**:
   `POST /feed/articles` / `PATCH /feed/articles/:postId` (and the `create_article` /
   `update_article` MCP tools), or in the web app's article composer; prose renders
   through the shared markdown sanitiser and each windowed block resolves its data live
-  over the locked window.
-  _Federation as an AS2 `Article` + Reddit/markdown export is the remaining slice
-  (#937), so an article is authored and shown on the owner's own feed but does not yet
-  fan out to followers._
+  over the locked window. An article **federates as an AS2 `Article`** (title + prose
+  HTML + a rendered PNG per chart/correlation block) so followers on Mastodon see prose
+  + images; Aurboda peers get the richer inline render via structured enrichment.
+  _Reddit/markdown export is the remaining part of #937._
 
 An **`activity`** feed post references one of the user's activities and records the
 explicit metric selection that bounds what is shared:
@@ -119,11 +119,13 @@ uses), so nothing denormalised is persisted on the post.
 
 - **Outbox** (`/users/<username>/outbox`) — a **cursor-paginated** `OrderedCollection`
   of the user's `public` + `unlisted` posts as `Create` activities, newest-first, so the
-  actor's profile shows their posts. The root returns `totalItems` + `first`/`last` page
-  links; each page (`?cursor=<offset>`) serves up to a fixed page size with a `next` link.
+  actor's profile shows their posts. An activity share is a `Create{Note}`; an article is
+  a `Create{Article}`. The root returns `totalItems` + `first`/`last` page links; each
+  page (`?cursor=<offset>`) serves up to a fixed page size with a `next` link.
   `followers`-only posts are never listed.
 - **Object** (`/users/<username>/feed/<postId>`) — the post's `Note`, served at its
-  canonical id so a remote server can dereference it. Only `public`/`unlisted` resolve;
+  canonical id so a remote server can dereference it. An **article** is served as an AS2
+  `Article` at a distinct id (`…/feed/<postId>/article`). Only `public`/`unlisted` resolve;
   `followers`-only and unknown ids return 404. Once a `public`/`unlisted` post is
   **deleted**, that id returns **`410 Gone` with an AS2 `Tombstone`** (recorded in
   `feed_tombstone`) so a dereferencing server learns the object is _permanently_ gone
@@ -303,6 +305,22 @@ crisp, scalable `image/svg+xml` for **Aurboda-native** rendering (it stays sharp
 any size). Both share the same eligibility gate, capability-token model, and
 `no-store` revocability.
 
+An **article** renders one image per chart/correlation block for the same reason (so
+Mastodon and export tools attach a raster of each block), at its own endpoints:
+
+```
+GET /api/public/:username/feed/:postId/blocks/:index/image.png
+GET /api/public/:username/feed/:postId/blocks/:index/image.svg
+```
+
+Unlike an activity chart, a block has **no `include_chart` opt-in flag** — a chart or
+correlation block can embed any metric over any window, so the post's **visibility** is
+the whole authorization boundary (public/unlisted open; `followers`-only via the
+`?token=` capability). The chart block renders the metric bucketed over the locked
+window; the correlation block renders the scatter with its OLS line and coefficient
+headline. Because an article (unlike a shared activity) is editable, the render cache
+keys on the post's `updated_at` so an edit serves a fresh image.
+
 An image is served when the matching flag was opted into. `public`/`unlisted` posts
 serve their images unauthenticated. A `followers`-only post's image URLs instead carry
 the post's **unguessable capability token** (`?token=<image_token>`), which is embedded
@@ -428,6 +446,8 @@ Public / federation (unauthenticated):
 | `GET /public/:username/feed/:postId/chart.png` | Rendered HR chart (PNG) for an opted-in post (`?token=` for followers-only)                                |
 | `GET /public/:username/feed/:postId/chart.svg` | Same HR chart as crisp `image/svg+xml` for Aurboda-native rendering (`?token=` for followers-only)         |
 | `GET /public/:username/feed/:postId/route.png` | Rendered GPS route map for an opted-in post (`?token=` for followers-only)                                 |
+| `GET /public/:username/feed/:postId/blocks/:index/image.png` | Rendered PNG of an article's chart/correlation block (visibility-gated; `?token=` for followers-only) |
+| `GET /public/:username/feed/:postId/blocks/:index/image.svg` | Same article block as crisp `image/svg+xml`                                                          |
 | `GET /public/:username/posts`                  | A user's public/unlisted posts (newest-first, latest page) for their profile feed                          |
 | `GET /.well-known/webfinger`                   | Resolve `acct:<username>@<host>` → the actor                                                               |
 | `GET /users/:username`                         | The actor document (`Person`)                                                                              |
@@ -435,6 +455,7 @@ Public / federation (unauthenticated):
 | `GET /users/:username/followers`               | The actor's followers collection                                                                           |
 | `GET /users/:username/following`               | The actor's following collection (accepted follows only)                                                   |
 | `GET /users/:username/feed/:postId`            | A single post's `Note` (or `410` Tombstone once deleted)                                                   |
+| `GET /users/:username/feed/:postId/article`    | A single article post's AS2 `Article` object (public/unlisted only)                                        |
 | `POST /users/:username/inbox` (+ `/inbox`)     | Inbound `Follow` / `Undo{Follow}` / `Accept` / `Reject` (HTTP-Signature verified)                          |
 
 The owner-facing capability is also available over MCP as `list_feed`, `share_activity`,

@@ -1,4 +1,4 @@
-import type { FeedVisibility } from '@aurboda/api-spec'
+import type { ArticleContent, FeedVisibility } from '@aurboda/api-spec'
 /**
  * Build and deliver a shared feed post over ActivityPub.
  *
@@ -20,8 +20,11 @@ import type { FeedVisibility } from '@aurboda/api-spec'
  */
 import type { Context, Federation } from '@fedify/fedify'
 
-import { Create, Delete, Image, Note, Tombstone, Update } from '@fedify/fedify/vocab'
+import { Article, Create, Delete, Image, Note, Tombstone, Update } from '@fedify/fedify/vocab'
 
+import type { FeedPostRecord } from '../../db/index.ts'
+
+import { articleImageAttachments, renderArticleContentHtml } from './article-object.ts'
 import { resolveActivityScalars } from './feed-activity.ts'
 import { addressingFor, feedPostContent, isPubliclyVisible } from './object.ts'
 import { dateToTemporalInstant } from './temporal-interop.ts'
@@ -250,4 +253,168 @@ export const deliverFeedDelete = async (
   const ctx = await deps.federation.createContext(new URL(deps.origin))
   const del = buildFeedDelete(ctx, user, post)
   await ctx.sendActivity({ identifier: user }, 'followers', del)
+}
+
+// ---------------------------------------------------------------------------
+// Articles (long-form posts). An article federates as an AS2 `Article` object
+// (title + prose HTML + attached block PNGs) rather than a `Note`. It has no
+// linked activity, so its object/`Create`/`Update`/`Delete` are built purely
+// from the stored article content — no scalar resolution.
+// ---------------------------------------------------------------------------
+
+/** The delivery-facing view of an article post (its `article` guaranteed present). */
+export interface DeliverableArticle {
+  id: string
+  visibility: FeedVisibility
+  created_at: Date
+  updated_at: Date
+  image_token: string
+  article: ArticleContent
+}
+
+/** Narrow a stored feed post to a `DeliverableArticle`, or null when it isn't an article. */
+export const toDeliverableArticle = (post: FeedPostRecord): DeliverableArticle | null =>
+  post.kind === 'article' && post.article != null
+    ? {
+        article: post.article,
+        created_at: post.created_at,
+        id: post.id,
+        image_token: post.image_token,
+        updated_at: post.updated_at,
+        visibility: post.visibility,
+      }
+    : null
+
+/**
+ * The article's canonical object id/url — its own object-dispatcher path, distinct
+ * from the `Note` path so an article and an activity post never collide. The
+ * delivered object, the outbox item, and the object served at this URL are all
+ * built by `buildFeedArticle`, so they stay identical.
+ */
+const articleObjectUri = (ctx: Context<void>, user: string, postId: string): URL =>
+  ctx.getObjectUri(Article, { identifier: user, postId })
+
+/**
+ * Build the Fedify `Article` for a post: the Mastodon-compatible object (title
+ * `name` + prose HTML `content` + chart/correlation PNG attachments), addressed
+ * per visibility. Synchronous — an article carries no activity to resolve.
+ */
+export const buildFeedArticle = (
+  ctx: Context<void>,
+  user: string,
+  post: DeliverableArticle,
+  apiBaseUrl: string,
+): Article => {
+  const objectId = articleObjectUri(ctx, user, post.id)
+  const { cc, to } = recipients(post.visibility, ctx.getFollowersUri(user))
+  return new Article({
+    attachments: articleImageAttachments(
+      apiBaseUrl,
+      user,
+      post.id,
+      post.visibility,
+      post.image_token,
+      post.article,
+    ),
+    attribution: ctx.getActorUri(user),
+    ccs: cc,
+    content: renderArticleContentHtml(post.article),
+    id: objectId,
+    name: post.article.title,
+    published: dateToTemporalInstant(post.created_at),
+    tos: to,
+    url: objectId,
+  })
+}
+
+/** Wrap the article in the `Create` delivered to followers and listed in the outbox. */
+export const buildFeedArticleCreate = (
+  ctx: Context<void>,
+  user: string,
+  post: DeliverableArticle,
+  apiBaseUrl: string,
+): Create => {
+  const objectId = articleObjectUri(ctx, user, post.id)
+  const { cc, to } = recipients(post.visibility, ctx.getFollowersUri(user))
+  return new Create({
+    actor: ctx.getActorUri(user),
+    ccs: cc,
+    id: new URL(`${objectId.href}#create`),
+    object: buildFeedArticle(ctx, user, post, apiBaseUrl),
+    published: dateToTemporalInstant(post.created_at),
+    tos: to,
+  })
+}
+
+/** Wrap the (re-resolved) article in an `Update`; id carries `updated_at` so each edit is distinct. */
+export const buildFeedArticleUpdate = (
+  ctx: Context<void>,
+  user: string,
+  post: DeliverableArticle,
+  apiBaseUrl: string,
+): Update => {
+  const objectId = articleObjectUri(ctx, user, post.id)
+  const { cc, to } = recipients(post.visibility, ctx.getFollowersUri(user))
+  return new Update({
+    actor: ctx.getActorUri(user),
+    ccs: cc,
+    id: new URL(`${objectId.href}#update-${post.updated_at.getTime()}`),
+    object: buildFeedArticle(ctx, user, post, apiBaseUrl),
+    tos: to,
+  })
+}
+
+/** The `Delete{Tombstone}` for a removed article — tombstones the article object id. */
+export const buildFeedArticleDelete = (
+  ctx: Context<void>,
+  user: string,
+  post: DeliverableArticle,
+): Delete => {
+  const objectId = articleObjectUri(ctx, user, post.id)
+  const { cc, to } = recipients(post.visibility, ctx.getFollowersUri(user))
+  return new Delete({
+    actor: ctx.getActorUri(user),
+    ccs: cc,
+    id: new URL(`${objectId.href}#delete`),
+    object: new Tombstone({ id: objectId }),
+    tos: to,
+  })
+}
+
+/** Build and send the `Create{Article}` for a freshly-published article to its followers. */
+export const deliverFeedArticlePost = async (
+  deps: FeedDeliveryDeps,
+  user: string,
+  post: DeliverableArticle,
+): Promise<void> => {
+  const ctx = await deps.federation.createContext(new URL(deps.origin))
+  await ctx.sendActivity(
+    { identifier: user },
+    'followers',
+    buildFeedArticleCreate(ctx, user, post, deps.apiBaseUrl),
+  )
+}
+
+/** Build and send the `Update{Article}` for an edited article to its followers. */
+export const deliverFeedArticleUpdate = async (
+  deps: FeedDeliveryDeps,
+  user: string,
+  post: DeliverableArticle,
+): Promise<void> => {
+  const ctx = await deps.federation.createContext(new URL(deps.origin))
+  await ctx.sendActivity(
+    { identifier: user },
+    'followers',
+    buildFeedArticleUpdate(ctx, user, post, deps.apiBaseUrl),
+  )
+}
+
+/** Build and send the `Delete{Tombstone}` for a removed article to its followers. */
+export const deliverFeedArticleDelete = async (
+  deps: FeedDeliveryDeps,
+  user: string,
+  post: DeliverableArticle,
+): Promise<void> => {
+  const ctx = await deps.federation.createContext(new URL(deps.origin))
+  await ctx.sendActivity({ identifier: user }, 'followers', buildFeedArticleDelete(ctx, user, post))
 }

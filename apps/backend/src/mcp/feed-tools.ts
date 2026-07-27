@@ -115,6 +115,7 @@ export const registerFeedTools = (
       })
       if (!built.ok) return errorResponse(built.error)
       const record = await createArticlePost(user, { article: built.article, visibility: body.visibility })
+      deliver?.createdArticle(user, record)
       return jsonResponse(await serializeFeedPost(user, record))
     },
   )
@@ -132,6 +133,7 @@ export const registerFeedTools = (
       if (!built.ok) return errorResponse(built.error)
       const record = await updateFeedPost(user, id, { article: built.article, visibility: body.visibility })
       if (!record) return errorResponse('Article not found')
+      deliver?.updatedArticle(user, record)
       return jsonResponse(await serializeFeedPost(user, record))
     },
   )
