@@ -26,10 +26,6 @@ import { CHART_HEIGHT, CHART_WIDTH } from '../charts/chart-svg.ts'
 import { SCATTER_HEIGHT, SCATTER_WIDTH } from '../charts/scatter-svg.ts'
 import { isPubliclyVisible } from './object.ts'
 
-// GFM + hard line breaks, matching the web's `renderMarkdown` (#910) so an
-// article reads the same in-app and federated.
-marked.setOptions({ breaks: true, gfm: true })
-
 /**
  * Sanitise authored article prose for outbound federation. Extends the inbound
  * fediverse allowlist (`sanitizeRemoteHtml`) with the block elements a QS write-up
@@ -89,9 +85,13 @@ const sanitizeArticleHtml = (html: string): string =>
     },
   })
 
-/** Render one run of authored markdown to sanitised, federation-safe HTML. */
+/**
+ * Render one run of authored markdown to sanitised, federation-safe HTML. Options
+ * (GFM + hard line breaks) are passed per call, matching the web's `renderMarkdown`
+ * (#910) without mutating `marked`'s process-wide defaults for every other importer.
+ */
 const renderProse = (markdown: string): string =>
-  sanitizeArticleHtml(marked.parse(markdown, { async: false }))
+  sanitizeArticleHtml(marked.parse(markdown, { async: false, breaks: true, gfm: true }))
 
 /**
  * The AS2 `content` HTML for an article: each prose block rendered from markdown,

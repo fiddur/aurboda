@@ -240,13 +240,17 @@ export const resolveArticleBlock = async (
 /** Article-chart line colour, matching the web inline render (`ArticleChartBlock`). */
 const ARTICLE_CHART_COLOR = '#673ab8'
 
+/** A zero-duration bucket (`0s`, `00m`, …) passes the block schema regex but is
+ * invalid for `date_bin` (`date_bin('0 seconds', …)` errors) — treat it as no image. */
+const isZeroDurationBucket = (bucket: string): boolean => /^0+[smhd]$/.test(bucket)
+
 /**
  * Render one resolved article block to its image bytes (PNG or the crisp SVG),
  * or `null` when the block has too little data to draw (a chart needs ≥ 2 points;
- * a correlation needs n ≥ 3, surfaced by `getCorrelationScatter` returning null).
- * Pure of Express so the routes stay thin.
+ * a correlation needs n ≥ 3, surfaced by `getCorrelationScatter` returning null)
+ * or its bucket is a zero duration. Pure of Express so the routes stay thin.
  */
-const renderArticleBlockImage = async (
+export const renderArticleBlockImage = async (
   deps: FeedImageDeps,
   user: string,
   block: ResolvedArticleBlock,
@@ -254,6 +258,7 @@ const renderArticleBlockImage = async (
 ): Promise<Buffer | null> => {
   if (block.type === 'chart') {
     const bucket = block.bucket ?? defaultArticleChartBucket(block.start, block.end)
+    if (isZeroDurationBucket(bucket)) return null
     const series = await deps.getArticleChartSeries(user, block.metric, block.start, block.end, bucket)
     if (series.length < 2) return null
     const opts: ChartRenderOpts = { color: ARTICLE_CHART_COLOR, label: getMetricDisplayName(block.metric) }
@@ -338,14 +343,20 @@ export const createFeedImageRouter = (deps: FeedImageDeps): Router => {
   // Article chart/correlation block images. Gated by post visibility + capability
   // token only (no `include_chart` flag — a block can embed any metric, so
   // visibility is the whole boundary, #943). Cache key includes the post's
-  // `updated_at` so editing the article serves a fresh render (articles, unlike
-  // shared activities, are mutable).
+  // `updated_at` (busts on an edit) AND a coarse hourly bucket, so a locked
+  // window that later gains backfilled data can't serve a stale render for the
+  // whole process lifetime — the block re-resolves its data live (#934), matching
+  // the web inline render within ≤ 1h. Articles, unlike shared activities, are
+  // mutable and their windows can gain data after publish.
+  const blockCacheKey = (kind: string, username: string, postId: string, index: string, updatedAt: Date) =>
+    `${kind}:${username}:${postId}:${index}:${updatedAt.getTime()}:${Math.floor(Date.now() / 3_600_000)}`
+
   router.get('/public/:username/feed/:postId/blocks/:index/image.png', async (req, res) => {
     const { index, postId, username } = req.params
     const token = typeof req.query.token === 'string' ? req.query.token : undefined
     const block = await resolveArticleBlock(deps, username, postId, Number(index), token)
     if (!block) return notFound(res)
-    const png = await cached(`blockpng:${username}:${postId}:${index}:${block.updatedAt.getTime()}`, () =>
+    const png = await cached(blockCacheKey('blockpng', username, postId, index, block.updatedAt), () =>
       renderArticleBlockImage(deps, username, block, 'png'),
     )
     if (!png) return notFound(res)
@@ -357,7 +368,7 @@ export const createFeedImageRouter = (deps: FeedImageDeps): Router => {
     const token = typeof req.query.token === 'string' ? req.query.token : undefined
     const block = await resolveArticleBlock(deps, username, postId, Number(index), token)
     if (!block) return notFound(res)
-    const svg = await cached(`blocksvg:${username}:${postId}:${index}:${block.updatedAt.getTime()}`, () =>
+    const svg = await cached(blockCacheKey('blocksvg', username, postId, index, block.updatedAt), () =>
       renderArticleBlockImage(deps, username, block, 'svg'),
     )
     if (!svg) return notFound(res)

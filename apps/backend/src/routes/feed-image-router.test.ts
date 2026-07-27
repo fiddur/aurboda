@@ -3,11 +3,15 @@ import type { ArticleContent } from '@aurboda/api-spec'
 import { describe, expect, test, vi } from 'vitest'
 
 import type { FeedPostRecord } from '../db/index.ts'
+import type { ScatterSvgData } from '../services/charts/scatter-svg.ts'
 
 import {
   createRenderCache,
+  type FeedImageDeps,
   type ImageActivity,
+  renderArticleBlockImage,
   resolveArticleBlock,
+  type ResolvedArticleBlock,
   resolveImageWindow,
 } from './feed-image-router.ts'
 
@@ -192,6 +196,102 @@ describe('resolveArticleBlock', () => {
   test('null for an invalid username or non-UUID post id (no DB hit)', async () => {
     expect(await resolveArticleBlock(deps(articlePost(chart)), 'Bad..Name', POST_ID, 0)).toBeNull()
     expect(await resolveArticleBlock(deps(articlePost(chart)), 'fiddur', 'not-a-uuid', 0)).toBeNull()
+  })
+})
+
+describe('renderArticleBlockImage', () => {
+  const START = new Date('2026-07-01T00:00:00Z')
+  const END = new Date('2026-07-08T00:00:00Z')
+  const UPDATED = new Date('2026-07-09T00:00:00Z')
+  const series: [Date, number][] = [
+    [START, 60],
+    [END, 65],
+  ]
+  const scatter: ScatterSvgData = {
+    group_comparison: null,
+    n: 5,
+    outcome: { kind: 'metric', metric: 'sleep_score' },
+    pearson: 0.5,
+    pearson_p: 0.01,
+    series: [{ outcome: 2, trigger: 1 }],
+    spearman: 0.5,
+    trigger: { kind: 'metric', metric: 'steps' },
+  }
+
+  const chartBlock: ResolvedArticleBlock = {
+    end: END,
+    metric: 'heart_rate',
+    start: START,
+    type: 'chart',
+    updatedAt: UPDATED,
+  }
+  const correlationBlock: ResolvedArticleBlock = {
+    end: END,
+    outcome: { kind: 'metric', metric: 'sleep_score' },
+    start: START,
+    trigger: { kind: 'metric', metric: 'steps' },
+    type: 'correlation',
+    updatedAt: UPDATED,
+  }
+
+  const mkDeps = (over: Partial<FeedImageDeps> = {}): FeedImageDeps => ({
+    getActivity: async () => null,
+    getArticleChartSeries: vi.fn(async () => series),
+    getCorrelationScatter: vi.fn(async () => scatter),
+    getPost: async () => null,
+    getRoute: async () => [],
+    getSeries: async () => [],
+    renderChart: vi.fn(async () => Buffer.from('chart-png')),
+    renderChartSvg: vi.fn(() => '<svg>chart</svg>'),
+    renderRoute: async () => Buffer.from(''),
+    renderScatter: vi.fn(async () => Buffer.from('scatter-png')),
+    renderScatterSvg: vi.fn(() => '<svg>scatter</svg>'),
+    ...over,
+  })
+
+  test('renders a chart block as PNG (labelled with the metric display name)', async () => {
+    const d = mkDeps()
+    const png = await renderArticleBlockImage(d, 'fiddur', chartBlock, 'png')
+    expect(png).toEqual(Buffer.from('chart-png'))
+    expect(d.getArticleChartSeries).toHaveBeenCalledWith('fiddur', 'heart_rate', START, END, '1d')
+    expect(d.renderChart).toHaveBeenCalledWith(series, { color: '#673ab8', label: 'Heart Rate' })
+  })
+
+  test('renders a chart block as SVG bytes', async () => {
+    const d = mkDeps()
+    const svg = await renderArticleBlockImage(d, 'fiddur', chartBlock, 'svg')
+    expect(svg).toEqual(Buffer.from('<svg>chart</svg>', 'utf8'))
+    expect(d.renderScatter).not.toHaveBeenCalled()
+  })
+
+  test('renders a correlation block via the scatter renderer', async () => {
+    const d = mkDeps()
+    const png = await renderArticleBlockImage(d, 'fiddur', correlationBlock, 'png')
+    expect(png).toEqual(Buffer.from('scatter-png'))
+    expect(d.getCorrelationScatter).toHaveBeenCalledWith('fiddur', {
+      end: END,
+      lagDays: undefined,
+      outcome: correlationBlock.type === 'correlation' ? correlationBlock.outcome : undefined,
+      start: START,
+      trigger: correlationBlock.type === 'correlation' ? correlationBlock.trigger : undefined,
+    })
+  })
+
+  test('null when the chart has < 2 points', async () => {
+    const d = mkDeps({ getArticleChartSeries: vi.fn(async () => [[START, 60]] as [Date, number][]) })
+    expect(await renderArticleBlockImage(d, 'fiddur', chartBlock, 'png')).toBeNull()
+  })
+
+  test('null when the correlation is too sparse (getCorrelationScatter → null)', async () => {
+    const d = mkDeps({ getCorrelationScatter: vi.fn(async () => null) })
+    expect(await renderArticleBlockImage(d, 'fiddur', correlationBlock, 'png')).toBeNull()
+  })
+
+  test('null for a zero-duration bucket, without hitting the DB (avoids a date_bin 500)', async () => {
+    const d = mkDeps()
+    const png = await renderArticleBlockImage(d, 'fiddur', { ...chartBlock, bucket: '0s' }, 'png')
+    expect(png).toBeNull()
+    expect(d.getArticleChartSeries).not.toHaveBeenCalled()
   })
 })
 
