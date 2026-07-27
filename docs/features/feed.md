@@ -337,7 +337,11 @@ A block image endpoint **404s** when the block is too sparse to draw (a chart wi
 points, a correlation with n < 3) or has a zero-duration bucket. The article's `Note`
 attaches one `Image` per chart/correlation block **unconditionally** (the attachment list
 is built without a synchronous pre-render), so a sparse block ships an attachment URL
-that resolves to 404 — a plain fediverse client just shows one fewer image.
+that resolves to 404 — a plain fediverse client just shows one fewer image. Note also
+that **Mastodon caps a remote status at 4 media attachments** (`MEDIA_ATTACHMENTS_LIMIT`)
+when processing an inbound `Create`, so an article with more than four chart/correlation
+blocks shows only its first four images there (Aurboda peers, which fetch the native
+payload, aren't capped).
 
 An image is served when the matching flag was opted into. `public`/`unlisted` posts
 serve their images unauthenticated. A `followers`-only post's image URLs instead carry

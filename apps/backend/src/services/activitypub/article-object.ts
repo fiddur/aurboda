@@ -29,12 +29,14 @@ import { SCATTER_HEIGHT, SCATTER_WIDTH } from '../charts/scatter-svg.ts'
 import { isPubliclyVisible } from './object.ts'
 
 /**
- * Sanitise authored article prose for outbound federation. Extends the inbound
- * fediverse allowlist (`sanitizeRemoteHtml`) with the block elements a QS write-up
- * uses — GFM tables, images, `hr`, h5/h6 — all of which Mastodon renders in
- * `content` and the web DOMPurify sink already keeps, so authored formatting isn't
- * silently flattened on the way out. Still a hard XSS boundary: no script/style/
- * iframe/event handlers survive, and link/image URLs are http(s)/mailto only.
+ * Sanitise authored article prose for outbound federation. A superset of the
+ * inbound fediverse allowlist (`sanitizeRemoteHtml`) — the same safe base, plus
+ * the block elements a QS write-up uses (GFM tables, images, `hr`, h5/h6), all of
+ * which Mastodon renders in `content` and the web DOMPurify sink already keeps, so
+ * authored formatting isn't silently flattened on the way out. (The two configs
+ * are maintained separately, not literally shared — inbound is intentionally
+ * stricter.) Still a hard XSS boundary: no script/style/iframe/event handlers
+ * survive, and link/image URLs are http(s)/mailto only.
  */
 const sanitizeArticleHtml = (html: string): string =>
   sanitizeHtml(html, {
