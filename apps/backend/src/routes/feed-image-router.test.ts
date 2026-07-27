@@ -6,6 +6,7 @@ import type { FeedPostRecord } from '../db/index.ts'
 import type { ScatterSvgData } from '../services/charts/scatter-svg.ts'
 
 import {
+  createNegativeCache,
   createRenderCache,
   type FeedImageDeps,
   type ImageActivity,
@@ -144,6 +145,22 @@ describe('resolveArticleBlock', () => {
     })
   })
 
+  test('correlation day bounds are the ISO window’s wall-clock day, not the UTC day', async () => {
+    // `…T23:30:00-05:00` is 2026-07-02T04:30Z — a Date round-trip would give the
+    // UTC day 07-02; the wall-clock day (matching the web scatter) is 07-01.
+    const offset = article([
+      {
+        end: '2026-07-10T00:00:00Z',
+        outcome: { kind: 'metric', metric: 'sleep_score' },
+        start: '2026-07-01T23:30:00-05:00',
+        trigger: { kind: 'metric', metric: 'steps' },
+        type: 'correlation',
+      },
+    ])
+    const block = await resolveArticleBlock(deps(articlePost(offset)), 'fiddur', POST_ID, 0)
+    expect(block).toMatchObject({ periodEnd: '2026-07-10', periodStart: '2026-07-01', type: 'correlation' })
+  })
+
   test('inherits the article default window when the block omits its own', async () => {
     const content = article([{ metric: 'heart_rate', type: 'chart' }], {
       default_end: WINDOW.end,
@@ -226,9 +243,9 @@ describe('renderArticleBlockImage', () => {
     updatedAt: UPDATED,
   }
   const correlationBlock: ResolvedArticleBlock = {
-    end: END,
     outcome: { kind: 'metric', metric: 'sleep_score' },
-    start: START,
+    periodEnd: '2026-07-08',
+    periodStart: '2026-07-01',
     trigger: { kind: 'metric', metric: 'steps' },
     type: 'correlation',
     updatedAt: UPDATED,
@@ -269,10 +286,10 @@ describe('renderArticleBlockImage', () => {
     const png = await renderArticleBlockImage(d, 'fiddur', correlationBlock, 'png')
     expect(png).toEqual(Buffer.from('scatter-png'))
     expect(d.getCorrelationScatter).toHaveBeenCalledWith('fiddur', {
-      end: END,
       lagDays: undefined,
       outcome: correlationBlock.type === 'correlation' ? correlationBlock.outcome : undefined,
-      start: START,
+      periodEnd: '2026-07-08',
+      periodStart: '2026-07-01',
       trigger: correlationBlock.type === 'correlation' ? correlationBlock.trigger : undefined,
     })
   })
@@ -292,6 +309,19 @@ describe('renderArticleBlockImage', () => {
     const png = await renderArticleBlockImage(d, 'fiddur', { ...chartBlock, bucket: '0s' }, 'png')
     expect(png).toBeNull()
     expect(d.getArticleChartSeries).not.toHaveBeenCalled()
+  })
+})
+
+describe('createNegativeCache', () => {
+  test('remembers a negative key and evicts the oldest past the bound', () => {
+    const neg = createNegativeCache(2)
+    expect(neg.has('a')).toBe(false)
+    neg.add('a')
+    neg.add('b')
+    expect(neg.has('a')).toBe(true)
+    neg.add('c') // over the bound → evicts the oldest ('a')
+    expect(neg.has('a')).toBe(false)
+    expect(neg.has('c')).toBe(true)
   })
 })
 

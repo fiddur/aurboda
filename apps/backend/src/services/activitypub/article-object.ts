@@ -134,10 +134,17 @@ export const articleImageAttachments = (
   postId: string,
   visibility: FeedVisibility,
   imageToken: string,
+  updatedAt: Date,
   article: ArticleContent,
 ): Image[] => {
   const base = `${apiBaseUrl.replace(/\/+$/, '')}/public/${encodeURIComponent(user)}/feed/${postId}`
-  const query = isPubliclyVisible(visibility) ? '' : `?token=${encodeURIComponent(imageToken)}`
+  // `v` = the post's last-edited epoch: the render cache busts on edit, but the URL
+  // itself must change too, or a remote media cache (Mastodon re-hosts attachments
+  // at receipt) keeps the pre-edit PNG and the `Update{Article}` never shows the new
+  // chart. The image endpoint ignores `v` (it only reads `token`).
+  const params = new URLSearchParams({ v: String(updatedAt.getTime()) })
+  if (!isPubliclyVisible(visibility)) params.set('token', imageToken)
+  const query = `?${params.toString()}`
   const images: Image[] = []
   article.blocks.forEach((block, index) => {
     if (block.type !== 'chart' && block.type !== 'correlation') return

@@ -314,6 +314,7 @@ export const buildFeedArticle = (
       post.id,
       post.visibility,
       post.image_token,
+      post.updated_at,
       post.article,
     ),
     attribution: ctx.getActorUri(user),

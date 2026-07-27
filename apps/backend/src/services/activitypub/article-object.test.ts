@@ -71,6 +71,8 @@ describe('renderArticleContentHtml', () => {
 
 describe('articleImageAttachments', () => {
   const base = 'https://aurboda.example/api/public/fiddur/feed/POST'
+  const UPDATED = new Date('2026-07-09T00:00:00Z')
+  const V = String(UPDATED.getTime())
   const withBlocks = (blocks: ArticleContent['blocks']): ArticleContent => article(blocks)
   const chart = { end: WINDOW.end, metric: 'heart_rate', start: WINDOW.start, type: 'chart' } as const
   const correlation = {
@@ -81,28 +83,33 @@ describe('articleImageAttachments', () => {
     type: 'correlation',
   } as const
 
-  test('one image per chart/correlation block, indexed by block position, no token when public', () => {
+  test('one image per chart/correlation block, versioned by updated_at, no token when public', () => {
     const atts = articleImageAttachments(
       'https://aurboda.example/api',
       'fiddur',
       'POST',
       'public',
       'secret-token',
+      UPDATED,
       withBlocks([{ markdown: 'Intro', type: 'prose' }, chart, correlation]),
     )
-    expect(atts.map((a) => a.url?.href)).toEqual([`${base}/blocks/1/image.png`, `${base}/blocks/2/image.png`])
+    expect(atts.map((a) => a.url?.href)).toEqual([
+      `${base}/blocks/1/image.png?v=${V}`,
+      `${base}/blocks/2/image.png?v=${V}`,
+    ])
   })
 
-  test('followers-only attachments carry the capability token (#893)', () => {
+  test('followers-only attachments carry the capability token + version (#893)', () => {
     const atts = articleImageAttachments(
       'https://aurboda.example/api',
       'fiddur',
       'POST',
       'followers',
       'secret-token',
+      UPDATED,
       withBlocks([chart]),
     )
-    expect(atts.map((a) => a.url?.href)).toEqual([`${base}/blocks/0/image.png?token=secret-token`])
+    expect(atts.map((a) => a.url?.href)).toEqual([`${base}/blocks/0/image.png?v=${V}&token=secret-token`])
   })
 
   test('names an attachment from its caption, else its data label', () => {
@@ -112,6 +119,7 @@ describe('articleImageAttachments', () => {
       'POST',
       'public',
       'secret-token',
+      UPDATED,
       withBlocks([{ ...chart, caption: 'Overnight HR' }, correlation]),
     )
     expect(atts[0].name?.toString()).toBe('Overnight HR')
@@ -125,6 +133,7 @@ describe('articleImageAttachments', () => {
       'POST',
       'public',
       'secret-token',
+      UPDATED,
       withBlocks([{ markdown: 'Just words', type: 'prose' }]),
     )
     expect(atts).toEqual([])

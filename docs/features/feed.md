@@ -320,10 +320,16 @@ correlation block can embed any metric over any window, so the post's **visibili
 the whole authorization boundary (public/unlisted open; `followers`-only via the
 `?token=` capability). The chart block renders the metric bucketed over the locked
 window; the correlation block renders the scatter with its OLS line and coefficient
-headline. It buckets in the author's timezone (`settings.tz`), matching the web inline
-render. Because an article (unlike a shared activity) is editable **and** its locked
-window can later gain backfilled data, the render cache keys on the post's `updated_at`
-**and** a coarse hourly bucket, so an edit or new data serves a fresh image within ≤ 1h.
+headline. It buckets in the author's **device timezone** (`device_timezone`, set by the
+Android app) so a `1d` bucket splits on the author's calendar days like the web render;
+for an author whose device timezone is unknown it falls back to UTC (the web render uses
+the live browser timezone, so the two can differ by a day only in that case). Because an
+article (unlike a shared activity) is editable **and** its locked window can later gain
+backfilled data, the render cache keys on the post's `updated_at` **and** a coarse hourly
+bucket, so an edit or new data serves a fresh image within ≤ 1h; a `null` (no-data) render
+is remembered under the same key so a sparse public block can't re-run the render engine
+on every hit. The AS2 `Image` attachment URL also carries `?v=<updated_at>` so a remote
+media cache (which re-hosts the PNG at receipt) re-fetches after an edit.
 
 A block image endpoint **404s** when the block is too sparse to draw (a chart with < 2
 points, a correlation with n < 3) or has a zero-duration bucket. The AS2 `Article`

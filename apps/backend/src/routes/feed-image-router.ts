@@ -52,8 +52,14 @@ export interface CorrelationBlockParams {
   trigger: CorrelationSelector
   outcome: CorrelationSelector
   lagDays?: number
-  start: Date
-  end: Date
+  /**
+   * Inclusive day bounds (`YYYY-MM-DD`), sliced from the block's ISO window so they
+   * are the author's wall-clock days — NOT a UTC-normalised day. Matches the web
+   * scatter's `iso.slice(0, 10)`, so an offset-bearing ISO (e.g. from `create_article`
+   * over MCP) covers the same day range in-app and in the federated/exported PNG.
+   */
+  periodStart: string
+  periodEnd: string
 }
 
 export interface FeedImageDeps {
@@ -91,8 +97,8 @@ export type ResolvedArticleBlock =
       trigger: CorrelationSelector
       outcome: CorrelationSelector
       lagDays?: number
-      start: Date
-      end: Date
+      periodStart: string
+      periodEnd: string
       updatedAt: Date
     }
 
@@ -128,6 +134,29 @@ export const createRenderCache = (maxEntries = 200) => {
     } finally {
       inFlight.delete(key)
     }
+  }
+}
+
+/**
+ * A bounded set of cache keys whose render produced NO image (a sparse block →
+ * 404). `createRenderCache` deliberately never caches a `null`, so a
+ * publicly-listed sparse correlation block would otherwise re-run the full
+ * `getContinuousCorrelation` (two selector resolutions over the whole window) on
+ * every unauthenticated hit, uncached and unthrottled. Remembering the negative
+ * under the same hourly-bucketed key bounds that to one render per hour — the key
+ * rolls over hourly, so a block that later gains data re-renders.
+ */
+export const createNegativeCache = (maxEntries = 500) => {
+  const seen = new Map<string, true>()
+  return {
+    add: (key: string) => {
+      if (seen.size >= maxEntries) {
+        const oldest = seen.keys().next().value
+        if (oldest !== undefined) seen.delete(oldest)
+      }
+      seen.set(key, true)
+    },
+    has: (key: string) => seen.has(key),
   }
 }
 
@@ -227,10 +256,12 @@ export const resolveArticleBlock = async (
     }
   }
   return {
-    end: endDate,
+    // Slice the day off the RAW ISO (author's wall-clock day), like the web
+    // scatter — not the UTC day a Date round-trip would give.
     lagDays: block.lag_days,
     outcome: block.outcome,
-    start: startDate,
+    periodEnd: end.slice(0, 10),
+    periodStart: start.slice(0, 10),
     trigger: block.trigger,
     type: 'correlation',
     updatedAt,
@@ -267,10 +298,10 @@ export const renderArticleBlockImage = async (
       : Buffer.from(deps.renderChartSvg(series, opts), 'utf8')
   }
   const data = await deps.getCorrelationScatter(user, {
-    end: block.end,
     lagDays: block.lagDays,
     outcome: block.outcome,
-    start: block.start,
+    periodEnd: block.periodEnd,
+    periodStart: block.periodStart,
     trigger: block.trigger,
   })
   if (data == null) return null
@@ -354,6 +385,9 @@ export const createFeedImageRouter = (deps: FeedImageDeps): Router => {
   // comparatively expensive render.
   const blockCacheKey = (kind: string, username: string, postId: string, index: number, updatedAt: Date) =>
     `${kind}:${username}:${postId}:${index}:${updatedAt.getTime()}:${Math.floor(Date.now() / 3_600_000)}`
+  // Remembers the "no image" outcome (a sparse block 404s) under the same hourly
+  // key, so a public sparse block doesn't re-run the render engine on every hit.
+  const negativeBlocks = createNegativeCache()
 
   router.get('/public/:username/feed/:postId/blocks/:index/image.png', async (req, res) => {
     const { index, postId, username } = req.params
@@ -361,10 +395,13 @@ export const createFeedImageRouter = (deps: FeedImageDeps): Router => {
     const idx = Number(index)
     const block = await resolveArticleBlock(deps, username, postId, idx, token)
     if (!block) return notFound(res)
-    const png = await cached(blockCacheKey('blockpng', username, postId, idx, block.updatedAt), () =>
-      renderArticleBlockImage(deps, username, block, 'png'),
-    )
-    if (!png) return notFound(res)
+    const key = blockCacheKey('blockpng', username, postId, idx, block.updatedAt)
+    if (negativeBlocks.has(key)) return notFound(res)
+    const png = await cached(key, () => renderArticleBlockImage(deps, username, block, 'png'))
+    if (!png) {
+      negativeBlocks.add(key)
+      return notFound(res)
+    }
     sendPng(res, png)
   })
 
@@ -374,10 +411,13 @@ export const createFeedImageRouter = (deps: FeedImageDeps): Router => {
     const idx = Number(index)
     const block = await resolveArticleBlock(deps, username, postId, idx, token)
     if (!block) return notFound(res)
-    const svg = await cached(blockCacheKey('blocksvg', username, postId, idx, block.updatedAt), () =>
-      renderArticleBlockImage(deps, username, block, 'svg'),
-    )
-    if (!svg) return notFound(res)
+    const key = blockCacheKey('blocksvg', username, postId, idx, block.updatedAt)
+    if (negativeBlocks.has(key)) return notFound(res)
+    const svg = await cached(key, () => renderArticleBlockImage(deps, username, block, 'svg'))
+    if (!svg) {
+      negativeBlocks.add(key)
+      return notFound(res)
+    }
     sendSvg(res, svg)
   })
 

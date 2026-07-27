@@ -200,12 +200,12 @@ export const mountRestRouters = ({
       },
       // An article correlation block's continuous scatter over its locked window;
       // null when too sparse to be meaningful (n < 3), which 404s the image.
-      getCorrelationScatter: async (user, { end, lagDays, outcome, start, trigger }) => {
+      getCorrelationScatter: async (user, { lagDays, outcome, periodEnd, periodStart, trigger }) => {
         const c = await getContinuousCorrelation(user, {
           lagDays,
           outcome,
-          periodEnd: end.toISOString().slice(0, 10),
-          periodStart: start.toISOString().slice(0, 10),
+          periodEnd,
+          periodStart,
           trigger,
         })
         if (c.n < 3) return null
