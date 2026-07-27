@@ -166,7 +166,7 @@ export const createFeedRouter = (
 
   // Article posts (long-form: title + prose + inline chart/correlation blocks).
   // Create/edit have their own body shape; delete reuses `DELETE /:postId`.
-  // Registered before the generic `/:postId` routes. Federated as an AS2 `Article`
+  // Registered before the generic `/:postId` routes. Federated as a `Note`
   // (fan-out is best-effort and never blocks the response).
   router.post<Record<string, never>, FeedPostResponse, CreateArticleBody>(
     '/articles',

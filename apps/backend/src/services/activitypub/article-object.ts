@@ -96,20 +96,33 @@ const renderProse = (markdown: string): string =>
   sanitizeArticleHtml(marked.parse(markdown, { async: false, breaks: true, gfm: true }))
 
 /**
- * The AS2 `content` HTML for an article: each prose block rendered from markdown,
- * and each chart/correlation block's caption (when set) as a paragraph. A caption
- * is emitted as plain escaped text — NOT markdown — to match the web, which shows
- * it as text in a `<figcaption>`; the chart images themselves ride as attachments
- * (`articleImageAttachments`), which a fediverse client lays out after the content.
+ * The AS2 `content` HTML for an article: the **title** as a bold heading, then
+ * each prose block rendered from markdown, and each chart/correlation block's
+ * caption (when set) as a paragraph.
+ *
+ * The title leads the `content` because Mastodon's status parser ignores a Note's
+ * `name` (it only falls back to `name` for *converted* object types like Article),
+ * so a title left only in `name` never renders — and an all-charts article with no
+ * captions would otherwise federate as an empty status with just attachments. The
+ * bold heading mirrors how Mastodon renders a converted type's title; `name` is
+ * still set on the Note for Aurboda peers / software that does read it.
+ *
+ * A caption is emitted as plain escaped text — NOT markdown — to match the web,
+ * which shows it as text in a `<figcaption>`; the chart images themselves ride as
+ * attachments (`articleImageAttachments`), which a fediverse client lays out after
+ * the content.
  */
-export const renderArticleContentHtml = (article: ArticleContent): string =>
-  article.blocks
+export const renderArticleContentHtml = (article: ArticleContent): string => {
+  const heading = `<p><strong>${escapeXml(article.title)}</strong></p>`
+  const body = article.blocks
     .map((block) => {
       if (block.type === 'prose') return renderProse(block.markdown)
       return block.caption ? `<p>${escapeXml(block.caption)}</p>` : ''
     })
     .filter((html) => html.length > 0)
     .join('\n')
+  return body.length > 0 ? `${heading}\n${body}` : heading
+}
 
 /** A human name for a block's attachment: its caption, else a label from its data. */
 const attachmentName = (block: Extract<ArticleBlock, { type: 'chart' | 'correlation' }>): string => {

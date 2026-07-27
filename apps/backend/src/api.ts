@@ -373,8 +373,8 @@ const main = async () => {
         if (activity) await deliverFeedUpdate(feedDeps, user, post, activity)
       })().catch(onDeliverError('update', user, post.id))
     },
-    // Articles fan out as an AS2 Article (built purely from stored content — no
-    // activity to resolve). Best-effort, same as the Note path.
+    // Articles fan out as a Create{Note}/Update{Note} built purely from stored
+    // content (no activity to resolve). Best-effort, same as the activity path.
     createdArticle: (user, post) => {
       const article = toDeliverableArticle(post)
       if (article) {

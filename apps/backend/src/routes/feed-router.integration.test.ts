@@ -3,18 +3,19 @@ import type { AddressInfo } from 'node:net'
 
 import express from 'express'
 import supertest from 'supertest'
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
+import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest'
 
 /**
  * Integration test for the owner-facing article routes on the feed router
  * (`POST /feed/articles`, `PATCH /feed/articles/:postId`) against a live
  * database — the route + `buildArticleContent`/`mergeArticleContent` service +
- * serializer composition over the already-unit-tested pieces. Federation is a
- * later slice, so no `deliver` is wired here.
+ * serializer composition over the already-unit-tested pieces. A fake `deliver`
+ * spy covers the article fan-out branches (including `kind === 'article'` on the
+ * generic `PATCH /:postId`); the actual AS2 delivery is unit-tested in `deliver`.
  */
 import { createFeedPost } from '../db/feed.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
-import { createFeedRouter } from './feed-router.ts'
+import { type FeedDeliver, createFeedRouter } from './feed-router.ts'
 
 const CONTAINER_TIMEOUT = 120_000
 
@@ -23,10 +24,10 @@ const auth: RequestHandler = (req, _res, next) => {
   next()
 }
 
-const startApp = () => {
+const startApp = (deliver?: FeedDeliver) => {
   const app = express()
   app.use(express.json())
-  app.use('/feed', createFeedRouter(auth))
+  app.use('/feed', createFeedRouter(auth, deliver))
   const server = app.listen(0)
   const port = (server.address() as AddressInfo).port
   const close = () =>
@@ -129,5 +130,32 @@ describe('Article feed routes (integration)', () => {
     expect(del.status).toBe(200)
     const list = await app.request.get('/feed')
     expect(list.body.posts.map((p: { id: string }) => p.id)).not.toContain(created.body.post.id)
+  })
+
+  test('article fan-out: create → createdArticle; generic PATCH /:postId → updatedArticle (not updated)', async () => {
+    const deliver: FeedDeliver = {
+      created: vi.fn(),
+      createdArticle: vi.fn(),
+      deleted: vi.fn(),
+      updated: vi.fn(),
+      updatedArticle: vi.fn(),
+    }
+    const spied = startApp(deliver)
+    try {
+      const created = await spied.request.post('/feed/articles').send(articleBody())
+      expect(created.status).toBe(200)
+      expect(deliver.createdArticle).toHaveBeenCalledTimes(1)
+
+      // The GENERIC patch (not /feed/articles/:postId) on an article must route
+      // through `updatedArticle` — `updated` no-ops for a post with no activity.
+      const patched = await spied.request
+        .patch(`/feed/${created.body.post.id}`)
+        .send({ visibility: 'followers' })
+      expect(patched.status).toBe(200)
+      expect(deliver.updatedArticle).toHaveBeenCalledTimes(1)
+      expect(deliver.updated).not.toHaveBeenCalled()
+    } finally {
+      await spied.close()
+    }
   })
 })

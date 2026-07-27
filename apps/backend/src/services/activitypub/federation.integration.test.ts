@@ -269,6 +269,8 @@ describe('Feed federation actor + WebFinger', () => {
     expect(doc.type).toBe('Note')
     expect(doc.id).toBe(noteId)
     expect(doc.name).toBe('Weekly review')
+    // Title leads the content (Mastodon ignores a Note's name); prose follows.
+    expect(doc.content).toContain('<strong>Weekly review</strong>')
     expect(doc.content).toContain('<strong>analysis</strong>')
   })
 

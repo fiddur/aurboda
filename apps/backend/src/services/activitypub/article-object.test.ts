@@ -9,6 +9,15 @@ const WINDOW = { end: '2026-07-02T00:00:00Z', start: '2026-07-01T00:00:00Z' }
 const article = (blocks: ArticleContent['blocks']): ArticleContent => ({ blocks, title: 'My analysis' })
 
 describe('renderArticleContentHtml', () => {
+  test('leads the content with the title (Mastodon ignores a Note’s name)', () => {
+    // An all-charts article with no captions still federates a non-empty status —
+    // the title — rather than just attachment URLs.
+    const html = renderArticleContentHtml(
+      article([{ end: WINDOW.end, metric: 'heart_rate', start: WINDOW.start, type: 'chart' }]),
+    )
+    expect(html).toContain('<p><strong>My analysis</strong></p>')
+  })
+
   test('renders prose markdown to HTML', () => {
     const html = renderArticleContentHtml(
       article([{ markdown: '# Sleep\n\nSlept **well**.', type: 'prose' }]),
@@ -51,7 +60,7 @@ describe('renderArticleContentHtml', () => {
       ]),
     )
     expect(html).toContain('**not bold** &lt;b&gt;x&lt;/b&gt;')
-    expect(html).not.toContain('<strong>')
+    expect(html).not.toContain('<strong>not bold') // the caption's markdown is NOT rendered
     expect(html).not.toContain('<b>x</b>')
   })
 
