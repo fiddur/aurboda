@@ -16,7 +16,6 @@ import type { FollowerActions } from '../services/followers.ts'
 import type { FollowActions } from '../services/following.ts'
 import type { InvitationAuth } from '../services/invitation.ts'
 import type { OuraWebhookManager } from '../services/oura-webhook-manager.ts'
-import type { SyncProvider } from '../services/queries/index.ts'
 import type { TimelineHub } from '../services/timeline-hub.ts'
 import type { WebAuthnService } from '../services/webauthn.ts'
 import type { AnyMiddleware } from '../typed-router.ts'
@@ -63,12 +62,15 @@ import { createTrainingLoadRouter } from '../routes/training-load-router.ts'
 import { createTrendsRouter } from '../routes/trends-router.ts'
 import { createWebAuthnRouter } from '../routes/webauthn-router.ts'
 import { createWellKnownRouter, type WellKnownConfig } from '../routes/well-known-router.ts'
-import { renderChartPng, renderRoutePng } from '../services/activitypub/feed-images.ts'
+import { renderChartPng, renderRoutePng, renderScatterPng } from '../services/activitypub/feed-images.ts'
 import { fetchOsmTile } from '../services/activitypub/osm-tiles.ts'
 import { loadAvatarDataUri } from '../services/avatar-resolve.ts'
 import { buildChartSvg } from '../services/charts/chart-svg.ts'
+import { buildScatterSvg } from '../services/charts/scatter-svg.ts'
+import { getContinuousCorrelation } from '../services/correlations/index.ts'
 import { resolveFeedActivity } from '../services/feed.ts'
 import { createOgImageRenderer } from '../services/og-image.ts'
+import { type SyncProvider, queryMetricsBucketed } from '../services/queries/index.ts'
 import { createTemplateLoader } from '../services/web-template.ts'
 
 interface RestRoutesDeps {
@@ -173,6 +175,39 @@ export const mountRestRouters = ({
       // Merged-span window so the rendered chart/route cover what the user
       // shared, matching the Note's duration/metrics (#881).
       getActivity: resolveFeedActivity,
+      // An article chart block's bucketed metric series over its locked window
+      // (mirrors the web's live bucketed render).
+      getArticleChartSeries: async (user, metric, start, end, bucket) => {
+        const result = await queryMetricsBucketed(user, [metric], start, end, bucket)
+        const series: [Date, number][] = []
+        for (const b of result.buckets) {
+          const avg = b.metrics[metric]?.avg
+          if (avg != null) series.push([new Date(b.start), avg])
+        }
+        return series
+      },
+      // An article correlation block's continuous scatter over its locked window;
+      // null when too sparse to be meaningful (n < 3), which 404s the image.
+      getCorrelationScatter: async (user, { end, lagDays, outcome, start, trigger }) => {
+        const c = await getContinuousCorrelation(user, {
+          lagDays,
+          outcome,
+          periodEnd: end.toISOString().slice(0, 10),
+          periodStart: start.toISOString().slice(0, 10),
+          trigger,
+        })
+        if (c.n < 3) return null
+        return {
+          group_comparison: c.group_comparison,
+          n: c.n,
+          outcome,
+          pearson: c.pearson,
+          pearson_p: c.pearson_p,
+          series: c.series,
+          spearman: c.spearman,
+          trigger,
+        }
+      },
       getPost: getFeedPostById,
       getRoute: async (user, start, end) =>
         (await getLocations(user, start, end)).locations.map((l) => l.coordinates),
@@ -182,6 +217,8 @@ export const mountRestRouters = ({
       // Draw the route over the OSM basemap; falls back to a bare shape if tiles
       // can't be fetched (e.g. offline).
       renderRoute: (coords) => renderRoutePng(coords, { fetchTile: fetchOsmTile }),
+      renderScatter: renderScatterPng,
+      renderScatterSvg: buildScatterSvg,
     }),
   )
   httpd.use(createPublicSharesRouter(webHost))

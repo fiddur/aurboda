@@ -17,6 +17,7 @@
 import sharp from 'sharp'
 
 import { buildChartSvg } from '../charts/chart-svg.ts'
+import { type ScatterSvgData, buildScatterSvg } from '../charts/scatter-svg.ts'
 import { chooseZoom, latToWorldY, lonToWorldX, TILE_SIZE, type TileFetcher } from './osm-tiles.ts'
 
 const ROUTE_W = 700
@@ -62,6 +63,14 @@ export const renderChartPng = (
   series: [Date, number][],
   opts: { color?: string; label?: string } = {},
 ): Promise<Buffer> => svgToPng(buildChartSvg(series, opts))
+
+/**
+ * A correlation scatter (trigger × outcome + OLS line + headline) rasterized to
+ * PNG for an article correlation-block feed attachment. The SVG is built by the
+ * shared `buildScatterSvg` renderer (the same scatter the web draws inline); this
+ * only adds the `sharp` rasterization.
+ */
+export const renderScatterPng = (data: ScatterSvgData): Promise<Buffer> => svgToPng(buildScatterSvg(data))
 
 const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, v))
 
