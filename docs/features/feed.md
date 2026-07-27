@@ -33,11 +33,11 @@ A feed post has a **`kind`**:
   `POST /feed/articles` / `PATCH /feed/articles/:postId` (and the `create_article` /
   `update_article` MCP tools), or in the web app's article composer; prose renders
   through the shared markdown sanitiser and each windowed block resolves its data live
-  over the locked window. An article **federates as an AS2 `Article`** (title + prose
-  HTML + a rendered PNG per chart/correlation block) so followers on Mastodon see prose
-  + images. A richer inline render for Aurboda peers — inbound `Article` ingestion plus
-  structured enrichment — is a later slice (**#968**); until then an Aurboda follower
-  doesn't yet see a federated article.
+  over the locked window. An article **federates as an AS2 `Article`** (title, prose
+  HTML, and a rendered PNG per chart/correlation block) so followers on Mastodon see the
+  prose and images. A richer inline render for Aurboda peers — inbound `Article`
+  ingestion plus structured enrichment — is a later slice (**#968**); until then an
+  Aurboda follower doesn't yet see a federated article.
   _Reddit/markdown export is the remaining part of #937._
 
 An **`activity`** feed post references one of the user's activities and records the
@@ -320,8 +320,16 @@ correlation block can embed any metric over any window, so the post's **visibili
 the whole authorization boundary (public/unlisted open; `followers`-only via the
 `?token=` capability). The chart block renders the metric bucketed over the locked
 window; the correlation block renders the scatter with its OLS line and coefficient
-headline. Because an article (unlike a shared activity) is editable, the render cache
-keys on the post's `updated_at` so an edit serves a fresh image.
+headline. It buckets in the author's timezone (`settings.tz`), matching the web inline
+render. Because an article (unlike a shared activity) is editable **and** its locked
+window can later gain backfilled data, the render cache keys on the post's `updated_at`
+**and** a coarse hourly bucket, so an edit or new data serves a fresh image within ≤ 1h.
+
+A block image endpoint **404s** when the block is too sparse to draw (a chart with < 2
+points, a correlation with n < 3) or has a zero-duration bucket. The AS2 `Article`
+attaches one `Image` per chart/correlation block **unconditionally** (the attachment list
+is built without a synchronous pre-render), so a sparse block ships an attachment URL
+that resolves to 404 — a plain fediverse client just shows one fewer image.
 
 An image is served when the matching flag was opted into. `public`/`unlisted` posts
 serve their images unauthenticated. A `followers`-only post's image URLs instead carry
@@ -426,10 +434,10 @@ Owner-facing (authenticated, scoped to the caller):
 | ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | `GET /feed`                        | List my feed posts (each enriched with the shared activity's title/type and merged-span window, resolved at query time) |
 | `POST /feed/activities/:id/share`  | Publish an activity with a chosen metric selection                                                                      |
-| `POST /feed/articles`              | Publish a long-form **article** (title + prose + inline chart/correlation blocks)                                        |
-| `PATCH /feed/articles/:postId`     | Edit an article (title / blocks / default window / visibility)                                                           |
+| `POST /feed/articles`              | Publish a long-form **article** (title + prose + inline chart/correlation blocks)                                       |
+| `PATCH /feed/articles/:postId`     | Edit an article (title / blocks / default window / visibility)                                                          |
 | `PATCH /feed/:postId`              | Edit an activity post's selection / visibility / attachments                                                            |
-| `DELETE /feed/:postId`             | Unpublish any post (an activity post's public series stops resolving)                                                    |
+| `DELETE /feed/:postId`             | Unpublish any post (an activity post's public series stops resolving)                                                   |
 | `GET /feed/following`              | List the actors I follow (accepted + pending)                                                                           |
 | `POST /feed/following`             | Follow an actor by handle (`@user@host` or actor URL)                                                                   |
 | `DELETE /feed/following/:id`       | Unfollow (sends `Undo{Follow}`)                                                                                         |
@@ -441,24 +449,24 @@ Owner-facing (authenticated, scoped to the caller):
 
 Public / federation (unauthenticated):
 
-| Method & path                                  | Purpose                                                                                                    |
-| ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `GET /public/:username/series`                 | Bucketed samples for a **shared** series within its window                                                 |
-| `GET /public/:username/feed/:postId`           | Native structured post (`FeedStructured`: typed metrics + inline series) for Aurboda-to-Aurboda enrichment |
-| `GET /public/:username/feed/:postId/chart.png` | Rendered HR chart (PNG) for an opted-in post (`?token=` for followers-only)                                |
-| `GET /public/:username/feed/:postId/chart.svg` | Same HR chart as crisp `image/svg+xml` for Aurboda-native rendering (`?token=` for followers-only)         |
-| `GET /public/:username/feed/:postId/route.png` | Rendered GPS route map for an opted-in post (`?token=` for followers-only)                                 |
-| `GET /public/:username/feed/:postId/blocks/:index/image.png` | Rendered PNG of an article's chart/correlation block (visibility-gated; `?token=` for followers-only) |
-| `GET /public/:username/feed/:postId/blocks/:index/image.svg` | Same article block as crisp `image/svg+xml`                                                          |
-| `GET /public/:username/posts`                  | A user's public/unlisted posts (newest-first, latest page) for their profile feed                          |
-| `GET /.well-known/webfinger`                   | Resolve `acct:<username>@<host>` → the actor                                                               |
-| `GET /users/:username`                         | The actor document (`Person`)                                                                              |
-| `GET /users/:username/outbox`                  | Public + unlisted posts as `Create` activities                                                             |
-| `GET /users/:username/followers`               | The actor's followers collection                                                                           |
-| `GET /users/:username/following`               | The actor's following collection (accepted follows only)                                                   |
-| `GET /users/:username/feed/:postId`            | A single post's `Note` (or `410` Tombstone once deleted)                                                   |
-| `GET /users/:username/feed/:postId/article`    | A single article post's AS2 `Article` object (public/unlisted only)                                        |
-| `POST /users/:username/inbox` (+ `/inbox`)     | Inbound `Follow` / `Undo{Follow}` / `Accept` / `Reject` (HTTP-Signature verified)                          |
+| Method & path                                                | Purpose                                                                                                    |
+| ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------- |
+| `GET /public/:username/series`                               | Bucketed samples for a **shared** series within its window                                                 |
+| `GET /public/:username/feed/:postId`                         | Native structured post (`FeedStructured`: typed metrics + inline series) for Aurboda-to-Aurboda enrichment |
+| `GET /public/:username/feed/:postId/chart.png`               | Rendered HR chart (PNG) for an opted-in post (`?token=` for followers-only)                                |
+| `GET /public/:username/feed/:postId/chart.svg`               | Same HR chart as crisp `image/svg+xml` for Aurboda-native rendering (`?token=` for followers-only)         |
+| `GET /public/:username/feed/:postId/route.png`               | Rendered GPS route map for an opted-in post (`?token=` for followers-only)                                 |
+| `GET /public/:username/feed/:postId/blocks/:index/image.png` | Rendered PNG of an article's chart/correlation block (visibility-gated; `?token=` for followers-only)      |
+| `GET /public/:username/feed/:postId/blocks/:index/image.svg` | Same article block as crisp `image/svg+xml`                                                                |
+| `GET /public/:username/posts`                                | A user's public/unlisted posts (newest-first, latest page) for their profile feed                          |
+| `GET /.well-known/webfinger`                                 | Resolve `acct:<username>@<host>` → the actor                                                               |
+| `GET /users/:username`                                       | The actor document (`Person`)                                                                              |
+| `GET /users/:username/outbox`                                | Public + unlisted posts as `Create` activities                                                             |
+| `GET /users/:username/followers`                             | The actor's followers collection                                                                           |
+| `GET /users/:username/following`                             | The actor's following collection (accepted follows only)                                                   |
+| `GET /users/:username/feed/:postId`                          | A single post's `Note` (or `410` Tombstone once deleted)                                                   |
+| `GET /users/:username/feed/:postId/article`                  | A single article post's AS2 `Article` object (public/unlisted only)                                        |
+| `POST /users/:username/inbox` (+ `/inbox`)                   | Inbound `Follow` / `Undo{Follow}` / `Accept` / `Reject` (HTTP-Signature verified)                          |
 
 The owner-facing capability is also available over MCP as `list_feed`, `share_activity`,
 `create_article`, `update_article`, `update_feed_post`, `delete_feed_post`, `list_following`,

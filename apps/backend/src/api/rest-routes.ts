@@ -20,7 +20,13 @@ import type { TimelineHub } from '../services/timeline-hub.ts'
 import type { WebAuthnService } from '../services/webauthn.ts'
 import type { AnyMiddleware } from '../typed-router.ts'
 
-import { getFeedPostById, getLocations, getTimeSeries, markActivityDetailSynced } from '../db/index.ts'
+import {
+  getFeedPostById,
+  getLocations,
+  getTimeSeries,
+  getUserSettings,
+  markActivityDetailSynced,
+} from '../db/index.ts'
 import { processActivityDetail } from '../integrations/garmin/process.ts'
 import { createActivitiesRouter } from '../routes/activities-router.ts'
 import { createActivityTypesRouter } from '../routes/activity-types-router.ts'
@@ -176,9 +182,15 @@ export const mountRestRouters = ({
       // shared, matching the Note's duration/metrics (#881).
       getActivity: resolveFeedActivity,
       // An article chart block's bucketed metric series over its locked window
-      // (mirrors the web's live bucketed render).
+      // (mirrors the web's live bucketed render). Bucket in the author's own
+      // timezone (`device_timezone`, IANA — auto-detected from their device) so a
+      // `1d` bucket splits on the author's calendar days, matching the web render
+      // (which sends the browser tz); falls back to UTC when it's unset.
       getArticleChartSeries: async (user, metric, start, end, bucket) => {
-        const result = await queryMetricsBucketed(user, [metric], start, end, bucket)
+        const settings = await getUserSettings(user)
+        const result = await queryMetricsBucketed(user, [metric], start, end, bucket, {
+          tz: settings?.device_timezone ?? undefined,
+        })
         const series: [Date, number][] = []
         for (const b of result.buckets) {
           const avg = b.metrics[metric]?.avg

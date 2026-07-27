@@ -38,6 +38,23 @@ describe('renderArticleContentHtml', () => {
     expect(html).toContain('<h6')
   })
 
+  test('emits a caption as plain escaped text, not markdown (matches the web figcaption)', () => {
+    const html = renderArticleContentHtml(
+      article([
+        {
+          caption: '**not bold** <b>x</b>',
+          end: WINDOW.end,
+          metric: 'heart_rate',
+          start: WINDOW.start,
+          type: 'chart',
+        },
+      ]),
+    )
+    expect(html).toContain('**not bold** &lt;b&gt;x&lt;/b&gt;')
+    expect(html).not.toContain('<strong>')
+    expect(html).not.toContain('<b>x</b>')
+  })
+
   test('includes chart/correlation captions but not the images (those are attachments)', () => {
     const html = renderArticleContentHtml(
       article([

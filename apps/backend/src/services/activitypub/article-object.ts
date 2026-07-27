@@ -93,17 +93,22 @@ const sanitizeArticleHtml = (html: string): string =>
 const renderProse = (markdown: string): string =>
   sanitizeArticleHtml(marked.parse(markdown, { async: false, breaks: true, gfm: true }))
 
+/** Escape text for safe inclusion as HTML character data. */
+const escapeHtml = (s: string): string =>
+  s.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;')
+
 /**
  * The AS2 `content` HTML for an article: each prose block rendered from markdown,
- * and each chart/correlation block's caption (when set) as a paragraph — the chart
- * images themselves ride as attachments (`articleImageAttachments`), which a
- * fediverse client lays out after the content.
+ * and each chart/correlation block's caption (when set) as a paragraph. A caption
+ * is emitted as plain escaped text — NOT markdown — to match the web, which shows
+ * it as text in a `<figcaption>`; the chart images themselves ride as attachments
+ * (`articleImageAttachments`), which a fediverse client lays out after the content.
  */
 export const renderArticleContentHtml = (article: ArticleContent): string =>
   article.blocks
     .map((block) => {
       if (block.type === 'prose') return renderProse(block.markdown)
-      return block.caption ? renderProse(block.caption) : ''
+      return block.caption ? `<p>${escapeHtml(block.caption)}</p>` : ''
     })
     .filter((html) => html.length > 0)
     .join('\n')

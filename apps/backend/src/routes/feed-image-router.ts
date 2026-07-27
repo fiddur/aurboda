@@ -348,15 +348,20 @@ export const createFeedImageRouter = (deps: FeedImageDeps): Router => {
   // whole process lifetime — the block re-resolves its data live (#934), matching
   // the web inline render within ≤ 1h. Articles, unlike shared activities, are
   // mutable and their windows can gain data after publish.
-  const blockCacheKey = (kind: string, username: string, postId: string, index: string, updatedAt: Date) =>
+  // Cache key uses the NORMALISED numeric index (not the raw path string), so
+  // `Number`-equivalent spellings (`0`, `00`, `1e0`, `0x0`) collapse to one entry
+  // and can't each dodge the hourly-bucket rate limit on this unauthenticated,
+  // comparatively expensive render.
+  const blockCacheKey = (kind: string, username: string, postId: string, index: number, updatedAt: Date) =>
     `${kind}:${username}:${postId}:${index}:${updatedAt.getTime()}:${Math.floor(Date.now() / 3_600_000)}`
 
   router.get('/public/:username/feed/:postId/blocks/:index/image.png', async (req, res) => {
     const { index, postId, username } = req.params
     const token = typeof req.query.token === 'string' ? req.query.token : undefined
-    const block = await resolveArticleBlock(deps, username, postId, Number(index), token)
+    const idx = Number(index)
+    const block = await resolveArticleBlock(deps, username, postId, idx, token)
     if (!block) return notFound(res)
-    const png = await cached(blockCacheKey('blockpng', username, postId, index, block.updatedAt), () =>
+    const png = await cached(blockCacheKey('blockpng', username, postId, idx, block.updatedAt), () =>
       renderArticleBlockImage(deps, username, block, 'png'),
     )
     if (!png) return notFound(res)
@@ -366,9 +371,10 @@ export const createFeedImageRouter = (deps: FeedImageDeps): Router => {
   router.get('/public/:username/feed/:postId/blocks/:index/image.svg', async (req, res) => {
     const { index, postId, username } = req.params
     const token = typeof req.query.token === 'string' ? req.query.token : undefined
-    const block = await resolveArticleBlock(deps, username, postId, Number(index), token)
+    const idx = Number(index)
+    const block = await resolveArticleBlock(deps, username, postId, idx, token)
     if (!block) return notFound(res)
-    const svg = await cached(blockCacheKey('blocksvg', username, postId, index, block.updatedAt), () =>
+    const svg = await cached(blockCacheKey('blocksvg', username, postId, idx, block.updatedAt), () =>
       renderArticleBlockImage(deps, username, block, 'svg'),
     )
     if (!svg) return notFound(res)
