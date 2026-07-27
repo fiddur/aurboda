@@ -247,6 +247,13 @@ describe('Meals service integration tests', () => {
   })
 
   describe('queryFrequentMeals', () => {
+    // `queryFrequentMeals` only looks back `since_days` (default 90), so these
+    // fixtures must be dated relative to *now* — hardcoded dates silently age out
+    // of the window and the query returns nothing (they broke CI once April 2026
+    // crossed the 90-day boundary). Keep the two occurrences correctly ordered.
+    const OLDER = new Date(Date.now() - 20 * 86_400_000).toISOString()
+    const NEWER = new Date(Date.now() - 10 * 86_400_000).toISOString()
+
     test('returns frequent names with food items and icon from most recent occurrence', async () => {
       const user = getTestUser()
       const banana = await upsertFoodItem(user, {
@@ -269,7 +276,7 @@ describe('Meals service integration tests', () => {
         food_items: [{ food_item_id: banana.id, name: 'Banana', quantity: 1 }],
         meal_type: 'breakfast',
         name: 'Bananmacka',
-        time: '2026-04-20T08:00:00Z',
+        time: OLDER,
       })
       await addMeal(user, {
         food_items: [
@@ -278,7 +285,7 @@ describe('Meals service integration tests', () => {
         ],
         meal_type: 'breakfast',
         name: 'Bananmacka',
-        time: '2026-04-26T08:00:00Z',
+        time: NEWER,
       })
 
       const result = await queryFrequentMeals(user, { meal_type: 'breakfast' })
@@ -299,7 +306,7 @@ describe('Meals service integration tests', () => {
       await addMeal(user, {
         meal_type: 'breakfast',
         name: 'Toast',
-        time: '2026-04-26T08:00:00Z',
+        time: NEWER,
       })
 
       const result = await queryFrequentMeals(user, { meal_type: 'breakfast' })
