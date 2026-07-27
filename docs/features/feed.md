@@ -37,9 +37,13 @@ A feed post has a **`kind`**:
   HTML in `content`, and a rendered PNG per chart/correlation block attached) so followers
   on Mastodon see the prose and images inline. (A `Note`, not an AS2 `Article`: Mastodon
   treats `Article` as a converted type and discards its `content`, rendering only a title
-  and link.) A richer inline render for Aurboda peers — inbound ingestion plus structured
-  enrichment — is a later slice (**#968**); until then an Aurboda follower doesn't yet see
-  a federated article.
+  and link.) The prose is sanitised through an allowlist wide enough for a QS write-up
+  (GFM tables, images, `hr`, headings); note that **Mastodon's own inbound sanitiser then
+  strips tables/images/`hr`** from a remote status, so a results table degrades to
+  run-together cell text there — the charts still arrive as image attachments, and
+  non-Mastodon / Aurboda-peer renderers keep the full formatting. A richer inline render
+  for Aurboda peers — inbound ingestion plus structured enrichment — is a later slice
+  (**#968**); until then an Aurboda follower doesn't yet see a federated article.
   _Reddit/markdown export is the remaining part of #937._
 
 An **`activity`** feed post references one of the user's activities and records the

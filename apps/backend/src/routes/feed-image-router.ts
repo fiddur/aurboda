@@ -53,10 +53,12 @@ export interface CorrelationBlockParams {
   outcome: CorrelationSelector
   lagDays?: number
   /**
-   * Inclusive day bounds (`YYYY-MM-DD`), sliced from the block's ISO window so they
-   * are the author's wall-clock days — NOT a UTC-normalised day. Matches the web
-   * scatter's `iso.slice(0, 10)`, so an offset-bearing ISO (e.g. from `create_article`
-   * over MCP) covers the same day range in-app and in the federated/exported PNG.
+   * Inclusive day bounds (`YYYY-MM-DD`), sliced straight from the block's ISO
+   * window (`iso.slice(0, 10)`) to match the web scatter's `toDay()`. Block windows
+   * are `Z`-only (`iso8601DateTimeSchema` = `z.iso.datetime()`, offset false), so
+   * this is the UTC day — but slicing the raw string rather than round-tripping
+   * through `Date` keeps that parity exact and stays correct if the schema ever
+   * gains offset support.
    */
   periodStart: string
   periodEnd: string

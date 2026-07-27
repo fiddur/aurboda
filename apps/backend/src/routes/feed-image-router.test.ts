@@ -145,19 +145,19 @@ describe('resolveArticleBlock', () => {
     })
   })
 
-  test('correlation day bounds are the ISO window’s wall-clock day, not the UTC day', async () => {
-    // `…T23:30:00-05:00` is 2026-07-02T04:30Z — a Date round-trip would give the
-    // UTC day 07-02; the wall-clock day (matching the web scatter) is 07-01.
-    const offset = article([
+  test('correlation day bounds are the ISO window’s date part (matches the web toDay)', async () => {
+    // Windows are Z-only (iso8601DateTimeSchema), so the day is `iso.slice(0, 10)` —
+    // slicing the raw string, not round-tripping through Date, keeps web parity exact.
+    const corr = article([
       {
-        end: '2026-07-10T00:00:00Z',
+        end: '2026-07-10T06:00:00Z',
         outcome: { kind: 'metric', metric: 'sleep_score' },
-        start: '2026-07-01T23:30:00-05:00',
+        start: '2026-07-01T18:00:00Z',
         trigger: { kind: 'metric', metric: 'steps' },
         type: 'correlation',
       },
     ])
-    const block = await resolveArticleBlock(deps(articlePost(offset)), 'fiddur', POST_ID, 0)
+    const block = await resolveArticleBlock(deps(articlePost(corr)), 'fiddur', POST_ID, 0)
     expect(block).toMatchObject({ periodEnd: '2026-07-10', periodStart: '2026-07-01', type: 'correlation' })
   })
 

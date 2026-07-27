@@ -12,9 +12,11 @@
  * Prose markdown is rendered with `marked` and then sanitised through an outbound
  * allowlist (`sanitizeArticleHtml`) — an XSS boundary like the inbound fediverse
  * sanitiser, but with the block elements a QS write-up uses (GFM tables, images,
- * `hr`, h5/h6) that Mastodon renders in `content` and the web sink (DOMPurify via
- * `utils/markdown.ts`) already keeps — so an article reads the same in-app and
- * federated, and can never carry a script/style/`img onerror` payload (#910's
+ * `hr`, h5/h6) that the web sink (DOMPurify via `utils/markdown.ts`) keeps, so an
+ * article reads the same in-app and on renderers that support them. (Mastodon's
+ * OWN inbound sanitiser strips tables/images/`hr` from a remote `content`, so a
+ * results table degrades to run-together cell text there — see `docs/features/feed.md`.)
+ * Either way it can never carry a script/style/`img onerror` payload (#910's
  * boundary, server side).
  */
 import type { ArticleContent, ArticleBlock, FeedVisibility } from '@aurboda/api-spec'
@@ -31,12 +33,14 @@ import { isPubliclyVisible } from './object.ts'
 /**
  * Sanitise authored article prose for outbound federation. A superset of the
  * inbound fediverse allowlist (`sanitizeRemoteHtml`) — the same safe base, plus
- * the block elements a QS write-up uses (GFM tables, images, `hr`, h5/h6), all of
- * which Mastodon renders in `content` and the web DOMPurify sink already keeps, so
- * authored formatting isn't silently flattened on the way out. (The two configs
- * are maintained separately, not literally shared — inbound is intentionally
- * stricter.) Still a hard XSS boundary: no script/style/iframe/event handlers
- * survive, and link/image URLs are http(s)/mailto only.
+ * the block elements a QS write-up uses (GFM tables, images, `hr`, h5/h6), which
+ * the web DOMPurify sink keeps, so authored formatting isn't flattened on the way
+ * out for renderers that support them. (Mastodon's own inbound sanitiser drops
+ * tables/images/`hr`, so those degrade there; non-Mastodon consumers and the
+ * future Aurboda-peer path render them.) The two configs are maintained
+ * separately, not literally shared — inbound is intentionally stricter. Still a
+ * hard XSS boundary: no script/style/iframe/event handlers survive, and
+ * link/image URLs are http(s)/mailto only.
  */
 const sanitizeArticleHtml = (html: string): string =>
   sanitizeHtml(html, {
