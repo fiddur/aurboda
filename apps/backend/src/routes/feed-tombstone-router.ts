@@ -1,7 +1,8 @@
 /**
  * `410 Gone` Tombstone for deleted feed-post objects (UNAUTHENTICATED).
  *
- * Handles: GET /users/:username/feed/:postId
+ * Handles: GET /users/:username/feed/:postId          (deleted activity `Note`)
+ *          GET /users/:username/feed/:postId/article  (deleted `Article`)
  *
  * A shared post's object row is hard-deleted on unshare, so Fedify's object
  * dispatcher returns `null` and `@fedify/express` falls through (`next()`). This
@@ -16,7 +17,7 @@
  * Fedify's `handleObject` serialises a returned `Tombstone` as `200`, so the 410
  * can't come from the dispatcher; the Express layer is the only place to set it.
  */
-import { type Response, Router } from 'express'
+import { type RequestHandler, type Response, Router } from 'express'
 
 import { isValidUsername } from '../api/auth-routes.ts'
 import { isMissingDatabase } from '../db/index.ts'
@@ -30,49 +31,76 @@ export interface FeedTombstoneDeps {
   getTombstone: (user: string, postId: string) => Promise<{ deleted_at: Date } | null>
 }
 
+/** The AS2 type a tombstoned object formerly had (`Note` for an activity share, `Article` for an article). */
+export type TombstoneFormerType = 'Article' | 'Note'
+
 /**
  * The AS2 `Tombstone` JSON-LD served at a deleted object's id. `id` mirrors the
- * object dispatcher's canonical note id (`<origin>/users/<user>/feed/<postId>`);
- * `formerType`/`deleted` are the standard Tombstone descriptors.
+ * object dispatcher's canonical id (`<origin>/users/<user>/feed/<postId>` for a
+ * `Note`, `…/article` for an `Article`); `formerType`/`deleted` are the standard
+ * Tombstone descriptors.
  */
-export const buildTombstoneJsonLd = (id: string, deletedAt: Date) => ({
+export const buildTombstoneJsonLd = (
+  id: string,
+  deletedAt: Date,
+  formerType: TombstoneFormerType = 'Note',
+) => ({
   '@context': 'https://www.w3.org/ns/activitystreams',
   deleted: deletedAt.toISOString(),
-  formerType: 'Note',
+  formerType,
   id,
   type: 'Tombstone',
 })
 
-const sendTombstone = (res: Response, id: string, deletedAt: Date) => {
+const sendTombstone = (
+  res: Response,
+  id: string,
+  deletedAt: Date,
+  formerType: TombstoneFormerType = 'Note',
+) => {
   // Match the object endpoint: no caching, so a re-share at a new id (or any
   // future change) is never served stale.
   res.setHeader('Cache-Control', 'no-store')
   res
     .status(410)
     .type('application/activity+json')
-    .send(JSON.stringify(buildTombstoneJsonLd(id, deletedAt)))
+    .send(JSON.stringify(buildTombstoneJsonLd(id, deletedAt, formerType)))
 }
 
 export const createFeedTombstoneRouter = (deps: FeedTombstoneDeps): Router => {
   const base = deps.origin.replace(/\/+$/, '')
   const router = Router()
 
-  router.get('/users/:username/feed/:postId', async (req, res, next) => {
-    const { postId, username } = req.params
-    if (!isValidUsername(username) || !UUID_RE.test(postId)) return next()
-    let tombstone: { deleted_at: Date } | null
-    try {
-      tombstone = await deps.getTombstone(username, postId)
-    } catch (error) {
-      // A syntactically-valid username with no database is not a tombstone.
-      if (isMissingDatabase(error)) return next()
-      throw error
+  // One tombstone row (recorded per postId on delete) backs both the `Note` id
+  // and the `Article` id — the path suffix selects which object was tombstoned
+  // and its `formerType`. A remote server only ever dereferences the `…/article`
+  // id for an actual article (it received a `Create{Article}` at that id).
+  const tombstoneHandler =
+    (suffix: string, formerType: TombstoneFormerType): RequestHandler<{ postId: string; username: string }> =>
+    async (req, res, next) => {
+      const { postId, username } = req.params
+      if (!isValidUsername(username) || !UUID_RE.test(postId)) return next()
+      let tombstone: { deleted_at: Date } | null
+      try {
+        tombstone = await deps.getTombstone(username, postId)
+      } catch (error) {
+        // A syntactically-valid username with no database is not a tombstone.
+        if (isMissingDatabase(error)) return next()
+        throw error
+      }
+      if (tombstone == null) return next()
+      // isValidUsername guarantees URL-safe chars, so no encoding needed to match
+      // the dispatcher's `getObjectUri(…)` output exactly.
+      sendTombstone(
+        res,
+        `${base}/users/${username}/feed/${postId}${suffix}`,
+        tombstone.deleted_at,
+        formerType,
+      )
     }
-    if (tombstone == null) return next()
-    // isValidUsername guarantees URL-safe chars, so no encoding needed to match
-    // the dispatcher's `getObjectUri(Note, …)` output exactly.
-    sendTombstone(res, `${base}/users/${username}/feed/${postId}`, tombstone.deleted_at)
-  })
+
+  router.get('/users/:username/feed/:postId', tombstoneHandler('', 'Note'))
+  router.get('/users/:username/feed/:postId/article', tombstoneHandler('/article', 'Article'))
 
   return router
 }

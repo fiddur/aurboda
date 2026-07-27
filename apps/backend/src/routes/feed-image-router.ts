@@ -4,6 +4,8 @@
  * Handles: GET /public/:username/feed/:postId/chart.png
  *          GET /public/:username/feed/:postId/chart.svg
  *          GET /public/:username/feed/:postId/route.png
+ *          GET /public/:username/feed/:postId/blocks/:index/image.png
+ *          GET /public/:username/feed/:postId/blocks/:index/image.svg
  *
  * The chart is offered both ways from the same series over the same window: a
  * rasterised PNG that every consumer understands (Mastodon attaches it) and a
@@ -160,18 +162,6 @@ export const resolveImageWindow = async (
 }
 
 /**
- * Resolve one article chart/correlation block to its render inputs, or `null`
- * when the request isn't eligible: invalid username / non-UUID id / bad index,
- * missing DB, missing post, a non-article post, a `followers`-only post without a
- * matching capability `token`, an out-of-range or prose block, or a block whose
- * effective window is unbounded / non-increasing. Pure of Express — unit-testable.
- *
- * Unlike a shared activity's chart, an article block has NO `include_chart`
- * opt-in flag: a chart/correlation block can embed any metric over any window, so
- * the post's visibility (public/unlisted open; followers-only via the unguessable
- * `token`) is the whole authorization boundary (#943).
- */
-/**
  * Load the article behind an image request and authorize it, or `null` when
  * ineligible (invalid username / non-UUID id, missing DB, missing post, a
  * non-article post, or a `followers`-only post without a matching capability
@@ -196,6 +186,18 @@ const loadArticleForImage = async (
   return { article: post.article, updatedAt: post.updated_at }
 }
 
+/**
+ * Resolve one article chart/correlation block to its render inputs, or `null`
+ * when the request isn't eligible: invalid username / non-UUID id / bad index,
+ * missing DB, missing post, a non-article post, a `followers`-only post without a
+ * matching capability `token`, an out-of-range or prose block, or a block whose
+ * effective window is unbounded / non-increasing. Pure of Express — unit-testable.
+ *
+ * Unlike a shared activity's chart, an article block has NO `include_chart`
+ * opt-in flag: a chart/correlation block can embed any metric over any window, so
+ * the post's visibility (public/unlisted open; followers-only via the unguessable
+ * `token`) is the whole authorization boundary (#943).
+ */
 export const resolveArticleBlock = async (
   deps: Pick<FeedImageDeps, 'getPost'>,
   username: string,

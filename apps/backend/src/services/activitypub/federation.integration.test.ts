@@ -375,6 +375,27 @@ describe('Feed federation actor + WebFinger', () => {
     expect(gone.body.id).toBe(`${ORIGIN}/users/${user}/feed/${post.id}`)
   })
 
+  test('serves a 410 Tombstone (formerType Article) after a public article is deleted (#937)', async () => {
+    const user = getTestUser()
+    const post = await createArticlePost(user, {
+      article: { blocks: [{ markdown: 'Gone soon.', type: 'prose' }], title: 'Ephemeral' },
+      visibility: 'public',
+    })
+    const app = buildFederatedApp()
+    const articlePath = `/users/${user}/feed/${post.id}/article`
+
+    // Live: the article object dispatcher serves the Article (200).
+    expect((await getObject(app, articlePath)).status).toBe(200)
+
+    // Unshare, then the article id returns 410 Gone with formerType Article.
+    await deleteFeedPost(user, post.id)
+    const gone = await getObject(app, articlePath)
+    expect(gone.status).toBe(410)
+    expect(gone.body.type).toBe('Tombstone')
+    expect(gone.body.formerType).toBe('Article')
+    expect(gone.body.id).toBe(`${ORIGIN}/users/${user}/feed/${post.id}/article`)
+  })
+
   test('a deleted followers-only object stays 404 (no public tombstone)', async () => {
     const user = getTestUser()
     const activityId = await insertExercise(user)

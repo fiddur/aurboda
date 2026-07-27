@@ -229,8 +229,11 @@ export const createFeedRouter = (
         return res.status(404).json({ error: 'Feed post not found', success: false })
       }
       // Federate the edit as an Update so followers replace the stored object.
-      // Fire-and-forget: the impl resolves the activity, so it can't 500 here.
-      deliver?.updated(user, record)
+      // Fire-and-forget: the impl resolves what it needs, so it can't 500 here.
+      // An article (e.g. a visibility flip via this generic route) has no linked
+      // activity, so it must go through the article path — `updated` would no-op.
+      if (record.kind === 'article') deliver?.updatedArticle(user, record)
+      else deliver?.updated(user, record)
       res.json({ post: await serializeFeedPost(user, record), success: true })
     },
   )

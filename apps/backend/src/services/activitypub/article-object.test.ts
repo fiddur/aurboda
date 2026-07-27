@@ -27,6 +27,17 @@ describe('renderArticleContentHtml', () => {
     expect(html).not.toContain('onerror')
   })
 
+  test('keeps GFM tables and images in the federated content (richer than the inbound allowlist)', () => {
+    const md = '| a | b |\n| - | - |\n| 1 | 2 |\n\n![alt](https://ex.example/p.png)\n\n---\n\n###### h6'
+    const html = renderArticleContentHtml(article([{ markdown: md, type: 'prose' }]))
+    expect(html).toContain('<table>')
+    expect(html).toContain('<td>1</td>')
+    expect(html).toContain('<img')
+    expect(html).toContain('https://ex.example/p.png')
+    expect(html).toContain('<hr')
+    expect(html).toContain('<h6')
+  })
+
   test('includes chart/correlation captions but not the images (those are attachments)', () => {
     const html = renderArticleContentHtml(
       article([

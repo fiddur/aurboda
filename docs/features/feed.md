@@ -35,7 +35,9 @@ A feed post has a **`kind`**:
   through the shared markdown sanitiser and each windowed block resolves its data live
   over the locked window. An article **federates as an AS2 `Article`** (title + prose
   HTML + a rendered PNG per chart/correlation block) so followers on Mastodon see prose
-  + images; Aurboda peers get the richer inline render via structured enrichment.
+  + images. A richer inline render for Aurboda peers — inbound `Article` ingestion plus
+  structured enrichment — is a later slice (**#968**); until then an Aurboda follower
+  doesn't yet see a federated article.
   _Reddit/markdown export is the remaining part of #937._
 
 An **`activity`** feed post references one of the user's activities and records the

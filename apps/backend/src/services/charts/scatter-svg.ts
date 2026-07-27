@@ -78,8 +78,12 @@ const headlineOf = (data: ScatterSvgData): string => {
 export const buildScatterSvg = (data: ScatterSvgData, opts: ScatterSvgOptions = {}): string => {
   const width = opts.width ?? SCATTER_WIDTH
   const height = opts.height ?? SCATTER_HEIGHT
-  const xs = data.series.map((p) => p.trigger)
-  const ys = data.series.map((p) => p.outcome)
+  // Drop any non-finite pair (a single NaN would make Math.min/Math.max NaN and
+  // yield an SVG sharp can't rasterise). Not reachable from the current engine —
+  // cheap insurance, matching buildChartSvg's own finite-filter.
+  const points = data.series.filter((p) => Number.isFinite(p.trigger) && Number.isFinite(p.outcome))
+  const xs = points.map((p) => p.trigger)
+  const ys = points.map((p) => p.outcome)
   const xMin = Math.min(...xs)
   const xMax = Math.max(...xs)
   const yMin = Math.min(...ys)
@@ -92,7 +96,7 @@ export const buildScatterSvg = (data: ScatterSvgData, opts: ScatterSvgOptions = 
   const regLine = reg
     ? `<line x1="${sx(xMin).toFixed(1)}" y1="${sy(reg.slope * xMin + reg.intercept).toFixed(1)}" x2="${sx(xMax).toFixed(1)}" y2="${sy(reg.slope * xMax + reg.intercept).toFixed(1)}" stroke="${REG_COLOR}" stroke-width="3"/>`
     : ''
-  const points = data.series
+  const circles = points
     .map(
       (p) =>
         `<circle cx="${sx(p.trigger).toFixed(1)}" cy="${sy(p.outcome).toFixed(1)}" r="5" fill="${POINT_COLOR}" opacity="0.5"/>`,
@@ -108,7 +112,7 @@ export const buildScatterSvg = (data: ScatterSvgData, opts: ScatterSvgOptions = 
   <rect width="${width}" height="${height}" fill="${SCATTER_BG}" rx="16"/>
   <line x1="${PAD.left}" y1="${height - PAD.bottom}" x2="${width - PAD.right}" y2="${height - PAD.bottom}" stroke="${AXIS_COLOR}" stroke-width="2"/>
   <line x1="${PAD.left}" y1="${PAD.top}" x2="${PAD.left}" y2="${height - PAD.bottom}" stroke="${AXIS_COLOR}" stroke-width="2"/>
-  ${points}
+  ${circles}
   ${regLine}
   <text x="${PAD.left + 8}" y="${PAD.top - 16}" fill="${TEXT_COLOR}" font-family="${FONT}" font-size="24" font-weight="700">${escapeXml(headlineOf(data))}</text>
   <text x="${(PAD.left + (width - PAD.right)) / 2}" y="${height - 20}" fill="${MUTED_COLOR}" font-family="${FONT}" font-size="22" text-anchor="middle">${escapeXml(xAxis)}</text>

@@ -7,28 +7,91 @@
  * peers get the richer inline render via the structured-enrichment channel (a
  * later slice); this module builds only the Mastodon-compatible surface.
  *
- * Prose markdown is rendered with `marked` and then run through the shared
- * `sanitizeRemoteHtml` allowlist — the same safe fediverse HTML subset applied to
- * inbound content — so the outbound `content` can never carry a script/style/`img
- * onerror` payload from user- or AI-authored markdown (#910's boundary, server side).
+ * Prose markdown is rendered with `marked` and then sanitised through an outbound
+ * allowlist (`sanitizeArticleHtml`) — an XSS boundary like the inbound fediverse
+ * sanitiser, but with the block elements a QS write-up uses (GFM tables, images,
+ * `hr`, h5/h6) that Mastodon renders in `content` and the web sink (DOMPurify via
+ * `utils/markdown.ts`) already keeps — so an article reads the same in-app and
+ * federated, and can never carry a script/style/`img onerror` payload (#910's
+ * boundary, server side).
  */
 import type { ArticleContent, ArticleBlock, FeedVisibility } from '@aurboda/api-spec'
 
 import { describeSelectorAxis, getMetricDisplayName } from '@aurboda/api-spec'
 import { Image } from '@fedify/fedify/vocab'
 import { marked } from 'marked'
+import sanitizeHtml from 'sanitize-html'
 
 import { CHART_HEIGHT, CHART_WIDTH } from '../charts/chart-svg.ts'
 import { SCATTER_HEIGHT, SCATTER_WIDTH } from '../charts/scatter-svg.ts'
 import { isPubliclyVisible } from './object.ts'
-import { sanitizeRemoteHtml } from './timeline-ingest.ts'
 
 // GFM + hard line breaks, matching the web's `renderMarkdown` (#910) so an
 // article reads the same in-app and federated.
 marked.setOptions({ breaks: true, gfm: true })
 
+/**
+ * Sanitise authored article prose for outbound federation. Extends the inbound
+ * fediverse allowlist (`sanitizeRemoteHtml`) with the block elements a QS write-up
+ * uses — GFM tables, images, `hr`, h5/h6 — all of which Mastodon renders in
+ * `content` and the web DOMPurify sink already keeps, so authored formatting isn't
+ * silently flattened on the way out. Still a hard XSS boundary: no script/style/
+ * iframe/event handlers survive, and link/image URLs are http(s)/mailto only.
+ */
+const sanitizeArticleHtml = (html: string): string =>
+  sanitizeHtml(html, {
+    allowedAttributes: {
+      a: ['href', 'rel', 'target', 'class', 'translate'],
+      img: ['src', 'alt', 'title'],
+      ol: ['start'],
+      span: ['class', 'translate'],
+      td: ['colspan', 'rowspan'],
+      th: ['colspan', 'rowspan', 'scope'],
+    },
+    allowedSchemes: ['http', 'https', 'mailto'],
+    allowedTags: [
+      'p',
+      'br',
+      'a',
+      'span',
+      'em',
+      'strong',
+      'b',
+      'i',
+      'del',
+      's',
+      'u',
+      'pre',
+      'code',
+      'blockquote',
+      'ul',
+      'ol',
+      'li',
+      'h1',
+      'h2',
+      'h3',
+      'h4',
+      'h5',
+      'h6',
+      'hr',
+      'img',
+      'table',
+      'thead',
+      'tbody',
+      'tfoot',
+      'tr',
+      'td',
+      'th',
+    ],
+    disallowedTagsMode: 'discard',
+    transformTags: {
+      a: sanitizeHtml.simpleTransform('a', { rel: 'nofollow noopener noreferrer', target: '_blank' }),
+    },
+  })
+
 /** Render one run of authored markdown to sanitised, federation-safe HTML. */
-const renderProse = (markdown: string): string => sanitizeRemoteHtml(marked.parse(markdown, { async: false }))
+const renderProse = (markdown: string): string =>
+  sanitizeArticleHtml(marked.parse(markdown, { async: false }))
 
 /**
  * The AS2 `content` HTML for an article: each prose block rendered from markdown,
