@@ -1,11 +1,11 @@
-import { type Response, Router } from 'express'
-
 /**
  * Public feed-post image endpoints (UNAUTHENTICATED).
  *
  * Handles: GET /public/:username/feed/:postId/chart.png
  *          GET /public/:username/feed/:postId/chart.svg
  *          GET /public/:username/feed/:postId/route.png
+ *          GET /public/:username/feed/:postId/blocks/:index/image.png
+ *          GET /public/:username/feed/:postId/blocks/:index/image.svg
  *
  * The chart is offered both ways from the same series over the same window: a
  * rasterised PNG that every consumer understands (Mastodon attaches it) and a
@@ -20,10 +20,17 @@ import { type Response, Router } from 'express'
  * effect immediately — the untoken'd public URL then 404s). Mounted before the
  * generic `/public/:username/:slug` resolver.
  */
+import type { ArticleContent, CorrelationSelector, MetricType } from '@aurboda/api-spec'
+
+import { defaultArticleChartBucket, getMetricDisplayName } from '@aurboda/api-spec'
+import { type Response, Router } from 'express'
+
 import type { FeedPostRecord } from '../db/index.ts'
+import type { ScatterSvgData } from '../services/charts/scatter-svg.ts'
 
 import { isValidUsername } from '../api/auth-routes.ts'
 import { isMissingDatabase } from '../db/index.ts'
+import { blockWindow } from '../services/article.ts'
 import { isCapabilityAuthorized } from '../services/feed-capability.ts'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -34,16 +41,68 @@ export interface ImageActivity {
   end_time?: Date
 }
 
+/** Optional chart styling — an article block labels its chart with the metric. */
+export interface ChartRenderOpts {
+  label?: string
+  color?: string
+}
+
+/** The window-resolved inputs for one article correlation block's scatter. */
+export interface CorrelationBlockParams {
+  trigger: CorrelationSelector
+  outcome: CorrelationSelector
+  lagDays?: number
+  /**
+   * Inclusive day bounds (`YYYY-MM-DD`), sliced straight from the block's ISO
+   * window (`iso.slice(0, 10)`) to match the web scatter's `toDay()`. Block windows
+   * are `Z`-only (`iso8601DateTimeSchema` = `z.iso.datetime()`, offset false), so
+   * this is the UTC day — but slicing the raw string rather than round-tripping
+   * through `Date` keeps that parity exact and stays correct if the schema ever
+   * gains offset support.
+   */
+  periodStart: string
+  periodEnd: string
+}
+
 export interface FeedImageDeps {
   getPost: (user: string, postId: string) => Promise<FeedPostRecord | null>
   getActivity: (user: string, activityId: string) => Promise<ImageActivity | null>
   getSeries: (user: string, metric: string, start: Date, end: Date) => Promise<[Date, number][]>
   getRoute: (user: string, start: Date, end: Date) => Promise<[number, number][]>
-  renderChart: (series: [Date, number][]) => Promise<Buffer>
+  renderChart: (series: [Date, number][], opts?: ChartRenderOpts) => Promise<Buffer>
   /** Build the crisp `image/svg+xml` chart (same data as `renderChart`, no raster). */
-  renderChartSvg: (series: [Date, number][]) => string
+  renderChartSvg: (series: [Date, number][], opts?: ChartRenderOpts) => string
   renderRoute: (coords: [number, number][]) => Promise<Buffer>
+  /** A bucketed metric series for an article chart block over its locked window. */
+  getArticleChartSeries: (
+    user: string,
+    metric: MetricType,
+    start: Date,
+    end: Date,
+    bucket: string,
+  ) => Promise<[Date, number][]>
+  /** The continuous correlation for an article correlation block, or null when too sparse (n < 3). */
+  getCorrelationScatter: (user: string, params: CorrelationBlockParams) => Promise<ScatterSvgData | null>
+  renderScatter: (data: ScatterSvgData) => Promise<Buffer>
+  renderScatterSvg: (data: ScatterSvgData) => string
 }
+
+/**
+ * One article chart/correlation block resolved to its render inputs: the block's
+ * kind and its effective `[start, end]` window (its own override, else the
+ * article default). Prose blocks and out-of-range indices don't resolve.
+ */
+export type ResolvedArticleBlock =
+  | { type: 'chart'; metric: MetricType; bucket?: string; start: Date; end: Date; updatedAt: Date }
+  | {
+      type: 'correlation'
+      trigger: CorrelationSelector
+      outcome: CorrelationSelector
+      lagDays?: number
+      periodStart: string
+      periodEnd: string
+      updatedAt: Date
+    }
 
 /**
  * A tiny memoising render cache with in-flight de-duplication (mirrors
@@ -81,6 +140,29 @@ export const createRenderCache = (maxEntries = 200) => {
 }
 
 /**
+ * A bounded set of cache keys whose render produced NO image (a sparse block →
+ * 404). `createRenderCache` deliberately never caches a `null`, so a
+ * publicly-listed sparse correlation block would otherwise re-run the full
+ * `getContinuousCorrelation` (two selector resolutions over the whole window) on
+ * every unauthenticated hit, uncached and unthrottled. Remembering the negative
+ * under the same hourly-bucketed key bounds that to one render per hour — the key
+ * rolls over hourly, so a block that later gains data re-renders.
+ */
+export const createNegativeCache = (maxEntries = 500) => {
+  const seen = new Map<string, true>()
+  return {
+    add: (key: string) => {
+      if (seen.size >= maxEntries) {
+        const oldest = seen.keys().next().value
+        if (oldest !== undefined) seen.delete(oldest)
+      }
+      seen.set(key, true)
+    },
+    has: (key: string) => seen.has(key),
+  }
+}
+
+/**
  * Resolve the activity window an image may render over, or `null` if the request
  * isn't eligible: invalid username / non-UUID id, missing DB, missing post, a
  * `followers`-only post without a matching capability `token`, the attachment
@@ -108,6 +190,124 @@ export const resolveImageWindow = async (
   const activity = await deps.getActivity(username, post.activity_id)
   if (activity?.end_time == null) return null
   return activity
+}
+
+/**
+ * Load the article behind an image request and authorize it, or `null` when
+ * ineligible (invalid username / non-UUID id, missing DB, missing post, a
+ * non-article post, or a `followers`-only post without a matching capability
+ * `token`). Split out of `resolveArticleBlock` to keep each piece simple.
+ */
+const loadArticleForImage = async (
+  deps: Pick<FeedImageDeps, 'getPost'>,
+  username: string,
+  postId: string,
+  token?: string,
+): Promise<{ article: ArticleContent; updatedAt: Date } | null> => {
+  if (!isValidUsername(username) || !UUID_RE.test(postId)) return null
+  let post: FeedPostRecord | null
+  try {
+    post = await deps.getPost(username, postId)
+  } catch (error) {
+    if (isMissingDatabase(error)) return null
+    throw error
+  }
+  if (post == null || post.kind !== 'article' || post.article == null) return null
+  if (!isCapabilityAuthorized(post, token)) return null
+  return { article: post.article, updatedAt: post.updated_at }
+}
+
+/**
+ * Resolve one article chart/correlation block to its render inputs, or `null`
+ * when the request isn't eligible: invalid username / non-UUID id / bad index,
+ * missing DB, missing post, a non-article post, a `followers`-only post without a
+ * matching capability `token`, an out-of-range or prose block, or a block whose
+ * effective window is unbounded / non-increasing. Pure of Express — unit-testable.
+ *
+ * Unlike a shared activity's chart, an article block has NO `include_chart`
+ * opt-in flag: a chart/correlation block can embed any metric over any window, so
+ * the post's visibility (public/unlisted open; followers-only via the unguessable
+ * `token`) is the whole authorization boundary (#943).
+ */
+export const resolveArticleBlock = async (
+  deps: Pick<FeedImageDeps, 'getPost'>,
+  username: string,
+  postId: string,
+  index: number,
+  token?: string,
+): Promise<ResolvedArticleBlock | null> => {
+  if (!Number.isInteger(index) || index < 0) return null
+  const loaded = await loadArticleForImage(deps, username, postId, token)
+  if (loaded == null) return null
+  const block = loaded.article.blocks[index]
+  if (block == null || (block.type !== 'chart' && block.type !== 'correlation')) return null
+  const { end, start } = blockWindow(block, loaded.article)
+  if (start == null || end == null) return null
+  const startDate = new Date(start)
+  const endDate = new Date(end)
+  if (startDate.getTime() >= endDate.getTime()) return null
+  const updatedAt = loaded.updatedAt
+  if (block.type === 'chart') {
+    return {
+      bucket: block.bucket,
+      end: endDate,
+      metric: block.metric,
+      start: startDate,
+      type: 'chart',
+      updatedAt,
+    }
+  }
+  return {
+    // Slice the day off the RAW ISO (author's wall-clock day), like the web
+    // scatter — not the UTC day a Date round-trip would give.
+    lagDays: block.lag_days,
+    outcome: block.outcome,
+    periodEnd: end.slice(0, 10),
+    periodStart: start.slice(0, 10),
+    trigger: block.trigger,
+    type: 'correlation',
+    updatedAt,
+  }
+}
+
+/** Article-chart line colour, matching the web inline render (`ArticleChartBlock`). */
+const ARTICLE_CHART_COLOR = '#673ab8'
+
+/** A zero-duration bucket (`0s`, `00m`, …) passes the block schema regex but is
+ * invalid for `date_bin` (`date_bin('0 seconds', …)` errors) — treat it as no image. */
+const isZeroDurationBucket = (bucket: string): boolean => /^0+[smhd]$/.test(bucket)
+
+/**
+ * Render one resolved article block to its image bytes (PNG or the crisp SVG),
+ * or `null` when the block has too little data to draw (a chart needs ≥ 2 points;
+ * a correlation needs n ≥ 3, surfaced by `getCorrelationScatter` returning null)
+ * or its bucket is a zero duration. Pure of Express so the routes stay thin.
+ */
+export const renderArticleBlockImage = async (
+  deps: FeedImageDeps,
+  user: string,
+  block: ResolvedArticleBlock,
+  format: 'png' | 'svg',
+): Promise<Buffer | null> => {
+  if (block.type === 'chart') {
+    const bucket = block.bucket ?? defaultArticleChartBucket(block.start, block.end)
+    if (isZeroDurationBucket(bucket)) return null
+    const series = await deps.getArticleChartSeries(user, block.metric, block.start, block.end, bucket)
+    if (series.length < 2) return null
+    const opts: ChartRenderOpts = { color: ARTICLE_CHART_COLOR, label: getMetricDisplayName(block.metric) }
+    return format === 'png'
+      ? deps.renderChart(series, opts)
+      : Buffer.from(deps.renderChartSvg(series, opts), 'utf8')
+  }
+  const data = await deps.getCorrelationScatter(user, {
+    lagDays: block.lagDays,
+    outcome: block.outcome,
+    periodEnd: block.periodEnd,
+    periodStart: block.periodStart,
+    trigger: block.trigger,
+  })
+  if (data == null) return null
+  return format === 'png' ? deps.renderScatter(data) : Buffer.from(deps.renderScatterSvg(data), 'utf8')
 }
 
 const notFound = (res: Response) => res.status(404).json({ error: 'Not found', success: false })
@@ -171,6 +371,56 @@ export const createFeedImageRouter = (deps: FeedImageDeps): Router => {
     })
     if (!png) return notFound(res)
     sendPng(res, png)
+  })
+
+  // Article chart/correlation block images. Gated by post visibility + capability
+  // token only (no `include_chart` flag — a block can embed any metric, so
+  // visibility is the whole boundary, #943). Cache key includes the post's
+  // `updated_at` (busts on an edit) AND a coarse hourly bucket, so a locked
+  // window that later gains backfilled data can't serve a stale render for the
+  // whole process lifetime — the block re-resolves its data live (#934), matching
+  // the web inline render within ≤ 1h. Articles, unlike shared activities, are
+  // mutable and their windows can gain data after publish.
+  // Cache key uses the NORMALISED numeric index (not the raw path string), so
+  // `Number`-equivalent spellings (`0`, `00`, `1e0`, `0x0`) collapse to one entry
+  // and can't each dodge the hourly-bucket rate limit on this unauthenticated,
+  // comparatively expensive render.
+  const blockCacheKey = (kind: string, username: string, postId: string, index: number, updatedAt: Date) =>
+    `${kind}:${username}:${postId}:${index}:${updatedAt.getTime()}:${Math.floor(Date.now() / 3_600_000)}`
+  // Remembers the "no image" outcome (a sparse block 404s) under the same hourly
+  // key, so a public sparse block doesn't re-run the render engine on every hit.
+  const negativeBlocks = createNegativeCache()
+
+  router.get('/public/:username/feed/:postId/blocks/:index/image.png', async (req, res) => {
+    const { index, postId, username } = req.params
+    const token = typeof req.query.token === 'string' ? req.query.token : undefined
+    const idx = Number(index)
+    const block = await resolveArticleBlock(deps, username, postId, idx, token)
+    if (!block) return notFound(res)
+    const key = blockCacheKey('blockpng', username, postId, idx, block.updatedAt)
+    if (negativeBlocks.has(key)) return notFound(res)
+    const png = await cached(key, () => renderArticleBlockImage(deps, username, block, 'png'))
+    if (!png) {
+      negativeBlocks.add(key)
+      return notFound(res)
+    }
+    sendPng(res, png)
+  })
+
+  router.get('/public/:username/feed/:postId/blocks/:index/image.svg', async (req, res) => {
+    const { index, postId, username } = req.params
+    const token = typeof req.query.token === 'string' ? req.query.token : undefined
+    const idx = Number(index)
+    const block = await resolveArticleBlock(deps, username, postId, idx, token)
+    if (!block) return notFound(res)
+    const key = blockCacheKey('blocksvg', username, postId, idx, block.updatedAt)
+    if (negativeBlocks.has(key)) return notFound(res)
+    const svg = await cached(key, () => renderArticleBlockImage(deps, username, block, 'svg'))
+    if (!svg) {
+      negativeBlocks.add(key)
+      return notFound(res)
+    }
+    sendSvg(res, svg)
   })
 
   return router

@@ -62,7 +62,13 @@ import {
 import { resolveFeedActivity } from '../feed.ts'
 import { buildProfileUrl } from '../share-urls.ts'
 import { extractActorPresentation } from './actor-presentation.ts'
-import { buildFeedCreate, buildFeedNote } from './deliver.ts'
+import {
+  buildArticleNote,
+  buildArticleNoteCreate,
+  buildFeedCreate,
+  buildFeedNote,
+  toDeliverableArticle,
+} from './deliver.ts'
 import { toCryptoKeyPair } from './keys.ts'
 import { isPubliclyVisible } from './object.ts'
 import { capabilityTokenFrom, createAurbodaEnricher } from './timeline-enrich.ts'
@@ -381,7 +387,12 @@ export const createFeedFederation = (
         if (isMissingDatabase(error)) return null
         throw error
       }
-      if (post == null || post.activity_id == null || !isPubliclyVisible(post.visibility)) return null
+      if (post == null || !isPubliclyVisible(post.visibility)) return null
+      // An article and an activity share this Note id (a post is one or the
+      // other). An article's Note is built from its stored content — no activity.
+      const article = toDeliverableArticle(post)
+      if (article != null) return buildArticleNote(ctx, identifier, article, apiBaseUrl)
+      if (post.activity_id == null) return null
       // Resolve the merged-span activity so the served Note matches what the user
       // shared (and what we delivered), not just the anchor sub-activity (#881).
       const activity = await resolveFeedActivity(identifier, post.activity_id)
@@ -414,6 +425,11 @@ export const createFeedFederation = (
       const items = (
         await Promise.all(
           posts.map(async (post) => {
+            // Articles federate as `Create{Note}` built from their stored content
+            // (no linked activity); every other post as `Create{Note}` from its
+            // resolved activity.
+            const article = toDeliverableArticle(post)
+            if (article != null) return buildArticleNoteCreate(ctx, identifier, article, apiBaseUrl)
             if (post.activity_id == null) return null
             const activity = await resolveFeedActivity(identifier, post.activity_id)
             return activity == null ? null : buildFeedCreate(ctx, identifier, post, activity, apiBaseUrl)

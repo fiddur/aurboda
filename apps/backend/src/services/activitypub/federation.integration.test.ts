@@ -11,7 +11,13 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 import { insertActivity } from '../../db/activities/index.ts'
 import { upsertFeedFollower } from '../../db/feed-follower.ts'
 import { markFeedFollowingAccepted, upsertFeedFollowing } from '../../db/feed-following.ts'
-import { createFeedPost, deleteFeedPost, type FeedPostInput, getFeedTombstone } from '../../db/feed.ts'
+import {
+  createArticlePost,
+  createFeedPost,
+  deleteFeedPost,
+  type FeedPostInput,
+  getFeedTombstone,
+} from '../../db/feed.ts'
 import { upsertUserSettings } from '../../db/settings.ts'
 import { createFeedTombstoneRouter } from '../../routes/feed-tombstone-router.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../../test/db-test-helper.ts'
@@ -223,6 +229,51 @@ describe('Feed federation actor + WebFinger', () => {
     expect(new Date(doc.published ?? '').getTime()).toBe(post.created_at.getTime())
   })
 
+  test('federates an article as a Create{Note} in the outbox and serves its object (#937)', async () => {
+    const user = getTestUser()
+    const post = await createArticlePost(user, {
+      article: {
+        blocks: [
+          { markdown: 'My **analysis**.', type: 'prose' },
+          {
+            caption: 'HR',
+            end: '2026-07-02T00:00:00Z',
+            metric: 'heart_rate',
+            start: '2026-07-01T00:00:00Z',
+            type: 'chart',
+          },
+        ],
+        title: 'Weekly review',
+      },
+      visibility: 'public',
+    })
+    // An article federates as a Note at the standard post object id (Mastodon
+    // discards Article content, so a Note is what renders the prose).
+    const noteId = `${ORIGIN}/users/${user}/feed/${post.id}`
+
+    const page = (await (await fetchAs2(`/users/${user}/outbox?cursor=0`)).json()) as {
+      orderedItems?: unknown[]
+    }
+    const items = page.orderedItems ?? []
+    expect(items).toHaveLength(1)
+    const create = items[0] as { type: string; object: string | { id: string; type: string } }
+    expect(create.type).toBe('Create')
+    const object = typeof create.object === 'string' ? { id: create.object, type: '' } : create.object
+    expect(object.id).toBe(noteId)
+
+    // The object dispatcher serves the article as a Note: title in `name`, the
+    // prose (rendered markdown) in `content` so Mastodon shows it.
+    const res = await fetchAs2(`/users/${user}/feed/${post.id}`)
+    expect(res.status).toBe(200)
+    const doc = (await res.json()) as { type: string; id: string; name?: string; content?: string }
+    expect(doc.type).toBe('Note')
+    expect(doc.id).toBe(noteId)
+    expect(doc.name).toBe('Weekly review')
+    // Title leads the content (Mastodon ignores a Note's name); prose follows.
+    expect(doc.content).toContain('<strong>Weekly review</strong>')
+    expect(doc.content).toContain('<strong>analysis</strong>')
+  })
+
   test('serves the merged-span duration for a shared merged activity (#881)', async () => {
     const user = getTestUser()
     // Anchor 08:00–08:40 (40m) overlaps a second 08:20–09:00 → merged span is 1h.
@@ -325,6 +376,29 @@ describe('Feed federation actor + WebFinger', () => {
     const gone = await getObject(app, `/users/${user}/feed/${post.id}`)
     expect(gone.status).toBe(410)
     expect(gone.type).toBe('application/activity+json')
+    expect(gone.body.type).toBe('Tombstone')
+    expect(gone.body.id).toBe(`${ORIGIN}/users/${user}/feed/${post.id}`)
+  })
+
+  test('serves a 410 Tombstone after a public article is deleted (#937)', async () => {
+    const user = getTestUser()
+    const post = await createArticlePost(user, {
+      article: { blocks: [{ markdown: 'Gone soon.', type: 'prose' }], title: 'Ephemeral' },
+      visibility: 'public',
+    })
+    const app = buildFederatedApp()
+    // An article's Note is served at the standard post object id.
+    const notePath = `/users/${user}/feed/${post.id}`
+
+    // Live: the object dispatcher serves the article as a Note (200).
+    const live = await getObject(app, notePath)
+    expect(live.status).toBe(200)
+    expect(live.body.type).toBe('Note')
+
+    // Unshare, then the same id returns 410 Gone with a Tombstone.
+    await deleteFeedPost(user, post.id)
+    const gone = await getObject(app, notePath)
+    expect(gone.status).toBe(410)
     expect(gone.body.type).toBe('Tombstone')
     expect(gone.body.id).toBe(`${ORIGIN}/users/${user}/feed/${post.id}`)
   })

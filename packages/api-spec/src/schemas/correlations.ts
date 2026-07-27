@@ -4,7 +4,7 @@
 
 import { z } from 'zod'
 
-import { createDataResponseSchema } from './common.ts'
+import { createDataResponseSchema, isValidMetric, metricUnits } from './common.ts'
 
 // ============================================================================
 // Common schemas
@@ -798,6 +798,62 @@ export const selectorSchema = z
   .meta({ id: 'CorrelationSelector' })
 
 export type CorrelationSelector = z.infer<typeof selectorSchema>
+
+/**
+ * Short axis label for a selector, including its unit where known. Shared single
+ * source for the correlation scatter axes on the web (Explore + article blocks)
+ * and the backend server-side scatter renderer (article-block PNGs), so an axis
+ * reads the same in-app and in a federated/exported image.
+ */
+export const describeSelectorAxis = (selector: CorrelationSelector): string => {
+  switch (selector.kind) {
+    case 'metric': {
+      if (!isValidMetric(selector.metric)) return selector.metric || 'metric'
+      const unit = metricUnits[selector.metric]
+      return unit ? `${selector.metric} (${unit})` : selector.metric
+    }
+    case 'nutrition':
+      return `${selector.nutrient} (${selector.nutrient === 'calories' ? 'kcal' : 'g'})`
+    case 'activity':
+      return `${selector.pattern || 'activity'} (${selector.measure === 'duration_min' ? 'min' : 'count'})`
+    case 'productivity_category':
+    case 'productivity_app':
+      return `${selector.pattern || 'productivity'} (min)`
+    case 'tag':
+    default:
+      return `${selector.pattern || 'tag'} (count)`
+  }
+}
+
+/** An ordinary-least-squares fit `y = slope·x + intercept`. */
+export interface RegressionLine {
+  slope: number
+  intercept: number
+}
+
+/**
+ * Ordinary least-squares fit `y = slope·x + intercept`, or null when undefined
+ * (fewer than 2 points, mismatched lengths, or zero x-variance). Shared by the
+ * web and backend correlation scatter renderers.
+ */
+export const linearRegression = (xs: number[], ys: number[]): RegressionLine | null => {
+  const n = xs.length
+  if (n < 2 || xs.length !== ys.length) return null
+  let sx = 0
+  let sy = 0
+  let sxx = 0
+  let sxy = 0
+  for (let i = 0; i < n; i++) {
+    sx += xs[i]
+    sy += ys[i]
+    sxx += xs[i] * xs[i]
+    sxy += xs[i] * ys[i]
+  }
+  const denom = n * sxx - sx * sx
+  if (denom === 0) return null
+  const slope = (n * sxy - sx * sy) / denom
+  return { intercept: (sy - slope * sx) / n, slope }
+}
 
 /** How partially-logged nutrition days are treated in continuous correlation. */
 export const nutritionCompletenessSchema = z.enum(['all', 'complete_only']).meta({

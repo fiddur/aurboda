@@ -57,7 +57,14 @@ import { stravaClient } from './integrations/strava/client.ts'
 import { createMcpRouter } from './mcp.ts'
 import { createFeedTombstoneRouter } from './routes/feed-tombstone-router.ts'
 import { createOAuthRouter } from './routes/oauth-router.ts'
-import { deliverFeedDelete, deliverFeedPost, deliverFeedUpdate } from './services/activitypub/deliver.ts'
+import {
+  deliverFeedArticlePost,
+  deliverFeedArticleUpdate,
+  deliverFeedDelete,
+  deliverFeedPost,
+  deliverFeedUpdate,
+  toDeliverableArticle,
+} from './services/activitypub/deliver.ts'
 import { createFeedFederation } from './services/activitypub/federation.ts'
 import { createTimelineBackfiller } from './services/activitypub/timeline-backfill.ts'
 import { auditError } from './services/audit-log.ts'
@@ -352,6 +359,8 @@ const main = async () => {
         await deliverFeedPost(feedDeps, user, post, resolved)
       })().catch(onDeliverError('create', user, post.id))
     },
+    // Articles and activities share the Note object id, so a deleted post of
+    // either kind tombstones there — one path.
     deleted: (user, post) => {
       void deliverFeedDelete(feedDeps, user, post).catch(onDeliverError('delete', user, post.id))
     },
@@ -363,6 +372,20 @@ const main = async () => {
         const activity = await resolveFeedActivity(user, post.activity_id)
         if (activity) await deliverFeedUpdate(feedDeps, user, post, activity)
       })().catch(onDeliverError('update', user, post.id))
+    },
+    // Articles fan out as a Create{Note}/Update{Note} built purely from stored
+    // content (no activity to resolve). Best-effort, same as the activity path.
+    createdArticle: (user, post) => {
+      const article = toDeliverableArticle(post)
+      if (article) {
+        void deliverFeedArticlePost(feedDeps, user, article).catch(onDeliverError('create', user, post.id))
+      }
+    },
+    updatedArticle: (user, post) => {
+      const article = toDeliverableArticle(post)
+      if (article) {
+        void deliverFeedArticleUpdate(feedDeps, user, article).catch(onDeliverError('update', user, post.id))
+      }
     },
   }
   // The network-requiring follow operations, bound to the same federation +

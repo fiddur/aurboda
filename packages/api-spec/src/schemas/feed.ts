@@ -157,6 +157,16 @@ export const articleChartBlockSchema = z
   .meta({ description: 'A metric chart over a locked window', id: 'ArticleChartBlock' })
 
 /**
+ * Pick a bucket granularity for an article chart block from its window span when
+ * the block doesn't fix one (`bucket` omitted). Shared single source used by both
+ * the web inline render and the backend server-side chart PNG, so a chart buckets
+ * the same in-app and in a federated/exported image: hourly for a window up to
+ * two days, otherwise daily.
+ */
+export const defaultArticleChartBucket = (start: Date, end: Date): string =>
+  end.getTime() - start.getTime() <= 2 * 86_400_000 ? '1h' : '1d'
+
+/**
  * A correlation block: a scatter of two data dimensions (a `trigger` predictor
  * against an `outcome`) over a locked `[start, end]` window, reusing the
  * exploratory correlation engine's selectors. Like a chart block, the window is

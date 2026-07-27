@@ -6,6 +6,7 @@
  * (`ArticleContent`) resolves the effective window (block override else the
  * article default) and passes concrete ISO strings.
  */
+import { defaultArticleChartBucket } from '@aurboda/api-spec'
 import { useQuery } from '@tanstack/react-query'
 
 import { TrendLineChart } from '../../components/charts/TrendLineChart'
@@ -13,11 +14,6 @@ import { fetchBucketedMetrics } from '../../state/api'
 import { getMetricDisplayName } from '../../utils/metricLabels'
 
 const CHART_COLOR = '#673ab8'
-const DAY_MS = 86_400_000
-
-/** Pick a bucket granularity from the window span when the block doesn't fix one. */
-const defaultBucket = (start: Date, end: Date): string =>
-  end.getTime() - start.getTime() <= 2 * DAY_MS ? '1h' : '1d'
 
 export const ArticleChartBlock = ({
   metric,
@@ -34,7 +30,7 @@ export const ArticleChartBlock = ({
 }) => {
   const startDate = new Date(start)
   const endDate = new Date(end)
-  const effectiveBucket = bucket ?? defaultBucket(startDate, endDate)
+  const effectiveBucket = bucket ?? defaultArticleChartBucket(startDate, endDate)
 
   const { data, isLoading, isError } = useQuery({
     queryFn: () => fetchBucketedMetrics(startDate, endDate, [metric], effectiveBucket),

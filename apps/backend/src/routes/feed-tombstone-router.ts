@@ -11,7 +11,8 @@
  * object is *permanently* gone (vs a `404`, which reads as transient/unknown).
  * Anything without a tombstone — a live post (served by Fedify, never reaches
  * here), a `followers`-only id, or one that never existed — falls through to the
- * normal 404.
+ * normal 404. Articles federate as a `Note` at this same id, so a deleted article
+ * tombstones here too (formerType `Note`).
  *
  * Fedify's `handleObject` serialises a returned `Tombstone` as `200`, so the 410
  * can't come from the dispatcher; the Express layer is the only place to set it.
