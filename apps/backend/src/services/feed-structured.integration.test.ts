@@ -182,6 +182,42 @@ describe('resolveStructuredPost — article posts', () => {
     expect(chart.samples[0].avg).toBe(150)
   })
 
+  test('keeps a `1d` chart bucket as authored (not rewritten)', async () => {
+    const user = getTestUser()
+    await insertTimeSeries(
+      user,
+      Array.from({ length: 8 }, (_, i) => ({
+        metric: 'heart_rate' as const,
+        source: 'garmin' as const,
+        time: new Date(START.getTime() + i * 5 * 60_000),
+        value: 150,
+      })),
+    )
+    const post = await createArticlePost(user, {
+      article: {
+        blocks: [
+          {
+            bucket: '1d',
+            end: END.toISOString(),
+            metric: 'heart_rate',
+            start: START.toISOString(),
+            type: 'chart',
+          },
+        ],
+        title: 'Daily',
+      },
+      visibility: 'public',
+    })
+    const structured = await resolveStructuredPost(user, post.id)
+    if (structured?.kind !== 'article') throw new Error('expected an article payload')
+    const chart = structured.blocks[0]
+    if (chart.type !== 'chart') throw new Error('expected a chart block')
+    // `1d` is passed through — NOT rewritten (a broken floor turned it into `5s`).
+    expect(chart.bucket).toBe('1d')
+    expect(chart.samples.length).toBeGreaterThan(0)
+    expect(chart.samples[0].avg).toBe(150)
+  })
+
   test('resolves a correlation block (present unconditionally, even with no overlapping data)', async () => {
     const user = getTestUser()
     const post = await createArticlePost(user, {
