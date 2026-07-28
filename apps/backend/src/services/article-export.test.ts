@@ -65,11 +65,19 @@ describe('buildArticleMarkdown', () => {
     expect(md).toContain('*Overnight HR*')
   })
 
-  test('escapes a `]` in the caption so it cannot close the image markdown early', () => {
+  test('escapes both `[` and `]` in the caption so an unbalanced bracket cannot break the image markdown', () => {
     const md = render([
       { caption: 'HR [bpm]', end: WINDOW.end, metric: 'heart_rate', start: WINDOW.start, type: 'chart' },
     ])
-    expect(md).toContain('![HR [bpm\\]]')
+    // Both brackets escaped, so a lone `[` can't be matched against a later `]`.
+    expect(md).toContain('![HR \\[bpm\\]]')
+  })
+
+  test('escapes an unbalanced lone `[` in the caption', () => {
+    const md = render([
+      { caption: 'run[ start', end: WINDOW.end, metric: 'heart_rate', start: WINDOW.start, type: 'chart' },
+    ])
+    expect(md).toContain('![run\\[ start]')
   })
 
   test('public/unlisted image URLs carry no token (a followers-only article is refused at the route)', () => {

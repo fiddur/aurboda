@@ -15,6 +15,10 @@ export const ArticleExportDialog = ({ postId, onClose }: { postId: string; onClo
   const { data, isLoading, isError, error } = useQuery({
     queryFn: () => fetchArticleExport(postId),
     queryKey: ['article-export', postId],
+    // Every failure this route produces is deterministic (400 for a non-public
+    // article, 404, 503), never transient — so surface it immediately instead of
+    // letting the default `retry: 3` stall on "Loading…" through exponential backoff.
+    retry: false,
   })
   const [copied, setCopied] = useState(false)
 

@@ -15,8 +15,17 @@ import type { ArticleContent, FeedVisibility } from '@aurboda/api-spec'
 
 import { articleBlockImageUrl, articleBlockLabel } from './article.ts'
 
-/** Collapse newlines (markdown alt/caption text is a single line) and escape `]` so it can't close the image syntax early. */
-const inlineText = (text: string): string => text.replaceAll(/\s+/g, ' ').trim().replaceAll(']', '\\]')
+/**
+ * Collapse newlines (markdown alt/caption text is a single line) and escape both
+ * `[` and `]` so an unbalanced bracket can't break the `![alt](url)` syntax — a
+ * lone `[` (e.g. a tag selector's regex `pattern` surfaced by `describeSelectorAxis`,
+ * or a caption) would otherwise let CommonMark match the `]` against the inner `[`.
+ */
+const inlineText = (text: string): string =>
+  text
+    .replaceAll(/\s+/g, ' ')
+    .trim()
+    .replaceAll(/([[\]])/g, '\\$1')
 
 /**
  * Render an article as paste-ready markdown: an H1 title, each prose block's

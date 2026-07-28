@@ -45,9 +45,14 @@ export const createFeedPublicRouter = (): TypedRouter => {
   // the post BEFORE consulting this cache (like the sibling image routes), so the
   // capability token is NOT part of the key: a `followers`-only payload never
   // reaches the cache via a public request, and an anonymous `?token=…` walk can't
-  // inflate the key space. Keyed on `updated_at` (busts on an edit, no ≤1h edit
-  // staleness) — a smaller cap than the image LRU because a payload can be large
-  // (a per-block sample cap is #972). Producing `null` (no content) isn't cached.
+  // inflate the key space. Keyed on `updated_at` AND a coarse hourly bucket — the
+  // SAME two-part key the block-image cache uses for the same live-resolved article
+  // data: `updated_at` busts on an edit, and the hourly term bounds staleness from
+  // *backfilled measurements inside an already-locked window* (which don't touch
+  // `updated_at`) to ≤1h, so this endpoint can't freeze into a lifetime snapshot
+  // while its own PNG stays live (#934 locks the window, not the data). A smaller
+  // cap than the image LRU because a payload can be large (per-block sample cap is
+  // #972). Producing `null` (no content) isn't cached.
   const structuredCache = createRenderCache<FeedStructuredPost>(50)
 
   router.get<{ username: string }, PublicSeriesResponse, unknown, PublicSeriesQuery>(
@@ -134,7 +139,7 @@ export const createFeedPublicRouter = (): TypedRouter => {
         if (!post) {
           return res.status(404).json({ error: 'Not found', success: false })
         }
-        const key = `structured:${username}:${postId}:${post.updated_at.getTime()}`
+        const key = `structured:${username}:${postId}:${post.updated_at.getTime()}:${Math.floor(Date.now() / 3_600_000)}`
         const structured = await structuredCache(key, () => resolveStructuredContent(username, post))
         if (!structured) {
           return res.status(404).json({ error: 'Not found', success: false })
