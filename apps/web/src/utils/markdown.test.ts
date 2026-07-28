@@ -28,6 +28,20 @@ describe('renderRemoteMarkdown', () => {
     expect(html).toContain('<table>')
     expect(html).not.toContain('<script')
   })
+
+  it('hardens links with rel=nofollow noopener noreferrer and target=_blank', () => {
+    const html = renderRemoteMarkdown('[x](https://example.com)')
+    expect(html).toContain('rel="nofollow noopener noreferrer"')
+    expect(html).toContain('target="_blank"')
+  })
+
+  it('does not leave the link-hardening hook active for renderMarkdown (own content)', () => {
+    // renderRemoteMarkdown adds+removes its afterSanitizeAttributes hook within one
+    // synchronous call; a later renderMarkdown must not inherit it.
+    renderRemoteMarkdown('[peer](https://peer.example)')
+    const own = renderMarkdown('[mine](https://example.com)')
+    expect(own).not.toContain('nofollow')
+  })
 })
 
 describe('renderMarkdown', () => {

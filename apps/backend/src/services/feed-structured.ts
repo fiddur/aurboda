@@ -30,6 +30,8 @@ import type {
 
 import { defaultArticleChartBucket, metricTypeSchema } from '@aurboda/api-spec'
 
+import type { FeedPostRecord } from '../db/index.ts'
+
 import { getFeedPostById, getUserSettings } from '../db/index.ts'
 import { metricUnits } from '../schema.ts'
 import { resolveActivityScalars } from './activitypub/feed-activity.ts'
@@ -206,21 +208,40 @@ const resolveStructuredArticle = async (
 }
 
 /**
- * Build the structured payload for one of `user`'s feed posts, or null if it is
- * unknown, has no resolvable content, or the requester isn't authorized to see
- * it. `public`/`unlisted` posts resolve unconditionally; a `followers`-only post
- * resolves only with a matching capability `token` (the same token that
- * authorizes its followers-only images), so an accepted follower's instance can
- * render the native chart/article while a public guess still 404s.
+ * Load one of `user`'s feed posts and authorize the requester, or null if the
+ * post is unknown or the caller isn't allowed to see it. `public`/`unlisted`
+ * posts authorize unconditionally; a `followers`-only post authorizes only with
+ * a matching capability `token` (the same token that authorizes its
+ * followers-only images), so an accepted follower's instance can render the
+ * native chart/article while a public guess still 404s.
+ *
+ * Split from the content resolution so the unauthenticated `/feed/:postId` route
+ * can authorize BEFORE consulting its cache (mirroring the sibling image routes'
+ * `resolveImageWindow`/`resolveArticleBlock`): the `token` never enters the cache
+ * key, an anonymous walk of `?token=…` can't inflate the key space, and flipping
+ * a post to `followers` (or deleting it) drops it immediately instead of serving
+ * a pre-authorized payload until a cache bucket rolls.
  */
-export const resolveStructuredPost = async (
+export const loadAuthorizedStructuredPost = async (
   user: string,
   postId: string,
   token?: string,
-): Promise<FeedStructuredPost | null> => {
+): Promise<FeedPostRecord | null> => {
   const post = await getFeedPostById(user, postId)
   if (post == null || !isCapabilityAuthorized(post, token)) return null
+  return post
+}
 
+/**
+ * Resolve an already-authorized post to its structured payload, or null when it
+ * has no resolvable content (an article with no body, an activity post with no
+ * linked/resolvable activity). Caller MUST have authorized `post` first (via
+ * `loadAuthorizedStructuredPost`) — this does no visibility check.
+ */
+export const resolveStructuredContent = async (
+  user: string,
+  post: FeedPostRecord,
+): Promise<FeedStructuredPost | null> => {
   if (post.kind === 'article') {
     if (post.article == null) return null
     return resolveStructuredArticle(user, post.article)
@@ -256,4 +277,21 @@ export const resolveStructuredPost = async (
     )
   }
   return structured
+}
+
+/**
+ * Build the structured payload for one of `user`'s feed posts, or null if it is
+ * unknown, not authorized for the caller, or has no resolvable content. A thin
+ * load-then-resolve convenience over `loadAuthorizedStructuredPost` +
+ * `resolveStructuredContent`; the cached `/feed/:postId` route calls those two
+ * directly so it can authorize before consulting its cache.
+ */
+export const resolveStructuredPost = async (
+  user: string,
+  postId: string,
+  token?: string,
+): Promise<FeedStructuredPost | null> => {
+  const post = await loadAuthorizedStructuredPost(user, postId, token)
+  if (post == null) return null
+  return resolveStructuredContent(user, post)
 }
