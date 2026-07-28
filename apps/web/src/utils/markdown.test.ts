@@ -1,7 +1,23 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest'
 
-import { renderMarkdown } from './markdown'
+import { renderMarkdown, renderRemoteMarkdown } from './markdown'
+
+describe('renderRemoteMarkdown', () => {
+  it('forbids <img> (a remote peer must not smuggle a tracking pixel)', () => {
+    const html = renderRemoteMarkdown('text ![](https://tracker.example/px.gif?u=victim)')
+    expect(html).not.toContain('<img')
+    expect(html).not.toContain('tracker.example')
+    expect(html).toContain('text')
+  })
+
+  it('still renders safe formatting and strips scripts', () => {
+    const html = renderRemoteMarkdown('**bold** [x](https://example.com) <script>alert(1)</script>')
+    expect(html).toContain('<strong>bold</strong>')
+    expect(html).toContain('href="https://example.com"')
+    expect(html).not.toContain('<script')
+  })
+})
 
 describe('renderMarkdown', () => {
   it('renders GFM markdown to HTML', () => {

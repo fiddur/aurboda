@@ -8,22 +8,26 @@
  * only the data the payload already carries — a receiving peer has no
  * credentials to fetch more.
  *
- * Prose is the author's raw markdown, rendered through the same sanitising
- * `renderMarkdown` the author's own composer uses (the #910 XSS boundary),
- * since a remote peer's markdown is untrusted content.
+ * Prose is the remote author's raw markdown, rendered through `renderRemoteMarkdown`
+ * (the #910 XSS boundary, plus `<img>` forbidden) — a remote peer's markdown is
+ * untrusted, so it can't smuggle a tracking pixel into the reader's timeline; the
+ * post's images arrive only via its declared attachments.
  */
 import type { FeedStructuredArticle, FeedStructuredArticleBlock } from '@aurboda/api-spec'
 
 import { TrendLineChart } from '../../components/charts/TrendLineChart'
-import { renderMarkdown } from '../../utils/markdown'
+import { renderRemoteMarkdown } from '../../utils/markdown'
 import { getMetricDisplayName } from '../../utils/metricLabels'
 import { CorrelationScatterSvg } from './ArticleCorrelationBlock'
+import './FeedPostCard.css' // `.article-prose` / `.article-chart*` / `.article-scatter*`
 
 const CHART_COLOR = '#673ab8'
 
 const TimelineArticleBlock = ({ block }: { block: FeedStructuredArticleBlock }) => {
   if (block.type === 'prose') {
-    return <div class="article-prose" dangerouslySetInnerHTML={{ __html: renderMarkdown(block.markdown) }} />
+    return (
+      <div class="article-prose" dangerouslySetInnerHTML={{ __html: renderRemoteMarkdown(block.markdown) }} />
+    )
   }
 
   if (block.type === 'chart') {
