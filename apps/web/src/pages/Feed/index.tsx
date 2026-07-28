@@ -10,6 +10,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'preact/hooks'
 
 import { ArticleEditorDialog } from '../../components/ArticleEditorDialog'
+import { ArticleExportDialog } from '../../components/ArticleExportDialog'
 import { ShareActivityDialog } from '../../components/ShareActivityDialog'
 import { avatarUrl, deleteFeedPost, fetchFeed } from '../../state/api'
 import { auth } from '../../state/auth'
@@ -22,6 +23,7 @@ import './style.css'
 function OwnPostCard({ post, author }: { post: FeedPost; author: PostAuthor }) {
   const queryClient = useQueryClient()
   const [editing, setEditing] = useState(false)
+  const [exporting, setExporting] = useState(false)
   const activityId = post.activity_id
   const isArticle = post.kind === 'article'
 
@@ -48,6 +50,11 @@ function OwnPostCard({ post, author }: { post: FeedPost; author: PostAuthor }) {
                 Edit
               </button>
             )}
+            {isArticle && (
+              <button type="button" class="btn-secondary" onClick={() => setExporting(true)}>
+                Export markdown
+              </button>
+            )}
             <button type="button" class="btn-danger" onClick={onUnshare} disabled={deleteMutation.isPending}>
               {deleteMutation.isPending ? 'Unsharing…' : 'Unshare'}
             </button>
@@ -56,6 +63,8 @@ function OwnPostCard({ post, author }: { post: FeedPost; author: PostAuthor }) {
       />
 
       {editing && isArticle && <ArticleEditorDialog post={post} onClose={() => setEditing(false)} />}
+
+      {exporting && isArticle && <ArticleExportDialog postId={post.id} onClose={() => setExporting(false)} />}
 
       {editing && !isArticle && activityId && (
         <ShareActivityDialog

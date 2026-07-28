@@ -9,9 +9,41 @@
  * article is rejected at the write boundary rather than failing later at render
  * time. Pure and synchronous — unit-testable without a DB.
  */
-import type { ArticleBlock, ArticleContent, UpdateArticleBody } from '@aurboda/api-spec'
+import type { ArticleBlock, ArticleContent, FeedVisibility, UpdateArticleBody } from '@aurboda/api-spec'
 
 export type BuildArticleResult = { ok: true; article: ArticleContent } | { ok: false; error: string }
+
+/**
+ * A zero-duration bucket (`0s`, `00m`, …) passes the block schema regex but is
+ * invalid for `date_bin` (`date_bin('0 seconds', …)` errors) — treat it as no
+ * data. Shared by the block-image renderer and the structured-enrichment
+ * resolver, both of which bucket a chart block over its locked window.
+ */
+export const isZeroDurationBucket = (bucket: string): boolean => /^0+[smhd]$/.test(bucket)
+
+/**
+ * The public URL of one article chart/correlation block's rendered image (the
+ * C1 endpoint), including the cache-busting `?v=<updated_at>` and, for a
+ * `followers`-only post, the capability `?token=`. Shared by the outbound AS2
+ * attachment builder (`articleImageAttachments`) and the markdown export
+ * (`article-export.ts`), so the two surfaces can never point at different URLs
+ * for the same block.
+ */
+export const articleBlockImageUrl = (
+  apiBaseUrl: string,
+  user: string,
+  postId: string,
+  visibility: FeedVisibility,
+  imageToken: string,
+  updatedAt: Date,
+  index: number,
+  format: 'png' | 'svg' = 'png',
+): string => {
+  const base = `${apiBaseUrl.replace(/\/+$/, '')}/public/${encodeURIComponent(user)}/feed/${postId}`
+  const params = new URLSearchParams({ v: String(updatedAt.getTime()) })
+  if (visibility === 'followers') params.set('token', imageToken)
+  return `${base}/blocks/${index}/image.${format}?${params.toString()}`
+}
 
 /** A windowed block's effective window: its own override, else the article default. */
 export const blockWindow = (

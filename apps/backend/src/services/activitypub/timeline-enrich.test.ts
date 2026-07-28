@@ -1,4 +1,4 @@
-import type { FeedStructured, WellKnownAurboda } from '@aurboda/api-spec'
+import type { FeedStructuredActivity, WellKnownAurboda } from '@aurboda/api-spec'
 
 import { describe, expect, test } from 'vitest'
 
@@ -44,8 +44,9 @@ const wellKnown: WellKnownAurboda = {
   version: '1.0.0',
 }
 
-const structured: FeedStructured = {
+const structured: FeedStructuredActivity = {
   activity_type: 'exercise',
+  kind: 'activity',
   metrics: [{ key: 'heart_rate_avg', unit: 'bpm', value: 142 }],
   series: [],
   start_time: '2026-07-01T08:00:00.000Z',

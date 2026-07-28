@@ -41,10 +41,21 @@ A feed post has a **`kind`**:
   (GFM tables, images, `hr`, headings); note that **Mastodon's own inbound sanitiser then
   strips tables/images/`hr`** from a remote status, so a results table degrades to
   run-together cell text there — the charts still arrive as image attachments, and
-  non-Mastodon / Aurboda-peer renderers keep the full formatting. A richer inline render
-  for Aurboda peers — inbound ingestion plus structured enrichment — is a later slice
-  (**#968**); until then an Aurboda follower doesn't yet see a federated article.
-  _Reddit/markdown export is the remaining part of #937._
+  non-Mastodon / Aurboda-peer renderers keep the full formatting. Because an article
+  federates as an ordinary `Note`, an Aurboda peer's existing inbound timeline ingestion
+  (see [Home timeline](#home-timeline-inbound)) already stores it like any other post —
+  sanitised prose + image attachments — with no article-specific ingest code. On top of
+  that, a following Aurboda instance's [structured-enrichment
+  fetch](#native-charts-from-aurboda-peers-structured-enrichment) resolves an article to
+  its native `FeedStructuredArticle` payload (title + every block re-resolved live —
+  bucketed chart samples, or the computed correlation + scatter points), so an Aurboda
+  follower's timeline renders the full inline article — real interactive charts and
+  scatters — instead of just the flattened prose and attached PNGs a Mastodon follower
+  sees. **Export** — `GET /feed/articles/:postId/export` (and the `export_article_markdown`
+  MCP tool) renders an article as paste-ready markdown — the title, the prose blocks
+  verbatim, and one image link per chart/correlation block (the block-image endpoint
+  below) — for pasting into a text-only destination like r/QuantifiedSelf, where the
+  author adds their own write-up around the linked charts.
 
 An **`activity`** feed post references one of the user's activities and records the
 explicit metric selection that bounds what is shared:
@@ -255,28 +266,43 @@ plain HTML when a post comes from **another Aurboda instance**, the receiver fet
 structured data out-of-band on ingest:
 
 1. **Emit.** Every instance serves `GET /public/:username/feed/:postId` — a native JSON payload
-   (`FeedStructured`: activity type/window, typed scalar `metrics`, and inline high-resolution
-   `series` samples). It reuses the exact same scalar resolution as delivery and the same
-   data-scoped series resolution as the [public series endpoint](#public-series-endpoint-the-privacy-boundary),
-   so a peer can never read more than the author shared. `public`/`unlisted` posts resolve
+   (`FeedStructuredPost`: a discriminated union on `kind`). An **activity** post resolves to
+   `FeedStructuredActivity` (activity type/window, typed scalar `metrics`, and inline
+   high-resolution `series` samples), reusing the exact same scalar resolution as delivery and
+   the same data-scoped series resolution as the [public series
+   endpoint](#public-series-endpoint-the-privacy-boundary). An **article** post resolves to
+   `FeedStructuredArticle` (the title and every block, resolved in the same order as the
+   article: a prose block's raw markdown verbatim; a chart block's bucketed samples over its
+   locked window, bucketed the same way as its block image; a correlation block's computed
+   Pearson/Spearman/n, the present-vs-absent group comparison, and the aligned scatter points —
+   the same `getContinuousCorrelation` call the block image uses). Either way a peer can never
+   read more than the author shared/published. `public`/`unlisted` posts resolve
    unconditionally; a `followers`-only post resolves only with a matching `?token=<image_token>`
    — the **same capability token** that authorizes its followers-only images (below), so the
-   structured chart and the image share one authorization boundary.
+   structured payload and the images share one authorization boundary.
 2. **Detect + fetch.** On ingesting a `Create`/`Update`, if the note's id matches Aurboda's own
    object path (`/users/{user}/feed/{postId}` — a Mastodon status id never does, so no needless
    request is made), the receiver discovers the peer via `/.well-known/aurboda` and fetches its
-   structured endpoint. For a `followers`-only post it lifts the capability token from the
-   delivered image URL (the `?token=` embedded only in the follower's `Note`) and forwards it,
-   so an accepted follower fetches the native chart while a public guess still 404s. All fetches
-   are **SSRF-guarded** (`safe-fetch`: public hosts only, no redirects, size + time bounded) and
-   time-boxed; the origin is the accepted followee's own host. Any failure (non-Aurboda host,
-   404, malformed, timeout) is swallowed — the post still shows with its HTML.
+   structured endpoint — the same path for an activity share or an article, since both federate
+   as a `Note` and the object id doesn't distinguish them. For a `followers`-only post it lifts
+   the capability token from the delivered image URL (the `?token=` embedded only in the
+   follower's `Note`) and forwards it, so an accepted follower fetches the native payload while a
+   public guess still 404s. All fetches are **SSRF-guarded** (`safe-fetch`: public hosts only, no
+   redirects, size + time bounded) and time-boxed; the origin is the accepted followee's own
+   host. Any failure (non-Aurboda host, 404, malformed, timeout) is swallowed — the post still
+   shows with its HTML.
 3. **Store + render.** The payload is stored on `timeline_entry.structured` (JSONB, NULL for
    non-Aurboda posts; a redelivery that can't re-fetch keeps the last-known value). The web
-   timeline card renders a native `TrendLineChart` per shared series when `structured` is present.
+   timeline card renders, per `structured.kind`: a native `TrendLineChart` per shared series for
+   an **activity** post, or the full inline article — title, prose, per-block chart/scatter — for
+   an **article** post (mirroring the author's own live `ArticleContent` render, but built from
+   the embedded payload rather than a live fetch, since a receiving peer has no credentials to
+   call the author's authenticated endpoints).
 
-Enrichment is strictly best-effort and additive: it never blocks or fails basic ingest, and
-series that weren't shared (the opt-in) simply produce no chart.
+Enrichment is strictly best-effort and additive: it never blocks or fails basic ingest, an
+activity's series that weren't shared (the opt-in) simply produce no chart, and an article's
+chart/correlation block with too little data renders the same "not enough data" fallback the
+author's own live render shows.
 
 ### Live updates
 
@@ -423,7 +449,10 @@ resolving.
   the sidebar) lists everything
   you've shared, with each post's audience and metrics. From there you can **Edit** a
   post — an activity share re-opens the share dialog (saving federates an `Update`); an
-  article re-opens the article composer — or **Unshare** it (federates a `Delete`).
+  article re-opens the article composer — or **Unshare** it (federates a `Delete`). An
+  article also has an **Export markdown** button that fetches its paste-ready markdown
+  export and offers a **Copy to clipboard** button for pasting into r/QuantifiedSelf or a
+  similar text-only destination.
 - **Follow** — the Feed page's **Following** panel lets you follow a fediverse actor by
   handle (`@user@host`) and see who you follow, with a **Pending** badge until the remote
   server accepts and an **Unfollow** button.
@@ -452,6 +481,7 @@ Owner-facing (authenticated, scoped to the caller):
 | `POST /feed/activities/:id/share`  | Publish an activity with a chosen metric selection                                                                      |
 | `POST /feed/articles`              | Publish a long-form **article** (title + prose + inline chart/correlation blocks)                                       |
 | `PATCH /feed/articles/:postId`     | Edit an article (title / blocks / default window / visibility)                                                          |
+| `GET /feed/articles/:postId/export`| Export an article as paste-ready markdown (title + prose + one image link per block) for Reddit/text-only destinations  |
 | `PATCH /feed/:postId`              | Edit an activity post's selection / visibility / attachments                                                            |
 | `DELETE /feed/:postId`             | Unpublish any post (an activity post's public series stops resolving)                                                   |
 | `GET /feed/following`              | List the actors I follow (accepted + pending)                                                                           |
@@ -468,7 +498,7 @@ Public / federation (unauthenticated):
 | Method & path                                                | Purpose                                                                                                    |
 | ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------- |
 | `GET /public/:username/series`                               | Bucketed samples for a **shared** series within its window                                                 |
-| `GET /public/:username/feed/:postId`                         | Native structured post (`FeedStructured`: typed metrics + inline series) for Aurboda-to-Aurboda enrichment |
+| `GET /public/:username/feed/:postId`                         | Native structured post (`FeedStructuredPost`: an activity's typed metrics + inline series, or an article's title + resolved blocks) for Aurboda-to-Aurboda enrichment |
 | `GET /public/:username/feed/:postId/chart.png`               | Rendered HR chart (PNG) for an opted-in post (`?token=` for followers-only)                                |
 | `GET /public/:username/feed/:postId/chart.svg`               | Same HR chart as crisp `image/svg+xml` for Aurboda-native rendering (`?token=` for followers-only)         |
 | `GET /public/:username/feed/:postId/route.png`               | Rendered GPS route map for an opted-in post (`?token=` for followers-only)                                 |
@@ -484,12 +514,14 @@ Public / federation (unauthenticated):
 | `POST /users/:username/inbox` (+ `/inbox`)                   | Inbound `Follow` / `Undo{Follow}` / `Accept` / `Reject` (HTTP-Signature verified)                          |
 
 The owner-facing capability is also available over MCP as `list_feed`, `share_activity`,
-`create_article`, `update_article`, `update_feed_post`, `delete_feed_post`, `list_following`,
-`follow_actor`, `unfollow_actor`, `list_followers`, `approve_follower`, `reject_follower`, and
-`list_timeline` — all backed by the same services as the REST routes (`create_article` /
-`update_article` ↔ `POST /feed/articles` / `PATCH /feed/articles/:postId`), so an article can
-be drafted conversationally by Claude via the same tools. Manual follower approval is toggled with the
-`manually_approve_followers` user setting (`get_user_settings` / `update_user_settings`).
+`create_article`, `update_article`, `export_article_markdown`, `update_feed_post`,
+`delete_feed_post`, `list_following`, `follow_actor`, `unfollow_actor`, `list_followers`,
+`approve_follower`, `reject_follower`, and `list_timeline` — all backed by the same services as
+the REST routes (`create_article` / `update_article` ↔ `POST /feed/articles` / `PATCH
+/feed/articles/:postId`; `export_article_markdown` ↔ `GET /feed/articles/:postId/export`), so an
+article can be drafted conversationally by Claude via the same tools. Manual follower approval is
+toggled with the `manually_approve_followers` user setting (`get_user_settings` /
+`update_user_settings`).
 
 ## Storage
 
@@ -514,8 +546,9 @@ Posts received from followees are stored in `timeline_entry` (keyed by the remot
 `object_uri` so an `Update`/redelivery replaces in place), holding the **already-sanitised**
 content plus the author's cached handle / display name / avatar, indexed on
 `(published_at DESC, id DESC)` for the keyset-paginated home timeline. A nullable
-`structured` JSONB column carries the native Aurboda payload (`FeedStructured`: typed
-metrics + inline series) fetched during enrichment — NULL for non-Aurboda posts. On a
+`structured` JSONB column carries the native Aurboda payload (`FeedStructuredPost`: an
+activity's typed metrics + inline series, or an article's title + resolved blocks) fetched
+during enrichment — NULL for non-Aurboda posts. On a
 re-delivery whose enrichment failed, the upsert `COALESCE`s so the last-known `structured`
 is preserved rather than wiped. A nullable `images` JSONB column holds the delivered
 image attachments (`TimelineImage[]`: url + optional media type / alt / size), rendered as

@@ -26,9 +26,9 @@ import { Image } from '@fedify/fedify/vocab'
 import { marked } from 'marked'
 import sanitizeHtml from 'sanitize-html'
 
+import { articleBlockImageUrl } from '../article.ts'
 import { CHART_HEIGHT, CHART_WIDTH, escapeXml } from '../charts/chart-svg.ts'
 import { SCATTER_HEIGHT, SCATTER_WIDTH } from '../charts/scatter-svg.ts'
-import { isPubliclyVisible } from './object.ts'
 
 /**
  * Sanitise authored article prose for outbound federation. A superset of the
@@ -154,14 +154,6 @@ export const articleImageAttachments = (
   updatedAt: Date,
   article: ArticleContent,
 ): Image[] => {
-  const base = `${apiBaseUrl.replace(/\/+$/, '')}/public/${encodeURIComponent(user)}/feed/${postId}`
-  // `v` = the post's last-edited epoch: the render cache busts on edit, but the URL
-  // itself must change too, or a remote media cache (Mastodon re-hosts attachments
-  // at receipt) keeps the pre-edit PNG and the `Update{Article}` never shows the new
-  // chart. The image endpoint ignores `v` (it only reads `token`).
-  const params = new URLSearchParams({ v: String(updatedAt.getTime()) })
-  if (!isPubliclyVisible(visibility)) params.set('token', imageToken)
-  const query = `?${params.toString()}`
   const images: Image[] = []
   article.blocks.forEach((block, index) => {
     if (block.type !== 'chart' && block.type !== 'correlation') return
@@ -172,7 +164,12 @@ export const articleImageAttachments = (
         height,
         mediaType: 'image/png',
         name: attachmentName(block),
-        url: new URL(`${base}/blocks/${index}/image.png${query}`),
+        // `v` = the post's last-edited epoch: the render cache busts on edit, but
+        // the URL itself must change too, or a remote media cache (Mastodon
+        // re-hosts attachments at receipt) keeps the pre-edit PNG and the
+        // `Update{Article}` never shows the new chart. The image endpoint ignores
+        // `v` (it only reads `token`).
+        url: new URL(articleBlockImageUrl(apiBaseUrl, user, postId, visibility, imageToken, updatedAt, index)),
         width,
       }),
     )

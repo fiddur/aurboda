@@ -26,7 +26,7 @@ import { z } from 'zod'
 
 import { baseResponseSchema, iso8601DateTimeSchema, metricTypeSchema } from './common.ts'
 import { selectorSchema } from './correlations.ts'
-import { feedStructuredSchema, publicSeriesSampleSchema } from './feed-structured.ts'
+import { feedStructuredPostSchema, publicSeriesSampleSchema } from './feed-structured.ts'
 import { shareVisibilityValues } from './visibility.ts'
 
 /**
@@ -503,9 +503,9 @@ export const timelineEntrySchema = z
     }),
     object_uri: z.string().meta({ description: "The remote post's canonical id" }),
     published_at: iso8601DateTimeSchema.meta({ description: 'When the post was published (ISO 8601)' }),
-    structured: feedStructuredSchema.optional().meta({
+    structured: feedStructuredPostSchema.optional().meta({
       description:
-        'Native structured data (typed metrics + series), present only for posts from Aurboda instances — drives a native chart instead of the HTML.',
+        'Native structured data (an activity share’s typed metrics/series, or an article’s title + resolved blocks), present only for posts from Aurboda instances — drives a native render instead of the HTML.',
     }),
     url: z.string().nullable().meta({ description: 'Link to the original post' }),
   })
@@ -595,11 +595,33 @@ export type PublicSeriesResponse = z.infer<typeof publicSeriesResponseSchema>
 
 /**
  * Response for the public *structured post* endpoint (`GET /public/:username/feed/:postId`).
- * `structured` is absent (with `success: false`) for unknown / non-public / non-exercise posts.
- * Consumed by another Aurboda instance on ingest to render a native chart.
+ * `structured` is absent (with `success: false`) for unknown / non-public posts. Consumed by
+ * another Aurboda instance on ingest to render a native chart or article.
  */
 export const feedPostStructuredResponseSchema = baseResponseSchema
-  .extend({ structured: feedStructuredSchema.optional() })
+  .extend({ structured: feedStructuredPostSchema.optional() })
   .meta({ id: 'FeedPostStructuredResponse' })
 
 export type FeedPostStructuredResponse = z.infer<typeof feedPostStructuredResponseSchema>
+
+// =============================================================================
+// Reddit/markdown export (C4)
+// =============================================================================
+
+/**
+ * Response for the article markdown-export endpoint: a paste-ready rendering of
+ * the article's title + prose, with each chart/correlation block as a link to
+ * its rendered PNG (the C1 block-image endpoint) — meant for pasting into a
+ * text-only destination like r/QuantifiedSelf. `markdown` is absent (with
+ * `success: false`) for an unknown id or a non-article post.
+ */
+export const articleExportResponseSchema = baseResponseSchema
+  .extend({
+    markdown: z
+      .string()
+      .optional()
+      .meta({ description: 'Paste-ready markdown: title + prose + one image link per chart/correlation block' }),
+  })
+  .meta({ id: 'ArticleExportResponse' })
+
+export type ArticleExportResponse = z.infer<typeof articleExportResponseSchema>

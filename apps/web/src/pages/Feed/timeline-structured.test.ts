@@ -1,4 +1,4 @@
-import type { FeedStructured } from '@aurboda/api-spec'
+import type { FeedStructuredActivity } from '@aurboda/api-spec'
 
 import { describe, expect, test } from 'vitest'
 
@@ -6,8 +6,9 @@ import { structuredChartSeries } from './timeline-structured'
 
 const sample = (start: string, avg: number) => ({ avg, count: 1, end: start, max: avg, min: avg, start })
 
-const structured = (over: Partial<FeedStructured> = {}): FeedStructured => ({
+const structured = (over: Partial<FeedStructuredActivity> = {}): FeedStructuredActivity => ({
   activity_type: 'exercise',
+  kind: 'activity',
   metrics: [],
   series: [],
   start_time: '2026-07-01T08:00:00.000Z',
@@ -75,5 +76,9 @@ describe('structuredChartSeries', () => {
 
   test('returns an empty array when there are no series', () => {
     expect(structuredChartSeries(structured())).toEqual([])
+  })
+
+  test('returns an empty array for an article post (rendered by TimelineArticle instead)', () => {
+    expect(structuredChartSeries({ blocks: [], kind: 'article', title: 'My analysis' })).toEqual([])
   })
 })

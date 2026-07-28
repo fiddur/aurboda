@@ -9,6 +9,7 @@
  * the public read surface lives in `feed-public-router.ts`.
  */
 import {
+  type ArticleExportResponse,
   type BaseResponse,
   type CreateArticleBody,
   createArticleBodySchema,
@@ -37,6 +38,7 @@ import {
   listFeedPosts,
   updateFeedPost,
 } from '../db/index.ts'
+import { buildArticleMarkdown } from '../services/article-export.ts'
 import { buildArticleContent, mergeArticleContent } from '../services/article.ts'
 import { serializeFeedPost } from '../services/feed.ts'
 import { getTimelinePage } from '../services/timeline.ts'
@@ -70,6 +72,7 @@ export const createFeedRouter = (
   authMiddleware: AnyMiddleware,
   deliver?: FeedDeliver,
   hub?: TimelineHub,
+  apiBaseUrl?: string,
 ): TypedRouter => {
   const router = typedRouter()
 
@@ -209,6 +212,35 @@ export const createFeedRouter = (
       if (!record) return res.status(404).json({ error: 'Article not found', success: false })
       deliver?.updatedArticle(user, record)
       res.json({ post: await serializeFeedPost(user, record), success: true })
+    },
+  )
+
+  // Reddit/markdown export (C4): a paste-ready rendering of the article's title
+  // + prose + one image link per chart/correlation block (the C1 endpoint).
+  // Registered before the generic `/:postId` routes, like the other `/articles`
+  // sub-routes.
+  router.get<{ postId: string }, ArticleExportResponse>(
+    '/articles/:postId/export',
+    authMiddleware,
+    async (req, res) => {
+      const user = req.user!
+      const post = await getFeedPostById(user, req.params.postId)
+      if (!post || post.kind !== 'article' || post.article == null) {
+        return res.status(404).json({ error: 'Article not found', success: false })
+      }
+      if (!apiBaseUrl) {
+        return res.status(503).json({ error: 'Export is not available', success: false })
+      }
+      const markdown = buildArticleMarkdown(
+        apiBaseUrl,
+        user,
+        post.id,
+        post.visibility,
+        post.image_token,
+        post.updated_at,
+        post.article,
+      )
+      res.json({ markdown, success: true })
     },
   )
 

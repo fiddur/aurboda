@@ -1,4 +1,5 @@
 import type {
+  ArticleExportResponse,
   CreateArticleBody,
   FeedPost,
   FeedPostResponse,
@@ -83,6 +84,19 @@ export const updateArticle = async (postId: string, body: UpdateArticleBody): Pr
 /** Unshare a post (removes it from the feed and retracts it from followers). */
 export const deleteFeedPost = async (postId: string): Promise<void> => {
   await axios.delete(`${API_URL}/feed/${postId}`, { headers: authHeaders() })
+}
+
+/**
+ * Export an article as paste-ready markdown (title + prose + one image link per
+ * chart/correlation block) for pasting into a text-only destination like
+ * r/QuantifiedSelf.
+ */
+export const fetchArticleExport = async (postId: string): Promise<string> => {
+  const response = await axios.get<ArticleExportResponse>(`${API_URL}/feed/articles/${postId}/export`, {
+    headers: authHeaders(),
+  })
+  if (!response.data.markdown) throw new Error('Export failed: no markdown returned')
+  return response.data.markdown
 }
 
 /** List the actors the user follows (accepted + pending), newest-first. */

@@ -24,10 +24,10 @@ const auth: RequestHandler = (req, _res, next) => {
   next()
 }
 
-const startApp = (deliver?: FeedDeliver) => {
+const startApp = (deliver?: FeedDeliver, apiBaseUrl?: string) => {
   const app = express()
   app.use(express.json())
-  app.use('/feed', createFeedRouter(auth, deliver))
+  app.use('/feed', createFeedRouter(auth, deliver, undefined, apiBaseUrl))
   const server = app.listen(0)
   const port = (server.address() as AddressInfo).port
   const close = () =>
@@ -157,5 +157,58 @@ describe('Article feed routes (integration)', () => {
     } finally {
       await spied.close()
     }
+  })
+})
+
+describe('GET /feed/articles/:postId/export (Reddit/markdown export, C4)', () => {
+  let withBase: ReturnType<typeof startApp>
+  let noBase: ReturnType<typeof startApp>
+
+  beforeAll(async () => {
+    await startTestDb()
+    withBase = startApp(undefined, 'https://aurboda.example/api')
+    noBase = startApp()
+  }, CONTAINER_TIMEOUT)
+
+  afterAll(async () => {
+    await withBase.close()
+    await noBase.close()
+    await stopTestDb()
+  })
+
+  beforeEach(async () => {
+    await cleanTestDb()
+  })
+
+  test('returns paste-ready markdown linking each block to its C1 image endpoint', async () => {
+    const created = await withBase.request.post('/feed/articles').send(articleBody())
+    const postId = created.body.post.id
+    const res = await withBase.request.get(`/feed/articles/${postId}/export`)
+    expect(res.status).toBe(200)
+    expect(res.body.success).toBe(true)
+    expect(res.body.markdown).toContain('# A week of sleep and HRV')
+    expect(res.body.markdown).toContain('A look at the week.')
+    expect(res.body.markdown).toContain(
+      `https://aurboda.example/api/public/${getTestUser()}/feed/${postId}/blocks/1/image.png`,
+    )
+  })
+
+  test('404s for a non-article post', async () => {
+    const activityPost = await createFeedPost(getTestUser(), {
+      activity_id: null,
+      include_chart: false,
+      include_map: false,
+      included_metrics: [],
+      series_metrics: [],
+      visibility: 'public',
+    })
+    const res = await withBase.request.get(`/feed/articles/${activityPost.id}/export`)
+    expect(res.status).toBe(404)
+  })
+
+  test('503s when the server has no apiBaseUrl configured', async () => {
+    const created = await noBase.request.post('/feed/articles').send(articleBody())
+    const res = await noBase.request.get(`/feed/articles/${created.body.post.id}/export`)
+    expect(res.status).toBe(503)
   })
 })

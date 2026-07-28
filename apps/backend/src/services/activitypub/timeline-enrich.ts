@@ -20,8 +20,8 @@
  * The network dependencies are injected so the mapping is unit-testable offline.
  */
 import {
-  type FeedStructured,
   feedPostStructuredResponseSchema,
+  type FeedStructuredPost,
   type TimelineImage,
   type WellKnownAurboda,
 } from '@aurboda/api-spec'
@@ -94,7 +94,7 @@ export const enrichFromAurboda = async (
   objectUri: string,
   deps: AurbodaEnrichDeps,
   token?: string,
-): Promise<FeedStructured | null> => {
+): Promise<FeedStructuredPost | null> => {
   const parsed = parseAurbodaFeedUrl(objectUri)
   if (parsed == null) return null
   try {
@@ -121,7 +121,7 @@ const ENRICH_TIMEOUT_MS = 12_000
 export const createAurbodaEnricher = (): ((
   objectUri: string,
   token?: string,
-) => Promise<FeedStructured | null>) => {
+) => Promise<FeedStructuredPost | null>) => {
   const deps: AurbodaEnrichDeps = {
     discover: discoverInstance,
     fetchStructured: async (url) => (await safeFetchGet(url)).data,

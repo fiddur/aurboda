@@ -8,7 +8,7 @@
  * responsible for cleaning untrusted fediverse HTML before it reaches here).
  * Ordering + pagination is keyset by `(published_at DESC, id DESC)`.
  */
-import type { FeedStructured, TimelineImage } from '@aurboda/api-spec'
+import type { FeedStructuredPost, TimelineImage } from '@aurboda/api-spec'
 
 import { query } from './connection.ts'
 
@@ -24,7 +24,7 @@ export interface TimelineEntryRecord {
   published_at: Date
   received_at: Date
   /** Native structured payload from an Aurboda peer, or null for non-Aurboda posts. */
-  structured: FeedStructured | null
+  structured: FeedStructuredPost | null
   /** Image attachments (rendered chart / route map, or a Mastodon photo), or null. */
   images: TimelineImage[] | null
 }
@@ -40,7 +40,7 @@ export interface TimelineEntryInput {
   url?: string | null
   published_at: Date
   /** Native structured payload fetched from an Aurboda peer on ingest, if any. */
-  structured?: FeedStructured | null
+  structured?: FeedStructuredPost | null
   /** Image attachments captured from the delivered Note, if any. */
   images?: TimelineImage[] | null
 }

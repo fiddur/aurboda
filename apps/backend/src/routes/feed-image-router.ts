@@ -30,7 +30,7 @@ import type { ScatterSvgData } from '../services/charts/scatter-svg.ts'
 
 import { isValidUsername } from '../api/auth-routes.ts'
 import { isMissingDatabase } from '../db/index.ts'
-import { blockWindow } from '../services/article.ts'
+import { blockWindow, isZeroDurationBucket } from '../services/article.ts'
 import { isCapabilityAuthorized } from '../services/feed-capability.ts'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -272,10 +272,6 @@ export const resolveArticleBlock = async (
 
 /** Article-chart line colour, matching the web inline render (`ArticleChartBlock`). */
 const ARTICLE_CHART_COLOR = '#673ab8'
-
-/** A zero-duration bucket (`0s`, `00m`, …) passes the block schema regex but is
- * invalid for `date_bin` (`date_bin('0 seconds', …)` errors) — treat it as no image. */
-const isZeroDurationBucket = (bucket: string): boolean => /^0+[smhd]$/.test(bucket)
 
 /**
  * Render one resolved article block to its image bytes (PNG or the crisp SVG),

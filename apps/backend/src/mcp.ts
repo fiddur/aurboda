@@ -99,7 +99,7 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
   }
   registerReportTools(server, user)
   registerSharedDashboardTools(server, user)
-  registerFeedTools(server, user, deps.feedDeliver, deps.followActions, deps.followerActions)
+  registerFeedTools(server, user, deps.feedDeliver, deps.followActions, deps.followerActions, deps.apiBaseUrl)
   registerChallengeTools(server, user, { apiBaseUrl: deps.apiBaseUrl, webHost: deps.webHost })
   registerScreentimeCategoryTools(server, user)
   registerDebugTools(server, user)
