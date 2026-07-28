@@ -8,10 +8,11 @@ import { useQuery } from '@tanstack/react-query'
 import { useState } from 'preact/hooks'
 
 import { fetchArticleExport } from '../state/api'
+import './ArticleEditorDialog.css' // for `.article-input`
 import './ShareActivityDialog.css'
 
 export const ArticleExportDialog = ({ postId, onClose }: { postId: string; onClose: () => void }) => {
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading, isError, error } = useQuery({
     queryFn: () => fetchArticleExport(postId),
     queryKey: ['article-export', postId],
   })
@@ -45,7 +46,11 @@ export const ArticleExportDialog = ({ postId, onClose }: { postId: string; onClo
         </p>
 
         {isLoading && <p>Loading…</p>}
-        {isError && <p class="share-dialog-error">Couldn't export this article. Please try again.</p>}
+        {isError && (
+          <p class="share-dialog-error">
+            {error instanceof Error ? error.message : 'Couldn’t export this article. Please try again.'}
+          </p>
+        )}
         {data && (
           <>
             <textarea

@@ -92,9 +92,16 @@ export const deleteFeedPost = async (postId: string): Promise<void> => {
  * r/QuantifiedSelf.
  */
 export const fetchArticleExport = async (postId: string): Promise<string> => {
-  const response = await axios.get<ArticleExportResponse>(`${API_URL}/feed/articles/${postId}/export`, {
-    headers: authHeaders(),
-  })
+  let response
+  try {
+    response = await axios.get<ArticleExportResponse>(`${API_URL}/feed/articles/${postId}/export`, {
+      headers: authHeaders(),
+    })
+  } catch (error) {
+    // Surface the server's reason (e.g. "A followers-only article can't be
+    // exported…") so the user knows to make it public first.
+    throw new Error(apiErrorMessage(error, 'Couldn’t export this article. Please try again.'))
+  }
   if (!response.data.markdown) throw new Error('Export failed: no markdown returned')
   return response.data.markdown
 }

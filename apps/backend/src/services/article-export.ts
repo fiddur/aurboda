@@ -11,21 +11,12 @@
  * on-demand image endpoint rather than embedding rendered data itself, so no
  * chart/correlation resolution happens here.
  */
-import type { ArticleBlock, ArticleContent, FeedVisibility } from '@aurboda/api-spec'
+import type { ArticleContent, FeedVisibility } from '@aurboda/api-spec'
 
-import { describeSelectorAxis, getMetricDisplayName } from '@aurboda/api-spec'
-
-import { articleBlockImageUrl } from './article.ts'
+import { articleBlockImageUrl, articleBlockLabel } from './article.ts'
 
 /** Collapse newlines (markdown alt/caption text is a single line) and escape `]` so it can't close the image syntax early. */
 const inlineText = (text: string): string => text.replaceAll(/\s+/g, ' ').trim().replaceAll(']', '\\]')
-
-/** A human label for a chart/correlation block's image: its caption, else a label from its data. */
-const blockLabel = (block: Extract<ArticleBlock, { type: 'chart' | 'correlation' }>): string =>
-  block.caption ??
-  (block.type === 'chart'
-    ? getMetricDisplayName(block.metric)
-    : `${describeSelectorAxis(block.trigger)} vs ${describeSelectorAxis(block.outcome)}`)
 
 /**
  * Render an article as paste-ready markdown: an H1 title, each prose block's
@@ -49,7 +40,7 @@ export const buildArticleMarkdown = (
       sections.push(block.markdown)
       return
     }
-    const label = inlineText(blockLabel(block))
+    const label = inlineText(articleBlockLabel(block))
     const url = articleBlockImageUrl(apiBaseUrl, user, postId, visibility, imageToken, updatedAt, index)
     const lines = [`![${label}](${url})`]
     if (block.caption) lines.push(`*${inlineText(block.caption)}*`)

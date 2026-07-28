@@ -19,14 +19,13 @@
  * Either way it can never carry a script/style/`img onerror` payload (#910's
  * boundary, server side).
  */
-import type { ArticleContent, ArticleBlock, FeedVisibility } from '@aurboda/api-spec'
+import type { ArticleContent, FeedVisibility } from '@aurboda/api-spec'
 
-import { describeSelectorAxis, getMetricDisplayName } from '@aurboda/api-spec'
 import { Image } from '@fedify/fedify/vocab'
 import { marked } from 'marked'
 import sanitizeHtml from 'sanitize-html'
 
-import { articleBlockImageUrl } from '../article.ts'
+import { articleBlockImageUrl, articleBlockLabel } from '../article.ts'
 import { CHART_HEIGHT, CHART_WIDTH, escapeXml } from '../charts/chart-svg.ts'
 import { SCATTER_HEIGHT, SCATTER_WIDTH } from '../charts/scatter-svg.ts'
 
@@ -130,14 +129,6 @@ export const renderArticleContentHtml = (article: ArticleContent): string => {
   return body.length > 0 ? `${heading}\n${body}` : heading
 }
 
-/** A human name for a block's attachment: its caption, else a label from its data. */
-const attachmentName = (block: Extract<ArticleBlock, { type: 'chart' | 'correlation' }>): string => {
-  if (block.caption) return block.caption
-  return block.type === 'chart'
-    ? getMetricDisplayName(block.metric)
-    : `${describeSelectorAxis(block.trigger)} vs ${describeSelectorAxis(block.outcome)}`
-}
-
 /**
  * Image attachments for an article's chart/correlation blocks: one PNG per block,
  * pointing at the gated on-demand endpoint (`/feed/<id>/blocks/<index>/image.png`).
@@ -163,13 +154,15 @@ export const articleImageAttachments = (
       new Image({
         height,
         mediaType: 'image/png',
-        name: attachmentName(block),
+        name: articleBlockLabel(block),
         // `v` = the post's last-edited epoch: the render cache busts on edit, but
         // the URL itself must change too, or a remote media cache (Mastodon
         // re-hosts attachments at receipt) keeps the pre-edit PNG and the
         // `Update{Article}` never shows the new chart. The image endpoint ignores
         // `v` (it only reads `token`).
-        url: new URL(articleBlockImageUrl(apiBaseUrl, user, postId, visibility, imageToken, updatedAt, index)),
+        url: new URL(
+          articleBlockImageUrl(apiBaseUrl, user, postId, visibility, imageToken, updatedAt, index),
+        ),
         width,
       }),
     )

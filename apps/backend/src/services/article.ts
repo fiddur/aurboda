@@ -11,9 +11,27 @@
  */
 import type { ArticleBlock, ArticleContent, FeedVisibility, UpdateArticleBody } from '@aurboda/api-spec'
 
+import { describeSelectorAxis, getMetricDisplayName } from '@aurboda/api-spec'
+
 import { isPubliclyVisible } from './activitypub/object.ts'
 
 export type BuildArticleResult = { ok: true; article: ArticleContent } | { ok: false; error: string }
+
+/**
+ * A human label for a chart/correlation block: its caption, else a label from its
+ * data (the metric display name, or `trigger vs outcome`). Shared single source
+ * for the AS2 image attachment name (`articleImageAttachments`) and the markdown
+ * export (`article-export.ts`) so the two can't diverge. A blank caption falls
+ * back to the data label.
+ */
+export const articleBlockLabel = (
+  block: Extract<ArticleBlock, { type: 'chart' | 'correlation' }>,
+): string => {
+  if (block.caption) return block.caption
+  return block.type === 'chart'
+    ? getMetricDisplayName(block.metric)
+    : `${describeSelectorAxis(block.trigger)} vs ${describeSelectorAxis(block.outcome)}`
+}
 
 /**
  * A zero-duration bucket (`0s`, `00m`, …) passes the block schema regex but is
