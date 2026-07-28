@@ -4,17 +4,28 @@ import { describe, expect, it } from 'vitest'
 import { renderMarkdown, renderRemoteMarkdown } from './markdown'
 
 describe('renderRemoteMarkdown', () => {
-  it('forbids <img> (a remote peer must not smuggle a tracking pixel)', () => {
-    const html = renderRemoteMarkdown('text ![](https://tracker.example/px.gif?u=victim)')
-    expect(html).not.toContain('<img')
+  it('drops every media tracker vector, not just <img>', () => {
+    const html = renderRemoteMarkdown(
+      'text ![](https://tracker.example/a.gif)\n\n' +
+        '<div style="background-image:url(https://tracker.example/b.png)"></div>\n' +
+        '<video poster="https://tracker.example/c.gif"></video><svg><image href="https://tracker.example/d"/></svg>',
+    )
     expect(html).not.toContain('tracker.example')
+    expect(html).not.toContain('<img')
+    expect(html).not.toContain('<video')
+    expect(html).not.toContain('poster')
+    expect(html).not.toContain('style=')
+    expect(html).not.toContain('<svg')
     expect(html).toContain('text')
   })
 
-  it('still renders safe formatting and strips scripts', () => {
-    const html = renderRemoteMarkdown('**bold** [x](https://example.com) <script>alert(1)</script>')
+  it('still renders the safe allowlisted formatting and strips scripts', () => {
+    const html = renderRemoteMarkdown(
+      '**bold** [x](https://example.com)\n\n| a |\n| - |\n| 1 |\n\n<script>alert(1)</script>',
+    )
     expect(html).toContain('<strong>bold</strong>')
     expect(html).toContain('href="https://example.com"')
+    expect(html).toContain('<table>')
     expect(html).not.toContain('<script')
   })
 })

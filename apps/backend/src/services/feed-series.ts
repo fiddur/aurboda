@@ -51,7 +51,7 @@ export interface PublicSeriesResult {
   samples: PublicSeriesSample[]
 }
 
-const BUCKET_UNIT_SECONDS: Record<string, number> = { h: 3600, m: 60, s: 1 }
+const BUCKET_UNIT_SECONDS: Record<string, number> = { d: 86_400, h: 3600, m: 60, s: 1 }
 
 /**
  * Project one metric's stats out of a bucketed-query result into
@@ -84,7 +84,7 @@ export const samplesFromBucketedResult = (
  * becomes `5s`.
  */
 export const floorSeriesBucket = (bucket: string): BucketSize => {
-  const match = bucket.match(/^(\d+)([smh])$/)
+  const match = bucket.match(/^(\d+)([smhd])$/)
   if (!match) return `${MIN_SERIES_BUCKET_SECONDS}s`
   const seconds = parseInt(match[1], 10) * BUCKET_UNIT_SECONDS[match[2]]
   return seconds < MIN_SERIES_BUCKET_SECONDS ? `${MIN_SERIES_BUCKET_SECONDS}s` : (bucket as BucketSize)

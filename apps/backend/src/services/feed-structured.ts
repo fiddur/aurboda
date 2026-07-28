@@ -36,7 +36,7 @@ import { resolveActivityScalars } from './activitypub/feed-activity.ts'
 import { blockWindow, isZeroDurationBucket } from './article.ts'
 import { getContinuousCorrelation } from './correlations/explore.ts'
 import { isCapabilityAuthorized } from './feed-capability.ts'
-import { resolvePublicSeries, samplesFromBucketedResult } from './feed-series.ts'
+import { floorSeriesBucket, resolvePublicSeries, samplesFromBucketedResult } from './feed-series.ts'
 import { resolveFeedActivity } from './feed.ts'
 import { queryMetricsBucketed } from './queries/index.ts'
 
@@ -98,12 +98,14 @@ const resolveStructuredChartBlock = async (
   const startDate = new Date(start)
   const endDate = new Date(end)
   if (startDate.getTime() >= endDate.getTime()) return null
-  // Bucket as authored (same as the block-image path — including `1d`, which
-  // `floorSeriesBucket` doesn't understand). Bounding this unauthenticated
-  // payload (a sample cap + cache) is tracked in #972, alongside the block-image
-  // endpoint's #969 — kept out of this PR so both surfaces get one fix.
-  const bucket = block.bucket ?? defaultArticleChartBucket(startDate, endDate)
-  if (isZeroDurationBucket(bucket)) return null
+  // Floor sub-5s buckets to the public-series minimum, like `resolvePublicSeries`
+  // — an author-stored `1s` bucket over a wide window would otherwise yield
+  // ~600k buckets on this unauthenticated endpoint. `floorSeriesBucket` now
+  // understands `d`, so the common `1d`/`1h` buckets pass through unchanged. A
+  // fuller sample cap + cache is tracked in #972 (with the block image's #969).
+  const authored = block.bucket ?? defaultArticleChartBucket(startDate, endDate)
+  if (isZeroDurationBucket(authored)) return null
+  const bucket = floorSeriesBucket(authored)
 
   const result = await queryMetricsBucketed(user, [block.metric], startDate, endDate, bucket, { tz })
   const samples = samplesFromBucketedResult(result, block.metric)

@@ -218,6 +218,34 @@ describe('resolveStructuredPost — article posts', () => {
     expect(chart.samples[0].avg).toBe(150)
   })
 
+  test('floors a sub-5s chart bucket on this unauthenticated endpoint', async () => {
+    const user = getTestUser()
+    await insertTimeSeries(user, [
+      { metric: 'heart_rate' as const, source: 'garmin' as const, time: START, value: 150 },
+    ])
+    const post = await createArticlePost(user, {
+      article: {
+        blocks: [
+          {
+            bucket: '1s',
+            end: END.toISOString(),
+            metric: 'heart_rate',
+            start: START.toISOString(),
+            type: 'chart',
+          },
+        ],
+        title: 'Dense',
+      },
+      visibility: 'public',
+    })
+    const structured = await resolveStructuredPost(user, post.id)
+    if (structured?.kind !== 'article') throw new Error('expected an article payload')
+    const chart = structured.blocks[0]
+    if (chart.type !== 'chart') throw new Error('expected a chart block')
+    // `1s` is floored to the 5s public-series minimum (not queried at 1s).
+    expect(chart.bucket).toBe('5s')
+  })
+
   test('resolves a correlation block (present unconditionally, even with no overlapping data)', async () => {
     const user = getTestUser()
     const post = await createArticlePost(user, {

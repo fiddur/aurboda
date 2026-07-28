@@ -16,6 +16,7 @@
 import {
   type FeedPostsResponse,
   type FeedPostStructuredResponse,
+  type FeedStructuredPost,
   type PublicSeriesQuery,
   publicSeriesQuerySchema,
   type PublicSeriesResponse,
@@ -29,6 +30,7 @@ import { serializeFeedPost } from '../services/feed.ts'
 import { queryMetricsBucketed } from '../services/queries/index.ts'
 import { type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateQuery } from '../validation.ts'
+import { createRenderCache } from './feed-image-router.ts'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -37,6 +39,14 @@ const PROFILE_FEED_LIMIT = 50
 
 export const createFeedPublicRouter = (): TypedRouter => {
   const router = typedRouter()
+  // Caches the serialised structured payload (JSON bytes) for the unauthenticated
+  // `/feed/:postId` endpoint, which resolves up to 100 blocks per request — the
+  // same bounded LRU + in-flight de-dup the block images use. Keyed on the
+  // capability token (so a public request never sees a followers-only payload, and
+  // a wrong token 404s and isn't cached) and a coarse hourly bucket (staleness on
+  // an edit is bounded to ≤1h — acceptable for a peer-fetched enrichment payload;
+  // an `updated_at`-keyed version + a per-block sample cap is #972).
+  const structuredCache = createRenderCache<FeedStructuredPost>()
 
   router.get<{ username: string }, PublicSeriesResponse, unknown, PublicSeriesQuery>(
     '/public/:username/series',
@@ -115,7 +125,8 @@ export const createFeedPublicRouter = (): TypedRouter => {
       }
       const token = typeof req.query.token === 'string' ? req.query.token : undefined
       try {
-        const structured = await resolveStructuredPost(username, postId, token)
+        const key = `structured:${username}:${postId}:${token ?? ''}:${Math.floor(Date.now() / 3_600_000)}`
+        const structured = await structuredCache(key, () => resolveStructuredPost(username, postId, token))
         if (!structured) {
           return res.status(404).json({ error: 'Not found', success: false })
         }
