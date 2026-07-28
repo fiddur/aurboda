@@ -11,6 +11,8 @@
  */
 import type { ArticleBlock, ArticleContent, FeedVisibility, UpdateArticleBody } from '@aurboda/api-spec'
 
+import { isPubliclyVisible } from './activitypub/object.ts'
+
 export type BuildArticleResult = { ok: true; article: ArticleContent } | { ok: false; error: string }
 
 /**
@@ -41,7 +43,8 @@ export const articleBlockImageUrl = (
 ): string => {
   const base = `${apiBaseUrl.replace(/\/+$/, '')}/public/${encodeURIComponent(user)}/feed/${postId}`
   const params = new URLSearchParams({ v: String(updatedAt.getTime()) })
-  if (visibility === 'followers') params.set('token', imageToken)
+  // Allowlist (public/unlisted are open); any other visibility needs the token.
+  if (!isPubliclyVisible(visibility)) params.set('token', imageToken)
   return `${base}/blocks/${index}/image.${format}?${params.toString()}`
 }
 

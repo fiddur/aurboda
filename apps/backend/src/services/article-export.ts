@@ -43,7 +43,7 @@ export const buildArticleMarkdown = (
   updatedAt: Date,
   article: ArticleContent,
 ): string => {
-  const sections = [`# ${article.title}`]
+  const sections = [`# ${inlineText(article.title)}`]
   article.blocks.forEach((block, index) => {
     if (block.type === 'prose') {
       sections.push(block.markdown)

@@ -72,12 +72,13 @@ describe('buildArticleMarkdown', () => {
     expect(md).toContain('![HR [bpm\\]]')
   })
 
-  test('carries the capability token for a followers-only post', () => {
+  test('public/unlisted image URLs carry no token (a followers-only article is refused at the route)', () => {
     const md = render(
       [{ end: WINDOW.end, metric: 'heart_rate', start: WINDOW.start, type: 'chart' }],
-      'followers',
+      'unlisted',
     )
-    expect(md).toContain(`?v=${V}&token=secret-token`)
+    expect(md).toContain(`?v=${V})`)
+    expect(md).not.toContain('token=')
   })
 
   test('renders a prose-only article without dangling image sections', () => {

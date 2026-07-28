@@ -171,7 +171,9 @@ export const feedStructuredArticleCorrelationBlockSchema = z
   })
   .meta({ description: 'A resolved correlation block', id: 'FeedStructuredArticleCorrelationBlock' })
 
-export type FeedStructuredArticleCorrelationBlock = z.infer<typeof feedStructuredArticleCorrelationBlockSchema>
+export type FeedStructuredArticleCorrelationBlock = z.infer<
+  typeof feedStructuredArticleCorrelationBlockSchema
+>
 
 /** One resolved article content block (prose, chart, or correlation). */
 export const feedStructuredArticleBlockSchema = z
@@ -194,7 +196,9 @@ export type FeedStructuredArticleBlock = z.infer<typeof feedStructuredArticleBlo
  */
 export const feedStructuredArticleSchema = z
   .object({
-    blocks: z.array(feedStructuredArticleBlockSchema).meta({ description: 'Ordered, resolved content blocks' }),
+    blocks: z
+      .array(feedStructuredArticleBlockSchema)
+      .meta({ description: 'Ordered, resolved content blocks' }),
     kind: z.literal('article').meta({ description: 'Discriminator: an article post' }),
     title: z.string().meta({ description: 'Article title' }),
   })
@@ -207,9 +211,17 @@ export type FeedStructuredArticle = z.infer<typeof feedStructuredArticleSchema>
  * return: an activity share's typed scalars/series, or an article's title +
  * resolved blocks. `kind` tells a consuming peer (and the web timeline card)
  * which native render to use.
+ *
+ * A payload with NO `kind` is treated as an `activity` before discriminating, so
+ * enrichment fetched from a peer running the *previous* release (which emitted
+ * the un-tagged `FeedStructured` shape) still parses instead of silently dropping
+ * the native chart during a rolling upgrade.
  */
 export const feedStructuredPostSchema = z
-  .discriminatedUnion('kind', [feedStructuredActivitySchema, feedStructuredArticleSchema])
+  .preprocess(
+    (v) => (v != null && typeof v === 'object' && !('kind' in v) ? { ...v, kind: 'activity' } : v),
+    z.discriminatedUnion('kind', [feedStructuredActivitySchema, feedStructuredArticleSchema]),
+  )
   .meta({ id: 'FeedStructuredPost' })
 
 export type FeedStructuredPost = z.infer<typeof feedStructuredPostSchema>

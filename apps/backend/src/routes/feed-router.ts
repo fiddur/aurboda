@@ -38,6 +38,7 @@ import {
   listFeedPosts,
   updateFeedPost,
 } from '../db/index.ts'
+import { isPubliclyVisible } from '../services/activitypub/object.ts'
 import { buildArticleMarkdown } from '../services/article-export.ts'
 import { buildArticleContent, mergeArticleContent } from '../services/article.ts'
 import { serializeFeedPost } from '../services/feed.ts'
@@ -227,6 +228,16 @@ export const createFeedRouter = (
       const post = await getFeedPostById(user, req.params.postId)
       if (!post || post.kind !== 'article' || post.article == null) {
         return res.status(404).json({ error: 'Article not found', success: false })
+      }
+      // The export is for pasting to a PUBLIC destination; a followers-only
+      // article's chart images require its private capability token, so refuse
+      // rather than emit that token into publicly-pasted text.
+      if (!isPubliclyVisible(post.visibility)) {
+        return res.status(400).json({
+          error:
+            'A followers-only article can’t be exported — its charts need a private link. Make it public or unlisted first.',
+          success: false,
+        })
       }
       if (!apiBaseUrl) {
         return res.status(503).json({ error: 'Export is not available', success: false })

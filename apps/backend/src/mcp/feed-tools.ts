@@ -31,6 +31,7 @@ import {
   updateFeedFollowingNotify,
   updateFeedPost,
 } from '../db/index.ts'
+import { isPubliclyVisible } from '../services/activitypub/object.ts'
 import { buildArticleMarkdown } from '../services/article-export.ts'
 import { buildArticleContent, mergeArticleContent } from '../services/article.ts'
 import { serializeFeedPost } from '../services/feed.ts'
@@ -149,6 +150,13 @@ export const registerFeedTools = (
     async ({ id }) => {
       const post = await getFeedPostById(user, id)
       if (!post || post.kind !== 'article' || post.article == null) return errorResponse('Article not found')
+      // Export targets a public paste; a followers-only article's images need its
+      // private token, so refuse rather than leak it (parity with the REST route).
+      if (!isPubliclyVisible(post.visibility)) {
+        return errorResponse(
+          'A followers-only article can’t be exported — its charts need a private link. Make it public or unlisted first.',
+        )
+      }
       if (!apiBaseUrl) return errorResponse('Export is not available')
       const markdown = buildArticleMarkdown(
         apiBaseUrl,

@@ -55,7 +55,10 @@ A feed post has a **`kind`**:
   MCP tool) renders an article as paste-ready markdown — the title, the prose blocks
   verbatim, and one image link per chart/correlation block (the block-image endpoint
   below) — for pasting into a text-only destination like r/QuantifiedSelf, where the
-  author adds their own write-up around the linked charts.
+  author adds their own write-up around the linked charts. A **`followers`-only** article
+  can't be exported (400): the export targets a public paste, but its chart images require
+  the post's private capability token, which must never land in publicly-pasted text —
+  make the article public or unlisted first.
 
 An **`activity`** feed post references one of the user's activities and records the
 explicit metric selection that bounds what is shared:

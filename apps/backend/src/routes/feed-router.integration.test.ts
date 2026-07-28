@@ -211,4 +211,13 @@ describe('GET /feed/articles/:postId/export (Reddit/markdown export, C4)', () =>
     const res = await noBase.request.get(`/feed/articles/${created.body.post.id}/export`)
     expect(res.status).toBe(503)
   })
+
+  test('400s for a followers-only article (its images need a private token)', async () => {
+    const created = await withBase.request
+      .post('/feed/articles')
+      .send({ ...articleBody(), visibility: 'followers' })
+    const res = await withBase.request.get(`/feed/articles/${created.body.post.id}/export`)
+    expect(res.status).toBe(400)
+    expect(res.body.error).toContain('followers-only')
+  })
 })
