@@ -2,7 +2,13 @@ import type { ArticleContent } from '@aurboda/api-spec'
 
 import { describe, expect, test } from 'vitest'
 
-import { blockWindow, buildArticleContent, mergeArticleContent } from './article.ts'
+import {
+  articleBlockImageUrl,
+  blockWindow,
+  buildArticleContent,
+  isZeroDurationBucket,
+  mergeArticleContent,
+} from './article.ts'
 
 const WEEK_START = '2026-07-01T00:00:00.000Z'
 const WEEK_END = '2026-07-07T00:00:00.000Z'
@@ -156,6 +162,61 @@ describe('buildArticleContent', () => {
     )
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.error).toContain('Correlation block 1')
+  })
+})
+
+describe('isZeroDurationBucket', () => {
+  test('flags zero-duration buckets in any unit', () => {
+    expect(isZeroDurationBucket('0s')).toBe(true)
+    expect(isZeroDurationBucket('00m')).toBe(true)
+    expect(isZeroDurationBucket('0h')).toBe(true)
+    expect(isZeroDurationBucket('0d')).toBe(true)
+  })
+
+  test('accepts a normal bucket', () => {
+    expect(isZeroDurationBucket('5s')).toBe(false)
+    expect(isZeroDurationBucket('1h')).toBe(false)
+  })
+})
+
+describe('articleBlockImageUrl', () => {
+  const UPDATED = new Date('2026-07-09T00:00:00Z')
+  const V = String(UPDATED.getTime())
+  const base = 'https://aurboda.example/api/public/fiddur/feed/POST'
+
+  test('no token for a public/unlisted post', () => {
+    expect(
+      articleBlockImageUrl('https://aurboda.example/api', 'fiddur', 'POST', 'public', 'secret', UPDATED, 0),
+    ).toBe(`${base}/blocks/0/image.png?v=${V}`)
+  })
+
+  test('carries the capability token for a followers-only post', () => {
+    expect(
+      articleBlockImageUrl(
+        'https://aurboda.example/api',
+        'fiddur',
+        'POST',
+        'followers',
+        'secret',
+        UPDATED,
+        2,
+      ),
+    ).toBe(`${base}/blocks/2/image.png?v=${V}&token=secret`)
+  })
+
+  test('supports the svg format', () => {
+    expect(
+      articleBlockImageUrl(
+        'https://aurboda.example/api',
+        'fiddur',
+        'POST',
+        'public',
+        'secret',
+        UPDATED,
+        1,
+        'svg',
+      ),
+    ).toBe(`${base}/blocks/1/image.svg?v=${V}`)
   })
 })
 

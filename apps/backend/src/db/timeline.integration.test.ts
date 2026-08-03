@@ -69,6 +69,7 @@ describe('Timeline store integration', () => {
       activity_type: 'exercise',
       duration_seconds: 1800,
       end_time: '2026-07-01T08:30:00.000Z',
+      kind: 'activity' as const,
       metrics: [
         { key: 'heart_rate_avg', unit: 'bpm', value: 142 },
         { key: 'hr_zone_minutes', value: { z2: 22, z3: 8 } },
@@ -124,6 +125,7 @@ describe('Timeline store integration', () => {
     const user = getTestUser()
     const structured = {
       activity_type: 'exercise',
+      kind: 'activity' as const,
       metrics: [{ key: 'distance', unit: 'km', value: 5 }],
       series: [],
       start_time: '2026-07-01T08:00:00.000Z',

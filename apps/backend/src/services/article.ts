@@ -9,9 +9,62 @@
  * article is rejected at the write boundary rather than failing later at render
  * time. Pure and synchronous — unit-testable without a DB.
  */
-import type { ArticleBlock, ArticleContent, UpdateArticleBody } from '@aurboda/api-spec'
+import type { ArticleBlock, ArticleContent, FeedVisibility, UpdateArticleBody } from '@aurboda/api-spec'
+
+import { describeSelectorAxis, getMetricDisplayName } from '@aurboda/api-spec'
+
+import { isPubliclyVisible } from './activitypub/object.ts'
 
 export type BuildArticleResult = { ok: true; article: ArticleContent } | { ok: false; error: string }
+
+/**
+ * A human label for a chart/correlation block: its caption, else a label from its
+ * data (the metric display name, or `trigger vs outcome`). Shared single source
+ * for the AS2 image attachment name (`articleImageAttachments`) and the markdown
+ * export (`article-export.ts`) so the two can't diverge. A blank caption falls
+ * back to the data label.
+ */
+export const articleBlockLabel = (
+  block: Extract<ArticleBlock, { type: 'chart' | 'correlation' }>,
+): string => {
+  if (block.caption) return block.caption
+  return block.type === 'chart'
+    ? getMetricDisplayName(block.metric)
+    : `${describeSelectorAxis(block.trigger)} vs ${describeSelectorAxis(block.outcome)}`
+}
+
+/**
+ * A zero-duration bucket (`0s`, `00m`, …) passes the block schema regex but is
+ * invalid for `date_bin` (`date_bin('0 seconds', …)` errors) — treat it as no
+ * data. Shared by the block-image renderer and the structured-enrichment
+ * resolver, both of which bucket a chart block over its locked window.
+ */
+export const isZeroDurationBucket = (bucket: string): boolean => /^0+[smhd]$/.test(bucket)
+
+/**
+ * The public URL of one article chart/correlation block's rendered image (the
+ * C1 endpoint), including the cache-busting `?v=<updated_at>` and, for a
+ * `followers`-only post, the capability `?token=`. Shared by the outbound AS2
+ * attachment builder (`articleImageAttachments`) and the markdown export
+ * (`article-export.ts`), so the two surfaces can never point at different URLs
+ * for the same block.
+ */
+export const articleBlockImageUrl = (
+  apiBaseUrl: string,
+  user: string,
+  postId: string,
+  visibility: FeedVisibility,
+  imageToken: string,
+  updatedAt: Date,
+  index: number,
+  format: 'png' | 'svg' = 'png',
+): string => {
+  const base = `${apiBaseUrl.replace(/\/+$/, '')}/public/${encodeURIComponent(user)}/feed/${postId}`
+  const params = new URLSearchParams({ v: String(updatedAt.getTime()) })
+  // Allowlist (public/unlisted are open); any other visibility needs the token.
+  if (!isPubliclyVisible(visibility)) params.set('token', imageToken)
+  return `${base}/blocks/${index}/image.${format}?${params.toString()}`
+}
 
 /** A windowed block's effective window: its own override, else the article default. */
 export const blockWindow = (

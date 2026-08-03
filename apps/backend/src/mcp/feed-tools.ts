@@ -31,6 +31,8 @@ import {
   updateFeedFollowingNotify,
   updateFeedPost,
 } from '../db/index.ts'
+import { isPubliclyVisible } from '../services/activitypub/object.ts'
+import { buildArticleMarkdown } from '../services/article-export.ts'
 import { buildArticleContent, mergeArticleContent } from '../services/article.ts'
 import { serializeFeedPost } from '../services/feed.ts'
 import { serializeFollower } from '../services/followers.ts'
@@ -51,6 +53,7 @@ export const registerFeedTools = (
   deliver?: FeedDeliver,
   followActions?: FollowActions,
   followerActions?: FollowerActions,
+  apiBaseUrl?: string,
 ) => {
   server.tool(
     'list_feed',
@@ -137,6 +140,34 @@ export const registerFeedTools = (
       if (!record) return errorResponse('Article not found')
       deliver?.updatedArticle(user, record)
       return jsonResponse(await serializeFeedPost(user, record))
+    },
+  )
+
+  server.tool(
+    'export_article_markdown',
+    'Export a published ARTICLE as paste-ready markdown for a text-only destination (e.g. r/QuantifiedSelf): the title, the prose blocks verbatim, and one image link per chart/correlation block pointing at its rendered PNG. Paste the result and add your own write-up around the linked charts.',
+    { id: z.string().uuid().describe('Feed post ID (must be an article)') },
+    async ({ id }) => {
+      const post = await getFeedPostById(user, id)
+      if (!post || post.kind !== 'article' || post.article == null) return errorResponse('Article not found')
+      // Export targets a public paste; a followers-only article's images need its
+      // private token, so refuse rather than leak it (parity with the REST route).
+      if (!isPubliclyVisible(post.visibility)) {
+        return errorResponse(
+          'A followers-only article can’t be exported — its charts need a private link. Make it public or unlisted first.',
+        )
+      }
+      if (!apiBaseUrl) return errorResponse('Export is not available')
+      const markdown = buildArticleMarkdown(
+        apiBaseUrl,
+        user,
+        post.id,
+        post.visibility,
+        post.image_token,
+        post.updated_at,
+        post.article,
+      )
+      return jsonResponse({ markdown })
     },
   )
 

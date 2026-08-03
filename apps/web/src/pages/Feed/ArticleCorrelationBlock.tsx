@@ -26,8 +26,25 @@ const fmt = (value: number | null | undefined, digits = 2): string =>
 
 const fmtP = (p: number | null | undefined): string => (p == null ? '—' : p < 0.001 ? '<0.001' : p.toFixed(3))
 
+/**
+ * The subset of a continuous-correlation result the scatter draws — the same
+ * fields `ContinuousCorrelationData` and a resolved `FeedStructuredArticleCorrelationBlock`
+ * both carry, so this component renders either a live fetch result or a
+ * structured-enrichment payload without an adapter.
+ */
+export interface CorrelationScatterData {
+  series: { date: string; trigger: number; outcome: number }[]
+  pearson: number | null
+  spearman: number | null
+  pearson_p: number | null
+  n: number
+  group_comparison: ContinuousCorrelationData['group_comparison']
+  trigger: CorrelationSelector
+  outcome: CorrelationSelector
+}
+
 /** The scatter itself: points + OLS regression line + r/ρ/n/p annotation + axes. */
-const CorrelationScatterSvg = ({ data }: { data: ContinuousCorrelationData }) => {
+export const CorrelationScatterSvg = ({ data }: { data: CorrelationScatterData }) => {
   const xs = data.series.map((p) => p.trigger)
   const ys = data.series.map((p) => p.outcome)
   const xMin = Math.min(...xs)

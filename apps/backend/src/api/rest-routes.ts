@@ -168,7 +168,7 @@ export const mountRestRouters = ({
   // feed router's `/:postId`.
   httpd.use('/feed/following', createFeedFollowingRouter(authMiddleware, followActions))
   httpd.use('/feed/followers', createFeedFollowersRouter(authMiddleware, followerActions))
-  httpd.use('/feed', createFeedRouter(authMiddleware, feedDeliver, timelineHub))
+  httpd.use('/feed', createFeedRouter(authMiddleware, feedDeliver, timelineHub, apiBaseUrl))
   httpd.use('/challenges', createChallengesRouter(authMiddleware, webHost, apiBaseUrl))
   httpd.use(createChallengeDataRouter())
   // Public feed series must be mounted before the generic /public/:username/:slug

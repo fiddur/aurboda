@@ -1,4 +1,4 @@
-import type { FeedStructured } from '@aurboda/api-spec'
+import type { FeedStructuredPost } from '@aurboda/api-spec'
 import type { Actor } from '@fedify/fedify/vocab'
 
 import { createFederation, type Federation, type InboxContext, MemoryKvStore } from '@fedify/fedify'
@@ -155,7 +155,7 @@ export const ingestNoteForRecipient = async (
   user: string,
   note: Note,
   followee: FeedFollowingRecord,
-  enrich: (objectUri: string, token?: string) => Promise<FeedStructured | null>,
+  enrich: (objectUri: string, token?: string) => Promise<FeedStructuredPost | null>,
   onNewEntry?: (user: string) => void,
 ): Promise<void> => {
   const input = noteToTimelineInput(note, followee)
@@ -185,7 +185,7 @@ const ingestFeedActivity = async (
   activity: Create | Update,
   onNewEntry?: (user: string) => void,
   /** Best-effort fetch of the post's native Aurboda structured data (null if not an Aurboda post). */
-  enrich: (objectUri: string, token?: string) => Promise<FeedStructured | null> = async () => null,
+  enrich: (objectUri: string, token?: string) => Promise<FeedStructuredPost | null> = async () => null,
 ): Promise<void> => {
   // The recipient (whose timeline this is) comes from the personal inbox owner.
   // Unlike Accept/Reject there's no inner Follow to derive it from, so this relies

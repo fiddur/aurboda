@@ -1,16 +1,21 @@
 /**
- * Native rendering of a timeline post's Aurboda structured data: an interactive
- * line chart per shared high-resolution series (hover shows real values) instead
- * of a static image or plain text. Only rendered for posts from Aurboda
- * instances (which carry `structured`); Mastodon posts have none.
+ * Native rendering of a timeline post's Aurboda structured data. An `activity`
+ * post renders an interactive line chart per shared high-resolution series
+ * (hover shows real values) instead of a static image or plain text; an
+ * `article` post renders the full inline article (title + resolved blocks —
+ * see `TimelineArticle`). Only rendered for posts from Aurboda instances
+ * (which carry `structured`); Mastodon posts have none.
  */
-import type { FeedStructured } from '@aurboda/api-spec'
+import type { FeedStructuredPost } from '@aurboda/api-spec'
 
 import { TrendLineChart } from '../../components/charts/TrendLineChart'
 import { structuredChartSeries } from './timeline-structured'
+import { TimelineArticle } from './TimelineArticle'
 import './TimelineStructured.css'
 
-export function TimelineStructured({ structured }: { structured: FeedStructured }) {
+export function TimelineStructured({ structured }: { structured: FeedStructuredPost }) {
+  if (structured.kind === 'article') return <TimelineArticle article={structured} />
+
   const series = structuredChartSeries(structured)
   if (series.length === 0) return null
   return (

@@ -1,4 +1,4 @@
-import type { FeedStructured, WellKnownAurboda } from '@aurboda/api-spec'
+import type { FeedStructuredActivity, WellKnownAurboda } from '@aurboda/api-spec'
 
 import { describe, expect, test } from 'vitest'
 
@@ -44,8 +44,9 @@ const wellKnown: WellKnownAurboda = {
   version: '1.0.0',
 }
 
-const structured: FeedStructured = {
+const structured: FeedStructuredActivity = {
   activity_type: 'exercise',
+  kind: 'activity',
   metrics: [{ key: 'heart_rate_avg', unit: 'bpm', value: 142 }],
   series: [],
   start_time: '2026-07-01T08:00:00.000Z',
@@ -71,6 +72,23 @@ describe('enrichFromAurboda', () => {
       'discover:https://aurboda.net',
       `fetch:https://aurboda.net/api/public/fredrik/feed/${UUID}`,
     ])
+  })
+
+  test('tolerates a kind-less payload from a peer on the previous release (tags it activity)', async () => {
+    // The un-tagged `FeedStructured` shape a peer running the previous release emits.
+    const legacy = {
+      activity_type: 'exercise',
+      metrics: [{ key: 'heart_rate_avg', unit: 'bpm', value: 142 }],
+      series: [],
+      start_time: '2026-07-01T08:00:00.000Z',
+    }
+    const deps: AurbodaEnrichDeps = {
+      discover: async () => wellKnown,
+      fetchStructured: async () => ({ structured: legacy, success: true }),
+    }
+    const result = await enrichFromAurboda(`https://aurboda.net/users/fredrik/feed/${UUID}`, deps)
+    // The preprocess shim tags it `kind:'activity'` so it parses instead of being dropped.
+    expect(result).toEqual(structured)
   })
 
   test('returns null (no fetch) for a non-Aurboda-shaped object URI', async () => {

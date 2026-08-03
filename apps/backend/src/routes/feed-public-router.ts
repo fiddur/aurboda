@@ -16,6 +16,7 @@
 import {
   type FeedPostsResponse,
   type FeedPostStructuredResponse,
+  type FeedStructuredPost,
   type PublicSeriesQuery,
   publicSeriesQuerySchema,
   type PublicSeriesResponse,
@@ -24,11 +25,12 @@ import {
 import { isValidUsername } from '../api/auth-routes.ts'
 import { findCoveringSharedSeriesWindow, isMissingDatabase, listPublicFeedPostsPage } from '../db/index.ts'
 import { resolvePublicSeries } from '../services/feed-series.ts'
-import { resolveStructuredPost } from '../services/feed-structured.ts'
+import { loadAuthorizedStructuredPost, resolveStructuredContent } from '../services/feed-structured.ts'
 import { serializeFeedPost } from '../services/feed.ts'
 import { queryMetricsBucketed } from '../services/queries/index.ts'
 import { type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateQuery } from '../validation.ts'
+import { createRenderCache } from './feed-image-router.ts'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -37,6 +39,21 @@ const PROFILE_FEED_LIMIT = 50
 
 export const createFeedPublicRouter = (): TypedRouter => {
   const router = typedRouter()
+  // Caches the resolved structured payload OBJECT for the unauthenticated
+  // `/feed/:postId` endpoint, which resolves up to 100 blocks per request — the
+  // same bounded LRU + in-flight de-dup the block images use. The route authorizes
+  // the post BEFORE consulting this cache (like the sibling image routes), so the
+  // capability token is NOT part of the key: a `followers`-only payload never
+  // reaches the cache via a public request, and an anonymous `?token=…` walk can't
+  // inflate the key space. Keyed on `updated_at` AND a coarse hourly bucket — the
+  // SAME two-part key the block-image cache uses for the same live-resolved article
+  // data: `updated_at` busts on an edit, and the hourly term bounds staleness from
+  // *backfilled measurements inside an already-locked window* (which don't touch
+  // `updated_at`) to ≤1h, so this endpoint can't freeze into a lifetime snapshot
+  // while its own PNG stays live (#934 locks the window, not the data). A smaller
+  // cap than the image LRU because a payload can be large (per-block sample cap is
+  // #972). Producing `null` (no content) isn't cached.
+  const structuredCache = createRenderCache<FeedStructuredPost>(50)
 
   router.get<{ username: string }, PublicSeriesResponse, unknown, PublicSeriesQuery>(
     '/public/:username/series',
@@ -115,7 +132,15 @@ export const createFeedPublicRouter = (): TypedRouter => {
       }
       const token = typeof req.query.token === 'string' ? req.query.token : undefined
       try {
-        const structured = await resolveStructuredPost(username, postId, token)
+        // Authorize BEFORE the cache: an unauthorized post 404s and never reaches
+        // it, so the token stays out of the key and a revoked/flipped post stops
+        // resolving immediately. Cache keyed on `updated_at` so an edit busts it.
+        const post = await loadAuthorizedStructuredPost(username, postId, token)
+        if (!post) {
+          return res.status(404).json({ error: 'Not found', success: false })
+        }
+        const key = `structured:${username}:${postId}:${post.updated_at.getTime()}:${Math.floor(Date.now() / 3_600_000)}`
+        const structured = await structuredCache(key, () => resolveStructuredContent(username, post))
         if (!structured) {
           return res.status(404).json({ error: 'Not found', success: false })
         }

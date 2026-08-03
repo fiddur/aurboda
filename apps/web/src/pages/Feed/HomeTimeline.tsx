@@ -73,11 +73,16 @@ function TimelineCard({ entry }: { entry: TimelineEntry }) {
         </div>
       </header>
 
-      {/* Sanitised server-side on ingest (timeline-ingest.ts) — safe to render. */}
-      <div class="feed-post-content" dangerouslySetInnerHTML={{ __html: entry.content }} />
+      {/* Sanitised server-side on ingest (timeline-ingest.ts) — safe to render.
+          Suppressed for a native article render (below), whose `content` is the
+          same title + prose + captions — else the article shows twice. */}
+      {entry.structured?.kind !== 'article' && (
+        <div class="feed-post-content" dangerouslySetInnerHTML={{ __html: entry.content }} />
+      )}
 
-      {/* Native structured data (Aurboda peers) → a real chart; otherwise fall
-          back to the delivered image attachment(s), the way Mastodon shows them. */}
+      {/* Native structured data (Aurboda peers) → a real chart / inline article;
+          otherwise fall back to the delivered image attachment(s), the way
+          Mastodon shows them. */}
       {entry.structured ? (
         <TimelineStructured structured={entry.structured} />
       ) : (

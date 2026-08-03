@@ -30,7 +30,7 @@ import type { ScatterSvgData } from '../services/charts/scatter-svg.ts'
 
 import { isValidUsername } from '../api/auth-routes.ts'
 import { isMissingDatabase } from '../db/index.ts'
-import { blockWindow } from '../services/article.ts'
+import { blockWindow, isZeroDurationBucket } from '../services/article.ts'
 import { isCapabilityAuthorized } from '../services/feed-capability.ts'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -105,18 +105,20 @@ export type ResolvedArticleBlock =
     }
 
 /**
- * A tiny memoising render cache with in-flight de-duplication (mirrors
- * og-image-router): repeated fetches for the same image serve a cached buffer,
- * and concurrent misses collapse to a single render. Rendering is CPU-heavy and
- * the source data (a past activity's series/GPS) is effectively immutable, so a
- * bounded LRU + process-restart eviction is enough. `produce` returning `null`
- * (no data) is NOT cached. The caller checks eligibility BEFORE consulting this,
- * so an unshared/visibility-changed post 404s and never reaches the cache.
+ * A tiny memoising cache with in-flight de-duplication (mirrors og-image-router):
+ * repeated fetches for the same key serve the cached value, and concurrent misses
+ * collapse to a single `produce`. Producing is expensive (a rasterised image, or
+ * a many-block structured payload) and the source is effectively immutable per
+ * key, so a bounded LRU + process-restart eviction is enough. `produce` returning
+ * `null` (no data / unauthorized) is NOT cached. The caller checks eligibility
+ * BEFORE consulting this, so an unshared/visibility-changed post 404s and never
+ * reaches the cache. Generic over the cached value (defaults to `Buffer` for the
+ * image endpoints; the structured endpoint caches its payload object).
  */
-export const createRenderCache = (maxEntries = 200) => {
-  const cache = new Map<string, Buffer>()
-  const inFlight = new Map<string, Promise<Buffer | null>>()
-  return async (key: string, produce: () => Promise<Buffer | null>): Promise<Buffer | null> => {
+export const createRenderCache = <T = Buffer>(maxEntries = 200) => {
+  const cache = new Map<string, T>()
+  const inFlight = new Map<string, Promise<T | null>>()
+  return async (key: string, produce: () => Promise<T | null>): Promise<T | null> => {
     const cached = cache.get(key)
     if (cached) return cached
     const pending = inFlight.get(key)
@@ -124,15 +126,15 @@ export const createRenderCache = (maxEntries = 200) => {
     const promise = produce()
     inFlight.set(key, promise)
     try {
-      const png = await promise
-      if (png) {
+      const value = await promise
+      if (value) {
         if (cache.size >= maxEntries) {
           const oldest = cache.keys().next().value
           if (oldest !== undefined) cache.delete(oldest)
         }
-        cache.set(key, png)
+        cache.set(key, value)
       }
-      return png
+      return value
     } finally {
       inFlight.delete(key)
     }
@@ -272,10 +274,6 @@ export const resolveArticleBlock = async (
 
 /** Article-chart line colour, matching the web inline render (`ArticleChartBlock`). */
 const ARTICLE_CHART_COLOR = '#673ab8'
-
-/** A zero-duration bucket (`0s`, `00m`, …) passes the block schema regex but is
- * invalid for `date_bin` (`date_bin('0 seconds', …)` errors) — treat it as no image. */
-const isZeroDurationBucket = (bucket: string): boolean => /^0+[smhd]$/.test(bucket)
 
 /**
  * Render one resolved article block to its image bytes (PNG or the crisp SVG),
