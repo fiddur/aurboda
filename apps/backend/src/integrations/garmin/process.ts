@@ -22,6 +22,7 @@ import type {
 } from './client.ts'
 
 import {
+  activityTypeExists,
   deleteGarminActivityWithWrongType,
   insertActivity,
   insertLocations,
@@ -29,6 +30,7 @@ import {
   insertTimeSeries,
   softDeleteLocationRange,
 } from '../../db/index.ts'
+import { auditError } from '../../services/audit-log.ts'
 
 // ============================================================================
 // Types
@@ -66,6 +68,8 @@ export const garminDataTypes: GarminDataType[] = [
 // ============================================================================
 
 export interface GarminProcessDeps {
+  activityTypeExists: typeof activityTypeExists
+  auditError: typeof auditError
   deleteGarminActivityWithWrongType: typeof deleteGarminActivityWithWrongType
   insertActivity: typeof insertActivity
   insertLocations: typeof insertLocations
@@ -75,6 +79,8 @@ export interface GarminProcessDeps {
 }
 
 const defaultDeps: GarminProcessDeps = {
+  activityTypeExists,
+  auditError,
   deleteGarminActivityWithWrongType,
   insertActivity,
   insertLocations,
@@ -97,6 +103,47 @@ const garminTypeKeyOverrides: Record<string, string> = {
   stair_stepper: 'stair_climbing_machine',
   stationary_biking: 'biking_stationary',
   treadmill_running: 'running_treadmill',
+}
+
+/** Activity type used when a Garmin typeKey resolves to no known definition. */
+const fallbackActivityType = 'other_workout'
+
+/**
+ * Garmin revises sport keys in place and marks the new shape with a version
+ * suffix (`rowing_v2`, `indoor_rowing_v2`, …). The suffix carries no meaning
+ * for us, so drop it and resolve the unversioned key.
+ */
+const stripVersionSuffix = (typeKey: string): string => typeKey.replace(/_v\d+$/, '')
+
+interface ResolvedActivityType {
+  activity_type: string
+  /** The original Garmin typeKey, kept only when it could not be mapped. */
+  unmapped_key?: string
+}
+
+/**
+ * Resolve a Garmin typeKey to an activity type that exists in
+ * activity_type_definitions. Unknown keys degrade to `other_workout` instead of
+ * failing the insert on the activities → activity_type_definitions foreign key,
+ * which would abort the rest of the batch and every day of the sync range.
+ */
+const resolveActivityType = async (
+  user: string,
+  typeKey: string,
+  deps: GarminProcessDeps,
+  cache: Map<string, ResolvedActivityType>,
+): Promise<ResolvedActivityType> => {
+  const cached = cache.get(typeKey)
+  if (cached) return cached
+
+  const unversioned = stripVersionSuffix(typeKey)
+  const mapped = garminTypeKeyOverrides[typeKey] ?? garminTypeKeyOverrides[unversioned] ?? unversioned
+  const resolved: ResolvedActivityType = (await deps.activityTypeExists(user, mapped))
+    ? { activity_type: mapped }
+    : { activity_type: fallbackActivityType, unmapped_key: typeKey }
+
+  cache.set(typeKey, resolved)
+  return resolved
 }
 
 // ============================================================================
@@ -442,6 +489,61 @@ const processBodyBattery = async (
 // ---------------------------------------------------------------------------
 // Activities (exercise)
 // ---------------------------------------------------------------------------
+const processActivity = async (
+  user: string,
+  act: IActivity,
+  deps: GarminProcessDeps,
+  typeCache: Map<string, ResolvedActivityType>,
+): Promise<void> => {
+  const externalId = `garmin-activity-${act.activityId}`
+  const startTime = new Date(act.startTimeGMT || act.beginTimestamp)
+  const durationMs = (act.duration || act.elapsedDuration || 0) * 1000
+  const endTime = new Date(startTime.getTime() + durationMs)
+
+  await deps.insertRawRecord(user, makeRaw('garmin_activity', externalId, startTime, act))
+
+  const activityTypeKey = act.activityType?.typeKey ?? 'unknown'
+  const resolved = await resolveActivityType(user, activityTypeKey, deps, typeCache)
+  const exerciseTitle = act.activityName || activityTypeKey
+
+  // Clean up any existing activity with a different type (handles re-sync after type mapping changes)
+  await deps.deleteGarminActivityWithWrongType(user, act.activityId, resolved.activity_type)
+
+  const activity: Activity = {
+    activity_type: resolved.activity_type,
+    data: {
+      average_hr: act.averageHR,
+      calories: act.calories,
+      distance: act.distance,
+      elevation_gain: act.elevationGain,
+      garmin_activity_id: act.activityId,
+      ...(resolved.unmapped_key ? { garmin_type_key: resolved.unmapped_key } : {}),
+      max_hr: act.maxHR,
+      steps: act.steps,
+      vo2_max: act.vO2MaxValue,
+    },
+    end_time: endTime,
+    source: 'garmin',
+    start_time: startTime,
+    title: exerciseTitle,
+  }
+  await deps.insertActivity(user, activity)
+
+  // Time series from activity summary
+  const points: TimeSeriesPoint[] = []
+  if (act.vO2MaxValue > 0) {
+    points.push({
+      metric: 'vo2_max',
+      source: 'garmin',
+      time: startTime,
+      unit: 'mL/kg/min',
+      value: act.vO2MaxValue,
+    })
+  }
+
+  if (points.length > 0) await deps.insertTimeSeries(user, points)
+}
+
 const processActivities = async (
   user: string,
   data: IActivity[],
@@ -449,57 +551,23 @@ const processActivities = async (
 ): Promise<number> => {
   if (!Array.isArray(data) || data.length === 0) return 0
 
+  const typeCache = new Map<string, ResolvedActivityType>()
   let count = 0
   for (const act of data) {
     if (!act?.activityId) continue
 
-    const externalId = `garmin-activity-${act.activityId}`
-    const startTime = new Date(act.startTimeGMT || act.beginTimestamp)
-    const durationMs = (act.duration || act.elapsedDuration || 0) * 1000
-    const endTime = new Date(startTime.getTime() + durationMs)
-
-    await deps.insertRawRecord(user, makeRaw('garmin_activity', externalId, startTime, act))
-
-    const activityTypeKey = act.activityType?.typeKey ?? 'unknown'
-    const activityType = garminTypeKeyOverrides[activityTypeKey] ?? activityTypeKey
-    const exerciseTitle = act.activityName || activityTypeKey
-
-    // Clean up any existing activity with a different type (handles re-sync after type mapping changes)
-    await deps.deleteGarminActivityWithWrongType(user, act.activityId, activityType)
-
-    const activity: Activity = {
-      activity_type: activityType,
-      data: {
-        average_hr: act.averageHR,
-        calories: act.calories,
-        distance: act.distance,
-        elevation_gain: act.elevationGain,
-        garmin_activity_id: act.activityId,
-        max_hr: act.maxHR,
-        steps: act.steps,
-        vo2_max: act.vO2MaxValue,
-      },
-      end_time: endTime,
-      source: 'garmin',
-      start_time: startTime,
-      title: exerciseTitle,
-    }
-    await deps.insertActivity(user, activity)
-
-    // Time series from activity summary
-    const points: TimeSeriesPoint[] = []
-    if (act.vO2MaxValue > 0) {
-      points.push({
-        metric: 'vo2_max',
-        source: 'garmin',
-        time: startTime,
-        unit: 'mL/kg/min',
-        value: act.vO2MaxValue,
+    // One bad activity must not cost us the rest of the batch — Garmin returns
+    // the most recent activities on every day of the sync range, so a persistent
+    // failure here would otherwise block every later activity indefinitely.
+    try {
+      await processActivity(user, act, deps, typeCache)
+      count++
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      deps.auditError(user, 'sync', `Failed to process Garmin activity ${act.activityId}`, {
+        error: message,
       })
     }
-
-    if (points.length > 0) await deps.insertTimeSeries(user, points)
-    count++
   }
   return count
 }

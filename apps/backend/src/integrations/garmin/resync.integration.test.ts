@@ -10,8 +10,15 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import type { GarminActivityDetailResponse } from './client.ts'
 
-import { getTimeSeries, insertLocations, insertRawRecord, insertTimeSeries } from '../../db/index.ts'
+import {
+  activityTypeExists,
+  getTimeSeries,
+  insertLocations,
+  insertRawRecord,
+  insertTimeSeries,
+} from '../../db/index.ts'
 import { softDeleteLocationRange } from '../../db/locations.ts'
+import { auditError } from '../../services/audit-log.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../../test/db-test-helper.ts'
 import { processActivityDetail } from './process.ts'
 
@@ -35,6 +42,8 @@ describe('Garmin resync integration', () => {
   })
 
   const realDeps = {
+    activityTypeExists,
+    auditError,
     deleteGarminActivityWithWrongType: async () => null as string | null,
     insertActivity: async () => '' as string,
     insertLocations,

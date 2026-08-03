@@ -23,6 +23,16 @@ All data is also preserved as raw JSON in the `raw_records` table.
 
 > **Note on `calories_active` and `calories_total`:** these metrics are stored from Garmin's daily summary (source `garmin`) but **excluded from queries** — aurboda recomputes them per-minute from HR data using the zone-METs model and is the authoritative source for both metrics. See [`docs/features/calories.md`](./features/calories.md) for the model and the source-filter rationale.
 
+## Activity Type Mapping
+
+Garmin labels each activity with a `typeKey` (e.g. `running`, `indoor_rowing`, `rowing_v2`). It is resolved to an aurboda activity type in this order:
+
+1. **Override map** — Garmin names that differ from the Health Connect exercise names used in `@aurboda/api-spec` (e.g. `treadmill_running` → `running_treadmill`, `indoor_rowing` → `rowing_machine`, `breathwork` → `meditation`). Aligning the names keeps cross-source merging working.
+2. **Version suffix stripped** — Garmin revises sport keys in place and marks them with a version suffix, so `rowing_v2` resolves as `rowing` and `indoor_rowing_v2` goes through the override map as `indoor_rowing`.
+3. **Fallback** — if the resulting name has no row in `activity_type_definitions`, the activity is stored as `other_workout` with the original key kept in `data.garmin_type_key`. Without this, an unrecognized sport would violate the `activities.activity_type` foreign key and abort the rest of the batch.
+
+Grep `data.garmin_type_key` (via `query_activities` or `query_raw_records`) to find sports worth adding to the override map. A failure on one activity is logged to the audit log and does not stop the remaining activities in the batch.
+
 ## Admin Setup
 
 No server-side admin configuration is needed. Unlike Oura (which requires OAuth client credentials), Garmin Connect integration uses per-user credentials to authenticate directly with Garmin's web services.

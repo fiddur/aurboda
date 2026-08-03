@@ -5,7 +5,19 @@ import type { GarminProcessDeps } from './process.ts'
 
 import { extractNumericValue, processActivityDetail, processGarminData } from './process.ts'
 
+/** Activity types the mocked activity_type_definitions table contains. */
+const definedActivityTypes = new Set([
+  'meditation',
+  'other_workout',
+  'rowing',
+  'rowing_machine',
+  'running',
+  'yoga',
+])
+
 const mockDeps: GarminProcessDeps = {
+  activityTypeExists: vi.fn(async (_user: string, name: string) => definedActivityTypes.has(name)),
+  auditError: vi.fn(),
   deleteGarminActivityWithWrongType: vi.fn().mockResolvedValue(null),
   insertActivity: vi.fn().mockResolvedValue(undefined),
   insertLocations: vi.fn().mockResolvedValue(undefined),
@@ -858,11 +870,12 @@ describe('processGarminData', () => {
       expect(activityArg.title).toBe('running')
     })
 
-    test('uses "unknown" as activity_type when activityType is missing', async () => {
+    test('falls back to other_workout when activityType is missing', async () => {
       await processGarminData(user, 'activities', [makeActivity({ activityType: null })], mockDeps)
 
       const activityArg = vi.mocked(mockDeps.insertActivity).mock.calls[0]![1]
-      expect(activityArg.activity_type).toBe('unknown')
+      expect(activityArg.activity_type).toBe('other_workout')
+      expect(activityArg.data).toMatchObject({ garmin_type_key: 'unknown' })
     })
 
     test('processes multiple activities and returns count', async () => {
@@ -930,6 +943,84 @@ describe('processGarminData', () => {
 
       const activityArg = vi.mocked(mockDeps.insertActivity).mock.calls[0]![1]
       expect(activityArg.activity_type).toBe('running')
+    })
+
+    test('strips the version suffix from a versioned typeKey', async () => {
+      await processGarminData(
+        user,
+        'activities',
+        [makeActivity({ activityName: 'Gothenburg Rowing', activityType: { typeKey: 'rowing_v2' } })],
+        mockDeps,
+      )
+
+      const activityArg = vi.mocked(mockDeps.insertActivity).mock.calls[0]![1]
+      expect(activityArg.activity_type).toBe('rowing')
+      expect(activityArg.data).not.toHaveProperty('garmin_type_key')
+    })
+
+    test('applies the override map to the unversioned form of a versioned typeKey', async () => {
+      await processGarminData(
+        user,
+        'activities',
+        [makeActivity({ activityType: { typeKey: 'indoor_rowing_v2' } })],
+        mockDeps,
+      )
+
+      const activityArg = vi.mocked(mockDeps.insertActivity).mock.calls[0]![1]
+      expect(activityArg.activity_type).toBe('rowing_machine')
+    })
+
+    test('falls back to other_workout for a typeKey with no definition', async () => {
+      await processGarminData(
+        user,
+        'activities',
+        [makeActivity({ activityName: 'Kite Day', activityType: { typeKey: 'kitesurfing' } })],
+        mockDeps,
+      )
+
+      const activityArg = vi.mocked(mockDeps.insertActivity).mock.calls[0]![1]
+      expect(activityArg.activity_type).toBe('other_workout')
+      expect(activityArg.data).toMatchObject({ garmin_type_key: 'kitesurfing' })
+      expect(activityArg.title).toBe('Kite Day')
+    })
+
+    test('deletes the previous activity using the resolved type, not the raw typeKey', async () => {
+      await processGarminData(
+        user,
+        'activities',
+        [makeActivity({ activityType: { typeKey: 'rowing_v2' } })],
+        mockDeps,
+      )
+
+      expect(mockDeps.deleteGarminActivityWithWrongType).toHaveBeenCalledWith(user, 12345, 'rowing')
+    })
+
+    test('looks up each distinct typeKey only once per batch', async () => {
+      const data = [
+        makeActivity({ activityId: 1, activityType: { typeKey: 'rowing_v2' } }),
+        makeActivity({ activityId: 2, activityType: { typeKey: 'rowing_v2' } }),
+        makeActivity({ activityId: 3, activityType: { typeKey: 'yoga' } }),
+      ]
+
+      await processGarminData(user, 'activities', data, mockDeps)
+
+      expect(mockDeps.activityTypeExists).toHaveBeenCalledTimes(2)
+    })
+
+    test('keeps processing the batch when one activity fails', async () => {
+      vi.mocked(mockDeps.insertActivity).mockRejectedValueOnce(new Error('boom'))
+      const data = [makeActivity({ activityId: 1 }), makeActivity({ activityId: 2 })]
+
+      const result = await processGarminData(user, 'activities', data, mockDeps)
+
+      expect(result).toBe(1)
+      expect(mockDeps.insertActivity).toHaveBeenCalledTimes(2)
+      expect(mockDeps.auditError).toHaveBeenCalledWith(
+        user,
+        'sync',
+        expect.stringContaining('1'),
+        expect.objectContaining({ error: 'boom' }),
+      )
     })
 
     test('calls deleteGarminActivityWithWrongType before insert', async () => {
