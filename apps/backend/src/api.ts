@@ -621,4 +621,25 @@ const main = async () => {
   process.on('SIGINT', shutdown)
 }
 
+/**
+ * Last-resort logging for failures outside a request.
+ *
+ * Express 5 forwards rejections from async route handlers to the error
+ * middleware above, so these do not cover routes. They cover the ~40 places
+ * that deliberately start work without awaiting it (`void thing()`, queue
+ * workers, webhook managers, the post-listen callbacks): before this, such a
+ * rejection was reported by Node with no indication of which subsystem it came
+ * from, and an uncaught exception in one took down a process that was otherwise
+ * serving fine.
+ */
+const installProcessGuards = () => {
+  process.on('unhandledRejection', (reason) => {
+    console.error('⚠️ Unhandled promise rejection (background work):', reason)
+  })
+  process.on('uncaughtException', (error) => {
+    console.error('💥 Uncaught exception (background work):', error)
+  })
+}
+
+installProcessGuards()
 main()

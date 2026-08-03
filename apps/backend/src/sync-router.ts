@@ -61,6 +61,7 @@ import {
   type SyncResponse,
 } from '@aurboda/api-spec'
 
+import { maxOf, minOf } from './services/numeric-extremes.ts'
 import { type TypedRouter, typedRouter } from './typed-router.ts'
 import { validateBody } from './validation.ts'
 
@@ -782,8 +783,8 @@ export const createSyncRouter = (deps: SyncRouterDeps, authMiddleware: RequestHa
           })
           .filter((t) => !Number.isNaN(t))
         if (timestamps.length > 0) {
-          const start = new Date(Math.min(...timestamps))
-          const end = new Date(Math.max(...timestamps))
+          const start = new Date(minOf(timestamps) ?? 0)
+          const end = new Date(maxOf(timestamps) ?? 0)
           if (deps.enqueueCalorieComputation) {
             await deps.enqueueCalorieComputation(user, start, end)
           } else {

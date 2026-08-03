@@ -7,6 +7,7 @@ import type { PeriodMetricStats, PeriodSummaryResult } from './types.ts'
 import { getDailyAggregates, getTimeSeries, getTimeSeriesStats } from '../../db/index.ts'
 import { isContextualHrvMetric, isHrZoneMetric, type MetricType, metricUnits } from '../../schema.ts'
 import { classifyHrvByContext, getHrvContextWindows, type HrvContext } from '../hrv-context.ts'
+import { maxOf, minOf } from '../numeric-extremes.ts'
 import { computeHrZoneSecs, getEffectiveHrZones } from '../settings.ts'
 import { contextualHrvMetricToContext } from './metrics.ts'
 
@@ -125,8 +126,8 @@ async function computeContextualHrvStats(
 
     const nums = values.map(([, v]) => v)
     const avg = nums.reduce((a, b) => a + b, 0) / nums.length
-    const min = Math.min(...nums)
-    const max = Math.max(...nums)
+    const min = minOf(nums) ?? 0
+    const max = maxOf(nums) ?? 0
     const variance = nums.reduce((sum, v) => sum + (v - avg) ** 2, 0) / nums.length
     const stddev = Math.sqrt(variance)
 
