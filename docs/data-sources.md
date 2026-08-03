@@ -52,7 +52,15 @@ All sources feed into a common data model:
 - **`activities`** -- Duration-based events (sleep, exercise, meditation, nap)
 - **`tags`** -- Labeled time points or spans (from Oura tags, Last.fm rules, calendar events)
 - **`productivity`** -- App/website usage records (from RescueTime)
-- **`locations`** -- GPS coordinates (from OwnTracks)
+- **`locations`** -- GPS coordinates (from OwnTracks, plus activity tracks from Garmin and Strava)
 - **`raw_records`** -- Original data preserved in full JSON form
 
 See [data-storage.md](./data-storage.md) for the complete data model.
+
+## GPS Precedence
+
+Several sources write to `locations`: OwnTracks streams phone positions continuously, while [Garmin](./garmin.md) and [Strava](./strava.md) contribute a GPS track per activity. A watch or bike computer fixes position far more accurately than a phone in a pocket, and keeping both would interleave two tracks into one zig-zagging path.
+
+So when an activity brings its own GPS track, locations from every other source are **soft-deleted for the activity's whole span** -- not merely the range the track covers, since the stored track is downsampled to 60-second intervals and its first and last fixes usually sit inside the activity. The number of points replaced is recorded in the audit log.
+
+Points are only ever soft-deleted (`locations.deleted_at`), never removed, and re-inserting a source's own points revives them. If both Garmin and Strava hold a track for the same session, the source that synced most recently is the one shown, and re-syncing the other one switches it back.

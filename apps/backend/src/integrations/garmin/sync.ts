@@ -239,7 +239,9 @@ export const syncActivityDetails = async (
 
     try {
       const detail = await garmin.getActivityDetail(user, garminActivityId)
-      const pointCount = await processActivityDetail(user, detail)
+      const pointCount = await processActivityDetail(user, detail, {
+        activitySpan: { end: activity.end_time ?? activity.start_time, start: activity.start_time },
+      })
       await markActivityDetailSynced(user, activity.id)
 
       auditInfo(

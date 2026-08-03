@@ -17,8 +17,8 @@ import {
   insertRawRecord,
   insertTimeSeries,
 } from '../../db/index.ts'
-import { softDeleteLocationRange } from '../../db/locations.ts'
-import { auditError } from '../../services/audit-log.ts'
+import { softDeleteOtherSourceLocations } from '../../db/locations.ts'
+import { auditError, auditInfo, auditWarn } from '../../services/audit-log.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../../test/db-test-helper.ts'
 import { processGarminData } from './process.ts'
 
@@ -27,12 +27,14 @@ const CONTAINER_TIMEOUT = 120_000
 const realDeps = {
   activityTypeExists,
   auditError,
+  auditInfo,
+  auditWarn,
   deleteGarminActivityWithWrongType,
   insertActivity,
   insertLocations,
   insertRawRecord,
   insertTimeSeries,
-  softDeleteLocationRange,
+  softDeleteOtherSourceLocations,
 }
 
 const makeActivity = (overrides: Record<string, unknown> = {}) => ({
@@ -108,10 +110,18 @@ describe('Garmin activity type resolution (integration)', () => {
     const user = getTestUser()
 
     // title is VARCHAR(255) — an over-long one fails at the DB, standing in for
-    // any per-activity error Garmin might hand us.
+    // any per-activity error Garmin might hand us. The second activity needs a
+    // distinct start time: same type + same start collides on
+    // idx_activities_type_time (Garmin activities carry no external_id), so it
+    // would upsert over the first one and the assertions below could not tell a
+    // survived batch from a silently overwritten one.
     const data = [
       makeActivity({ activityId: 1, activityName: 'x'.repeat(300) }),
-      makeActivity({ activityId: 2, activityName: 'Evening Row' }),
+      makeActivity({
+        activityId: 2,
+        activityName: 'Evening Row',
+        startTimeGMT: '2025-01-15T18:00:00.000',
+      }),
     ]
 
     const count = await processGarminData(user, 'activities', data, realDeps)
@@ -121,8 +131,16 @@ describe('Garmin activity type resolution (integration)', () => {
     expect(stored).toHaveLength(1)
     expect(stored[0].title).toBe('Evening Row')
 
-    const audit = await query(user, `SELECT message, details FROM audit_log WHERE level = 'error'`, [])
+    // Scoped to this activity id — cleanTestDb does not truncate audit_log, so an
+    // unscoped count would depend on what earlier tests in this file logged.
+    const audit = await query(
+      user,
+      `SELECT message, details FROM audit_log
+       WHERE level = 'error' AND message LIKE '%Garmin activity 1'`,
+      [],
+    )
     expect(audit.rows).toHaveLength(1)
-    expect(audit.rows[0].message).toContain('1')
+    expect(audit.rows[0].message).toContain('Failed to process Garmin activity 1')
+    expect(audit.rows[0].details.error).toContain('too long')
   })
 })

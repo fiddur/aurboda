@@ -22,7 +22,7 @@ vi.mock('../../db/index.ts', () => ({
   insertRawRecord: vi.fn(),
   insertTimeSeries: vi.fn(),
   markActivityDetailSynced: vi.fn().mockResolvedValue(undefined),
-  softDeleteLocationRange: vi.fn().mockResolvedValue(undefined),
+  softDeleteOtherSourceLocations: vi.fn().mockResolvedValue(0),
   upsertSyncState: vi.fn(),
 }))
 
@@ -39,6 +39,7 @@ vi.mock('./process', async (importOriginal) => {
 vi.mock('../../services/audit-log', () => ({
   auditError: vi.fn(),
   auditInfo: vi.fn(),
+  auditWarn: vi.fn(),
 }))
 
 const createMockGarmin = () => ({

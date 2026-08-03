@@ -27,6 +27,7 @@ import {
 } from '@aurboda/api-spec'
 import multer from 'multer'
 
+import type { ActivitySpan } from '../integrations/gps-precedence.ts'
 import type { ActivityNotifier } from '../services/deduction-queue.ts'
 
 import {
@@ -140,7 +141,12 @@ export const createActivitiesRouter = (
   authMiddleware: AnyMiddleware,
   syncProvider?: SyncProvider,
   onActivityMutated?: ActivityNotifier,
-  resyncActivityDetail?: (user: string, activityId: string, garminActivityId: number) => Promise<number>,
+  resyncActivityDetail?: (
+    user: string,
+    activityId: string,
+    garminActivityId: number,
+    activitySpan: ActivitySpan,
+  ) => Promise<number>,
 ): TypedRouter => {
   const router = typedRouter()
 
@@ -585,6 +591,7 @@ export const createActivitiesRouter = (
 
       let garminActivityId = getData(activity)
       let garminSourceId = activity.id!
+      let garminSource = activity
 
       if (!garminActivityId) {
         const overlapping = await getOverlappingActivities(user, activity)
@@ -593,6 +600,7 @@ export const createActivitiesRouter = (
           if (gid) {
             garminActivityId = gid
             garminSourceId = src.id!
+            garminSource = src
             break
           }
         }
@@ -607,7 +615,10 @@ export const createActivitiesRouter = (
         return
       }
 
-      const points = await resyncActivityDetail(user, garminSourceId, garminActivityId)
+      const points = await resyncActivityDetail(user, garminSourceId, garminActivityId, {
+        end: garminSource.end_time ?? garminSource.start_time,
+        start: garminSource.start_time,
+      })
       res.json({ points, success: true })
     },
   )

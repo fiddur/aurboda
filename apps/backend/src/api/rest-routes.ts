@@ -142,9 +142,9 @@ export const mountRestRouters = ({
       authMiddleware,
       syncProvider,
       activityNotifier,
-      async (user, activityId, garminActivityId) => {
+      async (user, activityId, garminActivityId, activitySpan) => {
         const detail = await garmin.getActivityDetail(user, garminActivityId)
-        const points = await processActivityDetail(user, detail)
+        const points = await processActivityDetail(user, detail, { activitySpan })
         await markActivityDetailSynced(user, activityId)
         return points
       },

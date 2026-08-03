@@ -18,12 +18,14 @@ const definedActivityTypes = new Set([
 const mockDeps: GarminProcessDeps = {
   activityTypeExists: vi.fn(async (_user: string, name: string) => definedActivityTypes.has(name)),
   auditError: vi.fn(),
+  auditInfo: vi.fn(),
+  auditWarn: vi.fn(),
   deleteGarminActivityWithWrongType: vi.fn().mockResolvedValue(null),
   insertActivity: vi.fn().mockResolvedValue(undefined),
   insertLocations: vi.fn().mockResolvedValue(undefined),
   insertRawRecord: vi.fn().mockResolvedValue(undefined),
   insertTimeSeries: vi.fn().mockResolvedValue(undefined),
-  softDeleteLocationRange: vi.fn().mockResolvedValue(undefined),
+  softDeleteOtherSourceLocations: vi.fn().mockResolvedValue(0),
 }
 
 /** Helper: noon UTC for a given date string. */
@@ -995,6 +997,46 @@ describe('processGarminData', () => {
       expect(mockDeps.deleteGarminActivityWithWrongType).toHaveBeenCalledWith(user, 12345, 'rowing')
     })
 
+    test('audits a warning when a typeKey degrades to the fallback', async () => {
+      await processGarminData(
+        user,
+        'activities',
+        [makeActivity({ activityType: { typeKey: 'kitesurfing' } })],
+        mockDeps,
+      )
+
+      expect(mockDeps.auditWarn).toHaveBeenCalledWith(
+        user,
+        'sync',
+        expect.stringContaining('kitesurfing'),
+        expect.objectContaining({ garmin_type_key: 'kitesurfing', stored_as: 'other_workout' }),
+      )
+    })
+
+    test('does not warn for a typeKey that resolves to a known type', async () => {
+      const data = [
+        makeActivity({ activityId: 1, activityType: { typeKey: 'rowing_v2' } }),
+        makeActivity({ activityId: 2, activityType: { typeKey: 'indoor_rowing_v2' } }),
+        makeActivity({ activityId: 3, activityType: { typeKey: 'running' } }),
+      ]
+
+      await processGarminData(user, 'activities', data, mockDeps)
+
+      expect(mockDeps.auditWarn).not.toHaveBeenCalled()
+    })
+
+    test('warns once per distinct unmapped typeKey, not once per activity', async () => {
+      const data = [
+        makeActivity({ activityId: 1, activityType: { typeKey: 'kitesurfing' } }),
+        makeActivity({ activityId: 2, activityType: { typeKey: 'kitesurfing' } }),
+        makeActivity({ activityId: 3, activityType: { typeKey: 'wingfoiling' } }),
+      ]
+
+      await processGarminData(user, 'activities', data, mockDeps)
+
+      expect(mockDeps.auditWarn).toHaveBeenCalledTimes(2)
+    })
+
     test('looks up each distinct typeKey only once per batch', async () => {
       const data = [
         makeActivity({ activityId: 1, activityType: { typeKey: 'rowing_v2' } }),
@@ -1358,7 +1400,7 @@ describe('processActivityDetail', () => {
   })
 
   test('extracts stress, HR, respiration, body_battery from detail data', async () => {
-    await processActivityDetail(user, makeDetail(), mockDeps)
+    await processActivityDetail(user, makeDetail(), { deps: mockDeps })
 
     const points = vi.mocked(mockDeps.insertTimeSeries).mock.calls[0]![1]
 
@@ -1378,7 +1420,7 @@ describe('processActivityDetail', () => {
   })
 
   test('stores raw record', async () => {
-    await processActivityDetail(user, makeDetail(), mockDeps)
+    await processActivityDetail(user, makeDetail(), { deps: mockDeps })
 
     expect(mockDeps.insertRawRecord).toHaveBeenCalledWith(user, {
       data: expect.objectContaining({ activityId: 99999 }),
@@ -1390,7 +1432,7 @@ describe('processActivityDetail', () => {
   })
 
   test('returns number of time series points inserted', async () => {
-    const result = await processActivityDetail(user, makeDetail(), mockDeps)
+    const result = await processActivityDetail(user, makeDetail(), { deps: mockDeps })
     expect(result).toBe(12)
   })
 
@@ -1399,7 +1441,7 @@ describe('processActivityDetail', () => {
       activityDetailMetrics: [{ metrics: [0, 0, 0, 1700000001000, 0, 0, 0, 0, 0, 72, 0, 0] }],
     })
 
-    await processActivityDetail(user, detail, mockDeps)
+    await processActivityDetail(user, detail, { deps: mockDeps })
 
     const points = vi.mocked(mockDeps.insertTimeSeries).mock.calls[0]![1]
     // Only HR should be present (stress=0, resp=0, bb=0 are skipped)
@@ -1429,7 +1471,7 @@ describe('processActivityDetail', () => {
       ],
     })
 
-    await processActivityDetail(user, detail, mockDeps)
+    await processActivityDetail(user, detail, { deps: mockDeps })
 
     const points = vi.mocked(mockDeps.insertTimeSeries).mock.calls[0]![1]
     expect(points).toHaveLength(1)
@@ -1445,7 +1487,7 @@ describe('processActivityDetail', () => {
       activityDetailMetrics: [{ metrics: [1700000001000, 42] }],
     })
 
-    await processActivityDetail(user, detail, mockDeps)
+    await processActivityDetail(user, detail, { deps: mockDeps })
 
     const points = vi.mocked(mockDeps.insertTimeSeries).mock.calls[0]![1]
     expect(points).toHaveLength(1)
@@ -1454,7 +1496,7 @@ describe('processActivityDetail', () => {
 
   test('returns 0 for empty activityDetailMetrics', async () => {
     const detail = makeDetail({ activityDetailMetrics: [] })
-    const result = await processActivityDetail(user, detail, mockDeps)
+    const result = await processActivityDetail(user, detail, { deps: mockDeps })
     expect(result).toBe(0)
     expect(mockDeps.insertTimeSeries).not.toHaveBeenCalled()
   })
@@ -1465,7 +1507,7 @@ describe('processActivityDetail', () => {
       activityDetailMetrics: [{ metrics: [25] }],
     })
 
-    const result = await processActivityDetail(user, detail, mockDeps)
+    const result = await processActivityDetail(user, detail, { deps: mockDeps })
     expect(result).toBe(0)
     expect(mockDeps.insertTimeSeries).not.toHaveBeenCalled()
   })
@@ -1481,7 +1523,7 @@ describe('processActivityDetail', () => {
       activityDetailMetrics: [{ metrics: [35, 1700000001000, 80] }],
     })
 
-    await processActivityDetail(user, detail, mockDeps)
+    await processActivityDetail(user, detail, { deps: mockDeps })
 
     const points = vi.mocked(mockDeps.insertTimeSeries).mock.calls[0]![1]
     expect(points).toHaveLength(2)
@@ -1528,7 +1570,7 @@ describe('processActivityDetail', () => {
       ],
     }
 
-    await processActivityDetail(user, detail, mockDeps)
+    await processActivityDetail(user, detail, { deps: mockDeps })
 
     const points = vi.mocked(mockDeps.insertTimeSeries).mock.calls[0]![1]
     const t = new Date(1700000001000)
@@ -1566,7 +1608,7 @@ describe('processActivityDetail', () => {
       ],
     }
 
-    await processActivityDetail(user, detail, mockDeps)
+    await processActivityDetail(user, detail, { deps: mockDeps })
 
     const points = vi.mocked(mockDeps.insertTimeSeries).mock.calls[0]![1]
     expect(points).toHaveLength(1)
@@ -1583,7 +1625,7 @@ describe('processActivityDetail', () => {
       ],
     }
 
-    await processActivityDetail(user, detail, mockDeps)
+    await processActivityDetail(user, detail, { deps: mockDeps })
 
     const points = vi.mocked(mockDeps.insertTimeSeries).mock.calls[0]![1]
     expect(points).toHaveLength(1)
@@ -1600,14 +1642,14 @@ describe('processActivityDetail', () => {
       ],
     }
 
-    await processActivityDetail(user, detail, mockDeps)
+    await processActivityDetail(user, detail, { deps: mockDeps })
 
     const points = vi.mocked(mockDeps.insertTimeSeries).mock.calls[0]![1]
     expect(points).toHaveLength(1)
     expect(points[0]).toMatchObject({ metric: 'stride_length', value: 0.955 })
   })
 
-  test('extracts GPS locations and soft-deletes owntracks', async () => {
+  test('extracts GPS locations and soft-deletes other sources', async () => {
     // GPS points 61s apart — both should be included (> 60s downsample interval)
     const detail: GarminActivityDetailResponse = {
       activityDetailMetrics: [
@@ -1622,12 +1664,12 @@ describe('processActivityDetail', () => {
       ],
     }
 
-    await processActivityDetail(user, detail, mockDeps)
+    await processActivityDetail(user, detail, { deps: mockDeps })
 
-    // Should soft-delete owntracks in the time range
-    expect(mockDeps.softDeleteLocationRange).toHaveBeenCalledWith(
+    // Should soft-delete every non-garmin source in the time range
+    expect(mockDeps.softDeleteOtherSourceLocations).toHaveBeenCalledWith(
       user,
-      'owntracks',
+      'garmin',
       new Date(1700000001000),
       new Date(1700000062000),
     )
@@ -1637,6 +1679,72 @@ describe('processActivityDetail', () => {
       { lat: 57.65, lon: 12.62, source: 'garmin', time: new Date(1700000001000) },
       { lat: 57.66, lon: 12.63, source: 'garmin', time: new Date(1700000062000) },
     ])
+  })
+
+  test('extends GPS precedence to the full activity span', async () => {
+    const detail: GarminActivityDetailResponse = {
+      activityDetailMetrics: [
+        { metrics: [1700000060000, 57.65, 12.62] },
+        { metrics: [1700000120000, 57.66, 12.63] },
+      ],
+      activityId: 44445,
+      metricDescriptors: [
+        { key: 'directTimestamp', metricsIndex: 0, unit: { key: 'gmt' } },
+        { key: 'directLatitude', metricsIndex: 1, unit: { key: 'dd' } },
+        { key: 'directLongitude', metricsIndex: 2, unit: { key: 'dd' } },
+      ],
+    }
+
+    // The activity starts before and ends after the downsampled track
+    await processActivityDetail(user, detail, {
+      activitySpan: { end: new Date(1700000180000), start: new Date(1700000000000) },
+      deps: mockDeps,
+    })
+
+    expect(mockDeps.softDeleteOtherSourceLocations).toHaveBeenCalledWith(
+      user,
+      'garmin',
+      new Date(1700000000000),
+      new Date(1700000180000),
+    )
+  })
+
+  test('audits how many foreign points the Garmin track replaced', async () => {
+    vi.mocked(mockDeps.softDeleteOtherSourceLocations).mockResolvedValueOnce(7)
+    const detail: GarminActivityDetailResponse = {
+      activityDetailMetrics: [{ metrics: [1700000001000, 57.65, 12.62] }],
+      activityId: 44446,
+      metricDescriptors: [
+        { key: 'directTimestamp', metricsIndex: 0, unit: { key: 'gmt' } },
+        { key: 'directLatitude', metricsIndex: 1, unit: { key: 'dd' } },
+        { key: 'directLongitude', metricsIndex: 2, unit: { key: 'dd' } },
+      ],
+    }
+
+    await processActivityDetail(user, detail, { deps: mockDeps })
+
+    expect(mockDeps.auditInfo).toHaveBeenCalledWith(
+      user,
+      'sync',
+      expect.stringContaining('7 location point(s)'),
+      expect.objectContaining({ garmin_activity_id: 44446 }),
+    )
+  })
+
+  test('does not audit when nothing was replaced', async () => {
+    const detail: GarminActivityDetailResponse = {
+      activityDetailMetrics: [{ metrics: [1700000001000, 57.65, 12.62] }],
+      activityId: 44447,
+      metricDescriptors: [
+        { key: 'directTimestamp', metricsIndex: 0, unit: { key: 'gmt' } },
+        { key: 'directLatitude', metricsIndex: 1, unit: { key: 'dd' } },
+        { key: 'directLongitude', metricsIndex: 2, unit: { key: 'dd' } },
+      ],
+    }
+
+    await processActivityDetail(user, detail, { deps: mockDeps })
+
+    expect(mockDeps.auditInfo).not.toHaveBeenCalled()
   })
 
   test('keeps all GPS points (no downsampling)', async () => {
@@ -1654,7 +1762,7 @@ describe('processActivityDetail', () => {
       ],
     }
 
-    await processActivityDetail(user, detail, mockDeps)
+    await processActivityDetail(user, detail, { deps: mockDeps })
 
     expect(mockDeps.insertLocations).toHaveBeenCalledWith(user, [
       { lat: 57.65, lon: 12.62, source: 'garmin', time: new Date(1700000001000) },
@@ -1674,10 +1782,10 @@ describe('processActivityDetail', () => {
       ],
     }
 
-    await processActivityDetail(user, detail, mockDeps)
+    await processActivityDetail(user, detail, { deps: mockDeps })
 
     expect(mockDeps.insertLocations).not.toHaveBeenCalled()
-    expect(mockDeps.softDeleteLocationRange).not.toHaveBeenCalled()
+    expect(mockDeps.softDeleteOtherSourceLocations).not.toHaveBeenCalled()
   })
 
   test('falls back to geoPolylineDTO when metrics lack lat/lon', async () => {
@@ -1696,7 +1804,7 @@ describe('processActivityDetail', () => {
       ],
     }
 
-    await processActivityDetail(user, detail, mockDeps)
+    await processActivityDetail(user, detail, { deps: mockDeps })
 
     expect(mockDeps.insertLocations).toHaveBeenCalledWith(user, [
       { lat: 57.65, lon: 12.62, source: 'garmin', time: new Date(1700000001000) },
@@ -1721,7 +1829,7 @@ describe('processActivityDetail', () => {
       ],
     }
 
-    await processActivityDetail(user, detail, mockDeps)
+    await processActivityDetail(user, detail, { deps: mockDeps })
 
     // Should use metric GPS (57.65), not polyline (99.0)
     expect(mockDeps.insertLocations).toHaveBeenCalledWith(user, [

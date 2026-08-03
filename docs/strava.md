@@ -15,6 +15,8 @@
 
 All data is also preserved as raw JSON in the `raw_records` table.
 
+An activity's GPS track supersedes coarser tracking from other sources (e.g. OwnTracks phone positions) for the activity's whole span -- see [GPS Precedence](./data-sources.md#gps-precedence).
+
 ### Activity Type Mapping
 
 Strava's ~30 sport types (Run, TrailRun, Ride, MountainBikeRide, Swim, Walk, Hike, Yoga, WeightTraining, etc.) are automatically mapped to Aurboda activity types. Unknown sport types are auto-created as new activity types.

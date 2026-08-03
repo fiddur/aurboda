@@ -45,7 +45,7 @@ import {
   loginToUserDb,
   openTimelineChannel,
   resolveOrCreateActivityType,
-  softDeleteLocationRange,
+  softDeleteOtherSourceLocations,
   updateDetectedLocation,
   upsertSyncState,
 } from './db/index.ts'
@@ -67,7 +67,7 @@ import {
 } from './services/activitypub/deliver.ts'
 import { createFeedFederation } from './services/activitypub/federation.ts'
 import { createTimelineBackfiller } from './services/activitypub/timeline-backfill.ts'
-import { auditError } from './services/audit-log.ts'
+import { auditError, auditInfo } from './services/audit-log.ts'
 import { triggerCalorieComputation } from './services/calorie-computation.ts'
 import { createCalorieQueue, type CalorieQueue } from './services/calorie-queue.ts'
 import { getCentralDb, initializeCentralDb } from './services/central-db.ts'
@@ -294,12 +294,13 @@ const main = async () => {
         getActivityStreams: (token, id) => strava.getActivityStreams(token, id),
         listActivities: (token, params) => strava.listActivities(token, params),
         processDeps: {
+          auditInfo,
           insertActivity,
           insertLocations,
           insertRawRecord,
           insertTimeSeries,
           resolveOrCreateActivityType,
-          softDeleteLocationRange,
+          softDeleteOtherSourceLocations,
         },
         updateSyncState: async (user, dataType, updates) => {
           await upsertSyncState(user, {

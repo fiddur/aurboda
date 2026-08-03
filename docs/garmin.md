@@ -31,7 +31,11 @@ Garmin labels each activity with a `typeKey` (e.g. `running`, `indoor_rowing`, `
 2. **Version suffix stripped** — Garmin revises sport keys in place and marks them with a version suffix, so `rowing_v2` resolves as `rowing` and `indoor_rowing_v2` goes through the override map as `indoor_rowing`.
 3. **Fallback** — if the resulting name has no row in `activity_type_definitions`, the activity is stored as `other_workout` with the original key kept in `data.garmin_type_key`. Without this, an unrecognized sport would violate the `activities.activity_type` foreign key and abort the rest of the batch.
 
-Grep `data.garmin_type_key` (via `query_activities` or `query_raw_records`) to find sports worth adding to the override map. A failure on one activity is logged to the audit log and does not stop the remaining activities in the batch.
+A degraded type is recorded in the audit log as a warning (once per distinct key per sync), so new Garmin sports surface there rather than only in `data.garmin_type_key`. A failure on one activity is logged as an error and does not stop the remaining activities in the batch.
+
+## GPS
+
+Activity GPS comes from the activity detail API, downsampled to 60-second intervals. It supersedes coarser tracking from other sources (e.g. OwnTracks phone positions) for the activity's whole span -- see [GPS Precedence](./data-sources.md#gps-precedence).
 
 ## Admin Setup
 
