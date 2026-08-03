@@ -49,17 +49,18 @@ export const computePixelsPerHour = (
  */
 const MERGE_GAP_PX = 7
 
-/** Widest gap bridged at single-day zoom or closer. */
+/** Widest gap bridged in the pixel tier (views crossing <= 2 calendar-day boundaries). */
 const FINE_MERGE_GAP_CAP_MS = 10 * 60 * 1000
 
 /**
  * Gap below which adjacent same-type activities merge into a single bar.
  *
  * Zoomed out, fixed tiers bridge large gaps so a long string of small same-type
- * activities reads as one bar. At single-day zoom and closer the gap instead
- * tracks pixels-per-hour: only gaps too small to see on screen are bridged, so
- * zooming in always pulls genuinely separate sessions apart — two yoga sessions
- * nine minutes apart used to stay welded together at every zoom level, because
+ * activities reads as one bar. At views crossing <= 2 calendar-day boundaries
+ * (so anything up to just under 72 elapsed hours) the gap instead tracks
+ * pixels-per-hour: only gaps too small to see on screen are bridged, so zooming
+ * in always pulls genuinely separate sessions apart — two yoga sessions nine
+ * minutes apart used to stay welded together at every zoom level, because
  * `differenceInCalendarDays` is 0 for any view inside one day.
  *
  * Capped at the previous fixed floor so a very wide container cannot merge

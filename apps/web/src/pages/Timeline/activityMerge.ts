@@ -288,6 +288,22 @@ export const COLLAPSE_MERGE_GAP_MS = 30 * 60 * 1000 // 30 minutes
  * there's nothing to show — a single-entry provenance is still informative
  * (the parent bar is one sub-type only) so we keep that case.
  */
+/**
+ * True when a provenance list adds nothing to the bar's own type: a lone entry
+ * naming it, whatever the count.
+ *
+ * The Activity lane deliberately keeps those — "Merged: Yoga ×2" is the only
+ * signal that a bar holds two sessions and that clicking reaches just the first.
+ * The Screen Time lane must not: a top-level category's derived type has no
+ * `parent_type`, so it is never retyped, and a merged run would read
+ * "Merged: Programming ×47" where the count is raw sampling spans rather than
+ * sessions, and the bar links to its category rather than to a member.
+ */
+export const restatesOwnType = (
+  collapsedTypes: { type: string; count: number }[] | undefined,
+  activityType: string,
+): boolean => collapsedTypes?.length === 1 && collapsedTypes[0].type === activityType
+
 export const formatCollapsedTypesLine = (
   collapsedTypes: { type: string; count: number }[] | undefined,
 ): string | undefined => {
