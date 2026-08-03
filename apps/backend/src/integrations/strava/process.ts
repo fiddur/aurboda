@@ -9,14 +9,14 @@ import type {
   insertRawRecord,
   insertTimeSeries,
   resolveOrCreateActivityType,
-  softDeleteOtherSourceLocations,
+  softDeleteSupersededLocations,
 } from '../../db/index.ts'
 import type { Activity, Location, RawRecord, TimeSeriesPoint } from '../../db/types.ts'
 import type { auditInfo } from '../../services/audit-log.ts'
 import type { ActivitySpan } from '../gps-precedence.ts'
 import type { StravaDetailedActivity, StravaStreamsResponse } from './types.ts'
 
-import { gpsPrecedenceSpan } from '../gps-precedence.ts'
+import { activityTrackSources, gpsPrecedenceSpan } from '../gps-precedence.ts'
 import { mapStravaSportType } from './sport-type-map.ts'
 
 // GPS: downsample to ~1 point per minute (same as Garmin)
@@ -29,7 +29,7 @@ export interface StravaProcessDeps {
   insertRawRecord: typeof insertRawRecord
   insertTimeSeries: typeof insertTimeSeries
   resolveOrCreateActivityType: typeof resolveOrCreateActivityType
-  softDeleteOtherSourceLocations: typeof softDeleteOtherSourceLocations
+  softDeleteSupersededLocations: typeof softDeleteSupersededLocations
 }
 
 const makeRaw = (recordType: string, externalId: string, recordedAt: Date, data: unknown): RawRecord => ({
@@ -182,17 +182,19 @@ const processGpsStream = async (
 
   if (gpsPoints.length > 0) {
     // Strava GPS is higher-resolution than phone tracking during activities —
-    // replace the coarser data for the activity's whole span
-    const { end, start } = gpsPrecedenceSpan(gpsPoints, activitySpan)
-    const replaced = await deps.softDeleteOtherSourceLocations(user, 'strava', start, end)
+    // supersede the coarser data for the activity's whole span
+    const span = gpsPrecedenceSpan(gpsPoints, activitySpan)
+    const replaced = span
+      ? await deps.softDeleteSupersededLocations(user, activityTrackSources, span.start, span.end)
+      : 0
     await deps.insertLocations(user, gpsPoints)
 
-    if (replaced > 0) {
+    if (span && replaced > 0) {
       deps.auditInfo(
         user,
         'sync',
         `🛰️ Strava GPS took precedence over ${replaced} location point(s) from other sources`,
-        { end: end.toISOString(), start: start.toISOString() },
+        { end: span.end.toISOString(), start: span.start.toISOString() },
       )
     }
   }

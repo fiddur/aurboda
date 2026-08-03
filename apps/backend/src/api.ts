@@ -45,7 +45,7 @@ import {
   loginToUserDb,
   openTimelineChannel,
   resolveOrCreateActivityType,
-  softDeleteOtherSourceLocations,
+  softDeleteSupersededLocations,
   updateDetectedLocation,
   upsertSyncState,
 } from './db/index.ts'
@@ -300,7 +300,7 @@ const main = async () => {
           insertRawRecord,
           insertTimeSeries,
           resolveOrCreateActivityType,
-          softDeleteOtherSourceLocations,
+          softDeleteSupersededLocations,
         },
         updateSyncState: async (user, dataType, updates) => {
           await upsertSyncState(user, {

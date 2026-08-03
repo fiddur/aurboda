@@ -17,7 +17,7 @@ import {
   insertRawRecord,
   insertTimeSeries,
 } from '../../db/index.ts'
-import { softDeleteOtherSourceLocations } from '../../db/locations.ts'
+import { softDeleteSupersededLocations } from '../../db/locations.ts'
 import { auditError, auditInfo, auditWarn } from '../../services/audit-log.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../../test/db-test-helper.ts'
 import { processActivityDetail } from './process.ts'
@@ -51,7 +51,7 @@ describe('Garmin resync integration', () => {
     insertLocations,
     insertRawRecord,
     insertTimeSeries,
-    softDeleteOtherSourceLocations,
+    softDeleteSupersededLocations,
   }
 
   test('processActivityDetail inserts time series and GPS from real Garmin response', async () => {

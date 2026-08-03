@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 import type { GarminActivityDetailResponse } from './client.ts'
 import type { GarminProcessDeps } from './process.ts'
 
+import { activityTrackSources } from '../gps-precedence.ts'
 import { extractNumericValue, processActivityDetail, processGarminData } from './process.ts'
 
 /** Activity types the mocked activity_type_definitions table contains. */
@@ -25,7 +26,7 @@ const mockDeps: GarminProcessDeps = {
   insertLocations: vi.fn().mockResolvedValue(undefined),
   insertRawRecord: vi.fn().mockResolvedValue(undefined),
   insertTimeSeries: vi.fn().mockResolvedValue(undefined),
-  softDeleteOtherSourceLocations: vi.fn().mockResolvedValue(0),
+  softDeleteSupersededLocations: vi.fn().mockResolvedValue(0),
 }
 
 /** Helper: noon UTC for a given date string. */
@@ -1667,9 +1668,9 @@ describe('processActivityDetail', () => {
     await processActivityDetail(user, detail, { deps: mockDeps })
 
     // Should soft-delete every non-garmin source in the time range
-    expect(mockDeps.softDeleteOtherSourceLocations).toHaveBeenCalledWith(
+    expect(mockDeps.softDeleteSupersededLocations).toHaveBeenCalledWith(
       user,
-      'garmin',
+      activityTrackSources,
       new Date(1700000001000),
       new Date(1700000062000),
     )
@@ -1701,16 +1702,16 @@ describe('processActivityDetail', () => {
       deps: mockDeps,
     })
 
-    expect(mockDeps.softDeleteOtherSourceLocations).toHaveBeenCalledWith(
+    expect(mockDeps.softDeleteSupersededLocations).toHaveBeenCalledWith(
       user,
-      'garmin',
+      activityTrackSources,
       new Date(1700000000000),
       new Date(1700000180000),
     )
   })
 
   test('audits how many foreign points the Garmin track replaced', async () => {
-    vi.mocked(mockDeps.softDeleteOtherSourceLocations).mockResolvedValueOnce(7)
+    vi.mocked(mockDeps.softDeleteSupersededLocations).mockResolvedValueOnce(7)
     const detail: GarminActivityDetailResponse = {
       activityDetailMetrics: [{ metrics: [1700000001000, 57.65, 12.62] }],
       activityId: 44446,
@@ -1785,7 +1786,7 @@ describe('processActivityDetail', () => {
     await processActivityDetail(user, detail, { deps: mockDeps })
 
     expect(mockDeps.insertLocations).not.toHaveBeenCalled()
-    expect(mockDeps.softDeleteOtherSourceLocations).not.toHaveBeenCalled()
+    expect(mockDeps.softDeleteSupersededLocations).not.toHaveBeenCalled()
   })
 
   test('falls back to geoPolylineDTO when metrics lack lat/lon', async () => {

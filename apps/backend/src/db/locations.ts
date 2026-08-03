@@ -70,35 +70,39 @@ export const insertLocations = async (user: string, locations: Location[]): Prom
               v.accuracy::double precision, v.altitude::double precision,
               v.velocity::double precision, v.regions::text[]
        FROM (VALUES %L) AS v(source, time, lon, lat, accuracy, altitude, velocity, regions)
-       ON CONFLICT (source, time) DO UPDATE SET deleted_at = NULL
-         WHERE locations.deleted_at IS NOT NULL`,
+       ON CONFLICT (source, time) DO NOTHING`,
       values,
     ),
   )
 }
 
 /**
- * Soft-delete locations from every source *except* `keepSource` within a time range.
+ * Soft-delete locations within a time range from every source *not* in
+ * `keepSources`.
  *
  * Gives an activity's own GPS track precedence over passive phone tracking for
  * the activity's full span: a watch or bike computer fixes position far more
  * accurately than a phone does, and keeping both interleaves two tracks into one
  * zig-zagging path. Returns the number of points soft-deleted.
  *
- * Points are only soft-deleted, and `insertLocations` revives a source's own
- * deleted rows, so re-syncing either source restores its track.
+ * Callers pass every activity-track source in `keepSources`, not just their own —
+ * see `activityTrackSources` for why they must not supersede each other.
+ *
+ * Points are only soft-deleted, never removed. Note that re-inserting them does
+ * not bring them back: both insert paths are `ON CONFLICT DO NOTHING`, so a
+ * superseded point stays superseded.
  */
-export const softDeleteOtherSourceLocations = async (
+export const softDeleteSupersededLocations = async (
   user: string,
-  keepSource: string,
+  keepSources: string[],
   start: Date,
   end: Date,
 ): Promise<number> => {
   const result = await query(
     user,
     `UPDATE locations SET deleted_at = NOW()
-     WHERE source <> $1 AND time >= $2 AND time <= $3 AND deleted_at IS NULL`,
-    [keepSource, start, end],
+     WHERE NOT (source = ANY($1)) AND time >= $2 AND time <= $3 AND deleted_at IS NULL`,
+    [keepSources, start, end],
   )
   return result.rowCount ?? 0
 }

@@ -68,7 +68,7 @@ vi.mock('./db', () => ({
   insertDeductionRuleRun: vi.fn().mockResolvedValue(undefined),
   insertRawRecord: vi.fn().mockResolvedValue(undefined),
   insertTimeSeries: vi.fn().mockResolvedValue(undefined),
-  softDeleteOtherSourceLocations: vi.fn().mockResolvedValue(0),
+  softDeleteSupersededLocations: vi.fn().mockResolvedValue(0),
   updateActivityTypeDefinition: vi.fn(),
   updateDeductionRule: vi.fn().mockResolvedValue(null),
   upsertSyncState: vi.fn().mockResolvedValue(undefined),

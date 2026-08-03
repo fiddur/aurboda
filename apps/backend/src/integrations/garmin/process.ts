@@ -29,10 +29,10 @@ import {
   insertLocations,
   insertRawRecord,
   insertTimeSeries,
-  softDeleteOtherSourceLocations,
+  softDeleteSupersededLocations,
 } from '../../db/index.ts'
 import { auditError, auditInfo, auditWarn } from '../../services/audit-log.ts'
-import { gpsPrecedenceSpan } from '../gps-precedence.ts'
+import { activityTrackSources, gpsPrecedenceSpan } from '../gps-precedence.ts'
 
 // ============================================================================
 // Types
@@ -79,7 +79,7 @@ export interface GarminProcessDeps {
   insertLocations: typeof insertLocations
   insertRawRecord: typeof insertRawRecord
   insertTimeSeries: typeof insertTimeSeries
-  softDeleteOtherSourceLocations: typeof softDeleteOtherSourceLocations
+  softDeleteSupersededLocations: typeof softDeleteSupersededLocations
 }
 
 export interface ProcessActivityDetailOptions {
@@ -102,7 +102,7 @@ const defaultDeps: GarminProcessDeps = {
   insertLocations,
   insertRawRecord,
   insertTimeSeries,
-  softDeleteOtherSourceLocations,
+  softDeleteSupersededLocations,
 }
 
 /**
@@ -877,18 +877,24 @@ export const processActivityDetail = async (
 
   if (points.length > 0) await deps.insertTimeSeries(user, points)
 
-  // Batch-insert GPS locations, replacing coarser tracking from other sources
+  // Batch-insert GPS locations, superseding coarser passive tracking
   if (gpsPoints.length > 0) {
-    const { end, start } = gpsPrecedenceSpan(gpsPoints, activitySpan)
-    const replaced = await deps.softDeleteOtherSourceLocations(user, 'garmin', start, end)
+    const span = gpsPrecedenceSpan(gpsPoints, activitySpan)
+    const replaced = span
+      ? await deps.softDeleteSupersededLocations(user, activityTrackSources, span.start, span.end)
+      : 0
     await deps.insertLocations(user, gpsPoints)
 
-    if (replaced > 0) {
+    if (span && replaced > 0) {
       deps.auditInfo(
         user,
         'sync',
         `🛰️ Garmin GPS took precedence over ${replaced} location point(s) from other sources`,
-        { end: end.toISOString(), garmin_activity_id: data.activityId, start: start.toISOString() },
+        {
+          end: span.end.toISOString(),
+          garmin_activity_id: data.activityId,
+          start: span.start.toISOString(),
+        },
       )
     }
   }

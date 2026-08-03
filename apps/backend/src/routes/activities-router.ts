@@ -145,7 +145,7 @@ export const createActivitiesRouter = (
     user: string,
     activityId: string,
     garminActivityId: number,
-    activitySpan: ActivitySpan,
+    activitySpan: ActivitySpan | null,
   ) => Promise<number>,
 ): TypedRouter => {
   const router = typedRouter()
@@ -615,10 +615,15 @@ export const createActivitiesRouter = (
         return
       }
 
-      const points = await resyncActivityDetail(user, garminSourceId, garminActivityId, {
-        end: garminSource.end_time ?? garminSource.start_time,
-        start: garminSource.start_time,
-      })
+      // Span of the row that supplied the Garmin id — for a merged activity that
+      // is the Garmin source, not the merge wrapper. Null without an end_time,
+      // so the track's own range is used rather than a start-only span.
+      const points = await resyncActivityDetail(
+        user,
+        garminSourceId,
+        garminActivityId,
+        garminSource.end_time ? { end: garminSource.end_time, start: garminSource.start_time } : null,
+      )
       res.json({ points, success: true })
     },
   )

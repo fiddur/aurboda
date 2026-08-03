@@ -239,9 +239,11 @@ export const syncActivityDetails = async (
 
     try {
       const detail = await garmin.getActivityDetail(user, garminActivityId)
-      const pointCount = await processActivityDetail(user, detail, {
-        activitySpan: { end: activity.end_time ?? activity.start_time, start: activity.start_time },
-      })
+      // No end_time means no usable span — a start-only one would clamp the
+      // precedence range to a few minutes around the start. Fall back to the
+      // track's own range instead.
+      const activitySpan = activity.end_time ? { end: activity.end_time, start: activity.start_time } : null
+      const pointCount = await processActivityDetail(user, detail, { activitySpan })
       await markActivityDetailSynced(user, activity.id)
 
       auditInfo(

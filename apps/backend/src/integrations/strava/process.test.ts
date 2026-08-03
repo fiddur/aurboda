@@ -3,6 +3,7 @@ import { describe, expect, test, vi } from 'vitest'
 import type { StravaProcessDeps } from './process.ts'
 import type { StravaDetailedActivity, StravaStreamsResponse } from './types.ts'
 
+import { activityTrackSources } from '../gps-precedence.ts'
 import { processStravaActivity } from './process.ts'
 
 const createMockDeps = (): StravaProcessDeps => ({
@@ -12,7 +13,7 @@ const createMockDeps = (): StravaProcessDeps => ({
   insertRawRecord: vi.fn(),
   insertTimeSeries: vi.fn(),
   resolveOrCreateActivityType: vi.fn(async (_user: string, name: string) => name),
-  softDeleteOtherSourceLocations: vi.fn(async () => 0),
+  softDeleteSupersededLocations: vi.fn(async () => 0),
 })
 
 const baseActivity: StravaDetailedActivity = {
@@ -153,9 +154,9 @@ describe('processStravaActivity', () => {
 
     // Precedence covers the activity's full span (start + elapsed_time = 1h),
     // not just the two minutes of track the streams happen to contain
-    expect(deps.softDeleteOtherSourceLocations).toHaveBeenCalledWith(
+    expect(deps.softDeleteSupersededLocations).toHaveBeenCalledWith(
       'testuser',
-      'strava',
+      activityTrackSources,
       new Date('2024-06-15T07:00:00Z'),
       new Date('2024-06-15T08:00:00Z'),
     )

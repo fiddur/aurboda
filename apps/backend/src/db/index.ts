@@ -178,7 +178,7 @@ export {
   insertLocations,
   insertNamedLocation,
   insertPlace,
-  softDeleteOtherSourceLocations,
+  softDeleteSupersededLocations,
   updateDetectedLocation,
   updateNamedLocation,
 } from './locations.ts'
