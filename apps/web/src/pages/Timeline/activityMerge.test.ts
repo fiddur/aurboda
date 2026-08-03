@@ -524,22 +524,43 @@ describe('collapseToParentType', () => {
     expect(collapsed[0].collapsed_types).toBeUndefined()
   })
 
-  it('never yields a provenance entry that only restates the bar itself', () => {
-    // What the removed trivial-provenance cleanup used to guard. Neither path
-    // that sets collapsed_types can produce `[{ type: <own type>, count: 1 }]`:
-    // the retype records a *different* type, and a merge always totals ≥ 2.
-    const activities: Activity[] = [
-      { activity_type: 'running', end_time: d(10, 30), id: 'a', start_time: d(10) },
-      { activity_type: 'running', end_time: d(11), id: 'b', start_time: d(10, 35) },
-      { activity_type: 'yoga', end_time: d(12), id: 'c', start_time: d(11, 30) },
-    ]
+  // Fixture includes a parent-typed activity (`exercise`) next to a child that
+  // retypes onto it, which is where entry-level and list-level invariants differ.
+  const mixedActivities: Activity[] = [
+    { activity_type: 'running', end_time: d(10, 30), id: 'a', start_time: d(10) },
+    { activity_type: 'exercise', end_time: d(11), id: 'b', start_time: d(10, 35) },
+    { activity_type: 'yoga', end_time: d(12), id: 'c', start_time: d(11, 30) },
+  ]
 
+  it('never yields a provenance list that only restates the bar itself', () => {
+    // What the removed trivial-provenance cleanup used to guard, and only at the
+    // list level: `[{ type: <own type>, count: 1 }]` as the whole list. Neither
+    // path that sets collapsed_types can produce it — the retype records a
+    // *different* type, and a merge always totals >= 2.
     for (const depth of [0, 1, Number.POSITIVE_INFINITY]) {
-      for (const bar of collapseToParentType(activities, typeDefs, undefined, depth)) {
-        const trivial = bar.collapsed_types?.some((e) => e.type === bar.activity_type && e.count === 1)
-        expect(trivial ?? false).toBe(false)
+      for (const bar of collapseToParentType(mixedActivities, typeDefs, undefined, depth)) {
+        const provenance = bar.collapsed_types ?? []
+        const trivial =
+          provenance.length === 1 && provenance[0].type === bar.activity_type && provenance[0].count === 1
+        expect(trivial).toBe(false)
       }
     }
+  })
+
+  it('lets a mixed bar name its own type once among others', () => {
+    // The entry-level version of the invariant above is false, deliberately:
+    // `running` retypes onto `exercise` carrying [{running,1}], and the
+    // already-`exercise` activity contributes its own [{exercise,1}] fallback.
+    // An entry restating the bar's type with count 1 is correct here.
+    const bars = collapseToParentType(mixedActivities, typeDefs, undefined, 1)
+    const exerciseBar = bars.find((b) => b.activity_type === 'exercise')
+
+    // yoga retypes onto exercise too, and is inside the default merge gap
+    expect(exerciseBar?.collapsed_types).toEqual([
+      { type: 'running', count: 1 },
+      { type: 'exercise', count: 1 },
+      { type: 'yoga', count: 1 },
+    ])
   })
 
   it('separates two same-type sessions once the merge gap is below their gap', () => {
