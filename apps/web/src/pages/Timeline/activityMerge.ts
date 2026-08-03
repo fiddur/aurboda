@@ -286,8 +286,20 @@ export const COLLAPSE_MERGE_GAP_MS = 30 * 60 * 1000 // 30 minutes
  * the Activity-lane (`buildActivityDetails`) and Screen-Time-lane
  * (`categorizeScreentimeActivities`) tooltip builders. Returns undefined when
  * there's nothing to show — a single-entry provenance is still informative
- * (the parent bar is one sub-type only) so we keep that case.
+ * (the parent bar is one sub-type only) so we keep that case. Callers that
+ * cannot use a self-restating entry filter it with `restatesOwnType` first.
  */
+export const formatCollapsedTypesLine = (
+  collapsedTypes: { type: string; count: number }[] | undefined,
+): string | undefined => {
+  if (!collapsedTypes || collapsedTypes.length < 1) return undefined
+  const labels = collapsedTypes.map((e) => {
+    const display = toDisplayName(e.type)
+    return e.count > 1 ? `${display} ×${e.count}` : display
+  })
+  return `Merged: ${labels.join(', ')}`
+}
+
 /**
  * True when a provenance list adds nothing to the bar's own type: a lone entry
  * naming it, whatever the count.
@@ -303,17 +315,6 @@ export const restatesOwnType = (
   collapsedTypes: { type: string; count: number }[] | undefined,
   activityType: string,
 ): boolean => collapsedTypes?.length === 1 && collapsedTypes[0].type === activityType
-
-export const formatCollapsedTypesLine = (
-  collapsedTypes: { type: string; count: number }[] | undefined,
-): string | undefined => {
-  if (!collapsedTypes || collapsedTypes.length < 1) return undefined
-  const labels = collapsedTypes.map((e) => {
-    const display = toDisplayName(e.type)
-    return e.count > 1 ? `${display} ×${e.count}` : display
-  })
-  return `Merged: ${labels.join(', ')}`
-}
 
 /**
  * Look up the immediate parent_type of a type — the "collapse target" we

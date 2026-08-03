@@ -88,10 +88,10 @@ export const useTimelineNavigation = (options: TimelineNavigationOptions = {}): 
   }, [effectiveViewStart, effectiveViewEnd])
 
   // Zoom-graded merge gap: as the user zooms out we bridge larger gaps so that
-  // a long string of small same-type activities reads as one bar. Inside a
-  // single day the gap follows pixels-per-hour, so back-to-back screentime
-  // spans still read as one bar while zooming in separates genuinely distinct
-  // sessions — see `mergeGapForZoom`.
+  // a long string of small same-type activities reads as one bar. At views
+  // crossing <= 2 calendar-day boundaries the gap follows pixels-per-hour, so
+  // back-to-back screentime spans still read as one bar while zooming in
+  // separates genuinely distinct sessions — see `mergeGapForZoom`.
   const pixelsPerHour = useMemo(
     () => computePixelsPerHour(timeAxisPixels, effectiveViewStart, effectiveViewEnd),
     [timeAxisPixels, effectiveViewStart, effectiveViewEnd],

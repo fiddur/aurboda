@@ -153,9 +153,7 @@ Time labels and date separators also adapt: from hourly labels at full zoom to d
 
 ### Bar Merging
 
-Adjacent activities of the same type merge into one bar when the gap between them is too small to be worth drawing. The threshold follows the zoom level:
-
-The tiers are counted in **calendar-day boundaries crossed**, not elapsed hours, so an Aug 1 00:00 → Aug 3 23:59 view (2 boundaries) takes the pixel tier while Aug 1 00:00 → Aug 4 00:00 (3 boundaries) takes the hour tier, despite both spanning ~72h:
+Adjacent activities of the same type merge into one bar when the gap between them is too small to be worth drawing. The threshold follows the zoom level, counted in **calendar-day boundaries crossed** rather than elapsed hours -- so an Aug 1 00:00 → Aug 3 23:59 view (2 boundaries) takes the pixel tier while Aug 1 00:00 → Aug 4 00:00 (3 boundaries) takes the hour tier, despite both spanning ~72h:
 
 | View span                       | Gap bridged                                          |
 | ------------------------------- | ---------------------------------------------------- |
@@ -164,6 +162,8 @@ The tiers are counted in **calendar-day boundaries crossed**, not elapsed hours,
 | Crosses 2 or fewer boundaries   | Whatever spans ~7 px on screen, capped at 10 minutes |
 
 In that last tier the threshold is measured in pixels, not minutes, so **zooming in always pulls separate sessions apart** -- two yoga sessions nine minutes apart read as one bar in the day view and as two once you zoom in. This matters because a merged bar links to its _first_ member only: to open the second session, zoom in until the bar splits. The exception is two activities that touch exactly -- one ending at the moment the next begins. The test is `gap <= threshold` and the threshold bottoms out at zero, so those merge at every zoom level and the tooltip count is the only signal that the bar holds two. A merged bar's tooltip names its members with counts ("Merged: Yoga ×2"), so you can tell when there is more inside than the bar suggests.
+
+That count is an Activity-lane signal only. Screen Time suppresses it when it would just restate the bar's own category, which is the usual case there: the count would be raw sampling spans rather than sessions, and the bar links to its category rather than to a member. So a merged Screen Time bar gives no indication of how many spans it holds.
 
 Different activity types never merge with each other, regardless of zoom. When zoomed out far enough, sub-types instead collapse into their `parent_type` (so running + strength read as one "Exercise" bar) -- see [activity types](./activity-types.md).
 
