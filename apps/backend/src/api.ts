@@ -593,7 +593,10 @@ const main = async () => {
   const server = httpd.listen(port, () => {
     console.info(`> Running on localhost:${port}`)
     for (const cb of postListenCallbacks) {
-      cb().catch((error) => console.error('⚠️ Post-listen task failed:', error))
+      cb().catch((error) => {
+        console.error('⚠️ Post-listen task failed:', error)
+        Sentry.captureException(error)
+      })
     }
   })
 
@@ -646,10 +649,14 @@ const main = async () => {
  * container — so a dead queue worker self-healed. Staying up instead would keep
  * `/api/version` answering 200 (the compose healthcheck is an HTTP request
  * through nginx, not a liveness ping) while a subsystem is permanently dead, and
- * `restart: unless-stopped` never restarts a *running* container. Sentry is
- * captured and flushed first because registering these listeners removes the
- * exit its own `onUncaughtException` / `onUnhandledRejection` integrations
- * would perform.
+ * `restart: unless-stopped` never restarts a *running* container.
+ *
+ * Capturing explicitly (rather than leaving it to Sentry's own
+ * `onUncaughtException` / `onUnhandledRejection` integrations) keeps the event
+ * queued *before* `flush` starts draining, so it cannot be lost to the exit.
+ * Those two integrations are disabled in `initSentry` to avoid double-reporting
+ * the same crash — registering these listeners stops them exiting, but not
+ * capturing.
  */
 const installProcessGuards = () => {
   const reportAndExit = (label: string, error: unknown) => {

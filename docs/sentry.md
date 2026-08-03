@@ -7,19 +7,33 @@ configures a DSN in Admin Settings.
 
 - Uncaught errors thrown from any Express route handler reach
   `Sentry.setupExpressErrorHandler` before the centralized error handler responds.
+- **Failures outside a request**, via process-level guards in `api.ts`: unhandled
+  promise rejections and uncaught exceptions from background work (`void thing()`
+  calls, queue workers, webhook managers), startup failures from `main()`, and
+  post-listen task failures. Each is captured, flushed, and -- except for
+  post-listen tasks -- followed by `process.exit(1)`, so a dead subsystem
+  restarts the container rather than hiding behind a healthy `/api/version`.
 - Default PII collection is enabled (`sendDefaultPii: true`) so Sentry can attach
   request IP and user context.
 
-When no DSN is configured, the Sentry SDK is not initialized and the express error
-handler is a no-op — no data leaves the server.
+Sentry's own `OnUncaughtException` and `OnUnhandledRejection` integrations are
+disabled in `initSentry`, because those guards already capture and flush. Left
+enabled they would report each crash twice: registering a listener stops those
+integrations exiting, but not capturing.
+
+When no DSN is configured, the Sentry SDK is not initialized, the express error
+handler is a no-op, and `captureException` in the guards does nothing — no data
+leaves the server. The guards still log and still exit, so restart-on-failure
+behaviour does not depend on Sentry being configured.
 
 ### Scope: errors only, no tracing/auto-instrumentation
 
 `Sentry.init` runs inside `main()` after all module imports. `@sentry/node` v8+
 auto-instrumentation (OpenTelemetry HTTP/express/db tracing, automatic
 breadcrumbs) needs init _before_ those modules are imported to patch them, so
-that side of the SDK is effectively inert here. Only the explicit
-`setupExpressErrorHandler` path captures errors.
+that side of the SDK is effectively inert here. Errors arrive only through the
+paths listed above -- the express error handler and the process-level guards --
+never from auto-instrumentation.
 
 This is intentional given the admin-configured (DB-stored) DSN — we cannot
 initialize before module imports without an env-var bootstrap. To enable
