@@ -10,9 +10,15 @@ configures a DSN in Admin Settings.
 - **Failures outside a request**, via process-level guards in `api.ts`: unhandled
   promise rejections and uncaught exceptions from background work (`void thing()`
   calls, queue workers, webhook managers), startup failures from `main()`, and
-  post-listen task failures. Each is captured, flushed, and -- except for
-  post-listen tasks -- followed by `process.exit(1)`, so a dead subsystem
-  restarts the container rather than hiding behind a healthy `/api/version`.
+  post-listen task failures.
+
+  An **uncaught exception** or a **startup failure** is followed by
+  `process.exit(1)`; `entrypoint.sh` watches the backend PID, so the container
+  restarts. An **unhandled rejection** is reported but not fatal -- one transient
+  error inside a background sync should not drop every in-flight request and open
+  timeline stream. That does mean a subsystem can stay dead behind an
+  `/api/version` that still answers 200, so those reports are worth acting on.
+
 - Default PII collection is enabled (`sendDefaultPii: true`) so Sentry can attach
   request IP and user context.
 

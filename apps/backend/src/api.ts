@@ -634,8 +634,7 @@ const main = async () => {
 }
 
 /**
- * Naming for failures outside a request — reporting only, deliberately not a
- * change of policy.
+ * Reporting for failures outside a request.
  *
  * Express 5 forwards rejections from async route handlers to the error
  * middleware above, so these do not cover routes. They cover work started
@@ -643,13 +642,23 @@ const main = async () => {
  * webhook managers, where Node's own reporting names neither the subsystem nor
  * the deploy.
  *
- * Both handlers still exit, which is what happened before them: with no Sentry
- * DSN, Node's default `--unhandled-rejections=throw` killed the process,
- * `entrypoint.sh` exited with the backend PID, and Docker restarted the
- * container — so a dead queue worker self-healed. Staying up instead would keep
- * `/api/version` answering 200 (the compose healthcheck is an HTTP request
- * through nginx, not a liveness ping) while a subsystem is permanently dead, and
- * `restart: unless-stopped` never restarts a *running* container.
+ * The two handlers deliberately differ, matching what a DSN-configured deploy
+ * already does today:
+ *
+ *   - `uncaughtException` exits. Node documents the state afterwards as
+ *     undefined, and Sentry's own integration already called
+ *     `logAndExitProcess` here, so exiting changes nothing. `entrypoint.sh`
+ *     watches the backend PID, so the container restarts.
+ *   - `unhandledRejection` does not. Sentry's `onUnhandledRejection` integration
+ *     defaults to `mode: 'warn'`, which captures, warns, and keeps running — so
+ *     production is already non-fatal here, and making it fatal would let one
+ *     transient error inside any of those `void` calls drop every in-flight
+ *     request and open timeline SSE stream for every user. A background sync
+ *     failing is not worth that.
+ *
+ * The gap that leaves — a subsystem dead behind an `/api/version` that still
+ * answers 200 (the compose healthcheck is an HTTP request through nginx, not a
+ * liveness ping) — is now at least visible in Sentry rather than silent.
  *
  * Capturing explicitly (rather than leaving it to Sentry's own
  * `onUncaughtException` / `onUnhandledRejection` integrations) keeps the event
@@ -658,17 +667,21 @@ const main = async () => {
  * the same crash — registering these listeners stops them exiting, but not
  * capturing.
  */
-const installProcessGuards = () => {
-  const reportAndExit = (label: string, error: unknown) => {
-    console.error(label, error)
-    Sentry.captureException(error)
-    void Sentry.flush(2000)
-      .catch(() => {})
-      .finally(() => process.exit(1))
-  }
+/** Log, capture, and drain the Sentry queue. Resolves once flushing settles. */
+const report = (label: string, error: unknown): Promise<unknown> => {
+  console.error(label, error)
+  Sentry.captureException(error)
+  return Sentry.flush(2000).catch(() => {})
+}
 
+/** As `report`, then exit non-zero so the container restarts. */
+const reportAndExit = (label: string, error: unknown) => {
+  void report(label, error).finally(() => process.exit(1))
+}
+
+const installProcessGuards = () => {
   process.on('unhandledRejection', (reason) => {
-    reportAndExit('⚠️ Unhandled promise rejection (background work):', reason)
+    void report('⚠️ Unhandled promise rejection (background work):', reason)
   })
   process.on('uncaughtException', (error) => {
     reportAndExit('💥 Uncaught exception (background work):', error)
@@ -677,13 +690,7 @@ const installProcessGuards = () => {
 
 installProcessGuards()
 
-// Anchored explicitly rather than relying on the guards above: a startup
-// failure is the one worth an alert, and `initSentry` has already run for
-// everything that fails after it.
-main().catch((error) => {
-  console.error('💥 Startup failed:', error)
-  Sentry.captureException(error)
-  void Sentry.flush(2000)
-    .catch(() => {})
-    .finally(() => process.exit(1))
-})
+// Anchored explicitly rather than relying on the guards above: `main()` rejecting
+// is caught here, so it never surfaces as an unhandled rejection, and a startup
+// crash-loop is the failure most worth an alert.
+main().catch((error) => reportAndExit('💥 Startup failed:', error))
