@@ -622,24 +622,39 @@ const main = async () => {
 }
 
 /**
- * Last-resort logging for failures outside a request.
+ * Last-resort reporting for failures outside a request.
  *
  * Express 5 forwards rejections from async route handlers to the error
  * middleware above, so these do not cover routes. They cover the ~40 places
  * that deliberately start work without awaiting it (`void thing()`, queue
- * workers, webhook managers, the post-listen callbacks): before this, such a
- * rejection was reported by Node with no indication of which subsystem it came
- * from, and an uncaught exception in one took down a process that was otherwise
- * serving fine.
+ * workers, webhook managers, the post-listen callbacks), where Node's default
+ * reporting gives no indication of which subsystem produced the failure.
  */
 const installProcessGuards = () => {
   process.on('unhandledRejection', (reason) => {
     console.error('⚠️ Unhandled promise rejection (background work):', reason)
   })
+
+  // Exit rather than resume: Node documents the state after an uncaught
+  // exception as undefined, and the compose healthcheck only probes the
+  // listening socket — so staying alive would report a healthy container with a
+  // dead subsystem, and `restart: unless-stopped` never restarts a *running*
+  // container. Flush Sentry first, because registering this listener otherwise
+  // removes the exit Sentry's own handler performs after capturing.
   process.on('uncaughtException', (error) => {
-    console.error('💥 Uncaught exception (background work):', error)
+    console.error('💥 Uncaught exception:', error)
+    void Sentry.flush(2000)
+      .catch(() => {})
+      .finally(() => process.exit(1))
   })
 }
 
 installProcessGuards()
-main()
+
+// Anchored explicitly: the guards above make an unhandled rejection non-fatal,
+// and startup failing silently would leave a container that serves nothing and
+// is never restarted.
+main().catch((error) => {
+  console.error('💥 Startup failed:', error)
+  process.exit(1)
+})

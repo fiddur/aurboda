@@ -31,10 +31,12 @@ describe('maxOf / minOf', () => {
   })
 
   test('handles an array far past the argument limit that would break Math.max', () => {
-    // 200k elements: `Math.max(...values)` throws RangeError here, which is what
-    // took the backend down on a wide timeline zoom-out over per-second data.
+    // 200k elements. `Math.max(...values)` blows the call stack around this size,
+    // which is what took the backend down on a wide timeline zoom-out over
+    // per-second data. Not asserted here: the exact threshold is a property of
+    // V8's stack size, not of this code, so it moves with --stack-size and
+    // platform.
     const values = Array.from({ length: 200_000 }, (_, i) => i)
-    expect(() => Math.max(...values)).toThrow(RangeError)
 
     expect(maxOf(values)).toBe(199_999)
     expect(minOf(values)).toBe(0)
