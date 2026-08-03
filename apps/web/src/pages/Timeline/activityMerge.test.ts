@@ -503,17 +503,37 @@ describe('collapseToParentType', () => {
     expect(collapsed[0].collapsed_types).toEqual([{ type: 'running', count: 2 }])
   })
 
-  it('drops trivial provenance when no retype happens (depth=0)', () => {
-    // Identical sub-types merge but stay typed as themselves; the survivor's
-    // provenance would be [{ running, 2 }] which is the same as activity_type
-    // — drop so tooltip doesn't render a redundant "Merged: Running" line.
+  it('keeps the count when identical sub-types merge at depth=0', () => {
+    // The bar stays typed as itself, so "Merged: Running" alone would be
+    // redundant — but the ×2 is the only signal that one bar hides two
+    // sessions and that clicking reaches just the first.
     const activities: Activity[] = [
       { activity_type: 'running', end_time: d(10, 30), id: 'a', start_time: d(10) },
       { activity_type: 'running', end_time: d(11), id: 'b', start_time: d(10, 35) },
     ]
     const collapsed = collapseToParentType(activities, typeDefs, undefined, 0)
     expect(collapsed[0].activity_type).toBe('running')
+    expect(collapsed[0].collapsed_types).toEqual([{ type: 'running', count: 2 }])
+  })
+
+  it('drops trivial provenance for a lone unmerged activity (depth=0)', () => {
+    const activities: Activity[] = [
+      { activity_type: 'running', end_time: d(10, 30), id: 'a', start_time: d(10) },
+    ]
+    const collapsed = collapseToParentType(activities, typeDefs, undefined, 0)
     expect(collapsed[0].collapsed_types).toBeUndefined()
+  })
+
+  it('separates two same-type sessions once the merge gap is below their gap', () => {
+    // The reported case: two yoga sessions 9 min apart. At the old fixed
+    // 10-minute floor they welded together at every zoom level.
+    const activities: Activity[] = [
+      { activity_type: 'yoga', end_time: d(21, 24), id: 'a', start_time: d(21, 11) },
+      { activity_type: 'yoga', end_time: d(22, 7), id: 'b', start_time: d(21, 33) },
+    ]
+
+    expect(collapseToParentType(activities, typeDefs, 10 * 60_000, 0)).toHaveLength(1)
+    expect(collapseToParentType(activities, typeDefs, 30_000, 0)).toHaveLength(2)
   })
 
   it('collapses one hop at depth=1 (parity with prior behaviour)', () => {

@@ -41,3 +41,33 @@ export const computePixelsPerHour = (
   const hours = ms / 3_600_000
   return timeAxisPixels / hours
 }
+
+/**
+ * On-screen gap (px) below which two adjacent same-type bars are bridged into
+ * one. Tuned so that a 24h view in a 1000px container reproduces the previous
+ * fixed 10-minute gap.
+ */
+const MERGE_GAP_PX = 7
+
+/** Widest gap bridged at single-day zoom or closer. */
+const FINE_MERGE_GAP_CAP_MS = 10 * 60 * 1000
+
+/**
+ * Gap below which adjacent same-type activities merge into a single bar.
+ *
+ * Zoomed out, fixed tiers bridge large gaps so a long string of small same-type
+ * activities reads as one bar. At single-day zoom and closer the gap instead
+ * tracks pixels-per-hour: only gaps too small to see on screen are bridged, so
+ * zooming in always pulls genuinely separate sessions apart — two yoga sessions
+ * nine minutes apart used to stay welded together at every zoom level, because
+ * `differenceInCalendarDays` is 0 for any view inside one day.
+ *
+ * Capped at the previous fixed floor so a very wide container cannot merge
+ * *more* than it did before.
+ */
+export const mergeGapForZoom = (days: number, pixelsPerHour: number): number => {
+  if (days > 50) return 4 * 60 * 60 * 1000
+  if (days > 2) return 60 * 60 * 1000
+  if (Number.isNaN(pixelsPerHour) || pixelsPerHour <= 0) return FINE_MERGE_GAP_CAP_MS
+  return Math.min(FINE_MERGE_GAP_CAP_MS, (MERGE_GAP_PX / pixelsPerHour) * 3_600_000)
+}

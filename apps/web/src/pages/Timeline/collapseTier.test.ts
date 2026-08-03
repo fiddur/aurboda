@@ -1,6 +1,47 @@
 import { describe, expect, it } from 'vitest'
 
-import { collapseDepthForPixelsPerHour, computePixelsPerHour } from './collapseTier'
+import { collapseDepthForPixelsPerHour, computePixelsPerHour, mergeGapForZoom } from './collapseTier'
+
+const MINUTE = 60_000
+
+describe('mergeGapForZoom', () => {
+  it('keeps the coarse tiers for multi-week and multi-day views', () => {
+    expect(mergeGapForZoom(60, 0.8)).toBe(4 * 60 * MINUTE)
+    expect(mergeGapForZoom(3, 14)).toBe(60 * MINUTE)
+  })
+
+  it('matches the previous 10-minute floor at a 1000px day view', () => {
+    // 24h in 1000px → ~41.7 pph, where 7px works out to ~10 min
+    const dayView = mergeGapForZoom(0, computePixelsPerHour(1000, new Date(0), new Date(24 * 3_600_000)))
+    expect(dayView / MINUTE).toBeCloseTo(10, 0)
+  })
+
+  it('shrinks the gap as the user zooms in past a single day', () => {
+    const dayView = mergeGapForZoom(0, 41.7)
+    const hourView = mergeGapForZoom(0, 1000)
+
+    expect(hourView).toBeLessThan(dayView)
+    // Two sessions 9 min apart stay merged at day view but separate zoomed in
+    expect(9 * MINUTE).toBeLessThan(dayView)
+    expect(9 * MINUTE).toBeGreaterThan(hourView)
+  })
+
+  it('never bridges more than the previous 10-minute floor', () => {
+    // A very wide container at day zoom must not merge more than it used to
+    expect(mergeGapForZoom(0, 1)).toBe(10 * MINUTE)
+    expect(mergeGapForZoom(2, 0.001)).toBe(10 * MINUTE)
+  })
+
+  it('falls back to the floor when there is no zoom measurement yet', () => {
+    for (const noMeasurement of [0, -1, Number.NaN]) {
+      expect(mergeGapForZoom(0, noMeasurement)).toBe(10 * MINUTE)
+    }
+  })
+
+  it('bridges nothing but touching spans at unbounded zoom', () => {
+    expect(mergeGapForZoom(0, Number.POSITIVE_INFINITY)).toBe(0)
+  })
+})
 
 describe('collapseDepthForPixelsPerHour (#658)', () => {
   it('returns 0 (no walk) for high pixels-per-hour — typical day view', () => {

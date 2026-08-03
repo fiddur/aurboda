@@ -151,6 +151,20 @@ The Timeline automatically adjusts detail level as you zoom:
 
 Time labels and date separators also adapt: from hourly labels at full zoom to daily, then weekly/monthly separators when viewing long ranges.
 
+### Bar Merging
+
+Adjacent activities of the same type merge into one bar when the gap between them is too small to be worth drawing. The threshold follows the zoom level:
+
+| View span            | Gap bridged                                          |
+| -------------------- | ---------------------------------------------------- |
+| Over 50 days         | 4 hours                                              |
+| Over 2 days          | 1 hour                                               |
+| Single day or closer | Whatever spans ~7 px on screen, capped at 10 minutes |
+
+Inside a single day the threshold is measured in pixels, not minutes, so **zooming in always pulls separate sessions apart** -- two yoga sessions nine minutes apart read as one bar in the day view and as two once you zoom in. This matters because a merged bar links to its _first_ member only: to open the second session, zoom in until the bar splits. A merged bar's tooltip names its members with counts ("Merged: Yoga ×2"), so you can tell when there is more inside than the bar suggests.
+
+Different activity types never merge with each other, regardless of zoom. When zoomed out far enough, sub-types instead collapse into their `parent_type` (so running + strength read as one "Exercise" bar) -- see [activity types](./activity-types.md).
+
 ## URL Persistence
 
 The current view state is encoded in the URL hash:
