@@ -14,7 +14,10 @@ configures a DSN in Admin Settings.
 
   An **uncaught exception** or a **startup failure** is followed by
   `process.exit(1)`; `entrypoint.sh` watches the backend PID, so the container
-  restarts. An **unhandled rejection** is reported but not fatal -- one transient
+  restarts. Startup failures only reach Sentry if they happen _after_
+  `initSentry`, which runs behind `initializeCentralDb` because the DSN is stored
+  in that database -- so an unreachable Postgres or a failed migration is
+  container-log-only. An **unhandled rejection** is reported but not fatal -- one transient
   error inside a background sync should not drop every in-flight request and open
   timeline stream. That does mean a subsystem can stay dead behind an
   `/api/version` that still answers 200, so those reports are worth acting on.

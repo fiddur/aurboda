@@ -615,6 +615,11 @@ const main = async () => {
         if (err) reject(err)
         else resolve()
       })
+      // `server.close` waits for every connection to end, and `/timeline/stream`
+      // is an indefinite text/event-stream — one open timeline tab would keep it
+      // pending until Docker's SIGKILL. Drop them so the callback above fires.
+      // (The feed-router tests do this in teardown for the same reason.)
+      server.closeAllConnections()
     })
     console.info('Server closed')
     process.exit(0)
@@ -622,7 +627,7 @@ const main = async () => {
 
   // Wrapped rather than passed directly: `shutdown` is async, so a rejecting
   // `boss.stop()` or `server.close()` would skip its `process.exit(0)` and leave
-  // the process alive with a half-closed server until Docker's SIGKILL timeout.
+  // the process alive until Docker's SIGKILL timeout.
   const onSignal = () =>
     void shutdown().catch((error) => {
       console.error('💥 Graceful shutdown failed:', error)
@@ -691,6 +696,11 @@ const installProcessGuards = () => {
 installProcessGuards()
 
 // Anchored explicitly rather than relying on the guards above: `main()` rejecting
-// is caught here, so it never surfaces as an unhandled rejection, and a startup
-// crash-loop is the failure most worth an alert.
+// is caught here, so it never surfaces as an unhandled rejection.
+//
+// Note the Sentry capture only lands for failures *after* `initSentry` — which
+// runs behind `initializeCentralDb`, because the DSN lives in that database. The
+// classic crash-loop (Postgres unreachable, migration failure, bad credentials)
+// therefore reports to the container log only. Alerting on those would need a
+// DSN bootstrapped from an env var before the DB is touched.
 main().catch((error) => reportAndExit('💥 Startup failed:', error))
