@@ -593,7 +593,7 @@ const main = async () => {
   const server = httpd.listen(port, () => {
     console.info(`> Running on localhost:${port}`)
     for (const cb of postListenCallbacks) {
-      cb().catch(() => {})
+      cb().catch((error) => console.error('⚠️ Post-listen task failed:', error))
     }
   })
 
@@ -617,44 +617,66 @@ const main = async () => {
     process.exit(0)
   }
 
-  process.on('SIGTERM', shutdown)
-  process.on('SIGINT', shutdown)
+  // Wrapped rather than passed directly: `shutdown` is async, so a rejecting
+  // `boss.stop()` or `server.close()` would skip its `process.exit(0)` and leave
+  // the process alive with a half-closed server until Docker's SIGKILL timeout.
+  const onSignal = () =>
+    void shutdown().catch((error) => {
+      console.error('💥 Graceful shutdown failed:', error)
+      process.exit(1)
+    })
+
+  process.on('SIGTERM', onSignal)
+  process.on('SIGINT', onSignal)
 }
 
 /**
- * Last-resort reporting for failures outside a request.
+ * Naming for failures outside a request — reporting only, deliberately not a
+ * change of policy.
  *
  * Express 5 forwards rejections from async route handlers to the error
- * middleware above, so these do not cover routes. They cover the ~40 places
- * that deliberately start work without awaiting it (`void thing()`, queue
- * workers, webhook managers, the post-listen callbacks), where Node's default
- * reporting gives no indication of which subsystem produced the failure.
+ * middleware above, so these do not cover routes. They cover work started
+ * without an owning request: the ~40 `void thing()` calls, queue workers, and
+ * webhook managers, where Node's own reporting names neither the subsystem nor
+ * the deploy.
+ *
+ * Both handlers still exit, which is what happened before them: with no Sentry
+ * DSN, Node's default `--unhandled-rejections=throw` killed the process,
+ * `entrypoint.sh` exited with the backend PID, and Docker restarted the
+ * container — so a dead queue worker self-healed. Staying up instead would keep
+ * `/api/version` answering 200 (the compose healthcheck is an HTTP request
+ * through nginx, not a liveness ping) while a subsystem is permanently dead, and
+ * `restart: unless-stopped` never restarts a *running* container. Sentry is
+ * captured and flushed first because registering these listeners removes the
+ * exit its own `onUncaughtException` / `onUnhandledRejection` integrations
+ * would perform.
  */
 const installProcessGuards = () => {
-  process.on('unhandledRejection', (reason) => {
-    console.error('⚠️ Unhandled promise rejection (background work):', reason)
-  })
-
-  // Exit rather than resume: Node documents the state after an uncaught
-  // exception as undefined, and the compose healthcheck only probes the
-  // listening socket — so staying alive would report a healthy container with a
-  // dead subsystem, and `restart: unless-stopped` never restarts a *running*
-  // container. Flush Sentry first, because registering this listener otherwise
-  // removes the exit Sentry's own handler performs after capturing.
-  process.on('uncaughtException', (error) => {
-    console.error('💥 Uncaught exception:', error)
+  const reportAndExit = (label: string, error: unknown) => {
+    console.error(label, error)
+    Sentry.captureException(error)
     void Sentry.flush(2000)
       .catch(() => {})
       .finally(() => process.exit(1))
+  }
+
+  process.on('unhandledRejection', (reason) => {
+    reportAndExit('⚠️ Unhandled promise rejection (background work):', reason)
+  })
+  process.on('uncaughtException', (error) => {
+    reportAndExit('💥 Uncaught exception (background work):', error)
   })
 }
 
 installProcessGuards()
 
-// Anchored explicitly: the guards above make an unhandled rejection non-fatal,
-// and startup failing silently would leave a container that serves nothing and
-// is never restarted.
+// Anchored explicitly rather than relying on the guards above: a startup
+// failure is the one worth an alert, and `initSentry` has already run for
+// everything that fails after it.
 main().catch((error) => {
   console.error('💥 Startup failed:', error)
-  process.exit(1)
+  Sentry.captureException(error)
+  void Sentry.flush(2000)
+    .catch(() => {})
+    .finally(() => process.exit(1))
 })
