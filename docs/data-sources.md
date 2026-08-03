@@ -52,7 +52,17 @@ All sources feed into a common data model:
 - **`activities`** -- Duration-based events (sleep, exercise, meditation, nap)
 - **`tags`** -- Labeled time points or spans (from Oura tags, Last.fm rules, calendar events)
 - **`productivity`** -- App/website usage records (from RescueTime)
-- **`locations`** -- GPS coordinates (from OwnTracks)
+- **`locations`** -- GPS coordinates (from OwnTracks, plus activity tracks from Garmin and Strava)
 - **`raw_records`** -- Original data preserved in full JSON form
 
 See [data-storage.md](./data-storage.md) for the complete data model.
+
+## GPS Precedence
+
+Several sources write to `locations`: OwnTracks streams phone positions continuously, while [Garmin](./garmin.md) and [Strava](./strava.md) contribute a GPS track per activity. A watch or bike computer fixes position far more accurately than a phone in a pocket, and keeping both would interleave two tracks into one zig-zagging path.
+
+So when an activity brings its own GPS track, locations from **passive** sources are soft-deleted for the activity's **whole span** -- not merely the range the track covers, since the track's first and last fixes usually sit inside the activity. The track may overhang the span by up to 5 minutes (clock skew between the activity row and the detail response); beyond that it is clamped, so one bogus timestamp cannot widen the range. The number of points superseded is recorded in the audit log.
+
+**Activity-track sources never supersede each other.** Garmin and Strava tracks of the same session describe the same route within GPS error, so overlaying two of them is cosmetic -- whereas letting them delete each other is not: Strava downsamples to 60-second intervals while Garmin keeps every sample, and neither integration revisits an activity once synced, so "last sync wins" would permanently demote a full-resolution track to a coarse one. Both are kept.
+
+Points are only ever soft-deleted (`locations.deleted_at`), never removed, but re-inserting them does not bring them back -- both insert paths use `ON CONFLICT DO NOTHING`. To restore a superseded track, clear `deleted_at` directly.

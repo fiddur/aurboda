@@ -34,12 +34,13 @@ describe('createStravaQueue', () => {
     getActivityStreams: vi.fn(),
     listActivities: vi.fn(),
     processDeps: {
+      auditInfo: vi.fn(),
       insertActivity: vi.fn(),
       insertLocations: vi.fn(),
       insertRawRecord: vi.fn(),
       insertTimeSeries: vi.fn(),
       resolveOrCreateActivityType: vi.fn(async (_user: string, name: string) => name),
-      softDeleteLocationRange: vi.fn(),
+      softDeleteSupersededLocations: vi.fn(async () => 0),
     },
     updateSyncState: vi.fn(),
   }

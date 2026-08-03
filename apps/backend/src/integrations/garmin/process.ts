@@ -9,6 +9,7 @@ import type { IActivity } from '@flow-js/garmin-connect/dist/garmin/types/activi
 import type { GarminNapDTO, SleepData } from '@flow-js/garmin-connect/dist/garmin/types/sleep'
 
 import type { Activity, Location, RawRecord, TimeSeriesPoint } from '../../db/types.ts'
+import type { ActivitySpan } from '../gps-precedence.ts'
 import type {
   GarminActivityDetailResponse,
   GarminBodyBatteryData,
@@ -28,9 +29,10 @@ import {
   insertLocations,
   insertRawRecord,
   insertTimeSeries,
-  softDeleteLocationRange,
+  softDeleteSupersededLocations,
 } from '../../db/index.ts'
-import { auditError } from '../../services/audit-log.ts'
+import { auditError, auditInfo, auditWarn } from '../../services/audit-log.ts'
+import { activityTrackSources, gpsPrecedenceSpan } from '../gps-precedence.ts'
 
 // ============================================================================
 // Types
@@ -70,23 +72,37 @@ export const garminDataTypes: GarminDataType[] = [
 export interface GarminProcessDeps {
   activityTypeExists: typeof activityTypeExists
   auditError: typeof auditError
+  auditInfo: typeof auditInfo
+  auditWarn: typeof auditWarn
   deleteGarminActivityWithWrongType: typeof deleteGarminActivityWithWrongType
   insertActivity: typeof insertActivity
   insertLocations: typeof insertLocations
   insertRawRecord: typeof insertRawRecord
   insertTimeSeries: typeof insertTimeSeries
-  softDeleteLocationRange: typeof softDeleteLocationRange
+  softDeleteSupersededLocations: typeof softDeleteSupersededLocations
+}
+
+export interface ProcessActivityDetailOptions {
+  /**
+   * Span of the activity the detail belongs to. GPS from the detail takes
+   * precedence over other sources across this whole range, not just the part
+   * the downsampled track covers.
+   */
+  activitySpan?: ActivitySpan | null
+  deps?: GarminProcessDeps
 }
 
 const defaultDeps: GarminProcessDeps = {
   activityTypeExists,
   auditError,
+  auditInfo,
+  auditWarn,
   deleteGarminActivityWithWrongType,
   insertActivity,
   insertLocations,
   insertRawRecord,
   insertTimeSeries,
-  softDeleteLocationRange,
+  softDeleteSupersededLocations,
 }
 
 /**
@@ -141,6 +157,18 @@ const resolveActivityType = async (
   const resolved: ResolvedActivityType = (await deps.activityTypeExists(user, mapped))
     ? { activity_type: mapped }
     : { activity_type: fallbackActivityType, unmapped_key: typeKey }
+
+  if (resolved.unmapped_key) {
+    // Warn once per distinct key (the cache below makes this cheap) so a new
+    // Garmin sport shows up in the audit log instead of only being discoverable
+    // by grepping data.garmin_type_key afterwards.
+    deps.auditWarn(
+      user,
+      'sync',
+      `⚠️ Unmapped Garmin activity type "${typeKey}" stored as ${resolved.activity_type}`,
+      { garmin_type_key: typeKey, resolved_name: mapped, stored_as: resolved.activity_type },
+    )
+  }
 
   cache.set(typeKey, resolved)
   return resolved
@@ -829,7 +857,7 @@ const extractMetricsAndGps = (
 export const processActivityDetail = async (
   user: string,
   data: GarminActivityDetailResponse,
-  deps: GarminProcessDeps = defaultDeps,
+  { activitySpan, deps = defaultDeps }: ProcessActivityDetailOptions = {},
 ): Promise<number> => {
   if (!data.activityDetailMetrics?.length) return 0
 
@@ -849,12 +877,26 @@ export const processActivityDetail = async (
 
   if (points.length > 0) await deps.insertTimeSeries(user, points)
 
-  // Batch-insert GPS locations and soft-delete conflicting OwnTracks data
+  // Batch-insert GPS locations, superseding coarser passive tracking
   if (gpsPoints.length > 0) {
-    const start = gpsPoints[0].time
-    const end = gpsPoints[gpsPoints.length - 1].time
-    await deps.softDeleteLocationRange(user, 'owntracks', start, end)
+    const span = gpsPrecedenceSpan(gpsPoints, activitySpan)
+    const replaced = span
+      ? await deps.softDeleteSupersededLocations(user, activityTrackSources, span.start, span.end)
+      : 0
     await deps.insertLocations(user, gpsPoints)
+
+    if (span && replaced > 0) {
+      deps.auditInfo(
+        user,
+        'sync',
+        `🛰️ Garmin GPS took precedence over ${replaced} location point(s) from other sources`,
+        {
+          end: span.end.toISOString(),
+          garmin_activity_id: data.activityId,
+          start: span.start.toISOString(),
+        },
+      )
+    }
   }
 
   return points.length

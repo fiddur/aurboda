@@ -3,15 +3,17 @@ import { describe, expect, test, vi } from 'vitest'
 import type { StravaProcessDeps } from './process.ts'
 import type { StravaDetailedActivity, StravaStreamsResponse } from './types.ts'
 
+import { activityTrackSources } from '../gps-precedence.ts'
 import { processStravaActivity } from './process.ts'
 
 const createMockDeps = (): StravaProcessDeps => ({
+  auditInfo: vi.fn(),
   insertActivity: vi.fn(),
   insertLocations: vi.fn(),
   insertRawRecord: vi.fn(),
   insertTimeSeries: vi.fn(),
   resolveOrCreateActivityType: vi.fn(async (_user: string, name: string) => name),
-  softDeleteLocationRange: vi.fn(),
+  softDeleteSupersededLocations: vi.fn(async () => 0),
 })
 
 const baseActivity: StravaDetailedActivity = {
@@ -150,7 +152,14 @@ describe('processStravaActivity', () => {
 
     await processStravaActivity('testuser', baseActivity, streams, deps)
 
-    expect(deps.softDeleteLocationRange).toHaveBeenCalled()
+    // Precedence covers the activity's full span (start + elapsed_time = 1h),
+    // not just the two minutes of track the streams happen to contain
+    expect(deps.softDeleteSupersededLocations).toHaveBeenCalledWith(
+      'testuser',
+      activityTrackSources,
+      new Date('2024-06-15T07:00:00Z'),
+      new Date('2024-06-15T08:00:00Z'),
+    )
     expect(deps.insertLocations).toHaveBeenCalled()
 
     // With 120 seconds of data and 60s downsampling, expect 2 GPS points (at 0s and 60s)

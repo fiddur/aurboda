@@ -139,6 +139,7 @@ CREATE TABLE locations (
     altitude        DOUBLE PRECISION,      -- Meters above sea level
     velocity        DOUBLE PRECISION,      -- Speed in m/s
     regions         VARCHAR[] DEFAULT '{}', -- Named regions device is in
+    deleted_at      TIMESTAMPTZ,           -- Soft delete (superseded by an activity's GPS track)
 
     CONSTRAINT unique_location UNIQUE (source, time)
 );
@@ -146,6 +147,8 @@ CREATE TABLE locations (
 CREATE INDEX idx_locations_time ON locations (time DESC);
 CREATE INDEX idx_locations_geo ON locations USING GIST (location);
 ```
+
+Reads must filter `deleted_at IS NULL`: when an activity carries its own GPS track, passive tracking for the activity's span is soft-deleted rather than removed. See [GPS Precedence](./data-sources.md#gps-precedence).
 
 #### `places` - Named Locations/Geofences
 

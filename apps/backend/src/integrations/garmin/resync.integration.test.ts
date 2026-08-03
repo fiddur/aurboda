@@ -17,8 +17,8 @@ import {
   insertRawRecord,
   insertTimeSeries,
 } from '../../db/index.ts'
-import { softDeleteLocationRange } from '../../db/locations.ts'
-import { auditError } from '../../services/audit-log.ts'
+import { softDeleteSupersededLocations } from '../../db/locations.ts'
+import { auditError, auditInfo, auditWarn } from '../../services/audit-log.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../../test/db-test-helper.ts'
 import { processActivityDetail } from './process.ts'
 
@@ -44,19 +44,21 @@ describe('Garmin resync integration', () => {
   const realDeps = {
     activityTypeExists,
     auditError,
+    auditInfo,
+    auditWarn,
     deleteGarminActivityWithWrongType: async () => null as string | null,
     insertActivity: async () => '' as string,
     insertLocations,
     insertRawRecord,
     insertTimeSeries,
-    softDeleteLocationRange,
+    softDeleteSupersededLocations,
   }
 
   test('processActivityDetail inserts time series and GPS from real Garmin response', async () => {
     const user = getTestUser()
     const data = garminDetailFixture as unknown as GarminActivityDetailResponse
 
-    const points = await processActivityDetail(user, data, realDeps)
+    const points = await processActivityDetail(user, data, { deps: realDeps })
 
     // Should have extracted per-second metrics (HR, speed, elevation, etc.)
     expect(points).toBeGreaterThan(0)
@@ -98,7 +100,7 @@ describe('Garmin resync integration', () => {
     const user = getTestUser()
     const data = garminDetailFixture as unknown as GarminActivityDetailResponse
 
-    await processActivityDetail(user, data, realDeps)
+    await processActivityDetail(user, data, { deps: realDeps })
 
     // The fixture has directLatitude/directLongitude in metrics — GPS should be extracted
     // GPS is downsampled to ~1 point per minute, so 120 seconds of data = ~2 GPS points
@@ -125,8 +127,8 @@ describe('Garmin resync integration', () => {
     const user = getTestUser()
     const data = garminDetailFixture as unknown as GarminActivityDetailResponse
 
-    const points1 = await processActivityDetail(user, data, realDeps)
-    const points2 = await processActivityDetail(user, data, realDeps)
+    const points1 = await processActivityDetail(user, data, { deps: realDeps })
+    const points2 = await processActivityDetail(user, data, { deps: realDeps })
 
     expect(points1).toBe(points2)
   })
