@@ -482,21 +482,13 @@ export const collapseToParentType = (
     }
     merged.push({ ...current })
   }
-  // Drop trivial provenance: a survivor whose only entry matches its own type
-  // *and* counts one carries no merge signal, and would render a redundant
-  // "Merged: Running" line. A count above one is worth keeping even then —
-  // "Merged: Yoga ×2" is the only clue that one bar hides two sessions, and
-  // that only the first is reachable by clicking it.
-  for (const m of merged) {
-    if (
-      m.collapsed_types &&
-      m.collapsed_types.length === 1 &&
-      m.collapsed_types[0].type === m.activity_type &&
-      m.collapsed_types[0].count === 1
-    ) {
-      delete m.collapsed_types
-    }
-  }
+  // No trivial-provenance cleanup is needed: a survivor can only carry
+  // `collapsed_types` from the retype above (where the recorded type differs
+  // from the survivor's by construction) or from the merge accumulation (which
+  // always lands on a total count ≥ 2). Either way there is something worth
+  // showing — "Merged: Running" for a collapsed sub-type, "Merged: Yoga ×2" for
+  // two folded sessions, the latter being the only clue that a bar hides more
+  // than one activity and that clicking reaches just the first.
   return merged
 }
 

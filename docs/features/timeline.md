@@ -161,7 +161,7 @@ Adjacent activities of the same type merge into one bar when the gap between the
 | Over 2 days          | 1 hour                                               |
 | 3-day view or closer | Whatever spans ~7 px on screen, capped at 10 minutes |
 
-For a 3-day view or closer the threshold is measured in pixels, not minutes, so **zooming in always pulls separate sessions apart** -- two yoga sessions nine minutes apart read as one bar in the day view and as two once you zoom in. This matters because a merged bar links to its _first_ member only: to open the second session, zoom in until the bar splits. A merged bar's tooltip names its members with counts ("Merged: Yoga ×2"), so you can tell when there is more inside than the bar suggests.
+For a 3-day view or closer the threshold is measured in pixels, not minutes, so **zooming in always pulls separate sessions apart** -- two yoga sessions nine minutes apart read as one bar in the day view and as two once you zoom in. This matters because a merged bar links to its _first_ member only: to open the second session, zoom in until the bar splits. The exception is two activities that touch exactly -- one ending at the moment the next begins. The test is `gap <= threshold` and the threshold bottoms out at zero, so those merge at every zoom level and the tooltip count is the only signal that the bar holds two. A merged bar's tooltip names its members with counts ("Merged: Yoga ×2"), so you can tell when there is more inside than the bar suggests.
 
 Different activity types never merge with each other, regardless of zoom. When zoomed out far enough, sub-types instead collapse into their `parent_type` (so running + strength read as one "Exercise" bar) -- see [activity types](./activity-types.md).
 

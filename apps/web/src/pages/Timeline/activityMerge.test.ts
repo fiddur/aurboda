@@ -516,12 +516,30 @@ describe('collapseToParentType', () => {
     expect(collapsed[0].collapsed_types).toEqual([{ type: 'running', count: 2 }])
   })
 
-  it('drops trivial provenance for a lone unmerged activity (depth=0)', () => {
+  it('attaches no provenance to a lone activity that was not retyped (depth=0)', () => {
     const activities: Activity[] = [
       { activity_type: 'running', end_time: d(10, 30), id: 'a', start_time: d(10) },
     ]
     const collapsed = collapseToParentType(activities, typeDefs, undefined, 0)
     expect(collapsed[0].collapsed_types).toBeUndefined()
+  })
+
+  it('never yields a provenance entry that only restates the bar itself', () => {
+    // What the removed trivial-provenance cleanup used to guard. Neither path
+    // that sets collapsed_types can produce `[{ type: <own type>, count: 1 }]`:
+    // the retype records a *different* type, and a merge always totals ≥ 2.
+    const activities: Activity[] = [
+      { activity_type: 'running', end_time: d(10, 30), id: 'a', start_time: d(10) },
+      { activity_type: 'running', end_time: d(11), id: 'b', start_time: d(10, 35) },
+      { activity_type: 'yoga', end_time: d(12), id: 'c', start_time: d(11, 30) },
+    ]
+
+    for (const depth of [0, 1, Number.POSITIVE_INFINITY]) {
+      for (const bar of collapseToParentType(activities, typeDefs, undefined, depth)) {
+        const trivial = bar.collapsed_types?.some((e) => e.type === bar.activity_type && e.count === 1)
+        expect(trivial ?? false).toBe(false)
+      }
+    }
   })
 
   it('separates two same-type sessions once the merge gap is below their gap', () => {
