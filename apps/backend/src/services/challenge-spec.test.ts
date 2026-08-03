@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 
 import { effectiveBucketSize } from './challenge-spec.ts'
 
-const days = (n: number) => new Date(Date.now() + n * 24 * 60 * 60 * 1000)
 const start = new Date('2026-07-01T00:00:00.000Z')
 const after = (d: number) => new Date(start.getTime() + d * 24 * 60 * 60 * 1000)
 
@@ -26,6 +25,10 @@ describe('effectiveBucketSize', () => {
 
   it('treats a sub-day window as the finest bucket', () => {
     expect(effectiveBucketSize('auto', start, new Date(start.getTime() + 13 * 60 * 60 * 1000))).toBe('5m')
-    expect(effectiveBucketSize('auto', new Date(), days(1))).toBe('5m')
+    // Sample the clock once: passing `new Date()` and a separately-computed
+    // "now + 1 day" reads it twice, and any elapsed millisecond pushes the
+    // window just past the `days <= 1` boundary into '15m'.
+    const now = new Date()
+    expect(effectiveBucketSize('auto', now, new Date(now.getTime() + 24 * 60 * 60 * 1000))).toBe('5m')
   })
 })
