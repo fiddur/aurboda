@@ -92,13 +92,14 @@ export const useTimelineNavigation = (options: TimelineNavigationOptions = {}): 
   // single day the gap follows pixels-per-hour, so back-to-back screentime
   // spans still read as one bar while zooming in separates genuinely distinct
   // sessions — see `mergeGapForZoom`.
+  const pixelsPerHour = useMemo(
+    () => computePixelsPerHour(timeAxisPixels, effectiveViewStart, effectiveViewEnd),
+    [timeAxisPixels, effectiveViewStart, effectiveViewEnd],
+  )
+
   const mergeGapMs = useMemo(
-    () =>
-      mergeGapForZoom(
-        differenceInCalendarDays(effectiveViewEnd, effectiveViewStart),
-        computePixelsPerHour(timeAxisPixels, effectiveViewStart, effectiveViewEnd),
-      ),
-    [effectiveViewStart, effectiveViewEnd, timeAxisPixels],
+    () => mergeGapForZoom(differenceInCalendarDays(effectiveViewEnd, effectiveViewStart), pixelsPerHour),
+    [effectiveViewStart, effectiveViewEnd, pixelsPerHour],
   )
 
   // Multi-tier collapse depth (#656/#658): at max zoom (high pixels-per-hour)
@@ -112,13 +113,7 @@ export const useTimelineNavigation = (options: TimelineNavigationOptions = {}): 
   // as if it were ~14 days at desktop width. `timeAxisPixels` ≤ 0 (pre-mount,
   // pre-measure) yields depth 0, which keeps the existing data visible
   // until the first measurement.
-  const collapseDepth = useMemo(
-    () =>
-      collapseDepthForPixelsPerHour(
-        computePixelsPerHour(timeAxisPixels, effectiveViewStart, effectiveViewEnd),
-      ),
-    [timeAxisPixels, effectiveViewStart, effectiveViewEnd],
-  )
+  const collapseDepth = useMemo(() => collapseDepthForPixelsPerHour(pixelsPerHour), [pixelsPerHour])
 
   const handleZoom = useCallback((zoomStart: Date, zoomEnd: Date) => {
     viewStart.value = zoomStart

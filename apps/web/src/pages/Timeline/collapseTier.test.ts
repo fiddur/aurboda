@@ -16,6 +16,13 @@ describe('mergeGapForZoom', () => {
     expect(dayView / MINUTE).toBeCloseTo(10, 0)
   })
 
+  it('pins the pixel gap itself, above the cap', () => {
+    // The day-view assertion above is satisfied by the 10-minute cap, so it
+    // holds for any MERGE_GAP_PX >= ~7. 84 pph is exactly 2x day zoom, where
+    // 7px works out to an uncapped 5 min — so this fixes the constant.
+    expect(mergeGapForZoom(0, 84) / MINUTE).toBe(5)
+  })
+
   it('shrinks the gap as the user zooms in past a single day', () => {
     const dayView = mergeGapForZoom(0, 41.7)
     const hourView = mergeGapForZoom(0, 1000)
