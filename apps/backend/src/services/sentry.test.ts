@@ -1,3 +1,5 @@
+import type * as SentryNode from '@sentry/node'
+
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 import type { CentralDb } from './central-db.ts'
@@ -49,7 +51,7 @@ describe('initSentry', () => {
     // which would leave the filter matching nothing and every crash reported
     // twice again. A list built from the same literals as the implementation
     // would stay green through that.
-    const actual = await vi.importActual<typeof import('@sentry/node')>('@sentry/node')
+    const actual = await vi.importActual<typeof SentryNode>('@sentry/node')
     const defaults = actual.getDefaultIntegrations({})
     const defaultNames = defaults.map((i) => i.name)
     expect(defaultNames).toContain('OnUncaughtException')
