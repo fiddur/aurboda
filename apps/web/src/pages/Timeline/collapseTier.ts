@@ -59,9 +59,14 @@ const FINE_MERGE_GAP_CAP_MS = 10 * 60 * 1000
  * activities reads as one bar. At views crossing <= 2 calendar-day boundaries
  * (so anything up to just under 72 elapsed hours) the gap instead tracks
  * pixels-per-hour: only gaps too small to see on screen are bridged, so zooming
- * in always pulls genuinely separate sessions apart — two yoga sessions nine
- * minutes apart used to stay welded together at every zoom level, because
+ * in pulls separate sessions apart — two yoga sessions nine minutes apart used
+ * to stay welded together at every zoom level, because
  * `differenceInCalendarDays` is 0 for any view inside one day.
+ *
+ * Not unconditional: the merge test is `gap <= this`, and this is always > 0 for
+ * a finite `pixelsPerHour`, so two sessions that abut exactly never split at any
+ * zoom. Tightening to `<` is not the answer — a zero gap is exactly what makes
+ * contiguous screentime sampling spans read as one bar.
  *
  * Capped at the previous fixed floor so a very wide container cannot merge
  * *more* than it did before.

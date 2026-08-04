@@ -215,6 +215,30 @@ describe('buildActivityColumnItems', () => {
     expect(items.map((i) => i.label)).toContain('Sauna')
   })
 
+  it('renders the merge count in the Activity-lane tooltip', () => {
+    // The user-visible half of the ×N behaviour: `collapseToParentType` keeping
+    // `[{ running, 2 }]` only matters if it reaches the tooltip. Guards against a
+    // filter being reintroduced downstream of the collapse.
+    const merged = makeBuiltinActivity({
+      activity_type: 'running',
+      collapsed_types: [{ count: 2, type: 'running' }],
+    })
+    const { items } = buildActivityColumnItems(
+      [merged],
+      [],
+      itemIcons,
+      activityColors,
+      exerciseColor,
+      getExerciseTypeName,
+      sleepMetricsByDate,
+      buildSleepDetails,
+      scrobbles,
+      new Map([['running', { color: '#10b981', display_name: 'Running' }]]),
+    )
+
+    expect(items[0].tooltip.details).toContain('Merged: Running ×2')
+  })
+
   it('excludes lastfm-source activities from the Activity column', () => {
     const tagActivity = makeActivity({ activity_type: 'holosync', source: 'lastfm' })
     const { items } = buildActivityColumnItems(

@@ -210,9 +210,15 @@ export const categorizeScreentimeActivities = (
       const iconPath = matchedByType?.name ?? path
       const icon = resolveCategoryIcon(iconPath, itemIcons) ?? def?.icon
 
-      // Suppressed when the provenance only restates this bar's own type: for a
-      // top-level category (no parent_type, so never retyped) the count is raw
-      // sampling spans, not sessions — see `restatesOwnType`.
+      // Suppressed when the provenance only restates this bar's own type, which
+      // is the top-level-category case: no parent_type, so never retyped, and the
+      // count would be raw sampling spans rather than sessions.
+      //
+      // Deliberately narrow. A *nested* category does retype (its derived type
+      // carries parent_type), so a run of `programming` spans under a `work` bar
+      // still renders "Merged: Programming ×47" with the same sampling-span
+      // count. That predates this change; suppressing counts lane-wide without
+      // losing the sub-category names #657 added is tracked in #981.
       const mergedLine = restatesOwnType(a.collapsed_types, a.activity_type)
         ? undefined
         : formatCollapsedTypesLine(a.collapsed_types)
