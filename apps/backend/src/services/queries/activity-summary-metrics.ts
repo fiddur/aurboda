@@ -10,8 +10,6 @@
 
 import type { ActivitySummaryMetrics, MetricType } from '@aurboda/api-spec'
 
-import { maxOf } from '../numeric-extremes.ts'
-
 type TimeSeriesPoint = [Date, number]
 
 /** Time-series metrics needed to compute summary fields. */
@@ -40,19 +38,69 @@ const round = (value: number, decimals: number): number => {
   return Math.round(value * f) / f
 }
 
-const positiveValues = (points: TimeSeriesPoint[]): number[] => points.flatMap(([, v]) => (v > 0 ? [v] : []))
+/**
+ * Index of the first point at or after `time`. Valid because
+ * `getTimeSeriesMultiMetric` orders by `(metric, time)`.
+ */
+const lowerBound = (points: TimeSeriesPoint[], time: number): number => {
+  let lo = 0
+  let hi = points.length
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1
+    if (points[mid][0].getTime() < time) lo = mid + 1
+    else hi = mid
+  }
+  return lo
+}
 
-const mean = (values: number[]): number | undefined =>
-  values.length === 0 ? undefined : values.reduce((s, v) => s + v, 0) / values.length
+/**
+ * Half-open index range `[lo, hi)` covering `[start, end]` inclusive.
+ *
+ * Replaces a `filter` over the whole series. The caller fetches one series for
+ * the entire requested span and asks for a window per activity per metric, so a
+ * scan made the enrichment `O(activities × metrics × series)` — a wide timeline
+ * range over per-second data blocked the event loop long enough to stop the
+ * process answering anything. Binary search makes it `O(log series + window)`.
+ */
+export const windowBounds = (points: TimeSeriesPoint[], start: Date, end: Date): [number, number] => [
+  lowerBound(points, start.getTime()),
+  // end is inclusive; +1ms finds the first point strictly after it
+  lowerBound(points, end.getTime() + 1),
+]
 
-const inRange = (points: TimeSeriesPoint[], start: Date, end: Date): TimeSeriesPoint[] =>
-  points.filter(([t]) => t >= start && t <= end)
+/** Mean of the positive values in `[lo, hi)`, or undefined when there are none. */
+const meanPositive = (points: TimeSeriesPoint[], lo: number, hi: number): number | undefined => {
+  let sum = 0
+  let count = 0
+  for (let i = lo; i < hi; i++) {
+    const value = points[i][1]
+    if (value > 0) {
+      sum += value
+      count++
+    }
+  }
+  return count === 0 ? undefined : sum / count
+}
 
-/** Sum the positive deltas (gain) and negated negative deltas (loss). */
-const elevationGainLoss = (points: TimeSeriesPoint[]): { gain: number; loss: number } => {
+/** Largest positive value in `[lo, hi)`, or undefined when there is none. */
+const maxPositive = (points: TimeSeriesPoint[], lo: number, hi: number): number | undefined => {
+  let max: number | undefined
+  for (let i = lo; i < hi; i++) {
+    const value = points[i][1]
+    if (value > 0 && (max === undefined || value > max)) max = value
+  }
+  return max
+}
+
+/** Sum the positive deltas (gain) and negated negative deltas (loss) in `[lo, hi)`. */
+const elevationGainLoss = (
+  points: TimeSeriesPoint[],
+  lo: number,
+  hi: number,
+): { gain: number; loss: number } => {
   let gain = 0
   let loss = 0
-  for (let i = 1; i < points.length; i++) {
+  for (let i = lo + 1; i < hi; i++) {
     const delta = points[i][1] - points[i - 1][1]
     if (delta > 0) gain += delta
     else if (delta < 0) loss -= delta
@@ -102,22 +150,22 @@ const computePace = (
 
 const computeHrFromSeries = (
   current: { avg_hr?: number; max_hr?: number },
-  hrValues: number[],
+  avg: number | undefined,
+  max: number | undefined,
 ): { avg_hr?: number; max_hr?: number } => {
-  if (hrValues.length === 0) return {}
   const out: { avg_hr?: number; max_hr?: number } = {}
-  if (current.avg_hr === undefined) {
-    out.avg_hr = Math.round(hrValues.reduce((s, v) => s + v, 0) / hrValues.length)
-  }
-  if (current.max_hr === undefined) out.max_hr = maxOf(hrValues)
+  if (current.avg_hr === undefined && avg !== undefined) out.avg_hr = Math.round(avg)
+  if (current.max_hr === undefined && max !== undefined) out.max_hr = max
   return out
 }
 
 const computeElevationFromSeries = (
   points: TimeSeriesPoint[],
+  lo: number,
+  hi: number,
 ): { elevation_gain?: number; elevation_loss?: number } => {
-  if (points.length < 2) return {}
-  const { gain, loss } = elevationGainLoss(points)
+  if (hi - lo < 2) return {}
+  const { gain, loss } = elevationGainLoss(points, lo, hi)
   const out: { elevation_gain?: number; elevation_loss?: number } = {}
   if (gain > 0) out.elevation_gain = round(gain, 1)
   if (loss > 0) out.elevation_loss = round(loss, 1)
@@ -126,9 +174,11 @@ const computeElevationFromSeries = (
 
 const computeBodyBatteryFromSeries = (
   points: TimeSeriesPoint[],
+  lo: number,
+  hi: number,
 ): { body_battery_before?: number; body_battery_after?: number } => {
-  if (points.length === 0) return {}
-  return { body_battery_after: points[points.length - 1][1], body_battery_before: points[0][1] }
+  if (hi === lo) return {}
+  return { body_battery_after: points[hi - 1][1], body_battery_before: points[lo][1] }
 }
 
 /**
@@ -147,20 +197,33 @@ export const computeActivitySummaryMetrics = (
   const end = activity.end_time
   if (!end) return result
 
-  const window = (metric: SummaryMetric): TimeSeriesPoint[] =>
-    inRange(series[metric] ?? [], activity.start_time, end)
+  /** Series for `metric` plus the index range covering this activity. */
+  const window = (metric: SummaryMetric) => {
+    const points = series[metric] ?? []
+    const [lo, hi] = windowBounds(points, activity.start_time, end)
+    return { hi, lo, points }
+  }
   const avgPositive = (metric: SummaryMetric, decimals: number): number | undefined => {
-    const v = mean(positiveValues(window(metric)))
+    const { hi, lo, points } = window(metric)
+    const v = meanPositive(points, lo, hi)
     return v === undefined ? undefined : round(v, decimals)
   }
 
-  const speedAvgRaw = mean(positiveValues(window('speed')))
+  const speed = window('speed')
+  const hr = window('heart_rate')
+  const elevation = window('elevation')
+  const bodyBattery = window('body_battery')
+
   Object.assign(
     result,
-    computePace(speedAvgRaw, result.distance, (end.getTime() - activity.start_time.getTime()) / 1000),
-    computeHrFromSeries(result, positiveValues(window('heart_rate'))),
-    computeElevationFromSeries(window('elevation')),
-    computeBodyBatteryFromSeries(window('body_battery')),
+    computePace(
+      meanPositive(speed.points, speed.lo, speed.hi),
+      result.distance,
+      (end.getTime() - activity.start_time.getTime()) / 1000,
+    ),
+    computeHrFromSeries(result, meanPositive(hr.points, hr.lo, hr.hi), maxPositive(hr.points, hr.lo, hr.hi)),
+    computeElevationFromSeries(elevation.points, elevation.lo, elevation.hi),
+    computeBodyBatteryFromSeries(bodyBattery.points, bodyBattery.lo, bodyBattery.hi),
   )
   result.avg_cadence = avgPositive('run_cadence', 1) ?? result.avg_cadence
   result.avg_stride_length = avgPositive('stride_length', 2) ?? result.avg_stride_length
