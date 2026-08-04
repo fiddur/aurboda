@@ -640,11 +640,20 @@ const main = async () => {
   // Wrapped rather than passed directly: `shutdown` is async, so a rejecting
   // `boss.stop()` or `server.close()` would skip its `process.exit(0)` and leave
   // the process alive until Docker's SIGKILL timeout.
-  const onSignal = () =>
+  //
+  // Guarded against re-entry, which the drain above makes reachable: a second
+  // Ctrl-C during those 3 seconds would call `server.close()` on an
+  // already-closing server, get `ERR_SERVER_NOT_RUNNING`, and abort the drain
+  // with a failure exit code.
+  let shuttingDown = false
+  const onSignal = () => {
+    if (shuttingDown) return
+    shuttingDown = true
     void shutdown().catch((error) => {
       console.error('💥 Graceful shutdown failed:', error)
       process.exit(1)
     })
+  }
 
   process.on('SIGTERM', onSignal)
   process.on('SIGINT', onSignal)

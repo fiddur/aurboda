@@ -54,6 +54,14 @@ export interface CaptureHint {
 /**
  * Matches what Sentry's own `onUncaughtException` integration sent before we
  * disabled it, so grouping and `error.unhandled` rules behave as they did.
+ *
+ * The `type` was copied from the installed SDK — `@sentry/node-core@10.52.0`,
+ * `integrations/onuncaughtexception.js:90` (same in the ESM build) — rather than
+ * guessed. It cannot be asserted against the SDK: the value is inline in the
+ * integration's `captureException` call, not exported, so a version bump that
+ * changed it would need re-checking by hand. Only event metadata and
+ * `error.mechanism:` searches depend on it; `error.unhandled` and release-health
+ * crash marking are driven by `handled`.
  */
 export const fatalHint: CaptureHint = {
   captureContext: { level: 'fatal' },
