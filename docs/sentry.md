@@ -32,8 +32,11 @@ integrations exiting, but not capturing.
 
 When no DSN is configured, the Sentry SDK is not initialized, the express error
 handler is a no-op, and `captureException` in the guards does nothing — no data
-leaves the server. The guards still log and still exit, so restart-on-failure
-behaviour does not depend on Sentry being configured.
+leaves the server. The uncaught-exception and startup guards still log and still
+exit, so restart-on-failure for those does not depend on Sentry being
+configured. Unhandled rejections are logged but non-fatal either way -- note
+that is a change for a DSN-less deploy, which previously had no
+`unhandledRejection` listener at all and so crashed on Node's default `throw`.
 
 ### Scope: errors only, no tracing/auto-instrumentation
 

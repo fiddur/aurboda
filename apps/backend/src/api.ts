@@ -92,11 +92,15 @@ import { createGeocodeQueue } from './services/geocode-queue.ts'
 import { createInvitationAuth } from './services/invitation.ts'
 import { getPlaceVisits } from './services/locations.ts'
 import { createPgBoss } from './services/pg-boss.ts'
+import { installProcessGuards } from './services/process-guards.ts'
 import { initSentry, Sentry } from './services/sentry.ts'
 import { createStravaQueue, type StravaQueue } from './services/strava-queue.ts'
 import { createSyncProvider } from './services/sync-provider.ts'
 import { createTimelineHub } from './services/timeline-hub.ts'
 import { createWebAuthnService } from './services/webauthn.ts'
+
+/** Grace period for in-flight requests before sockets are forced closed. */
+const SHUTDOWN_DRAIN_MS = 3000
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -615,11 +619,19 @@ const main = async () => {
         if (err) reject(err)
         else resolve()
       })
-      // `server.close` waits for every connection to end, and `/timeline/stream`
-      // is an indefinite text/event-stream — one open timeline tab would keep it
-      // pending until Docker's SIGKILL. Drop them so the callback above fires.
-      // (The feed-router tests do this in teardown for the same reason.)
-      server.closeAllConnections()
+      // `server.close` waits for every connection to end. Drop idle keep-alive
+      // sockets straight away, then give in-flight requests a moment to finish
+      // before forcing the rest: `/timeline/stream` is an indefinite
+      // text/event-stream, so it never ends on its own and one open timeline tab
+      // would keep the callback above pending forever. Forcing everything at
+      // once instead would ECONNRESET a sync POST mid-response.
+      //
+      // This mostly helps local SIGINT and direct `node` runs. In the container
+      // `entrypoint.sh`'s trap kills the backend and exits PID 1 immediately, so
+      // Docker tears the process down before a graceful drain can finish either
+      // way.
+      server.closeIdleConnections()
+      setTimeout(() => server.closeAllConnections(), SHUTDOWN_DRAIN_MS).unref()
     })
     console.info('Server closed')
     process.exit(0)
@@ -638,62 +650,14 @@ const main = async () => {
   process.on('SIGINT', onSignal)
 }
 
-/**
- * Reporting for failures outside a request.
- *
- * Express 5 forwards rejections from async route handlers to the error
- * middleware above, so these do not cover routes. They cover work started
- * without an owning request: the ~40 `void thing()` calls, queue workers, and
- * webhook managers, where Node's own reporting names neither the subsystem nor
- * the deploy.
- *
- * The two handlers deliberately differ, matching what a DSN-configured deploy
- * already does today:
- *
- *   - `uncaughtException` exits. Node documents the state afterwards as
- *     undefined, and Sentry's own integration already called
- *     `logAndExitProcess` here, so exiting changes nothing. `entrypoint.sh`
- *     watches the backend PID, so the container restarts.
- *   - `unhandledRejection` does not. Sentry's `onUnhandledRejection` integration
- *     defaults to `mode: 'warn'`, which captures, warns, and keeps running — so
- *     production is already non-fatal here, and making it fatal would let one
- *     transient error inside any of those `void` calls drop every in-flight
- *     request and open timeline SSE stream for every user. A background sync
- *     failing is not worth that.
- *
- * The gap that leaves — a subsystem dead behind an `/api/version` that still
- * answers 200 (the compose healthcheck is an HTTP request through nginx, not a
- * liveness ping) — is now at least visible in Sentry rather than silent.
- *
- * Capturing explicitly (rather than leaving it to Sentry's own
- * `onUncaughtException` / `onUnhandledRejection` integrations) keeps the event
- * queued *before* `flush` starts draining, so it cannot be lost to the exit.
- * Those two integrations are disabled in `initSentry` to avoid double-reporting
- * the same crash — registering these listeners stops them exiting, but not
- * capturing.
- */
-/** Log, capture, and drain the Sentry queue. Resolves once flushing settles. */
-const report = (label: string, error: unknown): Promise<unknown> => {
-  console.error(label, error)
-  Sentry.captureException(error)
-  return Sentry.flush(2000).catch(() => {})
-}
-
-/** As `report`, then exit non-zero so the container restarts. */
-const reportAndExit = (label: string, error: unknown) => {
-  void report(label, error).finally(() => process.exit(1))
-}
-
-const installProcessGuards = () => {
-  process.on('unhandledRejection', (reason) => {
-    void report('⚠️ Unhandled promise rejection (background work):', reason)
-  })
-  process.on('uncaughtException', (error) => {
-    reportAndExit('💥 Uncaught exception (background work):', error)
-  })
-}
-
-installProcessGuards()
+// Failures outside a request — see `services/process-guards.ts` for why the
+// rejection and exception paths deliberately differ.
+const { reportAndExit } = installProcessGuards({
+  capture: (error) => Sentry.captureException(error),
+  exit: (code) => process.exit(code),
+  flush: (timeoutMs) => Sentry.flush(timeoutMs),
+  log: (label, error) => console.error(label, error),
+})
 
 // Anchored explicitly rather than relying on the guards above: `main()` rejecting
 // is caught here, so it never surfaces as an unhandled rejection.
