@@ -16,6 +16,17 @@ describe('mergeGapForZoom', () => {
     expect(dayView / MINUTE).toBeCloseTo(10, 0)
   })
 
+  it('quantizes to whole seconds so a 1px resize does not churn the value', () => {
+    // Feeds the collapse memos in useTimelineData; an unrounded float would
+    // re-run the collapse on every ResizeObserver tick during a window drag.
+    const gaps = [1000, 1001, 1002, 1003].map((px) =>
+      mergeGapForZoom(0, computePixelsPerHour(px, new Date(0), new Date(6 * 3_600_000))),
+    )
+
+    expect(new Set(gaps).size).toBe(1)
+    expect(gaps[0] % 1000).toBe(0)
+  })
+
   it('pins the pixel gap itself, above the cap', () => {
     // The day-view assertion above is satisfied by the 10-minute cap, so it
     // holds for any MERGE_GAP_PX >= ~7. 84 pph is exactly 2x day zoom, where

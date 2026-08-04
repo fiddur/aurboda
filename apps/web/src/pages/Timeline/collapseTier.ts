@@ -79,5 +79,13 @@ export const mergeGapForZoom = (days: number, pixelsPerHour: number): number => 
   if (days > 50) return 4 * 60 * 60 * 1000
   if (days > 2) return 60 * 60 * 1000
   if (Number.isNaN(pixelsPerHour) || pixelsPerHour <= 0) return FINE_MERGE_GAP_CAP_MS
-  return Math.min(FINE_MERGE_GAP_CAP_MS, (MERGE_GAP_PX / pixelsPerHour) * 3_600_000)
+
+  const gap = Math.min(FINE_MERGE_GAP_CAP_MS, (MERGE_GAP_PX / pixelsPerHour) * 3_600_000)
+  // Quantized to whole seconds: this feeds the `collapseToParentType` memos in
+  // `useTimelineData`, so an unrounded float would re-run the whole collapse and
+  // hand downstream a fresh array on every 1px `ResizeObserver` tick during a
+  // window drag. #658 quantized `collapseDepthForPixelsPerHour` for the same
+  // reason. Activity gaps are never sub-second-precise, so no merge decision
+  // changes.
+  return Math.round(gap / 1000) * 1000
 }
