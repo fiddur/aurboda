@@ -1,6 +1,10 @@
 import { describe, expect, test } from 'vitest'
 
-import { computeActivitySummaryMetrics, type SummaryMetricSeries } from './activity-summary-metrics.ts'
+import {
+  computeActivitySummaryMetrics,
+  type SummaryMetricSeries,
+  windowBounds,
+} from './activity-summary-metrics.ts'
 
 const start = new Date('2024-01-15T10:00:00Z')
 const end = new Date('2024-01-15T10:10:00Z') // 10 minutes
@@ -196,5 +200,57 @@ describe('computeActivitySummaryMetrics', () => {
     }
     const result = computeActivitySummaryMetrics({ end_time: end, start_time: start }, series)
     expect(result.avg_hr).toBe(135)
+  })
+})
+
+describe('windowBounds', () => {
+  const points: [Date, number][] = [0, 60, 120, 180, 240].map((sec) => [at(sec), sec])
+
+  test('covers an inclusive range', () => {
+    expect(windowBounds(points, at(60), at(180))).toEqual([1, 4])
+  })
+
+  test('includes a point landing exactly on either edge', () => {
+    // The pre-binary-search filter was `t >= start && t <= end`, so both ends
+    // are inclusive — an activity's first and last sample must not drop out.
+    expect(windowBounds(points, at(0), at(240))).toEqual([0, 5])
+    expect(windowBounds(points, at(120), at(120))).toEqual([2, 3])
+  })
+
+  test('returns an empty range when nothing falls inside', () => {
+    expect(windowBounds(points, at(300), at(400))).toEqual([5, 5])
+    expect(windowBounds(points, at(-100), at(-50))).toEqual([0, 0])
+    expect(windowBounds(points, at(61), at(119))).toEqual([2, 2])
+  })
+
+  test('handles an empty series', () => {
+    expect(windowBounds([], at(0), at(60))).toEqual([0, 0])
+  })
+
+  test('agrees with a linear scan across every offset pair', () => {
+    // Parity with the filter this replaced, which is the only guarantee that
+    // matters — binary search is easy to get subtly wrong at the edges.
+    const offsets = [-30, 0, 30, 60, 90, 120, 150, 180, 210, 240, 270]
+    for (const from of offsets) {
+      for (const to of offsets) {
+        if (to < from) continue
+        const [lo, hi] = windowBounds(points, at(from), at(to))
+        const scanned = points.filter(([t]) => t >= at(from) && t <= at(to))
+        expect(points.slice(lo, hi)).toEqual(scanned)
+      }
+    }
+  })
+
+  test('windows a long series without rescanning it per activity', () => {
+    // The outage shape: one series fetched for a wide span, many activities each
+    // asking for their own window. 200k points is ~2.3 days at 1Hz.
+    const long: [Date, number][] = Array.from({ length: 200_000 }, (_, i) => [at(i), i])
+    const activityStarts = Array.from({ length: 500 }, (_, i) => i * 400)
+
+    for (const offset of activityStarts) {
+      const [lo, hi] = windowBounds(long, at(offset), at(offset + 100))
+      expect(hi - lo).toBe(101)
+      expect(long[lo][1]).toBe(offset)
+    }
   })
 })
