@@ -34,7 +34,10 @@ describe('mergeGapForZoom', () => {
   })
 
   it('never bridges more than the previous 10-minute floor', () => {
-    // A very wide container at day zoom must not merge more than it used to
+    // The cap binds at low pixels-per-hour, not high: 1 pph is a 1000px container
+    // showing ~1000 hours, and 0.001 pph is more extreme still. Both are
+    // maximally zoomed-out or very narrow, where 7px is worth far more than
+    // 10 minutes.
     expect(mergeGapForZoom(0, 1)).toBe(10 * MINUTE)
     expect(mergeGapForZoom(2, 0.001)).toBe(10 * MINUTE)
   })

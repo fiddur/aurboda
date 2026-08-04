@@ -68,8 +68,12 @@ const FINE_MERGE_GAP_CAP_MS = 10 * 60 * 1000
  * zoom. Tightening to `<` is not the answer — a zero gap is exactly what makes
  * contiguous screentime sampling spans read as one bar.
  *
- * Capped at the previous fixed floor so a very wide container cannot merge
- * *more* than it did before.
+ * Capped at the previous fixed floor. The cap binds below ~42 pixels-per-hour —
+ * a narrow container, or a range stretched toward the 2-boundary limit — where
+ * 7px would otherwise work out to far more than 10 minutes: a 3-day-elapsed view
+ * that still counts as 2 boundaries on a 360px phone is ~5 pph, i.e. ~84
+ * minutes. Above that the pixel gap is already under 10 minutes and the cap never
+ * applies.
  */
 export const mergeGapForZoom = (days: number, pixelsPerHour: number): number => {
   if (days > 50) return 4 * 60 * 60 * 1000
