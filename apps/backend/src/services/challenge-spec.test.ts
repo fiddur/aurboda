@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 
 import { effectiveBucketSize } from './challenge-spec.ts'
 
-const days = (n: number) => new Date(Date.now() + n * 24 * 60 * 60 * 1000)
 const start = new Date('2026-07-01T00:00:00.000Z')
 const after = (d: number) => new Date(start.getTime() + d * 24 * 60 * 60 * 1000)
 
@@ -25,7 +24,10 @@ describe('effectiveBucketSize', () => {
   })
 
   it('treats a sub-day window as the finest bucket', () => {
+    // Fixed dates only: `effectiveBucketSize` derives everything from `end -
+    // start`, so a wall-clock window bought nothing here and its two `Date.now()`
+    // reads straddled the `days <= 1` boundary. The exact-1-day boundary is
+    // already pinned by the `after(1)` case above.
     expect(effectiveBucketSize('auto', start, new Date(start.getTime() + 13 * 60 * 60 * 1000))).toBe('5m')
-    expect(effectiveBucketSize('auto', new Date(), days(1))).toBe('5m')
   })
 })

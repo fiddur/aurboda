@@ -28,6 +28,7 @@ import {
   metricUnits,
 } from '../../schema.ts'
 import { classifyHrvByContext, getHrvContextWindows, type HrvContext } from '../hrv-context.ts'
+import { maxOf, minOf } from '../numeric-extremes.ts'
 
 /**
  * Parse a bucket size string like '5m', '10s', '1h', '1d', '1M' into:
@@ -130,11 +131,11 @@ export const computeContextualHrvBuckets = (
       avg: sum / values.length,
       bucket_start: new Date(key),
       count: values.length,
-      first_time: new Date(Math.min(...timeMs)),
-      last_time: new Date(Math.max(...timeMs)),
-      max: Math.max(...values),
+      first_time: new Date(minOf(timeMs) ?? 0),
+      last_time: new Date(maxOf(timeMs) ?? 0),
+      max: maxOf(values) ?? 0,
       metric,
-      min: Math.min(...values),
+      min: minOf(values) ?? 0,
       sum,
     }
   })

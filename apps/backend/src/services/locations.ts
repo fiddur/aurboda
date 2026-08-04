@@ -17,6 +17,7 @@ import {
   type DetectedLocation as StoredDetectedLocation,
   updateNamedLocation,
 } from '../db/index.ts'
+import { maxOf } from './numeric-extremes.ts'
 
 // ============================================================================
 // Types
@@ -100,7 +101,7 @@ const calculateSuggestedRadius = (
 ): number => {
   if (points.length === 0) return DEFAULT_CLUSTER_RADIUS_METERS
   const distances = points.map((p) => haversineDistance(centroid.lat, centroid.lon, p.lat, p.lon))
-  const maxDistance = Math.max(...distances)
+  const maxDistance = maxOf(distances) ?? 0
   // Round up to nearest 50m, minimum 100m
   return Math.max(100, Math.ceil(maxDistance / 50) * 50)
 }

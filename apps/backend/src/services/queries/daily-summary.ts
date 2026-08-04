@@ -38,6 +38,7 @@ import {
 import { getScreentimeCategories } from '../../db/screentime-categories.ts'
 import { getPlaceVisits, type PlaceVisit } from '../locations.ts'
 import { toMetricEntityId } from '../metric-entity-id.ts'
+import { maxOf, minOf } from '../numeric-extremes.ts'
 import {
   categoryPathToString,
   getScreentimeCategoryPath,
@@ -263,8 +264,8 @@ export const buildMetricsToday = async (
       entries: summaryEntries,
       latest: last.value,
       latest_time: last.time.toISOString(),
-      max: Math.max(...values),
-      min: Math.min(...values),
+      max: maxOf(values) ?? 0,
+      min: minOf(values) ?? 0,
       unit: last.unit,
     }
   }
@@ -402,8 +403,8 @@ export async function getDailySummary(
       ? {
           avg: Math.round(heartRates.reduce((a, b) => a + b, 0) / heartRates.length),
           count: heartRates.length,
-          max: Math.max(...heartRates),
-          min: Math.min(...heartRates),
+          max: maxOf(heartRates) ?? 0,
+          min: minOf(heartRates) ?? 0,
         }
       : null
 

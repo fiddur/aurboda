@@ -18,6 +18,7 @@ import sharp from 'sharp'
 
 import { buildChartSvg } from '../charts/chart-svg.ts'
 import { type ScatterSvgData, buildScatterSvg } from '../charts/scatter-svg.ts'
+import { maxOf, minOf } from '../numeric-extremes.ts'
 import { chooseZoom, latToWorldY, lonToWorldX, TILE_SIZE, type TileFetcher } from './osm-tiles.ts'
 
 const ROUTE_W = 700
@@ -85,10 +86,10 @@ const boundingBox = (pts: [number, number][]): Bbox => {
   const lons = pts.map(([lon]) => lon)
   const lats = pts.map(([, lat]) => lat)
   return {
-    maxLat: Math.max(...lats),
-    maxLon: Math.max(...lons),
-    minLat: Math.min(...lats),
-    minLon: Math.min(...lons),
+    maxLat: maxOf(lats) ?? 0,
+    maxLon: maxOf(lons) ?? 0,
+    minLat: minOf(lats) ?? 0,
+    minLon: minOf(lons) ?? 0,
   }
 }
 
