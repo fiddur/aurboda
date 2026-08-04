@@ -14,6 +14,7 @@ import type { CorrelationSelector } from '@aurboda/api-spec'
 
 import { describeSelectorAxis, linearRegression } from '@aurboda/api-spec'
 
+import { maxOf, minOf } from '../numeric-extremes.ts'
 import { escapeXml, scale } from './chart-svg.ts'
 
 /** Default scatter dimensions (feed attachment size); overridable per call. */
@@ -84,10 +85,10 @@ export const buildScatterSvg = (data: ScatterSvgData, opts: ScatterSvgOptions = 
   const points = data.series.filter((p) => Number.isFinite(p.trigger) && Number.isFinite(p.outcome))
   const xs = points.map((p) => p.trigger)
   const ys = points.map((p) => p.outcome)
-  const xMin = Math.min(...xs)
-  const xMax = Math.max(...xs)
-  const yMin = Math.min(...ys)
-  const yMax = Math.max(...ys)
+  const xMin = minOf(xs) ?? 0
+  const xMax = maxOf(xs) ?? 0
+  const yMin = minOf(ys) ?? 0
+  const yMax = maxOf(ys) ?? 0
 
   const sx = (x: number) => scale(x, xMin, xMax, PAD.left, width - PAD.right)
   const sy = (y: number) => scale(y, yMin, yMax, height - PAD.bottom, PAD.top)

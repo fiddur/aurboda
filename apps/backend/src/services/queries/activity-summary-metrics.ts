@@ -10,6 +10,8 @@
 
 import type { ActivitySummaryMetrics, MetricType } from '@aurboda/api-spec'
 
+import { maxOf } from '../numeric-extremes.ts'
+
 type TimeSeriesPoint = [Date, number]
 
 /** Time-series metrics needed to compute summary fields. */
@@ -107,7 +109,7 @@ const computeHrFromSeries = (
   if (current.avg_hr === undefined) {
     out.avg_hr = Math.round(hrValues.reduce((s, v) => s + v, 0) / hrValues.length)
   }
-  if (current.max_hr === undefined) out.max_hr = Math.max(...hrValues)
+  if (current.max_hr === undefined) out.max_hr = maxOf(hrValues)
   return out
 }
 

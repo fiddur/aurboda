@@ -21,6 +21,8 @@
  * what makes the chart stable and citable (#934 articles lock that window).
  */
 
+import { maxOf, minOf } from '../numeric-extremes.ts'
+
 /** Default chart dimensions (feed attachment size); overridable per call. */
 export const CHART_WIDTH = 1000
 export const CHART_HEIGHT = 420
@@ -64,20 +66,23 @@ export const buildChartSvg = (series: [Date, number][], opts: ChartSvgOptions = 
   const pts = series.filter(([, v]) => Number.isFinite(v))
   const times = pts.map(([t]) => t.getTime())
   const vals = pts.map(([, v]) => v)
-  const tMin = Math.min(...times)
-  const tMax = Math.max(...times)
-  const vMin = Math.min(...vals)
-  const vMax = Math.max(...vals)
+  const tMin = minOf(times)
+  const tMax = maxOf(times)
+  const vMin = minOf(vals)
+  const vMax = maxOf(vals)
 
-  const x = (t: number) => scale(t, tMin, tMax, PAD, width - PAD)
-  const y = (v: number) => scale(v, vMin, vMax, height - PAD, PAD)
+  // The fallbacks only keep these total: both are used solely for the polyline,
+  // which is rendered only when there are ≥2 finite points — and then the
+  // extremes are defined. Value labels below stay blank when they are not.
+  const x = (t: number) => scale(t, tMin ?? 0, tMax ?? 0, PAD, width - PAD)
+  const y = (v: number) => scale(v, vMin ?? 0, vMax ?? 0, height - PAD, PAD)
   const polyline = pts.map(([t, v]) => `${x(t.getTime()).toFixed(1)},${y(v).toFixed(1)}`).join(' ')
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
   <rect width="${width}" height="${height}" fill="${CHART_BG}" rx="16"/>
   ${pts.length >= 2 ? `<polyline points="${polyline}" fill="none" stroke="${color}" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>` : ''}
   <text x="${PAD}" y="${PAD - 12}" fill="#e5e7eb" font-family="Liberation Sans, sans-serif" font-size="26" font-weight="700">${escapeXml(opts.label ?? DEFAULT_LABEL)}</text>
-  <text x="${width - PAD}" y="${PAD}" fill="#9ca3af" font-family="Liberation Sans, sans-serif" font-size="22" text-anchor="end">${Number.isFinite(vMax) ? Math.round(vMax) : ''}</text>
-  <text x="${width - PAD}" y="${height - PAD}" fill="#9ca3af" font-family="Liberation Sans, sans-serif" font-size="22" text-anchor="end">${Number.isFinite(vMin) ? Math.round(vMin) : ''}</text>
+  <text x="${width - PAD}" y="${PAD}" fill="#9ca3af" font-family="Liberation Sans, sans-serif" font-size="22" text-anchor="end">${vMax === undefined ? '' : Math.round(vMax)}</text>
+  <text x="${width - PAD}" y="${height - PAD}" fill="#9ca3af" font-family="Liberation Sans, sans-serif" font-size="22" text-anchor="end">${vMin === undefined ? '' : Math.round(vMin)}</text>
 </svg>`
 }

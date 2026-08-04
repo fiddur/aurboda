@@ -92,11 +92,15 @@ import { createGeocodeQueue } from './services/geocode-queue.ts'
 import { createInvitationAuth } from './services/invitation.ts'
 import { getPlaceVisits } from './services/locations.ts'
 import { createPgBoss } from './services/pg-boss.ts'
+import { installProcessGuards } from './services/process-guards.ts'
 import { initSentry, Sentry } from './services/sentry.ts'
 import { createStravaQueue, type StravaQueue } from './services/strava-queue.ts'
 import { createSyncProvider } from './services/sync-provider.ts'
 import { createTimelineHub } from './services/timeline-hub.ts'
 import { createWebAuthnService } from './services/webauthn.ts'
+
+/** Grace period for in-flight requests before sockets are forced closed. */
+const SHUTDOWN_DRAIN_MS = 3000
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -593,7 +597,10 @@ const main = async () => {
   const server = httpd.listen(port, () => {
     console.info(`> Running on localhost:${port}`)
     for (const cb of postListenCallbacks) {
-      cb().catch(() => {})
+      cb().catch((error) => {
+        console.error('⚠️ Post-listen task failed:', error)
+        Sentry.captureException(error)
+      })
     }
   })
 
@@ -612,13 +619,61 @@ const main = async () => {
         if (err) reject(err)
         else resolve()
       })
+      // `server.close` waits for every connection to end. Drop idle keep-alive
+      // sockets straight away, then give in-flight requests a moment to finish
+      // before forcing the rest: `/timeline/stream` is an indefinite
+      // text/event-stream, so it never ends on its own and one open timeline tab
+      // would keep the callback above pending forever. Forcing everything at
+      // once instead would ECONNRESET a sync POST mid-response.
+      //
+      // This mostly helps local SIGINT and direct `node` runs. In the container
+      // `entrypoint.sh`'s trap kills the backend and exits PID 1 immediately, so
+      // Docker tears the process down before a graceful drain can finish either
+      // way.
+      server.closeIdleConnections()
+      setTimeout(() => server.closeAllConnections(), SHUTDOWN_DRAIN_MS).unref()
     })
     console.info('Server closed')
     process.exit(0)
   }
 
-  process.on('SIGTERM', shutdown)
-  process.on('SIGINT', shutdown)
+  // Wrapped rather than passed directly: `shutdown` is async, so a rejecting
+  // `boss.stop()` or `server.close()` would skip its `process.exit(0)` and leave
+  // the process alive until Docker's SIGKILL timeout.
+  //
+  // Guarded against re-entry, which the drain above makes reachable: a second
+  // Ctrl-C during those 3 seconds would call `server.close()` on an
+  // already-closing server, get `ERR_SERVER_NOT_RUNNING`, and abort the drain
+  // with a failure exit code.
+  let shuttingDown = false
+  const onSignal = () => {
+    if (shuttingDown) return
+    shuttingDown = true
+    void shutdown().catch((error) => {
+      console.error('💥 Graceful shutdown failed:', error)
+      process.exit(1)
+    })
+  }
+
+  process.on('SIGTERM', onSignal)
+  process.on('SIGINT', onSignal)
 }
 
-main()
+// Failures outside a request — see `services/process-guards.ts` for why the
+// rejection and exception paths deliberately differ.
+const { reportAndExit } = installProcessGuards({
+  capture: (error, hint) => Sentry.captureException(error, hint),
+  exit: (code) => process.exit(code),
+  flush: (timeoutMs) => Sentry.flush(timeoutMs),
+  log: (label, error) => console.error(label, error),
+})
+
+// Anchored explicitly rather than relying on the guards above: `main()` rejecting
+// is caught here, so it never surfaces as an unhandled rejection.
+//
+// Note the Sentry capture only lands for failures *after* `initSentry` — which
+// runs behind `initializeCentralDb`, because the DSN lives in that database. The
+// classic crash-loop (Postgres unreachable, migration failure, bad credentials)
+// therefore reports to the container log only. Alerting on those would need a
+// DSN bootstrapped from an env var before the DB is touched.
+main().catch((error) => reportAndExit('💥 Startup failed:', error))
