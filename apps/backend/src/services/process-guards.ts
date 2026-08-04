@@ -39,8 +39,38 @@
 /** How long to let Sentry drain before exiting. */
 const FLUSH_TIMEOUT_MS = 2000
 
+/**
+ * Subset of Sentry's capture hint we need. Without one, `captureException`
+ * defaults to the `generic` mechanism with `handled: true`, so the event would
+ * not be tagged **Unhandled**: alert rules keyed on `error.unhandled` would miss
+ * it and release health would mark the session errored rather than crashed —
+ * exactly the signal a process-death guard exists to send.
+ */
+export interface CaptureHint {
+  captureContext?: { level: 'fatal' }
+  mechanism?: { handled: boolean; type: string }
+}
+
+/**
+ * Matches what Sentry's own `onUncaughtException` integration sent before we
+ * disabled it, so grouping and `error.unhandled` rules behave as they did.
+ */
+export const fatalHint: CaptureHint = {
+  captureContext: { level: 'fatal' },
+  mechanism: { handled: false, type: 'auto.node.onuncaughtexception' },
+}
+
+/**
+ * Unhandled by the application, but this guard recovers and the process keeps
+ * serving — so deliberately not `handled: false`, which would mark the
+ * release-health session crashed when nothing crashed.
+ */
+const recoveredRejectionHint: CaptureHint = {
+  mechanism: { handled: true, type: 'auto.node.onunhandledrejection' },
+}
+
 export interface ProcessGuardDeps {
-  capture: (error: unknown) => void
+  capture: (error: unknown, hint?: CaptureHint) => void
   exit: (code: number) => void
   flush: (timeoutMs: number) => Promise<unknown>
   log: (label: string, error: unknown) => void
@@ -48,22 +78,22 @@ export interface ProcessGuardDeps {
 
 export interface ProcessReporters {
   /** Log, capture, and drain the queue. Resolves once flushing settles. */
-  report: (label: string, error: unknown) => Promise<void>
+  report: (label: string, error: unknown, hint?: CaptureHint) => Promise<void>
   /** As `report`, then exit non-zero so the container restarts. */
-  reportAndExit: (label: string, error: unknown) => void
+  reportAndExit: (label: string, error: unknown, hint?: CaptureHint) => void
 }
 
 export const createProcessReporters = (deps: ProcessGuardDeps): ProcessReporters => {
-  const report = async (label: string, error: unknown): Promise<void> => {
+  const report = async (label: string, error: unknown, hint?: CaptureHint): Promise<void> => {
     deps.log(label, error)
-    deps.capture(error)
+    deps.capture(error, hint)
     await deps.flush(FLUSH_TIMEOUT_MS).catch(() => {})
   }
 
   return {
     report,
-    reportAndExit: (label, error) => {
-      void report(label, error).finally(() => deps.exit(1))
+    reportAndExit: (label, error, hint = fatalHint) => {
+      void report(label, error, hint).finally(() => deps.exit(1))
     },
   }
 }
@@ -82,7 +112,7 @@ export const installProcessGuards = (
   const reporters = createProcessReporters(deps)
 
   target.on('unhandledRejection', (reason) => {
-    void reporters.report('⚠️ Unhandled promise rejection (background work):', reason)
+    void reporters.report('⚠️ Unhandled promise rejection (background work):', reason, recoveredRejectionHint)
   })
   target.on('uncaughtException', (error) => {
     reporters.reportAndExit('💥 Uncaught exception (background work):', error)

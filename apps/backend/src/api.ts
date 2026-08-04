@@ -653,7 +653,7 @@ const main = async () => {
 // Failures outside a request — see `services/process-guards.ts` for why the
 // rejection and exception paths deliberately differ.
 const { reportAndExit } = installProcessGuards({
-  capture: (error) => Sentry.captureException(error),
+  capture: (error, hint) => Sentry.captureException(error, hint),
   exit: (code) => process.exit(code),
   flush: (timeoutMs) => Sentry.flush(timeoutMs),
   log: (label, error) => console.error(label, error),

@@ -31,7 +31,7 @@ describe('createProcessReporters', () => {
     await createProcessReporters(deps).report('⚠️ label:', error)
 
     expect(deps.log).toHaveBeenCalledWith('⚠️ label:', error)
-    expect(deps.capture).toHaveBeenCalledWith(error)
+    expect(deps.capture).toHaveBeenCalledWith(error, undefined)
     expect(deps.flush).toHaveBeenCalledWith(2000)
     expect(deps.exit).not.toHaveBeenCalled()
   })
@@ -96,5 +96,36 @@ describe('installProcessGuards', () => {
     installProcessGuards(makeDeps(), target)
 
     expect([...handlers.keys()].sort()).toEqual(['uncaughtException', 'unhandledRejection'])
+  })
+
+  test('tags a fatal exception unhandled, matching what Sentry used to send', async () => {
+    // Without this hint the event defaults to `handled: true`, so it is not
+    // tagged Unhandled — `error.unhandled` alert rules miss it and release health
+    // records errored rather than crashed.
+    const deps = makeDeps()
+    const { handlers, target } = makeTarget()
+    installProcessGuards(deps, target)
+
+    handlers.get('uncaughtException')!(new Error('fatal'))
+    await vi.waitFor(() => expect(deps.exit).toHaveBeenCalled())
+
+    expect(deps.capture).toHaveBeenCalledWith(expect.any(Error), {
+      captureContext: { level: 'fatal' },
+      mechanism: { handled: false, type: 'auto.node.onuncaughtexception' },
+    })
+  })
+
+  test('marks a survived rejection handled so release health is not told it crashed', async () => {
+    const deps = makeDeps()
+    const { handlers, target } = makeTarget()
+    installProcessGuards(deps, target)
+
+    handlers.get('unhandledRejection')!(new Error('transient'))
+    await vi.waitFor(() => expect(deps.flush).toHaveBeenCalled())
+
+    expect(deps.capture).toHaveBeenCalledWith(expect.any(Error), {
+      mechanism: { handled: true, type: 'auto.node.onunhandledrejection' },
+    })
+    expect(deps.exit).not.toHaveBeenCalled()
   })
 })
