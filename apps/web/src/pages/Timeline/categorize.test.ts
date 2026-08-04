@@ -233,6 +233,26 @@ describe('categorizeScreentimeActivities', () => {
     expect(items[0]!.tooltip.details.some((d) => d.startsWith('Merged:'))).toBe(true)
   })
 
+  it('omits the "Merged: ..." line when the provenance only restates the bar', () => {
+    // A top-level category's derived type has no parent_type, so it is never
+    // retyped and a merged run carries [{ <own type>, N }]. N counts raw
+    // sampling spans, and the bar links to its category rather than to a member,
+    // so "Merged: Programming ×47" would be noise.
+    const collapsed = makeActivity({
+      activity_type: 'programming',
+      collapsed_types: [{ count: 47, type: 'programming' }],
+      data: { category_path: 'Programming' },
+    })
+    const items = categorizeScreentimeActivities(
+      [collapsed],
+      [],
+      {},
+      new Set(['programming']),
+      new Map([['programming', { color: '#22c55e', display_name: 'Programming' }]]),
+    )
+    expect(items[0]!.tooltip.details.some((d) => d.startsWith('Merged:'))).toBe(false)
+  })
+
   it('matches category by exact path for href and clears entity_id', () => {
     const items = categorizeScreentimeActivities(
       [makeActivity()],

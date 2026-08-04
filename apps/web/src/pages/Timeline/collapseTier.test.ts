@@ -1,6 +1,68 @@
 import { describe, expect, it } from 'vitest'
 
-import { collapseDepthForPixelsPerHour, computePixelsPerHour } from './collapseTier'
+import { collapseDepthForPixelsPerHour, computePixelsPerHour, mergeGapForZoom } from './collapseTier'
+
+const MINUTE = 60_000
+
+describe('mergeGapForZoom', () => {
+  it('keeps the coarse tiers for multi-week and multi-day views', () => {
+    expect(mergeGapForZoom(60, 0.8)).toBe(4 * 60 * MINUTE)
+    expect(mergeGapForZoom(3, 14)).toBe(60 * MINUTE)
+  })
+
+  it('matches the previous 10-minute floor at a 1000px day view', () => {
+    // 24h in 1000px → ~41.7 pph, where 7px works out to ~10 min
+    const dayView = mergeGapForZoom(0, computePixelsPerHour(1000, new Date(0), new Date(24 * 3_600_000)))
+    expect(dayView / MINUTE).toBeCloseTo(10, 0)
+  })
+
+  it('quantizes to whole seconds so a 1px resize does not churn the value', () => {
+    // Feeds the collapse memos in useTimelineData; an unrounded float would
+    // re-run the collapse on every ResizeObserver tick during a window drag.
+    const gaps = [1000, 1001, 1002, 1003].map((px) =>
+      mergeGapForZoom(0, computePixelsPerHour(px, new Date(0), new Date(6 * 3_600_000))),
+    )
+
+    expect(new Set(gaps).size).toBe(1)
+    expect(gaps[0] % 1000).toBe(0)
+  })
+
+  it('pins the pixel gap itself, above the cap', () => {
+    // The day-view assertion above is satisfied by the 10-minute cap, so it
+    // holds for any MERGE_GAP_PX >= ~7. 84 pph is exactly 2x day zoom, where
+    // 7px works out to an uncapped 5 min — so this fixes the constant.
+    expect(mergeGapForZoom(0, 84) / MINUTE).toBe(5)
+  })
+
+  it('shrinks the gap as the user zooms in past a single day', () => {
+    const dayView = mergeGapForZoom(0, 41.7)
+    const hourView = mergeGapForZoom(0, 1000)
+
+    expect(hourView).toBeLessThan(dayView)
+    // Two sessions 9 min apart stay merged at day view but separate zoomed in
+    expect(9 * MINUTE).toBeLessThan(dayView)
+    expect(9 * MINUTE).toBeGreaterThan(hourView)
+  })
+
+  it('never bridges more than the previous 10-minute floor', () => {
+    // The cap binds at low pixels-per-hour, not high: 1 pph is a 1000px container
+    // showing ~1000 hours, and 0.001 pph is more extreme still. Both are
+    // maximally zoomed-out or very narrow, where 7px is worth far more than
+    // 10 minutes.
+    expect(mergeGapForZoom(0, 1)).toBe(10 * MINUTE)
+    expect(mergeGapForZoom(2, 0.001)).toBe(10 * MINUTE)
+  })
+
+  it('falls back to the floor when there is no zoom measurement yet', () => {
+    for (const noMeasurement of [0, -1, Number.NaN]) {
+      expect(mergeGapForZoom(0, noMeasurement)).toBe(10 * MINUTE)
+    }
+  })
+
+  it('bridges nothing but touching spans at unbounded zoom', () => {
+    expect(mergeGapForZoom(0, Number.POSITIVE_INFINITY)).toBe(0)
+  })
+})
 
 describe('collapseDepthForPixelsPerHour (#658)', () => {
   it('returns 0 (no walk) for high pixels-per-hour — typical day view', () => {

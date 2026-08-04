@@ -215,6 +215,30 @@ describe('buildActivityColumnItems', () => {
     expect(items.map((i) => i.label)).toContain('Sauna')
   })
 
+  it('renders the merge count in the Activity-lane tooltip', () => {
+    // The user-visible half of the ×N behaviour: `collapseToParentType` keeping
+    // `[{ running, 2 }]` only matters if it reaches the tooltip. Guards against a
+    // filter being reintroduced downstream of the collapse.
+    const merged = makeBuiltinActivity({
+      activity_type: 'running',
+      collapsed_types: [{ count: 2, type: 'running' }],
+    })
+    const { items } = buildActivityColumnItems(
+      [merged],
+      [],
+      itemIcons,
+      activityColors,
+      exerciseColor,
+      getExerciseTypeName,
+      sleepMetricsByDate,
+      buildSleepDetails,
+      scrobbles,
+      new Map([['running', { color: '#10b981', display_name: 'Running' }]]),
+    )
+
+    expect(items[0].tooltip.details).toContain('Merged: Running ×2')
+  })
+
   it('excludes lastfm-source activities from the Activity column', () => {
     const tagActivity = makeActivity({ activity_type: 'holosync', source: 'lastfm' })
     const { items } = buildActivityColumnItems(
@@ -503,17 +527,102 @@ describe('collapseToParentType', () => {
     expect(collapsed[0].collapsed_types).toEqual([{ type: 'running', count: 2 }])
   })
 
-  it('drops trivial provenance when no retype happens (depth=0)', () => {
-    // Identical sub-types merge but stay typed as themselves; the survivor's
-    // provenance would be [{ running, 2 }] which is the same as activity_type
-    // — drop so tooltip doesn't render a redundant "Merged: Running" line.
+  it('keeps the count when identical sub-types merge at depth=0', () => {
+    // The bar stays typed as itself, so "Merged: Running" alone would be
+    // redundant — but the ×2 is the only signal that one bar hides two
+    // sessions and that clicking reaches just the first.
     const activities: Activity[] = [
       { activity_type: 'running', end_time: d(10, 30), id: 'a', start_time: d(10) },
       { activity_type: 'running', end_time: d(11), id: 'b', start_time: d(10, 35) },
     ]
     const collapsed = collapseToParentType(activities, typeDefs, undefined, 0)
     expect(collapsed[0].activity_type).toBe('running')
+    expect(collapsed[0].collapsed_types).toEqual([{ type: 'running', count: 2 }])
+  })
+
+  it('attaches no provenance to a lone activity that was not retyped (depth=0)', () => {
+    const activities: Activity[] = [
+      { activity_type: 'running', end_time: d(10, 30), id: 'a', start_time: d(10) },
+    ]
+    const collapsed = collapseToParentType(activities, typeDefs, undefined, 0)
     expect(collapsed[0].collapsed_types).toBeUndefined()
+  })
+
+  // Fixture includes a parent-typed activity (`exercise`) next to a child that
+  // retypes onto it, which is where entry-level and list-level invariants differ.
+  const mixedActivities: Activity[] = [
+    { activity_type: 'running', end_time: d(10, 30), id: 'a', start_time: d(10) },
+    { activity_type: 'exercise', end_time: d(11), id: 'b', start_time: d(10, 35) },
+    { activity_type: 'yoga', end_time: d(12), id: 'c', start_time: d(11, 30) },
+  ]
+
+  // The two fixtures that produce a *single-entry* provenance list, which is
+  // where the invariant below actually bites.
+  const sameTypePair: Activity[] = [
+    { activity_type: 'running', end_time: d(10, 30), id: 'a', start_time: d(10) },
+    { activity_type: 'running', end_time: d(11), id: 'b', start_time: d(10, 35) },
+  ]
+  const loneChild: Activity[] = [
+    { activity_type: 'running', end_time: d(10, 30), id: 'a', start_time: d(10) },
+  ]
+
+  it('never yields a provenance list that only restates the bar itself', () => {
+    // What the removed trivial-provenance cleanup used to guard, and only at the
+    // list level: `[{ type: <own type>, count: 1 }]` as the whole list. Neither
+    // path that sets collapsed_types can produce it — the retype records a
+    // *different* type, and a merge always totals >= 2.
+    for (const activities of [mixedActivities, sameTypePair, loneChild]) {
+      for (const depth of [0, 1, Number.POSITIVE_INFINITY]) {
+        for (const bar of collapseToParentType(activities, typeDefs, undefined, depth)) {
+          const provenance = bar.collapsed_types ?? []
+          const trivial =
+            provenance.length === 1 && provenance[0].type === bar.activity_type && provenance[0].count === 1
+          expect(trivial).toBe(false)
+        }
+      }
+    }
+  })
+
+  it('reaches both single-entry provenance shapes', () => {
+    // Guards the guard: with only `mixedActivities`, no bar ever has a
+    // single-entry list, so the assertion above passes on length alone.
+    // Merged same type — length 1, type matches the bar, only count keeps it
+    // non-trivial:
+    expect(collapseToParentType(sameTypePair, typeDefs, undefined, 0)[0].collapsed_types).toEqual([
+      { type: 'running', count: 2 },
+    ])
+    // Lone retyped child — length 1, count 1, only the type keeps it non-trivial:
+    const retyped = collapseToParentType(loneChild, typeDefs, undefined, 1)[0]
+    expect(retyped.activity_type).toBe('exercise')
+    expect(retyped.collapsed_types).toEqual([{ type: 'running', count: 1 }])
+  })
+
+  it('lets a mixed bar name its own type once among others', () => {
+    // The entry-level version of the invariant above is false, deliberately:
+    // `running` retypes onto `exercise` carrying [{running,1}], and the
+    // already-`exercise` activity contributes its own [{exercise,1}] fallback.
+    // An entry restating the bar's type with count 1 is correct here.
+    const bars = collapseToParentType(mixedActivities, typeDefs, undefined, 1)
+    const exerciseBar = bars.find((b) => b.activity_type === 'exercise')
+
+    // yoga retypes onto exercise too, and is inside the default merge gap
+    expect(exerciseBar?.collapsed_types).toEqual([
+      { type: 'running', count: 1 },
+      { type: 'exercise', count: 1 },
+      { type: 'yoga', count: 1 },
+    ])
+  })
+
+  it('separates two same-type sessions once the merge gap is below their gap', () => {
+    // The reported case: two yoga sessions 9 min apart. At the old fixed
+    // 10-minute floor they welded together at every zoom level.
+    const activities: Activity[] = [
+      { activity_type: 'yoga', end_time: d(21, 24), id: 'a', start_time: d(21, 11) },
+      { activity_type: 'yoga', end_time: d(22, 7), id: 'b', start_time: d(21, 33) },
+    ]
+
+    expect(collapseToParentType(activities, typeDefs, 10 * 60_000, 0)).toHaveLength(1)
+    expect(collapseToParentType(activities, typeDefs, 30_000, 0)).toHaveLength(2)
   })
 
   it('collapses one hop at depth=1 (parity with prior behaviour)', () => {

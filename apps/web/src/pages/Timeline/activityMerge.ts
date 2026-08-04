@@ -286,7 +286,8 @@ export const COLLAPSE_MERGE_GAP_MS = 30 * 60 * 1000 // 30 minutes
  * the Activity-lane (`buildActivityDetails`) and Screen-Time-lane
  * (`categorizeScreentimeActivities`) tooltip builders. Returns undefined when
  * there's nothing to show — a single-entry provenance is still informative
- * (the parent bar is one sub-type only) so we keep that case.
+ * (the parent bar is one sub-type only) so we keep that case. Callers that
+ * cannot use a self-restating entry filter it with `restatesOwnType` first.
  */
 export const formatCollapsedTypesLine = (
   collapsedTypes: { type: string; count: number }[] | undefined,
@@ -298,6 +299,22 @@ export const formatCollapsedTypesLine = (
   })
   return `Merged: ${labels.join(', ')}`
 }
+
+/**
+ * True when a provenance list adds nothing to the bar's own type: a lone entry
+ * naming it, whatever the count.
+ *
+ * The Activity lane deliberately keeps those — "Merged: Yoga ×2" is the only
+ * signal that a bar holds two sessions and that clicking reaches just the first.
+ * The Screen Time lane must not: a top-level category's derived type has no
+ * `parent_type`, so it is never retyped, and a merged run would read
+ * "Merged: Programming ×47" where the count is raw sampling spans rather than
+ * sessions, and the bar links to its category rather than to a member.
+ */
+export const restatesOwnType = (
+  collapsedTypes: { type: string; count: number }[] | undefined,
+  activityType: string,
+): boolean => collapsedTypes?.length === 1 && collapsedTypes[0].type === activityType
 
 /**
  * Look up the immediate parent_type of a type — the "collapse target" we
@@ -482,17 +499,13 @@ export const collapseToParentType = (
     }
     merged.push({ ...current })
   }
-  // Drop trivial provenance: a survivor whose only entry matches its own
-  // type carries no useful merge signal (single sub-type wasn't mixed).
-  for (const m of merged) {
-    if (
-      m.collapsed_types &&
-      m.collapsed_types.length === 1 &&
-      m.collapsed_types[0].type === m.activity_type
-    ) {
-      delete m.collapsed_types
-    }
-  }
+  // No trivial-provenance cleanup is needed: a survivor can only carry
+  // `collapsed_types` from the retype above (where the recorded type differs
+  // from the survivor's by construction) or from the merge accumulation (which
+  // always lands on a total count ≥ 2). Either way there is something worth
+  // showing — "Merged: Running" for a collapsed sub-type, "Merged: Yoga ×2" for
+  // two folded sessions, the latter being the only clue that a bar hides more
+  // than one activity and that clicking reaches just the first.
   return merged
 }
 

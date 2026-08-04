@@ -7,7 +7,7 @@ import type { ChartItem, Column } from './types'
 
 import { toDisplayName } from '../../utils/displayName'
 import { resolveItemIcon } from '../../utils/emojiLookup'
-import { formatCollapsedTypesLine } from './activityMerge'
+import { formatCollapsedTypesLine, restatesOwnType } from './activityMerge'
 import { getActivityColor, getPlaceColor, getProductivityColor, resolveCategoryIcon } from './colors'
 import { formatDuration, formatTime } from './formatting'
 
@@ -158,7 +158,8 @@ const matchCategoryByActivityType = (
  *
  *  • A `collapsed_types` provenance attached by `collapseToParentType` is
  *    surfaced as a "Merged: X, Y" tooltip line via the shared
- *    `formatCollapsedTypesLine` helper.
+ *    `formatCollapsedTypesLine` helper — unless it only restates the bar's own
+ *    type, which for screen time carries no information.
  */
 export const categorizeScreentimeActivities = (
   activities: Activity[],
@@ -209,7 +210,18 @@ export const categorizeScreentimeActivities = (
       const iconPath = matchedByType?.name ?? path
       const icon = resolveCategoryIcon(iconPath, itemIcons) ?? def?.icon
 
-      const mergedLine = formatCollapsedTypesLine(a.collapsed_types)
+      // Suppressed when the provenance only restates this bar's own type, which
+      // is the top-level-category case: no parent_type, so never retyped, and the
+      // count would be raw sampling spans rather than sessions.
+      //
+      // Deliberately narrow. A *nested* category does retype (its derived type
+      // carries parent_type), so a run of `programming` spans under a `work` bar
+      // still renders "Merged: Programming ×47" with the same sampling-span
+      // count. That predates this change; suppressing counts lane-wide without
+      // losing the sub-category names #657 added is tracked in #981.
+      const mergedLine = restatesOwnType(a.collapsed_types, a.activity_type)
+        ? undefined
+        : formatCollapsedTypesLine(a.collapsed_types)
       // `||` (not `??`) on the chain — categoryPathStr is always a string,
       // so `??` would never fall through to def?.display_name.
       const tooltipPath = matchedByType?.name.join(' > ') || categoryPathStr || def?.display_name || ''

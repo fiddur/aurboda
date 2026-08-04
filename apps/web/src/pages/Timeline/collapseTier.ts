@@ -41,3 +41,51 @@ export const computePixelsPerHour = (
   const hours = ms / 3_600_000
   return timeAxisPixels / hours
 }
+
+/**
+ * On-screen gap (px) below which two adjacent same-type bars are bridged into
+ * one. Tuned so that a 24h view in a 1000px container reproduces the previous
+ * fixed 10-minute gap.
+ */
+const MERGE_GAP_PX = 7
+
+/** Widest gap bridged in the pixel tier (views crossing <= 2 calendar-day boundaries). */
+const FINE_MERGE_GAP_CAP_MS = 10 * 60 * 1000
+
+/**
+ * Gap below which adjacent same-type activities merge into a single bar.
+ *
+ * Zoomed out, fixed tiers bridge large gaps so a long string of small same-type
+ * activities reads as one bar. At views crossing <= 2 calendar-day boundaries
+ * (so anything up to just under 72 elapsed hours) the gap instead tracks
+ * pixels-per-hour: only gaps too small to see on screen are bridged, so zooming
+ * in pulls separate sessions apart — two yoga sessions nine minutes apart used
+ * to stay welded together at every zoom level, because
+ * `differenceInCalendarDays` is 0 for any view inside one day.
+ *
+ * Not unconditional: the merge test is `gap <= this`, and this is always > 0 for
+ * a finite `pixelsPerHour`, so two sessions that abut exactly never split at any
+ * zoom. Tightening to `<` is not the answer — a zero gap is exactly what makes
+ * contiguous screentime sampling spans read as one bar.
+ *
+ * Capped at the previous fixed floor. The cap binds below ~42 pixels-per-hour —
+ * a narrow container, or a range stretched toward the 2-boundary limit — where
+ * 7px would otherwise work out to far more than 10 minutes: a 3-day-elapsed view
+ * that still counts as 2 boundaries on a 360px phone is ~5 pph, i.e. ~84
+ * minutes. Above that the pixel gap is already under 10 minutes and the cap never
+ * applies.
+ */
+export const mergeGapForZoom = (days: number, pixelsPerHour: number): number => {
+  if (days > 50) return 4 * 60 * 60 * 1000
+  if (days > 2) return 60 * 60 * 1000
+  if (Number.isNaN(pixelsPerHour) || pixelsPerHour <= 0) return FINE_MERGE_GAP_CAP_MS
+
+  const gap = Math.min(FINE_MERGE_GAP_CAP_MS, (MERGE_GAP_PX / pixelsPerHour) * 3_600_000)
+  // Quantized to whole seconds: this feeds the `collapseToParentType` memos in
+  // `useTimelineData`, so an unrounded float would re-run the whole collapse and
+  // hand downstream a fresh array on every 1px `ResizeObserver` tick during a
+  // window drag. #658 quantized `collapseDepthForPixelsPerHour` for the same
+  // reason. Activity gaps are never sub-second-precise, so no merge decision
+  // changes.
+  return Math.round(gap / 1000) * 1000
+}

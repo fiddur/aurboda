@@ -2,7 +2,7 @@ import { signal } from '@preact/signals'
 import { addDays, differenceInCalendarDays, endOfDay, format, formatISO, startOfDay, subDays } from 'date-fns'
 import { useCallback, useMemo } from 'preact/hooks'
 
-import { collapseDepthForPixelsPerHour, computePixelsPerHour } from './collapseTier'
+import { collapseDepthForPixelsPerHour, computePixelsPerHour, mergeGapForZoom } from './collapseTier'
 import { getDefaultViewEnd, getDefaultViewStart, parseViewHash } from './viewHash'
 
 // ── Signals (module-level, persist across SPA navigations) ────────────────────
@@ -88,16 +88,19 @@ export const useTimelineNavigation = (options: TimelineNavigationOptions = {}): 
   }, [effectiveViewStart, effectiveViewEnd])
 
   // Zoom-graded merge gap: as the user zooms out we bridge larger gaps so that
-  // a long string of small same-type activities reads as one bar. At the most
-  // zoomed-in tier we still merge the very small gaps (10 min) so back-to-back
-  // screentime spans don't show as a comb of identical slivers, but we keep the
-  // gap small enough that genuinely separate sessions stay separate.
-  const mergeGapMs = useMemo(() => {
-    const days = differenceInCalendarDays(effectiveViewEnd, effectiveViewStart)
-    if (days > 50) return 4 * 60 * 60 * 1000
-    if (days > 2) return 60 * 60 * 1000
-    return 10 * 60 * 1000
-  }, [effectiveViewStart, effectiveViewEnd])
+  // a long string of small same-type activities reads as one bar. At views
+  // crossing <= 2 calendar-day boundaries the gap follows pixels-per-hour, so
+  // back-to-back screentime spans still read as one bar while zooming in
+  // separates genuinely distinct sessions — see `mergeGapForZoom`.
+  const pixelsPerHour = useMemo(
+    () => computePixelsPerHour(timeAxisPixels, effectiveViewStart, effectiveViewEnd),
+    [timeAxisPixels, effectiveViewStart, effectiveViewEnd],
+  )
+
+  const mergeGapMs = useMemo(
+    () => mergeGapForZoom(differenceInCalendarDays(effectiveViewEnd, effectiveViewStart), pixelsPerHour),
+    [effectiveViewStart, effectiveViewEnd, pixelsPerHour],
+  )
 
   // Multi-tier collapse depth (#656/#658): at max zoom (high pixels-per-hour)
   // the user wants to see (and click to edit) sibling sub-types like
@@ -110,13 +113,7 @@ export const useTimelineNavigation = (options: TimelineNavigationOptions = {}): 
   // as if it were ~14 days at desktop width. `timeAxisPixels` ≤ 0 (pre-mount,
   // pre-measure) yields depth 0, which keeps the existing data visible
   // until the first measurement.
-  const collapseDepth = useMemo(
-    () =>
-      collapseDepthForPixelsPerHour(
-        computePixelsPerHour(timeAxisPixels, effectiveViewStart, effectiveViewEnd),
-      ),
-    [timeAxisPixels, effectiveViewStart, effectiveViewEnd],
-  )
+  const collapseDepth = useMemo(() => collapseDepthForPixelsPerHour(pixelsPerHour), [pixelsPerHour])
 
   const handleZoom = useCallback((zoomStart: Date, zoomEnd: Date) => {
     viewStart.value = zoomStart
