@@ -182,10 +182,9 @@ private const val VERSION_JSON_URL = "https://github.com/fiddur/aurboda/releases
 @Suppress("ASSIGNED_VALUE_IS_NEVER_READ") // Compose state vars trigger false "assigned but never read" warnings
 @Composable
 fun AurbodaApp(initialTab: MainTab? = null, initialMorePath: String? = null) {
-  val appState = rememberAppState(initialTab = initialTab)
-  // Consumed once: a widget/notification deep link into a More web page opens it
-  // on first composition, then clears so returning to More later shows the hub.
-  var pendingMorePath by remember { mutableStateOf(initialMorePath) }
+  // A widget/notification deep link into a More web page opens it on first
+  // composition; tapping More later returns to the hub (AppState.selectTab).
+  val appState = rememberAppState(initialTab = initialTab, initialMorePath = initialMorePath)
   val context = LocalContext.current
   val scope = rememberCoroutineScope()
   val ktorHttpClient = remember { syncHttpClient() }
@@ -338,10 +337,11 @@ fun AurbodaApp(initialTab: MainTab? = null, initialMorePath: String? = null) {
           moreContent = { modifier ->
             net.aurboda.ui.screens.MoreScreen(
               credentials = credentials,
+              destination = appState.moreDestination,
+              onSelect = { destination -> appState.openMoreDestination(destination) },
+              onBack = { appState.closeMoreDestination() },
               onServerUrlChange = { newUrl -> appState.changeServerUrl(newUrl) },
               onLogout = { appState.logout() },
-              initialPath = pendingMorePath,
-              onInitialPathConsumed = { pendingMorePath = null },
               modifier = modifier,
             )
           },

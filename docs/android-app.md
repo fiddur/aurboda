@@ -24,7 +24,10 @@ corresponding web page in an embedded WebView (Timeline, Data, Chart, Meals,
 Reports, Settings, Data sources, …). The two native-only screens — **Live**
 sensors (BLE) and **Account** (server URL, logout) — also live in the hub.
 Selecting an entry pushes it in place; the system back gesture returns to the
-hub (after any embedded page has exhausted its own WebView history). Keep
+hub (after any embedded page has exhausted its own WebView history), and so does
+tapping **More** on the bottom bar again. The pushed sub-page lives in
+`AppState.moreDestination` rather than inside `MoreScreen`, so `selectTab` can
+clear it — otherwise the hub would be unreachable from a sub-page. Keep
 `moreGroups` in sync with the web navigation (`apps/web/src/components/nav-links.ts`).
 
 A tab can move from embedded to native later (e.g. if the feed becomes a heavily

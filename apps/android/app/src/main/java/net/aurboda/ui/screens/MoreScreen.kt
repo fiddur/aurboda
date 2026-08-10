@@ -16,11 +16,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -98,26 +93,24 @@ val moreGroups: List<MoreGroup> = listOf(
  * screens); the system back gesture returns to the hub — after any embedded page
  * has exhausted its own WebView history (EmbeddedWebScreen owns that inner
  * BackHandler, which is composed after this one so it takes precedence).
+ *
+ * [destination] is hoisted into `AppState` so the bottom bar can pop back to the
+ * hub when More is tapped while a sub-page is showing.
  */
-@Suppress("ASSIGNED_VALUE_IS_NEVER_READ") // Compose state vars trigger false "assigned but never read" warnings
 @Composable
 fun MoreScreen(
     credentials: CredentialsManager.Credentials,
+    destination: MoreDestination?,
+    onSelect: (MoreDestination) -> Unit,
+    onBack: () -> Unit,
     onServerUrlChange: (String) -> Unit,
     onLogout: () -> Unit,
     modifier: Modifier = Modifier,
-    initialPath: String? = null,
-    onInitialPathConsumed: () -> Unit = {},
 ) {
-    // A deep link (e.g. the goals widget) can open this hub directly on a web
-    // page; consumed once so a later manual visit to More shows the hub.
-    var destination by remember { mutableStateOf<MoreDestination?>(initialPath?.let { MoreDestination.Web(it) }) }
-    LaunchedEffect(Unit) { if (initialPath != null) onInitialPathConsumed() }
-
     when (val dest = destination) {
-        null -> MoreHub(onSelect = { destination = it }, modifier = modifier)
+        null -> MoreHub(onSelect = onSelect, modifier = modifier)
         else -> {
-            BackHandler { destination = null }
+            BackHandler { onBack() }
             when (dest) {
                 is MoreDestination.Web ->
                     EmbeddedWebScreen(
