@@ -99,12 +99,19 @@
         android:theme="@style/Theme.Aurboda"
         android:usesCleartextTraffic="true">
 
+        <!--
+            adjustResize keeps the soft keyboard from covering focused inputs on
+            API ≤ 34, where the window still resizes itself. From API 35 the flag
+            is ignored (edge-to-edge is enforced), so the app consumes the IME
+            inset itself — see AurbodaAppShell in MainActivity.kt.
+        -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:label="@string/app_name"
             android:launchMode="singleTop"
-            android:theme="@style/Theme.Aurboda">
+            android:theme="@style/Theme.Aurboda"
+            android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

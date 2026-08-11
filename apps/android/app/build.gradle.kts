@@ -102,6 +102,14 @@ android {
   testOptions {
     unitTests {
       isIncludeAndroidResources = true
+
+      // One JVM per test class. Compose UI tests leak state between classes in a
+      // shared JVM — a later class's `waitForIdle` then spins until Espresso's
+      // 60s timeout, failing tests that pass in isolation and picking a
+      // different victim on every run.
+      all {
+        it.forkEvery = 1
+      }
     }
   }
 }

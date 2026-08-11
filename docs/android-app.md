@@ -61,6 +61,21 @@ stays light: it is built against a day/night-themed context
 app's `prefers-color-scheme` resolves to dark when the system is dark and its own
 dark CSS applies (the page declares `color-scheme: light dark`).
 
+### Soft keyboard
+
+Focusing an input — a native text field or one inside an embedded page — must
+not leave it behind the keyboard. Two mechanisms cover the supported API range:
+
+- **API ≤ 34:** `android:windowSoftInputMode="adjustResize"` on `MainActivity`
+  lets the system shrink the window.
+- **API 35+:** edge-to-edge is enforced and `adjustResize` is ignored, so the app
+  consumes the IME inset itself — `AurbodaAppShell` (MainActivity.kt) pads every
+  screen by `WindowInsets.ime` (injectable, so tests can supply a fixed inset).
+
+Both paths shrink the WebView rather than sliding it, which is what makes it
+scroll the focused element into view; the injected viewport fix re-pins the page
+height to the new `window.innerHeight`. `KeyboardInsetsTest` covers both.
+
 ### The embed contract (web ↔ native)
 
 The web app supports an **embed mode** (`apps/web/src/embed.ts`):
