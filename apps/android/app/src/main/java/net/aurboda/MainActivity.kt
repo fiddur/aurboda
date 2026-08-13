@@ -12,11 +12,14 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
@@ -165,14 +168,39 @@ class MainActivity : ComponentActivity() {
       }
     val initialMorePath = if (openTab == TAB_MORE) intent?.getStringExtra(EXTRA_MORE_PATH) else null
     setContent {
-      AurbodaAppTheme {
-        Surface(
-          modifier = Modifier.fillMaxSize(),
-          color = MaterialTheme.colorScheme.background,
-        ) {
-          AurbodaApp(initialTab = initialTab, initialMorePath = initialMorePath)
-        }
+      AurbodaAppShell {
+        AurbodaApp(initialTab = initialTab, initialMorePath = initialMorePath)
       }
+    }
+  }
+}
+
+/**
+ * The themed surface every screen is drawn on, sized to keep [content] above the
+ * soft keyboard.
+ *
+ * Apps targeting API 35+ are edge-to-edge, so the window no longer resizes for
+ * the IME (`adjustResize` is ignored) and the keyboard covers whatever is
+ * focused — a native text field, or an input in an embedded web page. Consuming
+ * [keyboardInsets] here shrinks the WebView too, which is what makes it scroll
+ * the focused element into view. It also zeroes the navigation-bar inset the
+ * bottom bar would otherwise add on top, so the bar lands flush above the
+ * keyboard.
+ *
+ * [keyboardInsets] is a parameter so tests can supply a fixed inset instead of
+ * driving the platform's IME.
+ */
+@Composable
+fun AurbodaAppShell(
+  keyboardInsets: WindowInsets = WindowInsets.ime,
+  content: @Composable () -> Unit,
+) {
+  AurbodaAppTheme {
+    Surface(
+      modifier = Modifier.fillMaxSize().windowInsetsPadding(keyboardInsets),
+      color = MaterialTheme.colorScheme.background,
+    ) {
+      content()
     }
   }
 }
