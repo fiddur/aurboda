@@ -23,7 +23,11 @@ import net.aurboda.CredentialsManager
 
 /** A destination reachable from the "More" hub. */
 sealed interface MoreDestination {
-    /** A web page rendered in an embedded WebView at [path] (e.g. "/timeline"). */
+    /**
+     * A web page rendered in an embedded WebView: a site path on the user's own
+     * server (e.g. "/timeline"), or an absolute URL for a page hosted on another
+     * Aurboda instance (a challenge widget deep link to a joined remote challenge).
+     */
     data class Web(val path: String) : MoreDestination
 
     /** The native live-sensor (BLE) screen. */
@@ -34,6 +38,18 @@ sealed interface MoreDestination {
 }
 
 data class MoreItem(val label: String, val destination: MoreDestination)
+
+/**
+ * The URL an embedded page loads for a [MoreDestination.Web]: site paths are
+ * resolved against [serverUrl], absolute URLs are taken as-is; both get the
+ * `embed=1` flag that hides the web app's chrome.
+ */
+fun embeddedPageUrl(serverUrl: String, path: String): String {
+    val absolute = path.startsWith("http://") || path.startsWith("https://")
+    val page = if (absolute) path else "${serverUrl.trimEnd('/')}$path"
+    val separator = if (page.contains('?')) '&' else '?'
+    return "$page${separator}embed=1"
+}
 
 data class MoreGroup(val header: String, val items: List<MoreItem>)
 
@@ -114,7 +130,7 @@ fun MoreScreen(
             when (dest) {
                 is MoreDestination.Web ->
                     EmbeddedWebScreen(
-                        url = "${credentials.serverUrl.trimEnd('/')}${dest.path}?embed=1",
+                        url = embeddedPageUrl(credentials.serverUrl, dest.path),
                         baseUrl = credentials.serverUrl,
                         username = credentials.username,
                         authToken = credentials.authToken,

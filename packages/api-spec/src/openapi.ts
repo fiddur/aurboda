@@ -12,6 +12,12 @@ import { createDocument } from 'zod-openapi'
 
 import { activitiesResponseSchema } from './schemas/activities.ts'
 import { loginBodySchema, loginResponseSchema } from './schemas/admin.ts'
+import {
+  challengeParticipationsResponseSchema,
+  challengesResponseSchema,
+  challengeStandingsResponseSchema,
+  wellKnownAurbodaSchema,
+} from './schemas/challenges.ts'
 // Import all schemas
 import { dateOnlySchema, iso8601DateTimeSchema, metricTypeSchema } from './schemas/common.ts'
 import { dailySummaryResponseSchema } from './schemas/daily-summary.ts'
@@ -84,6 +90,10 @@ const deleteResponseSchema = z
 
 const openApiDocument = createDocument({
   components: {
+    // Served at the instance root (`/.well-known/aurboda`), outside the `/api`
+    // server base, so it has no path entry — the model is registered so federation
+    // clients (the Android challenge widget) get a generated type for it.
+    schemas: { WellKnownAurboda: wellKnownAurbodaSchema },
     securitySchemes: {
       bearerAuth: {
         bearerFormat: 'JWT',
@@ -109,6 +119,59 @@ const openApiDocument = createDocument({
   },
   openapi: '3.1.0',
   paths: {
+    // --- Challenges ---
+    '/challenges': {
+      get: {
+        description: 'List the challenges hosted by the authenticated user.',
+        responses: {
+          200: {
+            content: { 'application/json': { schema: challengesResponseSchema } },
+            description: 'Successful response',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'List my challenges',
+        tags: ['Challenges'],
+      },
+    },
+    '/challenges/participations/mine': {
+      get: {
+        description: 'List the challenges the authenticated user has joined (possibly on other instances).',
+        responses: {
+          200: {
+            content: { 'application/json': { schema: challengeParticipationsResponseSchema } },
+            description: 'Successful response',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'List my challenge participations',
+        tags: ['Challenges'],
+      },
+    },
+    '/public/{username}/{slug}/standings': {
+      get: {
+        description:
+          "Public standings of a challenge hosted at `/u/{username}/{slug}`: each active member's bucketed series and total. No authentication.",
+        requestParams: {
+          path: z.object({
+            slug: z.string().meta({ description: 'Challenge slug' }),
+            username: z.string().meta({ description: 'Host username' }),
+          }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: challengeStandingsResponseSchema } },
+            description: 'Successful response',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Challenge not found',
+          },
+        },
+        summary: 'Get public challenge standings',
+        tags: ['Challenges'],
+      },
+    },
     // --- Activities ---
     '/activities': {
       get: {
@@ -925,6 +988,7 @@ const openApiDocument = createDocument({
     { description: 'Time series health metrics', name: 'Metrics' },
     { description: 'Daily and period summaries', name: 'Summary' },
     { description: 'Sleep, exercise, meditation sessions', name: 'Activities' },
+    { description: 'Federated challenges: hosted, joined, and public standings', name: 'Challenges' },
     { description: 'Named and detected locations', name: 'Locations' },
     { description: 'RescueTime productivity data', name: 'Productivity' },
     { description: 'User settings and preferences', name: 'Settings' },

@@ -148,6 +148,31 @@
                 android:resource="@xml/hr_zone_widget_info" />
         </receiver>
 
+        <!-- Challenge Widget: race chart + leaderboard of one chosen challenge -->
+        <receiver
+            android:name=".widget.ChallengeWidgetProvider"
+            android:exported="true"
+            android:label="@string/challenge_widget_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="net.aurboda.ACTION_UPDATE_CHALLENGE_WIDGETS" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/challenge_widget_info" />
+        </receiver>
+
+        <!-- Picks which challenge a newly placed challenge widget follows -->
+        <activity
+            android:name=".widget.ChallengeWidgetConfigActivity"
+            android:exported="true"
+            android:label="@string/challenge_widget_name"
+            android:theme="@style/Theme.Aurboda">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
+            </intent-filter>
+        </activity>
+
         <!-- Widget RemoteViews Service for scrollable goals list -->
         <service
             android:name=".widget.GoalsWidgetService"

@@ -151,6 +151,12 @@ export function PublicChallenge({
             <tr key={s.identity_base_url}>
               <td>{i + 1}</td>
               <td>
+                {/* Same palette index as the member's line in the race chart above. */}
+                <span
+                  aria-hidden="true"
+                  class="challenge-member-color"
+                  style={{ background: COLORS[i % COLORS.length] }}
+                />
                 {s.display_name} <span class="challenge-member-host">· {shortHost(s.identity_base_url)}</span>
               </td>
               <td>{Math.round(s.total).toLocaleString()}</td>
