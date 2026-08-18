@@ -2,4 +2,6 @@
     <string name="app_name">Aurboda</string>
     <string name="widget_description">Weekly HR zone minutes for Zone 2 and Zone 5</string>
     <string name="widget_name">HR Zones</string>
+    <string name="challenge_widget_name">Challenge</string>
+    <string name="challenge_widget_description">Race chart and leaderboard of a challenge you host or joined</string>
 </resources>

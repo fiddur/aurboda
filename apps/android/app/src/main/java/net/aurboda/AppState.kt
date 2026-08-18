@@ -22,6 +22,25 @@ enum class MainTab {
     More
 }
 
+/**
+ * Where a widget or notification tap asks the app to go: a tab, and for the More
+ * tab optionally the web page to push (a site path like "/goals", or an absolute
+ * URL for a page on another instance).
+ */
+data class DeepLink(val tab: MainTab, val morePath: String? = null)
+
+/** Decode the [MainActivity.EXTRA_OPEN_TAB] / [MainActivity.EXTRA_MORE_PATH] extras; null when there is no link. */
+fun deepLinkFrom(openTab: String?, morePath: String?): DeepLink? {
+    val tab =
+        when (openTab) {
+            MainActivity.TAB_ADD -> MainTab.Add
+            MainActivity.TAB_FEED -> MainTab.Feed
+            MainActivity.TAB_MORE -> MainTab.More
+            else -> return null
+        }
+    return DeepLink(tab, if (tab == MainTab.More) morePath else null)
+}
+
 class AppState(
     private val context: Context,
     initialScreen: AppScreen,
@@ -71,6 +90,12 @@ class AppState(
 
     fun openMoreDestination(destination: MoreDestination) {
         moreDestination = destination
+    }
+
+    /** Follow a deep link that arrived while the app was already running. */
+    fun open(link: DeepLink) {
+        selectTab(link.tab)
+        link.morePath?.let { moreDestination = MoreDestination.Web(it) }
     }
 
     fun closeMoreDestination() {

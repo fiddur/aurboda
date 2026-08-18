@@ -51,8 +51,8 @@ class HrZoneWidgetProvider : AppWidgetProvider() {
     val views = RemoteViews(context.packageName, R.layout.widget_hr_zones)
 
     // Tapping the widget opens the app on the Goals page. SINGLE_TOP reuses an
-    // already-running app (keeping whatever screen it's on) rather than
-    // recreating it; the Goals deep link only applies on a cold start.
+    // already-running app rather than recreating it; MainActivity then follows
+    // the deep link from onNewIntent (or from onCreate on a cold start).
     val openAppIntent =
       Intent(context, MainActivity::class.java).apply {
         flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP

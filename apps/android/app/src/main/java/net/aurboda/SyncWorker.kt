@@ -13,6 +13,7 @@ import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import net.aurboda.widget.ChallengeWidgetProvider
 import net.aurboda.widget.HrZoneWidgetProvider
 import java.time.Instant
 import java.util.concurrent.TimeUnit
@@ -142,6 +143,7 @@ class SyncWorker(
       }
 
       HrZoneWidgetProvider.triggerUpdate(applicationContext)
+      ChallengeWidgetProvider.triggerUpdate(applicationContext)
       reporter.end()
       finishAttempt(attemptAt, BackgroundSyncResult.Success)
     } catch (e: Exception) {

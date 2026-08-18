@@ -107,12 +107,22 @@ the backend directly need no extra config.
   quick-sets, public/unlisted), copy its link, delete it; see challenges you've
   joined; and **join by URL** (paste any challenge link — local or remote).
 - **View** at `/u/<username>/<slug>`: a cumulative **race chart** (one line per
-  member) + a **leaderboard** (rank, `@member · host`, total, freshness). This is
+  member) + a **leaderboard** (rank, colour dot matching the member's chart line,
+  `@member · host`, total, freshness). This is
   the same `/u/:username/:slug` page as shared dashboards — the server returns a
   `type` and the page renders the right view.
 - **Join buttons:** logged-in users on the host instance get a one-click **Join**;
   anyone can **Join from another instance** (enter your Aurboda host → you're sent
   to your own instance's `/challenges/join`, which does the federated join).
+
+## Android widget
+
+The Android app has a home-screen **Challenge widget** (2×2 and up): pick a
+hosted or joined challenge when placing it and it shows the race chart and
+leaderboard (same member colours as the web page), refreshed after each sync;
+tapping it opens the challenge in the app. Standings are read from the hosting
+instance's public standings endpoint, so it works for challenges hosted elsewhere
+too. See `docs/android-app.md` → _Home-screen widgets_.
 
 ## API surface (authed, owner/joiner)
 

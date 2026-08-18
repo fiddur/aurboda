@@ -10,13 +10,13 @@ implementations of the same UI.
 A bottom navigation bar (`ui/screens/MainScreen.kt`, tabs in `AppState.kt`'s
 `MainTab`) hosts five tabs:
 
-| Tab  | Kind     | Why                                                                     |
-| ---- | -------- | ----------------------------------------------------------------------- |
-| Home | Embedded | Web `/` (the dashboard); the default tab on launch                      |
-| Add  | Native   | Native date/time pickers, offline entry queue                           |
-| Feed | Embedded | Web `/feed`                                                             |
-| Sync | Native   | Health Connect permissions, background sync management                  |
-| More | Hub      | Native list of everything else (`ui/screens/MoreScreen.kt`)             |
+| Tab  | Kind     | Why                                                         |
+| ---- | -------- | ----------------------------------------------------------- |
+| Home | Embedded | Web `/` (the dashboard); the default tab on launch          |
+| Add  | Native   | Native date/time pickers, offline entry queue               |
+| Feed | Embedded | Web `/feed`                                                 |
+| Sync | Native   | Health Connect permissions, background sync management      |
+| More | Hub      | Native list of everything else (`ui/screens/MoreScreen.kt`) |
 
 There are far more web pages than fit on a bottom bar, so the **More** tab is a
 hub (`MoreScreen.kt`, `moreGroups`): a grouped list where each entry opens the
@@ -105,3 +105,38 @@ the external browser (via `ACTION_VIEW`); same-origin links stay in the WebView.
 The decision is a pure, unit-tested helper: `ui/screens/WebLink.kt`
 (`isExternalLink`). Non-http(s) schemes (`mailto:`, `tel:`, …) are treated as
 external.
+
+## Home-screen widgets
+
+Two `AppWidgetProvider`s live in `widget/`:
+
+- **HR Zones** (`HrZoneWidgetProvider` + `GoalsWidgetService`): the goal
+  progress bars, see `docs/GOAL_WIDGET.md`. Tapping it opens the Goals page.
+- **Challenge** (`ChallengeWidgetProvider`, min 2×2, resizable): the race chart
+  and leaderboard of **one** challenge, hosted or joined. When the widget is
+  placed the launcher opens `ChallengeWidgetConfigActivity` (a Compose list of
+  the user's hosted + active joined challenges, from `GET /challenges` and
+  `GET /challenges/participations/mine`); the pick is stored per widget id in
+  SharedPreferences (`ChallengeWidgetPrefs.kt`). Rendering — including the
+  network fetch — runs in `ChallengeWidgetWorker` (WorkManager, unique
+  `APPEND_OR_REPLACE`), enqueued by the provider's `onUpdate`/resize, the config
+  screen, and after every sync; the receiver itself never blocks. Data comes from
+  the user's own instance for the challenge itself (name, unit, window — so a
+  rename or a left challenge shows) and from the **hosting** instance's public
+  `GET /public/:username/:slug/standings` (discovered via `/.well-known/aurboda`
+  like a federated join, `ChallengeApi.kt`). The chart is a Canvas bitmap
+  (`ChallengeChart.kt`) — a widget can't host a WebView — with the same member
+  palette as the web page; the leaderboard rows are added with
+  `RemoteViews.addView`, as many as fit for the launcher-reported size
+  (`planChallengeWidgetLayout`), always keeping the signed-in user's row. All
+  the pure logic (series, rows, layout, texts) is in `ChallengeWidgetModel.kt`
+  and unit-tested. Tapping the widget deep-links to `/u/<owner>/<slug>` (or the
+  absolute URL for a challenge on another instance) in the More tab.
+
+Widget taps and notification taps reach `MainActivity` as `EXTRA_OPEN_TAB` /
+`EXTRA_MORE_PATH` extras (`deepLinkFrom` in `AppState.kt`). On a cold start they
+pick the initial tab/page; because the activity is `singleTop`, a tap while the
+app is running arrives in `onNewIntent` and navigates the running app to the same
+place (`AppState.open`). `MoreDestination.Web` accepts either a site path or an
+absolute URL (`embeddedPageUrl`), so a joined challenge hosted elsewhere opens
+embedded too — its own in-page links open in the browser as any external link.

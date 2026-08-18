@@ -153,27 +153,39 @@ class MainActivity : ComponentActivity() {
     const val EXTRA_MORE_PATH = "more_path"
   }
 
-  // Deep links (widget / notification) only steer the initial screen on a cold
-  // start. The activity is `singleTop`, so when it's already open the launch is
-  // delivered to onNewIntent (not overridden) and the current screen is kept.
+  /**
+   * A deep link delivered while the activity was already running. Wrapped with a
+   * sequence number so tapping the same widget twice re-navigates (a plain
+   * DeepLink would compare equal and not retrigger the effect).
+   */
+  private var runningDeepLink by mutableStateOf<DeepLinkEvent?>(null)
+  private var deepLinkSeq = 0L
+
+  // Deep links (widget / notification) steer the initial screen on a cold start
+  // and, because the activity is `singleTop`, arrive in onNewIntent when the app
+  // is already open — where they navigate the running app to the same place.
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
-    val openTab = intent?.getStringExtra(EXTRA_OPEN_TAB)
-    val initialTab =
-      when (openTab) {
-        TAB_ADD -> MainTab.Add
-        TAB_FEED -> MainTab.Feed
-        TAB_MORE -> MainTab.More
-        else -> null
-      }
-    val initialMorePath = if (openTab == TAB_MORE) intent?.getStringExtra(EXTRA_MORE_PATH) else null
+    val link = deepLinkFrom(intent)
     setContent {
       AurbodaAppShell {
-        AurbodaApp(initialTab = initialTab, initialMorePath = initialMorePath)
+        AurbodaApp(initialTab = link?.tab, initialMorePath = link?.morePath, deepLinkEvent = runningDeepLink)
       }
     }
   }
+
+  override fun onNewIntent(intent: Intent) {
+    super.onNewIntent(intent)
+    setIntent(intent)
+    deepLinkFrom(intent)?.let { runningDeepLink = DeepLinkEvent(++deepLinkSeq, it) }
+  }
+
+  private fun deepLinkFrom(intent: Intent?): DeepLink? =
+    deepLinkFrom(intent?.getStringExtra(EXTRA_OPEN_TAB), intent?.getStringExtra(EXTRA_MORE_PATH))
 }
+
+/** A deep link that arrived at a running activity; [seq] makes every arrival distinct. */
+data class DeepLinkEvent(val seq: Long, val link: DeepLink)
 
 /**
  * The themed surface every screen is drawn on, sized to keep [content] above the
@@ -209,10 +221,16 @@ private const val VERSION_JSON_URL = "https://github.com/fiddur/aurboda/releases
 
 @Suppress("ASSIGNED_VALUE_IS_NEVER_READ") // Compose state vars trigger false "assigned but never read" warnings
 @Composable
-fun AurbodaApp(initialTab: MainTab? = null, initialMorePath: String? = null) {
+fun AurbodaApp(
+  initialTab: MainTab? = null,
+  initialMorePath: String? = null,
+  deepLinkEvent: DeepLinkEvent? = null,
+) {
   // A widget/notification deep link into a More web page opens it on first
   // composition; tapping More later returns to the hub (AppState.selectTab).
   val appState = rememberAppState(initialTab = initialTab, initialMorePath = initialMorePath)
+  // ...and one that arrives while the app is running (onNewIntent) navigates in place.
+  LaunchedEffect(deepLinkEvent) { deepLinkEvent?.let { appState.open(it.link) } }
   val context = LocalContext.current
   val scope = rememberCoroutineScope()
   val ktorHttpClient = remember { syncHttpClient() }
@@ -796,6 +814,8 @@ fun HealthConnectScreen(
                 reporter.end()
               }
               net.aurboda.widget.HrZoneWidgetProvider
+                .triggerUpdate(context)
+              net.aurboda.widget.ChallengeWidgetProvider
                 .triggerUpdate(context)
             }
           }
