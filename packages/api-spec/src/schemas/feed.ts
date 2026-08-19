@@ -26,7 +26,11 @@ import { z } from 'zod'
 
 import { baseResponseSchema, iso8601DateTimeSchema, metricTypeSchema } from './common.ts'
 import { selectorSchema } from './correlations.ts'
-import { feedStructuredPostSchema, publicSeriesSampleSchema } from './feed-structured.ts'
+import {
+  feedStructuredMetricSchema,
+  feedStructuredPostSchema,
+  publicSeriesSampleSchema,
+} from './feed-structured.ts'
 import { shareVisibilityValues } from './visibility.ts'
 
 /**
@@ -70,6 +74,10 @@ export const shareActivityBodySchema = z
       .max(64)
       .default([])
       .meta({ description: 'Scalar-summary metric keys to share (the single source of truth for the post)' }),
+    message: z.string().max(2000).optional().meta({
+      description:
+        'Personal message shown above the shared stats (plain text; linebreaks preserved). Empty/absent shares no text.',
+    }),
     series_metrics: z.array(metricTypeSchema).max(64).default([]).meta({
       description:
         'Metrics whose full high-resolution series are explicitly shared. Separate opt-in from the scalar summary; empty by default.',
@@ -90,6 +98,9 @@ export const updateFeedPostBodySchema = z
       .max(64)
       .optional()
       .meta({ description: 'Replacement set of shared scalar-summary metric keys' }),
+    message: z.string().max(2000).optional().meta({
+      description: 'Replacement personal message; an empty string clears it. Omit to keep the current one.',
+    }),
     series_metrics: z
       .array(metricTypeSchema)
       .max(64)
@@ -272,6 +283,18 @@ export const feedPostSchema = z
     include_map: z.boolean().meta({ description: 'Whether a route-map image is attached' }),
     included_metrics: z.array(z.string()).meta({ description: 'Shared scalar-summary metric keys' }),
     kind: feedPostKindSchema.meta({ description: 'Post kind (`activity` or `article`)' }),
+    message: z
+      .string()
+      .optional()
+      .meta({ description: 'Personal message shared with the post (plain text), if any' }),
+    // The resolved scalar values behind `included_metrics`, typed — the same
+    // shapes the structured-enrichment payload carries — so the web can render a
+    // native stat grid instead of parsing the flattened `content` HTML. Resolved
+    // at query time like `content`; absent when there is no resolvable activity.
+    metrics: z
+      .array(feedStructuredMetricSchema)
+      .optional()
+      .meta({ description: 'Resolved typed scalar values for the shared metrics (activity posts)' }),
     series_metrics: z.array(z.string()).meta({ description: 'Explicitly-shared series metrics' }),
     updated_at: z.string().meta({ description: 'Last update timestamp (ISO 8601)' }),
     visibility: feedVisibilitySchema,
@@ -617,10 +640,9 @@ export type FeedPostStructuredResponse = z.infer<typeof feedPostStructuredRespon
  */
 export const articleExportResponseSchema = baseResponseSchema
   .extend({
-    markdown: z
-      .string()
-      .optional()
-      .meta({ description: 'Paste-ready markdown: title + prose + one image link per chart/correlation block' }),
+    markdown: z.string().optional().meta({
+      description: 'Paste-ready markdown: title + prose + one image link per chart/correlation block',
+    }),
   })
   .meta({ id: 'ArticleExportResponse' })
 

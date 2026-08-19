@@ -14,12 +14,15 @@ export const ShareActivityButton = ({
   activityStart,
   activityEnd,
   chartMetrics,
+  defaultMessage,
 }: {
   activityId: string
   activityTitle?: string
   activityStart?: Date
   activityEnd?: Date
   chartMetrics?: string[]
+  /** Prefill for the share message (the activity's description/comments). */
+  defaultMessage?: string
 }) => {
   const [open, setOpen] = useState(false)
   return (
@@ -44,6 +47,7 @@ export const ShareActivityButton = ({
           activityStart={activityStart}
           activityEnd={activityEnd}
           chartMetrics={chartMetrics}
+          defaultMessage={defaultMessage}
           onClose={() => setOpen(false)}
         />
       )}

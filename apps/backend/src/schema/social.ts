@@ -125,6 +125,7 @@ export const socialTables: Record<string, string> = {
       include_map       BOOLEAN NOT NULL DEFAULT false,
       include_chart     BOOLEAN NOT NULL DEFAULT false,
       article           JSONB,
+      message           TEXT,
       image_token       TEXT NOT NULL DEFAULT gen_random_uuid()::text,
       created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -134,6 +135,11 @@ export const socialTables: Record<string, string> = {
   feed_posts_article_columns: `
     ALTER TABLE feed_posts ADD COLUMN IF NOT EXISTS kind VARCHAR(12) NOT NULL DEFAULT 'activity';
     ALTER TABLE feed_posts ADD COLUMN IF NOT EXISTS article JSONB;
+  `,
+  // The author's personal message on a post (plain text; #995). Additive for
+  // pre-existing tables (idempotent).
+  feed_posts_message_column: `
+    ALTER TABLE feed_posts ADD COLUMN IF NOT EXISTS message TEXT;
   `,
   // `idx_feed_posts_series` is a GIN index over the shared-series set — the hot
   // path for the public series endpoint's `metric = ANY(series_metrics)` check.
