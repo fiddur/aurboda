@@ -12,4 +12,5 @@ federation code, before submission to the
   privacy model as normative requirements. Tracked in
   [issue #905](https://github.com/fiddur/aurboda/issues/905); the working name
   (QuantPub vs. Personal Metrics Vocabulary / MetricPub) is open for community
-  input.
+  input. Aurboda's own implementation of the pattern is documented in
+  [docs/features/feed.md](../features/feed.md).
