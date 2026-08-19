@@ -68,6 +68,23 @@
   margin-bottom: 0;
 }
 
+/* The author's personal message — plain text with its linebreaks kept. */
+.feed-post-message {
+  white-space: pre-line;
+}
+
+/* The activity's own date/window (#998) — quieter than the message/stats. */
+.feed-post-window {
+  font-size: 0.85rem;
+  color: #6b7280;
+}
+
+@media (prefers-color-scheme: dark) {
+  .feed-post-window {
+    color: #9ca3af;
+  }
+}
+
 .feed-post-media {
   display: flex;
   flex-wrap: wrap;

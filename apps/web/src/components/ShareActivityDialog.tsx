@@ -33,6 +33,11 @@ interface Props {
   activityEnd?: Date
   /** Metrics currently shown on the activity's chart; mirrored into the defaults. */
   chartMetrics?: string[]
+  /**
+   * Prefill for the personal message (create mode) — typically the activity's
+   * description/comments, shown editable so the user can redact before sharing.
+   */
+  defaultMessage?: string
   /** When present, edit this existing post instead of sharing anew. */
   post?: FeedPost
   onClose: () => void
@@ -108,6 +113,7 @@ export function ShareActivityDialog({
   activityStart,
   activityEnd,
   chartMetrics,
+  defaultMessage,
   post,
   onClose,
   onShared,
@@ -128,6 +134,10 @@ export function ShareActivityDialog({
   )
   const [visibility, setVisibility] = useState<FeedVisibility>(post?.visibility ?? 'public')
   const [includeMap, setIncludeMap] = useState(post?.include_map ?? false)
+  // Edit mode shows the post's stored message; create mode prefills from the
+  // activity's description/comments (visible + editable — never auto-shared
+  // unseen). Emptying the field shares/keeps no text.
+  const [message, setMessage] = useState(post ? (post.message ?? '') : (defaultMessage ?? ''))
   const { summaryOptions, seriesOptions, canChart, canMap } = useShareableMetricOptions(
     activityStart,
     activityEnd,
@@ -149,6 +159,7 @@ export function ShareActivityDialog({
         canChart,
         canMap,
         includeMap,
+        message,
         series,
         seriesOptions,
         summary,
@@ -178,6 +189,22 @@ export function ShareActivityDialog({
           {post ? 'Editing' : 'Publish'} <strong>{activityTitle || 'this activity'}</strong>
           {post ? ' — followers get an update.' : ' to your federated feed.'}
         </p>
+
+        <fieldset class="share-dialog-group">
+          <legend>Message</legend>
+          <p class="share-dialog-note">
+            {!post && defaultMessage
+              ? 'Prefilled from the activity’s description — edit freely; empty shares no text.'
+              : 'Optional text shown at the top of the post.'}
+          </p>
+          <textarea
+            class="share-dialog-message"
+            rows={3}
+            value={message}
+            onInput={(e) => setMessage((e.target as HTMLTextAreaElement).value)}
+            placeholder="Say something about this activity…"
+          />
+        </fieldset>
 
         <fieldset class="share-dialog-group">
           <legend>Summary metrics</legend>

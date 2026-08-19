@@ -34,7 +34,7 @@ import {
 import { isPubliclyVisible } from '../services/activitypub/object.ts'
 import { buildArticleMarkdown } from '../services/article-export.ts'
 import { buildArticleContent, mergeArticleContent } from '../services/article.ts'
-import { serializeFeedPost } from '../services/feed.ts'
+import { normalizeFeedMessage, serializeFeedPost } from '../services/feed.ts'
 import { serializeFollower } from '../services/followers.ts'
 import { serializeFollowing } from '../services/following.ts'
 import { getTimelinePage } from '../services/timeline.ts'
@@ -77,6 +77,7 @@ export const registerFeedTools = (
         include_chart: body.include_chart,
         include_map: body.include_map,
         included_metrics: body.included_metrics,
+        message: normalizeFeedMessage(body.message) ?? null,
         series_metrics: body.series_metrics,
         visibility: body.visibility,
       })
@@ -95,6 +96,7 @@ export const registerFeedTools = (
         include_chart: body.include_chart,
         include_map: body.include_map,
         included_metrics: body.included_metrics,
+        message: normalizeFeedMessage(body.message),
         series_metrics: body.series_metrics,
         visibility: body.visibility,
       })

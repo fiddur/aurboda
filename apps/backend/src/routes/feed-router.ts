@@ -41,7 +41,7 @@ import {
 import { isPubliclyVisible } from '../services/activitypub/object.ts'
 import { buildArticleMarkdown } from '../services/article-export.ts'
 import { buildArticleContent, mergeArticleContent } from '../services/article.ts'
-import { serializeFeedPost } from '../services/feed.ts'
+import { normalizeFeedMessage, serializeFeedPost } from '../services/feed.ts'
 import { getTimelinePage } from '../services/timeline.ts'
 import { type AnyMiddleware, type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody, validateQuery } from '../validation.ts'
@@ -159,6 +159,7 @@ export const createFeedRouter = (
         include_chart: req.body.include_chart,
         include_map: req.body.include_map,
         included_metrics: req.body.included_metrics,
+        message: normalizeFeedMessage(req.body.message) ?? null,
         series_metrics: req.body.series_metrics,
         visibility: req.body.visibility,
       })
@@ -265,6 +266,7 @@ export const createFeedRouter = (
         include_chart: req.body.include_chart,
         include_map: req.body.include_map,
         included_metrics: req.body.included_metrics,
+        message: normalizeFeedMessage(req.body.message),
         series_metrics: req.body.series_metrics,
         visibility: req.body.visibility,
       })

@@ -270,6 +270,7 @@ export const resolveStructuredContent = async (
     start_time: activity.start_time.toISOString(),
   }
   if (activity.title !== undefined) structured.title = activity.title
+  if (post.message != null) structured.message = post.message
   if (activity.end_time) {
     structured.end_time = activity.end_time.toISOString()
     structured.duration_seconds = Math.round(

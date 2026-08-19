@@ -74,19 +74,26 @@ function TimelineCard({ entry }: { entry: TimelineEntry }) {
       </header>
 
       {/* Sanitised server-side on ingest (timeline-ingest.ts) — safe to render.
-          Suppressed for a native article render (below), whose `content` is the
-          same title + prose + captions — else the article shows twice. */}
-      {entry.structured?.kind !== 'article' && (
+          Suppressed whenever the post has a native structured render (below),
+          whose content covers the same title/message/stats (article: title +
+          prose + captions; activity: title + message + date + stat grid) — else
+          the post shows twice (#997). */}
+      {!entry.structured && (
         <div class="feed-post-content" dangerouslySetInnerHTML={{ __html: entry.content }} />
       )}
 
       {/* Native structured data (Aurboda peers) → a real chart / inline article;
           otherwise fall back to the delivered image attachment(s), the way
-          Mastodon shows them. */}
-      {entry.structured ? (
-        <TimelineStructured structured={entry.structured} />
-      ) : (
-        entry.images?.map((img) => (
+          Mastodon shows them. An enriched *activity* post still shows its
+          delivered route map — the structured payload has no native map render —
+          but skips the chart PNG the native interactive chart duplicates (the
+          attachment names are Aurboda's own, so matching on them is stable). */}
+      {entry.structured && <TimelineStructured structured={entry.structured} />}
+      {entry.images
+        ?.filter((img) =>
+          entry.structured == null ? true : entry.structured.kind === 'activity' && img.name !== 'Heart rate',
+        )
+        .map((img) => (
           <img
             key={img.url}
             class="feed-post-image"
@@ -96,8 +103,7 @@ function TimelineCard({ entry }: { entry: TimelineEntry }) {
             height={img.height}
             loading="lazy"
           />
-        ))
-      )}
+        ))}
     </article>
   )
 }

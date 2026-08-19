@@ -70,12 +70,19 @@ describe('buildShareBody', () => {
     canChart: true,
     canMap: true,
     includeMap: false,
+    message: '',
     series: new Set<MetricType>(),
     seriesOptions: [{ key: 'heart_rate' }, { key: 'speed' }],
     summary: new Set<string>(),
     summaryOptions: [{ key: 'duration' }, { key: 'heart_rate_avg' }],
     visibility: 'public',
   }
+
+  it('passes the personal message through verbatim (backend normalizes blanks)', () => {
+    expect(buildShareBody({ ...base, message: 'Great run!' })).toMatchObject({ message: 'Great run!' })
+    // Always present — an emptied field must clear a stored message on edit.
+    expect(buildShareBody(base)).toMatchObject({ message: '' })
+  })
 
   it('attaches the chart image exactly when the heart-rate series is shared', () => {
     expect(buildShareBody({ ...base, series: new Set<MetricType>(['heart_rate']) })).toMatchObject({

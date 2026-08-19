@@ -77,6 +77,11 @@ explicit metric selection that bounds what is shared:
   with the `followers` audience.
 - **`include_chart` / `include_map`** — attach a rendered heart-rate chart and/or
   GPS route-map image to the post (see [Images](#images)).
+- **`message`** — an optional personal message (plain text, linebreaks preserved)
+  shown at the top of the post. The share dialog prefills it from the activity's
+  description (its user-typed comments) — always shown editable before sharing, so
+  private context can be redacted; an empty field shares no text. Cleared on edit
+  by saving an emptied field.
 
 Defaults are privacy-conservative: sharing an activity with no explicit selection
 shares no scalars and, crucially, **no series**.
@@ -123,8 +128,11 @@ is a later slice):
 | Edit    | `Update{Note}`      | Their stored copy is replaced             |
 | Unshare | `Delete{Tombstone}` | The post is retracted from their timeline |
 
-The `Note` is Mastodon-compatible: an HTML `content` summary flattening the title and the
-shared scalar summaries, plus a `name` headline, addressed per the post's visibility
+The `Note` is Mastodon-compatible: a structured HTML `content` — the bold title
+headline, the author's personal message (if any), a line saying when the **activity**
+happened (rendered in the author's device timezone, since AS2 `published` stays the
+share time for timeline ordering), and the shared scalar summaries one per line —
+plus a `name` headline, addressed per the post's visibility
 (`public` → AS2 Public + followers; `unlisted` → followers + Public in `cc`; `followers`
 → followers only). The custom structured `aurboda:` extension (typed metrics + series
 links) is a separate, richer representation for Aurboda-to-Aurboda consumers.
@@ -229,11 +237,16 @@ When a `Create` or `Update` for a `Note` is delivered, the inbox:
 4. upserts a `timeline_entry` (keyed by the note's `object_uri`, so an `Update` or a
    redelivery replaces in place rather than duplicating).
 
-Each card renders the sanitised HTML plus, below it, the **native structured chart** when the
-post carried one (Aurboda peers, see below) — otherwise the delivered **image attachment(s)**,
-the way Mastodon shows them. A `followers`-only Aurboda share federates its native chart to
-accepted followers too (via the capability token, see below), so a follower gets the
-interactive chart rather than just the flat image; a Mastodon photo post shows its photos.
+A card with **no** native structured payload (a Mastodon post) renders the sanitised HTML
+plus the delivered **image attachment(s)**, the way Mastodon shows them. A card **with** one
+(an Aurboda peer's post, see below) renders natively instead and suppresses the redundant
+flattened HTML: an activity share shows its title, the author's message, the activity's
+date, a stat grid, and an interactive chart per shared series — plus the delivered route-map
+image (which has no native render; the chart PNG the native chart duplicates is skipped) —
+while an article shows the full inline article. A `followers`-only Aurboda share federates
+its native payload to accepted followers too (via the capability token, see below), so a
+follower gets the interactive chart rather than just the flat image; a Mastodon photo post
+shows its photos.
 
 A `Delete` removes the matching entry; unfollowing removes all of that actor's entries. The
 timeline is read back **newest-first**, keyset-paginated on `(published_at, id)` behind an
@@ -296,8 +309,10 @@ structured data out-of-band on ingest:
    shows with its HTML.
 3. **Store + render.** The payload is stored on `timeline_entry.structured` (JSONB, NULL for
    non-Aurboda posts; a redelivery that can't re-fetch keeps the last-known value). The web
-   timeline card renders, per `structured.kind`: a native `TrendLineChart` per shared series for
-   an **activity** post, or the full inline article — title, prose, per-block chart/scatter — for
+   timeline card renders, per `structured.kind`: for an **activity** post the native
+   activity card — title, personal message, the activity's date, a Strava-style **stat
+   grid** from the typed scalars, and a native `TrendLineChart` per shared series — or the
+   full inline article — title, prose, per-block chart/scatter — for
    an **article** post (mirroring the author's own live `ArticleContent` render, but built from
    the embedded payload rather than a live fetch, since a receiving peer has no credentials to
    call the author's authenticated endpoints).
@@ -441,7 +456,11 @@ resolving.
 ## Using it in the web app
 
 - **Share** — an activity's detail page has a **Share to feed** button. It opens a dialog
-  to pick the summary metrics, optionally opt into full series, and choose the audience.
+  to write an optional personal message (prefilled from the activity's description /
+  comments, fully editable), pick the summary metrics, optionally opt into full series,
+  and choose the audience. The user's own feed cards and public profile render the shared
+  scalars as a native **stat grid** (with the message and the activity's date) rather than
+  the flattened text Mastodon sees.
 - **New article** — the **Feed** page has a **New article** button that opens the article
   composer: a title, an optional default time window, and an ordered list of **prose**
   (markdown), **chart** (a metric + optional per-block window + caption), and **correlation**
@@ -531,7 +550,8 @@ toggled with the `manually_approve_followers` user setting (`get_user_settings` 
 Feed posts live in the user's own database in the `feed_posts` table. A `kind` column
 discriminates an `activity` post from an `article` post; an article's content (title +
 default window + ordered blocks) lives in a nullable `article` JSONB column, and its
-`activity_id`/metric columns stay empty. `activity_id` is a
+`activity_id`/metric columns stay empty. A nullable `message` column holds the author's
+personal message (plain text; NULL when none was shared). `activity_id` is a
 **soft reference** (no foreign key): activities are soft-deleted and the series lookup
 re-checks `deleted_at` at query time, so a removed activity simply stops resolving rather
 than cascading a delete. A GIN index over `series_metrics` backs the public series

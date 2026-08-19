@@ -648,6 +648,10 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
           activityStart={activity.merged_start_time ?? activity.start_time}
           activityEnd={activity.merged_end_time ?? activity.end_time}
           chartMetrics={chartMetrics}
+          // Prefill the share message from the activity's description — the
+          // user-typed comments (the same text the edit Description field
+          // shows). Shown editable in the dialog, never auto-shared unseen (#995).
+          defaultMessage={getUserNotesContent(activity) || undefined}
         />
       )}
       {isMerging && <MergePanel activityId={rawEntityId} onCancel={() => setIsMerging(false)} />}

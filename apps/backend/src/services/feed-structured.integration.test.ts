@@ -61,6 +61,7 @@ describe('resolveStructuredPost', () => {
       include_chart: false,
       include_map: false,
       included_metrics: ['heart_rate_avg', 'duration'],
+      message: 'Lovely morning!',
       series_metrics: ['heart_rate'],
       visibility: 'public',
     })
@@ -69,6 +70,8 @@ describe('resolveStructuredPost', () => {
     expect(structured).not.toBeNull()
     if (structured?.kind !== 'activity') throw new Error('expected an activity payload')
     expect(structured.activity_type).toBe('exercise')
+    // The author's personal message rides the structured payload (#995).
+    expect(structured.message).toBe('Lovely morning!')
     expect(structured.start_time).toBe(START.toISOString())
     expect(structured.end_time).toBe(END.toISOString())
     expect(structured.duration_seconds).toBe(2400)
