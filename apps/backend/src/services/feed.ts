@@ -24,9 +24,31 @@ import type { Activity, FeedPostRecord } from '../db/index.ts'
 import { getActivityById } from '../db/index.ts'
 import { resolveActivityScalars } from './activitypub/feed-activity.ts'
 import { feedPostContent, formatActivityWindow } from './activitypub/object.ts'
-import { assembleStructuredActivity, resolveStructuredSeries } from './feed-structured-activity.ts'
+import {
+  assembleStructuredActivity,
+  resolveStructuredRoute,
+  resolveStructuredSeries,
+} from './feed-structured-activity.ts'
 import { resolveActivityWindow } from './queries/index.ts'
 import { getSettings } from './settings.ts'
+
+/** Options for `serializeFeedPost`. */
+export interface SerializeFeedPostOpts {
+  /**
+   * Attach the FULL structured payload (typed metrics + inline series + route),
+   * assembled by the same helper the public structured endpoint uses, so the
+   * author's own card renders exactly what a subscribing peer renders (#1008).
+   * Off by default: the public profile listing and MCP tools skip the weight.
+   */
+  includeStructured?: boolean
+  /**
+   * The author's already-resolved settings (only `device_timezone` is read).
+   * Listing callers resolve settings ONCE per request and pass them here instead
+   * of paying one settings query per post; `null` means "known unavailable".
+   * Left `undefined`, the post resolves them itself.
+   */
+  settings?: { device_timezone?: string } | null
+}
 
 /**
  * A feed post's shared activity, resolved for presentation/delivery: the title
@@ -86,38 +108,37 @@ export const resolveFeedActivity = async (
 
 /**
  * The presentation pieces derived from a post's resolved activity: the
- * federated `content` HTML, the typed scalar `metrics`, and (opt-in) the FULL
- * structured payload — assembled by the same helper the public structured
- * endpoint uses, so the author's own card renders exactly what a subscribing
- * Aurboda peer's timeline renders (#1008). `structured` is off by default:
- * the public profile listing and MCP tools don't need the series weight.
+ * federated `content` HTML, the typed scalar `metrics`, and (per
+ * `SerializeFeedPostOpts`) the full structured payload.
  */
 const resolveActivityPresentation = async (
   user: string,
   record: FeedPostRecord,
   activity: ResolvedFeedActivity,
-  includeStructured: boolean,
+  opts: SerializeFeedPostOpts,
 ): Promise<Pick<FeedPost, 'content' | 'metrics' | 'structured'>> => {
   const scalars = await resolveActivityScalars(
     user,
     { end_time: activity.end_time, start_time: activity.start_time },
     record.included_metrics,
   )
-  const settings = await getSettings(user).catch(() => null)
+  const settings = opts.settings !== undefined ? opts.settings : await getSettings(user).catch(() => null)
   const content = feedPostContent(activity.title, activity.activity_type, scalars, {
     message: record.message ?? undefined,
-    windowLabel: formatActivityWindow(
-      activity.start_time,
-      activity.end_time,
-      settings?.device_timezone ?? undefined,
-    ),
+    windowLabel: formatActivityWindow(activity.start_time, activity.end_time, settings?.device_timezone),
   }).content
   let structured: FeedPost['structured']
-  if (includeStructured && record.kind === 'activity') {
+  if ((opts.includeStructured ?? false) && record.kind === 'activity') {
     const series = activity.end_time
       ? await resolveStructuredSeries(user, record.series_metrics, activity.start_time, activity.end_time)
       : []
-    structured = assembleStructuredActivity(activity, scalars, series, record.message)
+    // Route rides along under the same opt-in (and from the same GPS track) as
+    // the rendered route.png — mirrors `resolveStructuredContent`.
+    const route =
+      record.include_map && activity.end_time
+        ? await resolveStructuredRoute(user, activity.start_time, activity.end_time)
+        : []
+    structured = assembleStructuredActivity(activity, scalars, series, record.message, route)
   }
   return {
     content,
@@ -147,11 +168,11 @@ const resolveActivityPresentation = async (
 export const serializeFeedPost = async (
   user: string,
   record: FeedPostRecord,
-  opts: { includeStructured?: boolean } = {},
+  opts: SerializeFeedPostOpts = {},
 ): Promise<FeedPost> => {
   const activity = record.activity_id ? await resolveFeedActivity(user, record.activity_id) : null
   const { content, metrics, structured } = activity
-    ? await resolveActivityPresentation(user, record, activity, opts.includeStructured ?? false)
+    ? await resolveActivityPresentation(user, record, activity, opts)
     : { content: undefined, metrics: undefined, structured: undefined }
   return {
     activity_end_time: activity?.end_time?.toISOString(),

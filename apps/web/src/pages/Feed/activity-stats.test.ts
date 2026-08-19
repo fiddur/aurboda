@@ -1,3 +1,8 @@
+// Pin the timezone BEFORE anything formats a date, so the same-day/cross-day
+// cases are deterministic on any machine (10:00–11:30Z crosses midnight in a
+// UTC+13 test environment otherwise). Node propagates the change to Intl.
+process.env.TZ = 'UTC'
+
 import { describe, expect, test } from 'vitest'
 
 import { formatEntryWindow, splitStats } from './activity-stats'
@@ -34,22 +39,20 @@ describe('splitStats', () => {
   })
 })
 
-describe('formatEntryWindow', () => {
-  // Node's default test timezone is the machine's; pin behaviour by comparing
-  // structure rather than exact wall-clock times where the timezone matters.
+describe('formatEntryWindow (TZ pinned to UTC)', () => {
   test('same-day window collapses the end to its time', () => {
-    const label = formatEntryWindow('2026-08-02T10:00:00Z', '2026-08-02T11:30:00Z')
-    // One date, an en-dash, and a bare end time (no second date).
-    expect(label).toMatch(/^\w{3}, \d+ \w{3} \d{4}, \d{2}:\d{2}–\d{2}:\d{2}$/)
+    expect(formatEntryWindow('2026-08-02T10:00:00Z', '2026-08-02T11:30:00Z')).toBe(
+      'Sun, 2 Aug 2026, 10:00–11:30',
+    )
   })
 
   test('cross-day window spells out both ends', () => {
-    const label = formatEntryWindow('2026-08-02T01:00:00Z', '2026-08-05T23:00:00Z')
-    expect(label).toMatch(/^\w{3}, \d+ \w{3} \d{4}, \d{2}:\d{2} – \w{3}, \d+ \w{3} \d{4}, \d{2}:\d{2}$/)
+    expect(formatEntryWindow('2026-08-02T01:00:00Z', '2026-08-05T23:00:00Z')).toBe(
+      'Sun, 2 Aug 2026, 01:00 – Wed, 5 Aug 2026, 23:00',
+    )
   })
 
   test('open-ended window renders only the start', () => {
-    const label = formatEntryWindow('2026-08-02T10:00:00Z')
-    expect(label).toMatch(/^\w{3}, \d+ \w{3} \d{4}, \d{2}:\d{2}$/)
+    expect(formatEntryWindow('2026-08-02T10:00:00Z')).toBe('Sun, 2 Aug 2026, 10:00')
   })
 })

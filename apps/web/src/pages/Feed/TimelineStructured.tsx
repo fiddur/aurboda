@@ -2,24 +2,34 @@
  * Native rendering of a timeline post's Aurboda structured data. An `activity`
  * post renders natively (#997): title, the author's personal message, the
  * activity's own date (#998), a Strava-style stat grid from the typed scalars,
- * and an interactive line chart per shared high-resolution series (hover shows
- * real values). An `article` post renders the full inline article (title +
- * resolved blocks — see `TimelineArticle`). Only rendered for posts from
- * Aurboda instances (which carry `structured`); Mastodon posts have none.
+ * and — just like the activity detail view (#1011) — ONE combined multi-metric
+ * chart with per-metric toggles plus a time-synced interactive map that marks
+ * the position at the hovered chart time. An `article` post renders the full
+ * inline article (title + resolved blocks — see `TimelineArticle`). Only
+ * rendered for posts from Aurboda instances (which carry `structured`);
+ * Mastodon posts have none.
  */
-import type { FeedStructuredPost } from '@aurboda/api-spec'
+import type { FeedStructuredActivity, FeedStructuredPost } from '@aurboda/api-spec'
 
-import { TrendLineChart } from '../../components/charts/TrendLineChart'
+import { useState } from 'preact/hooks'
+
+import { CombinedMetricChart } from '../../components/charts/CombinedMetricChart'
+import { RouteMap } from '../../components/charts/RouteMap'
 import { formatEntryWindow } from './activity-stats'
 import { ActivityStatGrid } from './ActivityStatGrid'
-import { structuredChartSeries } from './timeline-structured'
+import {
+  structuredCombinedSeries,
+  structuredHasNativeMap,
+  structuredRoutePoints,
+} from './timeline-structured'
 import { TimelineArticle } from './TimelineArticle'
 import './TimelineStructured.css'
 
-export function TimelineStructured({ structured }: { structured: FeedStructuredPost }) {
-  if (structured.kind === 'article') return <TimelineArticle article={structured} />
+function ActivityStructured({ structured }: { structured: FeedStructuredActivity }) {
+  const [hoverTime, setHoverTime] = useState<Date | null>(null)
+  const series = structuredCombinedSeries(structured)
+  const showMap = structuredHasNativeMap(structured)
 
-  const series = structuredChartSeries(structured)
   return (
     <div class="timeline-structured">
       <p class="feed-post-title">
@@ -28,12 +38,22 @@ export function TimelineStructured({ structured }: { structured: FeedStructuredP
       {structured.message && <p class="feed-post-message">{structured.message}</p>}
       <p class="feed-post-window">{formatEntryWindow(structured.start_time, structured.end_time)}</p>
       <ActivityStatGrid metrics={structured.metrics} />
-      {series.map((s) => (
-        <figure key={s.metric} class="timeline-chart">
-          <figcaption class="timeline-chart-label">{s.label}</figcaption>
-          <TrendLineChart data={s.data} color={s.color} height={170} />
-        </figure>
-      ))}
+      {series.length > 0 && structured.end_time && (
+        <div class="timeline-chart">
+          <CombinedMetricChart
+            series={series}
+            start={new Date(structured.start_time)}
+            end={new Date(structured.end_time)}
+            onHoverTime={setHoverTime}
+          />
+        </div>
+      )}
+      {showMap && <RouteMap points={structuredRoutePoints(structured)} hoverTime={hoverTime} />}
     </div>
   )
+}
+
+export function TimelineStructured({ structured }: { structured: FeedStructuredPost }) {
+  if (structured.kind === 'article') return <TimelineArticle article={structured} />
+  return <ActivityStructured structured={structured} />
 }

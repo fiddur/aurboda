@@ -54,6 +54,12 @@ export type FeedVisibility = z.infer<typeof feedVisibilitySchema>
 const scalarMetricKeySchema = z.string().min(1).max(64)
 
 /**
+ * Max length of a post's personal message. Exported so the share dialog can cap
+ * its textarea at the same limit the schemas validate (single source of truth).
+ */
+export const feedPostMessageMaxLength = 2000
+
+/**
  * Body for sharing an activity to the feed.
  *
  * Defaults are privacy-conservative: nothing is shared unless listed, and
@@ -74,7 +80,7 @@ export const shareActivityBodySchema = z
       .max(64)
       .default([])
       .meta({ description: 'Scalar-summary metric keys to share (the single source of truth for the post)' }),
-    message: z.string().max(2000).optional().meta({
+    message: z.string().max(feedPostMessageMaxLength).optional().meta({
       description:
         'Personal message shown above the shared stats (plain text; linebreaks preserved). Empty/absent shares no text.',
     }),
@@ -98,7 +104,7 @@ export const updateFeedPostBodySchema = z
       .max(64)
       .optional()
       .meta({ description: 'Replacement set of shared scalar-summary metric keys' }),
-    message: z.string().max(2000).optional().meta({
+    message: z.string().max(feedPostMessageMaxLength).optional().meta({
       description: 'Replacement personal message; an empty string clears it. Omit to keep the current one.',
     }),
     series_metrics: z
@@ -295,11 +301,11 @@ export const feedPostSchema = z
       .array(feedStructuredMetricSchema)
       .optional()
       .meta({ description: 'Resolved typed scalar values for the shared metrics (activity posts)' }),
+    series_metrics: z.array(z.string()).meta({ description: 'Explicitly-shared series metrics' }),
     structured: feedStructuredPostSchema.optional().meta({
       description:
         "The post's native structured payload (typed metrics + inline series), identical to what a subscribing peer receives — drives the owner's native card render",
     }),
-    series_metrics: z.array(z.string()).meta({ description: 'Explicitly-shared series metrics' }),
     updated_at: z.string().meta({ description: 'Last update timestamp (ISO 8601)' }),
     visibility: feedVisibilitySchema,
   })

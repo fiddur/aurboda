@@ -8,7 +8,10 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
  */
 import { deleteActivity, insertActivity } from '../db/activities/index.ts'
 import { createFeedPost, type FeedPostInput } from '../db/feed.ts'
+import { insertLocations } from '../db/locations.ts'
+import { insertTimeSeries } from '../db/time-series.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
+import { resolveStructuredContent } from './feed-structured.ts'
 import { expandFeedActivityWindow, resolveFeedActivity, serializeFeedPost } from './feed.ts'
 
 const CONTAINER_TIMEOUT = 120_000
@@ -168,6 +171,55 @@ describe('feed service', () => {
       expect(dto.structured.metrics).toEqual(dto.metrics)
       // No series opted in → empty, never undefined.
       expect(dto.structured.series).toEqual([])
+    })
+
+    test('structured payload matches the public structured endpoint exactly, series and route included (#1001 parity)', async () => {
+      const user = getTestUser()
+      const anchorId = await insertAnchor(user)
+      // Real data behind both the opted-in series and the route (#1011).
+      await insertTimeSeries(user, [
+        { metric: 'heart_rate', source: 'garmin', time: new Date('2026-07-01T08:05:00Z'), value: 140 },
+        { metric: 'heart_rate', source: 'garmin', time: new Date('2026-07-01T08:10:00Z'), value: 150 },
+        { metric: 'heart_rate', source: 'garmin', time: new Date('2026-07-01T08:15:00Z'), value: 145 },
+      ])
+      await insertLocations(user, [
+        { lat: 59.33, lon: 18.06, source: 'garmin', time: new Date('2026-07-01T08:05:00Z') },
+        { lat: 59.34, lon: 18.07, source: 'garmin', time: new Date('2026-07-01T08:15:00Z') },
+      ])
+      const post = await createFeedPost(user, {
+        ...postInput(anchorId, { include_map: true }),
+        series_metrics: ['heart_rate'],
+      })
+
+      const dto = await serializeFeedPost(user, post, { includeStructured: true })
+      if (dto.structured?.kind !== 'activity') throw new Error('expected an activity payload')
+      // The opted-in series actually resolves (not just the empty-series case).
+      expect(dto.structured.series).toEqual([
+        expect.objectContaining({ metric: 'heart_rate', samples: expect.any(Array) }),
+      ])
+      expect(dto.structured.series[0]?.samples.length).toBeGreaterThan(0)
+      // The route rides along under the include_map opt-in, endpoints intact (#1011).
+      expect(dto.structured.route).toEqual([
+        { lat: 59.33, lon: 18.06, t: '2026-07-01T08:05:00.000Z' },
+        { lat: 59.34, lon: 18.07, t: '2026-07-01T08:15:00.000Z' },
+      ])
+      // The owner's payload IS the peer payload — same assembly, byte for byte.
+      expect(dto.structured).toEqual(await resolveStructuredContent(user, post))
+    })
+
+    test('omits the route when the post does not attach the route map', async () => {
+      const user = getTestUser()
+      const anchorId = await insertAnchor(user)
+      await insertLocations(user, [
+        { lat: 59.33, lon: 18.06, source: 'garmin', time: new Date('2026-07-01T08:05:00Z') },
+        { lat: 59.34, lon: 18.07, source: 'garmin', time: new Date('2026-07-01T08:15:00Z') },
+      ])
+      const post = await createFeedPost(user, postInput(anchorId, { include_map: false }))
+
+      const dto = await serializeFeedPost(user, post, { includeStructured: true })
+      if (dto.structured?.kind !== 'activity') throw new Error('expected an activity payload')
+      expect(dto.structured.route).toBeUndefined()
+      expect(await resolveStructuredContent(user, post)).toEqual(dto.structured)
     })
 
     test('omits activity fields for a non-activity post', async () => {

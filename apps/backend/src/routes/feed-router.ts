@@ -42,6 +42,7 @@ import { isPubliclyVisible } from '../services/activitypub/object.ts'
 import { buildArticleMarkdown } from '../services/article-export.ts'
 import { buildArticleContent, mergeArticleContent } from '../services/article.ts'
 import { normalizeFeedMessage, serializeFeedPost } from '../services/feed.ts'
+import { getSettings } from '../services/settings.ts'
 import { getTimelinePage } from '../services/timeline.ts'
 import { type AnyMiddleware, type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody, validateQuery } from '../validation.ts'
@@ -80,8 +81,10 @@ export const createFeedRouter = (
   router.get<Record<string, never>, FeedPostsResponse>('/', authMiddleware, async (req, res) => {
     const user = req.user!
     const records = await listFeedPosts(user)
+    // One settings lookup for the whole listing, not one per post.
+    const settings = await getSettings(user).catch(() => null)
     const posts = await Promise.all(
-      records.map((record) => serializeFeedPost(user, record, { includeStructured: true })),
+      records.map((record) => serializeFeedPost(user, record, { includeStructured: true, settings })),
     )
     res.json({ posts, success: true })
   })

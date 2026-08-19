@@ -80,7 +80,7 @@ export interface ShareSelection {
   series: Set<MetricType>
   includeMap: boolean
   visibility: FeedVisibility
-  /** Personal message (plain text); whitespace-only clears/omits it server-side. */
+  /** Personal message (plain text) — see `buildShareBody` for the clear-on-edit semantics. */
   message: string
   summaryOptions: readonly { key: string }[]
   seriesOptions: readonly { key: MetricType }[]

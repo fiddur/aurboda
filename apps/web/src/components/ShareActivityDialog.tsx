@@ -11,6 +11,7 @@
  */
 import type { FeedPost, FeedVisibility, MetricType } from '@aurboda/api-spec'
 
+import { feedPostMessageMaxLength } from '@aurboda/api-spec'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'preact/hooks'
 
@@ -134,9 +135,7 @@ export function ShareActivityDialog({
   )
   const [visibility, setVisibility] = useState<FeedVisibility>(post?.visibility ?? 'public')
   const [includeMap, setIncludeMap] = useState(post?.include_map ?? false)
-  // Edit mode shows the post's stored message; create mode prefills from the
-  // activity's description/comments (visible + editable — never auto-shared
-  // unseen). Emptying the field shares/keeps no text.
+  // Edit mode shows the stored message; create mode prefills (see `defaultMessage`).
   const [message, setMessage] = useState(post ? (post.message ?? '') : (defaultMessage ?? ''))
   const { summaryOptions, seriesOptions, canChart, canMap } = useShareableMetricOptions(
     activityStart,
@@ -200,6 +199,7 @@ export function ShareActivityDialog({
           <textarea
             class="share-dialog-message"
             rows={3}
+            maxLength={feedPostMessageMaxLength}
             value={message}
             onInput={(e) => setMessage((e.target as HTMLTextAreaElement).value)}
             placeholder="Say something about this activity…"

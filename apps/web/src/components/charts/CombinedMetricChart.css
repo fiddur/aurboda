@@ -1,0 +1,90 @@
+/* Combined multi-metric chart (toggles + SVG + tooltip). Owned by
+   CombinedMetricChart so every page that renders it — the activity detail view
+   and the feed's native post cards — is styled without depending on any one
+   page's stylesheet. */
+.activity-chart-container {
+  position: relative;
+}
+
+.chart-toggles {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.chart-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.25rem 0.75rem;
+  border: 1px solid #d1d5db;
+  border-radius: 999px;
+  background: transparent;
+  cursor: pointer;
+  font-size: 0.8rem;
+  color: #6b7280;
+  transition: all 0.15s ease;
+}
+
+.chart-toggle.active {
+  background: #f3f4f6;
+  border-color: #9ca3af;
+  color: #374151;
+}
+
+.chart-toggle-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.chart-toggle-loading {
+  font-size: 0.8rem;
+  color: #9ca3af;
+  padding: 0.25rem 0.5rem;
+}
+
+.chart-svg-container {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+}
+
+.chart-tooltip {
+  display: none;
+  position: absolute;
+  padding: 0.375rem 0.5rem;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  white-space: pre;
+  pointer-events: none;
+  z-index: 10;
+  color: #374151;
+}
+
+.chart-svg-container svg {
+  display: block;
+}
+
+@media (prefers-color-scheme: dark) {
+  .chart-toggle {
+    border-color: #4b5563;
+    color: #9ca3af;
+  }
+
+  .chart-toggle.active {
+    background: #374151;
+    border-color: #6b7280;
+    color: #d1d5db;
+  }
+
+  .chart-tooltip {
+    background: rgba(31, 41, 55, 0.95);
+    border-color: #4b5563;
+    color: #d1d5db;
+  }
+}
