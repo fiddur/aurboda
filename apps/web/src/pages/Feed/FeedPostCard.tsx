@@ -46,6 +46,22 @@ const imageUrl = (username: string, post: FeedPost, kind: 'chart' | 'route'): st
     : `${API_URL}/public/${encodeURIComponent(username)}/feed/${post.id}/${kind}.png`
 
 /**
+ * The post's static image URLs. The chart.png is replaced only when the native
+ * interactive chart ACTUALLY renders — `structured` is attached to every
+ * activity post, so keying on its mere presence would drop the chart from an
+ * `include_chart` post whose series is empty/undrawable. The route map has no
+ * native render, so its image always stays.
+ */
+const mediaUrls = (post: FeedPost, username: string): { chart: string | null; route: string | null } => {
+  const nativeChart =
+    post.structured?.kind === 'activity' && structuredChartSeries(post.structured).length > 0
+  return {
+    chart: post.include_chart && !nativeChart ? imageUrl(username, post, 'chart') : null,
+    route: post.include_map ? imageUrl(username, post, 'route') : null,
+  }
+}
+
+/**
  * Native body for an activity post with resolved typed metrics (#997): title,
  * personal message, the activity's own date (#998), and a stat grid — instead
  * of the flattened `content` HTML Mastodon sees.
@@ -74,15 +90,7 @@ export const FeedPostCard = ({
 }) => {
   const vis = VISIBILITY[post.visibility]
   const when = formatDistanceToNow(new Date(post.created_at), { addSuffix: true })
-  // The static chart.png is replaced only when the native interactive chart
-  // ACTUALLY renders — `structured` is attached to every activity post, so
-  // keying on its mere presence would drop the chart from an `include_chart`
-  // post whose series is empty/undrawable. The route map has no native render,
-  // so its image always stays.
-  const nativeChart =
-    post.structured?.kind === 'activity' && structuredChartSeries(post.structured).length > 0
-  const chart = post.include_chart && !nativeChart ? imageUrl(author.username, post, 'chart') : null
-  const route = post.include_map ? imageUrl(author.username, post, 'route') : null
+  const { chart, route } = mediaUrls(post, author.username)
 
   return (
     <article class="feed-post">
