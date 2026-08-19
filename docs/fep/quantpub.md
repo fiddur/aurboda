@@ -126,10 +126,12 @@ fields:
 | `quant:series`        | array of series links   | Links into the series endpoint — only for shared series on **publicly-visible** posts (§6) |
 | `quant:structuredUrl` | URL                     | OPTIONAL explicit link to the object's §5 structured payload (see §7)                     |
 
-There is deliberately no duration property: duration is derivable from the
-window, and when the author chooses to share it as a stat it appears in
-`quant:metrics` as the `duration` key (in seconds). AS2's `duration`
-(`xsd:duration`) MAY be set additionally for plain-AS2 consumers.
+There is deliberately no duration property in the vocabulary: duration is
+derivable from the window, and when the author chooses to share it as a stat
+it appears in `quant:metrics` as the `duration` key (in seconds). AS2's
+`duration` (`xsd:duration`) MAY be set additionally for plain-AS2 consumers.
+(The §5 payload layer — plain JSON, not JSON-LD — still exposes a
+`duration_seconds` convenience field.)
 
 The `published` property carries the *share* time (timeline ordering); the
 workout time lives in `startTime` — a workout shared a week later MUST NOT be
@@ -402,16 +404,20 @@ structured channel already in place.
 {
   "@context": [
     "https://www.w3.org/ns/activitystreams",
-    { "quant": "https://w3id.org/quantpub#" }
+    {
+      "quant": "https://w3id.org/quantpub#",
+      "quant:metrics": { "@type": "@json" },
+      "quant:series": { "@type": "@json" }
+    }
   ],
-  "id": "https://qs.example.net/users/freja/feed/01J5X0",
+  "id": "https://qs.example.net/users/freja/feed/01J5X0#create",
   "type": "Create",
   "actor": "https://qs.example.net/users/freja",
   "published": "2026-08-15T08:02:11+02:00",
   "to": ["https://www.w3.org/ns/activitystreams#Public"],
   "cc": ["https://qs.example.net/users/freja/followers"],
   "object": {
-    "id": "https://qs.example.net/users/freja/feed/01J5X0/object",
+    "id": "https://qs.example.net/users/freja/feed/01J5X0",
     "type": ["Note", "quant:Exercise"],
     "attributedTo": "https://qs.example.net/users/freja",
     "name": "Morning run",
@@ -438,7 +444,10 @@ structured channel already in place.
 ```
 
 Mastodon renders the `content` and any attached chart image; a QuantPub peer
-recognises the id shape, discovers the origin, and fetches the §5 payload.
+recognises the id shape (or the same-host `quant:structuredUrl`), discovers
+the origin, and fetches the §5 payload. The inline `"@type": "@json"` term
+definitions mirror what the published `@context` document will carry (§1);
+once the final context IRI is settled, referencing it alone suffices.
 
 ### A sleep observation (object only)
 
