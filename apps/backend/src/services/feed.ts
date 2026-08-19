@@ -85,18 +85,6 @@ export const resolveFeedActivity = async (
 }
 
 /**
- * Serialise a stored feed post for the owner-facing REST/MCP surface, enriching
- * it with the shared activity's title/type, the **merged-span** window, and the
- * exact `content` HTML the post federates with — all resolved at query time. A
- * client can therefore render the post WYSIWYG (as it appears on Mastodon) and
- * re-open the share dialog without a second per-post activity fetch.
- *
- * The `content` is the same server-built, HTML-escaped string the delivered Note
- * carries (via `feedPostContent`), so the web renders it directly. (When the feed
- * later renders *remote* actors' posts, that untrusted content will need
- * sanitising — this owner-facing content does not.)
- */
-/**
  * The presentation pieces derived from a post's resolved activity: the
  * federated `content` HTML, the typed scalar `metrics`, and (opt-in) the FULL
  * structured payload — assembled by the same helper the public structured
@@ -144,6 +132,18 @@ const resolveActivityPresentation = async (
   }
 }
 
+/**
+ * Serialise a stored feed post for the owner-facing REST/MCP surface, enriching
+ * it with the shared activity's title/type, the **merged-span** window, and the
+ * exact `content` HTML the post federates with — all resolved at query time. A
+ * client can therefore render the post WYSIWYG (as it appears on Mastodon) and
+ * re-open the share dialog without a second per-post activity fetch.
+ *
+ * The `content` is the same server-built, HTML-escaped string the delivered Note
+ * carries (via `feedPostContent`), so the web renders it directly. (When the feed
+ * later renders *remote* actors' posts, that untrusted content will need
+ * sanitising — this owner-facing content does not.)
+ */
 export const serializeFeedPost = async (
   user: string,
   record: FeedPostRecord,

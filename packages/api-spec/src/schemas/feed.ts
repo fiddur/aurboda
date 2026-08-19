@@ -295,10 +295,6 @@ export const feedPostSchema = z
       .array(feedStructuredMetricSchema)
       .optional()
       .meta({ description: 'Resolved typed scalar values for the shared metrics (activity posts)' }),
-    // The full native structured payload — the SAME payload a subscribing
-    // Aurboda peer fetches from the public structured endpoint — so the owner's
-    // own feed renders the identical native card component (#1008). Present
-    // only on the owner-facing feed surfaces, for `activity` posts.
     structured: feedStructuredPostSchema.optional().meta({
       description:
         "The post's native structured payload (typed metrics + inline series), identical to what a subscribing peer receives — drives the owner's native card render",

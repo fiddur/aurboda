@@ -15,6 +15,7 @@ import { useState } from 'preact/hooks'
 
 import { fetchTimeline } from '../../state/api'
 import { ActorName } from './ActorName'
+import { structuredChartSeries } from './timeline-structured'
 import { TimelineStructured } from './TimelineStructured'
 import { useTimelineLive } from './useTimelineLive'
 
@@ -86,13 +87,17 @@ function TimelineCard({ entry }: { entry: TimelineEntry }) {
           otherwise fall back to the delivered image attachment(s), the way
           Mastodon shows them. An enriched *activity* post still shows its
           delivered route map — the structured payload has no native map render —
-          but skips the chart PNG the native interactive chart duplicates (the
-          attachment names are Aurboda's own, so matching on them is stable). */}
+          and skips the chart PNG only when the native interactive chart ACTUALLY
+          renders (an empty/undrawable series must not lose the chart entirely;
+          the attachment names are Aurboda's own, so matching on them is stable). */}
       {entry.structured && <TimelineStructured structured={entry.structured} />}
       {entry.images
-        ?.filter((img) =>
-          entry.structured == null ? true : entry.structured.kind === 'activity' && img.name !== 'Heart rate',
-        )
+        ?.filter((img) => {
+          if (entry.structured == null) return true
+          if (entry.structured.kind !== 'activity') return false
+          const nativeChart = structuredChartSeries(entry.structured).length > 0
+          return img.name !== 'Heart rate' || !nativeChart
+        })
         .map((img) => (
           <img
             key={img.url}

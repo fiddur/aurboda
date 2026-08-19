@@ -16,6 +16,7 @@ import { API_URL } from '../../config'
 import { formatEntryWindow } from './activity-stats'
 import { ActivityStatGrid } from './ActivityStatGrid'
 import { ArticleContent } from './ArticleContent'
+import { structuredChartSeries } from './timeline-structured'
 import { TimelineStructured } from './TimelineStructured'
 import './FeedPostCard.css'
 
@@ -73,10 +74,14 @@ export const FeedPostCard = ({
 }) => {
   const vis = VISIBILITY[post.visibility]
   const when = formatDistanceToNow(new Date(post.created_at), { addSuffix: true })
-  // With the full structured payload the native interactive chart replaces the
-  // static chart.png (same rule as a peer's timeline card); the route map has
-  // no native render, so its image always stays.
-  const chart = post.include_chart && !post.structured ? imageUrl(author.username, post, 'chart') : null
+  // The static chart.png is replaced only when the native interactive chart
+  // ACTUALLY renders — `structured` is attached to every activity post, so
+  // keying on its mere presence would drop the chart from an `include_chart`
+  // post whose series is empty/undrawable. The route map has no native render,
+  // so its image always stays.
+  const nativeChart =
+    post.structured?.kind === 'activity' && structuredChartSeries(post.structured).length > 0
+  const chart = post.include_chart && !nativeChart ? imageUrl(author.username, post, 'chart') : null
   const route = post.include_map ? imageUrl(author.username, post, 'route') : null
 
   return (

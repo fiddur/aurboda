@@ -80,8 +80,6 @@ export const createFeedRouter = (
   router.get<Record<string, never>, FeedPostsResponse>('/', authMiddleware, async (req, res) => {
     const user = req.user!
     const records = await listFeedPosts(user)
-    // The owner's feed includes each activity post's full structured payload,
-    // so the web renders the same native card a subscribing peer sees (#1008).
     const posts = await Promise.all(
       records.map((record) => serializeFeedPost(user, record, { includeStructured: true })),
     )
