@@ -16,7 +16,7 @@ import { API_URL } from '../../config'
 import { formatEntryWindow } from './activity-stats'
 import { ActivityStatGrid } from './ActivityStatGrid'
 import { ArticleContent } from './ArticleContent'
-import { structuredChartSeries } from './timeline-structured'
+import { structuredHasNativeHrChart, structuredHasNativeMap } from './timeline-structured'
 import { TimelineStructured } from './TimelineStructured'
 import './FeedPostCard.css'
 
@@ -46,20 +46,20 @@ const imageUrl = (username: string, post: FeedPost, kind: 'chart' | 'route'): st
     : `${API_URL}/public/${encodeURIComponent(username)}/feed/${post.id}/${kind}.png`
 
 /**
- * The post's static image URLs. The chart.png is replaced only when the native
- * interactive chart ACTUALLY renders — `structured` is attached to every
- * activity post, so keying on its mere presence would drop the chart from an
- * `include_chart` post whose series is empty/undrawable. The route map has no
- * native render, so its image always stays.
+ * The post's static image URLs. Each image is replaced only when its native
+ * counterpart ACTUALLY renders — `structured` is attached to every activity
+ * post, so keying on its mere presence would drop an image whose native render
+ * is empty/undrawable. chart.png draws heart rate only, so only a drawable
+ * heart-rate series makes it redundant; route.png only a drawable route.
  */
-const mediaUrls = (post: FeedPost, username: string): { chart: string | null; route: string | null } => {
-  const nativeChart =
-    post.structured?.kind === 'activity' && structuredChartSeries(post.structured).length > 0
-  return {
-    chart: post.include_chart && !nativeChart ? imageUrl(username, post, 'chart') : null,
-    route: post.include_map ? imageUrl(username, post, 'route') : null,
-  }
-}
+const mediaUrls = (post: FeedPost, username: string): { chart: string | null; route: string | null } => ({
+  chart:
+    post.include_chart && !structuredHasNativeHrChart(post.structured)
+      ? imageUrl(username, post, 'chart')
+      : null,
+  route:
+    post.include_map && !structuredHasNativeMap(post.structured) ? imageUrl(username, post, 'route') : null,
+})
 
 /**
  * Native body for an activity post with resolved typed metrics (#997): title,

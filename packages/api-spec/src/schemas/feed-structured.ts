@@ -68,6 +68,17 @@ export const feedStructuredSeriesSchema = z
 
 export type FeedStructuredSeries = z.infer<typeof feedStructuredSeriesSchema>
 
+/** One point of the shared GPS route: a timestamped WGS84 coordinate. */
+export const feedStructuredRoutePointSchema = z
+  .object({
+    lat: z.number().meta({ description: 'Latitude (WGS84)' }),
+    lon: z.number().meta({ description: 'Longitude (WGS84)' }),
+    t: iso8601DateTimeSchema.meta({ description: 'Timestamp of the GPS fix (ISO 8601)' }),
+  })
+  .meta({ id: 'FeedStructuredRoutePoint' })
+
+export type FeedStructuredRoutePoint = z.infer<typeof feedStructuredRoutePointSchema>
+
 /**
  * The full structured payload for a shared exercise post. Only the metrics and
  * series the author actually shared are present. Rendered natively by a
@@ -86,6 +97,15 @@ export const feedStructuredSchema = z
       .optional()
       .meta({ description: "The author's personal message for the post (plain text), if any" }),
     metrics: z.array(feedStructuredMetricSchema).meta({ description: 'Shared scalar summaries' }),
+    route: z
+      .array(feedStructuredRoutePointSchema)
+      .optional()
+      .meta({
+        description:
+          'Downsampled GPS route (time-ordered), present only when the author attached the route map ' +
+          '(`include_map`) — the same track and audience as the route image, no extra geography. ' +
+          'The timestamps do additionally expose position-at-time (and thus pace) to machine consumers.',
+      }),
     series: z
       .array(feedStructuredSeriesSchema)
       .meta({ description: 'Shared high-resolution series (may be empty)' }),

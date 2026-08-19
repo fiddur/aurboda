@@ -15,7 +15,7 @@ import { useState } from 'preact/hooks'
 
 import { fetchTimeline } from '../../state/api'
 import { ActorName } from './ActorName'
-import { structuredChartSeries } from './timeline-structured'
+import { timelineImageVisible } from './timeline-structured'
 import { TimelineStructured } from './TimelineStructured'
 import { useTimelineLive } from './useTimelineLive'
 
@@ -83,21 +83,13 @@ function TimelineCard({ entry }: { entry: TimelineEntry }) {
         <div class="feed-post-content" dangerouslySetInnerHTML={{ __html: entry.content }} />
       )}
 
-      {/* Native structured data (Aurboda peers) → a real chart / inline article;
-          otherwise fall back to the delivered image attachment(s), the way
-          Mastodon shows them. An enriched *activity* post still shows its
-          delivered route map — the structured payload has no native map render —
-          and skips the chart PNG only when the native interactive chart ACTUALLY
-          renders (an empty/undrawable series must not lose the chart entirely;
-          the attachment names are Aurboda's own, so matching on them is stable). */}
+      {/* Native structured data (Aurboda peers) → a real chart+map / inline
+          article; otherwise fall back to the delivered image attachment(s), the
+          way Mastodon shows them. `timelineImageVisible` keeps each image
+          unless its native counterpart actually renders. */}
       {entry.structured && <TimelineStructured structured={entry.structured} />}
       {entry.images
-        ?.filter((img) => {
-          if (entry.structured == null) return true
-          if (entry.structured.kind !== 'activity') return false
-          const nativeChart = structuredChartSeries(entry.structured).length > 0
-          return img.name !== 'Heart rate' || !nativeChart
-        })
+        ?.filter((img) => timelineImageVisible(entry.structured, img.name))
         .map((img) => (
           <img
             key={img.url}

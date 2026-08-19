@@ -37,9 +37,11 @@ import { blockWindow, isZeroDurationBucket } from './article.ts'
 import { getContinuousCorrelation } from './correlations/explore.ts'
 import { isCapabilityAuthorized } from './feed-capability.ts'
 import { floorSeriesBucket, samplesFromBucketedResult } from './feed-series.ts'
-// Series + payload assembly live in the shared leaf module so the owner-facing
-// feed serialisation (`feed.ts`) produces the identical payload (#1008).
-import { assembleStructuredActivity, resolveStructuredSeries } from './feed-structured-activity.ts'
+import {
+  assembleStructuredActivity,
+  resolveStructuredRoute,
+  resolveStructuredSeries,
+} from './feed-structured-activity.ts'
 import { resolveFeedActivity } from './feed.ts'
 import { queryMetricsBucketed } from './queries/index.ts'
 
@@ -223,7 +225,14 @@ export const resolveStructuredContent = async (
     ? await resolveStructuredSeries(user, post.series_metrics, activity.start_time, activity.end_time)
     : []
 
-  return assembleStructuredActivity(activity, scalars, series, post.message)
+  // The route rides along only when the author attached the route map — the
+  // same opt-in (and the same GPS track) as the rendered route.png.
+  const route =
+    post.include_map && activity.end_time
+      ? await resolveStructuredRoute(user, activity.start_time, activity.end_time)
+      : []
+
+  return assembleStructuredActivity(activity, scalars, series, post.message, route)
 }
 
 /**

@@ -1,5 +1,6 @@
 import type { Activity } from '../../state/api'
 
+import { formatMinutesAsHM } from '../../components/charts/sleep-utils'
 import {
   formatCadence,
   formatDateTime,
@@ -8,7 +9,6 @@ import {
   formatPace,
   formatTime,
 } from './format-utils'
-import { formatMinutesAsHM } from './sleep-utils'
 
 export interface ActivityStatRow {
   label: string

@@ -14,6 +14,14 @@ import { useCallback, useEffect, useState } from 'preact/hooks'
 import type { Activity, ActivityTypeDefinition, SourceRecord } from '../../state/api'
 
 import {
+  computeSleepMinutesFromStages,
+  SLEEP_METRIC_LABELS,
+  SLEEP_METRIC_UNITS,
+  SLEEP_METRICS,
+  type SleepMetricKey,
+  parseSleepStages,
+} from '../../components/charts/sleep-utils'
+import {
   fetchActivityById,
   fetchActivityTypeDefinitions,
   fetchBucketedMetrics,
@@ -44,14 +52,6 @@ import { ProductivityDetail } from './ProductivityDetail'
 import { activityRouteAfterSave } from './saveNavigation'
 import { SchemaDataFields } from './SchemaDataFields'
 import { ShareActivityButton } from './ShareActivityButton'
-import {
-  computeSleepMinutesFromStages,
-  SLEEP_METRIC_LABELS,
-  SLEEP_METRIC_UNITS,
-  SLEEP_METRICS,
-  type SleepMetricKey,
-  parseSleepStages,
-} from './sleep-utils'
 import './style.css'
 
 const SourceRecordsSection = ({ records }: { records: SourceRecord[] }) => (
@@ -648,9 +648,8 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
           activityStart={activity.merged_start_time ?? activity.start_time}
           activityEnd={activity.merged_end_time ?? activity.end_time}
           chartMetrics={chartMetrics}
-          // Prefill the share message from the activity's description — the
-          // user-typed comments (the same text the edit Description field
-          // shows). Shown editable in the dialog, never auto-shared unseen (#995).
+          // The user-typed comments (the edit Description field's text), shown
+          // editable in the dialog — never auto-shared unseen (#995).
           defaultMessage={getUserNotesContent(activity) || undefined}
         />
       )}

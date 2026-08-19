@@ -37,6 +37,7 @@ import { buildArticleContent, mergeArticleContent } from '../services/article.ts
 import { normalizeFeedMessage, serializeFeedPost } from '../services/feed.ts'
 import { serializeFollower } from '../services/followers.ts'
 import { serializeFollowing } from '../services/following.ts'
+import { getSettings } from '../services/settings.ts'
 import { getTimelinePage } from '../services/timeline.ts'
 import { errorResponse, jsonResponse, type McpServer } from './helpers.ts'
 
@@ -61,7 +62,11 @@ export const registerFeedTools = (
     {},
     async () => {
       const records = await listFeedPosts(user)
-      return jsonResponse(await Promise.all(records.map((record) => serializeFeedPost(user, record))))
+      // One settings lookup for the whole listing, not one per post.
+      const settings = await getSettings(user).catch(() => null)
+      return jsonResponse(
+        await Promise.all(records.map((record) => serializeFeedPost(user, record, { settings }))),
+      )
     },
   )
 

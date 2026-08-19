@@ -47,6 +47,10 @@ export interface FeedActivityInput {
   title?: string
   /** When the post was created (drives AS2 `published`). */
   publishedAt: Date
+  /** The author's personal message for the post (plain text), if any. */
+  message?: string
+  /** IANA timezone the activity-date line renders in (the author's device timezone). */
+  timeZone?: string
 }
 
 const trimSlashes = (s: string): string => s.replace(/\/+$/, '')
@@ -135,12 +139,14 @@ export const buildFeedPostActivity = (
     actorUrl,
     aurbodaNs: `${origin}/ns/activitystreams#`,
     endTime: input.endTime?.toISOString(),
+    message: input.message,
     postId: `${actorUrl}/feed/${input.postId}`,
     publishedAt: input.publishedAt.toISOString(),
     scalars,
     seriesEndpointBase: `${trimSlashes(ctx.apiBaseUrl)}/public/${ctx.username}/series`,
     seriesMetrics: input.seriesMetrics,
     startTime: input.startTime.toISOString(),
+    timeZone: input.timeZone,
     title: input.title,
     visibility: input.visibility,
   })

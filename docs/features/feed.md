@@ -241,9 +241,13 @@ A card with **no** native structured payload (a Mastodon post) renders the sanit
 plus the delivered **image attachment(s)**, the way Mastodon shows them. A card **with** one
 (an Aurboda peer's post, see below) renders natively instead and suppresses the redundant
 flattened HTML: an activity share shows its title, the author's message, the activity's
-date, a stat grid, and an interactive chart per shared series — plus the delivered route-map
-image (which has no native render; the chart PNG the native chart duplicates is skipped) —
-while an article shows the full inline article. A `followers`-only Aurboda share federates
+date, a stat grid, **one combined multi-metric chart** with per-metric toggle buttons, and a
+**time-synced interactive map** that marks the position at the hovered chart time — the same
+components the activity detail view uses (#1011) — while an article shows the full inline
+article. Each delivered image is kept unless its native counterpart actually draws: the
+chart PNG renders heart rate only, so it is skipped exactly when a drawable *heart-rate*
+series is present, and the route PNG is skipped when the payload carries a drawable route.
+A `followers`-only Aurboda share federates
 its native payload to accepted followers too (via the capability token, see below), so a
 follower gets the interactive chart rather than just the flat image; a Mastodon photo post
 shows its photos.
@@ -283,9 +287,11 @@ structured data out-of-band on ingest:
 
 1. **Emit.** Every instance serves `GET /public/:username/feed/:postId` — a native JSON payload
    (`FeedStructuredPost`: a discriminated union on `kind`). An **activity** post resolves to
-   `FeedStructuredActivity` (activity type/window, typed scalar `metrics`, and inline
-   high-resolution `series` samples), reusing the exact same scalar resolution as delivery and
-   the same data-scoped series resolution as the [public series
+   `FeedStructuredActivity` (activity type/window, typed scalar `metrics`, inline
+   high-resolution `series` samples, and — only when the post attaches the route map
+   (`include_map`) — a downsampled GPS `route` of timestamped points, capped at 500, from the
+   same locations the route image draws), reusing the exact same scalar resolution as delivery
+   and the same data-scoped series resolution as the [public series
    endpoint](#public-series-endpoint-the-privacy-boundary). An **article** post resolves to
    `FeedStructuredArticle` (the title and every block, resolved in the same order as the
    article: a prose block's raw markdown verbatim; a chart block's bucketed samples over its
@@ -311,8 +317,10 @@ structured data out-of-band on ingest:
    non-Aurboda posts; a redelivery that can't re-fetch keeps the last-known value). The web
    timeline card renders, per `structured.kind`: for an **activity** post the native
    activity card — title, personal message, the activity's date, a Strava-style **stat
-   grid** from the typed scalars, and a native `TrendLineChart` per shared series — or the
-   full inline article — title, prose, per-block chart/scatter — for
+   grid** from the typed scalars, one **combined multi-metric chart** (per-metric toggles,
+   crosshair tooltip) over the shared series, and a **time-synced interactive map** over the
+   shared route (the hovered chart time marks the position, exactly like the activity detail
+   view) — or the full inline article — title, prose, per-block chart/scatter — for
    an **article** post (mirroring the author's own live `ArticleContent` render, but built from
    the embedded payload rather than a live fetch, since a receiving peer has no credentials to
    call the author's authenticated endpoints).
@@ -460,11 +468,13 @@ resolving.
   comments, fully editable), pick the summary metrics, optionally opt into full series,
   and choose the audience. The **owner's own feed** renders each activity post with the
   **same native card component a subscribing Aurboda peer's timeline uses** — the owner-facing
-  feed responses include the full structured payload (typed scalars + inline series, assembled
-  by the same helper the public structured endpoint uses), so the author sees the interactive
-  hover charts exactly as a follower would, and can verify what they shared. The public
-  profile renders the lighter native **stat grid** (message + activity date + typed scalars)
-  without the series weight.
+  feed responses include the full structured payload (typed scalars + inline series + route,
+  assembled by the same helper the public structured endpoint uses), so the author sees the
+  interactive combined chart and time-synced map exactly as a follower would, and can verify
+  what they shared. The public profile renders the lighter native **stat grid** (message +
+  activity date + typed scalars) without the series weight — and the MCP `list_feed` tool
+  likewise omits `structured` (an intentional payload-weight divergence from `GET /feed`,
+  not a capability gap: the underlying data is all reachable via the metric-query tools).
 - **New article** — the **Feed** page has a **New article** button that opens the article
   composer: a title, an optional default time window, and an ordered list of **prose**
   (markdown), **chart** (a metric + optional per-block window + caption), and **correlation**

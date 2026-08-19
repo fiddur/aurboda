@@ -28,6 +28,7 @@ import { resolvePublicSeries } from '../services/feed-series.ts'
 import { loadAuthorizedStructuredPost, resolveStructuredContent } from '../services/feed-structured.ts'
 import { serializeFeedPost } from '../services/feed.ts'
 import { queryMetricsBucketed } from '../services/queries/index.ts'
+import { getSettings } from '../services/settings.ts'
 import { type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateQuery } from '../validation.ts'
 import { createRenderCache } from './feed-image-router.ts'
@@ -105,7 +106,11 @@ export const createFeedPublicRouter = (): TypedRouter => {
     }
     try {
       const records = await listPublicFeedPostsPage(username, PROFILE_FEED_LIMIT, 0)
-      const posts = await Promise.all(records.map((record) => serializeFeedPost(username, record)))
+      // One settings lookup for the whole listing, not one per post.
+      const settings = await getSettings(username).catch(() => null)
+      const posts = await Promise.all(
+        records.map((record) => serializeFeedPost(username, record, { settings })),
+      )
       res.setHeader('Cache-Control', 'no-store')
       res.json({ posts, success: true })
     } catch (error) {

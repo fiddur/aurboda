@@ -12,15 +12,24 @@
  *   (#1008: "my own feed should look like it would for another Aurboda
  *   subscriber").
  */
-import { type FeedStructuredActivity, type FeedStructuredSeries, metricTypeSchema } from '@aurboda/api-spec'
+import {
+  type FeedStructuredActivity,
+  type FeedStructuredRoutePoint,
+  type FeedStructuredSeries,
+  metricTypeSchema,
+} from '@aurboda/api-spec'
 
 import type { ScalarMetric } from './activitypub/object.ts'
 
+import { getLocations } from '../db/index.ts'
 import { resolvePublicSeries } from './feed-series.ts'
 import { queryMetricsBucketed } from './queries/index.ts'
 
 /** Series granularity for the structured payload — floored to the server minimum by `resolvePublicSeries`. */
 const SERIES_BUCKET = '5s'
+
+/** Cap on route points in the payload — plenty for a polyline, bounded for the wire. */
+const MAX_ROUTE_POINTS = 500
 
 /**
  * Resolve a post's opted-in series to inline samples over its activity window.
@@ -59,6 +68,36 @@ export const resolveStructuredSeries = async (
   return series
 }
 
+/**
+ * Evenly downsample a time-ordered list to at most `max` entries (`max` ≥ 2),
+ * always keeping the first and last, so the drawn shape survives with the
+ * endpoints intact.
+ */
+export const downsampleRoutePoints = <T>(points: T[], max: number): T[] => {
+  if (points.length <= max) return points
+  const step = (points.length - 1) / (max - 1)
+  return Array.from({ length: max }, (_, i) => points[Math.round(i * step)] as T)
+}
+
+/**
+ * Resolve a post's GPS route over its activity window, downsampled for the wire.
+ * Same source as the rendered route.png (`getLocations`), so the native map a
+ * peer draws shows exactly the track the author already chose to share. Caller
+ * gates on `include_map` — that flag is the author's opt-in for the route.
+ */
+export const resolveStructuredRoute = async (
+  user: string,
+  start: Date,
+  end: Date,
+): Promise<FeedStructuredRoutePoint[]> => {
+  const { locations } = await getLocations(user, start, end)
+  return downsampleRoutePoints(locations, MAX_ROUTE_POINTS).map((loc) => ({
+    lat: loc.coordinates[1],
+    lon: loc.coordinates[0],
+    t: loc.time.toISOString(),
+  }))
+}
+
 /** The activity fields the payload needs (satisfied by `ResolvedFeedActivity`). */
 export interface StructuredActivitySource {
   activity_type: string
@@ -73,6 +112,7 @@ export const assembleStructuredActivity = (
   scalars: ScalarMetric[],
   series: FeedStructuredSeries[],
   message?: string | null,
+  route: FeedStructuredRoutePoint[] = [],
 ): FeedStructuredActivity => {
   const structured: FeedStructuredActivity = {
     activity_type: activity.activity_type,
@@ -83,6 +123,7 @@ export const assembleStructuredActivity = (
   }
   if (activity.title !== undefined) structured.title = activity.title
   if (message != null) structured.message = message
+  if (route.length > 0) structured.route = route
   if (activity.end_time) {
     structured.end_time = activity.end_time.toISOString()
     structured.duration_seconds = Math.round(
