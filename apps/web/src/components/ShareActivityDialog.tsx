@@ -285,7 +285,7 @@ export function ShareActivityDialog({
             disabled={mutation.isPending || !summaryOptions.some((m) => summary.has(m.key))}
             onClick={() => mutation.mutate()}
           >
-            {mutation.isPending ? 'Saving…' : post ? 'Save changes' : 'Share'}
+            {mutation.isPending ? (post ? 'Saving…' : 'Sharing…') : post ? 'Save changes' : 'Share'}
           </button>
         </div>
       </div>
