@@ -24,9 +24,10 @@ import { Create, Delete, Image, Note, Tombstone, Update } from '@fedify/fedify/v
 
 import type { FeedPostRecord } from '../../db/index.ts'
 
+import { getSettings } from '../settings.ts'
 import { articleImageAttachments, renderArticleContentHtml } from './article-object.ts'
 import { resolveActivityScalars } from './feed-activity.ts'
-import { addressingFor, feedPostContent, isPubliclyVisible } from './object.ts'
+import { addressingFor, feedPostContent, formatActivityWindow, isPubliclyVisible } from './object.ts'
 import { dateToTemporalInstant } from './temporal-interop.ts'
 
 /**
@@ -51,6 +52,8 @@ export interface DeliverablePost {
   id: string
   included_metrics: string[]
   visibility: FeedVisibility
+  /** The author's personal message (plain text); null/undefined = none shared. */
+  message?: string | null
   created_at: Date
   /** Last-edited time; makes each `Update` activity id unique (see `buildFeedUpdate`). */
   updated_at: Date
@@ -132,7 +135,17 @@ export const buildFeedNote = async (
   apiBaseUrl: string,
 ): Promise<Note> => {
   const scalars = await resolveActivityScalars(user, activity, post.included_metrics)
-  const { content, name } = feedPostContent(activity.title, activity.activity_type, scalars)
+  // The activity-date line renders in the author's device timezone (like the
+  // article block images); unknown/invalid falls back to UTC inside the formatter.
+  const settings = await getSettings(user).catch(() => null)
+  const { content, name } = feedPostContent(activity.title, activity.activity_type, scalars, {
+    message: post.message ?? undefined,
+    windowLabel: formatActivityWindow(
+      activity.start_time,
+      activity.end_time,
+      settings?.device_timezone ?? undefined,
+    ),
+  })
   const actorUri = ctx.getActorUri(user)
   const noteId = ctx.getObjectUri(Note, { identifier: user, postId: post.id })
   const { cc, to } = recipients(post.visibility, ctx.getFollowersUri(user))

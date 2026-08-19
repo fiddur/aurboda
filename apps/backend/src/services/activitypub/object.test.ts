@@ -6,6 +6,7 @@ import {
   type BuildCreateInput,
   buildCreateExercise,
   feedPostContent,
+  formatActivityWindow,
 } from './object.ts'
 
 const base: BuildCreateInput = {
@@ -62,11 +63,36 @@ describe('buildCreateExercise', () => {
     ])
   })
 
-  test('content is a bold title headline with the shared scalars on their own line', () => {
+  test('content is a bold title headline, the activity-date line, and one stat per line', () => {
     const c = buildCreateExercise(base)
     expect(c.object.content).toBe(
-      '<p><strong>Morning run</strong></p><p>Distance 8.2 km · Avg HR 148 bpm · Hr zone minutes z2 22, z3 11</p>',
+      '<p><strong>Morning run</strong></p>' +
+        '<p>Wed, 1 Jul 2026, 06:30–07:11</p>' +
+        '<p>Distance 8.2 km<br>Avg HR 148 bpm<br>Hr zone minutes z2 22, z3 11</p>',
     )
+  })
+
+  test('a personal message renders between the headline and the date line, and rides aurboda:message', () => {
+    const c = buildCreateExercise({ ...base, message: 'Felt great,\nnegative splits!' })
+    expect(c.object.content).toBe(
+      '<p><strong>Morning run</strong></p>' +
+        '<p>Felt great,<br>negative splits!</p>' +
+        '<p>Wed, 1 Jul 2026, 06:30–07:11</p>' +
+        '<p>Distance 8.2 km<br>Avg HR 148 bpm<br>Hr zone minutes z2 22, z3 11</p>',
+    )
+    expect(c.object['aurboda:message']).toBe('Felt great,\nnegative splits!')
+  })
+
+  test('no aurboda:message and no message paragraph for a blank message', () => {
+    const c = buildCreateExercise({ ...base, message: '   ' })
+    expect(c.object['aurboda:message']).toBeUndefined()
+    expect(c.object.content).not.toContain('<p> ')
+  })
+
+  test('the date line renders in the given timezone', () => {
+    const c = buildCreateExercise({ ...base, timeZone: 'Europe/Stockholm' })
+    // 06:30Z–07:11Z is 08:30–09:11 CEST.
+    expect(c.object.content).toContain('<p>Wed, 1 Jul 2026, 08:30–09:11</p>')
   })
 
   test('aurboda:metrics carries the machine-readable shared scalars only', () => {
@@ -116,7 +142,10 @@ describe('buildCreateExercise', () => {
 
   test('escapes HTML in the title for the fallback content', () => {
     const c = buildCreateExercise({ ...base, scalars: [], title: 'Run <b>x</b> & "go"' })
-    expect(c.object.content).toBe('<p><strong>Run &lt;b&gt;x&lt;/b&gt; &amp; &quot;go&quot;</strong></p>')
+    expect(c.object.content).toBe(
+      '<p><strong>Run &lt;b&gt;x&lt;/b&gt; &amp; &quot;go&quot;</strong></p>' +
+        '<p>Wed, 1 Jul 2026, 06:30–07:11</p>',
+    )
   })
 
   test('uses publishedAt for the AS2 published times, keeping the workout time in aurboda:startTime', () => {
@@ -138,15 +167,51 @@ describe('buildCreateExercise', () => {
   })
 })
 
+describe('formatActivityWindow', () => {
+  test('same-day window collapses the end to its time', () => {
+    expect(formatActivityWindow('2026-08-02T13:44:00Z', '2026-08-02T16:12:00Z', 'Europe/Stockholm')).toBe(
+      'Sun, 2 Aug 2026, 15:44–18:12',
+    )
+  })
+
+  test('cross-day window spells out both ends', () => {
+    expect(formatActivityWindow('2026-08-02T22:30:00Z', '2026-08-03T06:10:00Z', 'UTC')).toBe(
+      'Sun, 2 Aug 2026, 22:30 – Mon, 3 Aug 2026, 06:10',
+    )
+  })
+
+  test('open-ended activity renders only the start', () => {
+    expect(formatActivityWindow('2026-08-02T13:44:00Z', undefined, 'UTC')).toBe('Sun, 2 Aug 2026, 13:44')
+  })
+
+  test('an invalid timezone falls back to UTC instead of throwing', () => {
+    expect(formatActivityWindow('2026-08-02T13:44:00Z', undefined, 'Not/AZone')).toBe(
+      'Sun, 2 Aug 2026, 13:44',
+    )
+  })
+})
+
 describe('feedPostContent', () => {
-  test('renders a bold headline with stats below and a humanized duration', () => {
+  test('renders a bold headline with one stat per line and a humanized duration', () => {
     const { content } = feedPostContent('Evening qigong', 'yoga', [
       { key: 'duration', label: 'Duration', unit: 'seconds', value: 642 },
       { key: 'heart_rate_avg', label: 'Avg HR', unit: 'bpm', value: 76 },
       { key: 'calories', label: 'Calories', unit: 'kcal', value: 9 },
     ])
     expect(content).toBe(
-      '<p><strong>Evening qigong</strong></p><p>Duration 10m 42s · Avg HR 76 bpm · Calories 9 kcal</p>',
+      '<p><strong>Evening qigong</strong></p><p>Duration 10m 42s<br>Avg HR 76 bpm<br>Calories 9 kcal</p>',
+    )
+  })
+
+  test('escapes HTML in the message and preserves its linebreaks as <br>', () => {
+    const { content } = feedPostContent('Row', 'rowing', [], {
+      message: 'So <b>good</b>\n& calm',
+      windowLabel: 'Sun, 2 Aug 2026, 15:44–18:12',
+    })
+    expect(content).toBe(
+      '<p><strong>Row</strong></p>' +
+        '<p>So &lt;b&gt;good&lt;/b&gt;<br>&amp; calm</p>' +
+        '<p>Sun, 2 Aug 2026, 15:44–18:12</p>',
     )
   })
 

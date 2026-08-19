@@ -13,6 +13,8 @@ import type { ComponentChildren } from 'preact'
 import { formatDistanceToNow } from 'date-fns'
 
 import { API_URL } from '../../config'
+import { formatEntryWindow } from './activity-stats'
+import { ActivityStatGrid } from './ActivityStatGrid'
 import { ArticleContent } from './ArticleContent'
 import './FeedPostCard.css'
 
@@ -40,6 +42,24 @@ const imageUrl = (username: string, post: FeedPost, kind: 'chart' | 'route'): st
   post.visibility === 'followers'
     ? null
     : `${API_URL}/public/${encodeURIComponent(username)}/feed/${post.id}/${kind}.png`
+
+/**
+ * Native body for an activity post with resolved typed metrics (#997): title,
+ * personal message, the activity's own date (#998), and a stat grid — instead
+ * of the flattened `content` HTML Mastodon sees.
+ */
+const ActivityPostBody = ({ post }: { post: FeedPost }) => (
+  <div class="feed-post-content">
+    <p class="feed-post-title">
+      <strong>{post.activity_title ?? 'Shared activity'}</strong>
+    </p>
+    {post.message && <p class="feed-post-message">{post.message}</p>}
+    {post.activity_start_time && (
+      <p class="feed-post-window">{formatEntryWindow(post.activity_start_time, post.activity_end_time)}</p>
+    )}
+    {post.metrics && <ActivityStatGrid metrics={post.metrics} />}
+  </div>
+)
 
 export const FeedPostCard = ({
   post,
@@ -71,11 +91,14 @@ export const FeedPostCard = ({
       </header>
 
       {/* An article renders its own title + prose/chart blocks (prose sanitised
-          via the shared sanitiser). Otherwise the activity post's server-built,
-          HTML-escaped `content` (see serializeFeedPost) is safe to render
-          directly; remote timeline content will need sanitising. */}
+          via the shared sanitiser). An activity post with resolved typed metrics
+          renders natively (`ActivityPostBody`). Older payloads without `metrics`
+          fall back to the server-built, HTML-escaped `content` (safe to render
+          directly). */}
       {post.kind === 'article' && post.article ? (
         <ArticleContent article={post.article} />
+      ) : post.metrics ? (
+        <ActivityPostBody post={post} />
       ) : post.content ? (
         <div class="feed-post-content" dangerouslySetInnerHTML={{ __html: post.content }} />
       ) : (

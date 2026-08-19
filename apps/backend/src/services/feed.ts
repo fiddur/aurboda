@@ -23,8 +23,9 @@ import type { Activity, FeedPostRecord } from '../db/index.ts'
 
 import { getActivityById } from '../db/index.ts'
 import { resolveActivityScalars } from './activitypub/feed-activity.ts'
-import { feedPostContent } from './activitypub/object.ts'
+import { feedPostContent, formatActivityWindow } from './activitypub/object.ts'
 import { resolveActivityWindow } from './queries/index.ts'
+import { getSettings } from './settings.ts'
 
 /**
  * A feed post's shared activity, resolved for presentation/delivery: the title
@@ -36,6 +37,18 @@ export interface ResolvedFeedActivity {
   start_time: Date
   end_time?: Date
   title?: string
+}
+
+/**
+ * Normalize a request's `message` for storage: `undefined` stays `undefined`
+ * (a PATCH leaves the stored value unchanged), a whitespace-only string becomes
+ * `null` (clears it), anything else is stored trimmed. Shared by the REST
+ * router and the MCP tools so both surfaces behave identically.
+ */
+export const normalizeFeedMessage = (message?: string): string | null | undefined => {
+  if (message === undefined) return undefined
+  const trimmed = message.trim()
+  return trimmed === '' ? null : trimmed
 }
 
 /**
@@ -85,13 +98,29 @@ export const resolveFeedActivity = async (
 export const serializeFeedPost = async (user: string, record: FeedPostRecord): Promise<FeedPost> => {
   const activity = record.activity_id ? await resolveFeedActivity(user, record.activity_id) : null
   let content: string | undefined
+  let metrics: FeedPost['metrics']
   if (activity) {
     const scalars = await resolveActivityScalars(
       user,
       { end_time: activity.end_time, start_time: activity.start_time },
       record.included_metrics,
     )
-    content = feedPostContent(activity.title, activity.activity_type, scalars).content
+    const settings = await getSettings(user).catch(() => null)
+    content = feedPostContent(activity.title, activity.activity_type, scalars, {
+      message: record.message ?? undefined,
+      windowLabel: formatActivityWindow(
+        activity.start_time,
+        activity.end_time,
+        settings?.device_timezone ?? undefined,
+      ),
+    }).content
+    // The typed scalar values (same shape as the structured-enrichment payload),
+    // so the web renders a native stat grid instead of parsing the content HTML.
+    metrics = scalars.map(({ key, unit, value }) => ({
+      key,
+      value,
+      ...(unit === undefined ? {} : { unit }),
+    }))
   }
   return {
     activity_end_time: activity?.end_time?.toISOString(),
@@ -109,6 +138,8 @@ export const serializeFeedPost = async (user: string, record: FeedPostRecord): P
     include_map: record.include_map,
     included_metrics: record.included_metrics,
     kind: record.kind,
+    message: record.message ?? undefined,
+    metrics,
     series_metrics: record.series_metrics,
     updated_at: record.updated_at.toISOString(),
     visibility: record.visibility,

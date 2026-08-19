@@ -80,6 +80,8 @@ export interface ShareSelection {
   series: Set<MetricType>
   includeMap: boolean
   visibility: FeedVisibility
+  /** Personal message (plain text); whitespace-only clears/omits it server-side. */
+  message: string
   summaryOptions: readonly { key: string }[]
   seriesOptions: readonly { key: MetricType }[]
   canChart: boolean
@@ -96,6 +98,9 @@ export const buildShareBody = (sel: ShareSelection): ShareActivityBody => ({
   include_chart: sel.canChart && sel.series.has(HEART_RATE),
   include_map: sel.canMap && sel.includeMap,
   included_metrics: sel.summaryOptions.map((m) => m.key).filter((k) => sel.summary.has(k)),
+  // Always sent (never omitted): on an edit, an emptied field must CLEAR the
+  // stored message — the backend maps whitespace-only to null.
+  message: sel.message,
   series_metrics: sel.seriesOptions.map((m) => m.key).filter((k) => sel.series.has(k)),
   visibility: sel.visibility,
 })

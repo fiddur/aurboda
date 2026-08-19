@@ -55,6 +55,10 @@ export interface BuildCreateInput {
    */
   publishedAt?: string
   title?: string
+  /** The author's personal message for the post (plain text), if any. */
+  message?: string
+  /** IANA timezone for the human-readable activity-date line (defaults to UTC). */
+  timeZone?: string
   /** Resolved scalar summaries for the shared `included_metrics`. */
   scalars: ScalarMetric[]
   /** Metric keys whose series were explicitly shared (drive `aurboda:series`). */
@@ -112,24 +116,77 @@ const formatScalar = ({ key, value, unit, label }: ScalarMetric): string => {
 }
 
 /**
+ * Format one date-time for the activity-date line, in the author's timezone
+ * (fallback UTC when unset/invalid): `Sun 2 Aug 2026, 15:44`.
+ */
+const formatWindowInstant = (iso: string | Date, timeZone: string | undefined, dateOnly = false) => {
+  const date = typeof iso === 'string' ? new Date(iso) : iso
+  const options: Intl.DateTimeFormatOptions = dateOnly
+    ? { day: 'numeric', month: 'short', weekday: 'short', year: 'numeric' }
+    : {
+        day: 'numeric',
+        hour: '2-digit',
+        hour12: false,
+        minute: '2-digit',
+        month: 'short',
+        weekday: 'short',
+        year: 'numeric',
+      }
+  try {
+    return new Intl.DateTimeFormat('en-GB', { ...options, timeZone: timeZone ?? 'UTC' }).format(date)
+  } catch {
+    // An invalid stored timezone must never break content building.
+    return new Intl.DateTimeFormat('en-GB', { ...options, timeZone: 'UTC' }).format(date)
+  }
+}
+
+/**
+ * Human-readable line saying WHEN the activity happened (#998) — the post's AS2
+ * `published` stays the share time (timeline ordering), so the activity's own
+ * date must be visible in the content. Same-day windows collapse the end to its
+ * time (`Sun 2 Aug 2026, 15:44–18:12`); cross-day windows spell out both ends.
+ */
+export const formatActivityWindow = (
+  start: string | Date,
+  end?: string | Date,
+  timeZone?: string,
+): string => {
+  const startLabel = formatWindowInstant(start, timeZone)
+  if (end === undefined) return startLabel
+  const sameDay = formatWindowInstant(start, timeZone, true) === formatWindowInstant(end, timeZone, true)
+  if (!sameDay) return `${startLabel} – ${formatWindowInstant(end, timeZone)}`
+  const endTime = formatWindowInstant(end, timeZone).split(', ').pop() ?? ''
+  return `${startLabel}–${endTime}`
+}
+
+/** Extra content parts beyond the title + scalars (all optional). */
+export interface FeedPostContentExtras {
+  /** The author's personal message (plain text; linebreaks become `<br>`). */
+  message?: string
+  /** Pre-formatted activity-date line (see `formatActivityWindow`). */
+  windowLabel?: string
+}
+
+/**
  * The human-readable status a plain fediverse client (Mastodon) renders: a bold
- * title headline with the shared scalars on their own line below, so it reads as
- * a workout post rather than one run-on sentence. `name` carries the same
- * headline. Shared by the AS2 object model and the Fedify delivery Note so both
- * read identically.
+ * title headline, the author's personal message (if any), the activity-date
+ * line, and the shared scalars one per line — structured paragraphs rather than
+ * one run-on `·`-joined sentence (#997). `name` carries the headline. Shared by
+ * the AS2 object model and the Fedify delivery Note so both read identically.
  */
 export const feedPostContent = (
   title: string | undefined,
   activityType: string,
   scalars: ScalarMetric[],
+  extras: FeedPostContentExtras = {},
 ): { name: string; content: string } => {
   const heading = title ?? `${prettifyKey(activityType)} activity`
-  const stats = scalars.map(formatScalar).join(' · ')
-  const headingHtml = `<p><strong>${escapeHtml(heading)}</strong></p>`
-  return {
-    content: stats ? `${headingHtml}<p>${escapeHtml(stats)}</p>` : headingHtml,
-    name: heading,
-  }
+  const parts = [`<p><strong>${escapeHtml(heading)}</strong></p>`]
+  const message = extras.message?.trim()
+  if (message) parts.push(`<p>${escapeHtml(message).replaceAll('\n', '<br>')}</p>`)
+  if (extras.windowLabel) parts.push(`<p>${escapeHtml(extras.windowLabel)}</p>`)
+  if (scalars.length > 0) parts.push(`<p>${scalars.map((s) => escapeHtml(formatScalar(s))).join('<br>')}</p>`)
+  return { content: parts.join(''), name: heading }
 }
 
 /**
@@ -197,7 +254,10 @@ export const buildCreateExercise = (input: BuildCreateInput): AS2Create => {
   const { to, cc } = addressingFor(input.visibility, followersUrl)
   const objectId = `${input.postId}/object`
 
-  const { content, name } = feedPostContent(input.title, input.activityType, input.scalars)
+  const { content, name } = feedPostContent(input.title, input.activityType, input.scalars, {
+    message: input.message,
+    windowLabel: formatActivityWindow(input.startTime, input.endTime, input.timeZone),
+  })
   // `published` is the share time (timeline ordering); the workout time lives in
   // `aurboda:startTime`.
   const published = input.publishedAt ?? input.startTime
@@ -220,6 +280,9 @@ export const buildCreateExercise = (input: BuildCreateInput): AS2Create => {
     url: input.postId,
   }
 
+  if (input.message !== undefined && input.message.trim() !== '') {
+    object['aurboda:message'] = input.message
+  }
   if (input.endTime) {
     object['aurboda:endTime'] = input.endTime
     object['aurboda:durationSeconds'] = Math.round(

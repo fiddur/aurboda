@@ -109,9 +109,25 @@
   margin-top: 1rem;
 }
 
+.share-dialog-message {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  padding: 0.5rem;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font: inherit;
+  background: inherit;
+  color: inherit;
+}
+
 @media (prefers-color-scheme: dark) {
   .share-dialog {
     background: #1f2937;
+  }
+
+  .share-dialog-message {
+    border-color: #374151;
   }
 
   .share-dialog-header h2,

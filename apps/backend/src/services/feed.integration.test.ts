@@ -127,9 +127,26 @@ describe('feed service', () => {
       expect(dto.activity_end_time).toBe(MERGED_END.toISOString())
       // Rendered `content` HTML (as federated) with the title headline (#884 §1).
       expect(dto.content).toContain('<strong>Merged run</strong>')
+      // The activity-date line is part of the federated content (#998).
+      expect(dto.content).toMatch(/<p>\w{3}, \d+ \w{3} \d{4}/)
+      // Typed resolved scalars back the web's native stat grid (#997).
+      expect(dto.metrics).toEqual([expect.objectContaining({ key: 'duration', value: expect.any(Number) })])
       // Base fields still present.
       expect(dto.included_metrics).toEqual(['duration'])
       expect(dto.visibility).toBe('public')
+    })
+
+    test('carries the personal message into the DTO and the federated content (#995)', async () => {
+      const user = getTestUser()
+      const anchorId = await insertAnchor(user)
+      const post = await createFeedPost(user, {
+        ...postInput(anchorId),
+        message: 'So wonderful\nsense of freedom!',
+      })
+
+      const dto = await serializeFeedPost(user, post)
+      expect(dto.message).toBe('So wonderful\nsense of freedom!')
+      expect(dto.content).toContain('<p>So wonderful<br>sense of freedom!</p>')
     })
 
     test('omits activity fields for a non-activity post', async () => {

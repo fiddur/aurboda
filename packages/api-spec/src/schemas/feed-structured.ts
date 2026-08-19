@@ -81,6 +81,10 @@ export const feedStructuredSchema = z
       .optional()
       .meta({ description: 'Activity duration in seconds (present when the activity has an end)' }),
     end_time: iso8601DateTimeSchema.optional().meta({ description: 'Activity end (ISO 8601), if any' }),
+    message: z
+      .string()
+      .optional()
+      .meta({ description: "The author's personal message for the post (plain text), if any" }),
     metrics: z.array(feedStructuredMetricSchema).meta({ description: 'Shared scalar summaries' }),
     series: z
       .array(feedStructuredSeriesSchema)

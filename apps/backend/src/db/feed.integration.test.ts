@@ -113,6 +113,26 @@ describe('Feed posts integration', () => {
     expect((await getFeedPostById(user, created.id))?.image_token).toBe(created.image_token)
   })
 
+  test('stores, patches, and clears the personal message (#995)', async () => {
+    const user = getTestUser()
+    // Omitted on create → NULL.
+    const bare = await createFeedPost(user, postInput())
+    expect(bare.message).toBeNull()
+
+    const created = await createFeedPost(user, postInput({ message: 'Felt great,\nnegative splits!' }))
+    expect(created.message).toBe('Felt great,\nnegative splits!')
+    expect((await getFeedPostById(user, created.id))?.message).toBe('Felt great,\nnegative splits!')
+
+    // An undefined patch field leaves the message untouched…
+    const untouched = await updateFeedPost(user, created.id, { visibility: 'unlisted' })
+    expect(untouched?.message).toBe('Felt great,\nnegative splits!')
+    // …a string replaces it, and null clears it.
+    const replaced = await updateFeedPost(user, created.id, { message: 'Actually just ok' })
+    expect(replaced?.message).toBe('Actually just ok')
+    const cleared = await updateFeedPost(user, created.id, { message: null })
+    expect(cleared?.message).toBeNull()
+  })
+
   test('lists posts newest-first', async () => {
     const user = getTestUser()
     const first = await createFeedPost(user, postInput())
