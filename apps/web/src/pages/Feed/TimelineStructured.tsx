@@ -11,7 +11,7 @@
  */
 import type { FeedStructuredActivity, FeedStructuredPost } from '@aurboda/api-spec'
 
-import { useState } from 'preact/hooks'
+import { useMemo, useState } from 'preact/hooks'
 
 import { CombinedMetricChart } from '../../components/charts/CombinedMetricChart'
 import { RouteMap } from '../../components/charts/RouteMap'
@@ -29,6 +29,10 @@ function ActivityStructured({ structured }: { structured: FeedStructuredActivity
   const [hoverTime, setHoverTime] = useState<Date | null>(null)
   const series = structuredCombinedSeries(structured)
   const showMap = structuredHasNativeMap(structured)
+  // Stable identity across the hover-driven re-renders (`structured` comes from
+  // query data): RouteMap's init effect is keyed on `points`, and a fresh array
+  // per mousemove would tear down and rebuild the Leaflet map mid-hover.
+  const routePoints = useMemo(() => structuredRoutePoints(structured), [structured])
 
   return (
     <div class="timeline-structured">
@@ -48,7 +52,7 @@ function ActivityStructured({ structured }: { structured: FeedStructuredActivity
           />
         </div>
       )}
-      {showMap && <RouteMap points={structuredRoutePoints(structured)} hoverTime={hoverTime} />}
+      {showMap && <RouteMap points={routePoints} hoverTime={hoverTime} />}
     </div>
   )
 }
