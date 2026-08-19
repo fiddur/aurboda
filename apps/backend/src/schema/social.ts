@@ -285,6 +285,14 @@ export const socialTables: Record<string, string> = {
     CREATE INDEX IF NOT EXISTS idx_timeline_entry_published
       ON timeline_entry (published_at DESC, id DESC)
   `,
+  // Partial index for the lazy retro-enrichment candidate query (#996): once
+  // the backlog drains it is empty, so the common no-work case on every
+  // timeline read is a cheap lookup instead of a walk of the full index.
+  timeline_entry_unenriched_indexes: `
+    CREATE INDEX IF NOT EXISTS idx_timeline_entry_unenriched
+      ON timeline_entry (published_at DESC, id DESC)
+      WHERE structured IS NULL AND enrich_attempted_at IS NULL
+  `,
 
   // The user's public profile avatar. One per user (the profile owner), so a
   // `singleton` PK + CHECK pins it to a single row. Surfaced on the public

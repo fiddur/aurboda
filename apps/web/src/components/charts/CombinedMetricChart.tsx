@@ -16,7 +16,7 @@
 import { metricUnits as builtinMetricUnits } from '@aurboda/api-spec'
 import * as d3 from 'd3'
 import { format } from 'date-fns'
-import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 
 import { findNearest, findStageAtTime } from './chart-utils'
 import { STAGE_COLORS, STAGE_LABELS, STAGE_Y_ORDER, type SleepStage } from './sleep-utils'
@@ -524,35 +524,46 @@ export const CombinedMetricChart = ({
     onEnabledMetricsChange?.(enabledKey ? enabledKey.split('|') : [])
   }, [enabledKey, onEnabledMetricsChange])
 
-  // Compute which metrics get axes (last MAX_RIGHT_AXES in toggleOrder that are enabled)
-  const metricsWithAxes = new Set(toggleOrder.filter((m) => enabledMetrics.has(m)).slice(-MAX_RIGHT_AXES))
-
-  // Compute fallback color index for non-known metrics
-  const fallbackColorIndices = new Map<string, number>()
-  let fallbackIdx = 0
-  for (const metric of availableMetrics) {
-    if (!KNOWN_METRIC_COLORS[metric]) {
-      fallbackColorIndices.set(metric, fallbackIdx++)
+  // Stable colour per metric: well-known ones fixed, the rest cycling in series order.
+  const colorByMetric = useMemo(() => {
+    const map = new Map<string, string>()
+    let fallbackIdx = 0
+    for (const s of series) {
+      map.set(s.metric, KNOWN_METRIC_COLORS[s.metric] ?? getMetricColor(s.metric, fallbackIdx++))
     }
-  }
+    return map
+  }, [series])
 
-  // Build overlay list from the input series
-  const overlays: MetricOverlay[] = []
-  for (const s of series) {
-    if (!enabledMetrics.has(s.metric)) continue
-    if (!hasData(s.data)) continue
-
-    overlays.push({
-      color: getMetricColor(s.metric, fallbackColorIndices.get(s.metric) ?? 0),
-      data: s.data,
-      metric: s.metric,
-      showAxis: metricsWithAxes.has(s.metric),
-      unit: s.unit ?? getMetricUnit(s.metric),
-    })
-  }
+  // Memoised on their actual inputs so the render effect below only re-runs when
+  // the drawn content changes — NOT on every parent re-render. The chart's own
+  // crosshair/tooltip are drawn by the mousemove handler, and `onHoverTime`
+  // re-renders the parent per mousemove, so a fresh `overlays` identity here
+  // would wipe the crosshair right after every draw (#1014).
+  const overlays = useMemo(() => {
+    const enabled = new Set(series.map((s) => s.metric).filter((m) => !disabledMetrics.has(m)))
+    // Which metrics get axes: the last MAX_RIGHT_AXES enabled in toggle order.
+    const withAxes = new Set(toggleOrder.filter((m) => enabled.has(m)).slice(-MAX_RIGHT_AXES))
+    const built: MetricOverlay[] = []
+    for (const s of series) {
+      if (!enabled.has(s.metric)) continue
+      if (!hasData(s.data)) continue
+      built.push({
+        color: colorByMetric.get(s.metric) ?? FALLBACK_COLORS[0]!,
+        data: s.data,
+        metric: s.metric,
+        showAxis: withAxes.has(s.metric),
+        unit: s.unit ?? getMetricUnit(s.metric),
+      })
+    }
+    return built
+  }, [series, disabledMetrics, toggleOrder, colorByMetric])
 
   const hasHypnogram = stages && stages.length > 0
 
+  // Key the window on its epoch values: a parent that re-creates `start`/`end`
+  // Date objects each render (common) must not force a redraw.
+  const startMs = start.getTime()
+  const endMs = end.getTime()
   useEffect(
     () =>
       renderChart({
@@ -560,13 +571,13 @@ export const CombinedMetricChart = ({
         hasHypnogram: !!hasHypnogram,
         overlays,
         stages,
-        start,
-        end,
+        start: new Date(startMs),
+        end: new Date(endMs),
         svgRef,
         tooltipRef,
         onHoverTimeRef,
       }),
-    [start, end, stages, hasHypnogram, overlays, containerWidth],
+    [startMs, endMs, stages, hasHypnogram, overlays, containerWidth],
   )
 
   return (
@@ -576,7 +587,7 @@ export const CombinedMetricChart = ({
         {series.map((s) => (
           <ChartToggle
             key={s.metric}
-            color={getMetricColor(s.metric, fallbackColorIndices.get(s.metric) ?? 0)}
+            color={colorByMetric.get(s.metric) ?? FALLBACK_COLORS[0]!}
             label={formatMetricLabel(s.metric)}
             active={enabledMetrics.has(s.metric)}
             onToggle={() => toggleMetric(s.metric)}

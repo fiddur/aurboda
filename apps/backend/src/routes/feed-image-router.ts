@@ -30,8 +30,11 @@ import type { ScatterSvgData } from '../services/charts/scatter-svg.ts'
 
 import { isValidUsername } from '../api/auth-routes.ts'
 import { isMissingDatabase } from '../db/index.ts'
+import type { CorrelationBlockParams } from '../services/article-block-data.ts'
 import { blockWindow, isZeroDurationBucket } from '../services/article.ts'
 import { isCapabilityAuthorized } from '../services/feed-capability.ts'
+
+export type { CorrelationBlockParams }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -45,23 +48,6 @@ export interface ImageActivity {
 export interface ChartRenderOpts {
   label?: string
   color?: string
-}
-
-/** The window-resolved inputs for one article correlation block's scatter. */
-export interface CorrelationBlockParams {
-  trigger: CorrelationSelector
-  outcome: CorrelationSelector
-  lagDays?: number
-  /**
-   * Inclusive day bounds (`YYYY-MM-DD`), sliced straight from the block's ISO
-   * window (`iso.slice(0, 10)`) to match the web scatter's `toDay()`. Block windows
-   * are `Z`-only (`iso8601DateTimeSchema` = `z.iso.datetime()`, offset false), so
-   * this is the UTC day — but slicing the raw string rather than round-tripping
-   * through `Date` keeps that parity exact and stays correct if the schema ever
-   * gains offset support.
-   */
-  periodStart: string
-  periodEnd: string
 }
 
 export interface FeedImageDeps {

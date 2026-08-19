@@ -69,7 +69,7 @@ import {
 } from './services/activitypub/deliver.ts'
 import { createFeedFederation } from './services/activitypub/federation.ts'
 import { createTimelineBackfiller } from './services/activitypub/timeline-backfill.ts'
-import { createAurbodaEnricher } from './services/activitypub/timeline-enrich.ts'
+import { createAurbodaEnrichAttempt } from './services/activitypub/timeline-enrich.ts'
 import { auditError, auditInfo } from './services/audit-log.ts'
 import { triggerCalorieComputation } from './services/calorie-computation.ts'
 import { createCalorieQueue, type CalorieQueue } from './services/calorie-queue.ts'
@@ -100,7 +100,7 @@ import { initSentry, Sentry } from './services/sentry.ts'
 import { createStravaQueue, type StravaQueue } from './services/strava-queue.ts'
 import { createSyncProvider } from './services/sync-provider.ts'
 import { createTimelineHub } from './services/timeline-hub.ts'
-import { retroEnrichTimelineEntries } from './services/timeline-retro-enrich.ts'
+import { type RetroEnrichTrigger, retroEnrichTimelineEntries } from './services/timeline-retro-enrich.ts'
 import { createWebAuthnService } from './services/webauthn.ts'
 
 /** Grace period for in-flight requests before sockets are forced closed. */
@@ -360,14 +360,22 @@ const main = async () => {
 
   // Lazy retro-enrichment (#996): entries ingested before structured enrichment
   // shipped (or whose ingest-time enrichment failed transiently) get one more
-  // attempt when the timeline is read. Fire-and-forget — never blocks a read.
-  const retroEnricher = createAurbodaEnricher(webHost)
-  const retroEnrichTimeline = (user: string) => {
+  // attempt when the timeline is read. The `attempt` variant throws on transient
+  // failures so those entries stay unstamped and retry later. One pass per user
+  // at a time: a batch can outlive the web's 30s poll interval, and overlapping
+  // passes would re-fetch the same candidates (#1014).
+  const retroEnricher = createAurbodaEnrichAttempt(webHost)
+  const retroInFlight = new Set<string>()
+  const retroEnrichTimeline: RetroEnrichTrigger = (user) => {
+    if (retroInFlight.has(user)) return
+    retroInFlight.add(user)
     void retroEnrichTimelineEntries(user, {
       enrich: retroEnricher,
       listUnenriched: listUnenrichedAurbodaEntries,
       save: setTimelineEntryStructured,
-    }).catch((err: unknown) => console.warn(`⚠️ timeline retro-enrichment failed for ${user}:`, err))
+    })
+      .catch((err: unknown) => console.warn(`⚠️ timeline retro-enrichment failed for ${user}:`, err))
+      .finally(() => retroInFlight.delete(user))
   }
   const onDeliverError = (op: string, user: string, postId: string) => (err: unknown) =>
     console.error(`⚠️ feed ${op} delivery failed for ${user}/${postId}:`, err)

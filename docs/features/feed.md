@@ -55,7 +55,9 @@ A feed post has a **`kind`**:
   MCP tool) renders an article as paste-ready markdown — the title, the prose blocks
   verbatim, and one image link per chart/correlation block (the block-image endpoint
   below) — for pasting into a text-only destination like r/QuantifiedSelf, where the
-  author adds their own write-up around the linked charts. A **`followers`-only** article
+  author adds their own write-up around the linked charts. A block whose image would 404
+  (a chart window with no samples, a correlation with n < 3) gets an italic "not enough
+  data in this window" note instead of a dead image link (#974). A **`followers`-only** article
   can't be exported (400): the export targets a public paste, but its chart images require
   the post's private capability token, which must never land in publicly-pasted text —
   make the article public or unlisted first.
@@ -340,10 +342,12 @@ author's own live render shows.
 ingest-time enrichment failed transiently — would otherwise keep `structured = NULL` forever.
 Reading the timeline (REST `GET /feed/timeline` or the `list_timeline` MCP tool) kicks a
 fire-and-forget pass that gives a small batch (3, newest first) of such Aurboda-shaped entries
-one more attempt through the same enricher, stamping `enrich_attempted_at` win or lose so each
-entry is retried at most once — an `Update` redelivery still re-enriches through the normal
-ingest path. The read itself is never delayed; entries that gain a payload render natively on
-the next load.
+one more attempt through the same enricher. A **definitive** outcome (payload stored, or a
+gone/unauthorized/malformed response) stamps `enrich_attempted_at` so the entry is never
+retried; a **transient** failure (network error, timeout) leaves it unstamped for a later
+read. At most one pass runs per user at a time, and a partial index keeps the drained-backlog
+case free. An `Update` redelivery still re-enriches through the normal ingest path. The read
+itself is never delayed; entries that gain a payload render natively on the next load.
 
 ### Live updates
 

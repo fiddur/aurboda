@@ -156,6 +156,7 @@ export const tableCreationOrder = [
   'timeline_entry_images',
   'timeline_entry_enrich_attempted',
   'timeline_entry_indexes',
+  'timeline_entry_unenriched_indexes',
   'profile_avatar',
   'mcp_sessions',
   'mcp_sessions_indexes',

@@ -18,6 +18,7 @@ import { z } from 'zod'
 import type { FeedDeliver } from '../routes/feed-router.ts'
 import type { FollowerActions } from '../services/followers.ts'
 import type { FollowActions } from '../services/following.ts'
+import type { RetroEnrichTrigger } from '../services/timeline-retro-enrich.ts'
 
 import {
   createArticlePost,
@@ -32,7 +33,7 @@ import {
   updateFeedPost,
 } from '../db/index.ts'
 import { isPubliclyVisible } from '../services/activitypub/object.ts'
-import { buildArticleMarkdown } from '../services/article-export.ts'
+import { buildArticleMarkdown, renderableArticleBlocks } from '../services/article-export.ts'
 import { buildArticleContent, mergeArticleContent } from '../services/article.ts'
 import { normalizeFeedMessage, serializeFeedPost } from '../services/feed.ts'
 import { serializeFollower } from '../services/followers.ts'
@@ -48,23 +49,23 @@ const followerStatusFilter = (status: 'accepted' | 'all' | 'pending'): { accepte
   return {}
 }
 
-export const registerFeedTools = (
-  server: McpServer,
-  user: string,
-  deliver?: FeedDeliver,
-  followActions?: FollowActions,
-  followerActions?: FollowerActions,
-  apiBaseUrl?: string,
-  /** Fire-and-forget lazy retro-enrichment of timeline entries on read (#996). */
-  retroEnrichTimeline?: (user: string) => void,
-) => {
+/** The injectable collaborators behind the feed tools (all optional). */
+export interface FeedToolsOptions {
+  deliver?: FeedDeliver
+  followActions?: FollowActions
+  followerActions?: FollowerActions
+  apiBaseUrl?: string
+  retroEnrichTimeline?: RetroEnrichTrigger
+}
+
+export const registerFeedTools = (server: McpServer, user: string, options: FeedToolsOptions = {}) => {
+  const { apiBaseUrl, deliver, followActions, followerActions, retroEnrichTimeline } = options
   server.tool(
     'list_feed',
     'List activities you have published to your feed, with their shared metric selection, series opt-in, and visibility.',
     {},
     async () => {
       const records = await listFeedPosts(user)
-      // One settings lookup for the whole listing, not one per post.
       const settings = await getSettings(user).catch(() => null)
       return jsonResponse(
         await Promise.all(records.map((record) => serializeFeedPost(user, record, { settings }))),
@@ -175,6 +176,8 @@ export const registerFeedTools = (
         post.image_token,
         post.updated_at,
         post.article,
+        // Blocks whose image would 404 (no data) get a note, not a dead link (#974).
+        await renderableArticleBlocks(user, post.article),
       )
       return jsonResponse({ markdown })
     },
@@ -210,7 +213,6 @@ export const registerFeedTools = (
     { ...timelineQuerySchema.shape },
     async ({ cursor, limit }) => {
       const page = await getTimelinePage(user, limit, cursor)
-      // Same lazy retro-enrichment kick as the REST timeline read (#996).
       retroEnrichTimeline?.(user)
       return jsonResponse(page)
     },

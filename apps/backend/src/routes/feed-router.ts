@@ -28,6 +28,7 @@ import {
 
 import type { Activity, FeedPostRecord } from '../db/index.ts'
 import type { TimelineHub } from '../services/timeline-hub.ts'
+import type { RetroEnrichTrigger } from '../services/timeline-retro-enrich.ts'
 
 import {
   createArticlePost,
@@ -39,7 +40,7 @@ import {
   updateFeedPost,
 } from '../db/index.ts'
 import { isPubliclyVisible } from '../services/activitypub/object.ts'
-import { buildArticleMarkdown } from '../services/article-export.ts'
+import { buildArticleMarkdown, renderableArticleBlocks } from '../services/article-export.ts'
 import { buildArticleContent, mergeArticleContent } from '../services/article.ts'
 import { normalizeFeedMessage, serializeFeedPost } from '../services/feed.ts'
 import { getSettings } from '../services/settings.ts'
@@ -75,15 +76,13 @@ export const createFeedRouter = (
   deliver?: FeedDeliver,
   hub?: TimelineHub,
   apiBaseUrl?: string,
-  /** Fire-and-forget lazy retro-enrichment of timeline entries on read (#996). */
-  retroEnrichTimeline?: (user: string) => void,
+  retroEnrichTimeline?: RetroEnrichTrigger,
 ): TypedRouter => {
   const router = typedRouter()
 
   router.get<Record<string, never>, FeedPostsResponse>('/', authMiddleware, async (req, res) => {
     const user = req.user!
     const records = await listFeedPosts(user)
-    // One settings lookup for the whole listing, not one per post.
     const settings = await getSettings(user).catch(() => null)
     const posts = await Promise.all(
       records.map((record) => serializeFeedPost(user, record, { includeStructured: true, settings })),
@@ -147,9 +146,6 @@ export const createFeedRouter = (
     async (req, res) => {
       const user = req.user!
       const { entries, next_cursor } = await getTimelinePage(user, req.query.limit, req.query.cursor)
-      // Kick a lazy retro-enrichment pass for entries still missing their native
-      // payload (#996) — fire-and-forget, the current response is not delayed;
-      // enriched entries render natively on the next read.
       retroEnrichTimeline?.(user)
       res.json({ entries, next_cursor, success: true })
     },
@@ -262,6 +258,8 @@ export const createFeedRouter = (
         post.image_token,
         post.updated_at,
         post.article,
+        // Blocks whose image would 404 (no data) get a note, not a dead link (#974).
+        await renderableArticleBlocks(user, post.article),
       )
       res.json({ markdown, success: true })
     },

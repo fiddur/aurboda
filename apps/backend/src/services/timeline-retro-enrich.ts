@@ -21,10 +21,23 @@ import { capabilityTokenFrom, parseAurbodaFeedUrl } from './activitypub/timeline
 /** Attempts per timeline read — enough to drain a backlog over a few visits without stalling anything. */
 const RETRO_BATCH_SIZE = 3
 
+/**
+ * Fire-and-forget trigger for the lazy retro-enrichment pass, threaded from
+ * `api.ts` (where the enricher and its origin live) to the timeline read
+ * surfaces (REST `GET /feed/timeline`, MCP `list_timeline`). Never blocks the
+ * read; enriched entries render natively on the next load.
+ */
+export type RetroEnrichTrigger = (user: string) => void
+
 export interface RetroEnrichDeps {
   listUnenriched: (user: string, limit: number) => Promise<UnenrichedTimelineEntry[]>
   /** Store the payload (or just stamp the attempt when null) for one entry. */
   save: (user: string, id: string, structured: FeedStructuredPost | null) => Promise<void>
+  /**
+   * One enrichment attempt. `null` is DEFINITIVE (non-Aurboda / gone /
+   * unauthorized / malformed — stamped, never retried); a THROW is transient
+   * (network, timeout — left unstamped so a later read retries).
+   */
   enrich: (objectUri: string, token?: string) => Promise<FeedStructuredPost | null>
 }
 
@@ -47,9 +60,15 @@ export const retroEnrichTimelineEntries = async (
       await deps.save(user, entry.id, null)
       continue
     }
-    const structured = await deps.enrich(entry.object_uri, capabilityTokenFrom(entry.images ?? []))
-    await deps.save(user, entry.id, structured)
-    if (structured != null) enriched++
+    try {
+      const structured = await deps.enrich(entry.object_uri, capabilityTokenFrom(entry.images ?? []))
+      await deps.save(user, entry.id, structured)
+      if (structured != null) enriched++
+    } catch (error) {
+      // Transient (peer blip / timeout): leave the entry UNSTAMPED so the single
+      // retry isn't burned — a later read attempts it again (#1014).
+      console.warn(`⚠️ timeline retro-enrichment attempt failed for ${entry.object_uri}:`, error)
+    }
   }
   return enriched
 }

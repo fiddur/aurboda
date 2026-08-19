@@ -16,7 +16,10 @@ const structured: FeedStructuredPost = {
   start_time: '2026-07-01T08:00:00.000Z',
 }
 
-const aurbodaEntry = (id: string, images: UnenrichedTimelineEntry['images'] = null): UnenrichedTimelineEntry => ({
+const aurbodaEntry = (
+  id: string,
+  images: UnenrichedTimelineEntry['images'] = null,
+): UnenrichedTimelineEntry => ({
   id,
   images,
   object_uri: `https://peer.example/users/bob/feed/${UUID}`,
@@ -81,5 +84,25 @@ describe('retroEnrichTimelineEntries', () => {
     const d = deps([aurbodaEntry('a'), aurbodaEntry('b'), aurbodaEntry('c')], structured)
     expect(await retroEnrichTimelineEntries('u', d, 2)).toBe(2)
     expect(d.saved.map(([id]) => id)).toEqual(['a', 'b'])
+  })
+
+  test('a TRANSIENT failure (enrich throws) leaves the entry unstamped and continues (#1014)', async () => {
+    const saved: string[] = []
+    const d: RetroEnrichDeps = {
+      enrich: async (uri) => {
+        if (uri.includes('flaky')) throw new Error('ETIMEDOUT')
+        return structured
+      },
+      listUnenriched: async () => [
+        { id: 'flaky', images: null, object_uri: `https://flaky.example/users/a/feed/${UUID}` },
+        { id: 'fine', images: null, object_uri: `https://peer.example/users/b/feed/${UUID}` },
+      ],
+      save: async (_user, id) => {
+        saved.push(id)
+      },
+    }
+    expect(await retroEnrichTimelineEntries('u', d)).toBe(1)
+    // 'flaky' was NOT stamped — a later read retries it; 'fine' was stored.
+    expect(saved).toEqual(['fine'])
   })
 })
