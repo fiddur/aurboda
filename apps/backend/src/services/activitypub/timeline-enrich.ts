@@ -32,6 +32,7 @@ import {
   type TimelineImage,
   type WellKnownAurboda,
 } from '@aurboda/api-spec'
+import axios from 'axios'
 
 import { isValidUsername } from '../../api/auth-routes.ts'
 import { discoverInstance } from '../challenge-federation.ts'
@@ -173,12 +174,23 @@ export const createAurbodaEnricher = (origin: string): TimelineEnricher => {
 }
 
 /**
+ * True when an enrichment error is a DEFINITIVE outcome retrying can't fix: a
+ * malformed payload, or a definite HTTP answer (4xx — the origin's `GET
+ * /public/:username/feed/:postId` answers 404 for a gone / unauthorized /
+ * non-resolving post, which axios rejects on since `safeFetchGet` sets no
+ * `validateStatus`). Connection errors, timeouts, and 5xx stay transient.
+ */
+export const isDefinitiveEnrichError = (error: unknown): boolean =>
+  (error instanceof Error && error.message === 'malformed structured response') ||
+  (axios.isAxiosError(error) && error.response != null && error.response.status < 500)
+
+/**
  * Like {@link createAurbodaEnricher} but PROPAGATES transient failures (network
- * errors, timeouts) instead of swallowing them, so the retro-enrichment pass
- * can leave such an entry unstamped for a later retry (#1014). Definitive
- * outcomes still resolve: `null` for a non-Aurboda URI, a gone/unauthorized
- * post, or a malformed payload (retrying those can't help), the payload
- * otherwise — with the "no payload" cases logged like the default enricher.
+ * errors, timeouts, 5xx) instead of swallowing them, so the retro-enrichment
+ * pass can retry such an entry later (#1014). Definitive outcomes still resolve
+ * `null`: a non-Aurboda URI, a gone/unauthorized post (the origin's 404), or a
+ * malformed payload — retrying those can't help — with the failure cases
+ * logged like the default enricher.
  */
 export const createAurbodaEnrichAttempt = (origin: string): TimelineEnricher => {
   const deps = realEnrichDeps(origin)
@@ -188,8 +200,8 @@ export const createAurbodaEnrichAttempt = (origin: string): TimelineEnricher => 
     try {
       structured = await withTimeout(enrichFromAurboda(objectUri, deps, token), ENRICH_TIMEOUT_MS)
     } catch (error) {
-      if (error instanceof Error && error.message === 'malformed structured response') {
-        console.warn(`⚠️ timeline enrichment: malformed payload for ${objectUri}`)
+      if (isDefinitiveEnrichError(error)) {
+        console.warn(`⚠️ timeline enrichment: no payload for ${objectUri}:`, error)
         return null
       }
       throw error

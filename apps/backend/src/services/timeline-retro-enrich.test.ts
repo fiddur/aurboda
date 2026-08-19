@@ -28,9 +28,14 @@ const aurbodaEntry = (
 const deps = (
   entries: UnenrichedTimelineEntry[],
   enrichResult: FeedStructuredPost | null,
-): RetroEnrichDeps & { enriched: string[]; saved: [string, FeedStructuredPost | null][] } => {
+): RetroEnrichDeps & {
+  enriched: string[]
+  saved: [string, FeedStructuredPost | null][]
+  transient: string[]
+} => {
   const enriched: string[] = []
   const saved: [string, FeedStructuredPost | null][] = []
+  const transient: string[] = []
   return {
     enrich: async (uri, token) => {
       enriched.push(`${uri}?token=${token ?? ''}`)
@@ -38,10 +43,14 @@ const deps = (
     },
     enriched,
     listUnenriched: async (_user, limit) => entries.slice(0, limit),
+    recordTransientFailure: async (_user, id) => {
+      transient.push(id)
+    },
     save: async (_user, id, payload) => {
       saved.push([id, payload])
     },
     saved,
+    transient,
   }
 }
 
@@ -86,8 +95,9 @@ describe('retroEnrichTimelineEntries', () => {
     expect(d.saved.map(([id]) => id)).toEqual(['a', 'b'])
   })
 
-  test('a TRANSIENT failure (enrich throws) leaves the entry unstamped and continues (#1014)', async () => {
+  test('a TRANSIENT failure records a bounded attempt (not a stamp) and continues (#1014)', async () => {
     const saved: string[] = []
+    const transient: string[] = []
     const d: RetroEnrichDeps = {
       enrich: async (uri) => {
         if (uri.includes('flaky')) throw new Error('ETIMEDOUT')
@@ -97,12 +107,17 @@ describe('retroEnrichTimelineEntries', () => {
         { id: 'flaky', images: null, object_uri: `https://flaky.example/users/a/feed/${UUID}` },
         { id: 'fine', images: null, object_uri: `https://peer.example/users/b/feed/${UUID}` },
       ],
+      recordTransientFailure: async (_user, id, maxAttempts) => {
+        transient.push(`${id}:${maxAttempts}`)
+      },
       save: async (_user, id) => {
         saved.push(id)
       },
     }
     expect(await retroEnrichTimelineEntries('u', d)).toBe(1)
-    // 'flaky' was NOT stamped — a later read retries it; 'fine' was stored.
+    // 'flaky' was NOT saved/stamped — its bounded attempt counter was bumped
+    // instead (retryable until the cap); 'fine' was stored.
     expect(saved).toEqual(['fine'])
+    expect(transient).toEqual(['flaky:3'])
   })
 })

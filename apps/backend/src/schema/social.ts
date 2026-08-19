@@ -263,11 +263,14 @@ export const socialTables: Record<string, string> = {
       -- Image attachments (rendered chart / route map, or a Mastodon photo)
       -- captured from the delivered Note; shown when there's no native chart.
       images        JSONB,
-      -- When a lazy retro-enrichment attempt ran for this entry (#996). NULL
-      -- means eligible: an Aurboda-shaped entry with NULL structured gets one
-      -- retry on timeline read (covers pre-enrichment entries and transient
-      -- ingest-time failures), then is marked here regardless of outcome.
-      enrich_attempted_at TIMESTAMPTZ
+      -- Lazy retro-enrichment bookkeeping (#996). enrich_attempted_at NULL
+      -- means eligible: an Aurboda-shaped entry with NULL structured is retried
+      -- on timeline read until a DEFINITIVE outcome stamps it (payload stored,
+      -- origin answered 404, malformed payload). A transient failure (network,
+      -- timeout, 5xx) instead bumps enrich_attempts; hitting the cap stamps
+      -- the entry too, so a dead peer can't hold the retry queue forever.
+      enrich_attempted_at TIMESTAMPTZ,
+      enrich_attempts SMALLINT NOT NULL DEFAULT 0
     )
   `,
   // Additive columns for DBs created before the structured-timeline / media features.
@@ -279,6 +282,9 @@ export const socialTables: Record<string, string> = {
   `,
   timeline_entry_enrich_attempted: `
     ALTER TABLE timeline_entry ADD COLUMN IF NOT EXISTS enrich_attempted_at TIMESTAMPTZ
+  `,
+  timeline_entry_enrich_attempts: `
+    ALTER TABLE timeline_entry ADD COLUMN IF NOT EXISTS enrich_attempts SMALLINT NOT NULL DEFAULT 0
   `,
   // Timeline ordering / keyset pagination is by (published_at DESC, id DESC).
   timeline_entry_indexes: `

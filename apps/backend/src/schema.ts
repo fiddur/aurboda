@@ -155,6 +155,7 @@ export const tableCreationOrder = [
   'timeline_entry_structured',
   'timeline_entry_images',
   'timeline_entry_enrich_attempted',
+  'timeline_entry_enrich_attempts',
   'timeline_entry_indexes',
   'timeline_entry_unenriched_indexes',
   'profile_avatar',

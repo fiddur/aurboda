@@ -44,6 +44,7 @@ import {
   insertTimeSeries,
   listUnenrichedAurbodaEntries,
   loginToUserDb,
+  markEnrichTransientFailure,
   openTimelineChannel,
   resolveOrCreateActivityType,
   setTimelineEntryStructured,
@@ -372,6 +373,7 @@ const main = async () => {
     void retroEnrichTimelineEntries(user, {
       enrich: retroEnricher,
       listUnenriched: listUnenrichedAurbodaEntries,
+      recordTransientFailure: markEnrichTransientFailure,
       save: setTimelineEntryStructured,
     })
       .catch((err: unknown) => console.warn(`⚠️ timeline retro-enrichment failed for ${user}:`, err))

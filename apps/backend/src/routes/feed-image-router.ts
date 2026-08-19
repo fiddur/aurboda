@@ -26,11 +26,11 @@ import { defaultArticleChartBucket, getMetricDisplayName } from '@aurboda/api-sp
 import { type Response, Router } from 'express'
 
 import type { FeedPostRecord } from '../db/index.ts'
+import type { CorrelationBlockParams } from '../services/article-block-data.ts'
 import type { ScatterSvgData } from '../services/charts/scatter-svg.ts'
 
 import { isValidUsername } from '../api/auth-routes.ts'
 import { isMissingDatabase } from '../db/index.ts'
-import type { CorrelationBlockParams } from '../services/article-block-data.ts'
 import { blockWindow, isZeroDurationBucket } from '../services/article.ts'
 import { isCapabilityAuthorized } from '../services/feed-capability.ts'
 
