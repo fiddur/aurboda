@@ -262,7 +262,12 @@ export const socialTables: Record<string, string> = {
       structured    JSONB,
       -- Image attachments (rendered chart / route map, or a Mastodon photo)
       -- captured from the delivered Note; shown when there's no native chart.
-      images        JSONB
+      images        JSONB,
+      -- When a lazy retro-enrichment attempt ran for this entry (#996). NULL
+      -- means eligible: an Aurboda-shaped entry with NULL structured gets one
+      -- retry on timeline read (covers pre-enrichment entries and transient
+      -- ingest-time failures), then is marked here regardless of outcome.
+      enrich_attempted_at TIMESTAMPTZ
     )
   `,
   // Additive columns for DBs created before the structured-timeline / media features.
@@ -271,6 +276,9 @@ export const socialTables: Record<string, string> = {
   `,
   timeline_entry_images: `
     ALTER TABLE timeline_entry ADD COLUMN IF NOT EXISTS images JSONB
+  `,
+  timeline_entry_enrich_attempted: `
+    ALTER TABLE timeline_entry ADD COLUMN IF NOT EXISTS enrich_attempted_at TIMESTAMPTZ
   `,
   // Timeline ordering / keyset pagination is by (published_at DESC, id DESC).
   timeline_entry_indexes: `

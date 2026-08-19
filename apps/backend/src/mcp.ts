@@ -64,6 +64,8 @@ interface McpDeps {
   garmin?: GarminClient
   onActivityMutated?: ActivityNotifier
   oura?: OuraClientType
+  /** Fire-and-forget lazy retro-enrichment of timeline entries on read (#996). */
+  retroEnrichTimeline?: (user: string) => void
   stravaQueue?: StravaQueue
   sync?: SyncProvider
   webHost?: string
@@ -99,7 +101,15 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
   }
   registerReportTools(server, user)
   registerSharedDashboardTools(server, user)
-  registerFeedTools(server, user, deps.feedDeliver, deps.followActions, deps.followerActions, deps.apiBaseUrl)
+  registerFeedTools(
+    server,
+    user,
+    deps.feedDeliver,
+    deps.followActions,
+    deps.followerActions,
+    deps.apiBaseUrl,
+    deps.retroEnrichTimeline,
+  )
   registerChallengeTools(server, user, { apiBaseUrl: deps.apiBaseUrl, webHost: deps.webHost })
   registerScreentimeCategoryTools(server, user)
   registerDebugTools(server, user)

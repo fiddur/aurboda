@@ -154,3 +154,53 @@ export const deleteTimelineEntriesByActor = async (user: string, actorUri: strin
   const result = await query(user, `DELETE FROM timeline_entry WHERE actor_uri = $1`, [actorUri])
   return result.rowCount ?? 0
 }
+
+/** The fields a lazy retro-enrichment attempt needs (#996). */
+export interface UnenrichedTimelineEntry {
+  id: string
+  object_uri: string
+  images: TimelineImage[] | null
+}
+
+/**
+ * Aurboda-shaped entries with no structured payload and no retro-enrichment
+ * attempt yet, newest first (#996): entries ingested before enrichment shipped,
+ * or whose ingest-time enrichment failed transiently. The LIKE is a coarse SQL
+ * prefilter — the service re-validates with `parseAurbodaFeedUrl` before
+ * fetching anything.
+ */
+export const listUnenrichedAurbodaEntries = async (
+  user: string,
+  limit: number,
+): Promise<UnenrichedTimelineEntry[]> => {
+  const result = await query<UnenrichedTimelineEntry>(
+    user,
+    `SELECT id, object_uri, images FROM timeline_entry
+     WHERE structured IS NULL AND enrich_attempted_at IS NULL
+       AND object_uri LIKE '%/users/%/feed/%'
+     ORDER BY published_at DESC, id DESC
+     LIMIT $1`,
+    [limit],
+  )
+  return result.rows
+}
+
+/**
+ * Record a retro-enrichment attempt (#996): store the payload when one was
+ * obtained (never overwrite an existing one with NULL) and stamp
+ * `enrich_attempted_at` either way, so an entry is retried at most once — a
+ * later `Update` redelivery still re-enriches through the ingest path.
+ */
+export const setTimelineEntryStructured = async (
+  user: string,
+  id: string,
+  structured: FeedStructuredPost | null,
+): Promise<void> => {
+  await query(
+    user,
+    `UPDATE timeline_entry
+     SET structured = COALESCE($2, structured), enrich_attempted_at = NOW()
+     WHERE id = $1`,
+    [id, structured == null ? null : JSON.stringify(structured)],
+  )
+}

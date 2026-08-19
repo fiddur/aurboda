@@ -310,9 +310,12 @@ export {
   deleteTimelineEntriesByActor,
   deleteTimelineEntryByUri,
   listTimelineEntries,
+  listUnenrichedAurbodaEntries,
+  setTimelineEntryStructured,
   type TimelineCursor,
   type TimelineEntryInput,
   type TimelineEntryRecord,
+  type UnenrichedTimelineEntry,
   upsertTimelineEntry,
 } from './timeline.ts'
 export { emitTimelineNotify, openTimelineChannel } from './timeline-notify.ts'

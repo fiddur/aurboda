@@ -233,7 +233,7 @@ export const createFeedFederation = (
 
   // Fetches native structured data (typed metrics + series) for ingested posts
   // that come from Aurboda instances, so the web can render a native chart.
-  const enrich = createAurbodaEnricher()
+  const enrich = createAurbodaEnricher(origin)
 
   federation
     .setActorDispatcher('/users/{identifier}', async (ctx, identifier) => {

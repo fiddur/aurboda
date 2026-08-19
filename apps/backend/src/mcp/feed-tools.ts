@@ -55,6 +55,8 @@ export const registerFeedTools = (
   followActions?: FollowActions,
   followerActions?: FollowerActions,
   apiBaseUrl?: string,
+  /** Fire-and-forget lazy retro-enrichment of timeline entries on read (#996). */
+  retroEnrichTimeline?: (user: string) => void,
 ) => {
   server.tool(
     'list_feed',
@@ -206,7 +208,12 @@ export const registerFeedTools = (
     'list_timeline',
     'List your home timeline: posts received from the actors you follow, newest first. Pass `cursor` (from a previous call) to page.',
     { ...timelineQuerySchema.shape },
-    async ({ cursor, limit }) => jsonResponse(await getTimelinePage(user, limit, cursor)),
+    async ({ cursor, limit }) => {
+      const page = await getTimelinePage(user, limit, cursor)
+      // Same lazy retro-enrichment kick as the REST timeline read (#996).
+      retroEnrichTimeline?.(user)
+      return jsonResponse(page)
+    },
   )
 
   server.tool(

@@ -11,11 +11,18 @@
  * - Only Notes whose id matches Aurboda's own object-dispatcher path
  *   (`/users/{user}/feed/{postId}`) are candidates — a Mastodon status id never
  *   matches, so no needless fetch is made for non-Aurboda posts.
- * - The fetch goes through `safeFetchGet` (SSRF-guarded: public hosts only, no
- *   redirects, size + time bounded) and the origin is the *accepted followee's*
- *   host (already validated by `noteToTimelineInput`), not an arbitrary target.
- * - Any failure (non-Aurboda host, 404, malformed body, timeout) resolves to
- *   `null`; the post still shows with its HTML.
+ * - A post whose origin IS this instance (a local-to-local follow) resolves
+ *   **in-process** via the same `resolveStructuredPost` the public endpoint
+ *   serves — an HTTP fetch of our own public origin would hairpin through the
+ *   reverse proxy and, from inside the container, typically resolve to a
+ *   private address the SSRF guard rightly refuses (#996).
+ * - A remote fetch goes through `safeFetchGet` (SSRF-guarded: public hosts
+ *   only, no redirects, size + time bounded) and the origin is the *accepted
+ *   followee's* host (already validated by `noteToTimelineInput`).
+ * - Any failure (non-federating host, 404, malformed body, timeout) resolves to
+ *   `null` — the post still shows with its HTML — but is LOGGED by the default
+ *   enricher, so a broken enrichment path is diagnosable instead of looking
+ *   identical to a Mastodon post (#996).
  *
  * The network dependencies are injected so the mapping is unit-testable offline.
  */
@@ -27,6 +34,7 @@ import {
 } from '@aurboda/api-spec'
 
 import { discoverInstance } from '../challenge-federation.ts'
+import { resolveStructuredPost } from '../feed-structured.ts'
 import { safeFetchGet } from '../safe-fetch.ts'
 import { withTimeout } from '../with-timeout.ts'
 
@@ -61,6 +69,16 @@ export interface AurbodaEnrichDeps {
   discover: (base: string) => Promise<WellKnownAurboda>
   /** Fetch + JSON-decode a public URL (SSRF-guarded). */
   fetchStructured: (url: string) => Promise<unknown>
+  /**
+   * Same-instance shortcut: when the object's origin IS this instance, resolve
+   * the payload in-process instead of HTTP-fetching our own public URL (which
+   * would hairpin through the proxy and trip the SSRF guard on the private
+   * address it resolves to from inside the container).
+   */
+  local?: {
+    origin: string
+    resolve: (user: string, postId: string, token?: string) => Promise<FeedStructuredPost | null>
+  }
 }
 
 const trimSlashes = (s: string): string => s.replace(/\/+$/, '')
@@ -85,8 +103,12 @@ export const capabilityTokenFrom = (images: TimelineImage[]): string | undefined
 }
 
 /**
- * Fetch the structured payload for an Aurboda feed-post object URI, or null if
- * the post isn't an Aurboda post, the host doesn't federate, or anything fails.
+ * Fetch the structured payload for an Aurboda feed-post object URI. Returns
+ * `null` when the URI isn't Aurboda-shaped (a Mastodon status — the common,
+ * silent case) or when the origin answers without a payload (post gone, or a
+ * `followers`-only post without a valid token). THROWS on everything else —
+ * failed discovery, unreachable host, malformed body — so the caller can log
+ * the reason; the plain `enrichFromAurboda` never swallows.
  * `token` (lifted from the delivered image URL) authorizes a `followers`-only
  * post; a public post needs none.
  */
@@ -97,39 +119,49 @@ export const enrichFromAurboda = async (
 ): Promise<FeedStructuredPost | null> => {
   const parsed = parseAurbodaFeedUrl(objectUri)
   if (parsed == null) return null
-  try {
-    const wellKnown = await deps.discover(parsed.origin)
-    const base = `${trimSlashes(wellKnown.api_base)}/public/${encodeURIComponent(parsed.user)}/feed/${parsed.postId}`
-    const url = token == null ? base : `${base}?token=${encodeURIComponent(token)}`
-    const body = await deps.fetchStructured(url)
-    const result = feedPostStructuredResponseSchema.safeParse(body)
-    if (!result.success || !result.data.structured) return null
-    return result.data.structured
-  } catch {
-    return null
+  if (deps.local && parsed.origin === trimSlashes(deps.local.origin)) {
+    return deps.local.resolve(parsed.user, parsed.postId, token)
   }
+  const wellKnown = await deps.discover(parsed.origin)
+  const base = `${trimSlashes(wellKnown.api_base)}/public/${encodeURIComponent(parsed.user)}/feed/${parsed.postId}`
+  const url = token == null ? base : `${base}?token=${encodeURIComponent(token)}`
+  const body = await deps.fetchStructured(url)
+  const result = feedPostStructuredResponseSchema.safeParse(body)
+  if (!result.success) throw new Error('malformed structured response')
+  return result.data.structured ?? null
 }
 
 /** Total time budget for one post's enrichment (discovery + structured fetch). */
 const ENRICH_TIMEOUT_MS = 12_000
 
+/** An enricher: object URI (+ optional capability token) → structured payload or null. */
+export type TimelineEnricher = (objectUri: string, token?: string) => Promise<FeedStructuredPost | null>
+
 /**
- * The default enricher wired into the inbox handler: real discovery + guarded
- * fetch, bounded by a total timeout so a slow peer can't stall ingest, and
- * swallowing every error to `null` (enrichment is never allowed to fail ingest).
+ * The default enricher wired into the inbox handler: in-process resolution for
+ * this instance's own posts (`origin` is our public web origin), real discovery
+ * + guarded fetch for remote peers, bounded by a total timeout so a slow peer
+ * can't stall ingest. Every error still resolves to `null` (enrichment is never
+ * allowed to fail ingest) but is logged first — an Aurboda-shaped post that
+ * loses its native chart must be visible in the logs, not indistinguishable
+ * from a Mastodon post (#996).
  */
-export const createAurbodaEnricher = (): ((
-  objectUri: string,
-  token?: string,
-) => Promise<FeedStructuredPost | null>) => {
+export const createAurbodaEnricher = (origin: string): TimelineEnricher => {
   const deps: AurbodaEnrichDeps = {
     discover: discoverInstance,
     fetchStructured: async (url) => (await safeFetchGet(url)).data,
+    local: { origin, resolve: resolveStructuredPost },
   }
   return async (objectUri, token) => {
+    if (parseAurbodaFeedUrl(objectUri) == null) return null
     try {
-      return await withTimeout(enrichFromAurboda(objectUri, deps, token), ENRICH_TIMEOUT_MS)
-    } catch {
+      const structured = await withTimeout(enrichFromAurboda(objectUri, deps, token), ENRICH_TIMEOUT_MS)
+      if (structured == null) {
+        console.warn(`⚠️ timeline enrichment: no payload for ${objectUri} (post gone or unauthorized)`)
+      }
+      return structured
+    } catch (error) {
+      console.warn(`⚠️ timeline enrichment failed for ${objectUri}:`, error)
       return null
     }
   }
