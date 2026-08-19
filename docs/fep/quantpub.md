@@ -95,9 +95,20 @@ interpreted as described in [RFC-2119].
   detecting QuantPub-capable origins (§7), and enriching received posts with
   their structured payloads.
 
-All field names on the wire use **snake_case**. All timestamps are ISO 8601
-with timezone. The JSON-LD namespace for the `quant:` prefix is
-`https://w3id.org/quantpub#` (final IRI to be settled with the FEP number).
+Naming follows the two conventions of the layers involved. **JSON-LD extension
+terms** (the `quant:` properties on AS2 objects) use lowerCamelCase, matching
+ActivityStreams' own vocabulary, and this proposal **reuses AS2 properties
+where they exist** (`startTime`, `endTime`) instead of minting parallel terms.
+**HTTP payload fields and metric keys** (§4–§6, §2.1) use snake_case — they are
+plain JSON contracts, not JSON-LD. All timestamps are ISO 8601 with timezone.
+The JSON-LD namespace for the `quant:` prefix is `https://w3id.org/quantpub#`
+(final IRI to be settled with the FEP number).
+
+The values of `quant:metrics` and `quant:series` are **JSON literals**: the
+published `@context` defines both terms with `"@type": "@json"` (JSON-LD 1.1),
+so conforming processors preserve the nested `key`/`value`/`unit`/`metric`
+objects verbatim rather than expanding (and losing) unmapped keys. Consumers
+MUST treat these values as plain JSON, not as JSON-LD node objects.
 
 ### 2. `quant:Exercise` — a shared workout
 
@@ -106,18 +117,23 @@ A shared exercise is an AS2 object **dual-typed** `["Note", "quant:Exercise"]`
 status, while implementing peers recognise the second type and read the typed
 fields:
 
-| Property                 | Type                          | Notes                                                        |
-| ------------------------ | ----------------------------- | ------------------------------------------------------------ |
-| `quant:activity_type`    | string                        | e.g. `running`, `cycling`, `meditation`                      |
-| `quant:start_time`       | ISO 8601                      | REQUIRED. Start of the bounded activity window               |
-| `quant:end_time`         | ISO 8601                      | End of the window (RECOMMENDED)                              |
-| `quant:duration_seconds` | number                        | Derived from the window when `end_time` is present           |
-| `quant:metrics`          | array of metric objects       | The scalar summaries the author chose to share (§2.1)        |
-| `quant:series`           | array of series links         | Links into the series endpoint, only for shared series (§6)  |
+| Property              | Type                    | Notes                                                                                     |
+| --------------------- | ----------------------- | ----------------------------------------------------------------------------------------- |
+| `startTime` (AS2)     | ISO 8601                | REQUIRED. Start of the bounded activity window — AS2's own property, reused               |
+| `endTime` (AS2)       | ISO 8601                | End of the window (RECOMMENDED) — AS2's own property, reused                              |
+| `quant:activityType`  | string                  | e.g. `running`, `cycling`, `meditation`                                                   |
+| `quant:metrics`       | array of metric objects | The scalar summaries the author chose to share (§2.1)                                     |
+| `quant:series`        | array of series links   | Links into the series endpoint — only for shared series on **publicly-visible** posts (§6) |
+| `quant:structuredUrl` | URL                     | OPTIONAL explicit link to the object's §5 structured payload (see §7)                     |
+
+There is deliberately no duration property: duration is derivable from the
+window, and when the author chooses to share it as a stat it appears in
+`quant:metrics` as the `duration` key (in seconds). AS2's `duration`
+(`xsd:duration`) MAY be set additionally for plain-AS2 consumers.
 
 The `published` property carries the *share* time (timeline ordering); the
-workout time lives in `quant:start_time` — a workout shared a week later MUST
-NOT be back-dated in followers' timelines.
+workout time lives in `startTime` — a workout shared a week later MUST NOT be
+back-dated in followers' timelines.
 
 #### 2.1 Metric objects
 
@@ -146,11 +162,11 @@ Exercise is one case of the general shape: *something was measured over a
 bounded window*. A `quant:Observation` covers sleep, HRV, steps, mood, weight,
 blood glucose — anything with a window and values. It is dual-typed
 `["Note", "quant:Observation"]` and carries the same properties as §2 except
-`quant:activity_type`, replaced by:
+`quant:activityType`, replaced by:
 
-| Property               | Type   | Notes                                                  |
-| ---------------------- | ------ | ------------------------------------------------------ |
-| `quant:observation_of` | string | The domain observed, e.g. `sleep`, `daily`, `mood`     |
+| Property              | Type   | Notes                                                  |
+| --------------------- | ------ | ------------------------------------------------------ |
+| `quant:observationOf` | string | The domain observed, e.g. `sleep`, `daily`, `mood`     |
 
 The `quant:metrics` array carries the observed values with the same
 `key`/`value`/`unit` shape (e.g. `sleep_duration`, `sleep_score`, `hrv_avg`,
@@ -205,9 +221,9 @@ share, `kind: "activity"`:
   "end_time": "2026-08-15T07:09:00+02:00",
   "duration_seconds": 2340,
   "metrics": [
+    { "key": "duration", "value": 2340, "unit": "seconds" },
     { "key": "distance", "value": 8.2, "unit": "km" },
-    { "key": "heart_rate_avg", "value": 152, "unit": "bpm" },
-    { "key": "hr_zone_minutes", "value": { "z2": 22, "z3": 10 } }
+    { "key": "heart_rate_avg", "value": 152, "unit": "bpm" }
   ],
   "series": [
     {
@@ -292,10 +308,26 @@ alike — only the metric key and bucket size differ.
 
 ### 7. Detection and enrichment (Level 3)
 
+A consuming peer needs a defined path from a received object to its §5
+payload. Two mechanisms are specified; the id convention is the reliable
+baseline, since typed AS2 frameworks on the *consuming* side may drop unknown
+in-band properties before application code sees them:
+
+- **Object-id convention (normative baseline).** A Level 2 publisher SHOULD
+  mint post object ids as `{web_base}/users/{username}/feed/{post_id}`. A
+  consumer that matches this shape resolves the payload at
+  `{api_base}/public/{username}/feed/{post_id}`, with `{api_base}` taken from
+  the origin's discovery document (§4).
+- **`quant:structuredUrl` (in-band override).** A publisher whose URL layout
+  differs MAY state the payload URL explicitly on the object. A consumer MUST
+  only honour it when its host equals the object id's host — never fetch a
+  cross-origin URL a remote object nominates.
+
 On ingesting a `Create`/`Update` for a `Note`, a receiving peer:
 
-1. checks whether the object id plausibly matches a QuantPub object path (a
-   Mastodon status id never does, avoiding needless requests);
+1. checks whether the object carries `quant:structuredUrl` (same-host, above)
+   or an id matching the object-id convention (a Mastodon status id never
+   does, avoiding needless requests);
 2. fetches `/.well-known/quantpub` from the object's origin host (cacheable);
 3. if the origin speaks QuantPub, fetches the structured post endpoint (§5)
    and stores the payload alongside the sanitised note for native rendering.
@@ -316,9 +348,11 @@ time-bounded); see Security considerations.
    404, never 403 — the response must not reveal that unshared data exists.
 4. **Revocation is immediate.** Deleting a post, narrowing its visibility,
    or removing a metric from its series opt-in MUST immediately stop the
-   corresponding endpoints from resolving. Responses on the capability-gated
-   and series endpoints MUST be served `Cache-Control: no-store` so no
-   intermediary extends access beyond revocation.
+   corresponding endpoints from resolving. **All** §5 and §6 responses —
+   public and unlisted payloads included, not only capability-gated ones —
+   MUST be served `Cache-Control: no-store`, so no intermediary extends
+   access beyond revocation (a public post is just as deletable as a
+   followers-only one). Only the discovery document (§4) is cacheable.
 5. **Bounded resolution.** The server-side bucket floor (§6) is a privacy
    floor, not only a payload bound: implementations MUST NOT serve raw
    per-measurement timestamps on public endpoints.
@@ -383,10 +417,10 @@ structured channel already in place.
     "name": "Morning run",
     "content": "<p><strong>Morning run</strong></p><p>Duration 39m · Distance 8.2 km · Heart rate avg 152 bpm</p>",
     "published": "2026-08-15T08:02:11+02:00",
-    "quant:activity_type": "running",
-    "quant:start_time": "2026-08-15T06:30:00+02:00",
-    "quant:end_time": "2026-08-15T07:09:00+02:00",
-    "quant:duration_seconds": 2340,
+    "startTime": "2026-08-15T06:30:00+02:00",
+    "endTime": "2026-08-15T07:09:00+02:00",
+    "quant:activityType": "running",
+    "quant:structuredUrl": "https://qs.example.net/api/public/freja/feed/01J5X0",
     "quant:metrics": [
       { "key": "duration", "value": 2340, "unit": "seconds" },
       { "key": "distance", "value": 8.2, "unit": "km" },
@@ -413,9 +447,9 @@ recognises the id shape, discovers the origin, and fetches the §5 payload.
   "type": ["Note", "quant:Observation"],
   "name": "Last night's sleep",
   "content": "<p><strong>Last night's sleep</strong></p><p>Sleep 7h 40m · HRV avg 64 ms · Score 86</p>",
-  "quant:observation_of": "sleep",
-  "quant:start_time": "2026-08-14T23:05:00+02:00",
-  "quant:end_time": "2026-08-15T06:45:00+02:00",
+  "quant:observationOf": "sleep",
+  "startTime": "2026-08-14T23:05:00+02:00",
+  "endTime": "2026-08-15T06:45:00+02:00",
   "quant:metrics": [
     { "key": "sleep_duration", "value": 27600, "unit": "seconds" },
     { "key": "hrv_avg", "value": 64, "unit": "ms" },
@@ -468,8 +502,11 @@ GET /api/public/freja/series?metric=stress&start=...&end=...&bucket=60s
 - **[FEP-67ff]** (FEDERATION.md) — documenting federation behaviour per
   implementation; a QuantPub implementation SHOULD document its supported
   metric keys and endpoints there.
-- **[FEP-400e]** — an earlier convention for extension object types layered on
-  publicly-readable collections; informs the "extend, don't fork" approach.
+- **[FEP-400e]** — *Publicly-appendable ActivityPub collections* (grishka,
+  FINAL 2022): lets foreign actors append objects to a collection another actor
+  owns. Not used by this document, but the natural building block for the
+  QuantPub-adjacent feature of federated challenge leaderboards (cross-instance
+  competitions appending member standings).
 - Mastodon's handling of unknown types/properties — the observed behaviour
   (extensions dropped, `Article` content discarded) that motivates the
   `Note`-first dual-typing and the out-of-band channel.
@@ -482,8 +519,12 @@ GET /api/public/freja/series?metric=stress&start=...&end=...&bucket=60s
   endpoint (activity and article kinds), the data-driven public series
   endpoint, capability tokens for followers-only payloads, and Level 3
   ingest/enrichment between Aurboda instances. This FEP generalises that
-  running code; Aurboda intends to adopt the `quant:` names once the
-  vocabulary settles.
+  running code. Adopting it in Aurboda is more than a prefix swap: the shipped
+  extension mints its own window terms (`aurboda:startTime` /
+  `aurboda:endTime` / `aurboda:durationSeconds`) where this document reuses
+  AS2 `startTime`/`endTime` and folds duration into `quant:metrics` — Aurboda
+  intends to adopt the `quant:` vocabulary, including those substitutions,
+  once it settles.
 
 ## Copyright
 

@@ -583,3 +583,6 @@ These are known and intentional for the current implementation:
   base-URL identity model this reuses.
 - [Challenges](./challenges.md) — cross-instance federated competitions on the same
   `/u/:username` namespace.
+- [QuantPub FEP draft](../fep/quantpub.md) — the vendor-neutral generalisation of
+  this feed's federation pattern (vocabulary + out-of-band structured payloads),
+  drafted for the FEP process so other QS tools can interoperate.
