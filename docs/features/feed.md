@@ -458,9 +458,13 @@ resolving.
 - **Share** — an activity's detail page has a **Share to feed** button. It opens a dialog
   to write an optional personal message (prefilled from the activity's description /
   comments, fully editable), pick the summary metrics, optionally opt into full series,
-  and choose the audience. The user's own feed cards and public profile render the shared
-  scalars as a native **stat grid** (with the message and the activity's date) rather than
-  the flattened text Mastodon sees.
+  and choose the audience. The **owner's own feed** renders each activity post with the
+  **same native card component a subscribing Aurboda peer's timeline uses** — the owner-facing
+  feed responses include the full structured payload (typed scalars + inline series, assembled
+  by the same helper the public structured endpoint uses), so the author sees the interactive
+  hover charts exactly as a follower would, and can verify what they shared. The public
+  profile renders the lighter native **stat grid** (message + activity date + typed scalars)
+  without the series weight.
 - **New article** — the **Feed** page has a **New article** button that opens the article
   composer: a title, an optional default time window, and an ordered list of **prose**
   (markdown), **chart** (a metric + optional per-block window + caption), and **correlation**

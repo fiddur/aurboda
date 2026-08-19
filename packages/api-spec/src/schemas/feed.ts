@@ -295,6 +295,10 @@ export const feedPostSchema = z
       .array(feedStructuredMetricSchema)
       .optional()
       .meta({ description: 'Resolved typed scalar values for the shared metrics (activity posts)' }),
+    structured: feedStructuredPostSchema.optional().meta({
+      description:
+        "The post's native structured payload (typed metrics + inline series), identical to what a subscribing peer receives — drives the owner's native card render",
+    }),
     series_metrics: z.array(z.string()).meta({ description: 'Explicitly-shared series metrics' }),
     updated_at: z.string().meta({ description: 'Last update timestamp (ISO 8601)' }),
     visibility: feedVisibilitySchema,

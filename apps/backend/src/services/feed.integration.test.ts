@@ -149,6 +149,27 @@ describe('feed service', () => {
       expect(dto.content).toContain('<p>So wonderful<br>sense of freedom!</p>')
     })
 
+    test('includeStructured attaches the peer-identical structured payload (#1008)', async () => {
+      const user = getTestUser()
+      const anchorId = await insertAnchor(user)
+      const post = await createFeedPost(user, { ...postInput(anchorId), message: 'Native!' })
+
+      // Default: no structured payload (public profile / MCP weight).
+      const plain = await serializeFeedPost(user, post)
+      expect(plain.structured).toBeUndefined()
+
+      const dto = await serializeFeedPost(user, post, { includeStructured: true })
+      expect(dto.structured?.kind).toBe('activity')
+      if (dto.structured?.kind !== 'activity') throw new Error('expected an activity payload')
+      expect(dto.structured.activity_type).toBe('exercise')
+      expect(dto.structured.message).toBe('Native!')
+      expect(dto.structured.start_time).toBe(ANCHOR_START.toISOString())
+      // Same typed scalars as the flat `metrics` field — one resolution feeds both.
+      expect(dto.structured.metrics).toEqual(dto.metrics)
+      // No series opted in → empty, never undefined.
+      expect(dto.structured.series).toEqual([])
+    })
+
     test('omits activity fields for a non-activity post', async () => {
       const user = getTestUser()
       const post = await createFeedPost(user, postInput(null))
