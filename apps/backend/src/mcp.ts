@@ -22,6 +22,7 @@ import type { FollowerActions } from './services/followers.ts'
 import type { FollowActions } from './services/following.ts'
 import type { SyncProvider } from './services/queries/index.ts'
 import type { StravaQueue } from './services/strava-queue.ts'
+import type { RetroEnrichTrigger } from './services/timeline-retro-enrich.ts'
 
 import { registerActivityTools } from './mcp/activity-tools.ts'
 import { registerActivityTypeTools } from './mcp/activity-type-tools.ts'
@@ -64,8 +65,7 @@ interface McpDeps {
   garmin?: GarminClient
   onActivityMutated?: ActivityNotifier
   oura?: OuraClientType
-  /** Fire-and-forget lazy retro-enrichment of timeline entries on read (#996). */
-  retroEnrichTimeline?: (user: string) => void
+  retroEnrichTimeline?: RetroEnrichTrigger
   stravaQueue?: StravaQueue
   sync?: SyncProvider
   webHost?: string
@@ -101,15 +101,13 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
   }
   registerReportTools(server, user)
   registerSharedDashboardTools(server, user)
-  registerFeedTools(
-    server,
-    user,
-    deps.feedDeliver,
-    deps.followActions,
-    deps.followerActions,
-    deps.apiBaseUrl,
-    deps.retroEnrichTimeline,
-  )
+  registerFeedTools(server, user, {
+    apiBaseUrl: deps.apiBaseUrl,
+    deliver: deps.feedDeliver,
+    followActions: deps.followActions,
+    followerActions: deps.followerActions,
+    retroEnrichTimeline: deps.retroEnrichTimeline,
+  })
   registerChallengeTools(server, user, { apiBaseUrl: deps.apiBaseUrl, webHost: deps.webHost })
   registerScreentimeCategoryTools(server, user)
   registerDebugTools(server, user)

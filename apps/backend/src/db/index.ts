@@ -311,6 +311,7 @@ export {
   deleteTimelineEntryByUri,
   listTimelineEntries,
   listUnenrichedAurbodaEntries,
+  markEnrichTransientFailure,
   setTimelineEntryStructured,
   type TimelineCursor,
   type TimelineEntryInput,

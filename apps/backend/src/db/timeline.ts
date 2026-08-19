@@ -204,3 +204,25 @@ export const setTimelineEntryStructured = async (
     [id, structured == null ? null : JSON.stringify(structured)],
   )
 }
+
+/**
+ * Record a TRANSIENT retro-enrichment failure (#1014): bump the attempt counter
+ * and, once `maxAttempts` is reached, stamp `enrich_attempted_at` so the entry
+ * leaves the candidate set — a permanently unreachable peer must not hold the
+ * head of the newest-first retry queue forever. Below the cap the entry stays
+ * eligible for a later read's retry.
+ */
+export const markEnrichTransientFailure = async (
+  user: string,
+  id: string,
+  maxAttempts: number,
+): Promise<void> => {
+  await query(
+    user,
+    `UPDATE timeline_entry
+     SET enrich_attempts = enrich_attempts + 1,
+         enrich_attempted_at = CASE WHEN enrich_attempts + 1 >= $2 THEN NOW() ELSE enrich_attempted_at END
+     WHERE id = $1`,
+    [id, maxAttempts],
+  )
+}

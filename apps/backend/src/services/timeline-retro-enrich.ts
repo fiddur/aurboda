@@ -21,10 +21,36 @@ import { capabilityTokenFrom, parseAurbodaFeedUrl } from './activitypub/timeline
 /** Attempts per timeline read — enough to drain a backlog over a few visits without stalling anything. */
 const RETRO_BATCH_SIZE = 3
 
+/**
+ * Transient failures allowed per entry before it is stamped out of the
+ * candidate set anyway — the candidates are newest-first, so a permanently
+ * unreachable peer would otherwise hold the head of the queue and starve every
+ * older entry behind it (#1019 review).
+ */
+export const MAX_TRANSIENT_ATTEMPTS = 3
+
+/**
+ * Fire-and-forget trigger for the lazy retro-enrichment pass, threaded from
+ * `api.ts` (where the enricher and its origin live) to the timeline read
+ * surfaces (REST `GET /feed/timeline`, MCP `list_timeline`). Never blocks the
+ * read; enriched entries render natively on the next load.
+ */
+export type RetroEnrichTrigger = (user: string) => void
+
 export interface RetroEnrichDeps {
   listUnenriched: (user: string, limit: number) => Promise<UnenrichedTimelineEntry[]>
   /** Store the payload (or just stamp the attempt when null) for one entry. */
   save: (user: string, id: string, structured: FeedStructuredPost | null) => Promise<void>
+  /**
+   * Record a transient failure: bump the entry's attempt counter, stamping it
+   * out of the candidate set once `maxAttempts` is reached.
+   */
+  recordTransientFailure: (user: string, id: string, maxAttempts: number) => Promise<void>
+  /**
+   * One enrichment attempt. `null` is DEFINITIVE (non-Aurboda / gone /
+   * unauthorized / malformed — stamped, never retried); a THROW is transient
+   * (network, timeout, 5xx — retried up to {@link MAX_TRANSIENT_ATTEMPTS}).
+   */
   enrich: (objectUri: string, token?: string) => Promise<FeedStructuredPost | null>
 }
 
@@ -47,9 +73,16 @@ export const retroEnrichTimelineEntries = async (
       await deps.save(user, entry.id, null)
       continue
     }
-    const structured = await deps.enrich(entry.object_uri, capabilityTokenFrom(entry.images ?? []))
-    await deps.save(user, entry.id, structured)
-    if (structured != null) enriched++
+    try {
+      const structured = await deps.enrich(entry.object_uri, capabilityTokenFrom(entry.images ?? []))
+      await deps.save(user, entry.id, structured)
+      if (structured != null) enriched++
+    } catch (error) {
+      // Transient (peer blip / timeout / 5xx): keep the entry retryable, but
+      // bounded — a dead host must not hold the queue head forever (#1014).
+      console.warn(`⚠️ timeline retro-enrichment attempt failed for ${entry.object_uri}:`, error)
+      await deps.recordTransientFailure(user, entry.id, MAX_TRANSIENT_ATTEMPTS)
+    }
   }
   return enriched
 }

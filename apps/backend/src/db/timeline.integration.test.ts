@@ -10,6 +10,7 @@ import {
   deleteTimelineEntryByUri,
   listTimelineEntries,
   listUnenrichedAurbodaEntries,
+  markEnrichTransientFailure,
   setTimelineEntryStructured,
   type TimelineEntryInput,
   upsertTimelineEntry,
@@ -213,6 +214,21 @@ describe('Timeline store integration', () => {
     // …and a successful one stores it (visible on the next read).
     await setTimelineEntryStructured(user, one.id, structured)
     expect((await listTimelineEntries(user, 10)).find((e) => e.id === one.id)?.structured).toEqual(structured)
+  })
+
+  test('retro-enrichment: transient failures stay retryable until the attempt cap stamps them (#1014)', async () => {
+    const user = getTestUser()
+    const uri = 'https://dead.example/users/bob/feed/00000000-0000-4000-8000-000000000001'
+    const rec = await upsertTimelineEntry(user, entry(1, { object_uri: uri }))
+
+    // Two failures below the cap: still a candidate.
+    await markEnrichTransientFailure(user, rec.id, 3)
+    await markEnrichTransientFailure(user, rec.id, 3)
+    expect((await listUnenrichedAurbodaEntries(user, 10)).map((c) => c.id)).toEqual([rec.id])
+
+    // The third hits the cap: stamped out of the candidate set for good.
+    await markEnrichTransientFailure(user, rec.id, 3)
+    expect(await listUnenrichedAurbodaEntries(user, 10)).toEqual([])
   })
 
   test('retro-enrichment: setTimelineEntryStructured never wipes an existing payload with null', async () => {

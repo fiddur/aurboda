@@ -27,12 +27,13 @@ import './TimelineStructured.css'
 
 function ActivityStructured({ structured }: { structured: FeedStructuredActivity }) {
   const [hoverTime, setHoverTime] = useState<Date | null>(null)
-  const series = structuredCombinedSeries(structured)
-  const showMap = structuredHasNativeMap(structured)
-  // Stable identity across the hover-driven re-renders (`structured` comes from
-  // query data): RouteMap's init effect is keyed on `points`, and a fresh array
-  // per mousemove would tear down and rebuild the Leaflet map mid-hover.
+  // Stable identities across the hover-driven re-renders (`structured` comes
+  // from query data): the chart memoises its overlays on the series identity,
+  // and RouteMap's init effect is keyed on `points` — a fresh array per
+  // mousemove would redraw the chart and rebuild the Leaflet map mid-hover.
+  const series = useMemo(() => structuredCombinedSeries(structured), [structured])
   const routePoints = useMemo(() => structuredRoutePoints(structured), [structured])
+  const showMap = structuredHasNativeMap(structured)
 
   return (
     <div class="timeline-structured">

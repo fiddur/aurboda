@@ -1,8 +1,5 @@
-// Pin the timezone BEFORE anything formats a date, so the same-day/cross-day
-// cases are deterministic on any machine (10:00–11:30Z crosses midnight in a
-// UTC+13 test environment otherwise). Node propagates the change to Intl.
-process.env.TZ = 'UTC'
-
+// TZ is pinned to UTC for the whole test run (vite.config.ts `test.env`), so
+// the same-day/cross-day assertions below are deterministic on any machine.
 import { describe, expect, test } from 'vitest'
 
 import { formatEntryWindow, splitStats } from './activity-stats'

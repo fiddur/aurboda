@@ -9,7 +9,7 @@ import { isExerciseActivityType } from '@aurboda/api-spec'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { useLocation, useRoute } from 'preact-iso'
-import { useCallback, useEffect, useState } from 'preact/hooks'
+import { useCallback, useEffect, useMemo, useState } from 'preact/hooks'
 
 import type { Activity, ActivityTypeDefinition, SourceRecord } from '../../state/api'
 
@@ -254,8 +254,12 @@ const ActivityDetailContent = ({
     typeDef?.icon ??
     resolveItemIcon(`activity:${activity.activity_type}`, itemIcons)
 
-  // Data-driven: what exists on this activity?
-  const stages = parseSleepStages(activity.data as Record<string, unknown> | undefined)
+  // Data-driven: what exists on this activity? `stages` is memoised because it
+  // is a dep of the chart's render effect, and `onHoverTime` re-renders this
+  // component on every mousemove — a fresh array would redraw the chart and
+  // wipe its crosshair on sleep activities (#1014).
+  const activityData = activity.data as Record<string, unknown> | undefined
+  const stages = useMemo(() => parseSleepStages(activityData), [activityData])
   const hasSleepStages = stages.length > 0
   const hrZoneSecs = activity.hr_zone_secs as Record<number, number> | undefined
   const hasHrZones = hrZoneSecs && Object.values(hrZoneSecs).some((v) => v > 0)

@@ -1,11 +1,14 @@
 import type { FeedStructuredActivity, WellKnownAurboda } from '@aurboda/api-spec'
+import type { AxiosResponse } from 'axios'
 
+import { AxiosError } from 'axios'
 import { describe, expect, test } from 'vitest'
 
 import {
   type AurbodaEnrichDeps,
   capabilityTokenFrom,
   enrichFromAurboda,
+  isDefinitiveEnrichError,
   parseAurbodaFeedUrl,
 } from './timeline-enrich.ts'
 
@@ -188,6 +191,28 @@ describe('enrichFromAurboda', () => {
     }
     await enrichFromAurboda(`https://aurboda.net/users/fredrik/feed/${UUID}`, deps, 'secret token/&')
     expect(fetchedUrl).toBe(`https://aurboda.net/api/public/fredrik/feed/${UUID}?token=secret%20token%2F%26`)
+  })
+})
+
+describe('isDefinitiveEnrichError', () => {
+  test('a definite HTTP answer (4xx) is definitive — a gone/unauthorized post surfaces as an axios 404', () => {
+    const notFound = new AxiosError('Request failed', '404', undefined, undefined, {
+      status: 404,
+    } as AxiosResponse)
+    expect(isDefinitiveEnrichError(notFound)).toBe(true)
+  })
+
+  test('a malformed structured response is definitive', () => {
+    expect(isDefinitiveEnrichError(new Error('malformed structured response'))).toBe(true)
+  })
+
+  test('connection errors, timeouts, and 5xx stay transient', () => {
+    expect(isDefinitiveEnrichError(new Error('ETIMEDOUT'))).toBe(false)
+    expect(isDefinitiveEnrichError(new AxiosError('connect ECONNREFUSED'))).toBe(false)
+    const serverError = new AxiosError('Request failed', '500', undefined, undefined, {
+      status: 502,
+    } as AxiosResponse)
+    expect(isDefinitiveEnrichError(serverError)).toBe(false)
   })
 })
 

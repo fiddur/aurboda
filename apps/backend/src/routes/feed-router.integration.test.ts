@@ -14,6 +14,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from 'vit
  * generic `PATCH /:postId`); the actual AS2 delivery is unit-tested in `deliver`.
  */
 import { createFeedPost } from '../db/feed.ts'
+import { insertTimeSeries } from '../db/time-series.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import { type FeedDeliver, createFeedRouter } from './feed-router.ts'
 
@@ -180,7 +181,14 @@ describe('GET /feed/articles/:postId/export (Reddit/markdown export, C4)', () =>
     await cleanTestDb()
   })
 
-  test('returns paste-ready markdown linking each block to its C1 image endpoint', async () => {
+  test('returns paste-ready markdown linking each block whose image renders (#974)', async () => {
+    // Give the chart block real data — the export only links blocks whose image
+    // endpoint would actually render (≥ 2 points in the window).
+    await insertTimeSeries(getTestUser(), [
+      { metric: 'heart_rate', source: 'garmin', time: new Date('2026-07-02T08:00:00Z'), value: 62 },
+      { metric: 'heart_rate', source: 'garmin', time: new Date('2026-07-03T08:00:00Z'), value: 58 },
+      { metric: 'heart_rate', source: 'garmin', time: new Date('2026-07-04T08:00:00Z'), value: 60 },
+    ])
     const created = await withBase.request.post('/feed/articles').send(articleBody())
     const postId = created.body.post.id
     const res = await withBase.request.get(`/feed/articles/${postId}/export`)
@@ -191,6 +199,16 @@ describe('GET /feed/articles/:postId/export (Reddit/markdown export, C4)', () =>
     expect(res.body.markdown).toContain(
       `https://aurboda.example/api/public/${getTestUser()}/feed/${postId}/blocks/1/image.png`,
     )
+  })
+
+  test('a block whose image would 404 (no data) gets a note instead of a dead link (#974)', async () => {
+    const created = await withBase.request.post('/feed/articles').send(articleBody())
+    const postId = created.body.post.id
+    // Clean DB: the heart_rate window has no samples, so the image endpoint 404s.
+    const res = await withBase.request.get(`/feed/articles/${postId}/export`)
+    expect(res.status).toBe(200)
+    expect(res.body.markdown).not.toContain('image.png')
+    expect(res.body.markdown).toContain('*Resting HR — not enough data in this window.*')
   })
 
   test('404s for a non-article post', async () => {

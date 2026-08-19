@@ -43,16 +43,8 @@ export const RouteMap = ({ points, hoverTime }: RouteMapProps) => {
   const mapRef = useRef<L.Map | null>(null)
   const highlightMarkerRef = useRef<L.Marker | null>(null)
 
-  // Initialize map + draw polyline when points arrive
   useEffect(() => {
     if (!mapContainerRef.current || points.length < MIN_POINTS_FOR_PATH) return
-
-    // Clean up previous map if any
-    if (mapRef.current) {
-      mapRef.current.remove()
-      mapRef.current = null
-      highlightMarkerRef.current = null
-    }
 
     const map = L.map(mapContainerRef.current, { zoomControl: true })
 
@@ -78,7 +70,6 @@ export const RouteMap = ({ points, hoverTime }: RouteMapProps) => {
     }
   }, [points])
 
-  // Move highlight marker when hoverTime changes
   useEffect(() => {
     const map = mapRef.current
     if (!map || points.length < MIN_POINTS_FOR_PATH) return
@@ -101,7 +92,6 @@ export const RouteMap = ({ points, hoverTime }: RouteMapProps) => {
     }
   }, [hoverTime, points])
 
-  // Don't render if no GPS data
   if (points.length < MIN_POINTS_FOR_PATH) return null
 
   return <div ref={mapContainerRef} class="activity-map-container" />

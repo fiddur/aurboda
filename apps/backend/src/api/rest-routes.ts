@@ -16,17 +16,13 @@ import type { FollowerActions } from '../services/followers.ts'
 import type { FollowActions } from '../services/following.ts'
 import type { InvitationAuth } from '../services/invitation.ts'
 import type { OuraWebhookManager } from '../services/oura-webhook-manager.ts'
+import type { SyncProvider } from '../services/queries/index.ts'
 import type { TimelineHub } from '../services/timeline-hub.ts'
+import type { RetroEnrichTrigger } from '../services/timeline-retro-enrich.ts'
 import type { WebAuthnService } from '../services/webauthn.ts'
 import type { AnyMiddleware } from '../typed-router.ts'
 
-import {
-  getFeedPostById,
-  getLocations,
-  getTimeSeries,
-  getUserSettings,
-  markActivityDetailSynced,
-} from '../db/index.ts'
+import { getFeedPostById, getLocations, getTimeSeries, markActivityDetailSynced } from '../db/index.ts'
 import { processActivityDetail } from '../integrations/garmin/process.ts'
 import { createActivitiesRouter } from '../routes/activities-router.ts'
 import { createActivityTypesRouter } from '../routes/activity-types-router.ts'
@@ -70,13 +66,12 @@ import { createWebAuthnRouter } from '../routes/webauthn-router.ts'
 import { createWellKnownRouter, type WellKnownConfig } from '../routes/well-known-router.ts'
 import { renderChartPng, renderRoutePng, renderScatterPng } from '../services/activitypub/feed-images.ts'
 import { fetchOsmTile } from '../services/activitypub/osm-tiles.ts'
+import { getArticleChartSeriesData, getArticleCorrelationScatter } from '../services/article-block-data.ts'
 import { loadAvatarDataUri } from '../services/avatar-resolve.ts'
 import { buildChartSvg } from '../services/charts/chart-svg.ts'
 import { buildScatterSvg } from '../services/charts/scatter-svg.ts'
-import { getContinuousCorrelation } from '../services/correlations/index.ts'
 import { resolveFeedActivity } from '../services/feed.ts'
 import { createOgImageRenderer } from '../services/og-image.ts'
-import { type SyncProvider, queryMetricsBucketed } from '../services/queries/index.ts'
 import { createTemplateLoader } from '../services/web-template.ts'
 
 interface RestRoutesDeps {
@@ -102,8 +97,7 @@ interface RestRoutesDeps {
   followActions: FollowActions
   followerActions: FollowerActions
   timelineHub: TimelineHub
-  /** Fire-and-forget lazy retro-enrichment of timeline entries on read (#996). */
-  retroEnrichTimeline: (user: string) => void
+  retroEnrichTimeline: RetroEnrichTrigger
 }
 
 export const mountRestRouters = ({
@@ -187,45 +181,10 @@ export const mountRestRouters = ({
       // Merged-span window so the rendered chart/route cover what the user
       // shared, matching the Note's duration/metrics (#881).
       getActivity: resolveFeedActivity,
-      // An article chart block's bucketed metric series over its locked window
-      // (mirrors the web's live bucketed render). Bucket in the author's own
-      // timezone (`device_timezone`, IANA — auto-detected from their device) so a
-      // `1d` bucket splits on the author's calendar days, matching the web render
-      // (which sends the browser tz); falls back to UTC when it's unset.
-      getArticleChartSeries: async (user, metric, start, end, bucket) => {
-        const settings = await getUserSettings(user)
-        const result = await queryMetricsBucketed(user, [metric], start, end, bucket, {
-          tz: settings?.device_timezone ?? undefined,
-        })
-        const series: [Date, number][] = []
-        for (const b of result.buckets) {
-          const avg = b.metrics[metric]?.avg
-          if (avg != null) series.push([new Date(b.start), avg])
-        }
-        return series
-      },
-      // An article correlation block's continuous scatter over its locked window;
-      // null when too sparse to be meaningful (n < 3), which 404s the image.
-      getCorrelationScatter: async (user, { lagDays, outcome, periodEnd, periodStart, trigger }) => {
-        const c = await getContinuousCorrelation(user, {
-          lagDays,
-          outcome,
-          periodEnd,
-          periodStart,
-          trigger,
-        })
-        if (c.n < 3) return null
-        return {
-          group_comparison: c.group_comparison,
-          n: c.n,
-          outcome,
-          pearson: c.pearson,
-          pearson_p: c.pearson_p,
-          series: c.series,
-          spearman: c.spearman,
-          trigger,
-        }
-      },
+      // Shared with the markdown export's eligibility check (#974), so "would
+      // this block's image render?" can never drift from the endpoint.
+      getArticleChartSeries: getArticleChartSeriesData,
+      getCorrelationScatter: getArticleCorrelationScatter,
       getPost: getFeedPostById,
       getRoute: async (user, start, end) =>
         (await getLocations(user, start, end)).locations.map((l) => l.coordinates),

@@ -106,7 +106,6 @@ export const createFeedPublicRouter = (): TypedRouter => {
     }
     try {
       const records = await listPublicFeedPostsPage(username, PROFILE_FEED_LIMIT, 0)
-      // One settings lookup for the whole listing, not one per post.
       const settings = await getSettings(username).catch(() => null)
       const posts = await Promise.all(
         records.map((record) => serializeFeedPost(username, record, { settings })),

@@ -5,7 +5,7 @@
  * shared `CombinedMetricChart` (also used by the feed's native post cards).
  */
 import { useQuery } from '@tanstack/react-query'
-import { useEffect, useRef, useState } from 'preact/hooks'
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 
 import type { SleepStage } from '../../components/charts/sleep-utils'
 
@@ -146,10 +146,12 @@ export const ActivityChart = ({
 
   const chartDataQuery = useMetricChartData(start, end, chartWidthPx)
   const data = chartDataQuery.data
-  const series: CombinedChartSeries[] = (data?.metrics ?? []).map((metric) => ({
-    data: data?.series.get(metric) ?? [],
-    metric,
-  }))
+  // Stable identity per query result: the chart memoises its overlays on the
+  // series identity, so a hover-driven parent re-render must not redraw (#1014).
+  const series: CombinedChartSeries[] = useMemo(
+    () => (data?.metrics ?? []).map((metric) => ({ data: data?.series.get(metric) ?? [], metric })),
+    [data],
+  )
 
   return (
     <div ref={measureRef}>

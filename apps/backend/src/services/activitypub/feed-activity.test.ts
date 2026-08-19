@@ -50,6 +50,23 @@ describe('buildFeedPostActivity', () => {
     expect(series[0].href).toContain('https://aurboda.net/api/public/fiddur/series?')
     expect(series[0].href).toContain('metric=heart_rate')
   })
+
+  test('carries the personal message and renders the date line in the given timezone (#1001)', () => {
+    const c = buildFeedPostActivity(
+      ctx,
+      { ...input, message: 'Lovely trail!', timeZone: 'Europe/Stockholm' },
+      () => undefined,
+    )
+    expect(c.object['aurboda:message']).toBe('Lovely trail!')
+    expect(c.object.content).toContain('<p>Lovely trail!</p>')
+    // 06:30Z is 08:30 in Stockholm (CEST) — the date line follows the author's tz.
+    expect(c.object.content).toContain('08:30')
+  })
+
+  test('omits aurboda:message when no message is set', () => {
+    const c = buildFeedPostActivity(ctx, input, () => undefined)
+    expect(c.object['aurboda:message']).toBeUndefined()
+  })
 })
 
 const bucketed = (buckets: QueryMetricsBucketedResult['buckets']): QueryMetricsBucketedResult => ({

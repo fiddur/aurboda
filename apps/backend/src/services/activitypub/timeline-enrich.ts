@@ -32,7 +32,9 @@ import {
   type TimelineImage,
   type WellKnownAurboda,
 } from '@aurboda/api-spec'
+import axios from 'axios'
 
+import { isValidUsername } from '../../api/auth-routes.ts'
 import { discoverInstance } from '../challenge-federation.ts'
 import { resolveStructuredPost } from '../feed-structured.ts'
 import { safeFetchGet } from '../safe-fetch.ts'
@@ -137,6 +139,19 @@ const ENRICH_TIMEOUT_MS = 12_000
 /** An enricher: object URI (+ optional capability token) → structured payload or null. */
 export type TimelineEnricher = (objectUri: string, token?: string) => Promise<FeedStructuredPost | null>
 
+/** The real dependency wiring shared by both enricher variants below. */
+const realEnrichDeps = (origin: string): AurbodaEnrichDeps => ({
+  discover: discoverInstance,
+  fetchStructured: async (url) => (await safeFetchGet(url)).data,
+  local: {
+    origin,
+    // Same well-formedness guard as the HTTP route, before the name reaches the
+    // DB layer (defense in depth — the ingest host check already gates callers).
+    resolve: (user, postId, token) =>
+      isValidUsername(user) ? resolveStructuredPost(user, postId, token) : Promise.resolve(null),
+  },
+})
+
 /**
  * The default enricher wired into the inbox handler: in-process resolution for
  * this instance's own posts (`origin` is our public web origin), real discovery
@@ -147,22 +162,53 @@ export type TimelineEnricher = (objectUri: string, token?: string) => Promise<Fe
  * from a Mastodon post (#996).
  */
 export const createAurbodaEnricher = (origin: string): TimelineEnricher => {
-  const deps: AurbodaEnrichDeps = {
-    discover: discoverInstance,
-    fetchStructured: async (url) => (await safeFetchGet(url)).data,
-    local: { origin, resolve: resolveStructuredPost },
-  }
+  const attempt = createAurbodaEnrichAttempt(origin)
   return async (objectUri, token) => {
-    if (parseAurbodaFeedUrl(objectUri) == null) return null
     try {
-      const structured = await withTimeout(enrichFromAurboda(objectUri, deps, token), ENRICH_TIMEOUT_MS)
-      if (structured == null) {
-        console.warn(`⚠️ timeline enrichment: no payload for ${objectUri} (post gone or unauthorized)`)
-      }
-      return structured
+      return await attempt(objectUri, token)
     } catch (error) {
       console.warn(`⚠️ timeline enrichment failed for ${objectUri}:`, error)
       return null
     }
+  }
+}
+
+/**
+ * True when an enrichment error is a DEFINITIVE outcome retrying can't fix: a
+ * malformed payload, or a definite HTTP answer (4xx — the origin's `GET
+ * /public/:username/feed/:postId` answers 404 for a gone / unauthorized /
+ * non-resolving post, which axios rejects on since `safeFetchGet` sets no
+ * `validateStatus`). Connection errors, timeouts, and 5xx stay transient.
+ */
+export const isDefinitiveEnrichError = (error: unknown): boolean =>
+  (error instanceof Error && error.message === 'malformed structured response') ||
+  (axios.isAxiosError(error) && error.response != null && error.response.status < 500)
+
+/**
+ * Like {@link createAurbodaEnricher} but PROPAGATES transient failures (network
+ * errors, timeouts, 5xx) instead of swallowing them, so the retro-enrichment
+ * pass can retry such an entry later (#1014). Definitive outcomes still resolve
+ * `null`: a non-Aurboda URI, a gone/unauthorized post (the origin's 404), or a
+ * malformed payload — retrying those can't help — with the failure cases
+ * logged like the default enricher.
+ */
+export const createAurbodaEnrichAttempt = (origin: string): TimelineEnricher => {
+  const deps = realEnrichDeps(origin)
+  return async (objectUri, token) => {
+    if (parseAurbodaFeedUrl(objectUri) == null) return null
+    let structured: FeedStructuredPost | null
+    try {
+      structured = await withTimeout(enrichFromAurboda(objectUri, deps, token), ENRICH_TIMEOUT_MS)
+    } catch (error) {
+      if (isDefinitiveEnrichError(error)) {
+        console.warn(`⚠️ timeline enrichment: no payload for ${objectUri}:`, error)
+        return null
+      }
+      throw error
+    }
+    if (structured == null) {
+      console.warn(`⚠️ timeline enrichment: no payload for ${objectUri} (post gone or unauthorized)`)
+    }
+    return structured
   }
 }
