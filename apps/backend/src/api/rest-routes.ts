@@ -102,6 +102,8 @@ interface RestRoutesDeps {
   followActions: FollowActions
   followerActions: FollowerActions
   timelineHub: TimelineHub
+  /** Fire-and-forget lazy retro-enrichment of timeline entries on read (#996). */
+  retroEnrichTimeline: (user: string) => void
 }
 
 export const mountRestRouters = ({
@@ -121,6 +123,7 @@ export const mountRestRouters = ({
   feedDeliver,
   followActions,
   followerActions,
+  retroEnrichTimeline,
   timelineHub,
   ouraWebhookManager,
   auth,
@@ -168,7 +171,10 @@ export const mountRestRouters = ({
   // feed router's `/:postId`.
   httpd.use('/feed/following', createFeedFollowingRouter(authMiddleware, followActions))
   httpd.use('/feed/followers', createFeedFollowersRouter(authMiddleware, followerActions))
-  httpd.use('/feed', createFeedRouter(authMiddleware, feedDeliver, timelineHub, apiBaseUrl))
+  httpd.use(
+    '/feed',
+    createFeedRouter(authMiddleware, feedDeliver, timelineHub, apiBaseUrl, retroEnrichTimeline),
+  )
   httpd.use('/challenges', createChallengesRouter(authMiddleware, webHost, apiBaseUrl))
   httpd.use(createChallengeDataRouter())
   // Public feed series must be mounted before the generic /public/:username/:slug

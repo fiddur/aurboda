@@ -309,10 +309,16 @@ structured data out-of-band on ingest:
    as a `Note` and the object id doesn't distinguish them. For a `followers`-only post it lifts
    the capability token from the delivered image URL (the `?token=` embedded only in the
    follower's `Note`) and forwards it, so an accepted follower fetches the native payload while a
-   public guess still 404s. All fetches are **SSRF-guarded** (`safe-fetch`: public hosts only, no
-   redirects, size + time bounded) and time-boxed; the origin is the accepted followee's own
-   host. Any failure (non-Aurboda host, 404, malformed, timeout) is swallowed — the post still
-   shows with its HTML.
+   public guess still 404s. A post whose origin is **this instance itself** (a local-to-local
+   follow) skips discovery and HTTP entirely and resolves **in-process** through the same
+   `resolveStructuredPost` the endpoint serves — fetching our own public origin would hairpin
+   through the reverse proxy and, from inside the container, typically resolve to a private
+   address the SSRF guard rightly refuses (#996). Remote fetches are **SSRF-guarded**
+   (`safe-fetch`: public hosts only, no redirects, size + time bounded) and time-boxed; the
+   origin is the accepted followee's own host. Any failure (non-Aurboda host, 404, malformed,
+   timeout) still resolves to "no payload" — the post shows with its HTML — but is **logged**,
+   so a broken enrichment path is diagnosable instead of looking identical to a Mastodon post
+   (#996).
 3. **Store + render.** The payload is stored on `timeline_entry.structured` (JSONB, NULL for
    non-Aurboda posts; a redelivery that can't re-fetch keeps the last-known value). The web
    timeline card renders, per `structured.kind`: for an **activity** post the native
@@ -329,6 +335,15 @@ Enrichment is strictly best-effort and additive: it never blocks or fails basic 
 activity's series that weren't shared (the opt-in) simply produce no chart, and an article's
 chart/correlation block with too little data renders the same "not enough data" fallback the
 author's own live render shows.
+
+**Lazy retro-enrichment (#996).** Entries ingested before enrichment shipped — or whose
+ingest-time enrichment failed transiently — would otherwise keep `structured = NULL` forever.
+Reading the timeline (REST `GET /feed/timeline` or the `list_timeline` MCP tool) kicks a
+fire-and-forget pass that gives a small batch (3, newest first) of such Aurboda-shaped entries
+one more attempt through the same enricher, stamping `enrich_attempted_at` win or lose so each
+entry is retried at most once — an `Update` redelivery still re-enriches through the normal
+ingest path. The read itself is never delayed; entries that gain a payload render natively on
+the next load.
 
 ### Live updates
 

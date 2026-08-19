@@ -9,6 +9,8 @@ import {
   deleteTimelineEntriesByActor,
   deleteTimelineEntryByUri,
   listTimelineEntries,
+  listUnenrichedAurbodaEntries,
+  setTimelineEntryStructured,
   type TimelineEntryInput,
   upsertTimelineEntry,
 } from './timeline.ts'
@@ -181,6 +183,50 @@ describe('Timeline store integration', () => {
     expect((await listTimelineEntries(user, 10)).map((e) => e.object_uri)).toEqual([
       'https://mastodon.example/notes/1',
     ])
+  })
+
+  test('retro-enrichment: lists Aurboda-shaped unenriched entries, marks attempts (#996)', async () => {
+    const user = getTestUser()
+    const structured = {
+      activity_type: 'exercise',
+      kind: 'activity' as const,
+      metrics: [{ key: 'distance', unit: 'km', value: 5 }],
+      series: [],
+      start_time: '2026-07-01T08:00:00.000Z',
+    }
+    const aurbodaUri = (n: number) =>
+      `https://peer.example/users/bob/feed/00000000-0000-4000-8000-00000000000${n}`
+    // 1: Aurboda-shaped, unenriched → candidate. 2: Mastodon → never a candidate.
+    // 3: Aurboda-shaped but already enriched → not a candidate.
+    const one = await upsertTimelineEntry(user, entry(1, { object_uri: aurbodaUri(1) }))
+    await upsertTimelineEntry(user, entry(2))
+    await upsertTimelineEntry(user, entry(3, { object_uri: aurbodaUri(3), structured }))
+
+    const candidates = await listUnenrichedAurbodaEntries(user, 10)
+    expect(candidates.map((c) => c.object_uri)).toEqual([aurbodaUri(1)])
+
+    // A failed attempt (null) stamps the entry without inventing a payload…
+    await setTimelineEntryStructured(user, one.id, null)
+    expect(await listUnenrichedAurbodaEntries(user, 10)).toEqual([])
+    expect((await listTimelineEntries(user, 10)).find((e) => e.id === one.id)?.structured).toBeNull()
+
+    // …and a successful one stores it (visible on the next read).
+    await setTimelineEntryStructured(user, one.id, structured)
+    expect((await listTimelineEntries(user, 10)).find((e) => e.id === one.id)?.structured).toEqual(structured)
+  })
+
+  test('retro-enrichment: setTimelineEntryStructured never wipes an existing payload with null', async () => {
+    const user = getTestUser()
+    const structured = {
+      activity_type: 'exercise',
+      kind: 'activity' as const,
+      metrics: [],
+      series: [],
+      start_time: '2026-07-01T08:00:00.000Z',
+    }
+    const rec = await upsertTimelineEntry(user, entry(1, { structured }))
+    await setTimelineEntryStructured(user, rec.id, null)
+    expect((await listTimelineEntries(user, 10))[0].structured).toEqual(structured)
   })
 
   test('purges every entry from an actor (on unfollow)', async () => {

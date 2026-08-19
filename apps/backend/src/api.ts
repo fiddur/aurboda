@@ -42,9 +42,11 @@ import {
   insertPlace,
   insertRawRecord,
   insertTimeSeries,
+  listUnenrichedAurbodaEntries,
   loginToUserDb,
   openTimelineChannel,
   resolveOrCreateActivityType,
+  setTimelineEntryStructured,
   softDeleteSupersededLocations,
   updateDetectedLocation,
   upsertSyncState,
@@ -67,6 +69,7 @@ import {
 } from './services/activitypub/deliver.ts'
 import { createFeedFederation } from './services/activitypub/federation.ts'
 import { createTimelineBackfiller } from './services/activitypub/timeline-backfill.ts'
+import { createAurbodaEnricher } from './services/activitypub/timeline-enrich.ts'
 import { auditError, auditInfo } from './services/audit-log.ts'
 import { triggerCalorieComputation } from './services/calorie-computation.ts'
 import { createCalorieQueue, type CalorieQueue } from './services/calorie-queue.ts'
@@ -97,6 +100,7 @@ import { initSentry, Sentry } from './services/sentry.ts'
 import { createStravaQueue, type StravaQueue } from './services/strava-queue.ts'
 import { createSyncProvider } from './services/sync-provider.ts'
 import { createTimelineHub } from './services/timeline-hub.ts'
+import { retroEnrichTimelineEntries } from './services/timeline-retro-enrich.ts'
 import { createWebAuthnService } from './services/webauthn.ts'
 
 /** Grace period for in-flight requests before sockets are forced closed. */
@@ -353,6 +357,18 @@ const main = async () => {
   )
   const backfill = createTimelineBackfiller(feedFederation, webHost)
   const feedDeps = { apiBaseUrl, federation: feedFederation, origin: webHost }
+
+  // Lazy retro-enrichment (#996): entries ingested before structured enrichment
+  // shipped (or whose ingest-time enrichment failed transiently) get one more
+  // attempt when the timeline is read. Fire-and-forget — never blocks a read.
+  const retroEnricher = createAurbodaEnricher(webHost)
+  const retroEnrichTimeline = (user: string) => {
+    void retroEnrichTimelineEntries(user, {
+      enrich: retroEnricher,
+      listUnenriched: listUnenrichedAurbodaEntries,
+      save: setTimelineEntryStructured,
+    }).catch((err: unknown) => console.warn(`⚠️ timeline retro-enrichment failed for ${user}:`, err))
+  }
   const onDeliverError = (op: string, user: string, postId: string) => (err: unknown) =>
     console.error(`⚠️ feed ${op} delivery failed for ${user}/${postId}:`, err)
   const feedDeliver: FeedDeliver = {
@@ -424,6 +440,7 @@ const main = async () => {
       garmin,
       onActivityMutated: activityNotifier,
       oura,
+      retroEnrichTimeline,
       stravaQueue: stravaQueue ?? undefined,
       sync: syncProvider,
       webHost,
@@ -564,6 +581,7 @@ const main = async () => {
     httpd,
     invitationAuth,
     ouraWebhookManager,
+    retroEnrichTimeline,
     syncProvider,
     timelineHub,
     userDb,

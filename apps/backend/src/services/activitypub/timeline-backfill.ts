@@ -123,7 +123,7 @@ export const createTimelineBackfiller = (
   federation: Federation<void>,
   origin: string,
 ): ((user: string, actorUri: string) => void) => {
-  const enrich = createAurbodaEnricher()
+  const enrich = createAurbodaEnricher(origin)
   const deps: BackfillDeps = {
     fetchRecentNotes: (actorUri, limit) => fetchRecentOutboxNotes(federation, origin, actorUri, limit),
     getFollowee: getFeedFollowingByActor,

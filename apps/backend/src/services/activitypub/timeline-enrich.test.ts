@@ -104,14 +104,16 @@ describe('enrichFromAurboda', () => {
     expect(fetched).toBe(false)
   })
 
-  test('returns null when the host does not federate (discover throws)', async () => {
+  test('propagates a discovery failure so the caller can log it (#996)', async () => {
     const deps: AurbodaEnrichDeps = {
       discover: async () => {
         throw new Error('not an Aurboda host')
       },
       fetchStructured: async () => ({ structured, success: true }),
     }
-    expect(await enrichFromAurboda(`https://mastodon.social/users/a/feed/${UUID}`, deps)).toBeNull()
+    await expect(enrichFromAurboda(`https://mastodon.social/users/a/feed/${UUID}`, deps)).rejects.toThrow(
+      'not an Aurboda host',
+    )
   })
 
   test('returns null when the response has no structured payload (404-style body)', async () => {
@@ -122,12 +124,57 @@ describe('enrichFromAurboda', () => {
     expect(await enrichFromAurboda(`https://aurboda.net/users/fredrik/feed/${UUID}`, deps)).toBeNull()
   })
 
-  test('returns null when the response is malformed (schema mismatch)', async () => {
+  test('throws on a malformed response (schema mismatch) so the caller can log it (#996)', async () => {
     const deps: AurbodaEnrichDeps = {
       discover: async () => wellKnown,
       fetchStructured: async () => ({ structured: { nope: true }, success: true }),
     }
-    expect(await enrichFromAurboda(`https://aurboda.net/users/fredrik/feed/${UUID}`, deps)).toBeNull()
+    await expect(enrichFromAurboda(`https://aurboda.net/users/fredrik/feed/${UUID}`, deps)).rejects.toThrow(
+      'malformed structured response',
+    )
+  })
+
+  test('resolves a SAME-instance post in-process — no discovery, no HTTP (#996)', async () => {
+    const calls: string[] = []
+    const deps: AurbodaEnrichDeps = {
+      discover: async () => {
+        calls.push('discover')
+        return wellKnown
+      },
+      fetchStructured: async () => {
+        calls.push('fetch')
+        return { structured, success: true }
+      },
+      local: {
+        // Trailing slash exercises the origin normalisation.
+        origin: 'https://aurboda.net/',
+        resolve: async (user, postId, token) => {
+          calls.push(`local:${user}/${postId}?token=${token ?? ''}`)
+          return structured
+        },
+      },
+    }
+    const result = await enrichFromAurboda(`https://aurboda.net/users/fredrik/feed/${UUID}`, deps, 'tok')
+    expect(result).toEqual(structured)
+    expect(calls).toEqual([`local:fredrik/${UUID}?token=tok`])
+  })
+
+  test('a DIFFERENT origin still goes over HTTP despite the local shortcut', async () => {
+    let local = false
+    const deps: AurbodaEnrichDeps = {
+      discover: async () => wellKnown,
+      fetchStructured: async () => ({ structured, success: true }),
+      local: {
+        origin: 'https://aurboda.net',
+        resolve: async () => {
+          local = true
+          return null
+        },
+      },
+    }
+    const result = await enrichFromAurboda(`https://other.example/users/bob/feed/${UUID}`, deps)
+    expect(result).toEqual(structured)
+    expect(local).toBe(false)
   })
 
   test('passes the capability token as ?token= so a followers-only post authorizes', async () => {

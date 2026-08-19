@@ -75,6 +75,8 @@ export const createFeedRouter = (
   deliver?: FeedDeliver,
   hub?: TimelineHub,
   apiBaseUrl?: string,
+  /** Fire-and-forget lazy retro-enrichment of timeline entries on read (#996). */
+  retroEnrichTimeline?: (user: string) => void,
 ): TypedRouter => {
   const router = typedRouter()
 
@@ -145,6 +147,10 @@ export const createFeedRouter = (
     async (req, res) => {
       const user = req.user!
       const { entries, next_cursor } = await getTimelinePage(user, req.query.limit, req.query.cursor)
+      // Kick a lazy retro-enrichment pass for entries still missing their native
+      // payload (#996) — fire-and-forget, the current response is not delayed;
+      // enriched entries render natively on the next read.
+      retroEnrichTimeline?.(user)
       res.json({ entries, next_cursor, success: true })
     },
   )
