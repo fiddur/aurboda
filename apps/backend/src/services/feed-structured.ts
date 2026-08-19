@@ -19,16 +19,14 @@
 import type {
   ArticleBlock,
   ArticleContent,
-  FeedStructuredActivity,
   FeedStructuredArticle,
   FeedStructuredArticleBlock,
   FeedStructuredArticleChartBlock,
   FeedStructuredArticleCorrelationBlock,
   FeedStructuredPost,
-  FeedStructuredSeries,
 } from '@aurboda/api-spec'
 
-import { defaultArticleChartBucket, metricTypeSchema } from '@aurboda/api-spec'
+import { defaultArticleChartBucket } from '@aurboda/api-spec'
 
 import type { FeedPostRecord } from '../db/index.ts'
 
@@ -38,49 +36,12 @@ import { resolveActivityScalars } from './activitypub/feed-activity.ts'
 import { blockWindow, isZeroDurationBucket } from './article.ts'
 import { getContinuousCorrelation } from './correlations/explore.ts'
 import { isCapabilityAuthorized } from './feed-capability.ts'
-import { floorSeriesBucket, resolvePublicSeries, samplesFromBucketedResult } from './feed-series.ts'
+import { floorSeriesBucket, samplesFromBucketedResult } from './feed-series.ts'
+// Series + payload assembly live in the shared leaf module so the owner-facing
+// feed serialisation (`feed.ts`) produces the identical payload (#1008).
+import { assembleStructuredActivity, resolveStructuredSeries } from './feed-structured-activity.ts'
 import { resolveFeedActivity } from './feed.ts'
 import { queryMetricsBucketed } from './queries/index.ts'
-
-/** Series granularity for the structured payload — floored to the server minimum by `resolvePublicSeries`. */
-const SERIES_BUCKET = '5s'
-
-/**
- * Resolve a post's opted-in series to inline samples over its activity window.
- *
- * The authorization boundary is the post itself: `resolveStructuredPost` has
- * already checked the caller may see this post, and we only ever iterate the
- * post's own `seriesMetrics` over its own `[start, end]`. So the covering window
- * *is* that window — we don't route through the public-only
- * `findCoveringSharedSeriesWindow` (which correctly rejects a `followers`-only
- * share for the public `/series` endpoint, but would wrongly blank the chart
- * here for a token-authorized follower).
- */
-const resolveStructuredSeries = async (
-  user: string,
-  seriesMetrics: string[],
-  start: Date,
-  end: Date,
-): Promise<FeedStructuredSeries[]> => {
-  const series: FeedStructuredSeries[] = []
-  for (const raw of seriesMetrics) {
-    const parsed = metricTypeSchema.safeParse(raw)
-    if (!parsed.success) continue
-    const result = await resolvePublicSeries(parsed.data, start, end, SERIES_BUCKET, {
-      findCoveringWindow: async () => ({ end_time: end, start_time: start }),
-      queryBucketed: (m, s, e, b) => queryMetricsBucketed(user, [m], s, e, b, {}),
-    })
-    if (result) {
-      series.push({
-        bucket: result.bucket,
-        metric: result.metric,
-        samples: result.samples,
-        unit: result.unit,
-      })
-    }
-  }
-  return series
-}
 
 /**
  * Resolve one article `chart` block to its structured samples over its
@@ -262,22 +223,7 @@ export const resolveStructuredContent = async (
     ? await resolveStructuredSeries(user, post.series_metrics, activity.start_time, activity.end_time)
     : []
 
-  const structured: FeedStructuredActivity = {
-    activity_type: activity.activity_type,
-    kind: 'activity',
-    metrics: scalars.map(({ key, unit, value }) => ({ key, value, ...(unit === undefined ? {} : { unit }) })),
-    series,
-    start_time: activity.start_time.toISOString(),
-  }
-  if (activity.title !== undefined) structured.title = activity.title
-  if (post.message != null) structured.message = post.message
-  if (activity.end_time) {
-    structured.end_time = activity.end_time.toISOString()
-    structured.duration_seconds = Math.round(
-      (activity.end_time.getTime() - activity.start_time.getTime()) / 1000,
-    )
-  }
-  return structured
+  return assembleStructuredActivity(activity, scalars, series, post.message)
 }
 
 /**

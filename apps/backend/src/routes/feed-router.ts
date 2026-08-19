@@ -80,7 +80,11 @@ export const createFeedRouter = (
   router.get<Record<string, never>, FeedPostsResponse>('/', authMiddleware, async (req, res) => {
     const user = req.user!
     const records = await listFeedPosts(user)
-    const posts = await Promise.all(records.map((record) => serializeFeedPost(user, record)))
+    // The owner's feed includes each activity post's full structured payload,
+    // so the web renders the same native card a subscribing peer sees (#1008).
+    const posts = await Promise.all(
+      records.map((record) => serializeFeedPost(user, record, { includeStructured: true })),
+    )
     res.json({ posts, success: true })
   })
 
@@ -165,7 +169,7 @@ export const createFeedRouter = (
       })
       // Fan the post out to followers (best-effort; never blocks the response).
       deliver?.created(user, record, activity)
-      res.json({ post: await serializeFeedPost(user, record), success: true })
+      res.json({ post: await serializeFeedPost(user, record, { includeStructured: true }), success: true })
     },
   )
 
@@ -279,7 +283,7 @@ export const createFeedRouter = (
       // activity, so it must go through the article path — `updated` would no-op.
       if (record.kind === 'article') deliver?.updatedArticle(user, record)
       else deliver?.updated(user, record)
-      res.json({ post: await serializeFeedPost(user, record), success: true })
+      res.json({ post: await serializeFeedPost(user, record, { includeStructured: true }), success: true })
     },
   )
 

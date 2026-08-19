@@ -24,6 +24,7 @@ import type { Activity, FeedPostRecord } from '../db/index.ts'
 import { getActivityById } from '../db/index.ts'
 import { resolveActivityScalars } from './activitypub/feed-activity.ts'
 import { feedPostContent, formatActivityWindow } from './activitypub/object.ts'
+import { assembleStructuredActivity, resolveStructuredSeries } from './feed-structured-activity.ts'
 import { resolveActivityWindow } from './queries/index.ts'
 import { getSettings } from './settings.ts'
 
@@ -95,33 +96,63 @@ export const resolveFeedActivity = async (
  * later renders *remote* actors' posts, that untrusted content will need
  * sanitising — this owner-facing content does not.)
  */
-export const serializeFeedPost = async (user: string, record: FeedPostRecord): Promise<FeedPost> => {
-  const activity = record.activity_id ? await resolveFeedActivity(user, record.activity_id) : null
-  let content: string | undefined
-  let metrics: FeedPost['metrics']
-  if (activity) {
-    const scalars = await resolveActivityScalars(
-      user,
-      { end_time: activity.end_time, start_time: activity.start_time },
-      record.included_metrics,
-    )
-    const settings = await getSettings(user).catch(() => null)
-    content = feedPostContent(activity.title, activity.activity_type, scalars, {
-      message: record.message ?? undefined,
-      windowLabel: formatActivityWindow(
-        activity.start_time,
-        activity.end_time,
-        settings?.device_timezone ?? undefined,
-      ),
-    }).content
+/**
+ * The presentation pieces derived from a post's resolved activity: the
+ * federated `content` HTML, the typed scalar `metrics`, and (opt-in) the FULL
+ * structured payload — assembled by the same helper the public structured
+ * endpoint uses, so the author's own card renders exactly what a subscribing
+ * Aurboda peer's timeline renders (#1008). `structured` is off by default:
+ * the public profile listing and MCP tools don't need the series weight.
+ */
+const resolveActivityPresentation = async (
+  user: string,
+  record: FeedPostRecord,
+  activity: ResolvedFeedActivity,
+  includeStructured: boolean,
+): Promise<Pick<FeedPost, 'content' | 'metrics' | 'structured'>> => {
+  const scalars = await resolveActivityScalars(
+    user,
+    { end_time: activity.end_time, start_time: activity.start_time },
+    record.included_metrics,
+  )
+  const settings = await getSettings(user).catch(() => null)
+  const content = feedPostContent(activity.title, activity.activity_type, scalars, {
+    message: record.message ?? undefined,
+    windowLabel: formatActivityWindow(
+      activity.start_time,
+      activity.end_time,
+      settings?.device_timezone ?? undefined,
+    ),
+  }).content
+  let structured: FeedPost['structured']
+  if (includeStructured && record.kind === 'activity') {
+    const series = activity.end_time
+      ? await resolveStructuredSeries(user, record.series_metrics, activity.start_time, activity.end_time)
+      : []
+    structured = assembleStructuredActivity(activity, scalars, series, record.message)
+  }
+  return {
+    content,
     // The typed scalar values (same shape as the structured-enrichment payload),
     // so the web renders a native stat grid instead of parsing the content HTML.
-    metrics = scalars.map(({ key, unit, value }) => ({
+    metrics: scalars.map(({ key, unit, value }) => ({
       key,
       value,
       ...(unit === undefined ? {} : { unit }),
-    }))
+    })),
+    structured,
   }
+}
+
+export const serializeFeedPost = async (
+  user: string,
+  record: FeedPostRecord,
+  opts: { includeStructured?: boolean } = {},
+): Promise<FeedPost> => {
+  const activity = record.activity_id ? await resolveFeedActivity(user, record.activity_id) : null
+  const { content, metrics, structured } = activity
+    ? await resolveActivityPresentation(user, record, activity, opts.includeStructured ?? false)
+    : { content: undefined, metrics: undefined, structured: undefined }
   return {
     activity_end_time: activity?.end_time?.toISOString(),
     activity_id: record.activity_id,
@@ -141,6 +172,7 @@ export const serializeFeedPost = async (user: string, record: FeedPostRecord): P
     message: record.message ?? undefined,
     metrics,
     series_metrics: record.series_metrics,
+    structured,
     updated_at: record.updated_at.toISOString(),
     visibility: record.visibility,
   }

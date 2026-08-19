@@ -16,6 +16,7 @@ import { API_URL } from '../../config'
 import { formatEntryWindow } from './activity-stats'
 import { ActivityStatGrid } from './ActivityStatGrid'
 import { ArticleContent } from './ArticleContent'
+import { TimelineStructured } from './TimelineStructured'
 import './FeedPostCard.css'
 
 export interface PostAuthor {
@@ -72,7 +73,10 @@ export const FeedPostCard = ({
 }) => {
   const vis = VISIBILITY[post.visibility]
   const when = formatDistanceToNow(new Date(post.created_at), { addSuffix: true })
-  const chart = post.include_chart ? imageUrl(author.username, post, 'chart') : null
+  // With the full structured payload the native interactive chart replaces the
+  // static chart.png (same rule as a peer's timeline card); the route map has
+  // no native render, so its image always stays.
+  const chart = post.include_chart && !post.structured ? imageUrl(author.username, post, 'chart') : null
   const route = post.include_map ? imageUrl(author.username, post, 'route') : null
 
   return (
@@ -91,12 +95,16 @@ export const FeedPostCard = ({
       </header>
 
       {/* An article renders its own title + prose/chart blocks (prose sanitised
-          via the shared sanitiser). An activity post with resolved typed metrics
-          renders natively (`ActivityPostBody`). Older payloads without `metrics`
-          fall back to the server-built, HTML-escaped `content` (safe to render
-          directly). */}
+          via the shared sanitiser). An activity post with the full structured
+          payload renders the SAME `TimelineStructured` component a subscribing
+          Aurboda peer's home timeline uses (#1008) — interactive hover charts
+          included — so the owner sees exactly what a follower sees. Without it
+          (public profile), the stat-grid `ActivityPostBody`; older payloads
+          fall back to the server-built, HTML-escaped `content`. */}
       {post.kind === 'article' && post.article ? (
         <ArticleContent article={post.article} />
+      ) : post.structured ? (
+        <TimelineStructured structured={post.structured} />
       ) : post.metrics ? (
         <ActivityPostBody post={post} />
       ) : post.content ? (
