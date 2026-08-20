@@ -334,9 +334,15 @@ On ingesting a `Create`/`Update` for a `Note`, a receiving peer:
 1. checks whether the object carries `quant:structuredUrl` (same-host, above)
    or an id matching the object-id convention (a Mastodon status id never
    does, avoiding needless requests);
-2. fetches `/.well-known/quantpub` from the object's origin host (cacheable);
-3. if the origin speaks QuantPub, fetches the structured post endpoint (§5)
-   and stores the payload alongside the sanitised note for native rendering.
+2. resolves the payload URL: a same-host `quant:structuredUrl` names it
+   directly, so no discovery fetch is needed to *locate* it; the id
+   convention instead requires `{api_base}`, taken from
+   `/.well-known/quantpub` on the object's origin host (cacheable). A
+   consumer MAY still fetch the discovery document in the
+   `quant:structuredUrl` case as a capability check on the origin, but MUST
+   NOT require it;
+3. fetches the structured post endpoint (§5) and stores the payload alongside
+   the sanitised note for native rendering.
 
 Enrichment MUST be best-effort and additive: any failure (non-QuantPub host,
 404, malformed payload, timeout) leaves the plain note intact. Fetches MUST be
@@ -377,13 +383,19 @@ for followers-only posts:
 - **Token conveyance MUST survive typed processing.** The §7 id convention
   alone yields a tokenless payload URL (a 404 for a followers-only post), and
   an extension property like `quant:structuredUrl` may be dropped by a typed
-  consumer before application code sees it (§7). Publishers MUST therefore
-  embed the token in the delivered **image attachment URLs** (`?token={token}`
-  on each `attachment` `Image` `url`) — standard AS2 attachments survive typed
-  vocabularies — and consumers SHOULD lift the token from a delivered
-  attachment URL and forward it to the structured-payload fetch. (This is what
-  Aurboda ships; see Implementations.) `quant:structuredUrl` MAY additionally
-  carry the token for consumers that preserve it.
+  consumer before application code sees it (§7). A publisher MUST therefore
+  convey the token on every followers-only delivery through at least one of
+  two channels, and MUST use the first whenever the post carries image
+  attachments: (a) the delivered **image attachment URLs** (`?token={token}`
+  on each `attachment` `Image` `url`) — standard AS2 attachments survive
+  typed vocabularies; (b) `quant:structuredUrl` carrying the token, the only
+  channel available for an **attachment-less** post (e.g. a followers-only
+  sleep observation with no chart) — its survival depends on the consumer
+  preserving unknown properties, so a publisher SHOULD attach at least one
+  tokenised image where the post has any renderable image at all. Consumers
+  SHOULD lift the token from a delivered attachment URL, falling back to a
+  same-host `quant:structuredUrl`, and forward it to the structured-payload
+  fetch. (Aurboda ships both channels; see Implementations.)
 - A request with a matching token resolves; without one, 404 (§8.3).
 - Tokens MUST be generated with a cryptographically secure RNG and MUST be
   revocable (regenerated or invalidated when the post is deleted or its
