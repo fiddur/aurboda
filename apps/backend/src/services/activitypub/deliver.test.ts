@@ -6,8 +6,11 @@ import { describe, expect, test } from 'vitest'
 import {
   buildArticleNote,
   buildArticleNoteCreate,
+  buildChallengeNote,
+  buildChallengeNoteCreate,
   buildFeedDelete,
   type DeliverableArticle,
+  type DeliverableChallenge,
   type DeliverablePost,
   imageAttachments,
   recipients,
@@ -192,5 +195,48 @@ describe('article delivery', () => {
     const object = await create.getObject()
     expect(object).toBeInstanceOf(Note)
     expect(object?.id?.href).toBe(noteId)
+  })
+})
+
+describe('buildChallengeNote / buildChallengeNoteCreate', () => {
+  const ORIGIN = 'https://aurboda.example'
+  const contextFor = () => createFeedFederation(ORIGIN, `${ORIGIN}/api`).createContext(new URL(ORIGIN))
+
+  const deliverableChallenge = (
+    visibility: DeliverableChallenge['visibility'],
+    message: string | null = 'Join me — **daily**!',
+  ): DeliverableChallenge => ({
+    challenge: { name: 'August 10k', url: `${ORIGIN}/u/fiddur/august-10k` },
+    created_at: new Date('2026-08-01T00:00:00Z'),
+    id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+    message,
+    updated_at: new Date('2026-08-01T00:00:00Z'),
+    visibility,
+  })
+
+  test('is a Note at the canonical post id with name + note + link content', async () => {
+    const ctx = await contextFor()
+    const post = deliverableChallenge('public')
+    const note = buildChallengeNote(ctx, 'fiddur', post)
+
+    const noteId = `${ORIGIN}/users/fiddur/feed/${post.id}`
+    expect(note).toBeInstanceOf(Note)
+    expect(note.id?.href).toBe(noteId)
+    expect(note.name).toBe('August 10k')
+    expect(note.content?.toString()).toContain('<p><strong>August 10k</strong></p>')
+    expect(note.content?.toString()).toContain('<strong>daily</strong>')
+    expect(note.content?.toString()).toContain(`${ORIGIN}/u/fiddur/august-10k`)
+    expect(hrefs([...note.toIds])).toContain(PUBLIC)
+  })
+
+  test('the Create wraps the Note with a distinct #create id, addressed by visibility', async () => {
+    const ctx = await contextFor()
+    const post = deliverableChallenge('followers', null)
+    const create = buildChallengeNoteCreate(ctx, 'fiddur', post)
+    expect(create.id?.href).toBe(`${ORIGIN}/users/fiddur/feed/${post.id}#create`)
+    expect(hrefs([...create.toIds])).toEqual([`${ORIGIN}/users/fiddur/followers`])
+    expect([...create.ccIds]).toEqual([])
+    const object = await create.getObject()
+    expect(object).toBeInstanceOf(Note)
   })
 })

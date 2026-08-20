@@ -65,9 +65,12 @@ import { extractActorPresentation } from './actor-presentation.ts'
 import {
   buildArticleNote,
   buildArticleNoteCreate,
+  buildChallengeNote,
+  buildChallengeNoteCreate,
   buildFeedCreate,
   buildFeedNote,
   toDeliverableArticle,
+  toDeliverableChallenge,
 } from './deliver.ts'
 import { toCryptoKeyPair } from './keys.ts'
 import { isPubliclyVisible } from './object.ts'
@@ -392,6 +395,8 @@ export const createFeedFederation = (
       // other). An article's Note is built from its stored content — no activity.
       const article = toDeliverableArticle(post)
       if (article != null) return buildArticleNote(ctx, identifier, article, apiBaseUrl)
+      const challenge = toDeliverableChallenge(post)
+      if (challenge != null) return buildChallengeNote(ctx, identifier, challenge)
       if (post.activity_id == null) return null
       // Resolve the merged-span activity so the served Note matches what the user
       // shared (and what we delivered), not just the anchor sub-activity (#881).
@@ -430,6 +435,8 @@ export const createFeedFederation = (
             // resolved activity.
             const article = toDeliverableArticle(post)
             if (article != null) return buildArticleNoteCreate(ctx, identifier, article, apiBaseUrl)
+            const challenge = toDeliverableChallenge(post)
+            if (challenge != null) return buildChallengeNoteCreate(ctx, identifier, challenge)
             if (post.activity_id == null) return null
             const activity = await resolveFeedActivity(identifier, post.activity_id)
             return activity == null ? null : buildFeedCreate(ctx, identifier, post, activity, apiBaseUrl)

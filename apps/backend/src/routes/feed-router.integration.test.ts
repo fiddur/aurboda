@@ -13,6 +13,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from 'vit
  * spy covers the article fan-out branches (including `kind === 'article'` on the
  * generic `PATCH /:postId`); the actual AS2 delivery is unit-tested in `deliver`.
  */
+import { createChallenge, createChallengeParticipation } from '../db/challenges.ts'
 import { createFeedPost } from '../db/feed.ts'
 import { insertTimeSeries } from '../db/time-series.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
@@ -25,10 +26,10 @@ const auth: RequestHandler = (req, _res, next) => {
   next()
 }
 
-const startApp = (deliver?: FeedDeliver, apiBaseUrl?: string) => {
+const startApp = (deliver?: FeedDeliver, apiBaseUrl?: string, webHost?: string) => {
   const app = express()
   app.use(express.json())
-  app.use('/feed', createFeedRouter(auth, deliver, undefined, apiBaseUrl))
+  app.use('/feed', createFeedRouter(auth, deliver, undefined, apiBaseUrl, undefined, webHost))
   const server = app.listen(0)
   const port = (server.address() as AddressInfo).port
   const close = () =>
@@ -139,7 +140,9 @@ describe('Article feed routes (integration)', () => {
       createdArticle: vi.fn(),
       deleted: vi.fn(),
       updated: vi.fn(),
+      createdChallenge: vi.fn(),
       updatedArticle: vi.fn(),
+      updatedChallenge: vi.fn(),
     }
     const spied = startApp(deliver)
     try {
@@ -237,5 +240,130 @@ describe('GET /feed/articles/:postId/export (Reddit/markdown export, C4)', () =>
     const res = await withBase.request.get(`/feed/articles/${created.body.post.id}/export`)
     expect(res.status).toBe(400)
     expect(res.body.error).toContain('followers-only')
+  })
+})
+
+describe('POST /feed/challenges (share a challenge — #994)', () => {
+  let app: ReturnType<typeof startApp>
+  let deliver: FeedDeliver
+
+  beforeAll(async () => {
+    await startTestDb()
+    deliver = {
+      created: vi.fn(),
+      createdArticle: vi.fn(),
+      createdChallenge: vi.fn(),
+      deleted: vi.fn(),
+      updated: vi.fn(),
+      updatedArticle: vi.fn(),
+      updatedChallenge: vi.fn(),
+    }
+    app = startApp(deliver, undefined, 'https://aurboda.example')
+  }, CONTAINER_TIMEOUT)
+
+  afterAll(async () => {
+    await app.close()
+    await stopTestDb()
+  })
+
+  beforeEach(async () => {
+    await cleanTestDb()
+    vi.clearAllMocks()
+  })
+
+  const spec = {
+    activity_type_id: null,
+    aggregation: 'sum' as const,
+    bucket_size: '1d' as const,
+    pattern: 'steps',
+    source_type: 'metric' as const,
+    unit: 'steps',
+  }
+
+  test('shares one of my own challenges: resolves name + canonical share URL server-side', async () => {
+    const user = getTestUser()
+    const challenge = await createChallenge(user, {
+      end_ts: new Date('2026-08-31T00:00:00Z'),
+      is_public: true,
+      name: 'August 10k',
+      spec,
+      start_ts: new Date('2026-08-01T00:00:00Z'),
+      timezone: 'Europe/Stockholm',
+    })
+
+    const res = await app.request
+      .post('/feed/challenges')
+      .send({ challenge_id: challenge.id, message: 'Join me — **daily**!', visibility: 'public' })
+    expect(res.status).toBe(200)
+    expect(res.body.post.kind).toBe('challenge')
+    expect(res.body.post.challenge).toEqual({
+      name: 'August 10k',
+      url: `https://aurboda.example/u/${user}/${challenge.slug}`,
+    })
+    expect(res.body.post.message).toBe('Join me — **daily**!')
+    expect(deliver.createdChallenge).toHaveBeenCalledTimes(1)
+  })
+
+  test('shares a joined (remote) challenge from its stored participation', async () => {
+    const user = getTestUser()
+    const participation = await createChallengeParticipation(user, {
+      challenge_url: 'https://peer.example/u/bob/spring-run',
+      end_ts: new Date('2026-08-31T00:00:00Z'),
+      host_identity: '@bob@peer.example',
+      name: 'Spring run',
+      spec,
+      start_ts: new Date('2026-08-01T00:00:00Z'),
+      timezone: 'UTC',
+    })
+
+    const res = await app.request
+      .post('/feed/challenges')
+      .send({ participation_id: participation.id, visibility: 'followers' })
+    expect(res.status).toBe(200)
+    expect(res.body.post.challenge).toEqual({
+      host_identity: '@bob@peer.example',
+      name: 'Spring run',
+      url: 'https://peer.example/u/bob/spring-run',
+    })
+    expect(res.body.post.visibility).toBe('followers')
+  })
+
+  test('400s unless exactly one of challenge_id/participation_id is given', async () => {
+    const both = await app.request.post('/feed/challenges').send({
+      challenge_id: '11111111-2222-4333-8444-555555555555',
+      participation_id: '11111111-2222-4333-8444-555555555556',
+    })
+    expect(both.status).toBe(400)
+    const neither = await app.request.post('/feed/challenges').send({})
+    expect(neither.status).toBe(400)
+  })
+
+  test('404s for an unknown challenge or participation', async () => {
+    const c = await app.request
+      .post('/feed/challenges')
+      .send({ challenge_id: '11111111-2222-4333-8444-555555555555' })
+    expect(c.status).toBe(404)
+    const p = await app.request
+      .post('/feed/challenges')
+      .send({ participation_id: '11111111-2222-4333-8444-555555555555' })
+    expect(p.status).toBe(404)
+  })
+
+  test('a visibility flip via the generic PATCH federates through the challenge path', async () => {
+    const user = getTestUser()
+    const challenge = await createChallenge(user, {
+      end_ts: new Date('2026-08-31T00:00:00Z'),
+      is_public: true,
+      name: 'August 10k',
+      spec,
+      start_ts: new Date('2026-08-01T00:00:00Z'),
+      timezone: 'UTC',
+    })
+    const created = await app.request.post('/feed/challenges').send({ challenge_id: challenge.id })
+    const patched = await app.request.patch(`/feed/${created.body.post.id}`).send({ visibility: 'unlisted' })
+    expect(patched.status).toBe(200)
+    expect(deliver.updatedChallenge).toHaveBeenCalledTimes(1)
+    expect(deliver.updated).not.toHaveBeenCalled()
+    expect(deliver.updatedArticle).not.toHaveBeenCalled()
   })
 })

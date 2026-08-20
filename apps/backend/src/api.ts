@@ -63,10 +63,13 @@ import { createOAuthRouter } from './routes/oauth-router.ts'
 import {
   deliverFeedArticlePost,
   deliverFeedArticleUpdate,
+  deliverFeedChallengePost,
+  deliverFeedChallengeUpdate,
   deliverFeedDelete,
   deliverFeedPost,
   deliverFeedUpdate,
   toDeliverableArticle,
+  toDeliverableChallenge,
 } from './services/activitypub/deliver.ts'
 import { createFeedFederation } from './services/activitypub/federation.ts'
 import { createTimelineBackfiller } from './services/activitypub/timeline-backfill.ts'
@@ -416,6 +419,23 @@ const main = async () => {
       const article = toDeliverableArticle(post)
       if (article) {
         void deliverFeedArticleUpdate(feedDeps, user, article).catch(onDeliverError('update', user, post.id))
+      }
+    },
+    // Challenge invitations federate like articles: a self-contained Note (#994).
+    createdChallenge: (user, post) => {
+      const challenge = toDeliverableChallenge(post)
+      if (challenge) {
+        void deliverFeedChallengePost(feedDeps, user, challenge).catch(
+          onDeliverError('create', user, post.id),
+        )
+      }
+    },
+    updatedChallenge: (user, post) => {
+      const challenge = toDeliverableChallenge(post)
+      if (challenge) {
+        void deliverFeedChallengeUpdate(feedDeps, user, challenge).catch(
+          onDeliverError('update', user, post.id),
+        )
       }
     },
   }

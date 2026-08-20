@@ -144,6 +144,7 @@ export const tableCreationOrder = [
   'feed_posts',
   'feed_posts_article_columns',
   'feed_posts_message_column',
+  'feed_posts_challenge_column',
   'feed_posts_indexes',
   'feed_tombstone',
   'feed_actor',

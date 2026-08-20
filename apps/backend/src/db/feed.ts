@@ -1,4 +1,4 @@
-import type { ArticleContent, FeedPostKind, FeedVisibility } from '@aurboda/api-spec'
+import type { ArticleContent, ChallengeShare, FeedPostKind, FeedVisibility } from '@aurboda/api-spec'
 
 /**
  * Feed posts — activities a user published to their federated feed.
@@ -26,6 +26,8 @@ export interface FeedPostRecord {
   include_chart: boolean
   /** Stored article payload (title + default window + blocks); null for `activity` posts. */
   article: ArticleContent | null
+  /** Stored challenge link payload (name + canonical URL); null unless kind = 'challenge'. */
+  challenge: ChallengeShare | null
   /** The author's personal message (plain text), or null when none was shared. */
   message: string | null
   /** Unguessable capability token for `followers`-only image URLs (see schema). */
@@ -51,6 +53,13 @@ export interface ArticlePostInput {
   article: ArticleContent
 }
 
+export interface ChallengePostInput {
+  visibility: FeedVisibility
+  challenge: ChallengeShare
+  /** The author's personal note (markdown); omitted/undefined stores NULL. */
+  message?: string | null
+}
+
 export interface FeedPostPatch {
   included_metrics?: string[]
   series_metrics?: string[]
@@ -64,7 +73,7 @@ export interface FeedPostPatch {
 }
 
 const FEED_POST_COLUMNS =
-  'id, kind, activity_id, included_metrics, series_metrics, visibility, include_map, include_chart, article, message, image_token, created_at, updated_at'
+  'id, kind, activity_id, included_metrics, series_metrics, visibility, include_map, include_chart, article, challenge, message, image_token, created_at, updated_at'
 
 interface FeedPostRow {
   id: string
@@ -77,6 +86,7 @@ interface FeedPostRow {
   include_chart: boolean
   // pg parses a jsonb column to its JS value on read (null for `activity` posts).
   article: ArticleContent | null
+  challenge: ChallengeShare | null
   message: string | null
   image_token: string
   created_at: Date
@@ -117,6 +127,25 @@ export const createArticlePost = async (user: string, input: ArticlePostInput): 
      VALUES ('article', $1, $2)
      RETURNING ${FEED_POST_COLUMNS}`,
     [input.visibility, JSON.stringify(input.article)],
+  )
+  return mapFeedPost(result.rows[0])
+}
+
+/**
+ * Create a `challenge` post (#994): the resolved challenge link payload in the
+ * `challenge` JSONB plus the author's personal note. No activity anchor and no
+ * shared metrics — the post is an invitation, not a data share.
+ */
+export const createChallengePost = async (
+  user: string,
+  input: ChallengePostInput,
+): Promise<FeedPostRecord> => {
+  const result = await query<FeedPostRow>(
+    user,
+    `INSERT INTO feed_posts (kind, visibility, challenge, message)
+     VALUES ('challenge', $1, $2, $3)
+     RETURNING ${FEED_POST_COLUMNS}`,
+    [input.visibility, JSON.stringify(input.challenge), input.message ?? null],
   )
   return mapFeedPost(result.rows[0])
 }

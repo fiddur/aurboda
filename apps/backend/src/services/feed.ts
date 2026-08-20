@@ -184,6 +184,8 @@ export const serializeFeedPost = async (
     // The stored article payload (title + default window + blocks); present only
     // for `article` posts, which carry no activity and so no resolved `content`.
     article: record.article ?? undefined,
+    // The stored challenge link payload; present only for `challenge` posts.
+    challenge: record.challenge ?? undefined,
     content,
     created_at: record.created_at.toISOString(),
     id: record.id,

@@ -27,6 +27,7 @@ const activity: ImageActivity = {
 const makePost = (overrides: Partial<FeedPostRecord> = {}): FeedPostRecord => ({
   activity_id: ACTIVITY_ID,
   article: null,
+  challenge: null,
   created_at: new Date('2026-07-01T08:00:00Z'),
   id: POST_ID,
   image_token: 'secret-token',

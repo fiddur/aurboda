@@ -1,4 +1,4 @@
-import type { ArticleContent, FeedVisibility } from '@aurboda/api-spec'
+import type { ArticleContent, ChallengeShare, FeedVisibility } from '@aurboda/api-spec'
 /**
  * Build and deliver a shared feed post over ActivityPub.
  *
@@ -26,6 +26,7 @@ import type { FeedPostRecord } from '../../db/index.ts'
 
 import { getSettings } from '../settings.ts'
 import { articleImageAttachments, renderArticleContentHtml } from './article-object.ts'
+import { renderChallengeShareHtml } from './challenge-object.ts'
 import { resolveActivityScalars } from './feed-activity.ts'
 import { addressingFor, feedPostContent, formatActivityWindow, isPubliclyVisible } from './object.ts'
 import { dateToTemporalInstant } from './temporal-interop.ts'
@@ -399,4 +400,110 @@ export const deliverFeedArticleUpdate = async (
     'followers',
     buildArticleNoteUpdate(ctx, user, post, deps.apiBaseUrl),
   )
+}
+
+// ---------------------------------------------------------------------------
+// Challenge shares (#994). A challenge invitation federates as a `Note` (like
+// an article): the user's markdown note + the challenge's canonical public
+// URL. Mastodon renders the link with the challenge page's existing OG preview
+// card. Served on the SAME object path as every post kind, so it tombstones
+// like any post. No activity to resolve and no attachments in phase 1.
+// ---------------------------------------------------------------------------
+
+/** The delivery-facing view of a challenge post (its `challenge` guaranteed present). */
+export interface DeliverableChallenge {
+  id: string
+  visibility: FeedVisibility
+  created_at: Date
+  updated_at: Date
+  challenge: ChallengeShare
+  message: string | null
+}
+
+/** Narrow a stored feed post to a `DeliverableChallenge`, or null when it isn't one. */
+export const toDeliverableChallenge = (post: FeedPostRecord): DeliverableChallenge | null =>
+  post.kind === 'challenge' && post.challenge != null
+    ? {
+        challenge: post.challenge,
+        created_at: post.created_at,
+        id: post.id,
+        message: post.message,
+        updated_at: post.updated_at,
+        visibility: post.visibility,
+      }
+    : null
+
+/**
+ * Build the Fedify `Note` for a challenge share: name heading + sanitised
+ * markdown note + canonical link as `content`, addressed per visibility, at the
+ * post's canonical Note id. Synchronous — nothing to resolve.
+ */
+export const buildChallengeNote = (ctx: Context<void>, user: string, post: DeliverableChallenge): Note => {
+  const noteId = ctx.getObjectUri(Note, { identifier: user, postId: post.id })
+  const { cc, to } = recipients(post.visibility, ctx.getFollowersUri(user))
+  return new Note({
+    attribution: ctx.getActorUri(user),
+    ccs: cc,
+    content: renderChallengeShareHtml(post.challenge, post.message),
+    id: noteId,
+    name: post.challenge.name,
+    published: dateToTemporalInstant(post.created_at),
+    tos: to,
+    url: noteId,
+  })
+}
+
+/** Wrap the challenge Note in the `Create` delivered to followers and listed in the outbox. */
+export const buildChallengeNoteCreate = (
+  ctx: Context<void>,
+  user: string,
+  post: DeliverableChallenge,
+): Create => {
+  const noteId = ctx.getObjectUri(Note, { identifier: user, postId: post.id })
+  const { cc, to } = recipients(post.visibility, ctx.getFollowersUri(user))
+  return new Create({
+    actor: ctx.getActorUri(user),
+    ccs: cc,
+    id: new URL(`${noteId.href}#create`),
+    object: buildChallengeNote(ctx, user, post),
+    published: dateToTemporalInstant(post.created_at),
+    tos: to,
+  })
+}
+
+/** Wrap the challenge Note in an `Update`; id carries `updated_at` so each edit is distinct. */
+export const buildChallengeNoteUpdate = (
+  ctx: Context<void>,
+  user: string,
+  post: DeliverableChallenge,
+): Update => {
+  const noteId = ctx.getObjectUri(Note, { identifier: user, postId: post.id })
+  const { cc, to } = recipients(post.visibility, ctx.getFollowersUri(user))
+  return new Update({
+    actor: ctx.getActorUri(user),
+    ccs: cc,
+    id: new URL(`${noteId.href}#update-${post.updated_at.getTime()}`),
+    object: buildChallengeNote(ctx, user, post),
+    tos: to,
+  })
+}
+
+/** Build and send the `Create{Note}` for a freshly-shared challenge to followers. */
+export const deliverFeedChallengePost = async (
+  deps: FeedDeliveryDeps,
+  user: string,
+  post: DeliverableChallenge,
+): Promise<void> => {
+  const ctx = await deps.federation.createContext(new URL(deps.origin))
+  await ctx.sendActivity({ identifier: user }, 'followers', buildChallengeNoteCreate(ctx, user, post))
+}
+
+/** Build and send the `Update{Note}` for an edited challenge share to followers. */
+export const deliverFeedChallengeUpdate = async (
+  deps: FeedDeliveryDeps,
+  user: string,
+  post: DeliverableChallenge,
+): Promise<void> => {
+  const ctx = await deps.federation.createContext(new URL(deps.origin))
+  await ctx.sendActivity({ identifier: user }, 'followers', buildChallengeNoteUpdate(ctx, user, post))
 }

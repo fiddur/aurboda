@@ -16,6 +16,7 @@ import { API_URL } from '../../config'
 import { formatEntryWindow } from './activity-stats'
 import { ActivityStatGrid } from './ActivityStatGrid'
 import { ArticleContent } from './ArticleContent'
+import { ChallengeShareContent } from './ChallengeShareContent'
 import { structuredHasNativeHrChart, structuredHasNativeMap } from './timeline-structured'
 import { TimelineStructured } from './TimelineStructured'
 import './FeedPostCard.css'
@@ -116,6 +117,8 @@ export const FeedPostCard = ({
           fall back to the server-built, HTML-escaped `content`. */}
       {post.kind === 'article' && post.article ? (
         <ArticleContent article={post.article} />
+      ) : post.kind === 'challenge' && post.challenge ? (
+        <ChallengeShareContent challenge={post.challenge} message={post.message} />
       ) : post.structured ? (
         <TimelineStructured structured={post.structured} />
       ) : post.metrics ? (

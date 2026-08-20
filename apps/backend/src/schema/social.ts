@@ -125,6 +125,8 @@ export const socialTables: Record<string, string> = {
       include_map       BOOLEAN NOT NULL DEFAULT false,
       include_chart     BOOLEAN NOT NULL DEFAULT false,
       article           JSONB,
+      -- Challenge link payload (name + canonical URL) for kind = 'challenge' (#994).
+      challenge         JSONB,
       message           TEXT,
       image_token       TEXT NOT NULL DEFAULT gen_random_uuid()::text,
       created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -140,6 +142,10 @@ export const socialTables: Record<string, string> = {
   // pre-existing tables (idempotent).
   feed_posts_message_column: `
     ALTER TABLE feed_posts ADD COLUMN IF NOT EXISTS message TEXT;
+  `,
+  // Challenge share posts (#994). Additive for pre-existing tables (idempotent).
+  feed_posts_challenge_column: `
+    ALTER TABLE feed_posts ADD COLUMN IF NOT EXISTS challenge JSONB;
   `,
   // `idx_feed_posts_series` is a GIN index over the shared-series set — the hot
   // path for the public series endpoint's `metric = ANY(series_metrics)` check.

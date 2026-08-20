@@ -125,15 +125,76 @@ export type UpdateFeedPostBody = z.infer<typeof updateFeedPostBodySchema>
 /**
  * The kind of a feed post. `activity` (the default) shares one of the user's
  * activities; `article` is a long-form post carrying markdown prose and inline
- * chart blocks over locked time windows. Modelled as a post *kind* rather than a
- * separate entity so articles reuse the whole feed (visibility, federation, home
- * timeline, the public-profile feed, permalinks).
+ * chart blocks over locked time windows; `challenge` invites people to a
+ * challenge (a personal note plus the challenge's canonical join-by-URL link).
+ * Modelled as a post *kind* rather than a separate entity so every kind reuses
+ * the whole feed (visibility, federation, home timeline, the public-profile
+ * feed, permalinks).
  */
-export const feedPostKindSchema = z
-  .enum(['activity', 'article'])
-  .meta({ description: 'Feed post kind: an activity share or a long-form article', id: 'FeedPostKind' })
+export const feedPostKindSchema = z.enum(['activity', 'article', 'challenge']).meta({
+  description: 'Feed post kind: an activity share, a long-form article, or a challenge invitation',
+  id: 'FeedPostKind',
+})
 
 export type FeedPostKind = z.infer<typeof feedPostKindSchema>
+
+// =============================================================================
+// Challenge posts (share a challenge to the feed — #994)
+// =============================================================================
+
+/**
+ * The stored payload of a `challenge` post: what the post links to. A snapshot
+ * of the challenge's name plus its canonical public URL — the same join-by-URL
+ * target the challenge page shares — resolved server-side at share time (from
+ * the owner's own challenge, or from a joined remote challenge's
+ * participation), never client-supplied. Deliberately carries no join token or
+ * standings data; anyone following the link goes through the normal public
+ * page / join flow.
+ */
+export const challengeShareSchema = z
+  .object({
+    host_identity: z.string().max(200).optional().meta({
+      description:
+        "The hosting instance's identity (e.g. `@user@host`) when sharing a joined remote challenge",
+    }),
+    name: z.string().min(1).max(200).meta({ description: 'Challenge name at share time' }),
+    url: z
+      .string()
+      .url()
+      .max(500)
+      .meta({ description: "The challenge's canonical public page URL (the join-by-URL target)" }),
+  })
+  .meta({ id: 'ChallengeShare' })
+
+export type ChallengeShare = z.infer<typeof challengeShareSchema>
+
+/**
+ * Body for sharing a challenge to the feed. Exactly ONE of `challenge_id` (one
+ * of the user's own challenges) or `participation_id` (a challenge they joined,
+ * possibly hosted elsewhere) — the server resolves the linked name/URL itself,
+ * so a post can never carry a spoofed link.
+ */
+export const shareChallengeBodySchema = z
+  .object({
+    challenge_id: z
+      .string()
+      .uuid()
+      .optional()
+      .meta({ description: 'One of your own challenges to share (exclusive with `participation_id`)' }),
+    message: z.string().max(feedPostMessageMaxLength).optional().meta({
+      description:
+        'Personal note shown above the link (markdown, rendered through the shared sanitiser). Empty/absent shares no text.',
+    }),
+    participation_id: z
+      .string()
+      .uuid()
+      .optional()
+      .meta({ description: 'A challenge you joined to share (exclusive with `challenge_id`)' }),
+    visibility: feedVisibilitySchema.default('public'),
+  })
+  .meta({ id: 'ShareChallengeBody' })
+
+export type ShareChallengeBody = z.infer<typeof shareChallengeBodySchema>
 
 /** A prose block: a run of markdown, rendered through the shared sanitiser (#910). */
 export const articleProseBlockSchema = z
@@ -275,6 +336,9 @@ export const feedPostSchema = z
     article: articleContentSchema
       .optional()
       .meta({ description: 'Article content, present only for `article` posts' }),
+    challenge: challengeShareSchema
+      .optional()
+      .meta({ description: 'Challenge link payload, present only for `challenge` posts' }),
     // The exact HTML `content` that federates for this post (headline + shared
     // scalar summary), so a client can render the post WYSIWYG — matching what
     // Mastodon shows — instead of reconstructing it from the metric keys. Absent

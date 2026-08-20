@@ -19,6 +19,8 @@ import {
   type FeedPostsResponse,
   type ShareActivityBody,
   shareActivityBodySchema,
+  type ShareChallengeBody,
+  shareChallengeBodySchema,
   type TimelineQuery,
   timelineQuerySchema,
   type TimelineResponse,
@@ -34,6 +36,7 @@ import type { RetroEnrichTrigger } from '../services/timeline-retro-enrich.ts'
 
 import {
   createArticlePost,
+  createChallengePost,
   createFeedPost,
   deleteFeedPost,
   getActivityById,
@@ -43,6 +46,7 @@ import {
 import { isPubliclyVisible } from '../services/activitypub/object.ts'
 import { buildArticleMarkdown, renderableArticleBlocks } from '../services/article-export.ts'
 import { buildArticleContent, mergeArticleContent } from '../services/article.ts'
+import { resolveChallengeShare } from '../services/challenge-share.ts'
 import { getFeedPage, normalizeFeedMessage, serializeFeedPost } from '../services/feed.ts'
 import { getSettings } from '../services/settings.ts'
 import { getTimelinePage } from '../services/timeline.ts'
@@ -70,6 +74,10 @@ export interface FeedDeliver {
   createdArticle: (user: string, post: FeedPostRecord) => void
   /** Federate an article edit as an `Update` so followers replace the stored object. */
   updatedArticle: (user: string, post: FeedPostRecord) => void
+  /** Fan a freshly-shared challenge invitation out to followers (#994). */
+  createdChallenge: (user: string, post: FeedPostRecord) => void
+  /** Federate a challenge-share edit as an `Update`. */
+  updatedChallenge: (user: string, post: FeedPostRecord) => void
 }
 
 export const createFeedRouter = (
@@ -78,6 +86,8 @@ export const createFeedRouter = (
   hub?: TimelineHub,
   apiBaseUrl?: string,
   retroEnrichTimeline?: RetroEnrichTrigger,
+  /** Canonical web origin, to build a shared challenge's public URL (#994). */
+  webHost?: string,
 ): TypedRouter => {
   const router = typedRouter()
 
@@ -179,6 +189,28 @@ export const createFeedRouter = (
       // Fan the post out to followers (best-effort; never blocks the response).
       deliver?.created(user, record, activity)
       res.json({ post: await serializeFeedPost(user, record, { includeStructured: true }), success: true })
+    },
+  )
+
+  // Challenge shares (#994): publish an invitation to one of the user's own
+  // challenges (`challenge_id`) or a challenge they joined (`participation_id`)
+  // — exactly one. The linked name/URL are resolved server-side so a post can
+  // never carry a spoofed link. Registered before the generic `/:postId` routes.
+  router.post<Record<string, never>, FeedPostResponse, ShareChallengeBody>(
+    '/challenges',
+    authMiddleware,
+    validateBody(shareChallengeBodySchema),
+    async (req, res) => {
+      const user = req.user!
+      const resolved = await resolveChallengeShare(user, req.body, webHost)
+      if (!resolved.ok) return res.status(resolved.status).json({ error: resolved.error, success: false })
+      const record = await createChallengePost(user, {
+        challenge: resolved.challenge,
+        message: normalizeFeedMessage(req.body.message) ?? null,
+        visibility: req.body.visibility,
+      })
+      deliver?.createdChallenge(user, record)
+      res.json({ post: await serializeFeedPost(user, record), success: true })
     },
   )
 
@@ -293,6 +325,7 @@ export const createFeedRouter = (
       // An article (e.g. a visibility flip via this generic route) has no linked
       // activity, so it must go through the article path — `updated` would no-op.
       if (record.kind === 'article') deliver?.updatedArticle(user, record)
+      else if (record.kind === 'challenge') deliver?.updatedChallenge(user, record)
       else deliver?.updated(user, record)
       res.json({ post: await serializeFeedPost(user, record, { includeStructured: true }), success: true })
     },

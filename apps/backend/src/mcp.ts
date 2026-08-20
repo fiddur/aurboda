@@ -107,6 +107,7 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
     followActions: deps.followActions,
     followerActions: deps.followerActions,
     retroEnrichTimeline: deps.retroEnrichTimeline,
+    webHost: deps.webHost,
   })
   registerChallengeTools(server, user, { apiBaseUrl: deps.apiBaseUrl, webHost: deps.webHost })
   registerScreentimeCategoryTools(server, user)

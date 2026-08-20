@@ -114,6 +114,15 @@ the backend directly need no extra config.
 - **Join buttons:** logged-in users on the host instance get a one-click **Join**;
   anyone can **Join from another instance** (enter your Aurboda host → you're sent
   to your own instance's `/challenges/join`, which does the federated join).
+- **Share to feed** (#994): every row on `/challenges` — hosted **and** joined — has a
+  **Share to feed** button that publishes an invitation to the federated feed: an
+  optional personal note (markdown, previewed in the dialog) plus the challenge's
+  canonical link, with the usual `public`/`unlisted`/`followers` audience. The server
+  resolves the linked name/URL from the challenge (or the joined participation) itself,
+  and never embeds a join token or standings data. Federates as a `Note`; Mastodon shows
+  the link with the challenge page's OG preview card. Also available as the
+  `share_challenge` MCP tool / `POST /feed/challenges`. See
+  [feed.md](feed.md#feed-posts) for the post model.
 
 ## Android widget
 
