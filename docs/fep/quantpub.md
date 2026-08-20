@@ -517,7 +517,7 @@ GET /api/public/freja/series?metric=stress&start=...&end=...&bucket=60s
 
 ## Prior art
 
-- **[Open Pace](https://codeberg.org/openpace)** and **FitPub** — federated
+- **[Open Pace](https://github.com/edance/openpace)** and **[FitPub](https://fitpub.social/)** — federated
   running/fitness publishing; single-domain (exercise) and product-shaped
   rather than a vocabulary for arbitrary metrics.
 - **[Endurain](https://github.com/joaovitoriasilva/endurain)** and
