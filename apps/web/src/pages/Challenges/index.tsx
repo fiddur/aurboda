@@ -18,6 +18,7 @@ import { useState } from 'preact/hooks'
 
 import { ActivityTypePicker } from '../../components/ActivityTypePicker'
 import { MetricPicker } from '../../components/MetricPicker'
+import { ShareChallengeDialog } from '../../components/ShareChallengeDialog'
 import { SHARE_VISIBILITY_OPTIONS, VisibilitySelector } from '../../components/VisibilitySelector'
 import {
   createChallenge,
@@ -196,6 +197,7 @@ function CreateChallengeForm({ onCreated }: { onCreated: () => void }) {
 function HostedRow({ challenge }: { challenge: Challenge }) {
   const queryClient = useQueryClient()
   const [copied, setCopied] = useState(false)
+  const [sharing, setSharing] = useState(false)
   const del = useMutation({
     mutationFn: () => deleteChallenge(challenge.id),
     onError: () => alert('Failed to delete the challenge.'),
@@ -231,16 +233,28 @@ function HostedRow({ challenge }: { challenge: Challenge }) {
         <button class="btn-secondary" onClick={copy}>
           {copied ? 'Copied!' : 'Copy link'}
         </button>
+        <button class="btn-secondary" onClick={() => setSharing(true)}>
+          Share to feed
+        </button>
         <button class="btn-danger" onClick={() => confirm(`Delete "${challenge.name}"?`) && del.mutate()}>
           Delete
         </button>
       </div>
+      {sharing && (
+        <ShareChallengeDialog
+          challengeId={challenge.id}
+          challengeName={challenge.name}
+          challengeUrl={challenge.share_url}
+          onClose={() => setSharing(false)}
+        />
+      )}
     </li>
   )
 }
 
 function JoinedRow({ participation }: { participation: ChallengeParticipation }) {
   const queryClient = useQueryClient()
+  const [sharing, setSharing] = useState(false)
   const leave = useMutation({
     mutationFn: () => leaveChallenge(participation.id),
     onError: () => alert('Failed to leave the challenge.'),
@@ -259,6 +273,9 @@ function JoinedRow({ participation }: { participation: ChallengeParticipation })
         <a class="btn-secondary" href={participation.challenge_url}>
           View
         </a>
+        <button class="btn-secondary" onClick={() => setSharing(true)}>
+          Share to feed
+        </button>
         <button
           class="btn-danger"
           onClick={() => confirm(`Leave "${participation.name}"?`) && leave.mutate()}
@@ -266,6 +283,14 @@ function JoinedRow({ participation }: { participation: ChallengeParticipation })
           Leave
         </button>
       </div>
+      {sharing && (
+        <ShareChallengeDialog
+          participationId={participation.id}
+          challengeName={participation.name}
+          challengeUrl={participation.challenge_url}
+          onClose={() => setSharing(false)}
+        />
+      )}
     </li>
   )
 }

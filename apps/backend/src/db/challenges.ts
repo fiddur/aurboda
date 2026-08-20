@@ -472,6 +472,18 @@ export const listChallengeParticipations = async (user: string): Promise<Challen
   return result.rows.map(mapParticipation)
 }
 
+export const getParticipationById = async (
+  user: string,
+  id: string,
+): Promise<ChallengeParticipationRecord | null> => {
+  const result = await query<ParticipationRow>(
+    user,
+    `SELECT ${PARTICIPATION_COLUMNS} FROM challenge_participations WHERE id = $1`,
+    [id],
+  )
+  return result.rows.length ? mapParticipation(result.rows[0]) : null
+}
+
 export const getParticipationByToken = async (
   user: string,
   token: string,

@@ -62,6 +62,17 @@ A feed post has a **`kind`**:
   the post's private capability token, which must never land in publicly-pasted text —
   make the article public or unlisted first.
 
+- **`challenge`** — an **invitation to a challenge** (#994): the author's personal note
+  (markdown, rendered through the same sanitiser as article prose) plus the challenge's
+  canonical public URL — one of the user's own challenges (its share URL) or a challenge
+  they joined (the host's URL), resolved **server-side** so a post can never carry a
+  spoofed link. The payload (name + URL, and the host identity for a joined challenge)
+  lives in a nullable `challenge` JSONB column; no join token and no standings data are
+  embedded — anyone following the link goes through the normal public page / join-by-URL
+  flow. Federates as a `Note` (Mastodon renders the link with the challenge page's
+  existing OG preview card). Shared via `POST /feed/challenges` (and the
+  `share_challenge` MCP tool) or the **Share to feed** button on the challenges page.
+
 An **`activity`** feed post references one of the user's activities and records the
 explicit metric selection that bounds what is shared:
 
@@ -537,6 +548,7 @@ Owner-facing (authenticated, scoped to the caller):
 | `GET /feed`                        | My feed posts, newest-first, keyset-paginated (`?cursor=` from the previous page's `next_cursor`); each post enriched with the shared activity's title/type, merged-span window, and full structured payload |
 | `POST /feed/activities/:id/share`  | Publish an activity with a chosen metric selection                                                                      |
 | `POST /feed/articles`              | Publish a long-form **article** (title + prose + inline chart/correlation blocks)                                       |
+| `POST /feed/challenges`            | Share a **challenge invitation** (personal note + canonical link); exactly one of `challenge_id`/`participation_id`     |
 | `PATCH /feed/articles/:postId`     | Edit an article (title / blocks / default window / visibility)                                                          |
 | `GET /feed/articles/:postId/export`| Export an article as paste-ready markdown (title + prose + one image link per block) for Reddit/text-only destinations  |
 | `PATCH /feed/:postId`              | Edit an activity post's selection / visibility / attachments                                                            |
@@ -571,7 +583,7 @@ Public / federation (unauthenticated):
 | `POST /users/:username/inbox` (+ `/inbox`)                   | Inbound `Follow` / `Undo{Follow}` / `Accept` / `Reject` (HTTP-Signature verified)                          |
 
 The owner-facing capability is also available over MCP as `list_feed`, `share_activity`,
-`create_article`, `update_article`, `export_article_markdown`, `update_feed_post`,
+`share_challenge`, `create_article`, `update_article`, `export_article_markdown`, `update_feed_post`,
 `delete_feed_post`, `list_following`, `follow_actor`, `unfollow_actor`, `list_followers`,
 `approve_follower`, `reject_follower`, and `list_timeline` — all backed by the same services as
 the REST routes (`create_article` / `update_article` ↔ `POST /feed/articles` / `PATCH
@@ -583,9 +595,11 @@ toggled with the `manually_approve_followers` user setting (`get_user_settings` 
 ## Storage
 
 Feed posts live in the user's own database in the `feed_posts` table. A `kind` column
-discriminates an `activity` post from an `article` post; an article's content (title +
-default window + ordered blocks) lives in a nullable `article` JSONB column, and its
-`activity_id`/metric columns stay empty. A nullable `message` column holds the author's
+discriminates an `activity` post from an `article` or `challenge` post; an article's
+content (title + default window + ordered blocks) lives in a nullable `article` JSONB
+column, a challenge share's link payload (name + canonical URL + optional host identity)
+in a nullable `challenge` JSONB column, and in both cases the `activity_id`/metric
+columns stay empty. A nullable `message` column holds the author's
 personal message (plain text; NULL when none was shared). `activity_id` is a
 **soft reference** (no foreign key): activities are soft-deleted and the series lookup
 re-checks `deleted_at` at query time, so a removed activity simply stops resolving rather

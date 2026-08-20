@@ -257,6 +257,7 @@ export {
   getChallengeById,
   getChallengeBySlug,
   getChallengeMemberByIdentity,
+  getParticipationById,
   getParticipationByToken,
   getParticipationByUrl,
   listChallengeMembers,
@@ -325,7 +326,9 @@ export { emitTimelineNotify, openTimelineChannel } from './timeline-notify.ts'
 export {
   type ArticlePostInput,
   countPublicFeedPosts,
+  type ChallengePostInput,
   createArticlePost,
+  createChallengePost,
   createFeedPost,
   deleteFeedPost,
   type FeedPostCursor,

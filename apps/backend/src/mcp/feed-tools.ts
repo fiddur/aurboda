@@ -6,6 +6,7 @@
 import {
   createArticleBodySchema,
   feedPostsQuerySchema,
+  shareChallengeBodySchema,
   followActorBodySchema,
   followersQuerySchema,
   shareActivityBodySchema,
@@ -23,6 +24,7 @@ import type { RetroEnrichTrigger } from '../services/timeline-retro-enrich.ts'
 
 import {
   createArticlePost,
+  createChallengePost,
   createFeedPost,
   deleteFeedPost,
   getActivityById,
@@ -35,6 +37,7 @@ import {
 import { isPubliclyVisible } from '../services/activitypub/object.ts'
 import { buildArticleMarkdown, renderableArticleBlocks } from '../services/article-export.ts'
 import { buildArticleContent, mergeArticleContent } from '../services/article.ts'
+import { resolveChallengeShare } from '../services/challenge-share.ts'
 import { getFeedPage, normalizeFeedMessage, serializeFeedPost } from '../services/feed.ts'
 import { serializeFollower } from '../services/followers.ts'
 import { serializeFollowing } from '../services/following.ts'
@@ -56,10 +59,12 @@ export interface FeedToolsOptions {
   followerActions?: FollowerActions
   apiBaseUrl?: string
   retroEnrichTimeline?: RetroEnrichTrigger
+  /** Canonical web origin, to build a shared challenge's public URL (#994). */
+  webHost?: string
 }
 
 export const registerFeedTools = (server: McpServer, user: string, options: FeedToolsOptions = {}) => {
-  const { apiBaseUrl, deliver, followActions, followerActions, retroEnrichTimeline } = options
+  const { apiBaseUrl, deliver, followActions, followerActions, retroEnrichTimeline, webHost } = options
   server.tool(
     'list_feed',
     "List posts you have published to your feed, newest first, with their shared metric selection, series opt-in, and visibility. Pass `cursor` (from a previous call's `next_cursor`) to page.",
@@ -106,10 +111,29 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
         visibility: body.visibility,
       })
       if (!record) return errorResponse('Feed post not found')
-      // Federate the edit as an Update, same as the REST update route. An article
-      // has no linked activity, so route it through the article path.
+      // Federate the edit as an Update, same as the REST update route. Articles
+      // and challenge shares have no linked activity, so they must go through
+      // their own paths — the generic `updated` would silently no-op.
       if (record.kind === 'article') deliver?.updatedArticle(user, record)
+      else if (record.kind === 'challenge') deliver?.updatedChallenge(user, record)
       else deliver?.updated(user, record)
+      return jsonResponse(await serializeFeedPost(user, record))
+    },
+  )
+
+  server.tool(
+    'share_challenge',
+    "Publish a challenge INVITATION to your feed: your personal note (markdown) plus the challenge's canonical join-by-URL link. Pass exactly one of `challenge_id` (one of your own challenges) or `participation_id` (a challenge you joined, possibly hosted elsewhere) — the server resolves the linked name/URL itself.",
+    { ...shareChallengeBodySchema.shape },
+    async ({ challenge_id, message, participation_id, visibility }) => {
+      const resolved = await resolveChallengeShare(user, { challenge_id, participation_id }, webHost)
+      if (!resolved.ok) return errorResponse(resolved.error)
+      const record = await createChallengePost(user, {
+        challenge: resolved.challenge,
+        message: normalizeFeedMessage(message) ?? null,
+        visibility,
+      })
+      deliver?.createdChallenge(user, record)
       return jsonResponse(await serializeFeedPost(user, record))
     },
   )

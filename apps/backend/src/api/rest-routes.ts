@@ -167,7 +167,7 @@ export const mountRestRouters = ({
   httpd.use('/feed/followers', createFeedFollowersRouter(authMiddleware, followerActions))
   httpd.use(
     '/feed',
-    createFeedRouter(authMiddleware, feedDeliver, timelineHub, apiBaseUrl, retroEnrichTimeline),
+    createFeedRouter(authMiddleware, feedDeliver, timelineHub, apiBaseUrl, retroEnrichTimeline, webHost),
   )
   httpd.use('/challenges', createChallengesRouter(authMiddleware, webHost, apiBaseUrl))
   httpd.use(createChallengeDataRouter())

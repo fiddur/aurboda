@@ -143,3 +143,26 @@
     border-color: #374151;
   }
 }
+
+/* Challenge-share preview card (#994): a bordered mini-render of the post. */
+.share-dialog-preview {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
+.share-dialog-preview p {
+  margin: 0 0 0.4rem;
+}
+
+.share-dialog-preview p:last-child {
+  margin-bottom: 0;
+}
+
+@media (prefers-color-scheme: dark) {
+  .share-dialog-preview {
+    border-color: #374151;
+  }
+}

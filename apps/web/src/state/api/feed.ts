@@ -12,6 +12,7 @@ import type {
   FollowingActor,
   FollowingResponse,
   ShareActivityBody,
+  ShareChallengeBody,
   TimelineResponse,
   UpdateArticleBody,
   UpdateFeedPostBody,
@@ -46,6 +47,15 @@ export const fetchFeed = async (cursor?: string): Promise<FeedPostsResponse> => 
     params: cursor === undefined ? {} : { cursor },
   })
   return response.data
+}
+
+/** Share a challenge invitation (your note + the canonical link) to the feed (#994). */
+export const shareChallenge = async (body: ShareChallengeBody): Promise<FeedPost> => {
+  const response = await axios.post<FeedPostResponse>(`${API_URL}/feed/challenges`, body, {
+    headers: authHeaders(),
+  })
+  if (!response.data.post) throw new Error('Share failed: no post returned')
+  return response.data.post
 }
 
 /** Update a shared post's metric selection, series opt-in, or visibility. */

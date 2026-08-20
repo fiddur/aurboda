@@ -96,8 +96,10 @@ const sanitizeArticleHtml = (html: string): string =>
  * Render one run of authored markdown to sanitised, federation-safe HTML. Options
  * (GFM + hard line breaks) are passed per call, matching the web's `renderMarkdown`
  * (#910) without mutating `marked`'s process-wide defaults for every other importer.
+ * Exported for the challenge-share Note, whose personal note is markdown through
+ * the same pipeline (#994).
  */
-const renderProse = (markdown: string): string =>
+export const renderProse = (markdown: string): string =>
   sanitizeArticleHtml(marked.parse(markdown, { async: false, breaks: true, gfm: true }))
 
 /**

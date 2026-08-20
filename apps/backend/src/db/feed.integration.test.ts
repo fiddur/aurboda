@@ -10,6 +10,7 @@ import {
   type ArticlePostInput,
   countPublicFeedPosts,
   createArticlePost,
+  createChallengePost,
   createFeedPost,
   deleteFeedPost,
   type FeedPostInput,
@@ -369,6 +370,28 @@ describe('Feed posts integration', () => {
       await createFeedPost(user, postInput({ activity_id: activityId, series_metrics: ['heart_rate'] }))
       await deleteActivity(user, activityId)
       expect(await findCoveringSharedSeriesWindow(user, 'heart_rate', within.start, within.end)).toBeNull()
+    })
+  })
+
+  describe('challenge posts (#994)', () => {
+    test('createChallengePost stores the payload + note and lists like any post', async () => {
+      const user = getTestUser()
+      const post = await createChallengePost(user, {
+        challenge: { name: 'August 10k', url: 'https://aurboda.example/u/me/aug10k' },
+        message: 'Join me!',
+        visibility: 'unlisted',
+      })
+      expect(post.kind).toBe('challenge')
+      expect(post.challenge).toEqual({ name: 'August 10k', url: 'https://aurboda.example/u/me/aug10k' })
+      expect(post.message).toBe('Join me!')
+      expect(post.activity_id).toBeNull()
+      expect(post.article).toBeNull()
+
+      const fetched = await getFeedPostById(user, post.id)
+      expect(fetched?.challenge).toEqual(post.challenge)
+      expect((await listFeedPosts(user, 10)).map((p) => p.id)).toContain(post.id)
+      // Public/unlisted challenge shares appear on the outbox listing like any post.
+      expect((await listPublicFeedPosts(user)).map((p) => p.id)).toContain(post.id)
     })
   })
 })
