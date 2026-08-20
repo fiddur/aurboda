@@ -20,20 +20,29 @@ describe('defaultsFromChart', () => {
 
   it('maps charted metrics to their summaries (HR → avg + max + zones) and full series', () => {
     const { summary, series } = defaultsFromChart(['heart_rate', 'distance'])
-    expect(summary).toEqual(['duration', 'distance', 'heart_rate_avg', 'heart_rate_max', 'hr_zone_minutes'])
+    expect(summary).toEqual([
+      'duration',
+      'distance',
+      'calories',
+      'heart_rate_avg',
+      'heart_rate_max',
+      'hr_zone_minutes',
+    ])
     expect(series).toEqual(['heart_rate'])
   })
 
-  it('includes series for a charted metric with no scalar summary (e.g. speed)', () => {
+  it('always prechecks the cumulative staples the chart cannot mirror (distance, calories)', () => {
+    // Distance/calories are excluded from the chart by design, so chart
+    // mirroring alone would never precheck them — a run without Distance reads
+    // wrong. The dialog drops them again for activities without the data.
     const { summary, series } = defaultsFromChart(['speed'])
-    // speed has no summary source; duration is always included.
-    expect(summary).toEqual(['duration'])
+    expect(summary).toEqual(['duration', 'distance', 'calories'])
     expect(series).toEqual(['speed'])
   })
 
   it('ignores charted metrics the dialog cannot represent', () => {
     const { summary, series } = defaultsFromChart(['hrv_rmssd'])
-    expect(summary).toEqual(['duration'])
+    expect(summary).toEqual(['duration', 'distance', 'calories'])
     expect(series).toEqual([])
   })
 })

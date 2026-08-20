@@ -35,18 +35,34 @@ export const SERIES_METRICS: { key: MetricType; label: string }[] = [
 export const DEFAULT_SUMMARY = ['duration', 'distance', 'heart_rate_avg', 'heart_rate_max', 'calories']
 
 /**
+ * Summaries whose source is cumulative and therefore NEVER drawn on the
+ * activity chart (`EXCLUDED_METRICS`) — mirroring the chart can't represent the
+ * user's intent about them, yet they're the staple share stats (a run without
+ * Distance reads wrong). Always prechecked; the dialog only offers (and
+ * `buildShareBody` only sends) metrics the activity actually has, so these
+ * silently drop out for activities without the data.
+ */
+const CUMULATIVE_STAPLES = ['distance', 'calories']
+
+/**
  * Seed the share dialog's initial selection from the metrics currently shown on
- * the activity's chart: `duration` (always) plus every summary whose source
- * metric is on the chart, and the full series for each charted metric. Falls
- * back to {@link DEFAULT_SUMMARY} (no series) when the chart selection is unknown.
+ * the activity's chart: `duration` and the cumulative staples (always) plus
+ * every summary whose source metric is on the chart, and the full series for
+ * each charted metric. Falls back to {@link DEFAULT_SUMMARY} (no series) when
+ * the chart selection is unknown.
  */
 export const defaultsFromChart = (chartMetrics?: string[]): { summary: string[]; series: MetricType[] } => {
   if (!chartMetrics || chartMetrics.length === 0) return { series: [], summary: DEFAULT_SUMMARY }
   return {
     series: SERIES_METRICS.filter((m) => chartMetrics.includes(m.key)).map((m) => m.key),
+    // The staples are excluded from the mirror pass so a charted `distance`
+    // (possible via a custom chart selection) isn't prechecked twice.
     summary: [
       'duration',
-      ...SUMMARY_METRICS.filter((m) => m.source && chartMetrics.includes(m.source)).map((m) => m.key),
+      ...CUMULATIVE_STAPLES,
+      ...SUMMARY_METRICS.filter(
+        (m) => m.source && chartMetrics.includes(m.source) && !CUMULATIVE_STAPLES.includes(m.key),
+      ).map((m) => m.key),
     ],
   }
 }
