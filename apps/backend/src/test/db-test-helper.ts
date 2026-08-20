@@ -98,6 +98,7 @@ export const cleanTestDb = async (): Promise<void> => {
     'challenge_participations',
     'challenges',
     'shared_dashboards',
+    'autoshare_rules',
     'feed_posts',
     'feed_actor',
     'feed_follower',

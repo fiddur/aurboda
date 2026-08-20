@@ -15,8 +15,18 @@ export const activitiesTables: Record<string, string> = {
       title           VARCHAR(255),
       data            JSONB,
       deleted_at      TIMESTAMPTZ,
-      superseded_by   UUID REFERENCES activities(id) ON DELETE SET NULL
+      superseded_by   UUID REFERENCES activities(id) ON DELETE SET NULL,
+      -- When the row was INGESTED (not when the activity happened) — gates the
+      -- auto-share rules' "new arrivals only" guarantee (#903). Pre-existing
+      -- rows default to the migration moment, which necessarily predates any
+      -- rule enable (the feature ships with this column).
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
+  `,
+
+  // Additive ingest timestamp for activities tables created before #903 (idempotent).
+  activities_created_at: `
+    ALTER TABLE activities ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   `,
 
   activities_indexes: `

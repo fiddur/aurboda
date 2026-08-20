@@ -75,6 +75,9 @@ import { createFeedFederation } from './services/activitypub/federation.ts'
 import { createTimelineBackfiller } from './services/activitypub/timeline-backfill.ts'
 import { createAurbodaEnrichAttempt } from './services/activitypub/timeline-enrich.ts'
 import { auditError, auditInfo } from './services/audit-log.ts'
+import { createAutoshareDeps } from './services/autoshare-deps.ts'
+import { type AutoshareQueue, createAutoshareQueue } from './services/autoshare-queue.ts'
+import { evaluateAutoshareWindow } from './services/autoshare.ts'
 import { triggerCalorieComputation } from './services/calorie-computation.ts'
 import { createCalorieQueue, type CalorieQueue } from './services/calorie-queue.ts'
 import { getCentralDb, initializeCentralDb } from './services/central-db.ts'
@@ -238,6 +241,7 @@ const main = async () => {
   // Deduction queue is assigned once pg-boss is up (below). The notifier closes
   // over the variable, so it starts enqueuing as soon as the queue exists.
   let deductionQueue: DeductionQueue | null = null
+  let autoshareQueue: AutoshareQueue | null = null
   const activityNotifier: ActivityNotifier = (user, activityType, start, end, sourceRuleId) => {
     deductionQueue?.enqueueEvaluation({
       activity_type: activityType,
@@ -246,6 +250,9 @@ const main = async () => {
       window_end: end.toISOString(),
       window_start: start.toISOString(),
     })
+    // Auto-share rules (#903) evaluate the same mutation windows, after a
+    // stabilisation delay (the queue's startAfter). Fire-and-forget.
+    void autoshareQueue?.enqueueEvaluation(user, start, end)
   }
 
   // Create sync provider for auto-syncing data before queries. onActivitySynced
@@ -439,6 +446,24 @@ const main = async () => {
       }
     },
   }
+  // Auto-share rules (#903): evaluate settled activities against enabled rules
+  // after a stabilisation delay, publishing matches through the SAME
+  // feedDeliver.created fan-out a manual share fires. The deps double as the
+  // preview deps for the REST router and MCP tools.
+  const autoshareDeps = createAutoshareDeps(feedDeliver.created)
+  if (boss) {
+    try {
+      autoshareQueue = await createAutoshareQueue(boss, {
+        evaluateWindow: (user, start, end) => evaluateAutoshareWindow(user, start, end, autoshareDeps),
+      })
+    } catch (error) {
+      console.error('Failed to initialize auto-share queue:', error)
+    }
+  }
+  if (!autoshareQueue) {
+    console.warn('⚠️ Auto-share evaluation disabled (no job queue)')
+  }
+
   // The network-requiring follow operations, bound to the same federation +
   // origin, shared by the REST following router and the MCP follow tools.
   const followActions: FollowActions = {
@@ -461,6 +486,7 @@ const main = async () => {
     '/mcp',
     createMcpRouter(auth, {
       apiBaseUrl,
+      autosharePreviewDeps: autoshareDeps,
       centralDb,
       deductionQueue: deductionQueue ?? undefined,
       engineDeps,
@@ -597,6 +623,7 @@ const main = async () => {
   // Per-domain REST routers
   mountRestRouters({
     activityNotifier,
+    autosharePreviewDeps: autoshareDeps,
     adminMiddleware,
     apiBaseUrl,
     auth,

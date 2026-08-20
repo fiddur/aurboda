@@ -184,6 +184,7 @@ export const serializeFeedPost = async (
     // The stored article payload (title + default window + blocks); present only
     // for `article` posts, which carry no activity and so no resolved `content`.
     article: record.article ?? undefined,
+    autoshare_rule_id: record.autoshare_rule_id ?? undefined,
     // The stored challenge link payload; present only for `challenge` posts.
     challenge: record.challenge ?? undefined,
     content,

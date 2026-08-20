@@ -147,6 +147,39 @@ export const socialTables: Record<string, string> = {
   feed_posts_challenge_column: `
     ALTER TABLE feed_posts ADD COLUMN IF NOT EXISTS challenge JSONB;
   `,
+  // Which auto-share rule created a post (#903): the "via rule" marker AND the
+  // hard-dedupe record — an activity/merge-group with ANY referencing post
+  // (manual or auto) is never auto-shared again. Additive (idempotent).
+  feed_posts_autoshare_column: `
+    ALTER TABLE feed_posts ADD COLUMN IF NOT EXISTS autoshare_rule_id UUID;
+  `,
+
+  // Auto-share rules (#903): predicate over a settled activity + the share
+  // template of the post it creates. Rules start DISABLED; enabled_at gates
+  // evaluation so enabling never shares activities ingested before it.
+  autoshare_rules: `
+    CREATE TABLE IF NOT EXISTS autoshare_rules (
+      id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      name                  VARCHAR(255) NOT NULL,
+      enabled               BOOLEAN NOT NULL DEFAULT false,
+      enabled_at            TIMESTAMPTZ,
+      -- predicate
+      activity_types        TEXT[] NOT NULL DEFAULT '{}',
+      min_duration_seconds  INTEGER,
+      max_duration_seconds  INTEGER,
+      min_distance_meters   DOUBLE PRECISION,
+      source                VARCHAR(64),
+      -- share template (mirrors a manual share)
+      included_metrics      TEXT[] NOT NULL DEFAULT '{}',
+      series_metrics        TEXT[] NOT NULL DEFAULT '{}',
+      include_chart         BOOLEAN NOT NULL DEFAULT false,
+      include_map           BOOLEAN NOT NULL DEFAULT false,
+      visibility            VARCHAR(12) NOT NULL DEFAULT 'followers',
+      message               TEXT,
+      created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `,
   // `idx_feed_posts_series` is a GIN index over the shared-series set — the hot
   // path for the public series endpoint's `metric = ANY(series_metrics)` check.
   feed_posts_indexes: `

@@ -549,6 +549,7 @@ Owner-facing (authenticated, scoped to the caller):
 | `POST /feed/activities/:id/share`  | Publish an activity with a chosen metric selection                                                                      |
 | `POST /feed/articles`              | Publish a long-form **article** (title + prose + inline chart/correlation blocks)                                       |
 | `POST /feed/challenges`            | Share a **challenge invitation** (personal note + canonical link); exactly one of `challenge_id`/`participation_id`     |
+| `GET/POST /autoshare-rules` (+`/:id`, `/preview`) | [Auto-share rules](auto-share-rules.md): automatically publish matching settled activities (#903)         |
 | `PATCH /feed/articles/:postId`     | Edit an article (title / blocks / default window / visibility)                                                          |
 | `GET /feed/articles/:postId/export`| Export an article as paste-ready markdown (title + prose + one image link per block) for Reddit/text-only destinations  |
 | `PATCH /feed/:postId`              | Edit an activity post's selection / visibility / attachments                                                            |

@@ -14,6 +14,7 @@ import { type Request, type Response, Router } from 'express'
 import type { Auth } from './auth.ts'
 import type { GarminClient } from './integrations/garmin/client.ts'
 import type { ouraClient } from './integrations/oura/client.ts'
+import type { AutosharePreviewDeps } from './mcp/autoshare-rule-tools.ts'
 import type { FeedDeliver } from './routes/feed-router.ts'
 import type { CentralDb } from './services/central-db.ts'
 import type { DeductionEngineDeps } from './services/deduction-engine.ts'
@@ -26,6 +27,7 @@ import type { RetroEnrichTrigger } from './services/timeline-retro-enrich.ts'
 
 import { registerActivityTools } from './mcp/activity-tools.ts'
 import { registerActivityTypeTools } from './mcp/activity-type-tools.ts'
+import { registerAutoshareRuleTools } from './mcp/autoshare-rule-tools.ts'
 import { registerChallengeTools } from './mcp/challenge-tools.ts'
 import { registerChartTools } from './mcp/chart-tools.ts'
 import { registerCorrelationTools } from './mcp/correlation-tools.ts'
@@ -56,6 +58,7 @@ type OuraClientType = ReturnType<typeof ouraClient>
 
 interface McpDeps {
   apiBaseUrl?: string
+  autosharePreviewDeps?: AutosharePreviewDeps
   centralDb?: CentralDb
   deductionQueue?: DeductionQueue
   engineDeps?: DeductionEngineDeps
@@ -84,6 +87,7 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
   registerActivityTools(server, user, deps.onActivityMutated)
   registerActivityTypeTools(server, user)
   registerDeductionRuleTools(server, user, engineDeps, deps.deductionQueue)
+  if (deps.autosharePreviewDeps) registerAutoshareRuleTools(server, user, deps.autosharePreviewDeps)
   registerSyncTools(server, user, deps.oura, deps.garmin, deps.stravaQueue, deps.onActivityMutated)
   registerSettingsTools(server, user)
   registerLocationTools(server, user)

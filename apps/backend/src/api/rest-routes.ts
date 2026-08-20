@@ -9,6 +9,7 @@ import type { Client } from 'pg'
 
 import type { Auth } from '../auth.ts'
 import type { GarminClient } from '../integrations/garmin/client.ts'
+import type { AutoshareDeps } from '../services/autoshare.ts'
 import type { CentralDb } from '../services/central-db.ts'
 import type { DeductionEngineDeps } from '../services/deduction-engine.ts'
 import type { ActivityNotifier, DeductionQueue } from '../services/deduction-queue.ts'
@@ -28,6 +29,7 @@ import { createActivitiesRouter } from '../routes/activities-router.ts'
 import { createActivityTypesRouter } from '../routes/activity-types-router.ts'
 import { createAdminRouter } from '../routes/admin-router.ts'
 import { createAuditLogRouter } from '../routes/audit-log-router.ts'
+import { createAutoshareRulesRouter } from '../routes/autoshare-rules-router.ts'
 import { createChallengeDataRouter } from '../routes/challenge-data-router.ts'
 import { createChallengesRouter } from '../routes/challenges-router.ts'
 import { createChartDataRouter } from '../routes/chart-data-router.ts'
@@ -98,6 +100,11 @@ interface RestRoutesDeps {
   followerActions: FollowerActions
   timelineHub: TimelineHub
   retroEnrichTimeline: RetroEnrichTrigger
+  /** Merge-group/window resolution behind the auto-share rule preview (#903). */
+  autosharePreviewDeps: Pick<
+    AutoshareDeps,
+    'listCandidates' | 'getGroup' | 'resolveWindow' | 'distanceMeters'
+  >
 }
 
 export const mountRestRouters = ({
@@ -114,6 +121,7 @@ export const mountRestRouters = ({
   activityNotifier,
   engineDeps,
   deductionQueue,
+  autosharePreviewDeps,
   feedDeliver,
   followActions,
   followerActions,
@@ -153,6 +161,7 @@ export const mountRestRouters = ({
     '/deduction-rules',
     createDeductionRulesRouter(authMiddleware, engineDeps, deductionQueue ?? undefined),
   )
+  httpd.use('/autoshare-rules', createAutoshareRulesRouter(authMiddleware, autosharePreviewDeps))
   httpd.use('/locations', createLocationsRouter(authMiddleware))
   httpd.use(createSettingsRouter(authMiddleware))
   httpd.use(createAuditLogRouter(authMiddleware))
