@@ -12,9 +12,9 @@ home-built trackers can follow each other (RFC — looking for collaborators)
 ---
 
 A lot of us run home-built or self-hosted tracking systems — and they're all
-islands. I've been experimenting with making mine *federated*: my workouts and
-sleep observations are ActivityPub posts, so anyone on Mastodon can follow me
-and see them. But between two tools that speak a small extra vocabulary,
+islands. I've been experimenting with making mine *federated*: my workouts are
+ActivityPub posts (and the spec covers any observation — sleep, HRV, steps,
+mood, …), so anyone on Mastodon can follow me and see them. But between two tools that speak a small extra vocabulary,
 something better happens: the subscriber renders the *actual data* — an
 interactive chart with real hoverable values, not a flattened text summary and
 a static PNG.
@@ -43,7 +43,7 @@ I've written up as a draft FEP (Fediverse Enhancement Proposal) called
    host speaks the spec with one cacheable request.
 
 That's a **weekend project on top of an existing home-built tracker** — the
-publishing side needs no ActivityPub stack at all, just two-and-a-half static
+publishing side needs no ActivityPub stack at all, just two-and-a-half
 routes. Add a minimal AP actor later and you're followable from Mastodon and
 every implementing peer.
 
@@ -53,7 +53,8 @@ Privacy is a first-class part of the spec, because QS data is sensitive:
   are a separate per-post, per-metric opt-in.
 - Unshared data is indistinguishable from nonexistent (404, never 403).
 - Followers-only posts use capability URLs; deleting a post revokes access
-  immediately (`no-store` everywhere).
+  immediately (`no-store` on every data response — only the tiny discovery
+  document is cacheable).
 - It's not just exercise: a generic `Observation` shape covers sleep, HRV,
   steps, mood, glucose — anything measured over a window.
 

@@ -14,3 +14,7 @@ federation code, before submission to the
   (QuantPub vs. Personal Metrics Vocabulary / MetricPub) is open for community
   input. Aurboda's own implementation of the pattern is documented in
   [docs/features/feed.md](../features/feed.md).
+- **[quantpub-reddit-draft.md](./quantpub-reddit-draft.md)** — draft of the
+  r/QuantifiedSelf outreach post (issue #905 step 3), kept in-repo for review;
+  not itself a FEP. Placeholders mark the screenshots and links to fill in
+  before posting.
