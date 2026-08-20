@@ -490,7 +490,9 @@ resolving.
   feed responses include the full structured payload (typed scalars + inline series + route,
   assembled by the same helper the public structured endpoint uses), so the author sees the
   interactive combined chart and time-synced map exactly as a follower would, and can verify
-  what they shared. The public profile renders the lighter native **stat grid** (message +
+  what they shared. The listing is **keyset-paginated** (20 per page, "Load more" — the same
+  cursor style as the home timeline), so the inline payload weight stays bounded per request
+  however many posts exist (#1012). The public profile renders the lighter native **stat grid** (message +
   activity date + typed scalars) without the series weight — and the MCP `list_feed` tool
   likewise omits `structured` (an intentional payload-weight divergence from `GET /feed`,
   not a capability gap: the underlying data is all reachable via the metric-query tools).
@@ -532,7 +534,7 @@ Owner-facing (authenticated, scoped to the caller):
 
 | Method & path                      | Purpose                                                                                                                 |
 | ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `GET /feed`                        | List my feed posts (each enriched with the shared activity's title/type and merged-span window, resolved at query time) |
+| `GET /feed`                        | My feed posts, newest-first, keyset-paginated (`?cursor=` from the previous page's `next_cursor`); each post enriched with the shared activity's title/type, merged-span window, and full structured payload |
 | `POST /feed/activities/:id/share`  | Publish an activity with a chosen metric selection                                                                      |
 | `POST /feed/articles`              | Publish a long-form **article** (title + prose + inline chart/correlation blocks)                                       |
 | `PATCH /feed/articles/:postId`     | Edit an article (title / blocks / default window / visibility)                                                          |

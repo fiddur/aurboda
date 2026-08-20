@@ -12,26 +12,12 @@ import type { TimelineEntry } from '@aurboda/api-spec'
 import type { TimelineCursor, TimelineEntryRecord } from '../db/index.ts'
 
 import { listTimelineEntries } from '../db/index.ts'
-
-/** Encode a `(published_at, id)` keyset position as an opaque base64 cursor. */
-const encodeCursor = (record: TimelineEntryRecord): string =>
-  Buffer.from(`${record.published_at.getTime()}:${record.id}`).toString('base64url')
-
-/** A canonical UUID, to validate a decoded cursor's id before it hits the `$::uuid` cast. */
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+import { decodeKeysetCursor, encodeKeysetCursor } from './keyset-cursor.ts'
 
 /** Decode an opaque cursor, or undefined if it's missing/malformed (→ first page). */
 const decodeCursor = (cursor: string | undefined): TimelineCursor | undefined => {
-  if (cursor == null || cursor === '') return undefined
-  const decoded = Buffer.from(cursor, 'base64url').toString('utf8')
-  const sep = decoded.indexOf(':')
-  if (sep <= 0) return undefined
-  const ms = Number(decoded.slice(0, sep))
-  const id = decoded.slice(sep + 1)
-  // Validate the id is a UUID: it's cast to `uuid` in listTimelineEntries, so a
-  // crafted `12345:not-a-uuid` cursor would otherwise 500 instead of paging.
-  if (!Number.isSafeInteger(ms) || !UUID_RE.test(id)) return undefined
-  return { id, published_at: new Date(ms) }
+  const decoded = decodeKeysetCursor(cursor)
+  return decoded && { id: decoded.id, published_at: decoded.ts }
 }
 
 export const serializeTimelineEntry = (record: TimelineEntryRecord): TimelineEntry => ({
@@ -73,6 +59,6 @@ export const getTimelinePage = async (
   const last = page[page.length - 1]
   return {
     entries: page.map(serializeTimelineEntry),
-    next_cursor: hasMore && last ? encodeCursor(last) : null,
+    next_cursor: hasMore && last ? encodeKeysetCursor(last.published_at, last.id) : null,
   }
 }

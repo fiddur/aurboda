@@ -121,12 +121,30 @@ export const createArticlePost = async (user: string, input: ArticlePostInput): 
   return mapFeedPost(result.rows[0])
 }
 
-export const listFeedPosts = async (user: string): Promise<FeedPostRecord[]> => {
+/** Keyset position in the owner's feed: the previous page's last `(created_at, id)`. */
+export interface FeedPostCursor {
+  created_at: Date
+  id: string
+}
+
+/**
+ * A keyset page of the owner's feed posts, newest-first (#1012). The `id`
+ * tiebreaker keeps ordering deterministic when two posts share a `created_at`
+ * (microsecond collision on rapid inserts); pass the previous page's last
+ * `(created_at, id)` as `before` for the next page.
+ */
+export const listFeedPosts = async (
+  user: string,
+  limit: number,
+  before?: FeedPostCursor,
+): Promise<FeedPostRecord[]> => {
   const result = await query<FeedPostRow>(
     user,
-    // `id` tiebreaker keeps ordering deterministic when two posts share a
-    // `created_at` (microsecond collision on rapid inserts).
-    `SELECT ${FEED_POST_COLUMNS} FROM feed_posts ORDER BY created_at DESC, id DESC`,
+    `SELECT ${FEED_POST_COLUMNS} FROM feed_posts
+     WHERE ($1::timestamptz IS NULL OR (created_at, id) < ($1::timestamptz, $2::uuid))
+     ORDER BY created_at DESC, id DESC
+     LIMIT $3`,
+    [before?.created_at ?? null, before?.id ?? null, limit],
   )
   return result.rows.map(mapFeedPost)
 }

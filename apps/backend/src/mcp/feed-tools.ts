@@ -5,6 +5,7 @@
  */
 import {
   createArticleBodySchema,
+  feedPostsQuerySchema,
   followActorBodySchema,
   followersQuerySchema,
   shareActivityBodySchema,
@@ -28,14 +29,13 @@ import {
   getFeedPostById,
   listFeedFollowers,
   listFeedFollowing,
-  listFeedPosts,
   updateFeedFollowingNotify,
   updateFeedPost,
 } from '../db/index.ts'
 import { isPubliclyVisible } from '../services/activitypub/object.ts'
 import { buildArticleMarkdown, renderableArticleBlocks } from '../services/article-export.ts'
 import { buildArticleContent, mergeArticleContent } from '../services/article.ts'
-import { normalizeFeedMessage, serializeFeedPost } from '../services/feed.ts'
+import { getFeedPage, normalizeFeedMessage, serializeFeedPost } from '../services/feed.ts'
 import { serializeFollower } from '../services/followers.ts'
 import { serializeFollowing } from '../services/following.ts'
 import { getSettings } from '../services/settings.ts'
@@ -62,14 +62,11 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
   const { apiBaseUrl, deliver, followActions, followerActions, retroEnrichTimeline } = options
   server.tool(
     'list_feed',
-    'List activities you have published to your feed, with their shared metric selection, series opt-in, and visibility.',
-    {},
-    async () => {
-      const records = await listFeedPosts(user)
+    "List posts you have published to your feed, newest first, with their shared metric selection, series opt-in, and visibility. Pass `cursor` (from a previous call's `next_cursor`) to page.",
+    { ...feedPostsQuerySchema.shape },
+    async ({ cursor, limit }) => {
       const settings = await getSettings(user).catch(() => null)
-      return jsonResponse(
-        await Promise.all(records.map((record) => serializeFeedPost(user, record, { settings }))),
-      )
+      return jsonResponse(await getFeedPage(user, limit, cursor, { settings }))
     },
   )
 

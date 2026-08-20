@@ -12,7 +12,7 @@ import { insertLocations } from '../db/locations.ts'
 import { insertTimeSeries } from '../db/time-series.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import { resolveStructuredContent } from './feed-structured.ts'
-import { expandFeedActivityWindow, resolveFeedActivity, serializeFeedPost } from './feed.ts'
+import { expandFeedActivityWindow, getFeedPage, resolveFeedActivity, serializeFeedPost } from './feed.ts'
 
 const CONTAINER_TIMEOUT = 120_000
 
@@ -241,6 +241,40 @@ describe('feed service', () => {
       expect(dto.activity_id).toBe(anchorId)
       expect(dto.activity_title).toBeUndefined()
       expect(dto.activity_start_time).toBeUndefined()
+    })
+  })
+
+  describe('getFeedPage', () => {
+    test('pages newest-first with an opaque cursor; null on the last page (#1012)', async () => {
+      const user = getTestUser()
+      const ids: string[] = []
+      for (let i = 0; i < 3; i++) ids.push((await createFeedPost(user, postInput(null))).id)
+
+      const page1 = await getFeedPage(user, 2, undefined)
+      expect(page1.posts.map((p) => p.id)).toEqual([ids[2], ids[1]])
+      expect(page1.next_cursor).not.toBeNull()
+
+      const page2 = await getFeedPage(user, 2, page1.next_cursor ?? undefined)
+      expect(page2.posts.map((p) => p.id)).toEqual([ids[0]])
+      expect(page2.next_cursor).toBeNull()
+    })
+
+    test('an exactly-full page ends with a cursor whose next page is empty and final', async () => {
+      const user = getTestUser()
+      await createFeedPost(user, postInput(null))
+      await createFeedPost(user, postInput(null))
+
+      const page1 = await getFeedPage(user, 2, undefined)
+      expect(page1.posts).toHaveLength(2)
+      // 2 rows for limit 2: no extra row was fetched, so no next page.
+      expect(page1.next_cursor).toBeNull()
+    })
+
+    test('a malformed cursor falls back to the first page (never a 500)', async () => {
+      const user = getTestUser()
+      const post = await createFeedPost(user, postInput(null))
+      const page = await getFeedPage(user, 10, 'garbage-cursor')
+      expect(page.posts.map((p) => p.id)).toEqual([post.id])
     })
   })
 })

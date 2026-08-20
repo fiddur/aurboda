@@ -4,9 +4,10 @@
  * actually appear once federated), each with an Edit / Unshare shortcut. Editing
  * reuses the share dialog; unsharing retracts a Delete to followers.
  */
-import type { FeedPost } from '@aurboda/api-spec'
+import type { FeedPost, FeedPostsResponse } from '@aurboda/api-spec'
+import type { InfiniteData } from '@tanstack/react-query'
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'preact/hooks'
 
 import { ArticleEditorDialog } from '../../components/ArticleEditorDialog'
@@ -81,7 +82,21 @@ function OwnPostCard({ post, author }: { post: FeedPost; author: PostAuthor }) {
 }
 
 export function Feed() {
-  const { data: posts, isLoading, error } = useQuery({ queryFn: fetchFeed, queryKey: ['feed'] })
+  // Keyset-paginated like the home timeline (#1012): each page carries the full
+  // structured payloads, so the first load stays light however many posts exist.
+  const { data, isLoading, error, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery<
+    FeedPostsResponse,
+    Error,
+    InfiniteData<FeedPostsResponse>,
+    readonly string[],
+    string | undefined
+  >({
+    getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
+    initialPageParam: undefined,
+    queryFn: ({ pageParam }) => fetchFeed(pageParam),
+    queryKey: ['feed', 'posts'],
+  })
+  const posts = data?.pages.flatMap((page) => page.posts)
   const [composing, setComposing] = useState(false)
 
   const username = auth.value.user ?? ''
@@ -127,6 +142,16 @@ export function Feed() {
       {posts?.map((post) => (
         <OwnPostCard key={post.id} post={post} author={author} />
       ))}
+      {hasNextPage && (
+        <button
+          type="button"
+          class="btn-secondary timeline-more"
+          onClick={() => fetchNextPage()}
+          disabled={isFetchingNextPage}
+        >
+          {isFetchingNextPage ? 'Loading…' : 'Load more'}
+        </button>
+      )}
     </div>
   )
 }
