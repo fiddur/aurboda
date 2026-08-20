@@ -13,6 +13,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from 'vit
  * spy covers the article fan-out branches (including `kind === 'article'` on the
  * generic `PATCH /:postId`); the actual AS2 delivery is unit-tested in `deliver`.
  */
+import { insertActivity } from '../db/activities/index.ts'
 import { createChallenge, createChallengeParticipation } from '../db/challenges.ts'
 import { createFeedPost } from '../db/feed.ts'
 import { insertTimeSeries } from '../db/time-series.ts'
@@ -240,6 +241,58 @@ describe('GET /feed/articles/:postId/export (Reddit/markdown export, C4)', () =>
     const res = await withBase.request.get(`/feed/articles/${created.body.post.id}/export`)
     expect(res.status).toBe(400)
     expect(res.body.error).toContain('followers-only')
+  })
+})
+
+describe('POST /feed/activities/:id/preview (live share preview — #902)', () => {
+  let app: ReturnType<typeof startApp>
+
+  beforeAll(async () => {
+    await startTestDb()
+    app = startApp()
+  }, CONTAINER_TIMEOUT)
+
+  afterAll(async () => {
+    await app.close()
+    await stopTestDb()
+  })
+
+  beforeEach(async () => {
+    await cleanTestDb()
+  })
+
+  test('returns the EXACT content a share of the same selection would federate', async () => {
+    const user = getTestUser()
+    const activityId = await insertActivity(user, {
+      activity_type: 'running',
+      end_time: new Date('2026-08-01T08:30:00Z'),
+      source: 'garmin',
+      start_time: new Date('2026-08-01T08:00:00Z'),
+      title: 'Morning run',
+    })
+    const selection = { included_metrics: ['duration'], message: 'So good!', visibility: 'public' }
+
+    const preview = await app.request.post(`/feed/activities/${activityId}/preview`).send(selection)
+    expect(preview.status).toBe(200)
+    expect(preview.body.content).toContain('<strong>Morning run</strong>')
+    expect(preview.body.content).toContain('<p>So good!</p>')
+    expect(preview.body.metrics).toEqual([expect.objectContaining({ key: 'duration', value: 1800 })])
+
+    // Nothing was created…
+    const listBefore = await app.request.get('/feed')
+    expect(listBefore.body.posts).toEqual([])
+
+    // …and an actual share of the same selection federates the same content.
+    const shared = await app.request.post(`/feed/activities/${activityId}/share`).send(selection)
+    expect(shared.status).toBe(200)
+    expect(shared.body.post.content).toBe(preview.body.content)
+  })
+
+  test('404s for an unknown activity', async () => {
+    const res = await app.request
+      .post('/feed/activities/11111111-2222-4333-8444-555555555555/preview')
+      .send({ included_metrics: ['duration'] })
+    expect(res.status).toBe(404)
   })
 })
 

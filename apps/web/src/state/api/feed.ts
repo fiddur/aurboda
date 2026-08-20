@@ -13,6 +13,7 @@ import type {
   FollowingResponse,
   ShareActivityBody,
   ShareChallengeBody,
+  SharePreviewResponse,
   TimelineResponse,
   UpdateArticleBody,
   UpdateFeedPostBody,
@@ -46,6 +47,22 @@ export const fetchFeed = async (cursor?: string): Promise<FeedPostsResponse> => 
     headers: authHeaders(),
     params: cursor === undefined ? {} : { cursor },
   })
+  return response.data
+}
+
+/**
+ * Preview what sharing `activityId` with this selection would federate (#902):
+ * the exact post HTML + resolved metric values. Creates nothing.
+ */
+export const previewShare = async (
+  activityId: string,
+  body: ShareActivityBody,
+): Promise<SharePreviewResponse> => {
+  const response = await axios.post<SharePreviewResponse>(
+    `${API_URL}/feed/activities/${activityId}/preview`,
+    body,
+    { headers: authHeaders() },
+  )
   return response.data
 }
 

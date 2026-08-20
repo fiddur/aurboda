@@ -236,3 +236,32 @@ export const getFeedPage = async (
     posts: await Promise.all(page.map((record) => serializeFeedPost(user, record, opts))),
   }
 }
+
+/**
+ * Resolve what a share of `activity` with `selection` WOULD federate (#902):
+ * the exact `content` HTML (via the same `feedPostContent` used for delivery
+ * and the owner card) and the typed scalars — without creating a post. Backs
+ * the Share dialog's live preview, so what the user sees before clicking
+ * Share is byte-for-byte what leaves the instance.
+ */
+export const previewActivityShare = async (
+  user: string,
+  activity: Activity,
+  selection: { included_metrics: string[]; message?: string },
+): Promise<{ content: string; metrics: FeedPost['metrics'] }> => {
+  const window = await expandFeedActivityWindow(user, activity)
+  const scalars = await resolveActivityScalars(
+    user,
+    { end_time: window.end_time, start_time: window.start_time },
+    selection.included_metrics,
+  )
+  const settings = await getSettings(user).catch(() => null)
+  const content = feedPostContent(window.title, window.activity_type, scalars, {
+    message: normalizeFeedMessage(selection.message) ?? undefined,
+    windowLabel: formatActivityWindow(window.start_time, window.end_time, settings?.device_timezone),
+  }).content
+  return {
+    content,
+    metrics: scalars.map(({ key, unit, value }) => ({ key, value, ...(unit === undefined ? {} : { unit }) })),
+  }
+}
