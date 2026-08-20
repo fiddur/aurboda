@@ -72,8 +72,9 @@ instance. A receiving peer that recognises the pattern fetches the structured
 data; everyone else sees a perfectly good status.
 
 This is running code: Aurboda federates activity shares and long-form articles
-this way today, with a vendor-prefixed (`aurboda:`) variant of everything
-specified here. This FEP generalises it so any implementation can join.
+this way today, speaking this document's `quant:` vocabulary on the wire (see
+Implementations). This FEP generalises that running code so any implementation
+can join.
 
 ## Requirements
 

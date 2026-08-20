@@ -1,11 +1,13 @@
 /**
  * Enrich a received timeline post with its native Aurboda structured data.
  *
- * A `Note` delivered over ActivityPub carries only the Mastodon-compatible HTML
- * (Fedify's typed vocab drops the `aurboda:` extension). So when a followed
- * *Aurboda* instance posts, we fetch the richer structured payload it serves at
- * `GET /public/:user/feed/:postId` and store it on the timeline entry, letting
- * the web render a native chart + typed stats instead of the text.
+ * A delivered `Note` carries the QuantPub scalar summary in-band (#896), but
+ * not the high-resolution series data. So when a followed *Aurboda* instance
+ * posts, we fetch the richer structured payload it serves at
+ * `GET /public/:user/feed/:postId` (the FEP §7 id-convention path — reliable
+ * even when a typed consumer drops in-band extension properties) and store it
+ * on the timeline entry, letting the web render a native chart + typed stats
+ * instead of the text.
  *
  * Strictly best-effort and defensive:
  * - Only Notes whose id matches Aurboda's own object-dispatcher path
