@@ -137,8 +137,21 @@ describe('Feed posts integration', () => {
     const user = getTestUser()
     const first = await createFeedPost(user, postInput())
     const second = await createFeedPost(user, postInput())
-    const posts = await listFeedPosts(user)
+    const posts = await listFeedPosts(user, 10)
     expect(posts.map((p) => p.id)).toEqual([second.id, first.id])
+  })
+
+  test('keyset-paginates by (created_at, id) (#1012)', async () => {
+    const user = getTestUser()
+    const ids: string[] = []
+    for (let i = 0; i < 3; i++) ids.push((await createFeedPost(user, postInput())).id)
+
+    const page1 = await listFeedPosts(user, 2)
+    expect(page1.map((p) => p.id)).toEqual([ids[2], ids[1]])
+
+    const last = page1[page1.length - 1]!
+    const page2 = await listFeedPosts(user, 2, { created_at: last.created_at, id: last.id })
+    expect(page2.map((p) => p.id)).toEqual([ids[0]])
   })
 
   test('updates selected fields and leaves others intact', async () => {
@@ -275,7 +288,7 @@ describe('Feed posts integration', () => {
     test('appears in the owner feed and the public outbox listings', async () => {
       const user = getTestUser()
       const article = await createArticlePost(user, articleInput({ visibility: 'public' }))
-      expect((await listFeedPosts(user)).map((p) => p.id)).toContain(article.id)
+      expect((await listFeedPosts(user, 10)).map((p) => p.id)).toContain(article.id)
       const publicPosts = await listPublicFeedPosts(user)
       expect(publicPosts.map((p) => p.id)).toContain(article.id)
       expect(publicPosts.find((p) => p.id === article.id)?.article?.title).toBe('A week of sleep and HRV')

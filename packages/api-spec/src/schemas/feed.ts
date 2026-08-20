@@ -320,9 +320,36 @@ export const feedPostResponseSchema = baseResponseSchema
 
 export type FeedPostResponse = z.infer<typeof feedPostResponseSchema>
 
-/** Response wrapping the owner's list of feed posts. */
+/** Query for the owner's feed listing (keyset pagination, like the home timeline). */
+export const feedPostsQuerySchema = z
+  .object({
+    cursor: z.string().optional().meta({ description: "Opaque cursor from a previous page's `next_cursor`" }),
+    limit: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(50)
+      .default(20)
+      .meta({ description: 'Max posts to return (1–50, default 20)' }),
+  })
+  .meta({ id: 'FeedPostsQuery' })
+
+export type FeedPostsQuery = z.infer<typeof feedPostsQuerySchema>
+
+/**
+ * Response wrapping a list of feed posts. The owner's `GET /feed` pages with
+ * `next_cursor` (null on the last page); the bounded public-profile listing
+ * omits it.
+ */
 export const feedPostsResponseSchema = baseResponseSchema
-  .extend({ posts: z.array(feedPostSchema) })
+  .extend({
+    next_cursor: z
+      .string()
+      .nullable()
+      .optional()
+      .meta({ description: 'Cursor for the next page; null on the last page; absent when unpaginated' }),
+    posts: z.array(feedPostSchema),
+  })
   .meta({ id: 'FeedPostsResponse' })
 
 export type FeedPostsResponse = z.infer<typeof feedPostsResponseSchema>

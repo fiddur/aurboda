@@ -14,6 +14,8 @@ import {
   type CreateArticleBody,
   createArticleBodySchema,
   type FeedPostResponse,
+  type FeedPostsQuery,
+  feedPostsQuerySchema,
   type FeedPostsResponse,
   type ShareActivityBody,
   shareActivityBodySchema,
@@ -36,13 +38,12 @@ import {
   deleteFeedPost,
   getActivityById,
   getFeedPostById,
-  listFeedPosts,
   updateFeedPost,
 } from '../db/index.ts'
 import { isPubliclyVisible } from '../services/activitypub/object.ts'
 import { buildArticleMarkdown, renderableArticleBlocks } from '../services/article-export.ts'
 import { buildArticleContent, mergeArticleContent } from '../services/article.ts'
-import { normalizeFeedMessage, serializeFeedPost } from '../services/feed.ts'
+import { getFeedPage, normalizeFeedMessage, serializeFeedPost } from '../services/feed.ts'
 import { getSettings } from '../services/settings.ts'
 import { getTimelinePage } from '../services/timeline.ts'
 import { type AnyMiddleware, type TypedRouter, typedRouter } from '../typed-router.ts'
@@ -80,15 +81,20 @@ export const createFeedRouter = (
 ): TypedRouter => {
   const router = typedRouter()
 
-  router.get<Record<string, never>, FeedPostsResponse>('/', authMiddleware, async (req, res) => {
-    const user = req.user!
-    const records = await listFeedPosts(user)
-    const settings = await getSettings(user).catch(() => null)
-    const posts = await Promise.all(
-      records.map((record) => serializeFeedPost(user, record, { includeStructured: true, settings })),
-    )
-    res.json({ posts, success: true })
-  })
+  router.get<Record<string, never>, FeedPostsResponse, unknown, FeedPostsQuery>(
+    '/',
+    authMiddleware,
+    validateQuery(feedPostsQuerySchema),
+    async (req, res) => {
+      const user = req.user!
+      const settings = await getSettings(user).catch(() => null)
+      const { next_cursor, posts } = await getFeedPage(user, req.query.limit, req.query.cursor, {
+        includeStructured: true,
+        settings,
+      })
+      res.json({ next_cursor, posts, success: true })
+    },
+  )
 
   // Live home-timeline updates over Server-Sent Events. Each ping (`event: new`)
   // means "a new post arrived — refetch the newest page"; the payload is empty so

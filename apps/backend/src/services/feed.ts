@@ -19,9 +19,9 @@
  */
 import type { FeedPost } from '@aurboda/api-spec'
 
-import type { Activity, FeedPostRecord } from '../db/index.ts'
+import type { Activity, FeedPostCursor, FeedPostRecord } from '../db/index.ts'
 
-import { getActivityById } from '../db/index.ts'
+import { getActivityById, listFeedPosts } from '../db/index.ts'
 import { resolveActivityScalars } from './activitypub/feed-activity.ts'
 import { feedPostContent, formatActivityWindow } from './activitypub/object.ts'
 import {
@@ -29,6 +29,7 @@ import {
   resolveStructuredRoute,
   resolveStructuredSeries,
 } from './feed-structured-activity.ts'
+import { decodeKeysetCursor, encodeKeysetCursor } from './keyset-cursor.ts'
 import { resolveActivityWindow } from './queries/index.ts'
 import { getSettings } from './settings.ts'
 
@@ -196,5 +197,39 @@ export const serializeFeedPost = async (
     structured,
     updated_at: record.updated_at.toISOString(),
     visibility: record.visibility,
+  }
+}
+
+/** Fetch a keyset page of raw feed-post rows — the one DB dependency of `getFeedPage`. */
+export type FeedPostsFetcher = (
+  user: string,
+  limit: number,
+  before?: FeedPostCursor,
+) => Promise<FeedPostRecord[]>
+
+/**
+ * One keyset page of the owner's feed (newest first) plus the cursor for the
+ * next page — null when there are no more (#1012). Shared by the REST `GET
+ * /feed` route and the MCP `list_feed` tool (parity), like `getTimelinePage`
+ * for the home timeline: fetch `limit + 1` rows to detect a next page without a
+ * second query, serialise the page, and encode the last row's `(created_at,
+ * id)` as the opaque cursor. The row fetcher is injected (defaulting to the
+ * real DB query) so the pagination logic is unit-testable without a database.
+ */
+export const getFeedPage = async (
+  user: string,
+  limit: number,
+  cursor: string | undefined,
+  opts: SerializeFeedPostOpts = {},
+  fetchPosts: FeedPostsFetcher = listFeedPosts,
+): Promise<{ posts: FeedPost[]; next_cursor: string | null }> => {
+  const decoded = decodeKeysetCursor(cursor)
+  const rows = await fetchPosts(user, limit + 1, decoded && { created_at: decoded.ts, id: decoded.id })
+  const hasMore = rows.length > limit
+  const page = hasMore ? rows.slice(0, limit) : rows
+  const last = page[page.length - 1]
+  return {
+    next_cursor: hasMore && last ? encodeKeysetCursor(last.created_at, last.id) : null,
+    posts: await Promise.all(page.map((record) => serializeFeedPost(user, record, opts))),
   }
 }

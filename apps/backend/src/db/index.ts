@@ -328,6 +328,7 @@ export {
   createArticlePost,
   createFeedPost,
   deleteFeedPost,
+  type FeedPostCursor,
   type FeedPostInput,
   type FeedPostPatch,
   type FeedPostRecord,

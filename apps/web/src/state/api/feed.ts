@@ -36,10 +36,16 @@ export const shareActivity = async (activityId: string, body: ShareActivityBody)
   return response.data.post
 }
 
-/** List every post the user has shared to their feed, newest-first. */
-export const fetchFeed = async (): Promise<FeedPost[]> => {
-  const response = await axios.get<FeedPostsResponse>(`${API_URL}/feed`, { headers: authHeaders() })
-  return response.data.posts
+/**
+ * One keyset page of the user's own feed posts, newest-first (#1012). Pass the
+ * previous page's `next_cursor` for the next page; null means the last page.
+ */
+export const fetchFeed = async (cursor?: string): Promise<FeedPostsResponse> => {
+  const response = await axios.get<FeedPostsResponse>(`${API_URL}/feed`, {
+    headers: authHeaders(),
+    params: cursor === undefined ? {} : { cursor },
+  })
+  return response.data
 }
 
 /** Update a shared post's metric selection, series opt-in, or visibility. */
