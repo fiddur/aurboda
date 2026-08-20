@@ -13,9 +13,12 @@ import type { ArticleContent, ChallengeShare, FeedVisibility } from '@aurboda/ap
  * (no message queue configured), so it awaits the outbound POSTs; retry/
  * durability via a persistent queue is a later slice.
  *
- * The custom `aurboda:` structured extension is not carried on the Fedify `Note`
- * (its typed vocab drops unknown properties); that richer, Aurboda-native
- * representation lives in `object.ts` for a future content-negotiated endpoint.
+ * Every activity Note also carries the QuantPub `quant:` extension (#896):
+ * Fedify's typed vocab drops unknown properties, so `withQuantJsonLd` splices
+ * the typed fields into the serialized JSON-LD of the outermost object we hand
+ * to Fedify — the `Create`/`Update` for delivery and the outbox, the bare
+ * `Note` for the object dispatcher (see `quant-extension.ts`). The AS2 window
+ * (`startTime`/`endTime`) is set natively on the Note.
  * Delivery is best-effort: callers invoke it fire-and-forget.
  */
 import type { Context, Federation } from '@fedify/fedify'
@@ -29,6 +32,7 @@ import { articleImageAttachments, renderArticleContentHtml } from './article-obj
 import { renderChallengeShareHtml } from './challenge-object.ts'
 import { resolveActivityScalars } from './feed-activity.ts'
 import { addressingFor, feedPostContent, formatActivityWindow, isPubliclyVisible } from './object.ts'
+import { quantExerciseExtension, withQuantJsonLd } from './quant-extension.ts'
 import { dateToTemporalInstant } from './temporal-interop.ts'
 
 /**
@@ -52,6 +56,8 @@ export interface FeedDeliveryDeps {
 export interface DeliverablePost {
   id: string
   included_metrics: string[]
+  /** Metric keys whose series were explicitly shared (drive `quant:series` links). */
+  series_metrics: string[]
   visibility: FeedVisibility
   /** The author's personal message (plain text); null/undefined = none shared. */
   message?: string | null
@@ -128,13 +134,13 @@ export interface DeliverableActivity {
  * types `published` as the ambient `Temporal.Instant`; `dateToTemporalInstant`
  * bridges our `@js-temporal/polyfill` value to it.
  */
-export const buildFeedNote = async (
+const buildFeedNoteParts = async (
   ctx: Context<void>,
   user: string,
   post: DeliverablePost,
   activity: DeliverableActivity,
   apiBaseUrl: string,
-): Promise<Note> => {
+): Promise<{ note: Note; quant: Record<string, unknown> }> => {
   const scalars = await resolveActivityScalars(user, activity, post.included_metrics)
   // The activity-date line renders in the author's device timezone (like the
   // article block images); unknown/invalid falls back to UTC inside the formatter.
@@ -150,17 +156,45 @@ export const buildFeedNote = async (
   const actorUri = ctx.getActorUri(user)
   const noteId = ctx.getObjectUri(Note, { identifier: user, postId: post.id })
   const { cc, to } = recipients(post.visibility, ctx.getFollowersUri(user))
-  return new Note({
+  const note = new Note({
     attachments: imageAttachments(apiBaseUrl, user, post),
     attribution: actorUri,
     ccs: cc,
     content,
+    // The AS2 activity window — the workout time; `published` stays the share time.
+    endTime: activity.end_time === undefined ? null : dateToTemporalInstant(activity.end_time),
     id: noteId,
     name,
     published: dateToTemporalInstant(post.created_at),
+    startTime: dateToTemporalInstant(activity.start_time),
     tos: to,
     url: noteId,
   })
+  const quant = quantExerciseExtension({
+    activityType: activity.activity_type,
+    apiBaseUrl,
+    endTime: activity.end_time,
+    imageToken: post.image_token,
+    postId: post.id,
+    scalars,
+    seriesMetrics: post.series_metrics,
+    startTime: activity.start_time,
+    user,
+    visibility: post.visibility,
+  })
+  return { note, quant }
+}
+
+export const buildFeedNote = async (
+  ctx: Context<void>,
+  user: string,
+  post: DeliverablePost,
+  activity: DeliverableActivity,
+  apiBaseUrl: string,
+): Promise<Note> => {
+  const { note, quant } = await buildFeedNoteParts(ctx, user, post, activity, apiBaseUrl)
+  // The dispatcher serves the Note bare, so the Note itself carries the extension.
+  return withQuantJsonLd(note, quant)
 }
 
 /**
@@ -176,10 +210,13 @@ export const buildFeedCreate = async (
   activity: DeliverableActivity,
   apiBaseUrl: string,
 ): Promise<Create> => {
-  const note = await buildFeedNote(ctx, user, post, activity, apiBaseUrl)
+  // The Create is the outermost serialized object, so IT carries the quant
+  // extension (spliced into its embedded object) — wrapping the embedded Note
+  // instead would be mangled by the activity-level JSON-LD compaction.
+  const { note, quant } = await buildFeedNoteParts(ctx, user, post, activity, apiBaseUrl)
   const noteId = ctx.getObjectUri(Note, { identifier: user, postId: post.id })
   const { cc, to } = recipients(post.visibility, ctx.getFollowersUri(user))
-  return new Create({
+  const create = new Create({
     actor: ctx.getActorUri(user),
     ccs: cc,
     id: new URL(`${noteId.href}#create`),
@@ -187,6 +224,7 @@ export const buildFeedCreate = async (
     published: dateToTemporalInstant(post.created_at),
     tos: to,
   })
+  return withQuantJsonLd(create, quant)
 }
 
 /**
@@ -204,16 +242,17 @@ export const buildFeedUpdate = async (
   activity: DeliverableActivity,
   apiBaseUrl: string,
 ): Promise<Update> => {
-  const note = await buildFeedNote(ctx, user, post, activity, apiBaseUrl)
+  const { note, quant } = await buildFeedNoteParts(ctx, user, post, activity, apiBaseUrl)
   const noteId = ctx.getObjectUri(Note, { identifier: user, postId: post.id })
   const { cc, to } = recipients(post.visibility, ctx.getFollowersUri(user))
-  return new Update({
+  const update = new Update({
     actor: ctx.getActorUri(user),
     ccs: cc,
     id: new URL(`${noteId.href}#update-${post.updated_at.getTime()}`),
     object: note,
     tos: to,
   })
+  return withQuantJsonLd(update, quant)
 }
 
 /**

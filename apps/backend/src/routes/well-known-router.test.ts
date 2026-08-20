@@ -40,3 +40,32 @@ describe('well-known/assetlinks.json', () => {
     expect(res.headers['cache-control']).toMatch(/max-age=3600/)
   })
 })
+
+describe('well-known/quantpub (#896)', () => {
+  const app = buildApp({ androidFingerprints: [], androidPackageName: 'net.aurboda.app' })
+
+  test('serves the QuantPub discovery document (FEP §4), cacheable', async () => {
+    const res = await supertest(app).get('/.well-known/quantpub')
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({
+      api_base: 'http://localhost:3000',
+      product: 'aurboda',
+      quantpub: '0.1',
+      version: 'test',
+    })
+    expect(res.headers['cache-control']).toMatch(/max-age=3600/)
+  })
+
+  test('serves the published JSON-LD @context at /ns/quantpub as application/ld+json', async () => {
+    const res = await supertest(app).get('/ns/quantpub')
+    expect(res.status).toBe(200)
+    expect(res.headers['content-type']).toContain('application/ld+json')
+    expect(res.body).toEqual({
+      '@context': {
+        quant: 'https://w3id.org/quantpub#',
+        'quant:metrics': { '@type': '@json' },
+        'quant:series': { '@type': '@json' },
+      },
+    })
+  })
+})

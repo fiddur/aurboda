@@ -215,18 +215,88 @@ describe('Feed federation actor + WebFinger', () => {
     const res = await fetchAs2(`/users/${user}/feed/${post.id}`)
     expect(res.status).toBe(200)
     const doc = (await res.json()) as {
-      type: string
+      type: string | string[]
       id: string
       attributedTo?: string
       published?: string
     }
-    expect(doc.type).toBe('Note')
+    // Dual-typed Note-first: Mastodon renders the Note, QuantPub peers read the extension.
+    expect(doc.type).toEqual(['Note', 'quant:Exercise'])
     expect(doc.id).toBe(`${ORIGIN}/users/${user}/feed/${post.id}`)
     expect(doc.attributedTo).toBe(`${ORIGIN}/users/${user}`)
     // `published` is the post's share time (created_at), not the fetch time, so
     // remote servers order it correctly.
     expect(doc.published).toBeDefined()
     expect(new Date(doc.published ?? '').getTime()).toBe(post.created_at.getTime())
+  })
+
+  test('a served post object carries the QuantPub extension (#896)', async () => {
+    const user = getTestUser()
+    const activityId = await insertExercise(user)
+    const post = await sharePost(user, activityId, {
+      included_metrics: ['duration'],
+      series_metrics: ['heart_rate'],
+    })
+
+    const doc = (await (await fetchAs2(`/users/${user}/feed/${post.id}`)).json()) as {
+      '@context': unknown[]
+      startTime?: string
+      endTime?: string
+      'quant:activityType'?: string
+      'quant:metrics'?: { key: string; value: number; unit?: string }[]
+      'quant:series'?: { metric: string; href: string; mediaType: string }[]
+      'quant:structuredUrl'?: string
+    }
+    // The AS2 window is native (FEP reuses startTime/endTime), quant: terms ride the splice.
+    expect(new Date(doc.startTime ?? '').toISOString()).toBe('2026-07-01T06:30:00.000Z')
+    expect(new Date(doc.endTime ?? '').toISOString()).toBe('2026-07-01T07:11:00.000Z')
+    expect(doc['quant:activityType']).toBe('exercise')
+    expect(doc['quant:metrics']).toEqual([{ key: 'duration', unit: 'seconds', value: 2460 }])
+    expect(doc['quant:structuredUrl']).toBe(`${ORIGIN}/api/public/${user}/feed/${post.id}`)
+    const series = doc['quant:series'] ?? []
+    expect(series).toHaveLength(1)
+    expect(series[0].metric).toBe('heart_rate')
+    expect(series[0].href).toContain(`${ORIGIN}/api/public/${user}/series?`)
+    // The inline @context defines the quant prefix and the @json literal terms.
+    expect(doc['@context']).toContainEqual({
+      quant: 'https://w3id.org/quantpub#',
+      'quant:metrics': { '@type': '@json' },
+      'quant:series': { '@type': '@json' },
+    })
+  })
+
+  test('a followers-only delivery Note carries the token on quant:structuredUrl but no series', async () => {
+    const user = getTestUser()
+    const activityId = await insertExercise(user)
+    const post = await sharePost(user, activityId, {
+      included_metrics: ['duration'],
+      series_metrics: ['heart_rate'],
+      visibility: 'followers',
+    })
+
+    // A followers-only object never resolves publicly — build the delivered
+    // Update directly (same Note builder as the delivered Create).
+    const ctx = await fed.createContext(new URL(ORIGIN))
+    const update = await buildFeedUpdate(
+      ctx,
+      user,
+      post,
+      {
+        activity_type: 'exercise',
+        end_time: new Date('2026-07-01T07:11:00Z'),
+        start_time: new Date('2026-07-01T06:30:00Z'),
+        title: 'Morning run',
+      },
+      `${ORIGIN}/api`,
+    )
+    const doc = (await update.toJsonLd({ format: 'compact' })) as {
+      object?: { 'quant:structuredUrl'?: string; 'quant:series'?: unknown }
+    }
+    expect(doc.object?.['quant:structuredUrl']).toBe(
+      `${ORIGIN}/api/public/${user}/feed/${post.id}?token=${post.image_token}`,
+    )
+    // The public /series endpoint would 404 a followers-only post, so no links.
+    expect(doc.object?.['quant:series']).toBeUndefined()
   })
 
   test('federates an article as a Create{Note} in the outbox and serves its object (#937)', async () => {

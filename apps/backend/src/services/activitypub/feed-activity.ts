@@ -1,59 +1,31 @@
 /**
- * Assemble the AS2 `Create{Exercise}` for a stored feed post.
+ * Resolve the shared scalar-summary values for a stored feed post.
  *
- * Bridges the persistence layer (`feed_posts` + `activities`) to the pure AS2
- * serializer: resolves the shared scalar values over the activity window and
- * builds the canonical federation URLs, then hands off to `buildCreateExercise`.
+ * Bridges the persistence layer (`feed_posts` + `activities`) to the pure
+ * scalar resolver: aggregates the source metrics over the activity window and
+ * maps the user's `included_metrics` selection into `ScalarMetric[]` for the
+ * delivery layer (`deliver.ts`).
  *
- * The metric aggregation is dependency-injected (`MetricStat`) so this is
- * unit-testable without a database; `windowMetricStat` adapts a
+ * The metric aggregation is dependency-injected (`MetricStat`) so the mapping
+ * is unit-testable without a database; `windowMetricStat` adapts a
  * `queryMetricsBucketed` result into that shape for the delivery path.
  */
-import { type FeedVisibility, hrZoneMetrics } from '@aurboda/api-spec'
+import { hrZoneMetrics } from '@aurboda/api-spec'
 
 import type { MetricType } from '../../schema.ts'
 import type { QueryMetricsBucketedResult } from '../queries/types.ts'
-import type { AS2Create, ScalarMetric } from './object.ts'
+import type { ScalarMetric } from './object.ts'
 import type { MetricStat, ScalarStat } from './scalars.ts'
 
 import { getTimeSeries } from '../../db/index.ts'
 import { queryMetricsBucketed } from '../queries/index.ts'
 import { computeHrZoneSecs, getEffectiveHrZones } from '../settings.ts'
-import { buildCreateExercise } from './object.ts'
 import { resolveSharedScalars, SCALAR_SOURCE_METRICS } from './scalars.ts'
 
 /** Maps `hr_zone_<n>_sec` → the numeric zone index (0–5) in `HrZoneSecs`. */
 const HR_ZONE_INDEX = new Map<string, 0 | 1 | 2 | 3 | 4 | 5>(
   hrZoneMetrics.map((m, i) => [m, i as 0 | 1 | 2 | 3 | 4 | 5]),
 )
-
-/** Canonical federation URLs for a user, derived from the deploy's public hosts. */
-export interface FeedActivityContext {
-  username: string
-  /** Canonical web origin, e.g. `https://aurboda.net` (actor, post id, aurboda: ns). */
-  origin: string
-  /** Public API base, e.g. `https://aurboda.net/api` (the public series endpoint). */
-  apiBaseUrl: string
-}
-
-export interface FeedActivityInput {
-  postId: string
-  includedMetrics: string[]
-  seriesMetrics: string[]
-  visibility: FeedVisibility
-  activityType: string
-  startTime: Date
-  endTime?: Date
-  title?: string
-  /** When the post was created (drives AS2 `published`). */
-  publishedAt: Date
-  /** The author's personal message for the post (plain text), if any. */
-  message?: string
-  /** IANA timezone the activity-date line renders in (the author's device timezone). */
-  timeZone?: string
-}
-
-const trimSlashes = (s: string): string => s.replace(/\/+$/, '')
 
 /**
  * Merge a bucketed-metrics result into a `MetricStat` over the whole window.
@@ -119,35 +91,4 @@ export const resolveActivityScalars = async (
   }
 
   return resolveSharedScalars({ endTime: activity.end_time, startTime: start }, includedMetrics, metricStat)
-}
-
-/** Build the `Create{Exercise}` activity for a feed post. */
-export const buildFeedPostActivity = (
-  ctx: FeedActivityContext,
-  input: FeedActivityInput,
-  metricStat: MetricStat,
-): AS2Create => {
-  const origin = trimSlashes(ctx.origin)
-  const actorUrl = `${origin}/users/${ctx.username}`
-  const scalars = resolveSharedScalars(
-    { endTime: input.endTime, startTime: input.startTime },
-    input.includedMetrics,
-    metricStat,
-  )
-  return buildCreateExercise({
-    activityType: input.activityType,
-    actorUrl,
-    aurbodaNs: `${origin}/ns/activitystreams#`,
-    endTime: input.endTime?.toISOString(),
-    message: input.message,
-    postId: `${actorUrl}/feed/${input.postId}`,
-    publishedAt: input.publishedAt.toISOString(),
-    scalars,
-    seriesEndpointBase: `${trimSlashes(ctx.apiBaseUrl)}/public/${ctx.username}/series`,
-    seriesMetrics: input.seriesMetrics,
-    startTime: input.startTime.toISOString(),
-    timeZone: input.timeZone,
-    title: input.title,
-    visibility: input.visibility,
-  })
 }
