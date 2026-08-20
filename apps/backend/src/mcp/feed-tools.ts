@@ -111,9 +111,11 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
         visibility: body.visibility,
       })
       if (!record) return errorResponse('Feed post not found')
-      // Federate the edit as an Update, same as the REST update route. An article
-      // has no linked activity, so route it through the article path.
+      // Federate the edit as an Update, same as the REST update route. Articles
+      // and challenge shares have no linked activity, so they must go through
+      // their own paths — the generic `updated` would silently no-op.
       if (record.kind === 'article') deliver?.updatedArticle(user, record)
+      else if (record.kind === 'challenge') deliver?.updatedChallenge(user, record)
       else deliver?.updated(user, record)
       return jsonResponse(await serializeFeedPost(user, record))
     },
