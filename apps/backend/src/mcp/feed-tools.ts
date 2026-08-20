@@ -38,7 +38,12 @@ import { isPubliclyVisible } from '../services/activitypub/object.ts'
 import { buildArticleMarkdown, renderableArticleBlocks } from '../services/article-export.ts'
 import { buildArticleContent, mergeArticleContent } from '../services/article.ts'
 import { resolveChallengeShare } from '../services/challenge-share.ts'
-import { getFeedPage, normalizeFeedMessage, serializeFeedPost } from '../services/feed.ts'
+import {
+  getFeedPage,
+  normalizeFeedMessage,
+  previewActivityShare,
+  serializeFeedPost,
+} from '../services/feed.ts'
 import { serializeFollower } from '../services/followers.ts'
 import { serializeFollowing } from '../services/following.ts'
 import { getSettings } from '../services/settings.ts'
@@ -94,6 +99,22 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
       // Fan out to followers (best-effort), same as the REST share route.
       deliver?.created(user, record, activity)
       return jsonResponse(await serializeFeedPost(user, record))
+    },
+  )
+
+  server.tool(
+    'preview_activity_share',
+    'Preview what sharing an activity WOULD federate — the exact post text (HTML) and resolved metric values for a given selection — without creating a post. Use before share_activity to show the user what leaves the instance.',
+    { activity_id: z.string().uuid().describe('The activity to preview'), ...shareActivityBodySchema.shape },
+    async ({ activity_id, ...body }) => {
+      const activity = await getActivityById(user, activity_id)
+      if (!activity) return errorResponse('Activity not found')
+      return jsonResponse(
+        await previewActivityShare(user, activity, {
+          included_metrics: body.included_metrics,
+          ...(body.message === undefined ? {} : { message: body.message }),
+        }),
+      )
     },
   )
 

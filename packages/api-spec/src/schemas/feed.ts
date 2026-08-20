@@ -422,6 +422,27 @@ export const feedPostsResponseSchema = baseResponseSchema
 export type FeedPostsResponse = z.infer<typeof feedPostsResponseSchema>
 
 /**
+ * Response for the share PREVIEW (#902): the exact federated `content` HTML a
+ * Mastodon follower would see and the typed scalars behind the native stat
+ * grid, resolved for a given share selection WITHOUT creating a post — so the
+ * dialog shows precisely what would leave the instance.
+ */
+export const sharePreviewResponseSchema = baseResponseSchema
+  .extend({
+    content: z
+      .string()
+      .optional()
+      .meta({ description: 'The AS2 `content` HTML the post would federate with' }),
+    metrics: z
+      .array(feedStructuredMetricSchema)
+      .optional()
+      .meta({ description: 'The resolved typed scalar values for the selection' }),
+  })
+  .meta({ id: 'SharePreviewResponse' })
+
+export type SharePreviewResponse = z.infer<typeof sharePreviewResponseSchema>
+
+/**
  * Body for creating an article post. No activity anchor and no shared
  * metrics/series — an article carries its own title, default window, and blocks.
  */

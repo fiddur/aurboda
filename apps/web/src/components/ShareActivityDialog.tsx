@@ -13,9 +13,15 @@ import type { FeedPost, FeedVisibility, MetricType } from '@aurboda/api-spec'
 
 import { feedPostMessageMaxLength } from '@aurboda/api-spec'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'preact/hooks'
+import { useEffect, useState } from 'preact/hooks'
 
-import { fetchBucketedMetrics, fetchRawLocations, shareActivity, updateFeedPost } from '../state/api'
+import {
+  fetchBucketedMetrics,
+  fetchRawLocations,
+  previewShare,
+  shareActivity,
+  updateFeedPost,
+} from '../state/api'
 import {
   buildShareBody,
   defaultsFromChart,
@@ -152,19 +158,40 @@ export function ShareActivityDialog({
   // actually offered as a control here.
   const offersHeartRate = seriesOptions.some((m) => m.key === 'heart_rate')
 
+  const currentBody = () =>
+    buildShareBody({
+      canChart,
+      canMap,
+      includeMap,
+      message,
+      series,
+      seriesOptions,
+      summary,
+      summaryOptions,
+      visibility,
+    })
+
+  // Live preview (#902): the server resolves the EXACT federated content for
+  // the current selection (same code path as delivery), debounced so typing in
+  // the message doesn't fire a request per keystroke. Keyed on the serialised
+  // body — identical selections hit the react-query cache.
+  const [debouncedKey, setDebouncedKey] = useState('')
+  const bodyKey = JSON.stringify(currentBody())
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedKey(bodyKey), 400)
+    return () => clearTimeout(timer)
+  }, [bodyKey])
+  const previewQuery = useQuery({
+    enabled: debouncedKey !== '',
+    queryFn: () => previewShare(activityId, JSON.parse(debouncedKey)),
+    queryKey: ['share-preview', activityId, debouncedKey],
+    staleTime: 60_000,
+  })
+  const previewContent = previewQuery.data?.content
+
   const mutation = useMutation({
     mutationFn: () => {
-      const body = buildShareBody({
-        canChart,
-        canMap,
-        includeMap,
-        message,
-        series,
-        seriesOptions,
-        summary,
-        summaryOptions,
-        visibility,
-      })
+      const body = currentBody()
       return post ? updateFeedPost(post.id, body) : shareActivity(activityId, body)
     },
     onSuccess: (result) => {
@@ -268,6 +295,22 @@ export function ShareActivityDialog({
           value={visibility}
           onChange={setVisibility}
         />
+
+        <fieldset class="share-dialog-group">
+          <legend>Preview</legend>
+          <p class="share-dialog-note">
+            Exactly what a follower on Mastodon sees
+            {canMap && includeMap ? ' — plus the route-map image' : ''}
+            {canChart && series.has('heart_rate') ? ' and the heart-rate chart image' : ''}.
+          </p>
+          {previewContent ? (
+            // Server-built, HTML-escaped content of the user's OWN data — the
+            // same trusted string the owner feed card renders (#902).
+            <div class="share-dialog-preview" dangerouslySetInnerHTML={{ __html: previewContent }} />
+          ) : (
+            <p class="share-dialog-note">{previewQuery.isError ? 'Preview unavailable.' : 'Loading…'}</p>
+          )}
+        </fieldset>
 
         {mutation.error && (
           <p class="share-dialog-error">

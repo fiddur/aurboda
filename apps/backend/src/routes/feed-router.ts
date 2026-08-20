@@ -19,6 +19,7 @@ import {
   type FeedPostsResponse,
   type ShareActivityBody,
   shareActivityBodySchema,
+  type SharePreviewResponse,
   type ShareChallengeBody,
   shareChallengeBodySchema,
   type TimelineQuery,
@@ -47,7 +48,12 @@ import { isPubliclyVisible } from '../services/activitypub/object.ts'
 import { buildArticleMarkdown, renderableArticleBlocks } from '../services/article-export.ts'
 import { buildArticleContent, mergeArticleContent } from '../services/article.ts'
 import { resolveChallengeShare } from '../services/challenge-share.ts'
-import { getFeedPage, normalizeFeedMessage, serializeFeedPost } from '../services/feed.ts'
+import {
+  getFeedPage,
+  normalizeFeedMessage,
+  previewActivityShare,
+  serializeFeedPost,
+} from '../services/feed.ts'
 import { getSettings } from '../services/settings.ts'
 import { getTimelinePage } from '../services/timeline.ts'
 import { type AnyMiddleware, type TypedRouter, typedRouter } from '../typed-router.ts'
@@ -189,6 +195,26 @@ export const createFeedRouter = (
       // Fan the post out to followers (best-effort; never blocks the response).
       deliver?.created(user, record, activity)
       res.json({ post: await serializeFeedPost(user, record, { includeStructured: true }), success: true })
+    },
+  )
+
+  // Live share preview (#902): what would this selection federate? Resolves the
+  // exact content/scalars the share would produce, creates nothing.
+  router.post<{ id: string }, SharePreviewResponse, ShareActivityBody>(
+    '/activities/:id/preview',
+    authMiddleware,
+    validateBody(shareActivityBodySchema),
+    async (req, res) => {
+      const user = req.user!
+      const activity = await getActivityById(user, req.params.id)
+      if (!activity) {
+        return res.status(404).json({ error: 'Activity not found', success: false })
+      }
+      const preview = await previewActivityShare(user, activity, {
+        included_metrics: req.body.included_metrics,
+        ...(req.body.message === undefined ? {} : { message: req.body.message }),
+      })
+      res.json({ content: preview.content, metrics: preview.metrics, success: true })
     },
   )
 

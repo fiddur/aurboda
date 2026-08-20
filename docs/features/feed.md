@@ -496,7 +496,9 @@ resolving.
 - **Share** — an activity's detail page has a **Share to feed** button. It opens a dialog
   to write an optional personal message (prefilled from the activity's description /
   comments, fully editable), pick the summary metrics, optionally opt into full series,
-  and choose the audience. The **owner's own feed** renders each activity post with the
+  and choose the audience — with a **live preview** (#902) of the exact federated
+  content (resolved server-side through the same code path as delivery, debounced) and
+  which images would attach, so what leaves the instance is visible before Share. The **owner's own feed** renders each activity post with the
   **same native card component a subscribing Aurboda peer's timeline uses** — the owner-facing
   feed responses include the full structured payload (typed scalars + inline series + route,
   assembled by the same helper the public structured endpoint uses), so the author sees the
@@ -548,6 +550,7 @@ Owner-facing (authenticated, scoped to the caller):
 | `GET /feed`                        | My feed posts, newest-first, keyset-paginated (`?cursor=` from the previous page's `next_cursor`); each post enriched with the shared activity's title/type, merged-span window, and full structured payload |
 | `POST /feed/activities/:id/share`  | Publish an activity with a chosen metric selection                                                                      |
 | `POST /feed/articles`              | Publish a long-form **article** (title + prose + inline chart/correlation blocks)                                       |
+| `POST /feed/activities/:id/preview`| Live share **preview** (#902): the exact federated content + resolved metrics for a selection; creates nothing          |
 | `POST /feed/challenges`            | Share a **challenge invitation** (personal note + canonical link); exactly one of `challenge_id`/`participation_id`     |
 | `GET/POST /autoshare-rules` (+`/:id`, `/preview`) | [Auto-share rules](auto-share-rules.md): automatically publish matching settled activities (#903)         |
 | `PATCH /feed/articles/:postId`     | Edit an article (title / blocks / default window / visibility)                                                          |
@@ -584,7 +587,7 @@ Public / federation (unauthenticated):
 | `POST /users/:username/inbox` (+ `/inbox`)                   | Inbound `Follow` / `Undo{Follow}` / `Accept` / `Reject` (HTTP-Signature verified)                          |
 
 The owner-facing capability is also available over MCP as `list_feed`, `share_activity`,
-`share_challenge`, `create_article`, `update_article`, `export_article_markdown`, `update_feed_post`,
+`preview_activity_share`, `share_challenge`, `create_article`, `update_article`, `export_article_markdown`, `update_feed_post`,
 `delete_feed_post`, `list_following`, `follow_actor`, `unfollow_actor`, `list_followers`,
 `approve_follower`, `reject_follower`, and `list_timeline` — all backed by the same services as
 the REST routes (`create_article` / `update_article` ↔ `POST /feed/articles` / `PATCH
