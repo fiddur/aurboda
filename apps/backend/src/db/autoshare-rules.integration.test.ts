@@ -18,6 +18,7 @@ import {
   listAutoshareSuppressedIds,
   updateAutoshareRule,
 } from './autoshare-rules.ts'
+import { query } from './connection.ts'
 import { createFeedPost, deleteFeedPost, listFeedPostIdsByActivityIds } from './feed.ts'
 
 const CONTAINER_TIMEOUT = 120_000
@@ -181,6 +182,16 @@ describe('Auto-share rules integration', () => {
       source: 'garmin',
       start_time: new Date('2026-08-03T08:00:00Z'),
     })
+    // Superseded (cross-source/override merge loser): not a candidate — the
+    // same-type grouping can't see across types, so evaluating the loser too
+    // would double-post one physical session.
+    const superseded = await insertActivity(user, {
+      activity_type: 'walking',
+      end_time: new Date('2026-08-01T08:30:00Z'),
+      source: 'health_connect',
+      start_time: new Date('2026-08-01T08:00:00Z'),
+    })
+    await query(user, `UPDATE activities SET superseded_by = $1 WHERE id = $2`, [inWindow, superseded])
 
     const candidates = await listAutoshareCandidates(
       user,

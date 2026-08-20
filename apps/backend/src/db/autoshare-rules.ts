@@ -188,7 +188,12 @@ export interface AutoshareCandidate {
 
 /**
  * Settled candidates for auto-sharing in a mutation window: non-deleted,
- * bounded activities (an open activity has no shareable window yet).
+ * non-superseded, bounded activities (an open activity has no shareable window
+ * yet). `superseded_by IS NULL` matters: cross-source/override merge groups are
+ * CROSS-TYPE, so the same-type `getOverlappingActivities` grouping would see
+ * the winner and the superseded row as two independent groups and publish two
+ * posts for one physical session — filtering to winners (the same predicate the
+ * chart/trend/deduction queries use) keeps one candidate per session.
  */
 export const listAutoshareCandidates = async (
   user: string,
@@ -199,7 +204,7 @@ export const listAutoshareCandidates = async (
     user,
     `SELECT id, activity_type, source, start_time, end_time, title, created_at
      FROM activities
-     WHERE deleted_at IS NULL AND end_time IS NOT NULL
+     WHERE deleted_at IS NULL AND superseded_by IS NULL AND end_time IS NOT NULL
        AND start_time <= $2 AND end_time >= $1
      ORDER BY start_time ASC`,
     [start, end],
