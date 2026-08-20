@@ -147,8 +147,24 @@ happened (rendered in the author's device timezone, since AS2 `published` stays 
 share time for timeline ordering), and the shared scalar summaries one per line —
 plus a `name` headline, addressed per the post's visibility
 (`public` → AS2 Public + followers; `unlisted` → followers + Public in `cc`; `followers`
-→ followers only). The custom structured `aurboda:` extension (typed metrics + series
-links) is a separate, richer representation for Aurboda-to-Aurboda consumers.
+→ followers only).
+
+**QuantPub extension (#896).** An activity share's `Note` is dual-typed
+`["Note", "quant:Exercise"]` and carries the typed [QuantPub](../fep/quantpub.md)
+extension in-band: the AS2 window as native `startTime`/`endTime`, plus
+`quant:activityType`, `quant:metrics` (the shared scalar summaries as
+`key`/`value`/`unit` objects), `quant:series` links into the public series endpoint
+(only for `public`/`unlisted` posts with a bounded window), and
+`quant:structuredUrl` pointing at the structured post endpoint (carrying the
+capability token on `followers`-only deliveries). The `quant:` term definitions are
+embedded as an inline `@context` entry on every delivered/served document
+(`quant:metrics`/`quant:series` are JSON literals, `"@type": "@json"`), and the
+canonical context document is served at `GET /ns/quantpub`
+(`application/ld+json`); `GET /.well-known/quantpub` is the FEP §4 discovery
+document. Fedify's typed vocabulary drops unknown properties, so the extension is
+spliced into the serialized JSON-LD of the outermost delivered/served object
+(`services/activitypub/quant-extension.ts`); plain fediverse clients ignore the
+extra type and terms and render the Note as before.
 
 **Merged activities.** A post stores only `activity_id` (the plain anchor uuid). When that
 activity is part of a **merge group** (overlapping cross-source records, shown in the
@@ -292,11 +308,11 @@ timeline on the next load, in their published order.
 
 ### Native charts from Aurboda peers (structured enrichment)
 
-A delivered `Note` carries only the Mastodon-compatible HTML — Fedify's typed vocab drops the
-`aurboda:` extension, so the structured metrics/series don't survive federation on the object
-itself. To render a **native interactive chart** (with real, hoverable values) instead of the
-plain HTML when a post comes from **another Aurboda instance**, the receiver fetches the
-structured data out-of-band on ingest:
+A delivered `Note` carries the QuantPub scalar summary in-band (see above), but not the
+high-resolution series data itself. To render a **native interactive chart** (with real,
+hoverable values) instead of the plain HTML when a post comes from **another Aurboda
+instance**, the receiver fetches the structured data out-of-band on ingest (the FEP §7
+id-convention path — reliable even when a typed consumer drops the in-band extension):
 
 1. **Emit.** Every instance serves `GET /public/:username/feed/:postId` — a native JSON payload
    (`FeedStructuredPost`: a discriminated union on `kind`). An **activity** post resolves to
@@ -579,6 +595,8 @@ Public / federation (unauthenticated):
 | `GET /public/:username/feed/:postId/blocks/:index/image.svg` | Same article block as crisp `image/svg+xml`                                                                |
 | `GET /public/:username/posts`                                | A user's public/unlisted posts (newest-first, latest page) for their profile feed                          |
 | `GET /.well-known/webfinger`                                 | Resolve `acct:<username>@<host>` → the actor                                                               |
+| `GET /.well-known/quantpub`                                  | QuantPub discovery document (FEP §4): product, versions, `api_base`                                        |
+| `GET /ns/quantpub`                                           | The published QuantPub JSON-LD `@context` document (`application/ld+json`)                                 |
 | `GET /users/:username`                                       | The actor document (`Person`)                                                                              |
 | `GET /users/:username/outbox`                                | Public + unlisted posts as `Create` activities                                                             |
 | `GET /users/:username/followers`                             | The actor's followers collection                                                                           |
@@ -641,10 +659,11 @@ These are known and intentional for the current implementation:
 - **The public series endpoint uses the anchor window for merged shares.** The delivered
   Note's scalar summary and the rendered images cover the full merged span, but
   `GET /public/:username/series` still authorizes only the shared activity's _own_ window
-  (`findCoveringSharedSeriesWindow` joins on `activity_id`). Since the delivered
-  Mastodon `Note` carries no series links, this is latent — expanding series
-  authorization across a merge group (which needs the merge algorithm at query time) is a
-  planned follow-up.
+  (`findCoveringSharedSeriesWindow` joins on `activity_id`). The delivered Note's
+  `quant:series` links are built over the merged span, so for a **merged** share with
+  shared series those links can 404 until series authorization expands across a merge
+  group (which needs the merge algorithm at query time — a planned follow-up); QuantPub
+  consumers treat a failed series fetch as best-effort, so the post still renders.
 - **Route maps have no privacy trimming.** The route is drawn over an OpenStreetMap
   basemap and shows the full track, so a public route map reveals the precise area
   (including start/end points, i.e. likely home/work); start-point and area masking are

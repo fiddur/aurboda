@@ -324,3 +324,17 @@ export const wellKnownAurbodaSchema = z
   .meta({ id: 'WellKnownAurboda' })
 
 export type WellKnownAurboda = z.infer<typeof wellKnownAurbodaSchema>
+
+/** QuantPub discovery document (FEP §4, `/.well-known/quantpub`). */
+export const wellKnownQuantpubSchema = z
+  .object({
+    api_base: z
+      .string()
+      .meta({ description: 'Absolute base URL under which the structured-post and series endpoints live' }),
+    product: z.string().meta({ description: 'Free-form implementation identity' }),
+    quantpub: z.string().meta({ description: 'QuantPub spec version implemented' }),
+    version: z.string().meta({ description: 'Implementation build/version identifier' }),
+  })
+  .meta({ id: 'WellKnownQuantpub' })
+
+export type WellKnownQuantpub = z.infer<typeof wellKnownQuantpubSchema>

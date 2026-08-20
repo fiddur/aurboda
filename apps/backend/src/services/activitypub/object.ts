@@ -1,19 +1,12 @@
 /**
- * AS2 object model for a shared activity.
+ * Pure AS2 building blocks shared by the delivery layer (`deliver.ts`) and the
+ * public feed surfaces: visibility→addressing, the human-readable Note content
+ * (`feedPostContent`), and the activity-date line. All pure functions of their
+ * inputs, so fully unit-testable with no Fedify dependency.
  *
- * Serializes a feed post into a `Create` activity whose `object` is a dual-typed
- * `["Note", "aurboda:Exercise"]`: `Note` first so plain fediverse clients
- * (Mastodon) render `name`/`content`/`url` as a status, plus structured
- * `aurboda:` extension fields that an Aurboda↔Aurboda consumer reads
- * ("progressive enhancement").
- *
- * This module is a pure function of its inputs — the caller resolves the shared
- * scalar values and passes in the absolute URLs — so it is fully unit-testable
- * and carries no dependency on the (upcoming) Fedify actor/delivery layer. Only
- * the metrics the user actually shared are ever emitted: unshared scalars are
- * absent from `content` and `aurboda:metrics`, and only `seriesMetrics` on a
- * `public`/`unlisted` post produce `aurboda:series` links (matching what the
- * public `/series` endpoint will actually resolve).
+ * The structured extension a QuantPub peer reads (`["Note", "quant:Exercise"]`
+ * dual-typing, `quant:metrics`, `quant:series`) lives in `quant-extension.ts`
+ * and is spliced into the delivered/served JSON-LD there (#896).
  */
 
 import type { FeedVisibility } from '@aurboda/api-spec'
@@ -31,51 +24,6 @@ export interface ScalarMetric {
   unit?: string
   /** Optional human label for the fallback text; defaults to a prettified key. */
   label?: string
-}
-
-export interface BuildCreateInput {
-  /** Canonical absolute URL of the post (the `Create` activity `id`). */
-  postId: string
-  /** Absolute actor URL (e.g. `https://host/u/fredrik`). */
-  actorUrl: string
-  /** The `aurboda:` term prefix IRI, ending in `#` (e.g. `https://host/ns/activitystreams#`). */
-  aurbodaNs: string
-  /** Base URL of the public series endpoint (e.g. `https://host/api/public/fredrik/series`). */
-  seriesEndpointBase: string
-  visibility: FeedVisibility
-  activityType: string
-  /** Activity start (ISO 8601); the workout time, kept in `aurboda:startTime`. */
-  startTime: string
-  /** Activity end (ISO 8601); required for duration and series links. */
-  endTime?: string
-  /**
-   * When the post was created (ISO 8601), used for the AS2 `published` of the
-   * Create and its object so remote timelines order it by share time, not the
-   * (possibly much earlier) workout time. Defaults to `startTime`.
-   */
-  publishedAt?: string
-  title?: string
-  /** The author's personal message for the post (plain text), if any. */
-  message?: string
-  /** IANA timezone for the human-readable activity-date line (defaults to UTC). */
-  timeZone?: string
-  /** Resolved scalar summaries for the shared `included_metrics`. */
-  scalars: ScalarMetric[]
-  /** Metric keys whose series were explicitly shared (drive `aurboda:series`). */
-  seriesMetrics: string[]
-  /** Bucket granularity for the series links (defaults to `5s`). */
-  seriesBucket?: string
-}
-
-export interface AS2Create {
-  '@context': [string, Record<string, string>]
-  id: string
-  type: 'Create'
-  actor: string
-  published: string
-  to: string[]
-  cc: string[]
-  object: Record<string, unknown>
 }
 
 const escapeHtml = (s: string): string =>
@@ -216,90 +164,5 @@ export const addressingFor = (
       return { cc: [AS_PUBLIC], to: [followersUrl] }
     case 'followers':
       return { cc: [], to: [followersUrl] }
-  }
-}
-
-/**
- * Build the `aurboda:series` link objects for the shared series metrics.
- *
- * Emitted only for `public`/`unlisted` posts: the public `/series` endpoint
- * refuses `followers`-only posts, so advertising links there would just 404.
- * Series also need a bounded activity window.
- */
-const seriesLinks = (input: BuildCreateInput): Record<string, string>[] => {
-  const { endTime, seriesMetrics, visibility } = input
-  if (visibility === 'followers' || !endTime || seriesMetrics.length === 0) return []
-  const bucket = input.seriesBucket ?? '5s'
-  return seriesMetrics.map((metric) => {
-    const params = new URLSearchParams({
-      bucket,
-      end: endTime,
-      metric,
-      start: input.startTime,
-    })
-    return {
-      href: `${input.seriesEndpointBase}?${params.toString()}`,
-      mediaType: 'application/json',
-      metric,
-    }
-  })
-}
-
-/**
- * Build a `Create{Exercise}` AS2 activity for a shared post. Pure and
- * deterministic given its inputs.
- */
-export const buildCreateExercise = (input: BuildCreateInput): AS2Create => {
-  const followersUrl = `${input.actorUrl}/followers`
-  const { to, cc } = addressingFor(input.visibility, followersUrl)
-  const objectId = `${input.postId}/object`
-
-  const { content, name } = feedPostContent(input.title, input.activityType, input.scalars, {
-    message: input.message,
-    windowLabel: formatActivityWindow(input.startTime, input.endTime, input.timeZone),
-  })
-  // `published` is the share time (timeline ordering); the workout time lives in
-  // `aurboda:startTime`.
-  const published = input.publishedAt ?? input.startTime
-
-  const object: Record<string, unknown> = {
-    'aurboda:activityType': input.activityType,
-    'aurboda:metrics': input.scalars.map(({ key, unit, value }) => ({
-      key,
-      ...(unit === undefined ? {} : { unit }),
-      value,
-    })),
-    'aurboda:startTime': input.startTime,
-    attributedTo: input.actorUrl,
-    content,
-    id: objectId,
-    name,
-    published,
-    // Note first → Mastodon uses content/name/url; Aurboda recognises aurboda:Exercise.
-    type: ['Note', 'aurboda:Exercise'],
-    url: input.postId,
-  }
-
-  if (input.message !== undefined && input.message.trim() !== '') {
-    object['aurboda:message'] = input.message
-  }
-  if (input.endTime) {
-    object['aurboda:endTime'] = input.endTime
-    object['aurboda:durationSeconds'] = Math.round(
-      (new Date(input.endTime).getTime() - new Date(input.startTime).getTime()) / 1000,
-    )
-  }
-  const series = seriesLinks(input)
-  if (series.length > 0) object['aurboda:series'] = series
-
-  return {
-    '@context': ['https://www.w3.org/ns/activitystreams', { aurboda: input.aurbodaNs }],
-    actor: input.actorUrl,
-    cc,
-    id: input.postId,
-    object,
-    published,
-    to,
-    type: 'Create',
   }
 }

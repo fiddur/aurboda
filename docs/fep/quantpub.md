@@ -538,23 +538,23 @@ GET /api/public/freja/series?metric=stress&start=...&end=...&bucket=60s
 
 ## Implementations
 
-- **[Aurboda](https://github.com/fiddur/aurboda)** — ships the whole pattern
-  today with vendor-prefixed names: an `aurboda:` typed extension
-  (`aurboda:Exercise`), `/.well-known/aurboda` discovery, the structured post
-  endpoint (activity and article kinds), the data-driven public series
-  endpoint, capability tokens for followers-only payloads, and Level 3
-  ingest/enrichment between Aurboda instances. This FEP generalises that
-  running code — including the §9 token lift from delivered attachment URLs
-  (`capabilityTokenFrom` in its enrichment path). Adopting it in Aurboda is
-  more than a prefix swap: the shipped extension mints its own window terms
-  (`aurboda:startTime` / `aurboda:endTime` / `aurboda:durationSeconds`) where
-  this document reuses AS2 `startTime`/`endTime` and folds duration into
-  `quant:metrics`; and while Aurboda's *delivery* path already matches the §7
-  id convention (the delivered `Note`'s id is the resolvable post URL, with
-  the `Create` as a `#create` fragment), its unused AS2 object-model builder
-  inverts that shape (activity at the post URL, object at `…/object`) and
-  would need aligning. Aurboda intends to adopt the `quant:` vocabulary,
-  including those substitutions, once it settles.
+- **[Aurboda](https://github.com/fiddur/aurboda)** — ships this document's
+  vocabulary on the wire: delivered exercise shares are dual-typed
+  `["Note", "quant:Exercise"]` with AS2 `startTime`/`endTime`,
+  `quant:activityType`, `quant:metrics`, `quant:series`, and
+  `quant:structuredUrl` (inline `@context` term definitions on every
+  delivered/served object), serves the `/.well-known/quantpub` discovery
+  document (§4) and a published context document at `/ns/quantpub`, the
+  structured post endpoint (activity and article kinds), the data-driven
+  public series endpoint, capability tokens for followers-only payloads, and
+  Level 3 ingest/enrichment between Aurboda instances via the §7 id
+  convention. This FEP generalises that running code — including the §9 token
+  lift from delivered attachment URLs (`capabilityTokenFrom` in its
+  enrichment path). Its delivery path matches §7's id convention: the
+  delivered `Note`'s id is the resolvable post URL, with the `Create` as a
+  `#create` fragment. (Remaining vendor-prefixed surface: the
+  `/.well-known/aurboda` document backs Aurboda-specific challenge
+  federation, alongside — not instead of — `/.well-known/quantpub`.)
 
 ## Copyright
 

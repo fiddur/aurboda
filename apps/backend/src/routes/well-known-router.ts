@@ -7,10 +7,11 @@
  *   signing fingerprints (e.g. for a custom-built APK) via the
  *   `ANDROID_APP_FINGERPRINTS` env var.
  */
-import type { WellKnownAurboda } from '@aurboda/api-spec'
+import type { WellKnownAurboda, WellKnownQuantpub } from '@aurboda/api-spec'
 
 import type { TypedRouter } from '../typed-router.ts'
 
+import { quantContextDocument, QUANTPUB_VERSION } from '../services/activitypub/quant-extension.ts'
 import { typedRouter } from '../typed-router.ts'
 
 export interface WellKnownConfig {
@@ -65,6 +66,27 @@ export const createWellKnownRouter = (config: WellKnownConfig): TypedRouter => {
       product: 'aurboda',
       version: config.version,
     })
+  })
+
+  // QuantPub discovery (FEP §4): lets any QuantPub peer — not just Aurboda —
+  // verify this host speaks the spec and locate the structured/series API base.
+  router.get<Record<string, never>, WellKnownQuantpub>('/.well-known/quantpub', (_req, res) => {
+    res.setHeader('Cache-Control', 'public, max-age=3600')
+    res.json({
+      api_base: config.apiBaseUrl,
+      product: 'aurboda',
+      quantpub: QUANTPUB_VERSION,
+      version: config.version,
+    })
+  })
+
+  // The published QuantPub JSON-LD @context document (FEP §1) — the canonical
+  // form of the inline `quant:` term definitions every delivered object embeds.
+  router.get<Record<string, never>, Record<string, unknown>>('/ns/quantpub', (_req, res) => {
+    res.setHeader('Cache-Control', 'public, max-age=3600')
+    // res.json only defaults the Content-Type when none is set, so this sticks.
+    res.setHeader('Content-Type', 'application/ld+json')
+    res.json(quantContextDocument)
   })
 
   return router

@@ -2,7 +2,7 @@
  * Resolve the shared scalar-summary values for a feed post.
  *
  * Turns the user's chosen `included_metrics` keys into the `ScalarMetric[]` that
- * `buildCreateExercise` renders into `content` and `aurboda:metrics`. Pure and
+ * the delivery layer renders into `content` and `quant:metrics`. Pure and
  * dependency-injected: the caller supplies `metricStat`, an aggregate of a
  * metric over the shared activity's window (backed by `queryMetricsBucketed`
  * with a single window-sized bucket when wired to delivery). Only the requested

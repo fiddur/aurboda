@@ -17,6 +17,7 @@ import {
   challengesResponseSchema,
   challengeStandingsResponseSchema,
   wellKnownAurbodaSchema,
+  wellKnownQuantpubSchema,
 } from './schemas/challenges.ts'
 // Import all schemas
 import { dateOnlySchema, iso8601DateTimeSchema, metricTypeSchema } from './schemas/common.ts'
@@ -93,7 +94,7 @@ const openApiDocument = createDocument({
     // Served at the instance root (`/.well-known/aurboda`), outside the `/api`
     // server base, so it has no path entry — the model is registered so federation
     // clients (the Android challenge widget) get a generated type for it.
-    schemas: { WellKnownAurboda: wellKnownAurbodaSchema },
+    schemas: { WellKnownAurboda: wellKnownAurbodaSchema, WellKnownQuantpub: wellKnownQuantpubSchema },
     securitySchemes: {
       bearerAuth: {
         bearerFormat: 'JWT',

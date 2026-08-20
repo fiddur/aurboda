@@ -51,6 +51,7 @@ describe('buildFeedDelete', () => {
     include_chart: false,
     include_map: false,
     included_metrics: [],
+    series_metrics: [],
     updated_at: new Date('2026-07-01T00:00:00Z'),
     visibility,
   })
@@ -95,6 +96,7 @@ describe('imageAttachments', () => {
     include_chart: false,
     include_map: false,
     included_metrics: [],
+    series_metrics: [],
     updated_at: new Date('2026-07-01T00:00:00Z'),
     visibility: 'public',
     ...overrides,
