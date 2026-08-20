@@ -338,11 +338,29 @@ export {
   findCoveringSharedSeriesWindow,
   getFeedPostById,
   getFeedTombstone,
+  listFeedPostIdsByActivityIds,
   listFeedPosts,
   listPublicFeedPosts,
   listPublicFeedPostsPage,
   updateFeedPost,
 } from './feed.ts'
+
+// Auto-share rules (#903)
+export {
+  type AutoshareCandidate,
+  type AutoshareRuleInput,
+  type AutoshareRulePatch,
+  type AutoshareRuleRecord,
+  countAutosharePostsByRule,
+  deleteAutoshareRule,
+  getActivityIngestTimes,
+  getAutoshareRules,
+  getEnabledAutoshareRules,
+  insertAutoshareRule,
+  listAutoshareCandidates,
+  listAutoshareSuppressedIds,
+  updateAutoshareRule,
+} from './autoshare-rules.ts'
 
 // Food Items
 export {

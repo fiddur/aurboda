@@ -276,3 +276,110 @@
     color: #d1d5db;
   }
 }
+
+/* Auto-share rules panel (#903) */
+.autoshare-section {
+  margin-bottom: 1.5rem;
+}
+
+.autoshare-intro {
+  font-size: 0.9rem;
+  color: #6b7280;
+  margin: 0.25rem 0 0.75rem;
+}
+
+.autoshare-rule-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.autoshare-rule-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.autoshare-rule-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.autoshare-rule-name {
+  font-weight: 600;
+}
+
+.autoshare-rule-meta {
+  font-size: 0.8rem;
+  color: #6b7280;
+}
+
+.autoshare-rule-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-shrink: 0;
+}
+
+.autoshare-rule-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+}
+
+.autoshare-create {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.autoshare-create label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.9rem;
+}
+
+.autoshare-create-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.autoshare-create-row > label {
+  flex: 1 1 160px;
+}
+
+.autoshare-create-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.autoshare-preview-result {
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+/* "auto-shared" marker on posts created by a rule (#903). */
+.feed-post-via-rule {
+  font-size: 0.8rem;
+  color: #6b7280;
+  margin-right: auto;
+  align-self: center;
+}
+
+@media (prefers-color-scheme: dark) {
+  .autoshare-rule-row,
+  .autoshare-create {
+    border-color: #374151;
+  }
+}

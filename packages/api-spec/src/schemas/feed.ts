@@ -336,6 +336,9 @@ export const feedPostSchema = z
     article: articleContentSchema
       .optional()
       .meta({ description: 'Article content, present only for `article` posts' }),
+    autoshare_rule_id: z.string().uuid().optional().meta({
+      description: 'The auto-share rule that created this post (#903), absent for manual posts',
+    }),
     challenge: challengeShareSchema
       .optional()
       .meta({ description: 'Challenge link payload, present only for `challenge` posts' }),

@@ -15,6 +15,7 @@ import { ArticleExportDialog } from '../../components/ArticleExportDialog'
 import { ShareActivityDialog } from '../../components/ShareActivityDialog'
 import { avatarUrl, deleteFeedPost, fetchFeed } from '../../state/api'
 import { auth } from '../../state/auth'
+import { AutoShareRulesPanel } from './AutoShareRulesPanel'
 import { FeedPostCard, type PostAuthor } from './FeedPostCard'
 import { FollowersPanel } from './FollowersPanel'
 import { FollowingPanel } from './FollowingPanel'
@@ -46,6 +47,11 @@ function OwnPostCard({ post, author }: { post: FeedPost; author: PostAuthor }) {
         author={author}
         footer={
           <>
+            {post.autoshare_rule_id && (
+              <span class="feed-post-via-rule" title="Published automatically by an auto-share rule">
+                auto-shared
+              </span>
+            )}
             {(activityId || isArticle) && (
               <button type="button" class="btn-secondary" onClick={() => setEditing(true)}>
                 Edit
@@ -124,6 +130,8 @@ export function Feed() {
       <FollowersPanel />
 
       <HomeTimeline />
+
+      <AutoShareRulesPanel />
 
       <div class="feed-section-header">
         <h2 class="feed-section-title">Your posts</h2>

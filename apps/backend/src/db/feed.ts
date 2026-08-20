@@ -30,6 +30,8 @@ export interface FeedPostRecord {
   challenge: ChallengeShare | null
   /** The author's personal message (plain text), or null when none was shared. */
   message: string | null
+  /** The auto-share rule that created this post (#903), or null for manual posts. */
+  autoshare_rule_id: string | null
   /** Unguessable capability token for `followers`-only image URLs (see schema). */
   image_token: string
   created_at: Date
@@ -45,6 +47,8 @@ export interface FeedPostInput {
   include_chart: boolean
   /** The author's personal message; omitted/undefined stores NULL. */
   message?: string | null
+  /** The auto-share rule creating this post (#903); omitted for manual shares. */
+  autoshare_rule_id?: string | null
 }
 
 /** Input for creating an `article` post (no activity anchor / shared metrics). */
@@ -73,7 +77,7 @@ export interface FeedPostPatch {
 }
 
 const FEED_POST_COLUMNS =
-  'id, kind, activity_id, included_metrics, series_metrics, visibility, include_map, include_chart, article, challenge, message, image_token, created_at, updated_at'
+  'id, kind, activity_id, included_metrics, series_metrics, visibility, include_map, include_chart, article, challenge, message, autoshare_rule_id, image_token, created_at, updated_at'
 
 interface FeedPostRow {
   id: string
@@ -88,6 +92,7 @@ interface FeedPostRow {
   article: ArticleContent | null
   challenge: ChallengeShare | null
   message: string | null
+  autoshare_rule_id: string | null
   image_token: string
   created_at: Date
   updated_at: Date
@@ -99,8 +104,8 @@ export const createFeedPost = async (user: string, input: FeedPostInput): Promis
   const result = await query<FeedPostRow>(
     user,
     `INSERT INTO feed_posts
-       (activity_id, included_metrics, series_metrics, visibility, include_map, include_chart, message)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
+       (activity_id, included_metrics, series_metrics, visibility, include_map, include_chart, message, autoshare_rule_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
      RETURNING ${FEED_POST_COLUMNS}`,
     [
       input.activity_id,
@@ -110,6 +115,7 @@ export const createFeedPost = async (user: string, input: FeedPostInput): Promis
       input.include_map,
       input.include_chart,
       input.message ?? null,
+      input.autoshare_rule_id ?? null,
     ],
   )
   return mapFeedPost(result.rows[0])
@@ -276,11 +282,17 @@ export const deleteFeedPost = async (user: string, id: string): Promise<boolean>
     user,
     `WITH deleted AS (
        DELETE FROM feed_posts WHERE id = $1
-       RETURNING id, visibility
+       RETURNING id, visibility, activity_id
      ), tomb AS (
        INSERT INTO feed_tombstone (post_id)
        SELECT id FROM deleted WHERE visibility IN ('public', 'unlisted')
        ON CONFLICT (post_id) DO NOTHING
+     ), suppress AS (
+       -- The user deliberately removed this share: auto-share rules must never
+       -- republish the activity (#903). Survives the hard delete above.
+       INSERT INTO autoshare_suppressions (activity_id)
+       SELECT activity_id FROM deleted WHERE activity_id IS NOT NULL
+       ON CONFLICT (activity_id) DO NOTHING
      )
      SELECT id FROM deleted`,
     [id],
@@ -338,4 +350,20 @@ export const findCoveringSharedSeriesWindow = async (
     [metric, start, end],
   )
   return result.rows.length ? result.rows[0] : null
+}
+
+/**
+ * Ids of the feed posts referencing ANY of the given activities (#903's hard
+ * dedupe): an activity/merge-group with an existing post — manual or
+ * auto-created — is never auto-shared again.
+ */
+export const listFeedPostIdsByActivityIds = async (
+  user: string,
+  activityIds: string[],
+): Promise<string[]> => {
+  if (activityIds.length === 0) return []
+  const result = await query<{ id: string }>(user, `SELECT id FROM feed_posts WHERE activity_id = ANY($1)`, [
+    activityIds,
+  ])
+  return result.rows.map((row) => row.id)
 }
