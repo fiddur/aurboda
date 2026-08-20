@@ -15,9 +15,10 @@ import {
   getEnabledAutoshareRules,
   insertAutoshareRule,
   listAutoshareCandidates,
+  listAutoshareSuppressedIds,
   updateAutoshareRule,
 } from './autoshare-rules.ts'
-import { createFeedPost, listFeedPostIdsByActivityIds } from './feed.ts'
+import { createFeedPost, deleteFeedPost, listFeedPostIdsByActivityIds } from './feed.ts'
 
 const CONTAINER_TIMEOUT = 120_000
 
@@ -132,6 +133,31 @@ describe('Auto-share rules integration', () => {
     expect(await listFeedPostIdsByActivityIds(user, [a1, a2])).toEqual([post.id])
     expect(await listFeedPostIdsByActivityIds(user, [a1])).toEqual([])
     expect(await listFeedPostIdsByActivityIds(user, [])).toEqual([])
+  })
+
+  test('deleting an activity post records a suppression that survives the hard delete', async () => {
+    const user = getTestUser()
+    const activityId = await insertActivity(user, {
+      activity_type: 'running',
+      end_time: new Date('2026-08-01T08:30:00Z'),
+      source: 'garmin',
+      start_time: new Date('2026-08-01T08:00:00Z'),
+    })
+    const post = await createFeedPost(user, {
+      activity_id: activityId,
+      include_chart: false,
+      include_map: false,
+      included_metrics: ['duration'],
+      series_metrics: [],
+      visibility: 'public',
+    })
+    expect(await listAutoshareSuppressedIds(user, [activityId])).toEqual([])
+
+    expect(await deleteFeedPost(user, post.id)).toBe(true)
+    // The post row is gone, but the suppression keeps the dedupe intact (#903).
+    expect(await listFeedPostIdsByActivityIds(user, [activityId])).toEqual([])
+    expect(await listAutoshareSuppressedIds(user, [activityId])).toEqual([activityId])
+    expect(await listAutoshareSuppressedIds(user, [])).toEqual([])
   })
 
   test('candidates: bounded, non-deleted activities overlapping the window, with ingest times', async () => {

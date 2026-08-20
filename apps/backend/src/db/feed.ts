@@ -282,11 +282,17 @@ export const deleteFeedPost = async (user: string, id: string): Promise<boolean>
     user,
     `WITH deleted AS (
        DELETE FROM feed_posts WHERE id = $1
-       RETURNING id, visibility
+       RETURNING id, visibility, activity_id
      ), tomb AS (
        INSERT INTO feed_tombstone (post_id)
        SELECT id FROM deleted WHERE visibility IN ('public', 'unlisted')
        ON CONFLICT (post_id) DO NOTHING
+     ), suppress AS (
+       -- The user deliberately removed this share: auto-share rules must never
+       -- republish the activity (#903). Survives the hard delete above.
+       INSERT INTO autoshare_suppressions (activity_id)
+       SELECT activity_id FROM deleted WHERE activity_id IS NOT NULL
+       ON CONFLICT (activity_id) DO NOTHING
      )
      SELECT id FROM deleted`,
     [id],

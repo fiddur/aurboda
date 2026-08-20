@@ -17,6 +17,7 @@ import {
   getEnabledAutoshareRules,
   getOverlappingActivities,
   listAutoshareCandidates,
+  listAutoshareSuppressedIds,
   listFeedPostIdsByActivityIds,
 } from '../db/index.ts'
 import { expandFeedActivityWindow } from './feed.ts'
@@ -80,6 +81,7 @@ export const createAutoshareDeps = (
     return members.map((member) => toCandidate(member, candidate, ingestTimes))
   },
   listCandidates: listAutoshareCandidates,
+  suppressedActivityIds: listAutoshareSuppressedIds,
   onCreated: (user, post, anchor) => {
     // Fan out with the REAL activity row (the deliver impl resolves the merged
     // span itself, like the manual share path). Best-effort.

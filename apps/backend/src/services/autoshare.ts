@@ -6,12 +6,22 @@
  *
  * Safety properties, in order of importance:
  * - **Hard dedupe**: at most one post per activity/merge-group EVER. The whole
- *   group's ids are checked against existing feed posts (manual or auto), so a
- *   re-sync, merge, or edit can never double-post, and a manually-shared
- *   activity is never auto-shared.
- * - **No retroactive sharing**: a rule only matches activities whose row was
- *   INGESTED after the rule was (last) enabled (`enabled_at` vs the anchor's
- *   `created_at`) — enabling a rule affects new arrivals only.
+ *   group's ids are checked against existing feed posts (manual or auto) AND
+ *   against the deletion suppressions (`deleteFeedPost` records the activity id
+ *   before hard-deleting the post row), so a re-sync, merge, or edit can never
+ *   double-post, a manually-shared activity is never auto-shared, and a share
+ *   the user deleted never comes back.
+ * - **No retroactive sharing**: a rule only matches when BOTH the anchor row
+ *   was INGESTED after the rule was (last) enabled AND the activity itself
+ *   ENDED after the enable. The ingest gate makes enabling affect new arrivals
+ *   only; the activity-time gate keeps a first sync / full re-sync of a newly
+ *   connected source (which ingests months of history as fresh rows) from
+ *   mass-publishing that history. A delayed sync of a workout done after
+ *   enabling still shares — the case that matters.
+ * - **Bounded blast radius**: at most {@link MAX_POSTS_PER_RUN} posts per
+ *   evaluation run — federated deliveries can't be recalled, so even a bug or
+ *   an unexpectedly wide window can only leak a handful of posts, visibly
+ *   logged, never a firehose.
  * - **Merge-group aware**: matching and the created post both use the group's
  *   ANCHOR (earliest start) and its merged span — the same window a manual
  *   share of the merged activity uses.
@@ -59,6 +69,8 @@ export interface AutoshareDeps {
   resolveWindow: (user: string, anchor: AutoshareCandidate) => Promise<ResolvedFeedActivity>
   /** Existing feed posts referencing any of the given activity ids. */
   postIdsForActivities: (user: string, activityIds: string[]) => Promise<string[]>
+  /** Activities whose post the user DELETED (never republish; survives the hard delete). */
+  suppressedActivityIds: (user: string, activityIds: string[]) => Promise<string[]>
   /** Total distance (meters) over a window, or undefined when none recorded. */
   distanceMeters: (user: string, start: Date, end: Date) => Promise<number | undefined>
   /** Create the feed post from the rule's template (the shared manual-share path). */
@@ -66,6 +78,15 @@ export interface AutoshareDeps {
   /** Fan the created post out to followers (fire-and-forget, like a manual share). */
   onCreated: (user: string, post: FeedPostRecord, anchor: AutoshareCandidate) => void
 }
+
+/**
+ * Cap on posts created per evaluation run. Deliveries can't be recalled, so a
+ * surprisingly wide window (first sync of a new source, a manual full re-sync)
+ * must never turn into a firehose; the skip is logged. Groups beyond the cap
+ * that STILL match on a later window share then — but the activity-time gate
+ * already keeps genuinely old history out entirely.
+ */
+export const MAX_POSTS_PER_RUN = 5
 
 /**
  * Evaluate one settled mutation window. Returns how many posts were created.
@@ -94,24 +115,37 @@ export const evaluateAutoshareWindow = async (
     if (processedAnchors.has(anchor.id)) continue
     processedAnchors.add(anchor.id)
 
-    // Hard dedupe: any existing post referencing ANY group member blocks the group forever.
-    const existing = await deps.postIdsForActivities(
-      user,
-      group.map((a) => a.id),
-    )
-    if (existing.length > 0) continue
+    // Hard dedupe: any existing post referencing ANY group member — or a
+    // deletion suppression for one — blocks the group forever.
+    const groupIds = group.map((a) => a.id)
+    const [existing, suppressed] = await Promise.all([
+      deps.postIdsForActivities(user, groupIds),
+      deps.suppressedActivityIds(user, groupIds),
+    ])
+    if (existing.length > 0 || suppressed.length > 0) continue
 
-    // New-arrivals-only: the anchor row must have been ingested after the enable.
-    const eligibleRules = rules.filter(
+    // New-arrivals-only, gate 1: the anchor row was ingested after the enable.
+    const ingestEligible = rules.filter(
       (rule) => rule.enabled_at != null && anchor.created_at.getTime() >= rule.enabled_at.getTime(),
     )
-    if (eligibleRules.length === 0) continue
+    if (ingestEligible.length === 0) continue
 
     const window = await deps.resolveWindow(user, anchor)
     if (window.end_time == null) continue
-    const durationSeconds = Math.round((window.end_time.getTime() - window.start_time.getTime()) / 1000)
+    const windowEnd = window.end_time
+
+    // New-arrivals-only, gate 2: the activity itself ended after the enable —
+    // a first sync/backfill ingests months of history as FRESH rows, which
+    // passes gate 1; this keeps that history off the feed. A delayed sync of a
+    // workout done after enabling still shares.
+    const eligibleRules = ingestEligible.filter(
+      (rule) => rule.enabled_at != null && windowEnd.getTime() >= rule.enabled_at.getTime(),
+    )
+    if (eligibleRules.length === 0) continue
+
+    const durationSeconds = Math.round((windowEnd.getTime() - window.start_time.getTime()) / 1000)
     const distance = needsDistance(eligibleRules)
-      ? await deps.distanceMeters(user, window.start_time, window.end_time)
+      ? await deps.distanceMeters(user, window.start_time, windowEnd)
       : undefined
 
     const subject: AutoshareSubject = {
@@ -126,6 +160,12 @@ export const evaluateAutoshareWindow = async (
     const post = await deps.createPost(user, anchor, rule)
     deps.onCreated(user, post, anchor)
     created++
+    if (created >= MAX_POSTS_PER_RUN) {
+      console.warn(
+        `⚠️ auto-share cap: created ${created} posts for ${user} in one run; skipping the rest of the window`,
+      )
+      break
+    }
   }
   return created
 }

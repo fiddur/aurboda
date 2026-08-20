@@ -32,11 +32,18 @@ A per-user set of rules, each combining a **predicate** and a **share template**
   records the rule in `feed_posts.autoshare_rule_id`, and evaluation skips any group
   with an existing post referencing any member — manual or auto — so a re-sync, merge,
   or edit can never double-post, and a manually-shared activity is never auto-shared.
-  Evaluation is idempotent; overlapping windows are safe.
-- **Never retroactive**: only activities whose row was *ingested* after the rule's
-  `enabled_at` are considered (`activities.created_at`, the ingest timestamp). Enabling
-  a rule affects new arrivals only; a delayed sync of an older workout still counts,
-  because the gate is ingest time, not activity time.
+  Deleting a post records the activity in `autoshare_suppressions` (post rows are
+  hard-deleted), so **a share the user removed never comes back** either. Evaluation is
+  idempotent; overlapping windows are safe.
+- **Never retroactive**, two gates: the anchor row must have been *ingested* after the
+  rule's `enabled_at` (`activities.created_at`) AND the activity itself must have
+  *ended* after it. The ingest gate makes enabling affect new arrivals only; the
+  activity-time gate keeps a first sync or full re-sync of a newly connected source —
+  which ingests months of history as fresh rows — from mass-publishing that history.
+  A delayed sync of a workout done *after* enabling still shares.
+- **Bounded blast radius**: at most 5 posts per evaluation run (logged when hit) —
+  federated deliveries can't be recalled, so even an unexpected window can only leak a
+  handful of posts, never a firehose.
 - The **first matching rule** (in creation order) wins; distance is only resolved when
   some eligible rule constrains it.
 - Auto-created posts are ordinary feed posts: they federate through the same delivery

@@ -148,6 +148,7 @@ export const tableCreationOrder = [
   'feed_posts_challenge_column',
   'feed_posts_autoshare_column',
   'autoshare_rules',
+  'autoshare_suppressions',
   'feed_posts_indexes',
   'feed_tombstone',
   'feed_actor',

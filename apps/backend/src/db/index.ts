@@ -358,6 +358,7 @@ export {
   getEnabledAutoshareRules,
   insertAutoshareRule,
   listAutoshareCandidates,
+  listAutoshareSuppressedIds,
   updateAutoshareRule,
 } from './autoshare-rules.ts'
 

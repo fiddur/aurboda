@@ -217,3 +217,18 @@ export const getActivityIngestTimes = async (user: string, ids: string[]): Promi
   )
   return Object.fromEntries(result.rows.map((row) => [row.id, row.created_at]))
 }
+
+/**
+ * Which of the given activities are SUPPRESSED for auto-sharing: their feed
+ * post was deleted by the user (#903). Recorded by `deleteFeedPost`, so the
+ * dedupe survives the post row's hard delete.
+ */
+export const listAutoshareSuppressedIds = async (user: string, ids: string[]): Promise<string[]> => {
+  if (ids.length === 0) return []
+  const result = await query<{ activity_id: string }>(
+    user,
+    `SELECT activity_id FROM autoshare_suppressions WHERE activity_id = ANY($1)`,
+    [ids],
+  )
+  return result.rows.map((row) => row.activity_id)
+}

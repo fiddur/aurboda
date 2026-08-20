@@ -154,6 +154,19 @@ export const socialTables: Record<string, string> = {
     ALTER TABLE feed_posts ADD COLUMN IF NOT EXISTS autoshare_rule_id UUID;
   `,
 
+  // Activities whose feed post the user DELETED (#903): auto-share must never
+  // republish them. feed_posts rows are hard-deleted, so the "at most one post
+  // per activity/merge-group EVER" dedupe needs this record to survive the
+  // delete. Populated inside deleteFeedPost's delete statement for any
+  // activity-anchored post (manual or auto — a deliberately removed share
+  // should not come back by rule either).
+  autoshare_suppressions: `
+    CREATE TABLE IF NOT EXISTS autoshare_suppressions (
+      activity_id  UUID PRIMARY KEY,
+      created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `,
+
   // Auto-share rules (#903): predicate over a settled activity + the share
   // template of the post it creates. Rules start DISABLED; enabled_at gates
   // evaluation so enabling never shares activities ingested before it.

@@ -3,7 +3,12 @@ import { describe, expect, test } from 'vitest'
 import type { AutoshareCandidate, AutoshareRuleRecord, FeedPostRecord } from '../db/index.ts'
 import type { AutoshareDeps } from './autoshare.ts'
 
-import { activityMatchesRule, evaluateAutoshareWindow, previewAutoshareRule } from './autoshare.ts'
+import {
+  activityMatchesRule,
+  evaluateAutoshareWindow,
+  MAX_POSTS_PER_RUN,
+  previewAutoshareRule,
+} from './autoshare.ts'
 
 const T0 = new Date('2026-08-01T00:00:00Z')
 const HOUR = 3_600_000
@@ -107,6 +112,7 @@ const harness = (over: Partial<AutoshareDeps> = {}): Harness => {
       delivered.push(post.id)
     },
     postIdsForActivities: async () => [],
+    suppressedActivityIds: async () => [],
     resolveWindow: async (_user, anchor) => ({
       activity_type: anchor.activity_type,
       end_time: anchor.end_time,
@@ -147,6 +153,45 @@ describe('evaluateAutoshareWindow', () => {
       getEnabledRules: async () => [rule({ enabled_at: new Date(T0.getTime() + 2 * HOUR) })],
     })
     expect(await evaluateAutoshareWindow('u', T0, new Date(T0.getTime() + 3 * HOUR), h.deps)).toBe(0)
+  })
+
+  test('never retroactive: freshly INGESTED history whose activity ENDED before the enable is skipped', async () => {
+    // First sync of a new source: a months-old workout lands as a fresh row
+    // (created_at ≈ now, passing the ingest gate) — the activity-time gate
+    // must still keep it off the feed.
+    const enable = new Date(T0.getTime() + 10 * HOUR)
+    const h = harness({
+      getEnabledRules: async () => [rule({ enabled_at: enable })],
+      listCandidates: async () => [
+        candidate('old-workout', { created_at: new Date(T0.getTime() + 11 * HOUR) }),
+      ],
+    })
+    expect(await evaluateAutoshareWindow('u', T0, new Date(T0.getTime() + 12 * HOUR), h.deps)).toBe(0)
+  })
+
+  test('a deleted share never comes back: suppressed activities block the group', async () => {
+    const h = harness({ suppressedActivityIds: async () => ['a1'] })
+    expect(await evaluateAutoshareWindow('u', T0, new Date(T0.getTime() + 3 * HOUR), h.deps)).toBe(0)
+    expect(h.createdPosts).toEqual([])
+  })
+
+  test('caps posts per run so a wide window can never firehose the feed', async () => {
+    const enable = new Date(T0.getTime())
+    const many = Array.from({ length: MAX_POSTS_PER_RUN + 3 }, (_, i) =>
+      candidate(`a${i}`, {
+        created_at: new Date(T0.getTime() + HOUR),
+        end_time: new Date(T0.getTime() + HOUR + i * 60_000),
+        start_time: new Date(T0.getTime() + i * 60_000),
+      }),
+    )
+    const h = harness({
+      getEnabledRules: async () => [rule({ enabled_at: enable, min_duration_seconds: null })],
+      listCandidates: async () => many,
+    })
+    expect(await evaluateAutoshareWindow('u', T0, new Date(T0.getTime() + 3 * HOUR), h.deps)).toBe(
+      MAX_POSTS_PER_RUN,
+    )
+    expect(h.createdPosts).toHaveLength(MAX_POSTS_PER_RUN)
   })
 
   test('a rule with a null enabled_at never matches (defensive)', async () => {
