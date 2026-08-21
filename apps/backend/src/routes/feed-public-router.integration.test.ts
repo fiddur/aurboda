@@ -96,8 +96,6 @@ describe('GET /public/:username/posts', () => {
       const res = await request.get(`/public/${user}/posts`)
       expect(res.status).toBe(200)
       const post = res.body.posts.find((p: { id: string }) => p.id === id)
-      // Same shape the owner's /feed and the per-post structured endpoint serve:
-      // the profile card gets the native stat grid (and chart/map when opted in).
       expect(post.structured).toMatchObject({
         activity_type: 'exercise',
         kind: 'activity',

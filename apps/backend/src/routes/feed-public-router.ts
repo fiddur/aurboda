@@ -45,23 +45,19 @@ const PROFILE_FEED_LIMIT = 20
 
 export const createFeedPublicRouter = (): TypedRouter => {
   const router = typedRouter()
-  // Caches the resolved structured payload OBJECT for the unauthenticated
-  // `/feed/:postId` endpoint (which resolves up to 100 blocks per request) AND
-  // the `/posts` profile listing (up to PROFILE_FEED_LIMIT structured resolves
-  // per request) — one shared LRU with one key shape, so either endpoint warms
-  // the other. Same bounded LRU + in-flight de-dup the block images use. The route authorizes
-  // the post BEFORE consulting this cache (like the sibling image routes), so the
-  // capability token is NOT part of the key: a `followers`-only payload never
-  // reaches the cache via a public request, and an anonymous `?token=…` walk can't
-  // inflate the key space. Keyed on `updated_at` AND a coarse hourly bucket — the
-  // SAME two-part key the block-image cache uses for the same live-resolved article
-  // data: `updated_at` busts on an edit, and the hourly term bounds staleness from
-  // *backfilled measurements inside an already-locked window* (which don't touch
-  // `updated_at`) to ≤1h, so this endpoint can't freeze into a lifetime snapshot
-  // while its own PNG stays live (#934 locks the window, not the data). A smaller
-  // cap than the image LRU because a payload can be large (per-block sample cap is
-  // #972). Producing `null` (no content) isn't cached.
-  const structuredCache = createRenderCache<FeedStructuredPost>(50)
+  // Caches the resolved structured payload OBJECT, shared (one key shape) by the
+  // unauthenticated `/feed/:postId` endpoint and the `/posts` profile listing, so
+  // either warms the other. Both routes authorize the post BEFORE consulting it,
+  // so the capability token is NOT part of the key: a `followers`-only payload
+  // never reaches the cache via a public request, and an anonymous `?token=…`
+  // walk can't inflate the key space. Keyed on `updated_at` AND a coarse hourly
+  // bucket (the block-image cache's two-part key): `updated_at` busts on any
+  // edit, and the hourly term bounds staleness from backfilled measurements
+  // inside an already-locked window (which don't touch `updated_at`) to ≤1h
+  // (#934 locks the window, not the data). Cap sized for the listing writing up
+  // to PROFILE_FEED_LIMIT entries per profile without a handful of concurrently
+  // browsed profiles thrashing it. Producing `null` (no content) isn't cached.
+  const structuredCache = createRenderCache<FeedStructuredPost>(200)
 
   router.get<{ username: string }, PublicSeriesResponse, unknown, PublicSeriesQuery>(
     '/public/:username/series',
@@ -96,17 +92,14 @@ export const createFeedPublicRouter = (): TypedRouter => {
   )
 
   // A user's public feed for their profile page: the most recent `public`/
-  // `unlisted` posts, newest-first (same set as the ActivityPub outbox — never
-  // `followers`-only), serialized like the authenticated `/feed` with the
-  // structured payload attached per post. Privacy-neutral: every post here is
-  // public/unlisted, and `structured` carries only what the author opted into —
-  // the same payload anyone could fetch per post from
-  // `/public/:username/feed/:postId`. Structured resolution is expensive
-  // (bucketed series queries + a full GPS-track load per opted-in post), so it
-  // goes through the SAME LRU — same key shape — as that sibling endpoint,
-  // bounding what an anonymous request can repeatedly cost; the visibility
-  // filter still runs per request, so an un-shared post disappears immediately
-  // despite the cache. Bounded to the latest page.
+  // `unlisted` posts, newest-first (the ActivityPub outbox's set), serialized
+  // like the authenticated `/feed` with the structured payload attached per
+  // post — `structured` carries only the author's per-post opt-ins, the same
+  // payload `/public/:username/feed/:postId` serves. Structured resolution is
+  // expensive (bucketed series queries + a GPS-track load per opted-in post),
+  // so it goes through the shared LRU above — same key shape as the sibling
+  // endpoint — while the per-request visibility filter keeps un-sharing
+  // immediate despite the cache.
   // `no-store` like the sibling `/series` and `/feed/:postId` endpoints: sharing
   // is revocable, so flipping a post to `followers` or deleting it must drop it
   // from the profile immediately, never linger in a shared cache. Mounted before

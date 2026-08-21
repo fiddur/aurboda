@@ -521,10 +521,12 @@ resolving.
   interactive combined chart and time-synced map exactly as a follower would, and can verify
   what they shared. The listing is **keyset-paginated** (20 per page, "Load more" — the same
   cursor style as the home timeline), so the inline payload weight stays bounded per request
-  however many posts exist (#1012). The public profile renders the lighter native **stat grid** (message +
-  activity date + typed scalars) without the series weight — and the MCP `list_feed` tool
-  likewise omits `structured` (an intentional payload-weight divergence from `GET /feed`,
-  not a capability gap: the underlying data is all reachable via the metric-query tools).
+  however many posts exist (#1012). The **public profile** (`/u/:username`) attaches the same
+  full structured payload per post (through the per-post LRU the structured endpoint shares,
+  one fixed page of 20), so visitors see the identical native card. The MCP `list_feed` tool
+  remains the one surface that omits `structured` (an intentional payload-weight divergence
+  from `GET /feed`, not a capability gap: the underlying data is all reachable via the
+  metric-query tools).
 - **New article** — the **Feed** page has a **New article** button that opens the article
   composer: a title, an optional default time window, and an ordered list of **prose**
   (markdown), **chart** (a metric + optional per-block window + caption), and **correlation**
