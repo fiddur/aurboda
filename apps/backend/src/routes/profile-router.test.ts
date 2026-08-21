@@ -12,13 +12,16 @@ const db = await import('../db/index.ts')
 
 const { createProfileRouter } = await import('./profile-router.ts')
 
-const buildApp = () => {
+const buildApp = (onAvatarChanged?: (user: string) => void) => {
   const app = express()
   const auth = (req: express.Request, _res: express.Response, next: express.NextFunction) => {
     req.user = 'tester'
     next()
   }
-  app.use('/profile', createProfileRouter(auth, 'https://aurboda.net') as unknown as express.RequestHandler)
+  app.use(
+    '/profile',
+    createProfileRouter(auth, 'https://aurboda.net', onAvatarChanged) as unknown as express.RequestHandler,
+  )
   return app
 }
 
@@ -39,6 +42,18 @@ describe('POST /profile/avatar', () => {
     expect(res.status).toBe(200)
     expect(res.body).toEqual({ success: true, url: 'https://aurboda.net/u/tester/avatar.png' })
     expect(db.upsertProfileAvatar).toHaveBeenCalledWith('tester', 'image/webp', expect.any(Buffer))
+  })
+
+  test('notifies onAvatarChanged after a successful upload, but not on rejection', async () => {
+    const onAvatarChanged = vi.fn()
+    const app = buildApp(onAvatarChanged)
+    await supertest(app)
+      .post('/profile/avatar')
+      .attach('avatar', await pngBuffer(), { contentType: 'image/png', filename: 'a.png' })
+    expect(onAvatarChanged).toHaveBeenCalledWith('tester')
+    onAvatarChanged.mockClear()
+    await supertest(app).post('/profile/avatar')
+    expect(onAvatarChanged).not.toHaveBeenCalled()
   })
 
   test('rejects when no file is uploaded', async () => {
@@ -65,10 +80,12 @@ describe('POST /profile/avatar', () => {
 })
 
 describe('DELETE /profile/avatar', () => {
-  test('removes the avatar', async () => {
-    const res = await supertest(buildApp()).delete('/profile/avatar')
+  test('removes the avatar and notifies onAvatarChanged', async () => {
+    const onAvatarChanged = vi.fn()
+    const res = await supertest(buildApp(onAvatarChanged)).delete('/profile/avatar')
     expect(res.status).toBe(200)
     expect(res.body).toEqual({ success: true })
     expect(db.deleteProfileAvatar).toHaveBeenCalledWith('tester')
+    expect(onAvatarChanged).toHaveBeenCalledWith('tester')
   })
 })

@@ -72,7 +72,7 @@ import {
   toDeliverableArticle,
   toDeliverableChallenge,
 } from './services/activitypub/deliver.ts'
-import { createFeedFederation } from './services/activitypub/federation.ts'
+import { createFeedFederation, deliverActorUpdate } from './services/activitypub/federation.ts'
 import { createTimelineBackfiller } from './services/activitypub/timeline-backfill.ts'
 import { createAurbodaEnrichAttempt } from './services/activitypub/timeline-enrich.ts'
 import { auditError, auditInfo } from './services/audit-log.ts'
@@ -646,6 +646,13 @@ const main = async () => {
     garmin,
     httpd,
     invitationAuth,
+    // Tell followers' servers the profile changed — they cache the avatar and
+    // re-download only on an Update{Person} or a changed icon URL.
+    onAvatarChanged: (user) => {
+      deliverActorUpdate(feedDeps, user).catch((error) =>
+        console.warn(`⚠️ actor Update delivery failed for ${user}:`, error),
+      )
+    },
     ouraWebhookManager,
     retroEnrichTimeline,
     syncProvider,

@@ -18,11 +18,12 @@ import {
   type FeedPostInput,
   getFeedTombstone,
 } from '../../db/feed.ts'
+import { getProfileAvatarVersion, upsertProfileAvatar } from '../../db/profile-avatar.ts'
 import { upsertUserSettings } from '../../db/settings.ts'
 import { createFeedTombstoneRouter } from '../../routes/feed-tombstone-router.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../../test/db-test-helper.ts'
 import { buildFeedUpdate } from './deliver.ts'
-import { createFeedFederation } from './federation.ts'
+import { buildActorPerson, createFeedFederation } from './federation.ts'
 
 const CONTAINER_TIMEOUT = 120_000
 const ORIGIN = 'https://aurboda.example'
@@ -93,6 +94,35 @@ describe('Feed federation actor + WebFinger', () => {
     // Human-facing profile link, so clients send browsers to the SPA page
     // instead of the 406-answering actor document (#1047).
     expect(doc.url).toBe(`${ORIGIN}/u/${user}`)
+  })
+
+  test('versions the actor icon URL by the avatar upload time', async () => {
+    const user = getTestUser()
+    // No uploaded avatar: the deterministic identicon needs no version param.
+    const before = await fetchAs2(`/users/${user}`)
+    const beforeDoc = (await before.json()) as { icon: { url: string } }
+    expect(beforeDoc.icon.url).toBe(`${ORIGIN}/u/${user}/avatar.png`)
+
+    await upsertProfileAvatar(user, 'image/webp', Buffer.from('img'))
+    const version = await getProfileAvatarVersion(user)
+    const after = await fetchAs2(`/users/${user}`)
+    const afterDoc = (await after.json()) as { icon: { url: string } }
+    // Remote servers re-download an avatar only when its URL changes, so the
+    // upload MUST change the URL (and each re-upload changes it again).
+    expect(afterDoc.icon.url).toBe(`${ORIGIN}/u/${user}/avatar.png?v=${version?.getTime()}`)
+  })
+
+  test('buildActorPerson (the Update{Person} payload) matches the served actor document', async () => {
+    const user = getTestUser()
+    await upsertProfileAvatar(user, 'image/webp', Buffer.from('img'))
+    const ctx = fed.createContext(new URL(ORIGIN), undefined)
+    const person = await buildActorPerson(ctx, user, ORIGIN)
+    expect(person?.id?.href).toBe(`${ORIGIN}/users/${user}`)
+    const served = await fetchAs2(`/users/${user}`)
+    const servedDoc = (await served.json()) as Record<string, unknown>
+    const builtDoc = (await person!.toJsonLd({ format: 'compact' })) as Record<string, unknown>
+    // The profile-change Update embeds exactly what the actor URL serves.
+    expect(builtDoc).toEqual(servedDoc)
   })
 
   test('serves the NodeInfo JRD at /.well-known/nodeinfo (#1047)', async () => {

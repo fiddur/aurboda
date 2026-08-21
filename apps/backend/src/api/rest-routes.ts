@@ -100,6 +100,8 @@ interface RestRoutesDeps {
   followerActions: FollowerActions
   timelineHub: TimelineHub
   retroEnrichTimeline: RetroEnrichTrigger
+  /** Fire-and-forget: federate an `Update{Person}` after an avatar change. */
+  onAvatarChanged: (user: string) => void
   /** Merge-group/window resolution behind the auto-share rule preview (#903). */
   autosharePreviewDeps: Pick<
     AutoshareDeps,
@@ -125,6 +127,7 @@ export const mountRestRouters = ({
   feedDeliver,
   followActions,
   followerActions,
+  onAvatarChanged,
   retroEnrichTimeline,
   timelineHub,
   ouraWebhookManager,
@@ -168,7 +171,7 @@ export const mountRestRouters = ({
   httpd.use(createRawRecordsRouter(authMiddleware))
   httpd.use('/dashboard', createDashboardRouter(authMiddleware))
   httpd.use('/shared-dashboards', createSharedDashboardsRouter(authMiddleware, webHost))
-  httpd.use('/profile', createProfileRouter(authMiddleware, webHost))
+  httpd.use('/profile', createProfileRouter(authMiddleware, webHost, onAvatarChanged))
   // Mount the following + followers routers before `/feed` so `/feed/following/*`
   // and `/feed/followers/*` (two path segments) resolve here and never touch the
   // feed router's `/:postId`.

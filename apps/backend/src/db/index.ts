@@ -503,6 +503,7 @@ export { deleteIcon, getIcon, insertIcon } from './icons.ts'
 export {
   deleteProfileAvatar,
   getProfileAvatar,
+  getProfileAvatarVersion,
   type ProfileAvatar,
   upsertProfileAvatar,
 } from './profile-avatar.ts'
