@@ -39,7 +39,9 @@ export interface SerializeFeedPostOpts {
    * Attach the FULL structured payload (typed metrics + inline series + route),
    * assembled by the same helper the public structured endpoint uses, so the
    * author's own card renders exactly what a subscribing peer renders (#1008).
-   * Off by default: the public profile listing and MCP tools skip the weight.
+   * Off by default: MCP listing tools skip the weight, and the public profile
+   * listing attaches structured through its shared per-post LRU instead of
+   * this opt-in.
    */
   includeStructured?: boolean
   /**

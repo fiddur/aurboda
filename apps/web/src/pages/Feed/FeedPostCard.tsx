@@ -112,9 +112,10 @@ export const FeedPostCard = ({
           via the shared sanitiser). An activity post with the full structured
           payload renders the SAME `TimelineStructured` component a subscribing
           Aurboda peer's home timeline uses (#1008) — interactive hover charts
-          included — so the owner sees exactly what a follower sees. Without it
-          (public profile), the stat-grid `ActivityPostBody`; older payloads
-          fall back to the server-built, HTML-escaped `content`. */}
+          included — so the owner and public-profile visitors see exactly what
+          a follower sees. Without it (a post whose structured resolve returned
+          nothing), the stat-grid `ActivityPostBody`; older payloads fall back
+          to the server-built, HTML-escaped `content`. */}
       {post.kind === 'article' && post.article ? (
         <ArticleContent article={post.article} />
       ) : post.kind === 'challenge' && post.challenge ? (
