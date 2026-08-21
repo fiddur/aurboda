@@ -116,10 +116,17 @@ MUST treat these values as plain JSON, not as JSON-LD node objects.
 
 ### 2. `quant:Exercise` — a shared workout
 
-A shared exercise is an AS2 object **dual-typed** `["Note", "quant:Exercise"]`
-— `Note` first, so plain fediverse clients render `name`/`content` as a
-status, while implementing peers recognise the second type and read the typed
-fields:
+A shared exercise is an AS2 object, RECOMMENDED to be **dual-typed**
+`["Note", "quant:Exercise"]` — `Note` first, so plain fediverse clients render
+`name`/`content` as a status, while implementing peers recognise the second
+type. The extra type is descriptive, not load-bearing: detection and
+enrichment (§7) key on the object id or `quant:structuredUrl`, never on the
+type, so a publisher MAY emit a single-typed `Note` where interoperability
+requires it — deployed fediverse software mishandles array-valued `type` even
+though multiple types are well-formed AS2 (FitPub's inbound handler, for one,
+casts the object's `type` to a string and would reject or error on an array).
+
+The typed fields:
 
 | Property              | Type                    | Notes                                                                                      |
 | --------------------- | ----------------------- | ------------------------------------------------------------------------------------------ |
@@ -129,6 +136,9 @@ fields:
 | `quant:metrics`       | array of metric objects | The scalar summaries the author chose to share (§2.1)                                      |
 | `quant:series`        | array of series links   | Links into the series endpoint — only for shared series on **publicly-visible** posts (§6) |
 | `quant:structuredUrl` | URL                     | OPTIONAL explicit link to the object's §5 structured payload (see §7)                      |
+
+Consumers MUST tolerate both the string and array forms of `type` on any
+received object.
 
 There is deliberately no duration property in the vocabulary: duration is
 derivable from the window, and when the author chooses to share it as a stat
@@ -167,7 +177,8 @@ Absence of a key means "not shared", never "zero".
 Exercise is one case of the general shape: *something was measured over a
 bounded window*. A `quant:Observation` covers sleep, HRV, steps, mood, weight,
 blood glucose — anything with a window and values. It is dual-typed
-`["Note", "quant:Observation"]` and carries the same properties as §2 except
+`["Note", "quant:Observation"]` (RECOMMENDED, with the same single-type
+allowance as §2) and carries the same properties as §2 except
 `quant:activityType`, replaced by:
 
 | Property              | Type   | Notes                                              |
@@ -245,6 +256,9 @@ share, `kind: "activity"`:
         }
       ]
     }
+  ],
+  "route": [
+    { "lat": 59.3251, "lon": 18.0710, "t": "2026-08-15T06:30:00+02:00" }
   ]
 }
 ```
@@ -254,13 +268,25 @@ share, `kind: "activity"`:
 - `series` MUST contain only series the author *separately* opted to share
   (§8), inlined as bucketed samples (§6.1) over the activity window. It MAY be
   empty.
+- `route` (OPTIONAL) is the activity's GPS track as a time-ordered array of
+  `{ "lat", "lon", "t" }` points (WGS84, ISO 8601 timestamps), downsampled by
+  the publisher. Geography is its own explicit opt-in (§8.6): the field MUST
+  be present only when the author chose to share the route — in Aurboda, by
+  attaching the rendered route-map image, so the machine-readable track has
+  exactly the same audience as the picture of it. This shape is used instead
+  of a GeoJSON `LineString` (despite §1's preference for existing vocabulary)
+  because GeoJSON coordinate arrays carry no per-point time; the timestamps
+  are what let a consumer sync the route to the series chart. They also
+  expose position-at-time, and thus pace, to machine consumers — a client
+  offering route sharing SHOULD say so.
 - Implementations MAY define further `kind`s (Aurboda adds
   `kind: "article"` — a long-form post's title plus resolved prose/chart
   blocks). Consumers MUST ignore unknown kinds.
 
 **Authorization** is by post visibility: a public or unlisted post resolves
 unconditionally; a followers-only post resolves only with a valid capability
-token (§9); anything else — including a nonexistent post — returns **404**.
+token or a signed follower fetch (§9); anything else — including a
+nonexistent post — returns **404**.
 
 ### 6. Series endpoint
 
@@ -350,6 +376,25 @@ Enrichment MUST be best-effort and additive: any failure (non-QuantPub host,
 SSRF-guarded (public hosts only, no redirect following, size- and
 time-bounded); see Security considerations.
 
+#### 7.1 Coexistence and incremental adoption
+
+Every part of this proposal is additive, so an implementation with an
+established federation format can adopt it without breaking federation with
+its own older versions:
+
+- The discovery document (§4) and the §5/§6 endpoints are **new routes**; an
+  existing vendor detail endpoint keeps serving unchanged alongside them.
+- The `quant:*` properties and `quant:structuredUrl` ride alongside any
+  existing vendor extension on the same `Note` (e.g. FitPub's
+  `fitpub:detailUri`); consumers ignore properties they don't know, so old
+  peers see exactly the object they saw before.
+- Dual-typing is RECOMMENDED but not required (§2), because array-valued
+  `type` is the one addition known to break some deployed consumers; a
+  publisher whose install base predates array-type tolerance SHOULD start
+  single-typed and add the second type once its consumers tolerate arrays.
+- Nothing in §7 requires the *object id* to change: a publisher keeping its
+  existing id layout uses `quant:structuredUrl` instead of the id convention.
+
 ### 8. Privacy model (normative)
 
 1. **Scalars never imply series.** Sharing a scalar summary (e.g.
@@ -368,15 +413,22 @@ time-bounded); see Security considerations.
    followers-only one). Only the discovery document (§4) is cacheable.
 5. **Bounded resolution.** The server-side bucket floor (§6) is a privacy
    floor, not only a payload bound: implementations MUST NOT serve raw
-   per-measurement timestamps on public endpoints.
+   per-measurement *series* timestamps on public endpoints. (The one
+   deliberate exception is the §5 `route`'s per-fix `t`, which is its own
+   separately-opted-in geography share — item 6.)
+6. **Geography is its own explicit opt-in.** A GPS route MUST NOT be exposed
+   by any scalar or series share; the default for any share MUST be: no
+   route. Publishers SHOULD downsample and SHOULD apply privacy geo-masking
+   (home-zone trimming) before export, not only in rendering.
 
 ### 9. Capability tokens for follower-scoped payloads
 
-Fediverse media and data fetches are **unsigned**: Mastodon's "authorized
-fetch" signs ActivityPub object/actor requests, not media downloads, so an
-HTTP-Signature gate on data endpoints would never be exercised and followers
-would simply see broken content. QuantPub therefore uses **capability URLs**
-for followers-only posts:
+Mainstream fediverse media and data fetches are **unsigned**: Mastodon's
+"authorized fetch" signs ActivityPub object/actor requests, not media
+downloads, so an HTTP-Signature-*only* gate on data endpoints would leave
+Mastodon-class followers seeing broken content — and a Level 1 publisher has
+no actor keys to verify against at all. QuantPub therefore uses **capability
+URLs** as the baseline for followers-only posts:
 
 - Each followers-only post carries an unguessable token. Its structured-payload
   and image URLs include `?token={token}` **only in the copies delivered to
@@ -405,6 +457,19 @@ for followers-only posts:
 - The tradeoff is explicit: a leaked capability URL grants access to that one
   post's shared payload — never to the public series endpoint, which serves
   publicly-visible shares only.
+
+**Signed fetches as an additional grant.** Purpose-built peers *can* sign
+their data fetches — FitPub already authorizes followers-only activity details
+by verifying an HTTP Signature on the detail `GET` against the requesting
+actor's key and follow state. A Level 2+ publisher MAY therefore additionally
+resolve a followers-only §5 payload for a request bearing a valid [HTTP
+Signature] from an accepted follower (or that follower's instance actor),
+and a Level 3 consumer SHOULD sign its enrichment fetches with its actor key
+when it has one, so such publishers can grant access even where a token was
+lost in transit. Signature authorization is strictly additive: it MUST NOT
+replace capability tokens (which remain the only channel that works without
+ActivityPub key material on either side), and a request that satisfies
+neither channel still returns 404, never 403 (§8.3).
 
 ## Implementing this in a weekend
 
@@ -527,12 +592,38 @@ GET /api/public/freja/series?metric=stress&start=...&end=...&bucket=60s
   (sleep schedules, home departure times via workout starts). The per-metric,
   per-post opt-in exists so that authors make this choice deliberately;
   clients SHOULD present series sharing as distinct from summary sharing.
+- **Routes are the most identifying payload.** A shared GPS track typically
+  starts or ends at home. The §5 `route` opt-in binds the machine-readable
+  track to the visual route image the author already chose to share, but
+  publishers SHOULD offer home-zone masking and apply it before export, not
+  only in rendering.
 
 ## Prior art
 
-- **[Open Pace](https://github.com/edance/openpace)** and **[FitPub](https://fitpub.social/)** — federated
-  running/fitness publishing; single-domain (exercise) and product-shaped
-  rather than a vocabulary for arbitrary metrics.
+- **[FitPub](https://fitpub.social/)** — federated fitness tracking
+  (Java/Spring, multi-instance) whose wire format is this proposal's closest
+  relative and directly informed §7.1 and the §9 signed-fetch grant. FitPub
+  delivers a plain `Note` (HTML content, one-line stat summary, generated
+  map-image attachment) with AS2 `startTime`/`endTime` and an in-band pointer
+  `fitpub: { "detailUri": … }` (namespace `https://fitpub.social/ns#`) to an
+  out-of-band detail endpoint — the same Note-plus-pointer architecture as
+  §2/§5. It differs in the parts this proposal standardises: the detail
+  payload is its internal API DTO (fixed camelCase schema: `totalDistance`,
+  `metrics.averageHeartRate`, `simplifiedTrack` GeoJSON, …) rather than a
+  vendor-neutral contract; detection is by property presence plus NodeInfo
+  software identity rather than a capability document; followers-only details
+  are authorized by signed `GET`s (adopted here as the optional §9 grant)
+  rather than capability tokens; non-public objects answer `403` rather than
+  this proposal's normative `404` (§8.3); and it consumes only scalars and
+  track geometry — no series concept. §7.1 describes how such an
+  implementation adopts QuantPub without breaking federation with its own
+  older versions. (Format read from the [FitPub
+  source](https://codeberg.org/fitpub/fitpub) as of 2026-08-21:
+  `ActivityPostProcessingService`, `ActivityPubContexts`,
+  `RemoteActivityDetailsFetcher`, and `docs/federation.md`.)
+- **[Open Pace](https://github.com/edance/openpace)** — federated running
+  publishing; single-domain (exercise) and product-shaped rather than a
+  vocabulary for arbitrary metrics.
 - **[Endurain](https://github.com/joaovitoriasilva/endurain)** and
   **[Wanderer](https://github.com/Flomp/wanderer)** — self-hosted fitness /
   trail platforms with federation interest; natural candidate implementers.
@@ -558,7 +649,9 @@ GET /api/public/freja/series?metric=stress&start=...&end=...&bucket=60s
   `quant:structuredUrl` (inline `@context` term definitions on every
   delivered/served object), serves the `/.well-known/quantpub` discovery
   document (§4) and a published context document at `/ns/quantpub`, the
-  structured post endpoint (activity and article kinds), the data-driven
+  structured post endpoint (activity and article kinds, including the
+  optional downsampled `route` — shared by attaching the route-map image, so
+  track and image have the same audience), the data-driven
   public series endpoint, capability tokens for followers-only payloads, and
   Level 3 ingest/enrichment between Aurboda instances via the §7 id
   convention. This FEP generalises that running code — including the §9 token
@@ -578,6 +671,7 @@ Proposal have waived all copyright and related or neighboring rights to this
 work.
 
 [ActivityPub]: https://www.w3.org/TR/activitypub/
+[HTTP Signature]: https://datatracker.ietf.org/doc/html/draft-cavage-http-signatures
 [RFC-2119]: https://datatracker.ietf.org/doc/html/rfc2119
 [FEP-67ff]: https://codeberg.org/fediverse/fep/src/branch/main/fep/67ff/fep-67ff.md
 [FEP-400e]: https://codeberg.org/fediverse/fep/src/branch/main/fep/400e/fep-400e.md
