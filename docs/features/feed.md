@@ -608,6 +608,11 @@ Public / federation (unauthenticated):
 | `GET /users/:username/feed/:postId`                          | A single post's `Note` — an activity share or an article (or `410` Tombstone once deleted)                 |
 | `POST /users/:username/inbox` (+ `/inbox`)                   | Inbound `Follow` / `Undo{Follow}` / `Accept` / `Reject` (HTTP-Signature verified)                          |
 
+The actor's `icon` URL carries the avatar's upload time as a `?v=` version, and an avatar
+upload/removal delivers an `Update{Person}` to accepted followers — remote servers (Mastodon
+et al.) cache a copied avatar and re-download it only on one of those two signals, so without
+them a changed avatar never propagates.
+
 The owner-facing capability is also available over MCP as `list_feed`, `share_activity`,
 `preview_activity_share`, `share_challenge`, `create_article`, `update_article`, `export_article_markdown`, `update_feed_post`,
 `delete_feed_post`, `list_following`, `follow_actor`, `unfollow_actor`, `list_followers`,

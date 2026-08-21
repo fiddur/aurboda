@@ -1,7 +1,13 @@
 import type { FeedStructuredPost } from '@aurboda/api-spec'
 import type { Actor } from '@fedify/fedify/vocab'
 
-import { createFederation, type Federation, type InboxContext, MemoryKvStore } from '@fedify/fedify'
+import {
+  type Context,
+  createFederation,
+  type Federation,
+  type InboxContext,
+  MemoryKvStore,
+} from '@fedify/fedify'
 import {
   Accept,
   Create,
@@ -48,6 +54,7 @@ import {
   getFeedFollowingByActor,
   getFeedPostById,
   getOrCreateActorKeyPair,
+  getProfileAvatarVersion,
   getUserSettings,
   isMissingDatabase,
   listAcceptedFeedFollowing,
@@ -73,7 +80,7 @@ import {
   toDeliverableChallenge,
 } from './deliver.ts'
 import { toCryptoKeyPair } from './keys.ts'
-import { isPubliclyVisible } from './object.ts'
+import { AS_PUBLIC, isPubliclyVisible } from './object.ts'
 import { capabilityTokenFrom, createAurbodaEnricher } from './timeline-enrich.ts'
 import { extractNoteImages, noteToTimelineInput } from './timeline-ingest.ts'
 
@@ -209,6 +216,83 @@ const ingestFeedActivity = async (
   }
 }
 
+/**
+ * Build a user's full `Person` actor document — shared by the actor dispatcher
+ * and the profile-change `Update{Person}` delivery, so followers' servers
+ * always receive exactly the representation the actor URL serves. The icon URL
+ * carries the avatar's `updated_at` as a cache-busting `?v=`: remote servers
+ * (Mastodon et al.) copy a remote avatar once and re-download it only when the
+ * URL changes, so a changed avatar must change the URL.
+ */
+export const buildActorPerson = async (
+  ctx: Context<void>,
+  identifier: string,
+  origin: string,
+): Promise<Person | null> => {
+  if (!isValidUsername(identifier)) return null
+  let keys
+  try {
+    keys = await ctx.getActorKeyPairs(identifier)
+  } catch (error) {
+    if (isMissingDatabase(error)) return null
+    throw error
+  }
+  if (keys.length === 0) return null
+  // Advertise "locked account" when the user requires manual approval, so
+  // Mastodon et al. show a follow *request* and hold the follow pending
+  // (matching our own inbox behaviour of deferring the Accept).
+  const settings = await getUserSettings(identifier)
+  // Avatar served on the web host; always resolves (identicon fallback), so
+  // remote servers always have an actor icon to show. No `?v=` while the
+  // deterministic identicon is in use — the transition to a first upload
+  // changes the URL by adding one.
+  const avatarVersion = await getProfileAvatarVersion(identifier)
+  const iconUrl = new URL(`${buildProfileUrl(origin, identifier)}/avatar.png`)
+  if (avatarVersion) iconUrl.searchParams.set('v', String(avatarVersion.getTime()))
+  return new Person({
+    followers: ctx.getFollowersUri(identifier),
+    following: ctx.getFollowingUri(identifier),
+    icon: new Image({ url: iconUrl }),
+    id: ctx.getActorUri(identifier),
+    inbox: ctx.getInboxUri(identifier),
+    manuallyApprovesFollowers: settings?.manually_approve_followers === true,
+    outbox: ctx.getOutboxUri(identifier),
+    preferredUsername: identifier,
+    publicKey: keys[0].cryptographicKey,
+    // The human-facing profile page. Mastodon-class clients link people
+    // here instead of the actor document (whose content negotiation
+    // answers 406 to a browser — see the HTML fallback router, #1047).
+    url: new URL(buildProfileUrl(origin, identifier)),
+  })
+}
+
+/**
+ * Deliver an `Update{Person}` to the user's accepted followers after a profile
+ * change (avatar upload/removal). Without it, a follower's server never
+ * refreshes its cached copy of the actor: Mastodon re-downloads an avatar only
+ * on an incoming actor Update or a changed icon URL, and until now Aurboda
+ * produced neither signal. Fire-and-forget at the call site — a delivery
+ * failure must never fail the profile change itself.
+ */
+export const deliverActorUpdate = async (
+  deps: { federation: Federation<void>; origin: string },
+  user: string,
+): Promise<void> => {
+  const ctx = await deps.federation.createContext(new URL(deps.origin))
+  const person = await buildActorPerson(ctx, user, deps.origin)
+  if (person?.id == null) return
+  const update = new Update({
+    actor: person.id,
+    cc: ctx.getFollowersUri(user),
+    // Mastodon-style per-change id fragment; profile updates are not
+    // dereferenceable objects, so uniqueness is all the id needs.
+    id: new URL(`${person.id.href}#updates/${Date.now()}`),
+    object: person,
+    to: new URL(AS_PUBLIC),
+  })
+  await ctx.sendActivity({ identifier: user }, 'followers', update)
+}
+
 export const createFeedFederation = (
   origin: string,
   apiBaseUrl: string,
@@ -257,38 +341,9 @@ export const createFeedFederation = (
   }))
 
   federation
-    .setActorDispatcher('/users/{identifier}', async (ctx, identifier) => {
-      if (!isValidUsername(identifier)) return null
-      let keys
-      try {
-        keys = await ctx.getActorKeyPairs(identifier)
-      } catch (error) {
-        if (isMissingDatabase(error)) return null
-        throw error
-      }
-      if (keys.length === 0) return null
-      // Advertise "locked account" when the user requires manual approval, so
-      // Mastodon et al. show a follow *request* and hold the follow pending
-      // (matching our own inbox behaviour of deferring the Accept).
-      const settings = await getUserSettings(identifier)
-      return new Person({
-        followers: ctx.getFollowersUri(identifier),
-        following: ctx.getFollowingUri(identifier),
-        // Avatar served on the web host; always resolves (identicon fallback),
-        // so remote servers like Mastodon always have an actor icon to show.
-        icon: new Image({ url: new URL(`${buildProfileUrl(origin, identifier)}/avatar.png`) }),
-        id: ctx.getActorUri(identifier),
-        inbox: ctx.getInboxUri(identifier),
-        manuallyApprovesFollowers: settings?.manually_approve_followers === true,
-        outbox: ctx.getOutboxUri(identifier),
-        preferredUsername: identifier,
-        publicKey: keys[0].cryptographicKey,
-        // The human-facing profile page. Mastodon-class clients link people
-        // here instead of the actor document (whose content negotiation
-        // answers 406 to a browser — see the HTML fallback router, #1047).
-        url: new URL(buildProfileUrl(origin, identifier)),
-      })
-    })
+    .setActorDispatcher('/users/{identifier}', (ctx, identifier) =>
+      buildActorPerson(ctx, identifier, origin),
+    )
     .setKeyPairsDispatcher(async (_ctx, identifier) => {
       if (!isValidUsername(identifier)) return []
       try {
