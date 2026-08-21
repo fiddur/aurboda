@@ -88,6 +88,29 @@ describe('GET /public/:username/posts', () => {
     }
   })
 
+  test('attaches the structured payload so the profile page renders natively', async () => {
+    const user = getTestUser()
+    const id = await seedPost(user, 'public')
+    const { request, close } = startApp()
+    try {
+      const res = await request.get(`/public/${user}/posts`)
+      expect(res.status).toBe(200)
+      const post = res.body.posts.find((p: { id: string }) => p.id === id)
+      // Same shape the owner's /feed and the per-post structured endpoint serve:
+      // the profile card gets the native stat grid (and chart/map when opted in).
+      expect(post.structured).toMatchObject({
+        activity_type: 'exercise',
+        kind: 'activity',
+        metrics: [{ key: 'duration', unit: 'seconds', value: 2400 }],
+        series: [],
+        start_time: START.toISOString(),
+        title: 'Morning run',
+      })
+    } finally {
+      await close()
+    }
+  })
+
   test('returns an empty list for a user with no public posts', async () => {
     const user = getTestUser()
     await seedPost(user, 'followers') // only a followers-only post exists

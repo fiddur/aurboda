@@ -90,8 +90,13 @@ export const createFeedPublicRouter = (): TypedRouter => {
 
   // A user's public feed for their profile page: the most recent `public`/
   // `unlisted` posts, newest-first (same set as the ActivityPub outbox — never
-  // `followers`-only). Serialized exactly like the authenticated `/feed`, so the
-  // web renders them with the same post card. Bounded to the latest page.
+  // `followers`-only). Serialized exactly like the authenticated `/feed`,
+  // INCLUDING the structured payload (typed metrics + inline series + route),
+  // so the profile page renders the same native stat grid / hover chart /
+  // synced map as the owner's feed and a subscribing peer. Privacy-neutral:
+  // every post here is public/unlisted, and `structured` carries only what the
+  // author opted into — the same payload anyone could fetch per post from
+  // `/public/:username/feed/:postId`. Bounded to the latest page.
   // `no-store` like the sibling `/series` and `/feed/:postId` endpoints: sharing
   // is revocable, so flipping a post to `followers` or deleting it must drop it
   // from the profile immediately, never linger in a shared cache. Mounted before
@@ -108,7 +113,7 @@ export const createFeedPublicRouter = (): TypedRouter => {
       const records = await listPublicFeedPostsPage(username, PROFILE_FEED_LIMIT, 0)
       const settings = await getSettings(username).catch(() => null)
       const posts = await Promise.all(
-        records.map((record) => serializeFeedPost(username, record, { settings })),
+        records.map((record) => serializeFeedPost(username, record, { includeStructured: true, settings })),
       )
       res.setHeader('Cache-Control', 'no-store')
       res.json({ posts, success: true })
