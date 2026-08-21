@@ -119,13 +119,14 @@ MUST treat these values as plain JSON, not as JSON-LD node objects.
 A shared exercise is an AS2 object, RECOMMENDED to be **dual-typed**
 `["Note", "quant:Exercise"]` — `Note` first, so plain fediverse clients render
 `name`/`content` as a status, while implementing peers recognise the second
-type and read the typed fields. The extra type is descriptive, not
-load-bearing: detection and enrichment (§7) key on the object id or
-`quant:structuredUrl`, never on the type, so a publisher MAY emit a
-single-typed `Note` where interoperability requires it — existing fediverse
-software is known to mishandle array-valued `type` (e.g. casting it to a
-string), even though multiple types are well-formed AS2. Consumers MUST
-tolerate both the string and array forms of `type` on any received object:
+type. The extra type is descriptive, not load-bearing: detection and
+enrichment (§7) key on the object id or `quant:structuredUrl`, never on the
+type, so a publisher MAY emit a single-typed `Note` where interoperability
+requires it — deployed fediverse software mishandles array-valued `type` even
+though multiple types are well-formed AS2 (FitPub's inbound handler, for one,
+casts the object's `type` to a string and would reject or error on an array).
+
+The typed fields:
 
 | Property              | Type                    | Notes                                                                                      |
 | --------------------- | ----------------------- | ------------------------------------------------------------------------------------------ |
@@ -135,6 +136,9 @@ tolerate both the string and array forms of `type` on any received object:
 | `quant:metrics`       | array of metric objects | The scalar summaries the author chose to share (§2.1)                                      |
 | `quant:series`        | array of series links   | Links into the series endpoint — only for shared series on **publicly-visible** posts (§6) |
 | `quant:structuredUrl` | URL                     | OPTIONAL explicit link to the object's §5 structured payload (see §7)                      |
+
+Consumers MUST tolerate both the string and array forms of `type` on any
+received object.
 
 There is deliberately no duration property in the vocabulary: duration is
 derivable from the window, and when the author chooses to share it as a stat
@@ -266,20 +270,23 @@ share, `kind: "activity"`:
   empty.
 - `route` (OPTIONAL) is the activity's GPS track as a time-ordered array of
   `{ "lat", "lon", "t" }` points (WGS84, ISO 8601 timestamps), downsampled by
-  the publisher. Geography is its own explicit opt-in like a series (§8): the
-  field MUST be present only when the author chose to share the route — in
-  Aurboda, by attaching the rendered route-map image, so the machine-readable
-  track has exactly the same audience as the picture of it. Publishers SHOULD
-  downsample, and SHOULD apply any privacy geo-masking (home-zone trimming)
-  *before* export. Note the timestamps expose position-at-time, and thus pace,
-  to machine consumers — a client offering route sharing SHOULD say so.
+  the publisher. Geography is its own explicit opt-in (§8.6): the field MUST
+  be present only when the author chose to share the route — in Aurboda, by
+  attaching the rendered route-map image, so the machine-readable track has
+  exactly the same audience as the picture of it. This shape is used instead
+  of a GeoJSON `LineString` (despite §1's preference for existing vocabulary)
+  because GeoJSON coordinate arrays carry no per-point time; the timestamps
+  are what let a consumer sync the route to the series chart. They also
+  expose position-at-time, and thus pace, to machine consumers — a client
+  offering route sharing SHOULD say so.
 - Implementations MAY define further `kind`s (Aurboda adds
   `kind: "article"` — a long-form post's title plus resolved prose/chart
   blocks). Consumers MUST ignore unknown kinds.
 
 **Authorization** is by post visibility: a public or unlisted post resolves
 unconditionally; a followers-only post resolves only with a valid capability
-token (§9); anything else — including a nonexistent post — returns **404**.
+token or a signed follower fetch (§9); anything else — including a
+nonexistent post — returns **404**.
 
 ### 6. Series endpoint
 
@@ -406,7 +413,13 @@ its own older versions:
    followers-only one). Only the discovery document (§4) is cacheable.
 5. **Bounded resolution.** The server-side bucket floor (§6) is a privacy
    floor, not only a payload bound: implementations MUST NOT serve raw
-   per-measurement timestamps on public endpoints.
+   per-measurement *series* timestamps on public endpoints. (The one
+   deliberate exception is the §5 `route`'s per-fix `t`, which is its own
+   separately-opted-in geography share — item 6.)
+6. **Geography is its own explicit opt-in.** A GPS route MUST NOT be exposed
+   by any scalar or series share; the default for any share MUST be: no
+   route. Publishers SHOULD downsample and SHOULD apply privacy geo-masking
+   (home-zone trimming) before export, not only in rendering.
 
 ### 9. Capability tokens for follower-scoped payloads
 
@@ -604,7 +617,10 @@ GET /api/public/freja/series?metric=stress&start=...&end=...&bucket=60s
   this proposal's normative `404` (§8.3); and it consumes only scalars and
   track geometry — no series concept. §7.1 describes how such an
   implementation adopts QuantPub without breaking federation with its own
-  older versions.
+  older versions. (Format read from the [FitPub
+  source](https://codeberg.org/fitpub/fitpub) as of 2026-08-21:
+  `ActivityPostProcessingService`, `ActivityPubContexts`,
+  `RemoteActivityDetailsFetcher`, and `docs/federation.md`.)
 - **[Open Pace](https://github.com/edance/openpace)** — federated running
   publishing; single-domain (exercise) and product-shaped rather than a
   vocabulary for arbitrary metrics.
