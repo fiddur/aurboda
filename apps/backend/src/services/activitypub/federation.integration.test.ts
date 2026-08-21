@@ -90,6 +90,34 @@ describe('Feed federation actor + WebFinger', () => {
     expect(publicKey.publicKeyPem).toContain('BEGIN PUBLIC KEY')
     // Default account is open — not a locked (manual-approval) account.
     expect(doc.manuallyApprovesFollowers).toBe(false)
+    // Human-facing profile link, so clients send browsers to the SPA page
+    // instead of the 406-answering actor document (#1047).
+    expect(doc.url).toBe(`${ORIGIN}/u/${user}`)
+  })
+
+  test('serves the NodeInfo JRD at /.well-known/nodeinfo (#1047)', async () => {
+    const res = await fed.fetch(new Request(`${ORIGIN}/.well-known/nodeinfo`), {
+      contextData: undefined,
+      onNotAcceptable: notFound,
+      onNotFound: notFound,
+    })
+    expect(res.status).toBe(200)
+    const doc = (await res.json()) as { links: { href: string; rel: string }[] }
+    const link = doc.links.find((l) => l.rel === 'http://nodeinfo.diaspora.software/ns/schema/2.1')
+    expect(link?.href).toBe(`${ORIGIN}/nodeinfo/2.1`)
+  })
+
+  test('serves NodeInfo 2.1 identifying the software (#1047)', async () => {
+    const res = await fed.fetch(new Request(`${ORIGIN}/nodeinfo/2.1`), {
+      contextData: undefined,
+      onNotAcceptable: notFound,
+      onNotFound: notFound,
+    })
+    expect(res.status).toBe(200)
+    const doc = (await res.json()) as Record<string, unknown>
+    expect(doc.version).toBe('2.1')
+    expect(doc.software).toMatchObject({ name: 'aurboda', version: 'dev' })
+    expect(doc.protocols).toEqual(['activitypub'])
   })
 
   test('advertises manuallyApprovesFollowers when the user requires manual approval', async () => {

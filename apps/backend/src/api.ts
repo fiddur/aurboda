@@ -58,6 +58,7 @@ import { ouraClient } from './integrations/oura/client.ts'
 import { createOwnTracksRouter } from './integrations/owntracks/router.ts'
 import { stravaClient } from './integrations/strava/client.ts'
 import { createMcpRouter } from './mcp.ts'
+import { createActorHtmlRouter } from './routes/actor-html-router.ts'
 import { createFeedTombstoneRouter } from './routes/feed-tombstone-router.ts'
 import { createOAuthRouter } from './routes/oauth-router.ts'
 import {
@@ -363,8 +364,12 @@ const main = async () => {
   // the follower's timeline (fire-and-forget, time-boxed). `backfill` is defined
   // just below and only invoked later (on an inbound Accept), so the forward
   // reference is safe.
-  const feedFederation = createFeedFederation(webHost, apiBaseUrl, onNewTimelineEntry, (user, actorUri) =>
-    backfill(user, actorUri),
+  const feedFederation = createFeedFederation(
+    webHost,
+    apiBaseUrl,
+    onNewTimelineEntry,
+    (user, actorUri) => backfill(user, actorUri),
+    wellKnown.version,
   )
   const backfill = createTimelineBackfiller(feedFederation, webHost)
   const feedDeps = { apiBaseUrl, federation: feedFederation, origin: webHost }
@@ -521,6 +526,10 @@ const main = async () => {
   // the federation integration: when the object dispatcher returns null for a
   // since-deleted post, `@fedify/express` calls next(), and this catches it.
   httpd.use(createFeedTombstoneRouter({ getTombstone: getFeedTombstone, origin: webHost }))
+
+  // Browser-facing actor URLs (#1047): Fedify answers 406 to `Accept: text/html`
+  // via the same next() fall-through, and this redirects humans to /u/:username.
+  httpd.use(createActorHtmlRouter({ origin: webHost }))
 
   httpd.use(json({ limit: '10mb' }))
 

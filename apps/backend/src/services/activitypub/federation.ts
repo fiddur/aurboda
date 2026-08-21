@@ -219,6 +219,8 @@ export const createFeedFederation = (
    * sent becomes accepted, to backfill the followee's recent public posts.
    */
   onFollowAccepted?: (user: string, actorUri: string) => void,
+  /** Deployed software version (BUILD_SHA), reported in NodeInfo. */
+  version = 'dev',
 ): Federation<void> => {
   const federation = createFederation<void>({
     kv: new MemoryKvStore(),
@@ -237,6 +239,22 @@ export const createFeedFederation = (
   // Fetches native structured data (typed metrics + series) for ingested posts
   // that come from Aurboda instances, so the web can render a native chart.
   const enrich = createAurbodaEnricher(origin)
+
+  // NodeInfo instance metadata (#1047). Fedify serves the `/.well-known/nodeinfo`
+  // JRD automatically once a dispatcher is registered; peers and crawlers use it
+  // to identify the software (some, like FitPub, gate follow-ability on it).
+  // Usage statistics are deliberately absent/zero: the per-user-database
+  // architecture has no cheap global user or post counts, and NodeInfo allows
+  // omitting `users.total`.
+  federation.setNodeInfoDispatcher('/nodeinfo/2.1', () => ({
+    protocols: ['activitypub'],
+    software: {
+      name: 'aurboda',
+      repository: new URL('https://github.com/fiddur/aurboda'),
+      version,
+    },
+    usage: { localComments: 0, localPosts: 0, users: {} },
+  }))
 
   federation
     .setActorDispatcher('/users/{identifier}', async (ctx, identifier) => {
@@ -265,6 +283,10 @@ export const createFeedFederation = (
         outbox: ctx.getOutboxUri(identifier),
         preferredUsername: identifier,
         publicKey: keys[0].cryptographicKey,
+        // The human-facing profile page. Mastodon-class clients link people
+        // here instead of the actor document (whose content negotiation
+        // answers 406 to a browser — see the HTML fallback router, #1047).
+        url: new URL(buildProfileUrl(origin, identifier)),
       })
     })
     .setKeyPairsDispatcher(async (_ctx, identifier) => {

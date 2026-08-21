@@ -597,7 +597,9 @@ Public / federation (unauthenticated):
 | `GET /.well-known/webfinger`                                 | Resolve `acct:<username>@<host>` → the actor                                                               |
 | `GET /.well-known/quantpub`                                  | QuantPub discovery document (FEP §4): product, versions, `api_base`                                        |
 | `GET /ns/quantpub`                                           | The published QuantPub JSON-LD `@context` document (`application/ld+json`)                                 |
-| `GET /users/:username`                                       | The actor document (`Person`)                                                                              |
+| `GET /.well-known/nodeinfo`                                  | NodeInfo JRD pointing at the 2.1 document (#1047)                                                          |
+| `GET /nodeinfo/2.1`                                          | NodeInfo 2.1: software `aurboda` + version, `activitypub` protocol (no usage stats — per-user DBs)         |
+| `GET /users/:username`                                       | The actor document (`Person`); a browser (`Accept: text/html`) is 302-redirected to `/u/:username`         |
 | `GET /users/:username/outbox`                                | Public + unlisted posts as `Create` activities                                                             |
 | `GET /users/:username/followers`                             | The actor's followers collection                                                                           |
 | `GET /users/:username/following`                             | The actor's following collection (accepted follows only)                                                   |
