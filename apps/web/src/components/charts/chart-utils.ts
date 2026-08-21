@@ -5,6 +5,39 @@ import type { SleepStage } from './sleep-utils'
 
 import { STAGE_LABELS } from './sleep-utils'
 
+/** Right y-axes the chart can draw (mirrors CombinedMetricChart's cap). */
+export const MAX_RIGHT_AXES = 2
+
+/**
+ * How many RIGHT y-axes the chart will draw for these overlays — the same
+ * axis-allocation walk `drawOverlays` performs: the first overlay takes the
+ * left axis (whether or not it shows one) unless a hypnogram already holds it,
+ * later overlays go right, and only `showAxis` overlays up to the cap actually
+ * draw an axis there.
+ */
+export const countRightAxes = (hasHypnogram: boolean, overlays: { showAxis: boolean }[]): number => {
+  let rightAxisCount = 0
+  let leftUsed = false
+  for (const overlay of overlays) {
+    if (!leftUsed && !hasHypnogram) {
+      leftUsed = true
+    } else if (overlay.showAxis && rightAxisCount < MAX_RIGHT_AXES) {
+      rightAxisCount++
+    }
+  }
+  return rightAxisCount
+}
+
+/**
+ * The right chart margin for a given number of drawn right axes: axes sit
+ * 45px apart, the outermost needs ~20px more for its tick + unit labels, and
+ * an axis-less chart keeps only a small breathing edge. Reserving a fixed
+ * maximum instead squeezed the plot to half a phone card's width when only
+ * one metric was shown (the common feed-card case).
+ */
+export const chartRightMargin = (rightAxes: number): number =>
+  rightAxes === 0 ? 14 : rightAxes * 45 + 20
+
 /**
  * Find the nearest data point to a given time using binary search.
  * Returns the [Date, number] tuple closest to `targetTime`, or undefined if data is empty.

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 
-import { findNearest, findStageAtTime } from './chart-utils'
+import { chartRightMargin, countRightAxes, findNearest, findStageAtTime } from './chart-utils'
 
 describe('findNearest', () => {
   test('returns undefined for empty data', () => {
@@ -91,5 +91,36 @@ describe('findStageAtTime', () => {
 
   test('returns undefined for empty stages', () => {
     expect(findStageAtTime([], new Date('2024-01-15T00:15:00Z'))).toBeUndefined()
+  })
+})
+
+describe('countRightAxes / chartRightMargin', () => {
+  const overlay = (showAxis: boolean) => ({ showAxis })
+
+  test('a single overlay takes the left axis — no right margin reservation', () => {
+    expect(countRightAxes(false, [overlay(true)])).toBe(0)
+    expect(chartRightMargin(0)).toBe(14)
+  })
+
+  test('with a hypnogram, the first overlay already goes right', () => {
+    expect(countRightAxes(true, [overlay(true)])).toBe(1)
+  })
+
+  test('second and third overlays get right axes, capped at two', () => {
+    expect(countRightAxes(false, [overlay(true), overlay(true)])).toBe(1)
+    expect(countRightAxes(false, [overlay(true), overlay(true), overlay(true)])).toBe(2)
+    expect(countRightAxes(false, [overlay(true), overlay(true), overlay(true), overlay(true)])).toBe(2)
+  })
+
+  test('an axis-less overlay claims the left slot but never a right one', () => {
+    // Mirrors drawOverlays: the first overlay marks the left axis used even
+    // when it draws no axis, so the next one goes right.
+    expect(countRightAxes(false, [overlay(false), overlay(true)])).toBe(1)
+    expect(countRightAxes(false, [overlay(true), overlay(false)])).toBe(0)
+  })
+
+  test('margin grows 45px per axis plus label headroom', () => {
+    expect(chartRightMargin(1)).toBe(65)
+    expect(chartRightMargin(2)).toBe(110)
   })
 })

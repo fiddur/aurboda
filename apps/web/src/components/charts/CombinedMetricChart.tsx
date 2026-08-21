@@ -18,7 +18,13 @@ import * as d3 from 'd3'
 import { format } from 'date-fns'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 
-import { findNearest, findStageAtTime } from './chart-utils'
+import {
+  chartRightMargin,
+  countRightAxes,
+  findNearest,
+  findStageAtTime,
+  MAX_RIGHT_AXES,
+} from './chart-utils'
 import { STAGE_COLORS, STAGE_LABELS, STAGE_Y_ORDER, type SleepStage } from './sleep-utils'
 import './CombinedMetricChart.css'
 
@@ -44,9 +50,13 @@ interface CombinedMetricChartProps {
 }
 
 const CHART_HEIGHT = 260
-/** Exported so callers sizing their fetch to the drawable width use the same margins. */
-export const CHART_MARGIN = { bottom: 30, left: 50, right: 155, top: 10 }
-const MAX_RIGHT_AXES = 2
+/**
+ * Exported so callers sizing their fetch to the drawable width use the same
+ * margins. `right` is the MAXIMUM (two right axes drawn); the rendered chart
+ * reclaims unused axis space via `chartRightMargin`, so a fetch sized with
+ * this is at worst slightly coarser than the drawn width, never too fine.
+ */
+export const CHART_MARGIN = { bottom: 30, left: 50, right: chartRightMargin(MAX_RIGHT_AXES), top: 10 }
 const SPARSE_THRESHOLD = 10
 
 /** Hypnogram Y-axis labels in display order (top to bottom). */
@@ -354,7 +364,11 @@ const renderChart = ({
   const svg = d3.select(svgRef.current)
   svg.selectAll('*').remove()
 
-  const innerWidth = containerWidth - CHART_MARGIN.left - CHART_MARGIN.right
+  // Reserve right margin only for the right axes actually drawn — a fixed
+  // maximum squeezed the plot to half a phone card's width in the common
+  // single-metric case.
+  const marginRight = chartRightMargin(countRightAxes(!!hasHypnogram, overlays))
+  const innerWidth = containerWidth - CHART_MARGIN.left - marginRight
   const innerHeight = CHART_HEIGHT - CHART_MARGIN.top - CHART_MARGIN.bottom
 
   svg.attr('width', containerWidth).attr('height', CHART_HEIGHT)
@@ -368,7 +382,9 @@ const renderChart = ({
     .call(
       d3
         .axisBottom(xScale)
-        .ticks(6)
+        // A "HH:mm" tick needs ~60px to stay legible; d3 treats this as a
+        // hint, so clamp instead of letting a narrow phone card overlap them.
+        .ticks(Math.max(3, Math.min(6, Math.floor(innerWidth / 60))))
         .tickFormat((d) => format(d as Date, 'HH:mm')),
     )
     .selectAll('text')
