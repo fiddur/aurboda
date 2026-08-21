@@ -35,14 +35,21 @@ import { createRenderCache } from './feed-image-router.ts'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-/** Most recent public/unlisted posts returned for a profile's feed (newest-first). */
-const PROFILE_FEED_LIMIT = 50
+/**
+ * Most recent public/unlisted posts returned for a profile's feed (newest-first).
+ * Matches the authed `/feed` page size: each post can carry a full structured
+ * payload (bucketed series + GPS route), and the client builds a chart/map per
+ * card, so the one-shot unauthenticated page must stay small.
+ */
+const PROFILE_FEED_LIMIT = 20
 
 export const createFeedPublicRouter = (): TypedRouter => {
   const router = typedRouter()
   // Caches the resolved structured payload OBJECT for the unauthenticated
-  // `/feed/:postId` endpoint, which resolves up to 100 blocks per request — the
-  // same bounded LRU + in-flight de-dup the block images use. The route authorizes
+  // `/feed/:postId` endpoint (which resolves up to 100 blocks per request) AND
+  // the `/posts` profile listing (up to PROFILE_FEED_LIMIT structured resolves
+  // per request) — one shared LRU with one key shape, so either endpoint warms
+  // the other. Same bounded LRU + in-flight de-dup the block images use. The route authorizes
   // the post BEFORE consulting this cache (like the sibling image routes), so the
   // capability token is NOT part of the key: a `followers`-only payload never
   // reaches the cache via a public request, and an anonymous `?token=…` walk can't
@@ -90,13 +97,16 @@ export const createFeedPublicRouter = (): TypedRouter => {
 
   // A user's public feed for their profile page: the most recent `public`/
   // `unlisted` posts, newest-first (same set as the ActivityPub outbox — never
-  // `followers`-only). Serialized exactly like the authenticated `/feed`,
-  // INCLUDING the structured payload (typed metrics + inline series + route),
-  // so the profile page renders the same native stat grid / hover chart /
-  // synced map as the owner's feed and a subscribing peer. Privacy-neutral:
-  // every post here is public/unlisted, and `structured` carries only what the
-  // author opted into — the same payload anyone could fetch per post from
-  // `/public/:username/feed/:postId`. Bounded to the latest page.
+  // `followers`-only), serialized like the authenticated `/feed` with the
+  // structured payload attached per post. Privacy-neutral: every post here is
+  // public/unlisted, and `structured` carries only what the author opted into —
+  // the same payload anyone could fetch per post from
+  // `/public/:username/feed/:postId`. Structured resolution is expensive
+  // (bucketed series queries + a full GPS-track load per opted-in post), so it
+  // goes through the SAME LRU — same key shape — as that sibling endpoint,
+  // bounding what an anonymous request can repeatedly cost; the visibility
+  // filter still runs per request, so an un-shared post disappears immediately
+  // despite the cache. Bounded to the latest page.
   // `no-store` like the sibling `/series` and `/feed/:postId` endpoints: sharing
   // is revocable, so flipping a post to `followers` or deleting it must drop it
   // from the profile immediately, never linger in a shared cache. Mounted before
@@ -112,8 +122,17 @@ export const createFeedPublicRouter = (): TypedRouter => {
     try {
       const records = await listPublicFeedPostsPage(username, PROFILE_FEED_LIMIT, 0)
       const settings = await getSettings(username).catch(() => null)
+      const hourBucket = Math.floor(Date.now() / 3_600_000)
       const posts = await Promise.all(
-        records.map((record) => serializeFeedPost(username, record, { includeStructured: true, settings })),
+        records.map(async (record) => {
+          const post = await serializeFeedPost(username, record, { settings })
+          if (record.kind === 'activity') {
+            const key = `structured:${username}:${record.id}:${record.updated_at.getTime()}:${hourBucket}`
+            post.structured =
+              (await structuredCache(key, () => resolveStructuredContent(username, record))) ?? undefined
+          }
+          return post
+        }),
       )
       res.setHeader('Cache-Control', 'no-store')
       res.json({ posts, success: true })
