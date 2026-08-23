@@ -217,6 +217,10 @@ export const updateSettingsInputSchema = z
     rescue_time_key: rescueTimeKeySchema.nullable().optional().meta({
       description: 'RescueTime API key (set to null to clear)',
     }),
+    timeline_show_replies: z.boolean().nullable().optional().meta({
+      description:
+        'When true, replies from followed actors to OTHER people show as their own home-timeline cards; when false (default), only their top-level posts and replies to your own posts appear (set to null to reset to the default).',
+    }),
     sensitivity_areas: sensitivityAreasSchema.nullable().optional().meta({
       description: 'Sensitivity areas to track in meals (set to null to clear)',
     }),
@@ -290,6 +294,10 @@ export const userSettingsResponseSchema = baseResponseSchema
       .meta({ description: 'Whether Oura OAuth is configured on server' }),
     oura_connected: z.boolean().default(false).meta({ description: 'Whether Oura is connected via OAuth' }),
     rescue_time_key: z.string().nullable().default(null).meta({ description: 'RescueTime API key' }),
+    timeline_show_replies: z.boolean().default(false).meta({
+      description:
+        "Whether followed actors' replies to other people show as their own home-timeline cards (replies to your own posts always show)",
+    }),
     strava_connected: z
       .boolean()
       .default(false)

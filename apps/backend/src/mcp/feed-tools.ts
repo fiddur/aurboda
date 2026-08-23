@@ -254,7 +254,7 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
     'List your home timeline: posts received from the actors you follow, newest first. Pass `cursor` (from a previous call) to page.',
     { ...timelineQuerySchema.shape },
     async ({ cursor, limit }) => {
-      const page = await getTimelinePage(user, limit, cursor)
+      const page = await getTimelinePage(user, limit, cursor, { origin: webHost })
       retroEnrichTimeline?.(user)
       return jsonResponse(page)
     },

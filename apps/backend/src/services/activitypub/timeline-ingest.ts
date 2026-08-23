@@ -102,6 +102,9 @@ export const noteToTimelineInput = (
     content: sanitizeRemoteHtml(note.content?.toString() ?? ''),
     display_name: author.display_name,
     handle: author.handle,
+    // A reply's target id, so the timeline can filter replies-to-others and
+    // notify only replies the reader is involved in (#1060).
+    in_reply_to_uri: note.replyTargetIds[0]?.href ?? null,
     object_uri: note.id.href,
     published_at: new Date(Math.min(publishedAt.getTime(), now)),
     url: note.url instanceof URL ? note.url.href : note.id.href,

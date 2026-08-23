@@ -43,6 +43,12 @@
   color: #6b7280;
 }
 
+.feed-post-reply-marker {
+  font-size: 0.75rem;
+  color: #6b7280;
+  font-style: italic;
+}
+
 .feed-post-handle a,
 .feed-post-name a {
   color: inherit;

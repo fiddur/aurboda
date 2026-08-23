@@ -29,6 +29,7 @@ export function Settings() {
   const [sex, setSex] = useState<BiologicalSex | null>(null)
   const [hrZones, setHrZones] = useState<HrZoneThresholds | null>(null)
   const [manualApproval, setManualApproval] = useState(false)
+  const [showReplies, setShowReplies] = useState(false)
 
   // Save status for each section
   const [personalInfoStatus, setPersonalInfoStatus] = useState<SaveStatus>({ status: 'idle' })
@@ -41,6 +42,7 @@ export function Settings() {
     setSex(userSettings?.sex ?? null)
     setHrZones(userSettings?.hr_zone_start ?? null)
     setManualApproval(userSettings?.manually_approve_followers ?? false)
+    setShowReplies(userSettings?.timeline_show_replies ?? false)
   }
 
   // Track if form has been initialized
@@ -125,6 +127,12 @@ export function Settings() {
     const checked = (e.target as HTMLInputElement).checked
     setManualApproval(checked)
     saveSection({ manually_approve_followers: checked }, setFollowersStatus)
+  }
+
+  const handleShowRepliesChange = (e: Event) => {
+    const checked = (e.target as HTMLInputElement).checked
+    setShowReplies(checked)
+    saveSection({ timeline_show_replies: checked }, setFollowersStatus)
   }
 
   if (!isLoggedIn) {
@@ -232,6 +240,17 @@ export function Settings() {
             When on, incoming follows become requests you approve or reject, and only approved followers see
             your <code>followers</code>-only posts. When off (the default), anyone can follow you
             automatically.
+          </p>
+        </div>
+        <div class="form-field">
+          <label class="checkbox-field">
+            <input type="checkbox" checked={showReplies} onChange={handleShowRepliesChange} />
+            <span>Show replies in your timeline</span>
+          </label>
+          <p class="field-description">
+            When on, replies that people you follow write to <em>other</em> people show as their own
+            timeline cards. When off (the default), you see their top-level posts only — replies to your
+            own posts always show either way.
           </p>
         </div>
       </SettingsSection>

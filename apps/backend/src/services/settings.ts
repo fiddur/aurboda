@@ -219,6 +219,7 @@ const settingsWithDefaultsSchema = userSettingsResponseSchema.pick({
   sex: true,
   tag_icons: true,
   tag_mappings: true,
+  timeline_show_replies: true,
   training_load: true,
   tz: true,
 })

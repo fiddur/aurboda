@@ -163,6 +163,36 @@ describe('Timeline store integration', () => {
     expect(page3.map((e) => e.object_uri)).toEqual(['https://mastodon.example/notes/1'])
   })
 
+  test('stores in_reply_to_uri and filters replies-to-others per the reply filter (#1060)', async () => {
+    const user = getTestUser()
+    const ownPrefix = `https://aurboda.example/users/${user}/feed/`
+    await upsertTimelineEntry(user, entry(1)) // top-level post
+    await upsertTimelineEntry(user, entry(2, { in_reply_to_uri: 'https://mastodon.example/notes/1' }))
+    const replyToMine = await upsertTimelineEntry(
+      user,
+      entry(3, { in_reply_to_uri: `${ownPrefix}11111111-1111-4111-8111-111111111111` }),
+    )
+    expect(replyToMine.in_reply_to_uri).toBe(`${ownPrefix}11111111-1111-4111-8111-111111111111`)
+
+    // No filter (legacy callers): everything.
+    expect(await listTimelineEntries(user, 10)).toHaveLength(3)
+    // show_replies=false: top-level + the reply to the reader's own post only.
+    const filtered = await listTimelineEntries(user, 10, undefined, {
+      own_object_prefix: ownPrefix,
+      show_replies: false,
+    })
+    expect(filtered.map((r) => r.object_uri)).toEqual([
+      'https://mastodon.example/notes/3',
+      'https://mastodon.example/notes/1',
+    ])
+    // show_replies=true: everything again.
+    const all = await listTimelineEntries(user, 10, undefined, {
+      own_object_prefix: ownPrefix,
+      show_replies: true,
+    })
+    expect(all).toHaveLength(3)
+  })
+
   test('deletes a single entry by object uri + authoring actor (inbound Delete)', async () => {
     const user = getTestUser()
     await upsertTimelineEntry(user, entry(1))

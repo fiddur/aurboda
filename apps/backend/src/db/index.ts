@@ -317,6 +317,7 @@ export {
   type TimelineCursor,
   type TimelineEntryInput,
   type TimelineEntryRecord,
+  type TimelineReplyFilter,
   type UnenrichedTimelineEntry,
   upsertTimelineEntry,
 } from './timeline.ts'
