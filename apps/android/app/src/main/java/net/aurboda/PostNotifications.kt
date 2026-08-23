@@ -20,6 +20,14 @@ data class TimelineEntry(
     @SerialName("display_name") val displayName: String? = null,
     val content: String = "",
     @SerialName("published_at") val publishedAt: String,
+    // When this instance RECEIVED the post — monotonic per timeline, unlike
+    // `published_at`, which can arrive out of order after federation retries.
+    // Nullable for a backend that predates the field (rolling deploy).
+    @SerialName("received_at") val receivedAt: String? = null,
+    // Set when the post is a reply; `inReplyToMine` marks a reply to one of
+    // the reader's own posts (always notified — you're involved).
+    @SerialName("in_reply_to_uri") val inReplyToUri: String? = null,
+    @SerialName("in_reply_to_mine") val inReplyToMine: Boolean = false,
 ) {
     /** Best available human name for the notification title. */
     val authorLabel: String get() = displayName ?: handle ?: actorUri
@@ -59,10 +67,17 @@ fun parsePublishedAt(value: String): Instant? =
 /**
  * Decide which timeline posts to notify about.
  *
- * Notify a post when it is (a) newer than [highWater], and (b) from an actor in
- * [notifyActorUris] (a followed account with notifications left on). The new
- * high-water mark advances to the latest post seen across the whole page — so a
- * muted or already-seen post never re-triggers.
+ * Notify a post when it is (a) newer than [highWater], (b) from an actor in
+ * [notifyActorUris] (a followed account with notifications left on), and (c) not
+ * a reply to someone else — a reply notifies only when it targets one of YOUR
+ * posts (`in_reply_to_mine`). The new high-water mark advances to the latest post
+ * seen across the whole page — so a muted or already-seen post never re-triggers.
+ *
+ * Newness is judged by `received_at` (when OUR instance stored the post), not
+ * `published_at`: federation retries deliver posts out of publish order, and a
+ * publish-time high-water silently skips any post that arrives after a
+ * newer-published one. `published_at` remains the fallback for a backend that
+ * predates `received_at`.
  *
  * On the first run ([highWater] is null) nothing is notified — we only record the
  * high-water mark, so enabling the feature doesn't dump the whole backlog.
@@ -72,7 +87,9 @@ fun decideNotifications(
     notifyActorUris: Set<String>,
     highWater: Instant?,
 ): NotifyDecision {
-    val dated = entries.mapNotNull { entry -> parsePublishedAt(entry.publishedAt)?.let { entry to it } }
+    val dated = entries.mapNotNull { entry ->
+        parsePublishedAt(entry.receivedAt ?: entry.publishedAt)?.let { entry to it }
+    }
     val maxSeen = dated.maxOfOrNull { it.second }
     val newHighWater = listOfNotNull(highWater, maxSeen).maxOrNull()
 
@@ -81,7 +98,11 @@ fun decideNotifications(
     }
 
     val toNotify = dated
-        .filter { (entry, published) -> published.isAfter(highWater) && entry.actorUri in notifyActorUris }
+        .filter { (entry, seenAt) ->
+            seenAt.isAfter(highWater) &&
+                entry.actorUri in notifyActorUris &&
+                (entry.inReplyToUri == null || entry.inReplyToMine)
+        }
         .sortedBy { it.second }
         .map { it.first }
     return NotifyDecision(toNotify = toNotify, newHighWater = newHighWater)

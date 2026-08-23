@@ -645,12 +645,23 @@ export const timelineEntrySchema = z
     display_name: z.string().nullable().meta({ description: "The author's display name, if known" }),
     handle: z.string().nullable().meta({ description: "The author's `@user@host` handle, if known" }),
     id: z.string().uuid().meta({ description: 'Local id of the timeline entry' }),
+    in_reply_to_mine: z.boolean().optional().meta({
+      description:
+        'True when this is a reply to one of YOUR posts (present only on replies) — such replies always show and notify regardless of the `timeline_show_replies` setting',
+    }),
+    in_reply_to_uri: z.string().nullable().optional().meta({
+      description: 'The `inReplyTo` object id when this post is a reply, else absent/null',
+    }),
     images: z.array(timelineImageSchema).optional().meta({
       description:
         'Image attachments (e.g. a rendered chart or route map), shown when the post carries no native structured chart.',
     }),
     object_uri: z.string().meta({ description: "The remote post's canonical id" }),
     published_at: iso8601DateTimeSchema.meta({ description: 'When the post was published (ISO 8601)' }),
+    received_at: iso8601DateTimeSchema.meta({
+      description:
+        'When this instance received the post (ISO 8601). Monotonic per timeline — the correct high-water mark for "what have I already seen", since `published_at` can arrive out of order after federation retries.',
+    }),
     structured: feedStructuredPostSchema.optional().meta({
       description:
         'Native structured data (an activity share’s typed metrics/series, or an article’s title + resolved blocks), present only for posts from Aurboda instances — drives a native render instead of the HTML.',

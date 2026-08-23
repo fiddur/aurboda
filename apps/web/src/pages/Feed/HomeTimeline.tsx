@@ -71,6 +71,11 @@ function TimelineCard({ entry }: { entry: TimelineEntry }) {
               <time title={new Date(entry.published_at).toLocaleString()}>{when}</time>
             )}
           </span>
+          {entry.in_reply_to_uri != null && (
+            <span class="feed-post-reply-marker">
+              ↩ {entry.in_reply_to_mine ? 'replied to you' : 'a reply'}
+            </span>
+          )}
         </div>
       </header>
 

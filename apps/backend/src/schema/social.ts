@@ -338,6 +338,11 @@ export const socialTables: Record<string, string> = {
   timeline_entry_enrich_attempts: `
     ALTER TABLE timeline_entry ADD COLUMN IF NOT EXISTS enrich_attempts SMALLINT NOT NULL DEFAULT 0
   `,
+  // The inReplyTo object id when the received post is a reply (#1060). NULL for
+  // top-level posts — the timeline query filters replies-to-others by this.
+  timeline_entry_reply: `
+    ALTER TABLE timeline_entry ADD COLUMN IF NOT EXISTS in_reply_to_uri TEXT
+  `,
   // Timeline ordering / keyset pagination is by (published_at DESC, id DESC).
   timeline_entry_indexes: `
     CREATE INDEX IF NOT EXISTS idx_timeline_entry_published

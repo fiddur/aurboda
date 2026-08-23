@@ -167,7 +167,9 @@ export const createFeedRouter = (
     validateQuery(timelineQuerySchema),
     async (req, res) => {
       const user = req.user!
-      const { entries, next_cursor } = await getTimelinePage(user, req.query.limit, req.query.cursor)
+      const { entries, next_cursor } = await getTimelinePage(user, req.query.limit, req.query.cursor, {
+        origin: webHost,
+      })
       retroEnrichTimeline?.(user)
       res.json({ entries, next_cursor, success: true })
     },

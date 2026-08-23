@@ -1,8 +1,10 @@
 package net.aurboda.ui.screens
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -22,6 +24,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -31,7 +34,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import net.aurboda.NotificationWorker
 import net.aurboda.isPostNotificationsEnabled
 import net.aurboda.setPostNotificationsEnabled
@@ -60,6 +67,30 @@ fun AccountScreen(
     val notifyPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { granted -> if (granted) turnOn() else notifyEnabled = false }
+
+    // The SYSTEM-level grant, re-checked on every resume so returning from the
+    // settings screen (or a fresh grant via the permission dialog) clears the
+    // warning without restarting the app.
+    var systemNotificationsBlocked by remember {
+        mutableStateOf(!NotificationManagerCompat.from(context).areNotificationsEnabled())
+    }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                systemNotificationsBlocked =
+                    !NotificationManagerCompat.from(context).areNotificationsEnabled()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    val openSystemNotificationSettings = {
+        context.startActivity(
+            Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName),
+        )
+    }
 
     val onNotifyToggle = { want: Boolean ->
         if (want) {
@@ -154,6 +185,22 @@ fun AccountScreen(
                 )
             }
             Switch(checked = notifyEnabled, onCheckedChange = onNotifyToggle)
+        }
+
+        // The worker silently skips posting while the SYSTEM permission is off
+        // (areNotificationsEnabled) — without this warning the toggle looks on
+        // while nothing ever arrives, which is exactly how it silently failed
+        // in the field (#1060).
+        if (notifyEnabled && systemNotificationsBlocked) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "Notifications are blocked for Aurboda in Android's settings, so none will be shown.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error
+            )
+            OutlinedButton(onClick = openSystemNotificationSettings) {
+                Text("Open notification settings")
+            }
         }
 
         Spacer(modifier = Modifier.height(24.dp))

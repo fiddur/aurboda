@@ -23,6 +23,8 @@ export interface TimelineEntryRecord {
   url: string | null
   published_at: Date
   received_at: Date
+  /** The `inReplyTo` object id when the post is a reply, or null for a top-level post. */
+  in_reply_to_uri: string | null
   /** Native structured payload from an Aurboda peer, or null for non-Aurboda posts. */
   structured: FeedStructuredPost | null
   /** Image attachments (rendered chart / route map, or a Mastodon photo), or null. */
@@ -39,6 +41,8 @@ export interface TimelineEntryInput {
   content: string
   url?: string | null
   published_at: Date
+  /** The `inReplyTo` object id when the post is a reply. */
+  in_reply_to_uri?: string | null
   /** Native structured payload fetched from an Aurboda peer on ingest, if any. */
   structured?: FeedStructuredPost | null
   /** Image attachments captured from the delivered Note, if any. */
@@ -52,7 +56,7 @@ export interface TimelineCursor {
 }
 
 const TIMELINE_COLUMNS =
-  'id, object_uri, actor_uri, handle, display_name, avatar_url, content, url, published_at, received_at, structured, images'
+  'id, object_uri, actor_uri, handle, display_name, avatar_url, content, url, published_at, received_at, in_reply_to_uri, structured, images'
 
 /**
  * Insert or update a received post by `object_uri`. A re-delivered or edited post
@@ -71,8 +75,8 @@ export const upsertTimelineEntry = async (
   const result = await query<TimelineEntryRecord & { inserted: boolean }>(
     user,
     `INSERT INTO timeline_entry
-       (object_uri, actor_uri, handle, display_name, avatar_url, content, url, published_at, structured, images)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       (object_uri, actor_uri, handle, display_name, avatar_url, content, url, published_at, in_reply_to_uri, structured, images)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
      ON CONFLICT (object_uri)
      DO UPDATE SET actor_uri = EXCLUDED.actor_uri,
                    handle = EXCLUDED.handle,
@@ -81,6 +85,7 @@ export const upsertTimelineEntry = async (
                    content = EXCLUDED.content,
                    url = EXCLUDED.url,
                    published_at = EXCLUDED.published_at,
+                   in_reply_to_uri = EXCLUDED.in_reply_to_uri,
                    -- Keep the last-known structured payload if a refresh/edit
                    -- couldn't re-fetch it (transient enrich failure), rather
                    -- than wiping a working chart.
@@ -100,6 +105,7 @@ export const upsertTimelineEntry = async (
       input.content,
       input.url ?? null,
       input.published_at,
+      input.in_reply_to_uri ?? null,
       input.structured == null ? null : JSON.stringify(input.structured),
       input.images == null ? null : JSON.stringify(input.images),
     ],
@@ -107,23 +113,46 @@ export const upsertTimelineEntry = async (
   return result.rows[0]
 }
 
+/** Reply visibility for a timeline page (from the `timeline_show_replies` setting). */
+export interface TimelineReplyFilter {
+  /** When false, replies to OTHER people's posts are excluded from the page. */
+  show_replies: boolean
+  /**
+   * URI prefix of the reader's OWN post objects (`{origin}/users/{me}/feed/`):
+   * a reply whose target starts with it is a reply to the reader and always
+   * shows. LIKE wildcards in it are escaped here.
+   */
+  own_object_prefix: string
+}
+
+const escapeLike = (s: string): string => s.replaceAll(/[%_\\]/g, (c) => `\\${c}`)
+
 /**
  * A page of the home timeline, newest first. Keyset-paginated: pass the previous
  * page's last `(published_at, id)` as `before` to get the next page. Returns up
- * to `limit` rows.
+ * to `limit` rows. Filtering happens in SQL (not post-hoc) so pages stay full
+ * and cursors stable whatever the reply setting.
  */
 export const listTimelineEntries = async (
   user: string,
   limit: number,
   before?: TimelineCursor,
+  replies?: TimelineReplyFilter,
 ): Promise<TimelineEntryRecord[]> => {
   const result = await query<TimelineEntryRecord>(
     user,
     `SELECT ${TIMELINE_COLUMNS} FROM timeline_entry
      WHERE ($1::timestamptz IS NULL OR (published_at, id) < ($1::timestamptz, $2::uuid))
+       AND ($4::boolean OR in_reply_to_uri IS NULL OR in_reply_to_uri LIKE $5)
      ORDER BY published_at DESC, id DESC
      LIMIT $3`,
-    [before?.published_at ?? null, before?.id ?? null, limit],
+    [
+      before?.published_at ?? null,
+      before?.id ?? null,
+      limit,
+      replies?.show_replies ?? true,
+      replies == null ? '' : `${escapeLike(replies.own_object_prefix)}%`,
+    ],
   )
   return result.rows
 }

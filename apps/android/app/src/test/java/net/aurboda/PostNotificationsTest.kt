@@ -8,8 +8,22 @@ import org.junit.Test
 
 class PostNotificationsTest {
 
-    private fun entry(objectUri: String, actorUri: String, published: String) =
-        TimelineEntry(objectUri = objectUri, actorUri = actorUri, publishedAt = published)
+    private fun entry(
+        objectUri: String,
+        actorUri: String,
+        published: String,
+        receivedAt: String? = null,
+        inReplyToUri: String? = null,
+        inReplyToMine: Boolean = false,
+    ) =
+        TimelineEntry(
+            objectUri = objectUri,
+            actorUri = actorUri,
+            publishedAt = published,
+            receivedAt = receivedAt,
+            inReplyToUri = inReplyToUri,
+            inReplyToMine = inReplyToMine,
+        )
 
     private val alice = "https://mastodon.example/users/alice"
     private val bob = "https://mastodon.example/users/bob"
@@ -38,6 +52,37 @@ class PostNotificationsTest {
 
         assertEquals(listOf("new-alice"), decision.toNotify.map { it.objectUri })
         assertEquals(Instant.parse("2026-07-15T11:00:00Z"), decision.newHighWater)
+    }
+
+    @Test
+    fun `newness is judged by received_at when present (delayed federation arrival still notifies)`() {
+        val hw = Instant.parse("2026-07-15T10:00:00Z")
+        // Published BEFORE the high-water but received after — the exact case a
+        // published-time high-water silently skipped (#1060).
+        val entries = listOf(
+            entry("late", alice, "2026-07-15T09:00:00Z", receivedAt = "2026-07-15T10:05:00Z"),
+        )
+        val decision = decideNotifications(entries, notifyActorUris = setOf(alice), highWater = hw)
+        assertEquals(listOf("late"), decision.toNotify.map { it.objectUri })
+        assertEquals(Instant.parse("2026-07-15T10:05:00Z"), decision.newHighWater)
+    }
+
+    @Test
+    fun `replies to others never notify, replies to your own posts do`() {
+        val hw = Instant.parse("2026-07-15T10:00:00Z")
+        val entries = listOf(
+            entry("reply-other", alice, "2026-07-15T10:30:00Z", inReplyToUri = "https://x.example/1"),
+            entry(
+                "reply-mine",
+                alice,
+                "2026-07-15T10:40:00Z",
+                inReplyToUri = "https://me.example/users/me/feed/abc",
+                inReplyToMine = true,
+            ),
+            entry("top-level", alice, "2026-07-15T10:50:00Z"),
+        )
+        val decision = decideNotifications(entries, notifyActorUris = setOf(alice), highWater = hw)
+        assertEquals(listOf("reply-mine", "top-level"), decision.toNotify.map { it.objectUri })
     }
 
     @Test

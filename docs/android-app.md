@@ -39,12 +39,18 @@ A native background poller (`NotificationWorker`, a periodic WorkManager job)
 notifies the user when accounts they follow post to their home timeline. Each
 run fetches `/feed/following` and `/feed/timeline`, then the pure, unit-tested
 `decideNotifications` (`PostNotifications.kt`) picks which posts to notify: those
-newer than a stored high-water mark and from a followed actor whose server-side
-`notify_on_post` flag is on (toggled per-account on the web Feed page). The first
+newer than a stored high-water mark (judged by `received_at` — when the server
+stored the post — since `published_at` arrives out of order after federation
+retries), from a followed actor whose server-side `notify_on_post` flag is on
+(toggled per-account on the web Feed page), and not a reply to someone else
+(a reply notifies only when it targets one of your own posts, #1060). The first
 run only records the high-water mark, so enabling the feature doesn't dump the
 backlog. The user opts in with the **"Notify me about new posts"** switch on the
 Account screen, which requests `POST_NOTIFICATIONS` (Android 13+) and
-schedules/cancels the worker; tapping a notification opens the Feed tab.
+schedules/cancels the worker; tapping a notification opens the Feed tab. When
+the toggle is on but Android's app-level notification permission is off (the
+worker would silently skip posting), the Account screen shows a warning with a
+button into the system notification settings, re-checked on every resume.
 
 ## Embedded web views
 
