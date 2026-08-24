@@ -75,7 +75,13 @@ describe('fetchRemoteReplies', () => {
     const deps = depsFor({
       [POST]: {
         id: POST,
-        replies: { items: [reply(1), reply(1, { id: 'x', url: 'x' }), { type: 'Note' }] },
+        replies: {
+          items: [
+            reply(1),
+            reply(1, { id: 'https://mastodon.example/notes/r1b', url: 'https://mastodon.example/@u1/r1b' }),
+            { type: 'Note' },
+          ],
+        },
       },
       'https://mastodon.example/users/u1': actor(1),
     })
@@ -102,7 +108,7 @@ describe('fetchRemoteReplies', () => {
         replies: {
           items: [
             // eslint-disable-next-line no-script-url
-            reply(1, { id: 'not a url', url: 'javascript:alert(1)' }),
+            reply(1, { url: 'javascript:alert(1)' }),
             reply(2),
           ],
         },
@@ -112,6 +118,44 @@ describe('fetchRemoteReplies', () => {
     })
     const { replies } = await fetchRemoteReplies(POST, deps)
     expect(replies.map((r) => r.url)).toEqual([null, 'https://mastodon.example/@u2/r2'])
+  })
+
+  test('drops a reply whose attribution or id is outside the serving origin (byline forgery)', async () => {
+    const deps = depsFor({
+      [POST]: {
+        id: POST,
+        replies: {
+          items: [
+            // Inline item claiming a famous foreign identity: attribution host
+            // differs from the origin that served it → dropped.
+            reply(1, { attributedTo: 'https://mastodon.social/users/Gargron' }),
+            // Inline item forging BOTH id and attribution onto the foreign
+            // host: id host differs from the serving page's host → dropped.
+            reply(2, {
+              attributedTo: 'https://mastodon.social/users/Gargron',
+              id: 'https://mastodon.social/notes/999',
+            }),
+            // Honest same-origin reply survives.
+            reply(3),
+          ],
+        },
+      },
+      'https://mastodon.example/users/u3': actor(3),
+    })
+    const { replies } = await fetchRemoteReplies(POST, deps)
+    expect(replies.map((r) => r.handle)).toEqual(['@u3@mastodon.example'])
+  })
+
+  test('a URI item whose fetched document claims a different host is dropped', async () => {
+    const deps = depsFor({
+      [POST]: { id: POST, replies: { items: ['https://evil.example/notes/1'] } },
+      'https://evil.example/notes/1': reply(1, {
+        attributedTo: 'https://mastodon.social/users/Gargron',
+        id: 'https://mastodon.social/notes/999',
+      }),
+    })
+    const { replies } = await fetchRemoteReplies(POST, deps)
+    expect(replies).toEqual([])
   })
 
   test('drops an unparseable published timestamp (the web feeds it to date-fns)', async () => {

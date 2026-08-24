@@ -63,6 +63,42 @@ const httpsOnly = (raw: string | null): string | null => {
 const isoOrNull = (v: unknown): string | null =>
   typeof v === 'string' && !Number.isNaN(Date.parse(v)) ? v : null
 
+/** The URL's host, or null when it doesn't parse (remote-controlled input). */
+const hostOf = (raw: string): string | null => {
+  try {
+    return new URL(raw).host
+  } catch {
+    return null
+  }
+}
+
+/**
+ * A page (or collection) plus the host that actually SERVED it — the authority
+ * every inline item on it is held to. A URI-referenced page/item gets its own
+ * URI's host; an inline one inherits its parent's.
+ */
+interface PageCtx {
+  page: JsonRecord
+  host: string
+}
+
+/** Resolve an inline-or-URI page value into a page + its serving host. */
+const resolvePage = async (
+  deps: RemoteRepliesDeps,
+  budget: Budget,
+  v: unknown,
+  inlineHost: string,
+): Promise<PageCtx | null> => {
+  if (isRecord(v)) return { host: inlineHost, page: v }
+  if (typeof v === 'string') {
+    const host = hostOf(v)
+    if (host == null) return null
+    const fetched = await budgetedFetch(deps, budget, v)
+    return isRecord(fetched) ? { host, page: fetched } : null
+  }
+  return null
+}
+
 /** Budgeted fetch bookkeeping shared across one `fetchRemoteReplies` call. */
 interface Budget {
   fetches: number
@@ -117,14 +153,7 @@ const resolveAuthor = async (
   const actor = await resolveObject(deps, budget, actorUri)
   const username =
     actor != null && typeof actor.preferredUsername === 'string' ? actor.preferredUsername : null
-  // `attributedTo` is remote-controlled and may not be a URL at all — a throw
-  // here would collapse the whole thread to empty via the route's catch.
-  let host: string | null = null
-  try {
-    host = new URL(actorUri).host
-  } catch {
-    host = null
-  }
+  const host = hostOf(actorUri)
   const author: ReplyAuthor = {
     display_name: actor != null && typeof actor.name === 'string' ? actor.name : null,
     handle: username == null || host == null ? null : `@${username}@${host}`,
@@ -133,24 +162,36 @@ const resolveAuthor = async (
   return author
 }
 
-/** Map one reply object to the DTO, resolving its author (memoised) within budget. */
+/**
+ * Map one reply object to the DTO, resolving its author (memoised) within
+ * budget. `authorityHost` is the host that actually served the object (the
+ * page's host for inline items, the item URI's host for fetched ones): the
+ * object's own `id` AND its `attributedTo` must live on it, or the reply is
+ * dropped — otherwise a hostile origin could render arbitrary content under
+ * any fediverse identity (a byline-forgery/phishing primitive; sanitisation
+ * doesn't help against plain text under a forged handle).
+ */
 const toReply = async (
   deps: RemoteRepliesDeps,
   budget: Budget,
   obj: JsonRecord,
+  authorityHost: string,
   authors: Map<string, ReplyAuthor>,
 ): Promise<TimelineReply | null> => {
   const content = typeof obj.content === 'string' ? obj.content : null
   if (content == null) return null
+  const objId = idOf(obj.id)
+  if (objId == null || hostOf(objId) !== authorityHost) return null
   const actorUri = idOf(obj.attributedTo)
-  const author = actorUri == null ? null : await resolveAuthor(deps, budget, actorUri, authors)
+  if (actorUri == null || hostOf(actorUri) !== authorityHost) return null
+  const author = await resolveAuthor(deps, budget, actorUri, authors)
   return {
     actor_uri: actorUri,
     content: sanitizeRemoteHtml(content),
     display_name: author?.display_name ?? null,
     handle: author?.handle ?? null,
     published_at: isoOrNull(obj.published),
-    url: httpsOnly(typeof obj.url === 'string' ? obj.url : idOf(obj.id)),
+    url: httpsOnly(typeof obj.url === 'string' ? obj.url : objId),
   }
 }
 
@@ -167,14 +208,16 @@ export const fetchRemoteReplies = async (
   const authors = new Map<string, { display_name: string | null; handle: string | null }>()
   const replies: TimelineReply[] = []
 
+  const postHost = hostOf(objectUri)
+  if (postHost == null) return { partial: false, replies }
   const post = await budgetedFetch(deps, budget, objectUri)
   if (!isRecord(post)) return { partial: budget.exhausted, replies }
 
-  let page = await resolveFirstPage(deps, budget, post)
-  while (page != null && replies.length < MAX_REPLIES) {
-    await collectPageReplies(deps, budget, page, authors, replies)
-    if (replies.length >= MAX_REPLIES || page.next == null) break
-    page = await resolveObject(deps, budget, page.next)
+  let ctx = await resolveFirstPage(deps, budget, post, postHost)
+  while (ctx != null && replies.length < MAX_REPLIES) {
+    await collectPageReplies(deps, budget, ctx, authors, replies)
+    if (replies.length >= MAX_REPLIES || ctx.page.next == null) break
+    ctx = await resolvePage(deps, budget, ctx.page.next, ctx.host)
   }
   const partial = budget.exhausted || replies.length >= MAX_REPLIES
   return { partial, replies }
@@ -188,30 +231,32 @@ const resolveFirstPage = async (
   deps: RemoteRepliesDeps,
   budget: Budget,
   post: JsonRecord,
-): Promise<JsonRecord | null> => {
-  const collection = await resolveObject(deps, budget, post.replies)
+  postHost: string,
+): Promise<PageCtx | null> => {
+  const collection = await resolvePage(deps, budget, post.replies, postHost)
   if (collection == null) return null
-  const hasItems = collection.items != null || collection.orderedItems != null
-  return hasItems || collection.first == null
+  const hasItems = collection.page.items != null || collection.page.orderedItems != null
+  return hasItems || collection.page.first == null
     ? collection
-    : await resolveObject(deps, budget, collection.first)
+    : await resolvePage(deps, budget, collection.page.first, collection.host)
 }
 
 /** Append this page's resolvable replies (inline or URI-referenced) up to the cap. */
 const collectPageReplies = async (
   deps: RemoteRepliesDeps,
   budget: Budget,
-  page: JsonRecord,
+  ctx: PageCtx,
   authors: Map<string, ReplyAuthor>,
   replies: TimelineReply[],
 ): Promise<void> => {
-  const rawItems = page.orderedItems ?? page.items
+  const rawItems = ctx.page.orderedItems ?? ctx.page.items
   const items = Array.isArray(rawItems) ? rawItems : []
   for (const item of items) {
     if (replies.length >= MAX_REPLIES) return
-    const obj = await resolveObject(deps, budget, item)
-    if (obj == null) continue
-    const reply = await toReply(deps, budget, obj, authors)
+    // An inline item is held to the page's serving host; a URI item to its own.
+    const resolved = await resolvePage(deps, budget, item, ctx.host)
+    if (resolved == null) continue
+    const reply = await toReply(deps, budget, resolved.page, resolved.host, authors)
     if (reply != null) replies.push(reply)
   }
 }
