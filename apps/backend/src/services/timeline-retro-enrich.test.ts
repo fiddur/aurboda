@@ -162,24 +162,33 @@ describe('parseReplyInfo', () => {
 })
 
 describe('backfillReplyLinks', () => {
-  test('stamps every candidate — reply info when fetched, nulls when unreachable', async () => {
+  test('saves fetched reply info; a failed or non-JSON fetch only stamps (never clobbers)', async () => {
     const saved: [string, string | null, boolean][] = []
+    const stamped: string[] = []
     await backfillReplyLinks('u', 'https://aurboda.example/users/u', {
-      fetchObject: async (uri) =>
-        uri === 'https://m.example/notes/reply'
-          ? { inReplyTo: 'https://m.example/notes/root', tag: [] }
-          : null,
+      fetchObject: async (uri) => {
+        if (uri === 'https://m.example/notes/reply') {
+          return { inReplyTo: 'https://m.example/notes/root', tag: [] }
+        }
+        if (uri === 'https://m.example/notes/html') return '<!doctype html>…'
+        return null
+      },
       listUnchecked: async () => [
         { id: 'a', object_uri: 'https://m.example/notes/reply' },
         { id: 'b', object_uri: 'https://m.example/notes/gone' },
+        { id: 'c', object_uri: 'https://m.example/notes/html' },
       ],
+      markChecked: async (_u, id) => {
+        stamped.push(id)
+      },
       saveReplyInfo: async (_u, id, inReplyToUri, mentionsMe) => {
         saved.push([id, inReplyToUri, mentionsMe])
       },
     })
-    expect(saved).toEqual([
-      ['a', 'https://m.example/notes/root', false],
-      ['b', null, false],
-    ])
+    // Only the real AS2 answer writes reply state; the 404 and the HTML body
+    // are non-answers — a row that already carried a correct in_reply_to_uri
+    // (ingested between #1061 and the backstamp migration) must keep it.
+    expect(saved).toEqual([['a', 'https://m.example/notes/root', false]])
+    expect(stamped).toEqual(['b', 'c'])
   })
 })

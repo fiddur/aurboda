@@ -355,6 +355,13 @@ export const socialTables: Record<string, string> = {
   timeline_entry_reply_checked: `
     ALTER TABLE timeline_entry ADD COLUMN IF NOT EXISTS reply_checked_at TIMESTAMPTZ
   `,
+  // Rows that already carry a reply link (ingested between #1061 and this
+  // migration) are KNOWN-correct — stamp them so the backfill never re-fetches
+  // (and can never clobber) them. Idempotent: matches nothing after first run.
+  timeline_entry_reply_checked_backstamp: `
+    UPDATE timeline_entry SET reply_checked_at = NOW()
+    WHERE reply_checked_at IS NULL AND in_reply_to_uri IS NOT NULL
+  `,
   // Timeline ordering / keyset pagination is by (published_at DESC, id DESC).
   timeline_entry_indexes: `
     CREATE INDEX IF NOT EXISTS idx_timeline_entry_published

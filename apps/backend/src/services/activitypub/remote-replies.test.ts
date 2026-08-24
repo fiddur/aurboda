@@ -95,6 +95,25 @@ describe('fetchRemoteReplies', () => {
     expect(partial).toBe(true)
   })
 
+  test('drops a non-http(s) url instead of handing the web a javascript: href', async () => {
+    const deps = depsFor({
+      [POST]: {
+        id: POST,
+        replies: {
+          items: [
+            // eslint-disable-next-line no-script-url
+            reply(1, { id: 'not a url', url: 'javascript:alert(1)' }),
+            reply(2),
+          ],
+        },
+      },
+      'https://mastodon.example/users/u1': actor(1),
+      'https://mastodon.example/users/u2': actor(2),
+    })
+    const { replies } = await fetchRemoteReplies(POST, deps)
+    expect(replies.map((r) => r.url)).toEqual([null, 'https://mastodon.example/@u2/r2'])
+  })
+
   test('an unreachable origin yields an empty, non-throwing result', async () => {
     const { partial, replies } = await fetchRemoteReplies(POST, depsFor({}))
     expect(replies).toEqual([])

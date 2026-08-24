@@ -164,6 +164,7 @@ export const tableCreationOrder = [
   'timeline_entry_reply',
   'timeline_entry_mentions',
   'timeline_entry_reply_checked',
+  'timeline_entry_reply_checked_backstamp',
   'timeline_entry_indexes',
   'timeline_entry_unenriched_indexes',
   'profile_avatar',

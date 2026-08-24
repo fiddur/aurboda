@@ -123,6 +123,8 @@ export const parseReplyInfo = (
 export interface ReplyBackfillDeps {
   listUnchecked: (user: string, limit: number) => Promise<{ id: string; object_uri: string }[]>
   saveReplyInfo: (user: string, id: string, inReplyToUri: string | null, mentionsMe: boolean) => Promise<void>
+  /** Stamp checked WITHOUT touching the stored reply state (failed fetch). */
+  markChecked: (user: string, id: string) => Promise<void>
   /** SSRF-guarded ActivityPub fetch of the object, or null on any failure. */
   fetchObject: (objectUri: string) => Promise<unknown | null>
 }
@@ -130,9 +132,11 @@ export interface ReplyBackfillDeps {
 /**
  * Backfill reply/Mention state for entries ingested before #1060 tracked it —
  * so a legacy reply stops rendering as a top-level card once the setting hides
- * replies. One attempt per entry (`reply_checked_at` stamps whatever the
- * outcome — an unreachable object stays a plain card, which is what it already
- * was), a small batch per timeline read, sequential like the enrichment pass.
+ * replies. One attempt per entry, a small batch per timeline read, sequential
+ * like the enrichment pass. A fetch that yields no usable AS2 object (post
+ * gone, authorized-fetch instance rejecting our unsigned GET, host down, HTML
+ * body) only STAMPS the entry — a non-answer must never overwrite whatever
+ * reply state the row already carries.
  */
 export const backfillReplyLinks = async (
   user: string,
@@ -143,6 +147,10 @@ export const backfillReplyLinks = async (
   const candidates = await deps.listUnchecked(user, batchSize)
   for (const entry of candidates) {
     const doc = await deps.fetchObject(entry.object_uri)
+    if (typeof doc !== 'object' || doc == null) {
+      await deps.markChecked(user, entry.id)
+      continue
+    }
     const info = parseReplyInfo(doc, myActorUri)
     await deps.saveReplyInfo(user, entry.id, info.in_reply_to_uri, info.mentions_me)
   }

@@ -213,6 +213,15 @@ export const setTimelineEntryReplyInfo = async (
 }
 
 /**
+ * Stamp an entry checked WITHOUT touching its reply/Mention state — for a
+ * backfill fetch that failed (post gone, authorized-fetch instance, host down):
+ * whatever the row already says must never be clobbered by a non-answer.
+ */
+export const markTimelineEntryReplyChecked = async (user: string, id: string): Promise<void> => {
+  await query(user, `UPDATE timeline_entry SET reply_checked_at = NOW() WHERE id = $1`, [id])
+}
+
+/**
  * Remove a received post by its remote object id (on an inbound `Delete`), scoped
  * to the actor that authored it. The `actor_uri` guard is an authorization check:
  * an inbound `Delete` is only signed by *some* actor, so without it any actor

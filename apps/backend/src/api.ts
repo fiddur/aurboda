@@ -48,6 +48,7 @@ import {
   markEnrichTransientFailure,
   openTimelineChannel,
   resolveOrCreateActivityType,
+  markTimelineEntryReplyChecked,
   setTimelineEntryReplyInfo,
   setTimelineEntryStructured,
   softDeleteSupersededLocations,
@@ -409,6 +410,7 @@ const main = async () => {
           }).catch(() => null)
         )?.data ?? null,
       listUnchecked: listReplyUncheckedEntries,
+      markChecked: markTimelineEntryReplyChecked,
       saveReplyInfo: setTimelineEntryReplyInfo,
     })
     void Promise.allSettled([structuredPass, replyPass])

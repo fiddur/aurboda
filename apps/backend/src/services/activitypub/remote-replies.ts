@@ -39,6 +39,22 @@ const isRecord = (v: unknown): v is JsonRecord => typeof v === 'object' && v != 
 const idOf = (v: unknown): string | null =>
   typeof v === 'string' ? v : isRecord(v) && typeof v.id === 'string' ? v.id : null
 
+/**
+ * Keep a remote-supplied URL only when it is http(s). The web renders
+ * `TimelineReply.url` as an `href`, and a hostile origin (reachable by any
+ * stranger via mention-based ingestion) could otherwise hand us a
+ * `javascript:` URL that executes in the app origin on click.
+ */
+const httpsOnly = (raw: string | null): string | null => {
+  if (raw == null) return null
+  try {
+    const url = new URL(raw)
+    return url.protocol === 'https:' || url.protocol === 'http:' ? raw : null
+  } catch {
+    return null
+  }
+}
+
 /** Budgeted fetch bookkeeping shared across one `fetchRemoteReplies` call. */
 interface Budget {
   fetches: number
@@ -93,9 +109,17 @@ const resolveAuthor = async (
   const actor = await resolveObject(deps, budget, actorUri)
   const username =
     actor != null && typeof actor.preferredUsername === 'string' ? actor.preferredUsername : null
+  // `attributedTo` is remote-controlled and may not be a URL at all — a throw
+  // here would collapse the whole thread to empty via the route's catch.
+  let host: string | null = null
+  try {
+    host = new URL(actorUri).host
+  } catch {
+    host = null
+  }
   const author: ReplyAuthor = {
     display_name: actor != null && typeof actor.name === 'string' ? actor.name : null,
-    handle: username == null ? null : `@${username}@${new URL(actorUri).host}`,
+    handle: username == null || host == null ? null : `@${username}@${host}`,
   }
   authors.set(actorUri, author)
   return author
@@ -118,7 +142,7 @@ const toReply = async (
     display_name: author?.display_name ?? null,
     handle: author?.handle ?? null,
     published_at: typeof obj.published === 'string' ? obj.published : null,
-    url: typeof obj.url === 'string' ? obj.url : (idOf(obj.id) ?? null),
+    url: httpsOnly(typeof obj.url === 'string' ? obj.url : idOf(obj.id)),
   }
 }
 

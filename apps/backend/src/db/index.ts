@@ -315,6 +315,7 @@ export {
   listTimelineEntries,
   listUnenrichedAurbodaEntries,
   markEnrichTransientFailure,
+  markTimelineEntryReplyChecked,
   setTimelineEntryReplyInfo,
   setTimelineEntryStructured,
   type TimelineCursor,
