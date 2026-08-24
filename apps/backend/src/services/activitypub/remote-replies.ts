@@ -55,6 +55,14 @@ const httpsOnly = (raw: string | null): string | null => {
   }
 }
 
+/**
+ * Keep a remote-supplied timestamp only when it actually parses — the schema
+ * promises ISO 8601-or-null, and the web feeds it straight to date-fns, which
+ * throws on an Invalid Date (blanking the page on a hostile `published`).
+ */
+const isoOrNull = (v: unknown): string | null =>
+  typeof v === 'string' && !Number.isNaN(Date.parse(v)) ? v : null
+
 /** Budgeted fetch bookkeeping shared across one `fetchRemoteReplies` call. */
 interface Budget {
   fetches: number
@@ -141,7 +149,7 @@ const toReply = async (
     content: sanitizeRemoteHtml(content),
     display_name: author?.display_name ?? null,
     handle: author?.handle ?? null,
-    published_at: typeof obj.published === 'string' ? obj.published : null,
+    published_at: isoOrNull(obj.published),
     url: httpsOnly(typeof obj.url === 'string' ? obj.url : idOf(obj.id)),
   }
 }

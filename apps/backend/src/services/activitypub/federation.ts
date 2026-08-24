@@ -237,6 +237,13 @@ const ingestStrangerInvolvement = async (
     const myActor = `${origin.replace(/\/+$/, '')}/users/${me}`
     if (!(await noteMentionsActor(object, myActor))) return
   }
+  // Require EXPLICIT attribution to the signing actor. `noteToTimelineInput`'s
+  // attribution check is conditional (a Note without `attributedTo` passes on
+  // host match alone) — written for accepted followees; for a stranger that
+  // would let anyone on a followee's host claim an existing entry's object_uri
+  // and overwrite it via the upsert. Every real implementation sets
+  // `attributedTo`, so requiring it costs nothing.
+  if (!object.attributionIds.some((uri) => uri.href === activity.actorId?.href)) return
   // Fedify verified the HTTP signature as `activity.actorId`; fetch that actor
   // for the presentation snapshot (handle / name / avatar).
   const sender = await activity.getActor(ctx)

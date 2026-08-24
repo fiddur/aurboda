@@ -114,6 +114,15 @@ describe('fetchRemoteReplies', () => {
     expect(replies.map((r) => r.url)).toEqual([null, 'https://mastodon.example/@u2/r2'])
   })
 
+  test('drops an unparseable published timestamp (the web feeds it to date-fns)', async () => {
+    const deps = depsFor({
+      [POST]: { id: POST, replies: { items: [reply(1, { published: 'whenever' })] } },
+      'https://mastodon.example/users/u1': actor(1),
+    })
+    const { replies } = await fetchRemoteReplies(POST, deps)
+    expect(replies[0].published_at).toBeNull()
+  })
+
   test('an unreachable origin yields an empty, non-throwing result', async () => {
     const { partial, replies } = await fetchRemoteReplies(POST, depsFor({}))
     expect(replies).toEqual([])
