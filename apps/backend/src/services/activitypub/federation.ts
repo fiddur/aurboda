@@ -49,7 +49,6 @@ import {
   countFeedFollowers,
   countPublicFeedPosts,
   deleteTimelineEntryByUri,
-  type FeedFollowingRecord,
   getFeedFollowerByActor,
   getFeedFollowingByActor,
   getFeedPostById,
@@ -68,6 +67,7 @@ import {
 } from '../../db/index.ts'
 import { resolveFeedActivity } from '../feed.ts'
 import { buildProfileUrl } from '../share-urls.ts'
+import { ownObjectPrefix } from '../timeline.ts'
 import { extractActorPresentation } from './actor-presentation.ts'
 import {
   buildArticleNote,
@@ -82,7 +82,12 @@ import {
 import { toCryptoKeyPair } from './keys.ts'
 import { AS_PUBLIC, isPubliclyVisible } from './object.ts'
 import { capabilityTokenFrom, createAurbodaEnricher } from './timeline-enrich.ts'
-import { extractNoteImages, noteToTimelineInput } from './timeline-ingest.ts'
+import {
+  extractNoteImages,
+  noteMentionsActor,
+  noteToTimelineInput,
+  type TimelineAuthor,
+} from './timeline-ingest.ts'
 
 /** Posts per outbox page (cursor pagination). */
 const OUTBOX_PAGE_SIZE = 20
@@ -164,35 +169,93 @@ const recordInboundFollow = async (
 export const ingestNoteForRecipient = async (
   user: string,
   note: Note,
-  followee: FeedFollowingRecord,
+  author: TimelineAuthor,
   enrich: (objectUri: string, token?: string) => Promise<FeedStructuredPost | null>,
   onNewEntry?: (user: string) => void,
+  /** Web origin — enables Mention detection against the recipient's actor URI (#1060). */
+  origin?: string,
 ): Promise<void> => {
-  const input = noteToTimelineInput(note, followee)
+  const input = noteToTimelineInput(note, author)
   if (input == null) return
   // Capture the Note's image attachments (rendered chart / route map, or a
   // Mastodon photo) so the timeline can show them when there's no native chart.
   const images = await extractNoteImages(note)
+  // A Mention of the recipient keeps the post visible + notifying whatever the
+  // reply setting says (Mastodon-style involvement).
+  const mentionsMe =
+    origin == null ? false : await noteMentionsActor(note, `${origin.replace(/\/+$/, '')}/users/${user}`)
   // Best-effort: fetch the native structured payload if this is an Aurboda post
   // (null otherwise). A followers-only post authorizes the fetch with the same
   // capability token embedded in its delivered image URL. Stored on the entry so
   // the web can render a native chart in place of the image.
   const structured = await enrich(input.object_uri, capabilityTokenFrom(images))
-  const { inserted } = await upsertTimelineEntry(user, { ...input, images, structured })
+  const { inserted } = await upsertTimelineEntry(user, {
+    ...input,
+    images,
+    mentions_me: mentionsMe,
+    structured,
+  })
   if (inserted) onNewEntry?.(user)
 }
 
 /**
- * Ingest a `Create`/`Update` of a `Note` into the recipient's home timeline —
- * but ONLY if the sender is an *accepted* followee (so the timeline can't be
- * injected into by a stranger who delivers to our inbox). Resolves the recipient
- * and the cached followee row, then hands off to `ingestNoteForRecipient`.
+ * Ingest a `Create`/`Update` of a `Note` into the recipient's home timeline.
+ * Two admissible senders (anything else is dropped, so a stranger can't inject
+ * arbitrary posts into our timeline by delivering to the inbox):
+ *
+ * - an *accepted* followee — any of their Notes;
+ * - **any actor whose Note is a reply to one of the recipient's own, still
+ *   existing posts** (#1060) — the Mastodon-style mention interaction, so a
+ *   stranger's "replied to you" shows up (and notifies) like it would there.
+ *   The author snapshot comes from the signature-verified sender actor.
+ *
  * Best-effort: unresolvable objects and non-Notes are ignored, and a missing DB
  * never 500s (which would invite retries).
  */
+/**
+ * The stranger branch of {@link ingestFeedActivity}: admit a non-followee's
+ * Note only when the recipient is INVOLVED — it replies to one of their own,
+ * still existing posts, or Mentions them. The author snapshot comes from the
+ * signature-verified sender actor.
+ */
+const ingestStrangerInvolvement = async (
+  ctx: InboxContext<void>,
+  activity: Create | Update,
+  object: Note,
+  me: string,
+  origin: string,
+  enrich: (objectUri: string, token?: string) => Promise<FeedStructuredPost | null>,
+  onNewEntry?: (user: string) => void,
+): Promise<void> => {
+  if (activity.actorId == null) return
+  const target = object.replyTargetIds[0]?.href
+  const prefix = ownObjectPrefix(origin, me)
+  const postId = target?.startsWith(prefix) ? target.slice(prefix.length) : null
+  const isReplyToOwnPost =
+    postId != null && UUID_RE.test(postId) && (await getFeedPostById(me, postId)) != null
+  if (!isReplyToOwnPost) {
+    const myActor = `${origin.replace(/\/+$/, '')}/users/${me}`
+    if (!(await noteMentionsActor(object, myActor))) return
+  }
+  // Fedify verified the HTTP signature as `activity.actorId`; fetch that actor
+  // for the presentation snapshot (handle / name / avatar).
+  const sender = await activity.getActor(ctx)
+  if (sender?.id == null || sender.id.href !== activity.actorId.href) return
+  const presentation = await extractActorPresentation(sender)
+  await ingestNoteForRecipient(
+    me,
+    object,
+    { ...presentation, actor_uri: activity.actorId.href },
+    enrich,
+    onNewEntry,
+    origin,
+  )
+}
+
 const ingestFeedActivity = async (
   ctx: InboxContext<void>,
   activity: Create | Update,
+  origin: string,
   onNewEntry?: (user: string) => void,
   /** Best-effort fetch of the post's native Aurboda structured data (null if not an Aurboda post). */
   enrich: (objectUri: string, token?: string) => Promise<FeedStructuredPost | null> = async () => null,
@@ -206,10 +269,12 @@ const ingestFeedActivity = async (
   if (me == null || !isValidUsername(me) || activity.actorId == null) return
   try {
     const follow = await getFeedFollowingByActor(me, activity.actorId.href)
-    if (follow == null || !follow.accepted) return
     const object = await activity.getObject({ suppressError: true })
     if (!(object instanceof Note)) return
-    await ingestNoteForRecipient(me, object, follow, enrich, onNewEntry)
+    if (follow != null && follow.accepted) {
+      return await ingestNoteForRecipient(me, object, follow, enrich, onNewEntry, origin)
+    }
+    await ingestStrangerInvolvement(ctx, activity, object, me, origin, enrich, onNewEntry)
   } catch (error) {
     if (isMissingDatabase(error)) return
     throw error
@@ -341,9 +406,7 @@ export const createFeedFederation = (
   }))
 
   federation
-    .setActorDispatcher('/users/{identifier}', (ctx, identifier) =>
-      buildActorPerson(ctx, identifier, origin),
-    )
+    .setActorDispatcher('/users/{identifier}', (ctx, identifier) => buildActorPerson(ctx, identifier, origin))
     .setKeyPairsDispatcher(async (_ctx, identifier) => {
       if (!isValidUsername(identifier)) return []
       try {
@@ -430,10 +493,11 @@ export const createFeedFederation = (
     })
     // Create / Update of a Note from an actor we follow → ingest into our home
     // timeline. Update reuses the same upsert (keyed on the Note's object id), so
-    // an edit replaces the stored copy. Only *accepted* followees are ingested, so
-    // a stranger who somehow delivers here can't inject into the timeline.
-    .on(Create, (ctx, create) => ingestFeedActivity(ctx, create, onNewTimelineEntry, enrich))
-    .on(Update, (ctx, update) => ingestFeedActivity(ctx, update, onNewTimelineEntry, enrich))
+    // an edit replaces the stored copy. Accepted followees are ingested in full;
+    // the only stranger Note admitted is a reply to one of the recipient's own
+    // posts (see ingestFeedActivity).
+    .on(Create, (ctx, create) => ingestFeedActivity(ctx, create, origin, onNewTimelineEntry, enrich))
+    .on(Update, (ctx, update) => ingestFeedActivity(ctx, update, origin, onNewTimelineEntry, enrich))
     .on(Delete, async (ctx, del) => {
       // Delete of a post we received → drop it from the timeline. `del.objectId`
       // is the removed object's id (a Tombstone or bare id); we key on it, but

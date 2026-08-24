@@ -29,12 +29,14 @@ import {
   deleteFeedPost,
   getActivityById,
   getFeedPostById,
+  getTimelineEntryById,
   listFeedFollowers,
   listFeedFollowing,
   updateFeedFollowingNotify,
   updateFeedPost,
 } from '../db/index.ts'
 import { isPubliclyVisible } from '../services/activitypub/object.ts'
+import { fetchRemoteReplies } from '../services/activitypub/remote-replies.ts'
 import { buildArticleMarkdown, renderableArticleBlocks } from '../services/article-export.ts'
 import { buildArticleContent, mergeArticleContent } from '../services/article.ts'
 import { resolveChallengeShare } from '../services/challenge-share.ts'
@@ -48,6 +50,7 @@ import { serializeFollower } from '../services/followers.ts'
 import { serializeFollowing } from '../services/following.ts'
 import { getSettings } from '../services/settings.ts'
 import { getTimelinePage } from '../services/timeline.ts'
+import { withTimeout } from '../services/with-timeout.ts'
 import { errorResponse, jsonResponse, type McpServer } from './helpers.ts'
 
 /** Map the `status` filter to the follower-list DB options. */
@@ -257,6 +260,21 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
       const page = await getTimelinePage(user, limit, cursor, { origin: webHost })
       retroEnrichTimeline?.(user)
       return jsonResponse(page)
+    },
+  )
+
+  server.tool(
+    'get_timeline_replies',
+    "Fetch a live, bounded snapshot of the replies to one home-timeline post (by the entry's local `id`) from its origin server. `partial: true` means the fetch budget ran out before the thread did.",
+    { id: z.string().uuid() },
+    async ({ id }) => {
+      const entry = await getTimelineEntryById(user, id)
+      if (entry == null) return jsonResponse({ error: 'Not found', success: false })
+      const result = await withTimeout(fetchRemoteReplies(entry.object_uri), 12_000).catch(() => ({
+        partial: true,
+        replies: [],
+      }))
+      return jsonResponse({ ...result, success: true })
     },
   )
 

@@ -18,7 +18,7 @@
 import type { TimelineImage } from '@aurboda/api-spec'
 import type { Note } from '@fedify/fedify/vocab'
 
-import { Document, Image, Link } from '@fedify/fedify/vocab'
+import { Document, Image, Link, Mention } from '@fedify/fedify/vocab'
 import sanitizeHtml from 'sanitize-html'
 
 import type { FeedFollowingRecord, TimelineEntryInput } from '../../db/index.ts'
@@ -80,9 +80,20 @@ export const sanitizeRemoteHtml = (html: string): string =>
  * the sender-scoped inbound `Delete`. The author's presentation (handle / name /
  * avatar) comes from the cached `feed_following` row (no extra network).
  */
+/** The author fields the timeline snapshot needs — a followee row, or a stranger-replier's fetched presentation. */
+export type TimelineAuthor = Pick<FeedFollowingRecord, 'actor_uri' | 'avatar_url' | 'display_name' | 'handle'>
+
+/** Whether the Note carries a `Mention` tag pointing at `actorUri` (#1060). */
+export const noteMentionsActor = async (note: Note, actorUri: string): Promise<boolean> => {
+  for await (const tag of note.getTags({ suppressError: true })) {
+    if (tag instanceof Mention && tag.href?.href === actorUri) return true
+  }
+  return false
+}
+
 export const noteToTimelineInput = (
   note: Note,
-  author: FeedFollowingRecord,
+  author: TimelineAuthor,
   now: number = Date.now(),
 ): TimelineEntryInput | null => {
   if (note.id == null || note.published == null) return null

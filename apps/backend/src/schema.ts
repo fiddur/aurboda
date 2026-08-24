@@ -162,6 +162,8 @@ export const tableCreationOrder = [
   'timeline_entry_enrich_attempted',
   'timeline_entry_enrich_attempts',
   'timeline_entry_reply',
+  'timeline_entry_mentions',
+  'timeline_entry_reply_checked',
   'timeline_entry_indexes',
   'timeline_entry_unenriched_indexes',
   'profile_avatar',

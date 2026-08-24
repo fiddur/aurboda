@@ -42,11 +42,13 @@ import {
   insertPlace,
   insertRawRecord,
   insertTimeSeries,
+  listReplyUncheckedEntries,
   listUnenrichedAurbodaEntries,
   loginToUserDb,
   markEnrichTransientFailure,
   openTimelineChannel,
   resolveOrCreateActivityType,
+  setTimelineEntryReplyInfo,
   setTimelineEntryStructured,
   softDeleteSupersededLocations,
   updateDetectedLocation,
@@ -104,11 +106,16 @@ import { createInvitationAuth } from './services/invitation.ts'
 import { getPlaceVisits } from './services/locations.ts'
 import { createPgBoss } from './services/pg-boss.ts'
 import { installProcessGuards } from './services/process-guards.ts'
+import { safeFetchGet } from './services/safe-fetch.ts'
 import { initSentry, Sentry } from './services/sentry.ts'
 import { createStravaQueue, type StravaQueue } from './services/strava-queue.ts'
 import { createSyncProvider } from './services/sync-provider.ts'
 import { createTimelineHub } from './services/timeline-hub.ts'
-import { type RetroEnrichTrigger, retroEnrichTimelineEntries } from './services/timeline-retro-enrich.ts'
+import {
+  backfillReplyLinks,
+  type RetroEnrichTrigger,
+  retroEnrichTimelineEntries,
+} from './services/timeline-retro-enrich.ts'
 import { createWebAuthnService } from './services/webauthn.ts'
 
 /** Grace period for in-flight requests before sockets are forced closed. */
@@ -385,13 +392,33 @@ const main = async () => {
   const retroEnrichTimeline: RetroEnrichTrigger = (user) => {
     if (retroInFlight.has(user)) return
     retroInFlight.add(user)
-    void retroEnrichTimelineEntries(user, {
+    const structuredPass = retroEnrichTimelineEntries(user, {
       enrich: retroEnricher,
       listUnenriched: listUnenrichedAurbodaEntries,
       recordTransientFailure: markEnrichTransientFailure,
       save: setTimelineEntryStructured,
     })
-      .catch((err: unknown) => console.warn(`⚠️ timeline retro-enrichment failed for ${user}:`, err))
+    // Reply/Mention backfill for entries ingested before #1060 tracked them —
+    // re-fetches a few objects per read so legacy replies stop rendering as
+    // top-level cards.
+    const replyPass = backfillReplyLinks(user, `${webHost.replace(/\/+$/, '')}/users/${user}`, {
+      fetchObject: async (objectUri) =>
+        (
+          await safeFetchGet(objectUri, {
+            headers: { Accept: 'application/activity+json, application/ld+json; q=0.9' },
+          }).catch(() => null)
+        )?.data ?? null,
+      listUnchecked: listReplyUncheckedEntries,
+      saveReplyInfo: setTimelineEntryReplyInfo,
+    })
+    void Promise.allSettled([structuredPass, replyPass])
+      .then((results) => {
+        for (const r of results) {
+          if (r.status === 'rejected') {
+            console.warn(`⚠️ timeline retro pass failed for ${user}:`, r.reason)
+          }
+        }
+      })
       .finally(() => retroInFlight.delete(user))
   }
   const onDeliverError = (op: string, user: string, postId: string) => (err: unknown) =>

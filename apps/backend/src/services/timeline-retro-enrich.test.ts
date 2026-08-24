@@ -4,7 +4,12 @@ import { describe, expect, test } from 'vitest'
 
 import type { UnenrichedTimelineEntry } from '../db/index.ts'
 
-import { type RetroEnrichDeps, retroEnrichTimelineEntries } from './timeline-retro-enrich.ts'
+import {
+  backfillReplyLinks,
+  parseReplyInfo,
+  type RetroEnrichDeps,
+  retroEnrichTimelineEntries,
+} from './timeline-retro-enrich.ts'
 
 const UUID = '11111111-2222-4333-8444-555555555555'
 
@@ -119,5 +124,62 @@ describe('retroEnrichTimelineEntries', () => {
     // instead (retryable until the cap); 'fine' was stored.
     expect(saved).toEqual(['fine'])
     expect(transient).toEqual(['flaky:3'])
+  })
+})
+
+describe('parseReplyInfo', () => {
+  const ME = 'https://aurboda.example/users/me'
+
+  test('reads a string inReplyTo and a Mention tag pointing at me', () => {
+    const doc = {
+      inReplyTo: 'https://mastodon.example/notes/1',
+      tag: [{ href: ME, type: 'Mention' }],
+    }
+    expect(parseReplyInfo(doc, ME)).toEqual({
+      in_reply_to_uri: 'https://mastodon.example/notes/1',
+      mentions_me: true,
+    })
+  })
+
+  test('reads an object-form inReplyTo, a single non-array tag, and foreign mentions', () => {
+    const doc = {
+      inReplyTo: { id: 'https://mastodon.example/notes/2', type: 'Note' },
+      tag: { href: 'https://elsewhere.example/users/other', type: 'Mention' },
+    }
+    expect(parseReplyInfo(doc, ME)).toEqual({
+      in_reply_to_uri: 'https://mastodon.example/notes/2',
+      mentions_me: false,
+    })
+  })
+
+  test('a top-level post without tags yields nulls, as does a non-object doc', () => {
+    expect(parseReplyInfo({ content: '<p>hi</p>' }, ME)).toEqual({
+      in_reply_to_uri: null,
+      mentions_me: false,
+    })
+    expect(parseReplyInfo(null, ME)).toEqual({ in_reply_to_uri: null, mentions_me: false })
+  })
+})
+
+describe('backfillReplyLinks', () => {
+  test('stamps every candidate — reply info when fetched, nulls when unreachable', async () => {
+    const saved: [string, string | null, boolean][] = []
+    await backfillReplyLinks('u', 'https://aurboda.example/users/u', {
+      fetchObject: async (uri) =>
+        uri === 'https://m.example/notes/reply'
+          ? { inReplyTo: 'https://m.example/notes/root', tag: [] }
+          : null,
+      listUnchecked: async () => [
+        { id: 'a', object_uri: 'https://m.example/notes/reply' },
+        { id: 'b', object_uri: 'https://m.example/notes/gone' },
+      ],
+      saveReplyInfo: async (_u, id, inReplyToUri, mentionsMe) => {
+        saved.push([id, inReplyToUri, mentionsMe])
+      },
+    })
+    expect(saved).toEqual([
+      ['a', 'https://m.example/notes/root', false],
+      ['b', null, false],
+    ])
   })
 })

@@ -24,6 +24,7 @@ import {
   shareChallengeBodySchema,
   type TimelineQuery,
   timelineQuerySchema,
+  type TimelineRepliesResponse,
   type TimelineResponse,
   type UpdateArticleBody,
   updateArticleBodySchema,
@@ -42,9 +43,11 @@ import {
   deleteFeedPost,
   getActivityById,
   getFeedPostById,
+  getTimelineEntryById,
   updateFeedPost,
 } from '../db/index.ts'
 import { isPubliclyVisible } from '../services/activitypub/object.ts'
+import { fetchRemoteReplies } from '../services/activitypub/remote-replies.ts'
 import { buildArticleMarkdown, renderableArticleBlocks } from '../services/article-export.ts'
 import { buildArticleContent, mergeArticleContent } from '../services/article.ts'
 import { resolveChallengeShare } from '../services/challenge-share.ts'
@@ -56,6 +59,7 @@ import {
 } from '../services/feed.ts'
 import { getSettings } from '../services/settings.ts'
 import { getTimelinePage } from '../services/timeline.ts'
+import { withTimeout } from '../services/with-timeout.ts'
 import { type AnyMiddleware, type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody, validateQuery } from '../validation.ts'
 
@@ -85,6 +89,12 @@ export interface FeedDeliver {
   /** Federate a challenge-share edit as an `Update`. */
   updatedChallenge: (user: string, post: FeedPostRecord) => void
 }
+
+/** RFC 4122 canonical form — timeline entry ids are UUIDs. */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/** Total budget for one reply-thread snapshot (object + collection + authors). */
+const REPLIES_TIMEOUT_MS = 12_000
 
 export const createFeedRouter = (
   authMiddleware: AnyMiddleware,
@@ -172,6 +182,31 @@ export const createFeedRouter = (
       })
       retroEnrichTimeline?.(user)
       res.json({ entries, next_cursor, success: true })
+    },
+  )
+
+  // Live snapshot of a timeline post's remote reply thread (#1060). Nothing is
+  // stored; `no-store` because the origin's thread changes under us. Bounded
+  // fetch budget inside, plus a hard timeout so a slow origin can't pin the
+  // request.
+  router.get<{ id: string }, TimelineRepliesResponse>(
+    '/timeline/:id/replies',
+    authMiddleware,
+    async (req, res) => {
+      const user = req.user!
+      if (!UUID_RE.test(req.params.id)) {
+        return res.status(404).json({ error: 'Not found', partial: false, replies: [], success: false })
+      }
+      const entry = await getTimelineEntryById(user, req.params.id)
+      if (entry == null) {
+        return res.status(404).json({ error: 'Not found', partial: false, replies: [], success: false })
+      }
+      const { partial, replies } = await withTimeout(
+        fetchRemoteReplies(entry.object_uri),
+        REPLIES_TIMEOUT_MS,
+      ).catch(() => ({ partial: true, replies: [] }))
+      res.setHeader('Cache-Control', 'no-store')
+      res.json({ partial, replies, success: true })
     },
   )
 

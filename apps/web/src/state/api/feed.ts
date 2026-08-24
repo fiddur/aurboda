@@ -14,6 +14,7 @@ import type {
   ShareActivityBody,
   ShareChallengeBody,
   SharePreviewResponse,
+  TimelineRepliesResponse,
   TimelineResponse,
   UpdateArticleBody,
   UpdateFeedPostBody,
@@ -225,6 +226,18 @@ export const fetchTimeline = async (cursor?: string): Promise<TimelineResponse> 
     headers: authHeaders(),
     params: cursor ? { cursor } : {},
   })
+  return response.data
+}
+
+/**
+ * Fetch a live, bounded snapshot of one timeline post's remote reply thread.
+ * `partial: true` means the server's fetch budget ran out before the thread did.
+ */
+export const fetchTimelineReplies = async (entryId: string): Promise<TimelineRepliesResponse> => {
+  const response = await axios.get<TimelineRepliesResponse>(
+    `${API_URL}/feed/timeline/${encodeURIComponent(entryId)}/replies`,
+    { headers: authHeaders() },
+  )
   return response.data
 }
 

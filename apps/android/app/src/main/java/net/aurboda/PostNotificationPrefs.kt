@@ -18,6 +18,14 @@ private fun postNotifPrefs(context: Context) =
 fun isPostNotificationsEnabled(context: Context): Boolean =
     postNotifPrefs(context).getBoolean(POST_NOTIF_ENABLED_KEY, false)
 
+/**
+ * Whether an on/off choice has ever been recorded (by the user's toggle or a
+ * completed auto-enable). Guards the launch-time auto-enable so it never
+ * overrides an explicit "off".
+ */
+fun isPostNotificationsChoiceMade(context: Context): Boolean =
+    postNotifPrefs(context).contains(POST_NOTIF_ENABLED_KEY)
+
 fun setPostNotificationsEnabled(context: Context, enabled: Boolean) {
     postNotifPrefs(context).edit().putBoolean(POST_NOTIF_ENABLED_KEY, enabled).apply()
 }

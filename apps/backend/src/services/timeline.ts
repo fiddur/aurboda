@@ -38,6 +38,7 @@ export const serializeTimelineEntry = (
         in_reply_to_mine: ownObjectPrefix != null && record.in_reply_to_uri.startsWith(ownObjectPrefix),
         in_reply_to_uri: record.in_reply_to_uri,
       }),
+  ...(record.mentions_me ? { mentions_me: true } : {}),
   ...(record.images == null || record.images.length === 0 ? {} : { images: record.images }),
   object_uri: record.object_uri,
   published_at: record.published_at.toISOString(),

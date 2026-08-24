@@ -25,6 +25,8 @@ export interface TimelineEntryRecord {
   received_at: Date
   /** The `inReplyTo` object id when the post is a reply, or null for a top-level post. */
   in_reply_to_uri: string | null
+  /** Whether the post carries a Mention tag for the timeline owner. */
+  mentions_me: boolean
   /** Native structured payload from an Aurboda peer, or null for non-Aurboda posts. */
   structured: FeedStructuredPost | null
   /** Image attachments (rendered chart / route map, or a Mastodon photo), or null. */
@@ -43,6 +45,8 @@ export interface TimelineEntryInput {
   published_at: Date
   /** The `inReplyTo` object id when the post is a reply. */
   in_reply_to_uri?: string | null
+  /** Whether the post carries a Mention tag for the timeline owner. */
+  mentions_me?: boolean
   /** Native structured payload fetched from an Aurboda peer on ingest, if any. */
   structured?: FeedStructuredPost | null
   /** Image attachments captured from the delivered Note, if any. */
@@ -56,7 +60,7 @@ export interface TimelineCursor {
 }
 
 const TIMELINE_COLUMNS =
-  'id, object_uri, actor_uri, handle, display_name, avatar_url, content, url, published_at, received_at, in_reply_to_uri, structured, images'
+  'id, object_uri, actor_uri, handle, display_name, avatar_url, content, url, published_at, received_at, in_reply_to_uri, mentions_me, structured, images'
 
 /**
  * Insert or update a received post by `object_uri`. A re-delivered or edited post
@@ -75,8 +79,8 @@ export const upsertTimelineEntry = async (
   const result = await query<TimelineEntryRecord & { inserted: boolean }>(
     user,
     `INSERT INTO timeline_entry
-       (object_uri, actor_uri, handle, display_name, avatar_url, content, url, published_at, in_reply_to_uri, structured, images)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+       (object_uri, actor_uri, handle, display_name, avatar_url, content, url, published_at, in_reply_to_uri, mentions_me, reply_checked_at, structured, images)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), $11, $12)
      ON CONFLICT (object_uri)
      DO UPDATE SET actor_uri = EXCLUDED.actor_uri,
                    handle = EXCLUDED.handle,
@@ -86,6 +90,8 @@ export const upsertTimelineEntry = async (
                    url = EXCLUDED.url,
                    published_at = EXCLUDED.published_at,
                    in_reply_to_uri = EXCLUDED.in_reply_to_uri,
+                   mentions_me = EXCLUDED.mentions_me,
+                   reply_checked_at = NOW(),
                    -- Keep the last-known structured payload if a refresh/edit
                    -- couldn't re-fetch it (transient enrich failure), rather
                    -- than wiping a working chart.
@@ -106,6 +112,7 @@ export const upsertTimelineEntry = async (
       input.url ?? null,
       input.published_at,
       input.in_reply_to_uri ?? null,
+      input.mentions_me ?? false,
       input.structured == null ? null : JSON.stringify(input.structured),
       input.images == null ? null : JSON.stringify(input.images),
     ],
@@ -143,7 +150,7 @@ export const listTimelineEntries = async (
     user,
     `SELECT ${TIMELINE_COLUMNS} FROM timeline_entry
      WHERE ($1::timestamptz IS NULL OR (published_at, id) < ($1::timestamptz, $2::uuid))
-       AND ($4::boolean OR in_reply_to_uri IS NULL OR in_reply_to_uri LIKE $5)
+       AND ($4::boolean OR in_reply_to_uri IS NULL OR mentions_me OR in_reply_to_uri LIKE $5)
      ORDER BY published_at DESC, id DESC
      LIMIT $3`,
     [
@@ -155,6 +162,54 @@ export const listTimelineEntries = async (
     ],
   )
   return result.rows
+}
+
+/** One timeline entry by its local id, or null. */
+export const getTimelineEntryById = async (user: string, id: string): Promise<TimelineEntryRecord | null> => {
+  const result = await query<TimelineEntryRecord>(
+    user,
+    `SELECT ${TIMELINE_COLUMNS} FROM timeline_entry WHERE id = $1`,
+    [id],
+  )
+  return result.rows[0] ?? null
+}
+
+/** A legacy entry whose reply/Mention state is unknown (pre-#1060 ingest). */
+export interface ReplyUncheckedEntry {
+  id: string
+  object_uri: string
+}
+
+/** Newest legacy entries still lacking a reply check, for the lazy backfill. */
+export const listReplyUncheckedEntries = async (
+  user: string,
+  limit: number,
+): Promise<ReplyUncheckedEntry[]> => {
+  const result = await query<ReplyUncheckedEntry>(
+    user,
+    `SELECT id, object_uri FROM timeline_entry
+     WHERE reply_checked_at IS NULL
+     ORDER BY received_at DESC
+     LIMIT $1`,
+    [limit],
+  )
+  return result.rows
+}
+
+/** Store a backfilled reply/Mention state and stamp the entry checked. */
+export const setTimelineEntryReplyInfo = async (
+  user: string,
+  id: string,
+  inReplyToUri: string | null,
+  mentionsMe: boolean,
+): Promise<void> => {
+  await query(
+    user,
+    `UPDATE timeline_entry
+     SET in_reply_to_uri = $2, mentions_me = $3, reply_checked_at = NOW()
+     WHERE id = $1`,
+    [id, inReplyToUri, mentionsMe],
+  )
 }
 
 /**

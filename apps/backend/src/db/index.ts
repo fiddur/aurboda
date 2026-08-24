@@ -310,9 +310,12 @@ export {
 export {
   deleteTimelineEntriesByActor,
   deleteTimelineEntryByUri,
+  getTimelineEntryById,
+  listReplyUncheckedEntries,
   listTimelineEntries,
   listUnenrichedAurbodaEntries,
   markEnrichTransientFailure,
+  setTimelineEntryReplyInfo,
   setTimelineEntryStructured,
   type TimelineCursor,
   type TimelineEntryInput,

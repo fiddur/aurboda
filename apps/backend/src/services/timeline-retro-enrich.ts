@@ -86,3 +86,64 @@ export const retroEnrichTimelineEntries = async (
   }
   return enriched
 }
+
+/**
+ * Reply/Mention state parsed from a fetched AS2 object (#1060): the
+ * `inReplyTo` id and whether a `Mention` tag points at `myActorUri`. Exported
+ * pure for tests.
+ */
+export const parseReplyInfo = (
+  doc: unknown,
+  myActorUri: string,
+): { in_reply_to_uri: string | null; mentions_me: boolean } => {
+  if (typeof doc !== 'object' || doc == null || Array.isArray(doc)) {
+    return { in_reply_to_uri: null, mentions_me: false }
+  }
+  const rec = doc as Record<string, unknown>
+  const reply = rec.inReplyTo
+  const inReplyToUri =
+    typeof reply === 'string'
+      ? reply
+      : typeof reply === 'object' &&
+          reply != null &&
+          typeof (reply as Record<string, unknown>).id === 'string'
+        ? ((reply as Record<string, unknown>).id as string)
+        : null
+  const tags = Array.isArray(rec.tag) ? rec.tag : rec.tag == null ? [] : [rec.tag]
+  const mentionsMe = tags.some(
+    (t) =>
+      typeof t === 'object' &&
+      t != null &&
+      (t as Record<string, unknown>).type === 'Mention' &&
+      (t as Record<string, unknown>).href === myActorUri,
+  )
+  return { in_reply_to_uri: inReplyToUri, mentions_me: mentionsMe }
+}
+
+export interface ReplyBackfillDeps {
+  listUnchecked: (user: string, limit: number) => Promise<{ id: string; object_uri: string }[]>
+  saveReplyInfo: (user: string, id: string, inReplyToUri: string | null, mentionsMe: boolean) => Promise<void>
+  /** SSRF-guarded ActivityPub fetch of the object, or null on any failure. */
+  fetchObject: (objectUri: string) => Promise<unknown | null>
+}
+
+/**
+ * Backfill reply/Mention state for entries ingested before #1060 tracked it —
+ * so a legacy reply stops rendering as a top-level card once the setting hides
+ * replies. One attempt per entry (`reply_checked_at` stamps whatever the
+ * outcome — an unreachable object stays a plain card, which is what it already
+ * was), a small batch per timeline read, sequential like the enrichment pass.
+ */
+export const backfillReplyLinks = async (
+  user: string,
+  myActorUri: string,
+  deps: ReplyBackfillDeps,
+  batchSize: number = RETRO_BATCH_SIZE,
+): Promise<void> => {
+  const candidates = await deps.listUnchecked(user, batchSize)
+  for (const entry of candidates) {
+    const doc = await deps.fetchObject(entry.object_uri)
+    const info = parseReplyInfo(doc, myActorUri)
+    await deps.saveReplyInfo(user, entry.id, info.in_reply_to_uri, info.mentions_me)
+  }
+}
