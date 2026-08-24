@@ -5,12 +5,16 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
  * actors), including keyset pagination by (published_at DESC, id DESC).
  */
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
+import { query } from './connection.ts'
 import {
   deleteTimelineEntriesByActor,
   deleteTimelineEntryByUri,
+  getTimelineEntryById,
+  listReplyUncheckedEntries,
   listTimelineEntries,
   listUnenrichedAurbodaEntries,
   markEnrichTransientFailure,
+  setTimelineEntryReplyInfo,
   setTimelineEntryStructured,
   type TimelineEntryInput,
   upsertTimelineEntry,
@@ -191,6 +195,45 @@ describe('Timeline store integration', () => {
       show_replies: true,
     })
     expect(all).toHaveLength(3)
+  })
+
+  test('a mentioned post stays visible with replies hidden; getTimelineEntryById resolves (#1060)', async () => {
+    const user = getTestUser()
+    const ownPrefix = `https://aurboda.example/users/${user}/feed/`
+    const mention = await upsertTimelineEntry(
+      user,
+      entry(1, { in_reply_to_uri: 'https://mastodon.example/notes/root', mentions_me: true }),
+    )
+    await upsertTimelineEntry(user, entry(2, { in_reply_to_uri: 'https://mastodon.example/notes/root' }))
+    const filtered = await listTimelineEntries(user, 10, undefined, {
+      own_object_prefix: ownPrefix,
+      show_replies: false,
+    })
+    expect(filtered.map((r) => r.object_uri)).toEqual(['https://mastodon.example/notes/1'])
+    expect(filtered[0].mentions_me).toBe(true)
+
+    const byId = await getTimelineEntryById(user, mention.id)
+    expect(byId?.object_uri).toBe('https://mastodon.example/notes/1')
+    expect(await getTimelineEntryById(user, '00000000-0000-4000-8000-000000000000')).toBeNull()
+  })
+
+  test('reply backfill: fresh ingests are stamped, legacy rows are listed and updatable (#1060)', async () => {
+    const user = getTestUser()
+    // A fresh ingest stamps reply_checked_at, so it is never a backfill candidate.
+    await upsertTimelineEntry(user, entry(1))
+    expect(await listReplyUncheckedEntries(user, 10)).toEqual([])
+
+    // Simulate a legacy (pre-#1060) row by clearing the stamp.
+    const legacy = await upsertTimelineEntry(user, entry(2))
+    await query(user, `UPDATE timeline_entry SET reply_checked_at = NULL WHERE id = $1`, [legacy.id])
+    const candidates = await listReplyUncheckedEntries(user, 10)
+    expect(candidates).toEqual([{ id: legacy.id, object_uri: 'https://mastodon.example/notes/2' }])
+
+    await setTimelineEntryReplyInfo(user, legacy.id, 'https://mastodon.example/notes/root', true)
+    const updated = await getTimelineEntryById(user, legacy.id)
+    expect(updated?.in_reply_to_uri).toBe('https://mastodon.example/notes/root')
+    expect(updated?.mentions_me).toBe(true)
+    expect(await listReplyUncheckedEntries(user, 10)).toEqual([])
   })
 
   test('deletes a single entry by object uri + authoring actor (inbound Delete)', async () => {

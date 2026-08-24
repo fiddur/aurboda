@@ -343,6 +343,25 @@ export const socialTables: Record<string, string> = {
   timeline_entry_reply: `
     ALTER TABLE timeline_entry ADD COLUMN IF NOT EXISTS in_reply_to_uri TEXT
   `,
+  // Whether the post carries a Mention tag for the timeline owner (#1060) —
+  // mentioned posts stay visible and notify whatever the reply setting says.
+  timeline_entry_mentions: `
+    ALTER TABLE timeline_entry ADD COLUMN IF NOT EXISTS mentions_me BOOLEAN NOT NULL DEFAULT false
+  `,
+  // Lazy backfill bookkeeping (#1060): entries ingested before reply tracking
+  // have NULL here; the read path re-fetches a few per read to learn their
+  // inReplyTo/Mention state, stamping this whatever the outcome. New ingests
+  // stamp it immediately (the Note itself carried the answer).
+  timeline_entry_reply_checked: `
+    ALTER TABLE timeline_entry ADD COLUMN IF NOT EXISTS reply_checked_at TIMESTAMPTZ
+  `,
+  // Rows that already carry a reply link (ingested between #1061 and this
+  // migration) are KNOWN-correct — stamp them so the backfill never re-fetches
+  // (and can never clobber) them. Idempotent: matches nothing after first run.
+  timeline_entry_reply_checked_backstamp: `
+    UPDATE timeline_entry SET reply_checked_at = NOW()
+    WHERE reply_checked_at IS NULL AND in_reply_to_uri IS NOT NULL
+  `,
   // Timeline ordering / keyset pagination is by (published_at DESC, id DESC).
   timeline_entry_indexes: `
     CREATE INDEX IF NOT EXISTS idx_timeline_entry_published

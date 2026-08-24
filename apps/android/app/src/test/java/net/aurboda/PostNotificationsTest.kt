@@ -15,6 +15,7 @@ class PostNotificationsTest {
         receivedAt: String? = null,
         inReplyToUri: String? = null,
         inReplyToMine: Boolean = false,
+        mentionsMe: Boolean = false,
     ) =
         TimelineEntry(
             objectUri = objectUri,
@@ -23,6 +24,7 @@ class PostNotificationsTest {
             receivedAt = receivedAt,
             inReplyToUri = inReplyToUri,
             inReplyToMine = inReplyToMine,
+            mentionsMe = mentionsMe,
         )
 
     private val alice = "https://mastodon.example/users/alice"
@@ -83,6 +85,28 @@ class PostNotificationsTest {
         )
         val decision = decideNotifications(entries, notifyActorUris = setOf(alice), highWater = hw)
         assertEquals(listOf("reply-mine", "top-level"), decision.toNotify.map { it.objectUri })
+    }
+
+    @Test
+    fun `involvement notifies even from actors outside the notify set`() {
+        val hw = Instant.parse("2026-07-15T10:00:00Z")
+        val stranger = "https://elsewhere.example/users/stranger"
+        val entries = listOf(
+            // A stranger's reply to MY post (admitted by the inbox involvement branch).
+            entry(
+                "stranger-reply",
+                stranger,
+                "2026-07-15T10:10:00Z",
+                inReplyToUri = "https://me.example/users/me/feed/abc",
+                inReplyToMine = true,
+            ),
+            // A stranger mentioning me in a top-level post.
+            entry("stranger-mention", stranger, "2026-07-15T10:20:00Z", mentionsMe = true),
+            // A stranger's plain post never notifies (and never reaches the timeline anyway).
+            entry("stranger-plain", stranger, "2026-07-15T10:30:00Z"),
+        )
+        val decision = decideNotifications(entries, notifyActorUris = setOf(alice), highWater = hw)
+        assertEquals(listOf("stranger-reply", "stranger-mention"), decision.toNotify.map { it.objectUri })
     }
 
     @Test

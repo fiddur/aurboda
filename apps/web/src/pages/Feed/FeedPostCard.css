@@ -210,3 +210,67 @@
     background: #1f2937;
   }
 }
+
+.feed-post-replies-toggle {
+  margin-top: 0.5rem;
+  padding: 0.25rem 0.75rem;
+  border: 1px solid #d1d5db;
+  border-radius: 999px;
+  background: transparent;
+  cursor: pointer;
+  font-size: 0.8rem;
+  color: #6b7280;
+}
+
+.feed-post-replies-status {
+  margin: 0.5rem 0 0;
+  font-size: 0.8rem;
+  color: #6b7280;
+}
+
+.feed-post-replies {
+  margin-top: 0.5rem;
+  border-left: 2px solid #e5e7eb;
+  padding-left: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.feed-post-reply-author {
+  font-size: 0.8rem;
+  color: #6b7280;
+}
+
+.feed-post-reply-author a {
+  color: inherit;
+}
+
+.feed-post-reply-content {
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
+.feed-post-reply-content p {
+  margin: 0.2rem 0;
+}
+
+@media (prefers-color-scheme: dark) {
+  .feed-post-replies {
+    border-left-color: #374151;
+  }
+
+  .feed-post-replies-toggle {
+    border-color: #4b5563;
+    color: #9ca3af;
+  }
+}
+
+.timeline-replies-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  color: #6b7280;
+  margin-bottom: 0.75rem;
+}

@@ -222,15 +222,27 @@ bell in the web Following panel (or the `set_following_notify` MCP tool / `PATCH
 /feed/following/:id`). It controls whether the Android app raises a notification for that
 actor's new home-timeline posts; muting is preserved across a re-follow.
 
-**Replies** (#1060): ingest stores a received Note's `inReplyTo` id as
-`timeline_entry.in_reply_to_uri`. The timeline exposes it (plus `in_reply_to_mine`, true when
-the target is one of the reader's own posts) and filters by the **`timeline_show_replies`**
-user setting: off (the default) hides followed actors' replies to *other* people from the
-home timeline — replies to your own posts always show, marked "replied to you" on the card.
-The Android notifier follows the same involvement rule: new top-level posts notify, replies
-only when they target one of your posts. Entries also expose **`received_at`** (when this
-instance stored the post) — the notifier's high-water mark, since `published_at` can arrive
-out of order after federation retries.
+**Replies and mentions** (#1060): ingest stores a received Note's `inReplyTo` id as
+`timeline_entry.in_reply_to_uri` and whether it carries a `Mention` of the timeline owner as
+`mentions_me`. The timeline exposes both (plus `in_reply_to_mine`, true when the reply target
+is one of the reader's own posts) and filters by the **`timeline_show_replies`** user setting
+(toggle on the Feed page and in Settings): off (the default) hides followed actors' replies
+to *other* people — posts the reader is **involved** in (replies to their own posts, Mentions
+of them) always show, marked on the card. The inbox admits an involvement Note **from any
+actor**, not only followees (a stranger's reply to your post, or a post mentioning you, is
+the Mastodon-style interaction; the author snapshot comes from the signature-verified sender)
+— everything else from non-followees is still dropped. The Android notifier follows the same
+rule: top-level posts notify per the per-follow bell, involvement notifies regardless of who
+wrote it. Entries also expose **`received_at`** (when this instance stored the post) — the
+notifier's high-water mark, since `published_at` can arrive out of order after federation
+retries. Entries ingested before this shipped are **lazily backfilled**: each timeline read
+re-fetches a few unchecked objects (SSRF-guarded) and stamps their reply/Mention state.
+
+**Expanding a thread**: `GET /feed/timeline/:id/replies` (and the MCP `get_timeline_replies`
+tool) fetches a live, bounded snapshot of the post's remote `replies` collection — at most 20
+replies from at most 15 SSRF-guarded requests within a 12s budget, HTML sanitised
+server-side; `partial: true` marks a thread longer than the budget. Nothing is stored — the
+web's "Show replies" button on each timeline card renders it on demand.
 
 The actor advertises a **following collection** (`/users/<username>/following`) listing only
 _accepted_ follows (a pending follow isn't a confirmed relationship yet). The followee's

@@ -652,6 +652,10 @@ export const timelineEntrySchema = z
     in_reply_to_uri: z.string().nullable().optional().meta({
       description: 'The `inReplyTo` object id when this post is a reply, else absent/null',
     }),
+    mentions_me: z.boolean().optional().meta({
+      description:
+        'True when the post carries a Mention of you — such posts always show and notify regardless of the `timeline_show_replies` setting',
+    }),
     images: z.array(timelineImageSchema).optional().meta({
       description:
         'Image attachments (e.g. a rendered chart or route map), shown when the post carries no native structured chart.',
@@ -687,6 +691,33 @@ export const timelineQuerySchema = z
   .meta({ id: 'TimelineQuery' })
 
 export type TimelineQuery = z.infer<typeof timelineQuerySchema>
+
+/** One reply fetched live from a remote post's `replies` collection. */
+export const timelineReplySchema = z
+  .object({
+    actor_uri: z.string().nullable().meta({ description: "The reply author's actor URI, if declared" }),
+    content: z.string().meta({ description: 'The reply HTML (sanitised server-side; safe to render)' }),
+    display_name: z.string().nullable().meta({ description: "The author's display name, if resolved" }),
+    handle: z.string().nullable().meta({ description: "The author's `@user@host` handle, if resolved" }),
+    published_at: iso8601DateTimeSchema.nullable().meta({ description: 'When the reply was published' }),
+    url: z.string().nullable().meta({ description: 'Link to the reply on its origin' }),
+  })
+  .meta({ id: 'TimelineReply' })
+
+export type TimelineReply = z.infer<typeof timelineReplySchema>
+
+/** Replies fetched live from the remote post behind one timeline entry. */
+export const timelineRepliesResponseSchema = baseResponseSchema
+  .extend({
+    partial: z.boolean().meta({
+      description:
+        'True when the fetch hit its budget (count/time) before exhausting the collection — more replies may exist on the origin',
+    }),
+    replies: z.array(timelineReplySchema).meta({ description: 'The fetched replies, oldest first' }),
+  })
+  .meta({ id: 'TimelineRepliesResponse' })
+
+export type TimelineRepliesResponse = z.infer<typeof timelineRepliesResponseSchema>
 
 /** A page of the home timeline, newest first, with an opaque cursor for the next page. */
 export const timelineResponseSchema = baseResponseSchema

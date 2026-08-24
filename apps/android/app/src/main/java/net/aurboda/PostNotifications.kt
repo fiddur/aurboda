@@ -28,6 +28,8 @@ data class TimelineEntry(
     // the reader's own posts (always notified — you're involved).
     @SerialName("in_reply_to_uri") val inReplyToUri: String? = null,
     @SerialName("in_reply_to_mine") val inReplyToMine: Boolean = false,
+    // A Mention of the reader — involvement, like a reply to their own post.
+    @SerialName("mentions_me") val mentionsMe: Boolean = false,
 ) {
     /** Best available human name for the notification title. */
     val authorLabel: String get() = displayName ?: handle ?: actorUri
@@ -67,11 +69,14 @@ fun parsePublishedAt(value: String): Instant? =
 /**
  * Decide which timeline posts to notify about.
  *
- * Notify a post when it is (a) newer than [highWater], (b) from an actor in
- * [notifyActorUris] (a followed account with notifications left on), and (c) not
- * a reply to someone else — a reply notifies only when it targets one of YOUR
- * posts (`in_reply_to_mine`). The new high-water mark advances to the latest post
- * seen across the whole page — so a muted or already-seen post never re-triggers.
+ * A post the reader is INVOLVED in — a reply to one of their own posts, or a
+ * Mention of them — notifies whoever wrote it (its author may not be followed at
+ * all: a stranger's reply/mention reaches the timeline through the inbox's
+ * involvement branch). Any other post notifies when it is (a) not a reply to
+ * someone else, and (b) from an actor in [notifyActorUris] (a followed account
+ * with notifications left on). Everything is gated on being newer than
+ * [highWater]; the new high-water mark advances to the latest post seen across
+ * the whole page — so a muted or already-seen post never re-triggers.
  *
  * Newness is judged by `received_at` (when OUR instance stored the post), not
  * `published_at`: federation retries deliver posts out of publish order, and a
@@ -99,9 +104,9 @@ fun decideNotifications(
 
     val toNotify = dated
         .filter { (entry, seenAt) ->
+            val involved = entry.inReplyToMine || entry.mentionsMe
             seenAt.isAfter(highWater) &&
-                entry.actorUri in notifyActorUris &&
-                (entry.inReplyToUri == null || entry.inReplyToMine)
+                (involved || (entry.inReplyToUri == null && entry.actorUri in notifyActorUris))
         }
         .sortedBy { it.second }
         .map { it.first }
