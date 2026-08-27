@@ -212,6 +212,7 @@ function RowMain({
   now,
   role,
   startTs,
+  timezone,
   url,
 }: {
   endTs: string
@@ -220,6 +221,7 @@ function RowMain({
   now: Date
   role: 'hosted' | 'joined'
   startTs: string
+  timezone: string
   url: string
 }) {
   const status = challengeTimeStatus(startTs, endTs, now)
@@ -236,10 +238,10 @@ function RowMain({
       <span class="challenge-row-meta">{meta}</span>
       <span class="challenge-row-dates">
         <span class={`challenge-row-phrase challenge-row-phrase-${status}`}>
-          {challengeTimePhrase(startTs, endTs, now)}
+          {challengeTimePhrase(startTs, endTs, timezone, now)}
         </span>
         {' · '}
-        {challengeRangeLabel(startTs, endTs)}
+        {challengeRangeLabel(startTs, endTs, timezone)}
       </span>
     </div>
   )
@@ -276,6 +278,7 @@ function HostedRow({ challenge, now }: { challenge: Challenge; now: Date }) {
         now={now}
         role="hosted"
         startTs={challenge.start_ts}
+        timezone={challenge.timezone}
         url={challenge.share_url}
       />
       <div class="challenge-row-actions">
@@ -322,6 +325,7 @@ function JoinedRow({ now, participation }: { now: Date; participation: Challenge
         now={now}
         role="joined"
         startTs={participation.start_ts}
+        timezone={participation.timezone}
         url={participation.challenge_url}
       />
       <div class="challenge-row-actions">

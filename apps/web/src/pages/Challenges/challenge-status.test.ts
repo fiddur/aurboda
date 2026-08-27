@@ -15,9 +15,11 @@ import {
 // timezone consistently on both sides, so the tests are tz-independent.
 const iso = (local: string) => new Date(local).toISOString()
 
-// A one-week challenge: 1 Jun 00:00 (inclusive) .. 8 Jun 00:00 (exclusive).
+// A one-week challenge: 1 Jun 00:00 (inclusive) .. 8 Jun 00:00 (exclusive),
+// built in the runner's local timezone so viewer-local assertions hold anywhere.
 const start = iso('2026-06-01T00:00:00')
 const end = iso('2026-06-08T00:00:00')
+const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
 
 describe('challengeTimeStatus', () => {
   test('before the start instant is upcoming', () => {
@@ -53,33 +55,54 @@ describe('calendarDaysUntil', () => {
 
 describe('challengeTimePhrase', () => {
   test('upcoming: today / tomorrow / in N days', () => {
-    expect(challengeTimePhrase(start, end, new Date('2026-06-01T00:00:00') /* = start */)).not.toMatch(
-      /Starts/,
-    )
-    expect(challengeTimePhrase(start, end, new Date('2026-05-31T12:00:00'))).toBe('Starts tomorrow')
-    expect(challengeTimePhrase(start, end, new Date('2026-05-29T12:00:00'))).toBe('Starts in 3 days')
+    // At the start instant the challenge is already ongoing, so at a one-week
+    // horizon the phrase is the full remaining window.
+    expect(challengeTimePhrase(start, end, tz, new Date('2026-06-01T00:00:00'))).toBe('Ends in 6 days')
+    expect(challengeTimePhrase(start, end, tz, new Date('2026-05-31T12:00:00'))).toBe('Starts tomorrow')
+    expect(challengeTimePhrase(start, end, tz, new Date('2026-05-29T12:00:00'))).toBe('Starts in 3 days')
   })
 
   test('a challenge starting later today says Starts today', () => {
     const laterToday = iso('2026-05-31T18:00:00')
-    expect(challengeTimePhrase(laterToday, end, new Date('2026-05-31T12:00:00'))).toBe('Starts today')
+    expect(challengeTimePhrase(laterToday, end, tz, new Date('2026-05-31T12:00:00'))).toBe('Starts today')
   })
 
   test('ongoing: ends today / tomorrow / in N days (last included day, end exclusive)', () => {
     // Last included day is 7 Jun.
-    expect(challengeTimePhrase(start, end, new Date('2026-06-07T12:00:00'))).toBe('Ends today')
-    expect(challengeTimePhrase(start, end, new Date('2026-06-06T12:00:00'))).toBe('Ends tomorrow')
-    expect(challengeTimePhrase(start, end, new Date('2026-06-04T12:00:00'))).toBe('Ends in 3 days')
+    expect(challengeTimePhrase(start, end, tz, new Date('2026-06-07T12:00:00'))).toBe('Ends today')
+    expect(challengeTimePhrase(start, end, tz, new Date('2026-06-06T12:00:00'))).toBe('Ends tomorrow')
+    expect(challengeTimePhrase(start, end, tz, new Date('2026-06-04T12:00:00'))).toBe('Ends in 3 days')
   })
 
-  test('ended names the last included day', () => {
-    expect(challengeTimePhrase(start, end, new Date('2026-06-10T12:00:00'), 'en-GB')).toBe('Ended 7 Jun 2026')
+  test('ended names the last included day in the challenge timezone', () => {
+    // Hosted in Los Angeles: 1 Jun 00:00 PDT .. 8 Jun 00:00 PDT (exclusive).
+    expect(
+      challengeTimePhrase(
+        '2026-06-01T07:00:00Z',
+        '2026-06-08T07:00:00Z',
+        'America/Los_Angeles',
+        new Date('2026-06-20T12:00:00Z'),
+        'en-GB',
+      ),
+    ).toBe('Ended 7 Jun 2026')
   })
 })
 
 describe('challengeRangeLabel', () => {
   test('renders start through last included day', () => {
-    expect(challengeRangeLabel(start, end, 'en-GB')).toBe('1 Jun – 7 Jun 2026')
+    expect(challengeRangeLabel(start, end, tz, 'en-GB')).toBe('1 Jun – 7 Jun 2026')
+  })
+
+  test('renders in the challenge timezone, not the viewer timezone', () => {
+    // Hosted in Los Angeles, last day 7 Jun; end_ts is 8 Jun in UTC and most of
+    // Europe, but the host's window reads 1 Jun – 7 Jun.
+    expect(
+      challengeRangeLabel('2026-06-01T07:00:00Z', '2026-06-08T07:00:00Z', 'America/Los_Angeles', 'en-GB'),
+    ).toBe('1 Jun – 7 Jun 2026')
+  })
+
+  test('an invalid timezone falls back to the viewer timezone instead of throwing', () => {
+    expect(challengeRangeLabel(start, end, 'Not/A_Zone', 'en-GB')).toBe('1 Jun – 7 Jun 2026')
   })
 })
 

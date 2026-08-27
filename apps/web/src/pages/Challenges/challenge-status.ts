@@ -26,20 +26,55 @@ const localMidnight = (d: Date): Date => new Date(d.getFullYear(), d.getMonth(),
 export const calendarDaysUntil = (target: Date, now: Date): number =>
   Math.round((localMidnight(target).getTime() - localMidnight(now).getTime()) / 86_400_000)
 
-const formatDay = (d: Date, locale?: string): string =>
-  d.toLocaleDateString(locale, { day: 'numeric', month: 'short', year: 'numeric' })
+/**
+ * Format in the challenge's IANA timezone so absolute dates read exactly as the
+ * host chose them (matching `formatDateInZone` on the challenge page), falling
+ * back to the viewer's timezone: the backend only validates `timezone` as a
+ * non-empty string, so a crafted value would otherwise throw `RangeError`.
+ */
+const formatInZone = (
+  d: Date,
+  timeZone: string,
+  opts: Intl.DateTimeFormatOptions,
+  locale?: string,
+): string => {
+  try {
+    return d.toLocaleDateString(locale, { ...opts, timeZone })
+  } catch {
+    return d.toLocaleDateString(locale, opts)
+  }
+}
 
-/** "3 Jun – 9 Jun 2026" (last included day, not the exclusive end instant). */
-export const challengeRangeLabel = (startTs: string, endTs: string, locale?: string): string =>
-  `${new Date(startTs).toLocaleDateString(locale, { day: 'numeric', month: 'short' })} – ${formatDay(
+const formatDay = (d: Date, timeZone: string, locale?: string): string =>
+  formatInZone(d, timeZone, { day: 'numeric', month: 'short', year: 'numeric' }, locale)
+
+/** "3 Jun – 9 Jun 2026" (last included day, not the exclusive end instant), in the challenge's timezone. */
+export const challengeRangeLabel = (
+  startTs: string,
+  endTs: string,
+  timeZone: string,
+  locale?: string,
+): string =>
+  `${formatInZone(new Date(startTs), timeZone, { day: 'numeric', month: 'short' }, locale)} – ${formatDay(
     lastIncludedMoment(endTs),
+    timeZone,
     locale,
   )}`
 
 const inDays = (days: number): string => (days === 1 ? 'tomorrow' : `in ${days} days`)
 
-/** Relative phrase for the row: "Ends today", "Starts tomorrow", "Ended 9 Jun 2026". */
-export const challengeTimePhrase = (startTs: string, endTs: string, now: Date, locale?: string): string => {
+/**
+ * Relative phrase for the row: "Ends today", "Starts tomorrow", "Ended 9 Jun 2026".
+ * Relative day counts are viewer-local (that's what "tomorrow" means to the
+ * reader); the absolute "Ended" date is in the challenge's timezone.
+ */
+export const challengeTimePhrase = (
+  startTs: string,
+  endTs: string,
+  timeZone: string,
+  now: Date,
+  locale?: string,
+): string => {
   const status = challengeTimeStatus(startTs, endTs, now)
   if (status === 'upcoming') {
     const days = calendarDaysUntil(new Date(startTs), now)
@@ -50,7 +85,7 @@ export const challengeTimePhrase = (startTs: string, endTs: string, now: Date, l
     const days = calendarDaysUntil(lastDay, now)
     return days <= 0 ? 'Ends today' : `Ends ${inDays(days)}`
   }
-  return `Ended ${formatDay(lastDay, locale)}`
+  return `Ended ${formatDay(lastDay, timeZone, locale)}`
 }
 
 export type ChallengeItem =
