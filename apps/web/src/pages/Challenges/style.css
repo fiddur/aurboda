@@ -23,16 +23,52 @@
   font-size: 0.9rem;
 }
 
-.challenges-columns {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1.5rem;
+/* Time-status groups: Ongoing (prominent) → Upcoming → Ended (collapsed) */
+.challenge-group {
+  margin-bottom: 1.5rem;
 }
 
-@media (max-width: 48em) {
-  .challenges-columns {
-    grid-template-columns: 1fr;
-  }
+.challenge-group h2 {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 0.6rem;
+}
+
+.challenge-group-count {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #047857;
+  background: #d1fae5;
+  border-radius: 999px;
+  padding: 0.1rem 0.55rem;
+}
+
+.challenge-ongoing-dot {
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+  background: #10b981;
+}
+
+.challenge-group-ongoing .challenge-row {
+  border-left: 3px solid #10b981;
+}
+
+.challenge-group-ended summary {
+  cursor: pointer;
+  list-style: revert;
+}
+
+.challenge-group-ended summary h2 {
+  display: inline-flex;
+  margin: 0 0 0.4rem;
+  color: #6b7280;
+  font-size: 1.1rem;
+}
+
+.challenge-group-ended .challenge-row {
+  opacity: 0.75;
 }
 
 .challenges-empty,
@@ -77,6 +113,48 @@
 .challenge-row-meta {
   font-size: 0.8rem;
   color: #6b7280;
+}
+
+.challenge-row-title {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.challenge-row-badge {
+  font-size: 0.7rem;
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 0.05rem 0.5rem;
+  white-space: nowrap;
+}
+
+.challenge-row-badge-hosted {
+  color: #6d28d9;
+  background: #ede9fe;
+}
+
+.challenge-row-badge-joined {
+  color: #1d4ed8;
+  background: #dbeafe;
+}
+
+.challenge-row-dates {
+  font-size: 0.8rem;
+  color: #6b7280;
+}
+
+.challenge-row-phrase {
+  font-weight: 600;
+}
+
+.challenge-row-phrase-ongoing {
+  color: #047857;
+}
+
+.challenge-row-phrase-upcoming {
+  color: #1d4ed8;
 }
 
 .challenge-row-actions {
@@ -199,7 +277,35 @@
   .challenges-empty,
   .challenge-view-meta,
   .public-muted,
-  .challenge-row-meta {
+  .challenge-row-meta,
+  .challenge-row-dates {
+    color: #9ca3af;
+  }
+
+  .challenge-group-count {
+    color: #6ee7b7;
+    background: #064e3b;
+  }
+
+  .challenge-row-badge-hosted {
+    color: #c4b5fd;
+    background: #3b2a63;
+  }
+
+  .challenge-row-badge-joined {
+    color: #93c5fd;
+    background: #1e3a5f;
+  }
+
+  .challenge-row-phrase-ongoing {
+    color: #34d399;
+  }
+
+  .challenge-row-phrase-upcoming {
+    color: #60a5fa;
+  }
+
+  .challenge-group-ended summary h2 {
     color: #9ca3af;
   }
 

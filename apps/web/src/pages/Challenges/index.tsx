@@ -1,9 +1,12 @@
 /**
  * Challenges - manage challenges you host and ones you've joined.
  *
- * Create a competition on a metric or activity type over a date range (public or
- * unlisted), copy its link, delete it; join a challenge by URL (local or on
- * another Aurboda instance). Federation happens server-side.
+ * The list is grouped by time status — Ongoing first and most prominent, then
+ * Upcoming, with Ended tucked into a collapsed section — so what needs
+ * attention right now is unmissable. Create a competition on a metric or
+ * activity type over a date range (public or unlisted), copy its link, delete
+ * it; join a challenge by URL (local or on another Aurboda instance).
+ * Federation happens server-side.
  */
 import type {
   Challenge,
@@ -28,6 +31,14 @@ import {
   listChallenges,
   listMyChallengeParticipations,
 } from '../../state/api'
+import {
+  type ChallengeItem,
+  challengeItemKey,
+  challengeRangeLabel,
+  challengeTimePhrase,
+  challengeTimeStatus,
+  groupChallengeItems,
+} from './challenge-status'
 import {
   browserTz,
   dateToEndIso,
@@ -194,7 +205,49 @@ function CreateChallengeForm({ onCreated }: { onCreated: () => void }) {
   )
 }
 
-function HostedRow({ challenge }: { challenge: Challenge }) {
+function RowMain({
+  endTs,
+  meta,
+  name,
+  now,
+  role,
+  startTs,
+  timezone,
+  url,
+}: {
+  endTs: string
+  meta: string
+  name: string
+  now: Date
+  role: 'hosted' | 'joined'
+  startTs: string
+  timezone: string
+  url: string
+}) {
+  const status = challengeTimeStatus(startTs, endTs, now)
+  return (
+    <div class="challenge-row-main">
+      <div class="challenge-row-title">
+        <a class="challenge-row-name" href={url}>
+          {name}
+        </a>
+        <span class={`challenge-row-badge challenge-row-badge-${role}`}>
+          {role === 'hosted' ? 'Hosted by you' : 'Joined'}
+        </span>
+      </div>
+      <span class="challenge-row-meta">{meta}</span>
+      <span class="challenge-row-dates">
+        <span class={`challenge-row-phrase challenge-row-phrase-${status}`}>
+          {challengeTimePhrase(startTs, endTs, timezone, now)}
+        </span>
+        {' · '}
+        {challengeRangeLabel(startTs, endTs, timezone)}
+      </span>
+    </div>
+  )
+}
+
+function HostedRow({ challenge, now }: { challenge: Challenge; now: Date }) {
   const queryClient = useQueryClient()
   const [copied, setCopied] = useState(false)
   const [sharing, setSharing] = useState(false)
@@ -218,14 +271,16 @@ function HostedRow({ challenge }: { challenge: Challenge }) {
 
   return (
     <li class="challenge-row">
-      <div class="challenge-row-main">
-        <a class="challenge-row-name" href={challenge.share_url}>
-          {challenge.name}
-        </a>
-        <span class="challenge-row-meta">
-          {challenge.spec.pattern} · {challenge.spec.aggregation} · {challenge.visibility}
-        </span>
-      </div>
+      <RowMain
+        endTs={challenge.end_ts}
+        meta={`${challenge.spec.pattern} · ${challenge.spec.aggregation} · ${challenge.visibility}`}
+        name={challenge.name}
+        now={now}
+        role="hosted"
+        startTs={challenge.start_ts}
+        timezone={challenge.timezone}
+        url={challenge.share_url}
+      />
       <div class="challenge-row-actions">
         <a class="btn-secondary" href={challenge.share_url}>
           View
@@ -252,7 +307,7 @@ function HostedRow({ challenge }: { challenge: Challenge }) {
   )
 }
 
-function JoinedRow({ participation }: { participation: ChallengeParticipation }) {
+function JoinedRow({ now, participation }: { now: Date; participation: ChallengeParticipation }) {
   const queryClient = useQueryClient()
   const [sharing, setSharing] = useState(false)
   const leave = useMutation({
@@ -263,12 +318,16 @@ function JoinedRow({ participation }: { participation: ChallengeParticipation })
 
   return (
     <li class="challenge-row">
-      <div class="challenge-row-main">
-        <a class="challenge-row-name" href={participation.challenge_url}>
-          {participation.name}
-        </a>
-        <span class="challenge-row-meta">{participation.host_identity}</span>
-      </div>
+      <RowMain
+        endTs={participation.end_ts}
+        meta={participation.host_identity}
+        name={participation.name}
+        now={now}
+        role="joined"
+        startTs={participation.start_ts}
+        timezone={participation.timezone}
+        url={participation.challenge_url}
+      />
       <div class="challenge-row-actions">
         <a class="btn-secondary" href={participation.challenge_url}>
           View
@@ -295,6 +354,20 @@ function JoinedRow({ participation }: { participation: ChallengeParticipation })
   )
 }
 
+function ChallengeRows({ items, now }: { items: ChallengeItem[]; now: Date }) {
+  return (
+    <ul class="challenge-list">
+      {items.map((item) =>
+        item.kind === 'hosted' ? (
+          <HostedRow key={challengeItemKey(item)} challenge={item.challenge} now={now} />
+        ) : (
+          <JoinedRow key={challengeItemKey(item)} now={now} participation={item.participation} />
+        ),
+      )}
+    </ul>
+  )
+}
+
 export function Challenges() {
   const queryClient = useQueryClient()
   const [joinUrl, setJoinUrl] = useState('')
@@ -317,6 +390,9 @@ export function Challenges() {
 
   const hosted = hostedQuery.data ?? []
   const joined = joinedQuery.data ?? []
+  const loading = hostedQuery.isLoading || joinedQuery.isLoading
+  const now = new Date()
+  const groups = groupChallengeItems(hosted, joined, now)
 
   return (
     <div class="challenges-page">
@@ -343,33 +419,38 @@ export function Challenges() {
         </button>
       </div>
 
-      <div class="challenges-columns">
-        <section>
-          <h2>Hosted by you</h2>
-          {hosted.length === 0 ? (
-            <p class="challenges-empty">You haven’t created any challenges yet.</p>
-          ) : (
-            <ul class="challenge-list">
-              {hosted.map((c) => (
-                <HostedRow key={c.id} challenge={c} />
-              ))}
-            </ul>
-          )}
-        </section>
+      <section class="challenge-group challenge-group-ongoing">
+        <h2>
+          <span class="challenge-ongoing-dot" aria-hidden="true" />
+          Ongoing
+          {groups.ongoing.length > 0 && <span class="challenge-group-count">{groups.ongoing.length}</span>}
+        </h2>
+        {groups.ongoing.length > 0 ? (
+          <ChallengeRows items={groups.ongoing} now={now} />
+        ) : (
+          <p class="challenges-empty">
+            {loading
+              ? 'Loading…'
+              : 'No ongoing challenges — join one by link above or create your own below.'}
+          </p>
+        )}
+      </section>
 
-        <section>
-          <h2>Joined</h2>
-          {joined.length === 0 ? (
-            <p class="challenges-empty">You haven’t joined any challenges yet.</p>
-          ) : (
-            <ul class="challenge-list">
-              {joined.map((p) => (
-                <JoinedRow key={p.id} participation={p} />
-              ))}
-            </ul>
-          )}
+      {groups.upcoming.length > 0 && (
+        <section class="challenge-group">
+          <h2>Upcoming</h2>
+          <ChallengeRows items={groups.upcoming} now={now} />
         </section>
-      </div>
+      )}
+
+      {groups.ended.length > 0 && (
+        <details class="challenge-group challenge-group-ended">
+          <summary>
+            <h2>Ended ({groups.ended.length})</h2>
+          </summary>
+          <ChallengeRows items={groups.ended} now={now} />
+        </details>
+      )}
 
       <CreateChallengeForm onCreated={() => queryClient.invalidateQueries({ queryKey: ['challenges'] })} />
     </div>
