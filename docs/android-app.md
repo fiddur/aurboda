@@ -143,7 +143,19 @@ Two `AppWidgetProvider`s live in `widget/`:
   `RemoteViews.addView`, as many as fit for the launcher-reported size
   (`planChallengeWidgetLayout`), always keeping the signed-in user's row. All
   the pure logic (series, rows, layout, texts) is in `ChallengeWidgetModel.kt`
-  and unit-tested. Tapping the widget deep-links to `/u/<owner>/<slug>` (or the
+  and unit-tested. Once the challenge has **ended** the widget shows the final
+  standings: a result banner above the chart — a big 🏆 "You won!" when the
+  signed-in user won (or tied for the win), 🥈 / 🥉 "You came 2nd/3rd" naming
+  the winner when they made the podium, otherwise "<winner> won" with where the
+  user finished (`challengeResultBanner`) — and medals in the rank column
+  (`rankLabel`; ranks are competition ranks, so equal totals share one). On a
+  2×2 cell the chart gives way to the banner + two rows
+  (`planChallengeWidgetLayout(showResult = true)` → `showChart = false`). The
+  widget flips to final standings as soon as `end_ts` passes, while the host's
+  feed announcement waits a grace period (6 h) for late syncs — so for those
+  hours the widget's podium is provisional and may differ from what is
+  eventually announced.
+  Tapping the widget deep-links to `/u/<owner>/<slug>` (or the
   absolute URL for a challenge on another instance) in the More tab.
 
 Widget taps and notification taps reach `MainActivity` as `EXTRA_OPEN_TAB` /

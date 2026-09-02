@@ -336,6 +336,7 @@ describe('POST /feed/challenges (share a challenge — #994)', () => {
   test('shares one of my own challenges: resolves name + canonical share URL server-side', async () => {
     const user = getTestUser()
     const challenge = await createChallenge(user, {
+      announce_winner: true,
       end_ts: new Date('2026-08-31T00:00:00Z'),
       is_public: true,
       name: 'August 10k',
@@ -405,6 +406,7 @@ describe('POST /feed/challenges (share a challenge — #994)', () => {
   test('a visibility flip via the generic PATCH federates through the challenge path', async () => {
     const user = getTestUser()
     const challenge = await createChallenge(user, {
+      announce_winner: true,
       end_ts: new Date('2026-08-31T00:00:00Z'),
       is_public: true,
       name: 'August 10k',

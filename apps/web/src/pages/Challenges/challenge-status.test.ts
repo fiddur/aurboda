@@ -116,6 +116,7 @@ describe('groupChallengeItems', () => {
   }
 
   const hostedAt = (id: string, startLocal: string, endLocal: string): Challenge => ({
+    announce_winner: true,
     created_at: iso(startLocal),
     end_ts: iso(endLocal),
     id,

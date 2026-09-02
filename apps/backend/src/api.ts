@@ -28,6 +28,7 @@ import { mountSyncRouter } from './api/sync-setup.ts'
 import { setupOuraWebhook, setupStravaWebhook } from './api/webhooks-setup.ts'
 import { createAuth } from './auth.ts'
 import {
+  createChallengePost,
   deleteRuleActivities,
   emitTimelineNotify,
   getDeductionRulesByIds,
@@ -42,9 +43,12 @@ import {
   insertPlace,
   insertRawRecord,
   insertTimeSeries,
+  listChallengesAwaitingResult,
   listReplyUncheckedEntries,
   listUnenrichedAurbodaEntries,
+  listUserNames,
   loginToUserDb,
+  markChallengeResultPublished,
   markEnrichTransientFailure,
   openTimelineChannel,
   resolveOrCreateActivityType,
@@ -85,6 +89,9 @@ import { evaluateAutoshareWindow } from './services/autoshare.ts'
 import { triggerCalorieComputation } from './services/calorie-computation.ts'
 import { createCalorieQueue, type CalorieQueue } from './services/calorie-queue.ts'
 import { getCentralDb, initializeCentralDb } from './services/central-db.ts'
+import { createChallengeResultsQueue } from './services/challenge-results-queue.ts'
+import { publishFinishedChallengeResults } from './services/challenge-results.ts'
+import { getChallengeStandings } from './services/challenge-standings.ts'
 import { createDefaultEngineDeps } from './services/deduction-deps.ts'
 import { buildFullWindow, evaluateAllRules } from './services/deduction-engine.ts'
 import {
@@ -496,6 +503,29 @@ const main = async () => {
   }
   if (!autoshareQueue) {
     console.warn('⚠️ Auto-share evaluation disabled (no job queue)')
+  }
+  // Challenge completion: a scheduled sweep over every user's hosted challenges
+  // that closed (grace period ago) posts the final standings — winners tagged —
+  // to the host's feed through the SAME challenge fan-out a manual share uses.
+  if (boss) {
+    try {
+      await createChallengeResultsQueue(boss, {
+        sweep: () =>
+          publishFinishedChallengeResults({
+            claim: markChallengeResultPublished,
+            createPost: createChallengePost,
+            deliver: feedDeliver.createdChallenge,
+            listAwaiting: listChallengesAwaitingResult,
+            listUsers: () => listUserNames(userDb),
+            standings: (user, challenge) => getChallengeStandings(user, challenge, { refresh: true }),
+            webHost,
+          }),
+      })
+    } catch (error) {
+      console.error('Failed to initialize challenge result sweep:', error)
+    }
+  } else {
+    console.warn('⚠️ Challenge winner announcements disabled (no job queue)')
   }
 
   // The network-requiring follow operations, bound to the same federation +

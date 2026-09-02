@@ -138,6 +138,7 @@ export const tableCreationOrder = [
   'shared_dashboards_indexes',
   'challenges',
   'challenges_indexes',
+  'challenges_result_columns',
   'challenge_members',
   'challenge_members_indexes',
   'challenge_participations',

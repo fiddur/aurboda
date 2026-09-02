@@ -43,6 +43,7 @@ describe('getChallengeStandings integration', () => {
     ])
 
     const challenge = await createChallenge(user, {
+      announce_winner: true,
       end_ts: new Date('2026-06-03T00:00:00Z'),
       is_public: true,
       name: 'RHR sum',
@@ -113,6 +114,7 @@ describe('getChallengeStandings integration', () => {
   test('a remote member with no data reports last_updated=null (#843)', async () => {
     const user = getTestUser()
     const challenge = await createChallenge(user, {
+      announce_winner: true,
       end_ts: new Date('2026-06-03T00:00:00Z'),
       is_public: true,
       name: 'Steps',
@@ -153,6 +155,7 @@ describe('getChallengeStandings integration', () => {
   test('caches a failed remote fetch for the TTL (no per-call re-fetch storm)', async () => {
     const user = getTestUser()
     const challenge = await createChallenge(user, {
+      announce_winner: true,
       end_ts: new Date('2026-06-03T00:00:00Z'),
       is_public: true,
       name: 'Flaky',

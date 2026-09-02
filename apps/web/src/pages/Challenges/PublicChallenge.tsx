@@ -12,6 +12,7 @@ import { useState } from 'preact/hooks'
 import { TrendLineChart } from '../../components/charts/TrendLineChart'
 import { fetchPublicChallengeStandings, joinChallengeByUrl } from '../../state/api'
 import { auth } from '../../state/auth'
+import { competitionRanks, podiumMedal } from '../../utils/podium'
 import { formatDateInZone, toCumulativeSeries } from './race-series'
 import './style.css'
 
@@ -66,6 +67,10 @@ export function PublicChallenge({
   }
 
   const standings = (standingsQuery.data ?? []).filter((s) => s.status === 'active')
+  // Once the window has closed the leaderboard is final: medal the podium (equal
+  // totals share a rank), mirroring the host's completion post and the Android widget.
+  const ended = Date.now() >= new Date(challenge.end_ts).getTime()
+  const ranks = competitionRanks(standings.map((s) => s.total))
   const series = standings
     // Falls back to daily if a cross-version host omits the resolved bucket size.
     .map((s, i) =>
@@ -137,6 +142,9 @@ export function PublicChallenge({
         )}
       </div>
 
+      {ended && standings.some((s) => s.total > 0) && (
+        <p class="challenge-final">🏁 Finished — final standings</p>
+      )}
       <table class="challenge-leaderboard">
         <thead>
           <tr>
@@ -148,8 +156,17 @@ export function PublicChallenge({
         </thead>
         <tbody>
           {standings.map((s, i) => (
-            <tr key={s.identity_base_url}>
-              <td>{i + 1}</td>
+            <tr
+              key={s.identity_base_url}
+              class={ended && ranks[i] === 1 && s.total > 0 ? 'challenge-winner' : ''}
+            >
+              <td>
+                {ended && s.total > 0 && podiumMedal(ranks[i]) ? (
+                  <span title={`#${ranks[i]}`}>{podiumMedal(ranks[i])}</span>
+                ) : (
+                  ranks[i]
+                )}
+              </td>
               <td>
                 {/* Same palette index as the member's line in the race chart above. */}
                 <span
