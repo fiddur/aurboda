@@ -24,6 +24,7 @@
 
 import { z } from 'zod'
 
+import { challengeResultSchema } from './challenges.ts'
 import { baseResponseSchema, iso8601DateTimeSchema, metricTypeSchema } from './common.ts'
 import { selectorSchema } from './correlations.ts'
 import {
@@ -158,6 +159,10 @@ export const challengeShareSchema = z
         "The hosting instance's identity (e.g. `@user@host`) when sharing a joined remote challenge",
     }),
     name: z.string().min(1).max(200).meta({ description: 'Challenge name at share time' }),
+    result: challengeResultSchema.optional().meta({
+      description:
+        'Final standings, present only on the completion post the host instance publishes when the challenge ends',
+    }),
     url: z
       .string()
       .url()

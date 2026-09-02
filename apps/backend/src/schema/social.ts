@@ -47,6 +47,13 @@ export const socialTables: Record<string, string> = {
   challenges_indexes: `
     CREATE INDEX IF NOT EXISTS idx_challenges_public ON challenges (is_public, created_at DESC)
   `,
+  // Winner announcement: whether the host wants the final standings posted to
+  // their feed when the window closes, and when that (or a deliberate skip) was
+  // done — the sweep's idempotency marker. Additive (idempotent).
+  challenges_result_columns: `
+    ALTER TABLE challenges ADD COLUMN IF NOT EXISTS announce_winner BOOLEAN NOT NULL DEFAULT true;
+    ALTER TABLE challenges ADD COLUMN IF NOT EXISTS result_published_at TIMESTAMPTZ;
+  `,
 
   // Members of challenges hosted by this user (local or remote).
   challenge_members: `

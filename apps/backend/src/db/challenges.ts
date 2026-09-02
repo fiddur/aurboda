@@ -34,6 +34,10 @@ export interface ChallengeRecord {
   end_ts: Date
   timezone: string
   join_token: string
+  /** Post the final standings (winner tagged) to the host's feed when the window closes. */
+  announce_winner: boolean
+  /** When the completion sweep published (or deliberately skipped) the result; null while pending. */
+  result_published_at: Date | null
   created_at: Date
   updated_at: Date
 }
@@ -45,6 +49,7 @@ export interface ChallengeInput {
   start_ts: Date
   end_ts: Date
   timezone: string
+  announce_winner: boolean
 }
 
 export interface ChallengePatch {
@@ -54,6 +59,7 @@ export interface ChallengePatch {
   start_ts?: Date
   end_ts?: Date
   timezone?: string
+  announce_winner?: boolean
 }
 
 export interface ChallengeMemberRecord {
@@ -107,7 +113,7 @@ export interface ChallengeParticipationInput {
 }
 
 const CHALLENGE_COLUMNS =
-  'id, slug, name, is_public, source_type, pattern, activity_type_id, aggregation, unit, bucket_size, start_ts, end_ts, timezone, join_token, created_at, updated_at'
+  'id, slug, name, is_public, source_type, pattern, activity_type_id, aggregation, unit, bucket_size, start_ts, end_ts, timezone, join_token, announce_winner, result_published_at, created_at, updated_at'
 
 const MEMBER_COLUMNS =
   'id, challenge_id, identity_base_url, display_name, kind, local_user, data_endpoint_url, status, joined_at, last_fetched_at, data_last_updated, cached_total, cached_buckets, last_error'
@@ -130,6 +136,8 @@ interface ChallengeRow {
   end_ts: Date
   timezone: string
   join_token: string
+  announce_winner: boolean
+  result_published_at: Date | null
   created_at: Date
   updated_at: Date
 }
@@ -144,12 +152,14 @@ const toSpec = (row: ChallengeRow | ParticipationRow): ChallengeSpecFields => ({
 })
 
 const mapChallenge = (row: ChallengeRow): ChallengeRecord => ({
+  announce_winner: row.announce_winner,
   created_at: row.created_at,
   end_ts: row.end_ts,
   id: row.id,
   is_public: row.is_public,
   join_token: row.join_token,
   name: row.name,
+  result_published_at: row.result_published_at,
   slug: row.slug,
   spec: toSpec(row),
   start_ts: row.start_ts,
@@ -254,8 +264,8 @@ export const createChallenge = async (user: string, input: ChallengeInput): Prom
       const result = await query<ChallengeRow>(
         user,
         `INSERT INTO challenges
-           (slug, name, is_public, source_type, pattern, activity_type_id, aggregation, unit, bucket_size, start_ts, end_ts, timezone, join_token)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+           (slug, name, is_public, source_type, pattern, activity_type_id, aggregation, unit, bucket_size, start_ts, end_ts, timezone, join_token, announce_winner)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
          RETURNING ${CHALLENGE_COLUMNS}`,
         [
           slug,
@@ -271,6 +281,7 @@ export const createChallenge = async (user: string, input: ChallengeInput): Prom
           input.end_ts,
           input.timezone,
           joinToken,
+          input.announce_winner,
         ],
       )
       return mapChallenge(result.rows[0])
@@ -299,6 +310,7 @@ export const updateChallenge = async (
   if (patch.start_ts !== undefined) set('start_ts', patch.start_ts)
   if (patch.end_ts !== undefined) set('end_ts', patch.end_ts)
   if (patch.timezone !== undefined) set('timezone', patch.timezone)
+  if (patch.announce_winner !== undefined) set('announce_winner', patch.announce_winner)
   if (patch.spec !== undefined) {
     set('source_type', patch.spec.source_type)
     set('pattern', patch.spec.pattern)
@@ -322,6 +334,39 @@ export const updateChallenge = async (
 
 export const deleteChallenge = async (user: string, id: string): Promise<boolean> => {
   const result = await query(user, `DELETE FROM challenges WHERE id = $1`, [id])
+  return (result.rowCount ?? 0) > 0
+}
+
+/**
+ * Hosted challenges whose window closed at or before `endedBefore`, that want a
+ * winner announcement and haven't had one yet — the completion sweep's work
+ * list. Oldest end first so a backlog drains in order.
+ */
+export const listChallengesAwaitingResult = async (
+  user: string,
+  endedBefore: Date,
+): Promise<ChallengeRecord[]> => {
+  const result = await query<ChallengeRow>(
+    user,
+    `SELECT ${CHALLENGE_COLUMNS} FROM challenges
+     WHERE announce_winner = true AND result_published_at IS NULL AND end_ts <= $1
+     ORDER BY end_ts ASC`,
+    [endedBefore],
+  )
+  return result.rows.map(mapChallenge)
+}
+
+/**
+ * Stamp a challenge's result as published (or deliberately skipped, e.g. nobody
+ * scored) so the sweep never announces it twice. Returns false if there was no
+ * such pending challenge — a concurrent sweep already claimed it.
+ */
+export const markChallengeResultPublished = async (user: string, id: string): Promise<boolean> => {
+  const result = await query(
+    user,
+    `UPDATE challenges SET result_published_at = NOW() WHERE id = $1 AND result_published_at IS NULL`,
+    [id],
+  )
   return (result.rowCount ?? 0) > 0
 }
 

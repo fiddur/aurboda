@@ -1,6 +1,6 @@
 import type { ArticleContent } from '@aurboda/api-spec'
 
-import { Note, Tombstone } from '@fedify/fedify/vocab'
+import { Mention, Note, Tombstone } from '@fedify/fedify/vocab'
 import { describe, expect, test } from 'vitest'
 
 import {
@@ -9,6 +9,7 @@ import {
   buildChallengeNote,
   buildChallengeNoteCreate,
   buildFeedDelete,
+  challengeMentions,
   type DeliverableArticle,
   type DeliverableChallenge,
   type DeliverablePost,
@@ -240,5 +241,66 @@ describe('buildChallengeNote / buildChallengeNoteCreate', () => {
     expect([...create.ccIds]).toEqual([])
     const object = await create.getObject()
     expect(object).toBeInstanceOf(Note)
+  })
+
+  test('an invitation carries no Mention tags', async () => {
+    const ctx = await contextFor()
+    const note = buildChallengeNote(ctx, 'fiddur', deliverableChallenge('public'))
+    expect(note.tagIds).toEqual([])
+    const tags = []
+    for await (const tag of note.getTags()) tags.push(tag)
+    expect(tags).toEqual([])
+  })
+
+  test('a completion post tags every winner with a Mention and addresses them in cc', async () => {
+    const ctx = await contextFor()
+    const post: DeliverableChallenge = {
+      ...deliverableChallenge('public', null),
+      challenge: {
+        name: 'August 10k',
+        result: {
+          member_count: 3,
+          podium: [
+            {
+              display_name: 'alice',
+              identity_base_url: 'https://other.example/u/alice',
+              rank: 1,
+              total: 300,
+            },
+            { display_name: 'bob', identity_base_url: `${ORIGIN}/u/bob`, rank: 1, total: 300 },
+            { display_name: 'carol', identity_base_url: `${ORIGIN}/u/carol`, rank: 3, total: 10 },
+          ],
+          unit: 'steps',
+        },
+        url: `${ORIGIN}/u/fiddur/august-10k`,
+      },
+    }
+    expect(challengeMentions(post.challenge)).toEqual([
+      { actorUri: new URL('https://other.example/users/alice'), handle: '@alice@other.example' },
+      { actorUri: new URL(`${ORIGIN}/users/bob`), handle: '@bob@aurboda.example' },
+    ])
+
+    const note = buildChallengeNote(ctx, 'fiddur', post)
+    const mentions: { href: string | undefined; name: string | undefined }[] = []
+    for await (const tag of note.getTags()) {
+      expect(tag).toBeInstanceOf(Mention)
+      if (tag instanceof Mention) mentions.push({ href: tag.href?.href, name: tag.name?.toString() })
+    }
+    expect(mentions).toEqual([
+      { href: 'https://other.example/users/alice', name: '@alice@other.example' },
+      { href: `${ORIGIN}/users/bob`, name: '@bob@aurboda.example' },
+    ])
+    // Public: to Public, cc followers + both winners (the runner-up is not addressed).
+    expect(hrefs([...note.toIds])).toEqual([PUBLIC])
+    expect(hrefs([...note.ccIds])).toEqual([
+      `${ORIGIN}/users/fiddur/followers`,
+      'https://other.example/users/alice',
+      `${ORIGIN}/users/bob`,
+    ])
+    expect(note.content?.toString()).toContain('has finished! 🏁')
+    expect(note.content?.toString()).toContain('class="u-url mention"')
+
+    const create = buildChallengeNoteCreate(ctx, 'fiddur', post)
+    expect(hrefs([...create.ccIds])).toContain('https://other.example/users/alice')
   })
 })

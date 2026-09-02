@@ -23,13 +23,13 @@ import type { ArticleContent, ChallengeShare, FeedVisibility } from '@aurboda/ap
  */
 import type { Context, Federation } from '@fedify/fedify'
 
-import { Create, Delete, Image, Note, Tombstone, Update } from '@fedify/fedify/vocab'
+import { Create, Delete, Image, isActor, Mention, Note, Tombstone, Update } from '@fedify/fedify/vocab'
 
 import type { FeedPostRecord } from '../../db/index.ts'
 
 import { getSettings } from '../settings.ts'
 import { articleImageAttachments, renderArticleContentHtml } from './article-object.ts'
-import { renderChallengeShareHtml } from './challenge-object.ts'
+import { identityToActorUri, identityToHandle, renderChallengeShareHtml } from './challenge-object.ts'
 import { resolveActivityScalars } from './feed-activity.ts'
 import { addressingFor, feedPostContent, formatActivityWindow, isPubliclyVisible } from './object.ts'
 import { quantExerciseExtension, withQuantJsonLd } from './quant-extension.ts'
@@ -472,14 +472,55 @@ export const toDeliverableChallenge = (post: FeedPostRecord): DeliverableChallen
       }
     : null
 
+/** A winner a completion post tags: the actor id the `Mention` points at and its `@user@host` name. */
+export interface ChallengeMention {
+  actorUri: URL
+  handle: string
+}
+
+/**
+ * The winners (rank 1) of a completion post's result, as Mentions. An
+ * invitation (no result) mentions nobody. A member whose identity can't be
+ * mapped to an actor is left out rather than tagged with a broken href.
+ */
+export const challengeMentions = (challenge: ChallengeShare): ChallengeMention[] => {
+  if (challenge.result == null) return []
+  const mentions: ChallengeMention[] = []
+  for (const entry of challenge.result.podium) {
+    if (entry.rank !== 1) continue
+    const actorUri = identityToActorUri(entry.identity_base_url)
+    const handle = identityToHandle(entry.identity_base_url)
+    if (actorUri != null && handle != null) {
+      mentions.push({ actorUri: new URL(actorUri), handle: `@${handle}` })
+    }
+  }
+  return mentions
+}
+
+/**
+ * Addressing for a challenge post: the visibility table, plus every mentioned
+ * winner in `cc` (Mastodon-style — a mention is addressed as well as tagged, so
+ * the winner's server accepts it even when they don't follow the host).
+ */
+const challengeAddressing = (
+  ctx: Context<void>,
+  user: string,
+  post: DeliverableChallenge,
+): { to: URL[]; cc: URL[]; mentions: ChallengeMention[] } => {
+  const { cc, to } = recipients(post.visibility, ctx.getFollowersUri(user))
+  const mentions = challengeMentions(post.challenge)
+  return { cc: [...cc, ...mentions.map((m) => m.actorUri)], mentions, to }
+}
+
 /**
  * Build the Fedify `Note` for a challenge share: name heading + sanitised
- * markdown note + canonical link as `content`, addressed per visibility, at the
- * post's canonical Note id. Synchronous — nothing to resolve.
+ * markdown note + canonical link as `content` (a completion post: the podium),
+ * addressed per visibility, at the post's canonical Note id, with a `Mention`
+ * tag per winner. Synchronous — nothing to resolve.
  */
 export const buildChallengeNote = (ctx: Context<void>, user: string, post: DeliverableChallenge): Note => {
   const noteId = ctx.getObjectUri(Note, { identifier: user, postId: post.id })
-  const { cc, to } = recipients(post.visibility, ctx.getFollowersUri(user))
+  const { cc, mentions, to } = challengeAddressing(ctx, user, post)
   return new Note({
     attribution: ctx.getActorUri(user),
     ccs: cc,
@@ -487,6 +528,7 @@ export const buildChallengeNote = (ctx: Context<void>, user: string, post: Deliv
     id: noteId,
     name: post.challenge.name,
     published: dateToTemporalInstant(post.created_at),
+    tags: mentions.map((m) => new Mention({ href: m.actorUri, name: m.handle })),
     tos: to,
     url: noteId,
   })
@@ -499,7 +541,7 @@ export const buildChallengeNoteCreate = (
   post: DeliverableChallenge,
 ): Create => {
   const noteId = ctx.getObjectUri(Note, { identifier: user, postId: post.id })
-  const { cc, to } = recipients(post.visibility, ctx.getFollowersUri(user))
+  const { cc, to } = challengeAddressing(ctx, user, post)
   return new Create({
     actor: ctx.getActorUri(user),
     ccs: cc,
@@ -517,7 +559,7 @@ export const buildChallengeNoteUpdate = (
   post: DeliverableChallenge,
 ): Update => {
   const noteId = ctx.getObjectUri(Note, { identifier: user, postId: post.id })
-  const { cc, to } = recipients(post.visibility, ctx.getFollowersUri(user))
+  const { cc, to } = challengeAddressing(ctx, user, post)
   return new Update({
     actor: ctx.getActorUri(user),
     ccs: cc,
@@ -527,22 +569,56 @@ export const buildChallengeNoteUpdate = (
   })
 }
 
-/** Build and send the `Create{Note}` for a freshly-shared challenge to followers. */
+/**
+ * Deliver an activity to each mentioned winner's own inbox (besides the
+ * followers fan-out), so a winner who doesn't follow the host is still told.
+ * The host themself is skipped (their own feed already has the post). Each
+ * lookup/POST is best-effort and independent: one unreachable winner never
+ * costs another their notification. Remote servers dedupe by activity id, so a
+ * winner who is also a follower sees it once.
+ */
+const deliverToMentioned = async (
+  ctx: Context<void>,
+  user: string,
+  post: DeliverableChallenge,
+  activity: Create | Update,
+): Promise<void> => {
+  const self = ctx.getActorUri(user).href
+  for (const mention of challengeMentions(post.challenge)) {
+    if (mention.actorUri.href === self) continue
+    try {
+      const actor = await ctx.lookupObject(mention.actorUri)
+      if (!isActor(actor)) continue
+      await ctx.sendActivity({ identifier: user }, actor, activity)
+    } catch (error) {
+      console.warn(`⚠️ Challenge result delivery to ${mention.handle} failed:`, error)
+    }
+  }
+}
+
+/**
+ * Build and send the `Create{Note}` for a freshly-shared challenge to
+ * followers, and to each tagged winner of a completion post.
+ */
 export const deliverFeedChallengePost = async (
   deps: FeedDeliveryDeps,
   user: string,
   post: DeliverableChallenge,
 ): Promise<void> => {
   const ctx = await deps.federation.createContext(new URL(deps.origin))
-  await ctx.sendActivity({ identifier: user }, 'followers', buildChallengeNoteCreate(ctx, user, post))
+  const create = buildChallengeNoteCreate(ctx, user, post)
+  await ctx.sendActivity({ identifier: user }, 'followers', create)
+  await deliverToMentioned(ctx, user, post, create)
 }
 
-/** Build and send the `Update{Note}` for an edited challenge share to followers. */
+/** Build and send the `Update{Note}` for an edited challenge share to followers (and tagged winners). */
 export const deliverFeedChallengeUpdate = async (
   deps: FeedDeliveryDeps,
   user: string,
   post: DeliverableChallenge,
 ): Promise<void> => {
   const ctx = await deps.federation.createContext(new URL(deps.origin))
-  await ctx.sendActivity({ identifier: user }, 'followers', buildChallengeNoteUpdate(ctx, user, post))
+  const update = buildChallengeNoteUpdate(ctx, user, post)
+  await ctx.sendActivity({ identifier: user }, 'followers', update)
+  await deliverToMentioned(ctx, user, post, update)
 }

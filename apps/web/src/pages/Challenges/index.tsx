@@ -30,6 +30,7 @@ import {
   leaveChallenge,
   listChallenges,
   listMyChallengeParticipations,
+  updateChallenge,
 } from '../../state/api'
 import {
   type ChallengeItem,
@@ -60,6 +61,7 @@ function CreateChallengeForm({ onCreated }: { onCreated: () => void }) {
   const [endDate, setEndDate] = useState(initialRange.end)
   const [bucketSize, setBucketSize] = useState<ChallengeBucketSizeChoice>('auto')
   const [visibility, setVisibility] = useState<ShareVisibility>('unlisted')
+  const [announceWinner, setAnnounceWinner] = useState(true)
 
   const createMutation = useMutation({
     mutationFn: (body: CreateChallengeBody) => createChallenge(body),
@@ -83,6 +85,7 @@ function CreateChallengeForm({ onCreated }: { onCreated: () => void }) {
     e.preventDefault()
     if (!canSubmit) return
     createMutation.mutate({
+      announce_winner: announceWinner,
       end_ts: dateToEndIso(endDate),
       name: name.trim(),
       spec: {
@@ -198,6 +201,18 @@ function CreateChallengeForm({ onCreated }: { onCreated: () => void }) {
         onChange={setVisibility}
       />
 
+      <label class="challenge-checkbox">
+        <input
+          type="checkbox"
+          checked={announceWinner}
+          onChange={(e) => setAnnounceWinner((e.target as HTMLInputElement).checked)}
+        />
+        <span>
+          Announce the winner to my feed when it ends
+          <small>Posts the final standings, tagging the winner. You can change this later.</small>
+        </span>
+      </label>
+
       <button type="submit" class="btn-primary" disabled={!canSubmit}>
         Create challenge
       </button>
@@ -256,6 +271,13 @@ function HostedRow({ challenge, now }: { challenge: Challenge; now: Date }) {
     onError: () => alert('Failed to delete the challenge.'),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['challenges'] }),
   })
+  const announce = useMutation({
+    mutationFn: (announce_winner: boolean) => updateChallenge(challenge.id, { announce_winner }),
+    onError: () => alert('Failed to update the challenge.'),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['challenges'] }),
+  })
+  // Once the window has closed the announcement has been made (or skipped) — nothing left to toggle.
+  const canToggleAnnounce = challengeTimeStatus(challenge.start_ts, challenge.end_ts, now) !== 'ended'
 
   const copy = async () => {
     try {
@@ -294,6 +316,20 @@ function HostedRow({ challenge, now }: { challenge: Challenge; now: Date }) {
         <button class="btn-danger" onClick={() => confirm(`Delete "${challenge.name}"?`) && del.mutate()}>
           Delete
         </button>
+        {canToggleAnnounce && (
+          <label
+            class="challenge-row-toggle"
+            title="Post the final standings to your feed when the challenge ends"
+          >
+            <input
+              type="checkbox"
+              checked={challenge.announce_winner}
+              disabled={announce.isPending}
+              onChange={(e) => announce.mutate((e.target as HTMLInputElement).checked)}
+            />
+            Announce winner
+          </label>
+        )}
       </div>
       {sharing && (
         <ShareChallengeDialog

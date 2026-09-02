@@ -177,20 +177,76 @@ data class LeaderboardRow(
     val isMe: Boolean,
 )
 
-/** Active members in leaderboard order, each with its palette colour and rank. */
+/**
+ * Active members in leaderboard order, each with its palette colour and
+ * competition rank: equal totals share a rank and the next rank skips (1, 1, 3),
+ * so a tie for first is two winners — the same ranking the host's completion
+ * post uses.
+ */
 fun leaderboard(standings: List<ChallengeStanding>, myIdentityUrl: String?): List<LeaderboardRow> {
     val me = myIdentityUrl?.trimEnd('/')
-    return standings
-        .filter { it.status == ChallengeStanding.Status.active }
-        .mapIndexed { i, s ->
-            LeaderboardRow(
-                rank = i + 1,
-                name = s.displayName,
-                color = challengeMemberColor(i),
-                total = s.total,
-                isMe = me != null && s.identityBaseUrl.trimEnd('/') == me,
+    val active = standings.filter { it.status == ChallengeStanding.Status.active }
+    return active.mapIndexed { i, s ->
+        LeaderboardRow(
+            rank = 1 + active.count { it.total > s.total },
+            name = s.displayName,
+            color = challengeMemberColor(i),
+            total = s.total,
+            isMe = me != null && s.identityBaseUrl.trimEnd('/') == me,
+        )
+    }
+}
+
+/** 🏆 for the winner, 🥈/🥉 for the runners-up; null below the podium. */
+fun podiumMedal(rank: Int): String? =
+    when (rank) {
+        1 -> "🏆"
+        2 -> "🥈"
+        3 -> "🥉"
+        else -> null
+    }
+
+/** The rank column: the medal once the challenge is over (final standings), else the number. */
+fun rankLabel(rank: Int, ended: Boolean): String = (if (ended) podiumMedal(rank) else null) ?: rank.toString()
+
+/** The banner a finished challenge shows above the chart: a big emoji, a headline, a detail line. */
+data class ChallengeResultBanner(val emoji: String, val headline: String, val detail: String)
+
+/** `a`, `a and b`, `a, b and c`. */
+private fun joinNames(names: List<String>): String =
+    when (names.size) {
+        0 -> ""
+        1 -> names[0]
+        else -> names.dropLast(1).joinToString(", ") + " and " + names.last()
+    }
+
+/**
+ * What a finished challenge says from the signed-in user's point of view: a big
+ * 🏆 "You won!" when they won (or tied for the win), 🥈/🥉 with the winner named
+ * when they made the podium, otherwise who won and where the user finished (or
+ * just the winner when the user isn't a member). Null while the challenge is
+ * still running or when nobody scored — then there is no result to show.
+ */
+fun challengeResultBanner(rows: List<LeaderboardRow>, ended: Boolean, unit: String): ChallengeResultBanner? {
+    if (!ended) return null
+    val winners = rows.filter { it.rank == 1 && it.total > 0 }
+    if (winners.isEmpty()) return null
+    val me = rows.firstOrNull { it.isMe }
+    val winnerNames = joinNames(winners.map { it.name })
+    val winnerTotal = "${formatChallengeTotal(winners[0].total)} $unit"
+    return when {
+        me == null -> ChallengeResultBanner("🏆", "$winnerNames won", winnerTotal)
+        me.rank == 1 && winners.size == 1 -> ChallengeResultBanner("🏆", "You won!", winnerTotal)
+        me.rank == 1 ->
+            ChallengeResultBanner(
+                "🏆",
+                "You tied for the win!",
+                "with ${joinNames(winners.filter { !it.isMe }.map { it.name })} · $winnerTotal",
             )
-        }
+        me.rank == 2 -> ChallengeResultBanner("🥈", "You came 2nd", "🏆 $winnerNames · $winnerTotal")
+        me.rank == 3 -> ChallengeResultBanner("🥉", "You came 3rd", "🏆 $winnerNames · $winnerTotal")
+        else -> ChallengeResultBanner("🏆", "$winnerNames won", "$winnerTotal · you finished #${me.rank}")
+    }
 }
 
 /**
@@ -220,15 +276,19 @@ object ChallengeWidgetGeometry {
     const val ROW = 15
     const val MIN_CHART = 30
     const val MIN_WIDTH_FOR_RANK = 130
+    /** The finished-challenge banner (big emoji + two text lines). */
+    const val RESULT = 34
 }
 
-/** How the widget divides its height between the race chart and leaderboard rows. */
+/** How the widget divides its height between the result banner, race chart and leaderboard rows. */
 data class ChallengeWidgetLayout(
     val rowCount: Int,
     val chartHeightDp: Int,
     val chartWidthDp: Int,
     /** Rank numbers are dropped on the narrowest widgets so names keep some room. */
     val showRank: Boolean,
+    /** False when a finished challenge's banner leaves no room for a readable chart. */
+    val showChart: Boolean = true,
 )
 
 /**
@@ -236,19 +296,33 @@ data class ChallengeWidgetLayout(
  * rows as fit above a minimum chart height (never more than [memberCount]), the
  * rest of the height going to the chart. A 2×2 cell (~110 dp) yields two rows and
  * a ~36 dp chart; taller widgets show more members, wider ones a longer chart.
+ *
+ * With [showResult] (a finished challenge) the banner takes its height first; if
+ * what's left can't hold a readable chart the chart is dropped and its space
+ * goes to leaderboard rows instead — on a 2×2 cell that is the banner + two rows.
  */
-fun planChallengeWidgetLayout(widthDp: Float, heightDp: Float, memberCount: Int): ChallengeWidgetLayout {
+fun planChallengeWidgetLayout(
+    widthDp: Float,
+    heightDp: Float,
+    memberCount: Int,
+    showResult: Boolean = false,
+): ChallengeWidgetLayout {
     val g = ChallengeWidgetGeometry
-    val available = (heightDp - 2 * g.PADDING - g.HEADER).coerceAtLeast(0f)
+    val banner = if (showResult) g.RESULT else 0
+    val available = (heightDp - 2 * g.PADDING - g.HEADER - banner).coerceAtLeast(0f)
     val roomForRows = floor((available - g.MIN_CHART) / g.ROW).toInt().coerceAtLeast(0)
-    val rows = minOf(memberCount, roomForRows).coerceAtLeast(if (memberCount > 0) 1 else 0)
-    val chart = (available - rows * g.ROW).toInt().coerceAtLeast(g.MIN_CHART)
+    val minRows = if (memberCount > 0) 1 else 0
+    var rows = minOf(memberCount, roomForRows).coerceAtLeast(minRows)
+    val chartRoom = (available - rows * g.ROW).toInt()
+    val showChart = !showResult || chartRoom >= g.MIN_CHART
+    if (!showChart) rows = minOf(memberCount, floor(available / g.ROW).toInt()).coerceAtLeast(minRows)
     val chartWidth = (widthDp - 2 * g.PADDING).toInt().coerceAtLeast(40)
     return ChallengeWidgetLayout(
         rowCount = rows,
-        chartHeightDp = chart,
+        chartHeightDp = chartRoom.coerceAtLeast(g.MIN_CHART),
         chartWidthDp = chartWidth,
         showRank = widthDp >= g.MIN_WIDTH_FOR_RANK,
+        showChart = showChart,
     )
 }
 

@@ -87,8 +87,19 @@ export type ChallengeSpec = z.infer<typeof challengeSpecSchema>
 
 export const challengeNameSchema = z.string().min(1).max(120).meta({ description: 'Challenge name' })
 
+/**
+ * Whether the host's instance publishes the final standings to the host's feed
+ * when the challenge window closes (see `ChallengeResult`). Defaults on; the
+ * host can switch it off per challenge.
+ */
+export const announceWinnerSchema = z.boolean().meta({
+  description:
+    'Publish the final standings (winner tagged) to the host feed when the challenge ends. Defaults to true.',
+})
+
 export const challengeSchema = z
   .object({
+    announce_winner: announceWinnerSchema.default(true),
     created_at: z.string().meta({ description: 'Creation timestamp (ISO 8601)' }),
     end_ts: z.string().meta({ description: 'End instant, exclusive (ISO 8601)' }),
     id: z.string().uuid().meta({ description: 'Challenge ID' }),
@@ -109,6 +120,7 @@ export type Challenge = z.infer<typeof challengeSchema>
 
 export const createChallengeBodySchema = z
   .object({
+    announce_winner: announceWinnerSchema.default(true),
     end_ts: z.iso.datetime().meta({ description: 'End instant, exclusive (ISO 8601)' }),
     name: challengeNameSchema,
     spec: challengeSpecSchema,
@@ -124,6 +136,7 @@ export type CreateChallengeBody = z.infer<typeof createChallengeBodySchema>
 
 export const updateChallengeBodySchema = z
   .object({
+    announce_winner: announceWinnerSchema.optional(),
     end_ts: z.iso.datetime().optional(),
     name: challengeNameSchema.optional(),
     spec: challengeSpecSchema.optional(),
@@ -188,6 +201,51 @@ export const challengeStandingsResponseSchema = baseResponseSchema
   .meta({ id: 'ChallengeStandingsResponse' })
 
 export type ChallengeStandingsResponse = z.infer<typeof challengeStandingsResponseSchema>
+
+// =============================================================================
+// Final result (published to the host's feed when the window closes)
+// =============================================================================
+
+/** One podium line of a finished challenge. */
+export const challengeResultEntrySchema = z
+  .object({
+    display_name: z
+      .string()
+      .meta({ description: 'Member display name at the time the result was published' }),
+    identity_base_url: z
+      .string()
+      .meta({ description: 'Member public profile base URL (federation identity)' }),
+    rank: z.number().int().min(1).meta({
+      description: 'Competition rank (members with equal totals share a rank, e.g. 1, 1, 3)',
+    }),
+    total: z.number().meta({ description: 'Final cumulative total over the window' }),
+  })
+  .meta({ id: 'ChallengeResultEntry' })
+
+export type ChallengeResultEntry = z.infer<typeof challengeResultEntrySchema>
+
+/**
+ * The final standings of a finished challenge, as snapshotted into the host's
+ * completion post: the podium (every member ranked 1–3; a tie for first means
+ * several winners) plus how many members competed. Rank-1 entries are the
+ * winners, who get a `Mention` in the federated Note.
+ */
+export const challengeResultSchema = z
+  .object({
+    member_count: z
+      .number()
+      .int()
+      .min(0)
+      .meta({ description: 'Active members the result was computed over' }),
+    podium: z
+      .array(challengeResultEntrySchema)
+      .max(10)
+      .meta({ description: 'Members ranked 1–3 in rank order (rank 1 = the winner(s))' }),
+    unit: z.string().meta({ description: 'Display unit of the totals (the challenge spec unit)' }),
+  })
+  .meta({ id: 'ChallengeResult' })
+
+export type ChallengeResult = z.infer<typeof challengeResultSchema>
 
 /** Body a joining instance POSTs back to the host to register a member. */
 export const registerChallengeMemberBodySchema = z

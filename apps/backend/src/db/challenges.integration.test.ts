@@ -19,7 +19,9 @@ import {
   listChallengeMembers,
   listChallengeParticipations,
   listChallenges,
+  listChallengesAwaitingResult,
   listPublicChallenges,
+  markChallengeResultPublished,
   removeChallengeMember,
   updateChallenge,
   updateChallengeMemberCache,
@@ -38,7 +40,8 @@ const spec: ChallengeSpecFields = {
   unit: 'steps',
 }
 
-const sampleInput = (name: string, isPublic = false) => ({
+const sampleInput = (name: string, isPublic = false, announceWinner = true) => ({
+  announce_winner: announceWinner,
   end_ts: new Date('2026-06-08T00:00:00Z'),
   is_public: isPublic,
   name,
@@ -68,6 +71,8 @@ describe('Challenges integration', () => {
     expect(created.join_token).toBeTruthy()
     expect(created.spec).toEqual(spec)
     expect(created.start_ts.toISOString()).toBe('2026-06-01T00:00:00.000Z')
+    expect(created.announce_winner).toBe(true)
+    expect(created.result_published_at).toBeNull()
 
     const bySlug = await getChallengeBySlug(user, created.slug)
     expect(bySlug?.id).toBe(created.id)
@@ -242,5 +247,34 @@ describe('Challenges integration', () => {
     expect(byToken?.id).toBe(p.id)
     expect(byToken?.spec).toEqual(spec)
     expect(await getParticipationByToken(user, 'missing')).toBeNull()
+  })
+
+  test('announce_winner is stored, patchable, and drives the pending-result list', async () => {
+    const user = getTestUser()
+    const quiet = await createChallenge(user, sampleInput('quiet', false, false))
+    expect(quiet.announce_winner).toBe(false)
+    const loud = await createChallenge(user, sampleInput('loud'))
+
+    // Both ended before the cutoff; only the announcing one is listed.
+    const cutoff = new Date('2026-06-09T00:00:00Z')
+    expect((await listChallengesAwaitingResult(user, cutoff)).map((c) => c.id)).toEqual([loud.id])
+    // Neither has ended at an earlier cutoff.
+    expect(await listChallengesAwaitingResult(user, new Date('2026-06-07T00:00:00Z'))).toEqual([])
+
+    const patched = await updateChallenge(user, quiet.id, { announce_winner: true })
+    expect(patched?.announce_winner).toBe(true)
+    expect((await listChallengesAwaitingResult(user, cutoff)).map((c) => c.id).sort()).toEqual(
+      [loud.id, quiet.id].sort(),
+    )
+  })
+
+  test('markChallengeResultPublished claims once and drops the challenge from the pending list', async () => {
+    const user = getTestUser()
+    const c = await createChallenge(user, sampleInput('done'))
+    const cutoff = new Date('2026-06-09T00:00:00Z')
+    expect(await markChallengeResultPublished(user, c.id)).toBe(true)
+    expect(await markChallengeResultPublished(user, c.id)).toBe(false)
+    expect((await getChallengeById(user, c.id))?.result_published_at).toBeInstanceOf(Date)
+    expect(await listChallengesAwaitingResult(user, cutoff)).toEqual([])
   })
 })

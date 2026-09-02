@@ -37,6 +37,7 @@ const toSpecFields = (spec: ChallengeSpec): ChallengeSpecFields => ({
 })
 
 const serialize = (record: ChallengeRecord, webHost: string | undefined, user: string) => ({
+  announce_winner: record.announce_winner,
   created_at: record.created_at.toISOString(),
   end_ts: record.end_ts.toISOString(),
   id: record.id,
@@ -70,6 +71,7 @@ export const registerChallengeTools = (
     { ...createChallengeBodySchema.shape },
     async (params) => {
       const record = await createChallenge(user, {
+        announce_winner: params.announce_winner,
         end_ts: new Date(params.end_ts),
         is_public: visibilityToIsPublic(params.visibility),
         name: params.name,
@@ -91,10 +93,11 @@ export const registerChallengeTools = (
 
   server.tool(
     'update_challenge',
-    'Update a hosted challenge (name, spec, date range, visibility). Only provided fields change.',
+    'Update a hosted challenge (name, spec, date range, visibility, announce_winner). Only provided fields change.',
     { id: z.string().uuid().describe('Challenge ID'), ...updateChallengeBodySchema.shape },
     async ({ id, ...body }) => {
       const record = await updateChallenge(user, id, {
+        announce_winner: body.announce_winner,
         end_ts: body.end_ts ? new Date(body.end_ts) : undefined,
         is_public: body.visibility === undefined ? undefined : visibilityToIsPublic(body.visibility),
         name: body.name,

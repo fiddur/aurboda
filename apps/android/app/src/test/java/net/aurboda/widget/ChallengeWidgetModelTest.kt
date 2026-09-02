@@ -254,4 +254,100 @@ class ChallengeWidgetModelTest {
         // An unknown zone must not throw.
         assertFalse(challengeDateRange("2026-07-31T22:00:00Z", "2026-08-31T22:00:00Z", "Not/AZone", Locale.ENGLISH).isEmpty())
     }
+
+    // --- Final standings ----------------------------------------------------
+
+    private fun row(rank: Int, name: String, total: Double, isMe: Boolean = false) =
+        LeaderboardRow(rank = rank, name = name, color = challengeMemberColor(rank - 1), total = total, isMe = isMe)
+
+    @Test
+    fun `leaderboard shares a rank on equal totals and skips the next one`() {
+        val rows =
+            leaderboard(
+                listOf(
+                    standing("a", "https://x/u/a", listOf("2026-08-01T00:00:00Z" to 100.0)),
+                    standing("b", "https://x/u/b", listOf("2026-08-01T00:00:00Z" to 100.0)),
+                    standing("c", "https://x/u/c", listOf("2026-08-01T00:00:00Z" to 90.0)),
+                ),
+                null,
+            )
+        assertEquals(listOf(1, 1, 3), rows.map { it.rank })
+    }
+
+    @Test
+    fun `rankLabel medals the podium only once the challenge has ended`() {
+        assertEquals("1", rankLabel(1, ended = false))
+        assertEquals("🏆", rankLabel(1, ended = true))
+        assertEquals("🥈", rankLabel(2, ended = true))
+        assertEquals("🥉", rankLabel(3, ended = true))
+        assertEquals("4", rankLabel(4, ended = true))
+    }
+
+    @Test
+    fun `challengeResultBanner is absent while running or when nobody scored`() {
+        val rows = listOf(row(1, "alice", 100.0), row(2, "me", 50.0, isMe = true))
+        assertNull(challengeResultBanner(rows, ended = false, unit = "steps"))
+        assertNull(challengeResultBanner(listOf(row(1, "a", 0.0)), ended = true, unit = "steps"))
+        assertNull(challengeResultBanner(emptyList(), ended = true, unit = "steps"))
+    }
+
+    @Test
+    fun `challengeResultBanner celebrates the signed-in winner with a big trophy`() {
+        val banner = challengeResultBanner(listOf(row(1, "me", 138989.0, isMe = true), row(2, "alice", 100.0)), true, "steps")!!
+        assertEquals("🏆", banner.emoji)
+        assertEquals("You won!", banner.headline)
+        assertEquals("138989", banner.detail.filter { it.isDigit() })
+        assertTrue(banner.detail.endsWith("steps"))
+    }
+
+    @Test
+    fun `challengeResultBanner shows a medal and names the winner for 2nd and 3rd`() {
+        val rows = listOf(row(1, "alice", 300.0), row(2, "me", 200.0, isMe = true), row(3, "carol", 100.0))
+        val second = challengeResultBanner(rows, true, "km")!!
+        assertEquals("🥈", second.emoji)
+        assertEquals("You came 2nd", second.headline)
+        assertEquals("🏆 alice · 300 km", second.detail)
+        val third = challengeResultBanner(rows.map { it.copy(isMe = it.rank == 3) }, true, "km")!!
+        assertEquals("🥉", third.emoji)
+        assertEquals("You came 3rd", third.headline)
+        assertEquals("🏆 alice · 300 km", third.detail)
+    }
+
+    @Test
+    fun `challengeResultBanner names the winner and your place off the podium, or just the winner for a viewer`() {
+        val rows = listOf(row(1, "alice", 300.0), row(2, "b", 200.0), row(3, "c", 100.0), row(4, "me", 10.0, isMe = true))
+        val fourth = challengeResultBanner(rows, true, "steps")!!
+        assertEquals("🏆", fourth.emoji)
+        assertEquals("alice won", fourth.headline)
+        assertEquals("300 steps · you finished #4", fourth.detail)
+        val viewer = challengeResultBanner(rows.map { it.copy(isMe = false) }, true, "steps")!!
+        assertEquals("alice won", viewer.headline)
+        assertEquals("300 steps", viewer.detail)
+    }
+
+    @Test
+    fun `challengeResultBanner handles a tie for the win`() {
+        val rows = listOf(row(1, "alice", 300.0), row(1, "me", 300.0, isMe = true), row(3, "c", 100.0))
+        val tie = challengeResultBanner(rows, true, "steps")!!
+        assertEquals("🏆", tie.emoji)
+        assertEquals("You tied for the win!", tie.headline)
+        assertEquals("with alice · 300 steps", tie.detail)
+        val viewer = challengeResultBanner(rows.map { it.copy(isMe = false) }, true, "steps")!!
+        assertEquals("alice and me won", viewer.headline)
+    }
+
+    @Test
+    fun `planChallengeWidgetLayout with a result banner drops the chart on a 2x2 cell but keeps it when tall`() {
+        val small = planChallengeWidgetLayout(widthDp = 110f, heightDp = 110f, memberCount = 5, showResult = true)
+        assertFalse(small.showChart)
+        assertEquals(2, small.rowCount)
+
+        val tall = planChallengeWidgetLayout(widthDp = 110f, heightDp = 250f, memberCount = 5, showResult = true)
+        assertTrue(tall.showChart)
+        assertEquals(5, tall.rowCount)
+        assertTrue(tall.chartHeightDp >= ChallengeWidgetGeometry.MIN_CHART)
+
+        // Without a banner the chart always stays.
+        assertTrue(planChallengeWidgetLayout(widthDp = 110f, heightDp = 110f, memberCount = 5).showChart)
+    }
 }

@@ -82,6 +82,43 @@ no data yet reports `null` (rendered as "—"), never the request time — so me
 the host persists it (distinct from `last_fetched_at`, which is when the host fetched)
 and surfaces it in standings.
 
+## Completion & winner announcement
+
+When a challenge's window closes, the **host's instance** announces the result: a
+`challenge` post on the host's feed (see [feed.md](feed.md#feed-posts)) carrying the
+frozen **final standings** — the podium (everyone ranked 1–3; competition ranking, so
+equal totals share a rank and a tie for first means several winners) plus the member
+count — with each **winner tagged** as an ActivityPub `Mention` (and addressed in
+`cc`, delivered to their inbox), so the winner's own instance notifies them even when
+they don't follow the host (a post mentioning you is one you're _involved_ in, see
+[feed.md](feed.md#home-timeline-inbound)). A `public` challenge announces publicly; an
+`unlisted` one as an `unlisted` post. Only members who scored make the podium; a
+challenge nobody scored in announces nothing.
+
+- **Host setting:** `announce_winner` on the challenge (default **true**). In the web
+  app: the "Announce the winner to my feed when it ends" checkbox when creating, and an
+  "Announce winner" toggle on each hosted row until the challenge ends; over the API
+  the field is on `POST`/`PUT /challenges` and the `create_challenge` /
+  `update_challenge` MCP tools.
+- **Timing:** a scheduled sweep (pg-boss cron, every 10 minutes, over every user's
+  hosted challenges) announces a challenge once it has been over for a **6-hour grace
+  period**, so members' last-day data has had time to sync before the podium is
+  frozen. Standings are re-fetched (remote members included) at that moment.
+- **Once only:** `result_published_at` on the challenge is stamped when the
+  announcement is made (or deliberately skipped), so a challenge never announces twice;
+  a failed remote-member fetch leaves it pending for the next sweep. Switching
+  `announce_winner` off before the sweep runs suppresses the post; switching it back on
+  later (still before the grace period is up) re-arms it.
+- **Result payload** (`ChallengeResult` on the post's `challenge.result`): a snapshot
+  of names, identities, ranks and totals as of the announcement. A winner's identity
+  (`<base>/u/<user>`) maps to their actor id (`<base>/users/<user>`) for the `Mention`,
+  and to their `@user@host` handle for its name; the federated HTML links the winner
+  Mastodon-style (`h-card` / `u-url mention`).
+
+The public challenge page shows the same podium once the window has closed (🏆/🥈/🥉 in
+the rank column, final standings heading), and the Android widget shows a result
+banner (see below).
+
 ## Security & trust
 
 - The unguessable slug + capability tokens are the gates; data endpoints are
@@ -131,7 +168,11 @@ hosted or joined challenge when placing it and it shows the race chart and
 leaderboard (same member colours as the web page), refreshed after each sync;
 tapping it opens the challenge in the app. Standings are read from the hosting
 instance's public standings endpoint, so it works for challenges hosted elsewhere
-too. See `docs/android-app.md` → _Home-screen widgets_.
+too. Once the challenge has ended the widget shows the **final standings**: a
+banner with a big 🏆 "You won!" when you won (🥈 / 🥉 "You came 2nd/3rd" with the
+winner named when you made the podium; otherwise who won and where you finished),
+and medals in the leaderboard's rank column. See `docs/android-app.md` →
+_Home-screen widgets_.
 
 ## API surface (authed, owner/joiner)
 
@@ -139,7 +180,8 @@ too. See `docs/android-app.md` → _Home-screen widgets_.
 `GET /:id/standings`, `GET /:id/members`, `DELETE /:id/members/:memberId`,
 `GET /challenges/participations/mine`, `POST /challenges/join`,
 `DELETE /challenges/participations/:id`. The same CRUD + join is available over MCP
-(`create/list/update/delete_challenge`, `join_challenge`).
+(`create/list/update/delete_challenge`, `join_challenge`). A hosted challenge carries
+`announce_winner` (create/update/read; see _Completion & winner announcement_).
 
 ## Out of scope (v1) / future hardening
 

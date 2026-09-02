@@ -249,6 +249,9 @@ private fun challengeViews(
     val nowMillis = System.currentTimeMillis()
     val density = context.resources.displayMetrics.density
     val rows = leaderboard(data.standings, myIdentityUrl(credentials.serverUrl, credentials.username))
+    // Over: final standings — medal the podium and say who won (and where you finished).
+    val ended = nowMillis >= data.summary.endMillis
+    val banner = challengeResultBanner(rows, ended, data.summary.unit)
     val bucketMillis = inferBucketMillis(data.standings)
     val series =
         data.standings
@@ -257,7 +260,7 @@ private fun challengeViews(
 
     val perSize =
         widgetSizes(appWidgetManager, appWidgetId).associateWith { size ->
-            val layout = planChallengeWidgetLayout(size.width, size.height, rows.size)
+            val layout = planChallengeWidgetLayout(size.width, size.height, rows.size, showResult = banner != null)
             RemoteViews(context.packageName, R.layout.widget_challenge).apply {
                 setTextViewText(R.id.challenge_title, data.summary.name)
                 setTextViewText(
@@ -266,33 +269,42 @@ private fun challengeViews(
                 )
                 setViewVisibility(R.id.challenge_status, View.GONE)
                 setViewVisibility(R.id.challenge_body, View.VISIBLE)
-                setImageViewBitmap(
-                    R.id.race_chart,
-                    drawRaceChart(
-                        widthPx = (layout.chartWidthDp * density).toInt(),
-                        heightPx = (layout.chartHeightDp * density).toInt(),
-                        density = density,
-                        series = series,
-                        startMillis = data.summary.startMillis,
-                        endMillis = data.summary.endMillis,
-                    ),
-                )
+                setViewVisibility(R.id.challenge_result, if (banner != null) View.VISIBLE else View.GONE)
+                if (banner != null) {
+                    setTextViewText(R.id.result_emoji, banner.emoji)
+                    setTextViewText(R.id.result_headline, banner.headline)
+                    setTextViewText(R.id.result_detail, banner.detail)
+                }
+                setViewVisibility(R.id.race_chart, if (layout.showChart) View.VISIBLE else View.GONE)
+                if (layout.showChart) {
+                    setImageViewBitmap(
+                        R.id.race_chart,
+                        drawRaceChart(
+                            widthPx = (layout.chartWidthDp * density).toInt(),
+                            heightPx = (layout.chartHeightDp * density).toInt(),
+                            density = density,
+                            series = series,
+                            startMillis = data.summary.startMillis,
+                            endMillis = data.summary.endMillis,
+                        ),
+                    )
+                }
                 removeAllViews(R.id.leaderboard)
                 val visible = visibleRows(rows, layout.rowCount)
                 setViewVisibility(
                     R.id.leaderboard_empty,
                     if (rows.isEmpty()) View.VISIBLE else View.GONE,
                 )
-                for (row in visible) addView(R.id.leaderboard, rowViews(context, row, layout.showRank))
+                for (row in visible) addView(R.id.leaderboard, rowViews(context, row, layout.showRank, ended))
                 setOnClickPendingIntent(R.id.widget_root, click)
             }
         }
     return if (perSize.size == 1) perSize.values.first() else RemoteViews(perSize)
 }
 
-private fun rowViews(context: Context, row: LeaderboardRow, showRank: Boolean): RemoteViews =
+private fun rowViews(context: Context, row: LeaderboardRow, showRank: Boolean, ended: Boolean): RemoteViews =
     RemoteViews(context.packageName, R.layout.widget_challenge_row).apply {
-        setTextViewText(R.id.member_rank, row.rank.toString())
+        setTextViewText(R.id.member_rank, rankLabel(row.rank, ended))
         setViewVisibility(R.id.member_rank, if (showRank) View.VISIBLE else View.GONE)
         setInt(R.id.member_color, "setColorFilter", row.color)
         val name: CharSequence =

@@ -61,6 +61,7 @@ const serializeParticipation = (p: ChallengeParticipationRecord) => ({
 })
 
 const serialize = (record: ChallengeRecord, webHost: string, username: string): Challenge => ({
+  announce_winner: record.announce_winner,
   created_at: record.created_at.toISOString(),
   end_ts: record.end_ts.toISOString(),
   id: record.id,
@@ -94,6 +95,7 @@ export const createChallengesRouter = (
     async (req, res) => {
       const user = req.user!
       const record = await createChallenge(user, {
+        announce_winner: req.body.announce_winner,
         end_ts: new Date(req.body.end_ts),
         is_public: visibilityToIsPublic(req.body.visibility),
         name: req.body.name,
@@ -134,6 +136,7 @@ export const createChallengesRouter = (
       const user = req.user!
       const b = req.body
       const record = await updateChallenge(user, req.params.id, {
+        announce_winner: b.announce_winner,
         end_ts: b.end_ts ? new Date(b.end_ts) : undefined,
         is_public: b.visibility === undefined ? undefined : visibilityToIsPublic(b.visibility),
         name: b.name,

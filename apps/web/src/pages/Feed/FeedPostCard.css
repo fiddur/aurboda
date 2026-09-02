@@ -74,6 +74,56 @@
   margin-bottom: 0;
 }
 
+/* Final standings of a finished challenge (the completion post). */
+.challenge-podium {
+  margin: 0.25rem 0 0.6rem;
+}
+
+.challenge-podium-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.challenge-podium-entry {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.challenge-podium-rank-1 {
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.challenge-podium-medal {
+  width: 1.6rem;
+  text-align: center;
+}
+
+.challenge-podium-name {
+  color: inherit;
+  text-decoration: none;
+}
+
+.challenge-podium-name:hover {
+  text-decoration: underline;
+}
+
+.challenge-podium-total {
+  color: #6b7280;
+  font-variant-numeric: tabular-nums;
+}
+
+.challenge-podium-count {
+  margin: 0.4rem 0 0;
+  color: #6b7280;
+  font-size: 0.85rem;
+}
+
 /* The author's personal message — plain text with its linebreaks kept. */
 .feed-post-message {
   white-space: pre-line;
@@ -186,6 +236,11 @@
   .feed-post-content,
   .article-content {
     color: #e5e7eb;
+  }
+
+  .challenge-podium-total,
+  .challenge-podium-count {
+    color: #9ca3af;
   }
 
   .article-title {

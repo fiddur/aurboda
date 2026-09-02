@@ -72,6 +72,12 @@ A feed post has a **`kind`**:
   flow. Federates as a `Note` (Mastodon renders the link with the challenge page's
   existing OG preview card). Shared via `POST /feed/challenges` (and the
   `share_challenge` MCP tool) or the **Share to feed** button on the challenges page.
+  The host instance's automatic **completion post** (see
+  [challenges.md](challenges.md#completion--winner-announcement)) is the same kind
+  with a `result` payload in the `challenge` column — the final podium (ranks, names,
+  identities, totals) and member count — rendered natively as a podium on the card and
+  federated with a "has finished" heading, the winner as a Mastodon-style mention link,
+  and a `Mention` tag (plus `cc` + inbox delivery) per winner.
 
 An **`activity`** feed post references one of the user's activities and records the
 explicit metric selection that bounds what is shared:

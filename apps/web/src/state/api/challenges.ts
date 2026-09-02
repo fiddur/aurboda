@@ -10,6 +10,7 @@ import type {
   CreateChallengeBody,
   PublicChallengeResponse,
   PublicSharedDashboardResponse,
+  UpdateChallengeBody,
 } from '@aurboda/api-spec'
 
 import axios from 'axios'
@@ -31,6 +32,14 @@ export const listChallenges = async (): Promise<Challenge[]> => {
 export const createChallenge = async (body: CreateChallengeBody): Promise<Challenge> => {
   const res = await axios.post<ChallengeResponse>(`${API_URL}/challenges`, body, { headers: authHeaders() })
   if (!res.data.challenge) throw new Error(res.data.error ?? 'Failed to create challenge')
+  return res.data.challenge
+}
+
+export const updateChallenge = async (id: string, body: UpdateChallengeBody): Promise<Challenge> => {
+  const res = await axios.put<ChallengeResponse>(`${API_URL}/challenges/${id}`, body, {
+    headers: authHeaders(),
+  })
+  if (!res.data.challenge) throw new Error(res.data.error ?? 'Failed to update challenge')
   return res.data.challenge
 }
 

@@ -144,6 +144,22 @@ export const dropUserDb = async (adminClient: Client, user: string) => {
   await query(adminClient, format('DROP USER IF EXISTS %I', user)).catch(() => {})
 }
 
+/**
+ * Every user with a per-user database (`aurboda_<user>`), for background sweeps
+ * that must visit all users without anyone being logged in. Needs a client on
+ * the cluster (any database) — `pg_database` is cluster-wide.
+ */
+export const listUserNames = async (client: Client): Promise<string[]> => {
+  const prefix = 'aurboda_'
+  // `\_` keeps the underscore literal (LIKE's `_` is a single-char wildcard).
+  const result = await query<{ datname: string }>(
+    client,
+    `SELECT datname FROM pg_database WHERE datname LIKE $1 ORDER BY datname`,
+    [`${prefix.replace('_', '\\_')}%`],
+  )
+  return result.rows.map((row) => row.datname.slice(prefix.length))
+}
+
 export const getDbForUser = async (user: string) => {
   if (dbByUser[user]) return dbByUser[user]
   const client = new Client({ database: userDbName(user) })
