@@ -206,8 +206,13 @@ fun podiumMedal(rank: Int): String? =
         else -> null
     }
 
-/** The rank column: the medal once the challenge is over (final standings), else the number. */
-fun rankLabel(rank: Int, ended: Boolean): String = (if (ended) podiumMedal(rank) else null) ?: rank.toString()
+/**
+ * The rank column: the medal once the challenge is over (final standings) for a
+ * member who actually scored — a 0 is never a podium, as on the web page — else
+ * the number.
+ */
+fun rankLabel(rank: Int, ended: Boolean, total: Double): String =
+    (if (ended && total > 0) podiumMedal(rank) else null) ?: rank.toString()
 
 /** The banner a finished challenge shows above the chart: a big emoji, a headline, a detail line. */
 data class ChallengeResultBanner(val emoji: String, val headline: String, val detail: String)
@@ -236,6 +241,8 @@ fun challengeResultBanner(rows: List<LeaderboardRow>, ended: Boolean, unit: Stri
     val winnerTotal = "${formatChallengeTotal(winners[0].total)} $unit"
     return when {
         me == null -> ChallengeResultBanner("🏆", "$winnerNames won", winnerTotal)
+        // A 0 never medals (matches the web page / the announcement), so it falls through to "won · you finished #n".
+        me.total <= 0 -> ChallengeResultBanner("🏆", "$winnerNames won", "$winnerTotal · you finished #${me.rank}")
         me.rank == 1 && winners.size == 1 -> ChallengeResultBanner("🏆", "You won!", winnerTotal)
         me.rank == 1 ->
             ChallengeResultBanner(

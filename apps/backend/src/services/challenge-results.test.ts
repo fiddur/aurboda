@@ -13,6 +13,7 @@ import {
   publishFinishedChallengeResults,
   RESULT_GRACE_MS,
   resultPostVisibility,
+  STALE_ACCEPT_AFTER_MS,
 } from './challenge-results.ts'
 
 vi.mock('./audit-log.ts', () => ({ auditError: vi.fn() }))
@@ -21,12 +22,13 @@ const standing = (
   name: string,
   total: number,
   status: ChallengeStanding['status'] = 'active',
+  stale = false,
 ): ChallengeStanding => ({
   buckets: [],
   display_name: name,
   identity_base_url: `https://h.example/u/${name}`,
   last_updated: null,
-  stale: false,
+  stale,
   status,
   total,
 })
@@ -194,6 +196,37 @@ describe('publishFinishedChallengeResults', () => {
     expect(await publishFinishedChallengeResults(d)).toBe(0)
     expect(d.claimed).toEqual(['c1'])
     expect(d.created).toHaveLength(0)
+  })
+
+  test('a stale member (failed remote fetch, last-known data) holds the announcement back, unclaimed', async () => {
+    // Ended 7 h ago: past the grace period, well inside the stale-acceptance window.
+    const recent = challenge({ end_ts: new Date(now.getTime() - 7 * 60 * 60 * 1000) })
+    const d = deps({
+      listAwaiting: vi.fn(async () => [recent]),
+      standings: vi.fn(async () => [standing('alice', 300), standing('bob', 0, 'active', true)]),
+    })
+    expect(await publishFinishedChallengeResults(d)).toBe(0)
+    expect(d.claimed).toEqual([])
+    expect(d.created).toHaveLength(0)
+  })
+
+  test('a withdrawn stale member does not hold the announcement back', async () => {
+    const recent = challenge({ end_ts: new Date(now.getTime() - 7 * 60 * 60 * 1000) })
+    const d = deps({
+      listAwaiting: vi.fn(async () => [recent]),
+      standings: vi.fn(async () => [standing('alice', 300), standing('gone', 0, 'withdrawn', true)]),
+    })
+    expect(await publishFinishedChallengeResults(d)).toBe(1)
+  })
+
+  test('after STALE_ACCEPT_AFTER_MS a stale member is accepted with last-known data', async () => {
+    const old = challenge({ end_ts: new Date(now.getTime() - STALE_ACCEPT_AFTER_MS) })
+    const d = deps({
+      listAwaiting: vi.fn(async () => [old]),
+      standings: vi.fn(async () => [standing('alice', 300), standing('bob', 100, 'active', true)]),
+    })
+    expect(await publishFinishedChallengeResults(d)).toBe(1)
+    expect(d.created[0].input.challenge.result?.podium.map((e) => e.display_name)).toEqual(['alice', 'bob'])
   })
 
   test('a failed standings fetch leaves the challenge unclaimed for the next sweep and continues', async () => {

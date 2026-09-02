@@ -275,12 +275,21 @@ class ChallengeWidgetModelTest {
     }
 
     @Test
-    fun `rankLabel medals the podium only once the challenge has ended`() {
-        assertEquals("1", rankLabel(1, ended = false))
-        assertEquals("🏆", rankLabel(1, ended = true))
-        assertEquals("🥈", rankLabel(2, ended = true))
-        assertEquals("🥉", rankLabel(3, ended = true))
-        assertEquals("4", rankLabel(4, ended = true))
+    fun `rankLabel medals the podium only once the challenge has ended, and only members who scored`() {
+        assertEquals("1", rankLabel(1, ended = false, total = 10.0))
+        assertEquals("🏆", rankLabel(1, ended = true, total = 10.0))
+        assertEquals("🥈", rankLabel(2, ended = true, total = 10.0))
+        assertEquals("🥉", rankLabel(3, ended = true, total = 10.0))
+        assertEquals("4", rankLabel(4, ended = true, total = 10.0))
+        assertEquals("2", rankLabel(2, ended = true, total = 0.0))
+    }
+
+    @Test
+    fun `challengeResultBanner never medals a zero total`() {
+        val banner = challengeResultBanner(listOf(row(1, "alice", 100.0), row(2, "me", 0.0, isMe = true)), true, "steps")!!
+        assertEquals("🏆", banner.emoji)
+        assertEquals("alice won", banner.headline)
+        assertEquals("100 steps · you finished #2", banner.detail)
     }
 
     @Test

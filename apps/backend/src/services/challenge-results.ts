@@ -40,6 +40,19 @@ export const MAX_ANNOUNCE_AGE_MS = 3 * 24 * 60 * 60 * 1000
 /** Bounded blast radius per sweep: a bug or an unexpectedly wide window can only leak this many posts. */
 export const MAX_ANNOUNCEMENTS_PER_SWEEP = 20
 
+/**
+ * A member whose instance couldn't be reached (`stale`: last-known or zero
+ * data) holds the announcement back — a podium must not freeze on a cached
+ * total because a winner's server was down at the 6-hour mark. But an instance
+ * that is gone for good must not block the result forever either: once the
+ * challenge has been over this long, last-known data is accepted.
+ */
+export const STALE_ACCEPT_AFTER_MS = 24 * 60 * 60 * 1000
+
+/** True when an active member's standing is last-known/zero data from a failed fetch. */
+export const hasStaleMember = (standings: ChallengeStanding[]): boolean =>
+  standings.some((s) => s.status === 'active' && s.stale)
+
 /** Everyone ranked 1–3 makes the podium (a tie for a place keeps all of them). */
 const PODIUM_MAX_RANK = 3
 /** Hard cap on podium entries so a mass tie can't bloat the post. */
@@ -118,12 +131,13 @@ export interface ChallengeResultsDeps {
  * One sweep: for every user, announce each hosted challenge that closed at
  * least `RESULT_GRACE_MS` ago and no more than `MAX_ANNOUNCE_AGE_MS` ago — no
  * retroactive announcements, ever. The claim happens before the post is created
- * so a challenge is announced at most once even if sweeps overlap; a challenge
- * whose standings fetch fails stays pending and is retried next sweep. A
- * challenge nobody scored in is claimed without a post (nothing to announce,
- * and no point re-checking it forever). At most `MAX_ANNOUNCEMENTS_PER_SWEEP`
- * posts per run; anything beyond waits for the next tick. Returns how many
- * posts were published.
+ * so a challenge is announced at most once even if sweeps overlap. A challenge
+ * with a stale member (a remote fetch failed — `getChallengeStandings` never
+ * throws, it flags) stays pending and is retried next sweep, until
+ * `STALE_ACCEPT_AFTER_MS` after its end. A challenge nobody scored in is claimed
+ * without a post (nothing to announce, and no point re-checking it forever). At
+ * most `MAX_ANNOUNCEMENTS_PER_SWEEP` posts per run; anything beyond waits for
+ * the next tick. Returns how many posts were published.
  */
 export const publishFinishedChallengeResults = async (deps: ChallengeResultsDeps): Promise<number> => {
   const now = deps.now?.() ?? new Date()
@@ -144,7 +158,10 @@ export const publishFinishedChallengeResults = async (deps: ChallengeResultsDeps
     for (const challenge of awaiting) {
       if (published >= MAX_ANNOUNCEMENTS_PER_SWEEP) break
       try {
-        const result = computeChallengeResult(await deps.standings(user, challenge), challenge.spec.unit)
+        const standings = await deps.standings(user, challenge)
+        const staleAcceptable = now.getTime() - challenge.end_ts.getTime() >= STALE_ACCEPT_AFTER_MS
+        if (hasStaleMember(standings) && !staleAcceptable) continue
+        const result = computeChallengeResult(standings, challenge.spec.unit)
         if (!(await deps.claim(user, challenge.id))) continue
         if (result == null) continue
         const post = await deps.createPost(

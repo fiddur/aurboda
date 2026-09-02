@@ -304,7 +304,7 @@ private fun challengeViews(
 
 private fun rowViews(context: Context, row: LeaderboardRow, showRank: Boolean, ended: Boolean): RemoteViews =
     RemoteViews(context.packageName, R.layout.widget_challenge_row).apply {
-        setTextViewText(R.id.member_rank, rankLabel(row.rank, ended))
+        setTextViewText(R.id.member_rank, rankLabel(row.rank, ended, row.total))
         setViewVisibility(R.id.member_rank, if (showRank) View.VISIBLE else View.GONE)
         setInt(R.id.member_color, "setColorFilter", row.color)
         val name: CharSequence =

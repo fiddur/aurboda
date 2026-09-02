@@ -3,7 +3,7 @@
  * `challenge-results.ts`), on pg-boss like the other queues — but driven by a
  * cron schedule rather than enqueued events, because a challenge ends by the
  * clock, not by a request. Each tick runs one full sweep; a tick that finds
- * nothing is free (one indexed query per user).
+ * nothing is free (one small query per user).
  */
 import type { PgBoss } from './pg-boss.ts'
 

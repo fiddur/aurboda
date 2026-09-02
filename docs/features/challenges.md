@@ -100,17 +100,21 @@ announces nothing.
 
 - **Host setting:** `announce_winner` on the challenge (default **true**). In the web
   app: the "Announce the winner to my feed when it ends" checkbox when creating, and an
-  "Announce winner" toggle on each hosted row until the challenge ends; over the API
-  the field is on `POST`/`PUT /challenges` and the `create_challenge` /
-  `update_challenge` MCP tools.
+  "Announce winner" toggle on each hosted row until the announcement has been made
+  (`result_published_at` set); over the API the field is on `POST`/`PUT /challenges`
+  and the `create_challenge` / `update_challenge` MCP tools.
 - **Timing:** a scheduled sweep (pg-boss cron, every 10 minutes, over every user's
   hosted challenges) announces a challenge once it has been over for a **6-hour grace
   period**, so members' last-day data has had time to sync before the podium is
-  frozen. Standings are re-fetched (remote members included) at that moment.
+  frozen. Standings are re-fetched (remote members included) at that moment. A
+  **stale** member — their instance couldn't be reached, so the host only has
+  last-known (or zero) data — holds the announcement back to the next sweep rather
+  than freezing a podium on cached totals; once the challenge has been over for
+  **24 hours** (`STALE_ACCEPT_AFTER_MS`) last-known data is accepted so an instance
+  that is gone for good can't block the result forever.
 - **Once only, never retroactively:** `result_published_at` on the challenge is stamped
   when the announcement is made (or deliberately skipped), so a challenge never
-  announces twice; a failed remote-member fetch leaves it pending for the next sweep.
-  Only challenges that ended within the last **3 days** are ever announced
+  announces twice. Only challenges that ended within the last **3 days** are ever announced
   (`MAX_ANNOUNCE_AGE_MS`) — the column backfills `announce_winner = true` onto
   pre-existing challenges, and without that bound the first sweep after deploy would
   fan out every challenge that ever finished (federated deliveries can't be recalled).
