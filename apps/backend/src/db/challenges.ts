@@ -338,20 +338,25 @@ export const deleteChallenge = async (user: string, id: string): Promise<boolean
 }
 
 /**
- * Hosted challenges whose window closed at or before `endedBefore`, that want a
- * winner announcement and haven't had one yet — the completion sweep's work
- * list. Oldest end first so a backlog drains in order.
+ * Hosted challenges that want a winner announcement and haven't had one yet,
+ * whose window closed within `(endedAfter, endedBefore]` — the completion
+ * sweep's work list. The upper bound is the grace period; the lower bound is
+ * what keeps the sweep from ever announcing history: rows that pre-date the
+ * feature (the column backfills `announce_winner = true` onto every existing
+ * challenge) or that were skipped for days must never fan out as fresh news.
+ * Oldest end first so a backlog drains in order.
  */
 export const listChallengesAwaitingResult = async (
   user: string,
-  endedBefore: Date,
+  window: { endedAfter: Date; endedBefore: Date },
 ): Promise<ChallengeRecord[]> => {
   const result = await query<ChallengeRow>(
     user,
     `SELECT ${CHALLENGE_COLUMNS} FROM challenges
-     WHERE announce_winner = true AND result_published_at IS NULL AND end_ts <= $1
+     WHERE announce_winner = true AND result_published_at IS NULL
+       AND end_ts <= $1 AND end_ts > $2
      ORDER BY end_ts ASC`,
-    [endedBefore],
+    [window.endedBefore, window.endedAfter],
   )
   return result.rows.map(mapChallenge)
 }

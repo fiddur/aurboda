@@ -276,8 +276,10 @@ function HostedRow({ challenge, now }: { challenge: Challenge; now: Date }) {
     onError: () => alert('Failed to update the challenge.'),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['challenges'] }),
   })
-  // Once the window has closed the announcement has been made (or skipped) — nothing left to toggle.
-  const canToggleAnnounce = challengeTimeStatus(challenge.start_ts, challenge.end_ts, now) !== 'ended'
+  // The announcement is made a grace period after the window closes, and the
+  // setting matters right up to then — so gate on the announcement itself
+  // (or its deliberate skip) having happened, not on the end date.
+  const canToggleAnnounce = !challenge.result_published_at
 
   const copy = async () => {
     try {

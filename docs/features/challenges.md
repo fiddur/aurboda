@@ -92,8 +92,11 @@ count — with each **winner tagged** as an ActivityPub `Mention` (and addressed
 `cc`, delivered to their inbox), so the winner's own instance notifies them even when
 they don't follow the host (a post mentioning you is one you're _involved_ in, see
 [feed.md](feed.md#home-timeline-inbound)). A `public` challenge announces publicly; an
-`unlisted` one as an `unlisted` post. Only members who scored make the podium; a
-challenge nobody scored in announces nothing.
+`unlisted` challenge is link-only by the host's choice, and even an `unlisted` post is
+world-readable and would publish the slug (which hands out the join token + member
+list), so its result goes to **followers only** — the tagged winners still get it in
+their inbox. Only members who scored make the podium; a challenge nobody scored in
+announces nothing.
 
 - **Host setting:** `announce_winner` on the challenge (default **true**). In the web
   app: the "Announce the winner to my feed when it ends" checkbox when creating, and an
@@ -104,11 +107,18 @@ challenge nobody scored in announces nothing.
   hosted challenges) announces a challenge once it has been over for a **6-hour grace
   period**, so members' last-day data has had time to sync before the podium is
   frozen. Standings are re-fetched (remote members included) at that moment.
-- **Once only:** `result_published_at` on the challenge is stamped when the
-  announcement is made (or deliberately skipped), so a challenge never announces twice;
-  a failed remote-member fetch leaves it pending for the next sweep. Switching
-  `announce_winner` off before the sweep runs suppresses the post; switching it back on
-  later (still before the grace period is up) re-arms it.
+- **Once only, never retroactively:** `result_published_at` on the challenge is stamped
+  when the announcement is made (or deliberately skipped), so a challenge never
+  announces twice; a failed remote-member fetch leaves it pending for the next sweep.
+  Only challenges that ended within the last **3 days** are ever announced
+  (`MAX_ANNOUNCE_AGE_MS`) — the column backfills `announce_winner = true` onto
+  pre-existing challenges, and without that bound the first sweep after deploy would
+  fan out every challenge that ever finished (federated deliveries can't be recalled).
+  A sweep also publishes at most **20** posts (`MAX_ANNOUNCEMENTS_PER_SWEEP`); the rest
+  wait for the next tick. Switching `announce_winner` off before the sweep runs
+  suppresses the post; switching it back on later (still inside the window) re-arms it.
+  `result_published_at` is exposed on the hosted `Challenge`, and the web toggle stays
+  available until it is set.
 - **Result payload** (`ChallengeResult` on the post's `challenge.result`): a snapshot
   of names, identities, ranks and totals as of the announcement. A winner's identity
   (`<base>/u/<user>`) maps to their actor id (`<base>/users/<user>`) for the `Mention`,

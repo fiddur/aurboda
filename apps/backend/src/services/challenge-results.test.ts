@@ -8,6 +8,8 @@ import {
   buildChallengeResultPost,
   challengeWinners,
   computeChallengeResult,
+  MAX_ANNOUNCE_AGE_MS,
+  MAX_ANNOUNCEMENTS_PER_SWEEP,
   publishFinishedChallengeResults,
   RESULT_GRACE_MS,
   resultPostVisibility,
@@ -111,7 +113,10 @@ describe('buildChallengeResultPost', () => {
       message: null,
       visibility: 'public',
     })
-    expect(resultPostVisibility(challenge({ is_public: false }))).toBe('unlisted')
+  })
+
+  test("an unlisted challenge's result stays off the public outbox (followers only)", () => {
+    expect(resultPostVisibility(challenge({ is_public: false }))).toBe('followers')
   })
 })
 
@@ -145,10 +150,27 @@ describe('publishFinishedChallengeResults', () => {
     return { ...base, claimed, created, delivered }
   }
 
-  test('asks for challenges that ended at least the grace period ago', async () => {
+  test('asks for challenges that ended at least the grace period ago but not longer than the max age', async () => {
     const d = deps()
     await publishFinishedChallengeResults(d)
-    expect(d.listAwaiting).toHaveBeenCalledWith('host', new Date(now.getTime() - RESULT_GRACE_MS))
+    expect(d.listAwaiting).toHaveBeenCalledWith('host', {
+      endedAfter: new Date(now.getTime() - MAX_ANNOUNCE_AGE_MS),
+      endedBefore: new Date(now.getTime() - RESULT_GRACE_MS),
+    })
+  })
+
+  test('announces at most MAX_ANNOUNCEMENTS_PER_SWEEP posts per run, across users', async () => {
+    const many = Array.from({ length: MAX_ANNOUNCEMENTS_PER_SWEEP }, (_, i) => challenge({ id: `c${i}` }))
+    const d = deps({
+      listAwaiting: vi.fn(async () => many),
+      listUsers: vi.fn(async () => ['a', 'b']),
+    })
+    expect(await publishFinishedChallengeResults(d)).toBe(MAX_ANNOUNCEMENTS_PER_SWEEP)
+    expect(d.created).toHaveLength(MAX_ANNOUNCEMENTS_PER_SWEEP)
+    // The second user's challenges were never even listed — they wait for the next tick.
+    expect(d.listUsers).toHaveBeenCalledTimes(1)
+    expect(d.listAwaiting).toHaveBeenCalledTimes(1)
+    expect(d.claimed).toHaveLength(MAX_ANNOUNCEMENTS_PER_SWEEP)
   })
 
   test('claims, posts the result to the host feed and hands it to delivery', async () => {

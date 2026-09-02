@@ -27,6 +27,7 @@ import { Create, Delete, Image, isActor, Mention, Note, Tombstone, Update } from
 
 import type { FeedPostRecord } from '../../db/index.ts'
 
+import { challengeWinners } from '../challenge-results.ts'
 import { getSettings } from '../settings.ts'
 import { articleImageAttachments, renderArticleContentHtml } from './article-object.ts'
 import { identityToActorUri, identityToHandle, renderChallengeShareHtml } from './challenge-object.ts'
@@ -486,8 +487,7 @@ export interface ChallengeMention {
 export const challengeMentions = (challenge: ChallengeShare): ChallengeMention[] => {
   if (challenge.result == null) return []
   const mentions: ChallengeMention[] = []
-  for (const entry of challenge.result.podium) {
-    if (entry.rank !== 1) continue
+  for (const entry of challengeWinners(challenge.result)) {
     const actorUri = identityToActorUri(entry.identity_base_url)
     const handle = identityToHandle(entry.identity_base_url)
     if (actorUri != null && handle != null) {

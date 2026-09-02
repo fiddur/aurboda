@@ -27,6 +27,19 @@ import { buildShareUrl } from './share-urls.ts'
 /** How long after the window closes the result is published (lets late syncs land). */
 export const RESULT_GRACE_MS = 6 * 60 * 60 * 1000
 
+/**
+ * A challenge that ended longer ago than this is never announced. The column
+ * migration backfills `announce_winner = true` onto every existing challenge, so
+ * without this bound the first sweep after deploy would announce every challenge
+ * that ever finished — feed posts, follower fan-out and winner-inbox deliveries
+ * that can't be recalled. It also stops a long-skipped challenge (sweep down,
+ * remote member unreachable for days) from surfacing as stale news.
+ */
+export const MAX_ANNOUNCE_AGE_MS = 3 * 24 * 60 * 60 * 1000
+
+/** Bounded blast radius per sweep: a bug or an unexpectedly wide window can only leak this many posts. */
+export const MAX_ANNOUNCEMENTS_PER_SWEEP = 20
+
 /** Everyone ranked 1–3 makes the podium (a tie for a place keeps all of them). */
 const PODIUM_MAX_RANK = 3
 /** Hard cap on podium entries so a mass tie can't bloat the post. */
@@ -63,9 +76,15 @@ export const computeChallengeResult = (
 export const challengeWinners = (result: ChallengeResult): ChallengeResultEntry[] =>
   result.podium.filter((entry) => entry.rank === 1)
 
-/** A public challenge announces publicly; an unlisted one reaches followers without being listed. */
+/**
+ * A public challenge announces publicly. An unlisted challenge is link-only by
+ * the host's choice, and even an `unlisted` post is world-readable (`as:Public`
+ * in cc, on the outbox) and would publish the slug that hands out the join
+ * token + member list — so its result goes to followers only. The tagged
+ * winners still get it delivered to their inbox either way.
+ */
 export const resultPostVisibility = (challenge: ChallengeRecord): FeedVisibility =>
-  challenge.is_public ? 'public' : 'unlisted'
+  challenge.is_public ? 'public' : 'followers'
 
 /** The completion post: the same link payload a manual share carries, plus the frozen result. */
 export const buildChallengeResultPost = (
@@ -82,8 +101,8 @@ export const buildChallengeResultPost = (
 export interface ChallengeResultsDeps {
   /** Every user whose hosted challenges the sweep should visit. */
   listUsers: () => Promise<string[]>
-  /** A user's hosted challenges that ended at or before the cutoff and still await their announcement. */
-  listAwaiting: (user: string, endedBefore: Date) => Promise<ChallengeRecord[]>
+  /** A user's hosted challenges that ended within the window and still await their announcement. */
+  listAwaiting: (user: string, window: { endedAfter: Date; endedBefore: Date }) => Promise<ChallengeRecord[]>
   /** Fresh standings for a challenge (remote members re-fetched). */
   standings: (user: string, challenge: ChallengeRecord) => Promise<ChallengeStanding[]>
   /** Mark the challenge announced; false when another sweep already claimed it. */
@@ -97,25 +116,33 @@ export interface ChallengeResultsDeps {
 
 /**
  * One sweep: for every user, announce each hosted challenge that closed at
- * least `RESULT_GRACE_MS` ago. The claim happens before the post is created so
- * a challenge is announced at most once even if sweeps overlap; a challenge
+ * least `RESULT_GRACE_MS` ago and no more than `MAX_ANNOUNCE_AGE_MS` ago — no
+ * retroactive announcements, ever. The claim happens before the post is created
+ * so a challenge is announced at most once even if sweeps overlap; a challenge
  * whose standings fetch fails stays pending and is retried next sweep. A
  * challenge nobody scored in is claimed without a post (nothing to announce,
- * and no point re-checking it forever). Returns how many posts were published.
+ * and no point re-checking it forever). At most `MAX_ANNOUNCEMENTS_PER_SWEEP`
+ * posts per run; anything beyond waits for the next tick. Returns how many
+ * posts were published.
  */
 export const publishFinishedChallengeResults = async (deps: ChallengeResultsDeps): Promise<number> => {
   const now = deps.now?.() ?? new Date()
-  const endedBefore = new Date(now.getTime() - RESULT_GRACE_MS)
+  const window = {
+    endedAfter: new Date(now.getTime() - MAX_ANNOUNCE_AGE_MS),
+    endedBefore: new Date(now.getTime() - RESULT_GRACE_MS),
+  }
   let published = 0
   for (const user of await deps.listUsers()) {
+    if (published >= MAX_ANNOUNCEMENTS_PER_SWEEP) break
     let awaiting: ChallengeRecord[]
     try {
-      awaiting = await deps.listAwaiting(user, endedBefore)
+      awaiting = await deps.listAwaiting(user, window)
     } catch (error) {
       auditError(user, 'data', 'Challenge result sweep could not list challenges', { error: String(error) })
       continue
     }
     for (const challenge of awaiting) {
+      if (published >= MAX_ANNOUNCEMENTS_PER_SWEEP) break
       try {
         const result = computeChallengeResult(await deps.standings(user, challenge), challenge.spec.unit)
         if (!(await deps.claim(user, challenge.id))) continue

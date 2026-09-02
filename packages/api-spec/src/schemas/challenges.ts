@@ -104,6 +104,10 @@ export const challengeSchema = z
     end_ts: z.string().meta({ description: 'End instant, exclusive (ISO 8601)' }),
     id: z.string().uuid().meta({ description: 'Challenge ID' }),
     name: challengeNameSchema,
+    result_published_at: z.string().nullable().optional().meta({
+      description:
+        'When the final standings were announced to the feed (or the announcement was deliberately skipped); null while still pending',
+    }),
     share_url: z.string().meta({ description: 'Absolute URL of the challenge' }),
     slug: z.string().meta({ description: 'URL-safe public slug' }),
     spec: challengeSpecSchema,

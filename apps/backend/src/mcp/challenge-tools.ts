@@ -42,6 +42,7 @@ const serialize = (record: ChallengeRecord, webHost: string | undefined, user: s
   end_ts: record.end_ts.toISOString(),
   id: record.id,
   name: record.name,
+  result_published_at: record.result_published_at?.toISOString() ?? null,
   share_url: webHost ? buildShareUrl(webHost, user, record.slug) : undefined,
   slug: record.slug,
   spec: specToApi(record.spec),

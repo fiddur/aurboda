@@ -15,6 +15,7 @@
  */
 import type { ChallengeResult, ChallengeResultEntry, ChallengeShare } from '@aurboda/api-spec'
 
+import { challengeWinners } from '../challenge-results.ts'
 import { escapeXml } from '../charts/chart-svg.ts'
 import { renderProse } from './article-object.ts'
 
@@ -82,7 +83,7 @@ const mentionHtml = (entry: ChallengeResultEntry): string => {
 /** The result block of a completion post: winner line (mentions), runners-up, member count. */
 export const renderChallengeResultHtml = (result: ChallengeResult): string => {
   const unit = escapeXml(result.unit)
-  const winners = result.podium.filter((entry) => entry.rank === 1)
+  const winners = challengeWinners(result)
   const parts: string[] = []
   if (winners.length === 1) {
     parts.push(`<p>🏆 Winner: ${mentionHtml(winners[0])} with ${formatTotal(winners[0].total)} ${unit}</p>`)
