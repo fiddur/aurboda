@@ -3,7 +3,14 @@ import { useCallback, useState } from 'preact/hooks'
 
 import { fetchUserSettings, type UpdateSettingsInput, updateUserSettings } from '../../state/api'
 import { auth } from '../../state/auth'
-import { DataTypesList, LoginRequired, type SaveStatus, SaveStatusIndicator, StatusBanner } from './shared'
+import {
+  DataTypesList,
+  LoginRequired,
+  type SaveStatus,
+  SaveStatusIndicator,
+  StatusBanner,
+  SyncIntervalField,
+} from './shared'
 import './style.css'
 
 const DATA_TYPES = ['Music scrobbles']
@@ -88,36 +95,39 @@ export function LastFmSource() {
         </div>
 
         {!isLoading && (
-          <section class="settings-section">
-            <div class="section-header-row">
-              <h2>Username</h2>
-              <SaveStatusIndicator state={saveStatus} />
-            </div>
-            {userSettings?.lastfm_configured === false ? (
-              <p class="field-description warning">
-                Last.fm API key is not configured on the server. Ask your administrator to configure the
-                Last.fm API key in Admin Settings.
-              </p>
-            ) : (
-              <div class="form-field">
-                {isConfigured && <p class="connected-status">Configured</p>}
-                <input
-                  type="text"
-                  value={lastfmUsername}
-                  onInput={(e) => setLastfmUsername((e.target as HTMLInputElement).value)}
-                  onBlur={handleLastfmUsernameBlur}
-                  placeholder="Enter your Last.fm username"
-                />
-                <p class="field-description">
-                  Enter your Last.fm username to sync scrobbles. Find your username on your{' '}
-                  <a href="https://www.last.fm/user/_" target="_blank" rel="noopener noreferrer">
-                    Last.fm profile
-                  </a>
-                  . Saves automatically when you leave the field.
-                </p>
+          <>
+            <section class="settings-section">
+              <div class="section-header-row">
+                <h2>Username</h2>
+                <SaveStatusIndicator state={saveStatus} />
               </div>
-            )}
-          </section>
+              {userSettings?.lastfm_configured === false ? (
+                <p class="field-description warning">
+                  Last.fm API key is not configured on the server. Ask your administrator to configure the
+                  Last.fm API key in Admin Settings.
+                </p>
+              ) : (
+                <div class="form-field">
+                  {isConfigured && <p class="connected-status">Configured</p>}
+                  <input
+                    type="text"
+                    value={lastfmUsername}
+                    onInput={(e) => setLastfmUsername((e.target as HTMLInputElement).value)}
+                    onBlur={handleLastfmUsernameBlur}
+                    placeholder="Enter your Last.fm username"
+                  />
+                  <p class="field-description">
+                    Enter your Last.fm username to sync scrobbles. Find your username on your{' '}
+                    <a href="https://www.last.fm/user/_" target="_blank" rel="noopener noreferrer">
+                      Last.fm profile
+                    </a>
+                    . Saves automatically when you leave the field.
+                  </p>
+                </div>
+              )}
+            </section>
+            <SyncIntervalField provider="lastfm" />
+          </>
         )}
       </div>
     </div>

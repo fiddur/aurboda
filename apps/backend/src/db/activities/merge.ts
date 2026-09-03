@@ -21,6 +21,7 @@ export const CROSS_MERGE_SOURCES = new Set([
   'aurboda',
   'deduction-rule',
   'garmin',
+  'gravl',
   'health_connect',
   'manual',
   'oura',
@@ -37,6 +38,7 @@ const CROSS_MERGEABLE_CATEGORIES = new Set(['exercise', 'meditation', 'wellness'
  *   oura — activity detection is inferred from sensors, not explicit
  *   strava — explicit exercise entry, but usually downstream of Garmin
  *   garmin — raw device data, richest metrics
+ *   gravl — the user's own log of a strength session (sets), explicit like a manual entry
  *   deduction-rule / manual — explicit user intent
  *   aurboda — edited inside the app, most authoritative
  */
@@ -45,9 +47,10 @@ const SOURCE_PRIORITY: Record<string, number> = {
   oura: 2,
   strava: 3,
   garmin: 4,
-  'deduction-rule': 5,
-  manual: 6,
-  aurboda: 7,
+  gravl: 5,
+  'deduction-rule': 6,
+  manual: 7,
+  aurboda: 8,
 }
 
 const getEffectivePriority = (a: Activity): number => {

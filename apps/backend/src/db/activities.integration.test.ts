@@ -3,7 +3,10 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import {
+  adoptLegacyActivity,
   deleteActivity,
+  deleteGarminActivityWithWrongType,
+  findActivityByExternalId,
   getActivities,
   getActivityById,
   getActivitiesNeedingDetail,
@@ -1048,6 +1051,154 @@ describe('Activities Integration Tests', () => {
       const result = await getNonSleepActivitiesMerged(user, dayStart, dayEnd)
 
       expect(result.map((a) => a.activity_type)).toEqual(['exercise'])
+    })
+  })
+  describe('adoptLegacyActivity (#1080)', () => {
+    const start = new Date('2026-09-03T05:16:21Z')
+
+    test('re-sources a legacy garmin row by garmin_activity_id and the upsert then enriches it', async () => {
+      const user = getTestUser()
+      const legacyId = await insertActivity(user, {
+        activity_type: 'strength_training',
+        data: { calories: 250, garmin_activity_id: 24218667980 },
+        end_time: new Date('2026-09-03T05:43:57Z'),
+        source: 'garmin',
+        start_time: start,
+        title: 'Strength',
+      })
+
+      const adopted = await adoptLegacyActivity(
+        user,
+        { external_id: 'garmin-activity-24218667980', source: 'garmin' },
+        [{ garmin_activity_id: 24218667980, kind: 'garmin_activity_id' }],
+      )
+      expect(adopted).toBe(legacyId)
+
+      await insertActivity(user, {
+        activity_type: 'strength_training',
+        data: { metadata: { clientRecordId: '24218667980' } },
+        end_time: new Date('2026-09-03T05:43:57Z'),
+        external_id: 'garmin-activity-24218667980',
+        source: 'garmin',
+        start_time: start,
+        title: 'Strength',
+      })
+
+      const rows = await getActivities(user, 'strength_training', new Date('2026-09-03'), new Date('2026-09-04'))
+      expect(rows).toHaveLength(1)
+      expect(rows[0].id).toBe(legacyId)
+      expect(rows[0].external_id).toBe('garmin-activity-24218667980')
+      expect(rows[0].data).toMatchObject({ calories: 250, garmin_activity_id: 24218667980 })
+      expect(rows[0].data?.metadata).toEqual({ clientRecordId: '24218667980' })
+    })
+
+    test('re-sources a legacy health_connect row by its HC client record', async () => {
+      const user = getTestUser()
+      const legacyId = await insertActivity(user, {
+        activity_type: 'strength_training',
+        data: {
+          metadata: { clientRecordId: 'gravl-session-abc', dataOrigin: 'com.liteup.getgains', id: 'hc-1' },
+        },
+        source: 'health_connect',
+        start_time: start,
+      })
+
+      const adopted = await adoptLegacyActivity(
+        user,
+        { external_id: 'gravl-workout-abc', source: 'gravl' },
+        [{ client_record_id: 'gravl-session-abc', data_origin: 'com.liteup.getgains', kind: 'hc_client_record' }],
+      )
+      expect(adopted).toBe(legacyId)
+      const row = await getActivityById(user, legacyId!)
+      expect(row?.source).toBe('gravl')
+      expect(row?.external_id).toBe('gravl-workout-abc')
+    })
+
+    test('tries matchers in order and ignores deleted, keyed and already-claimed rows', async () => {
+      const user = getTestUser()
+      const identity = { external_id: 'garmin-activity-1', source: 'garmin' }
+
+      // A soft-deleted legacy row is never adopted.
+      const deletedId = await insertActivity(user, {
+        activity_type: 'running',
+        data: { garmin_activity_id: 1 },
+        source: 'garmin',
+        start_time: start,
+      })
+      await deleteActivity(user, deletedId!)
+      expect(
+        await adoptLegacyActivity(user, identity, [{ garmin_activity_id: 1, kind: 'garmin_activity_id' }]),
+      ).toBeNull()
+
+      // Falls through to the second matcher.
+      const hcId = await insertActivity(user, {
+        activity_type: 'running',
+        data: { metadata: { clientRecordId: '1', dataOrigin: 'com.garmin.android.apps.connectmobile' } },
+        source: 'health_connect',
+        start_time: new Date('2026-09-03T06:00:00Z'),
+      })
+      expect(
+        await adoptLegacyActivity(user, identity, [
+          { garmin_activity_id: 1, kind: 'garmin_activity_id' },
+          { client_record_id: '1', data_origin: 'com.garmin.android.apps.connectmobile', kind: 'hc_client_record' },
+        ]),
+      ).toBe(hcId)
+
+      // Once the identity exists nothing else is adopted, even an exact type+start match.
+      const otherId = await insertActivity(user, {
+        activity_type: 'running',
+        source: 'health_connect',
+        start_time: new Date('2026-09-03T06:00:00Z'),
+      })
+      expect(
+        await adoptLegacyActivity(user, identity, [
+          {
+            activity_type: 'running',
+            kind: 'source_type_start',
+            source: 'health_connect',
+            start_time: new Date('2026-09-03T06:00:00Z'),
+          },
+        ]),
+      ).toBeNull()
+      expect((await getActivityById(user, otherId!))?.source).toBe('health_connect')
+    })
+  })
+
+  describe('deleteGarminActivityWithWrongType', () => {
+    test('deletes only legacy rows without an external_id', async () => {
+      const user = getTestUser()
+      const legacyId = await insertActivity(user, {
+        activity_type: 'exercise',
+        data: { garmin_activity_id: 7 },
+        source: 'garmin',
+        start_time: new Date('2026-09-03T05:00:00Z'),
+      })
+      const keyedId = await insertActivity(user, {
+        activity_type: 'exercise',
+        data: { garmin_activity_id: 8 },
+        external_id: 'garmin-activity-8',
+        source: 'garmin',
+        start_time: new Date('2026-09-03T06:00:00Z'),
+      })
+
+      expect(await deleteGarminActivityWithWrongType(user, 7, 'meditation')).toBe(legacyId)
+      expect(await deleteGarminActivityWithWrongType(user, 8, 'meditation')).toBeNull()
+      expect(await getActivityById(user, keyedId!)).not.toBeNull()
+    })
+  })
+  describe('findActivityByExternalId', () => {
+    test('returns the live row for a provider identity and null otherwise', async () => {
+      const user = getTestUser()
+      const id = await insertActivity(user, {
+        activity_type: 'strength_training',
+        external_id: 'gravl-workout-abc',
+        source: 'gravl',
+        start_time: new Date('2026-09-03T05:16:21Z'),
+      })
+      expect((await findActivityByExternalId(user, 'gravl', 'gravl-workout-abc'))?.id).toBe(id)
+      expect(await findActivityByExternalId(user, 'garmin', 'gravl-workout-abc')).toBeNull()
+      await deleteActivity(user, id!)
+      expect(await findActivityByExternalId(user, 'gravl', 'gravl-workout-abc')).toBeNull()
     })
   })
 })

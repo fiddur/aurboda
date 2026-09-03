@@ -1,11 +1,12 @@
 /**
  * Per-provider OAuth/auth endpoints: Oura connect+callback, Garmin login/MFA/disconnect,
- * Strava connect+callback+disconnect. Uses each integration's client + the central DB
+ * Strava connect+callback+disconnect, Gravl connect+callback+disconnect. Uses each integration's client + the central DB
  * for credential mapping cleanup.
  */
 import type { Express } from 'express'
 
 import type { GarminClient } from '../integrations/garmin/client.ts'
+import type { GravlClient } from '../integrations/gravl/client.ts'
 import type { ouraClient } from '../integrations/oura/client.ts'
 import type { StravaClient } from '../integrations/strava/client.ts'
 
@@ -21,6 +22,7 @@ interface OAuthRoutesDeps {
   authMiddleware: AnyMiddleware
   centralDb: CentralDb
   garmin: GarminClient
+  gravl: GravlClient
   oura: OuraClient
   strava: StravaClient
 }
@@ -30,6 +32,7 @@ export const registerOAuthRoutes = ({
   authMiddleware,
   centralDb,
   garmin,
+  gravl,
   oura,
   strava,
 }: OAuthRoutesDeps): void => {
@@ -101,6 +104,22 @@ export const registerOAuthRoutes = ({
       // Clear tokens and athlete mapping
       await upsertOAuthToken(user, { access_token: '', provider: 'strava' })
       await centralDb.deleteStravaAthleteMappingByUsername(user)
+      res.json({ success: true })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Disconnect failed'
+      res.status(500).json({ error: message, success: false })
+    }
+  })
+
+  // Gravl (OAuth + PKCE; always registered — credentials checked dynamically).
+  // A personal token needs no route: it is a plain user setting.
+  httpd.get('/auth/gravl/connect', authMiddleware, gravl.getAuthorizeUrl)
+  httpd.get('/auth/gravlcb', gravl.authCb)
+
+  httpd.post('/auth/gravl/disconnect', authMiddleware, async (req, res) => {
+    const user = req.user!
+    try {
+      await gravl.disconnect(user)
       res.json({ success: true })
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Disconnect failed'

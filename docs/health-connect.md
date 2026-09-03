@@ -100,6 +100,23 @@ The app uses Health Connect's **Changes API** with token-based tracking:
 4. Deleted records are reported to `POST /api/sync/deletions`
 5. Backend processes each record: stores raw JSON, extracts metrics to time series, creates activities for exercise/sleep
 
+### Source identity
+
+Some apps that write to Health Connect are also synced directly by Aurboda, and their records carry the app's own id in `metadata.clientRecordId`. Rather than storing such a session as a `health_connect` activity and letting the provider sync add a second row, the backend stores it **as the provider's activity** ([#1080](https://github.com/fiddur/aurboda/issues/1080)):
+
+| Record                | `metadata.dataOrigin`                   | `metadata.clientRecordId`     | Stored as                                              |
+| --------------------- | --------------------------------------- | ----------------------------- | ------------------------------------------------------ |
+| ExerciseSessionRecord | `com.liteup.getgains` (Gravl)           | `gravl-session-<uuid>`        | `source = 'gravl'`, `external_id = 'gravl-workout-<uuid>'` |
+| ExerciseSessionRecord | `com.garmin.android.apps.connectmobile` | Garmin `activityId`           | `source = 'garmin'`, `external_id = 'garmin-activity-<id>'`, `data.garmin_activity_id` |
+| SleepSessionRecord    | `com.garmin.android.apps.connectmobile` | epoch ms of local midnight    | `source = 'garmin'`, `external_id = 'garmin-sleep-<YYYY-MM-DD>'` |
+| anything else         |                                         |                               | `source = 'health_connect'` (unchanged)                |
+
+The Garmin sleep date comes from the client record id plus the offset in the record's own `startTime`; if Garmin ever keys sleep differently the row simply falls back to a plain `garmin` row at the same start, still merged at query time.
+
+The provider's own sync then upserts onto the **same row** (`ON CONFLICT (source, external_id)`) and enriches it: Gravl adds the sets, Garmin adds distance/calories/HR and the per-second detail. Rows written before this existed (no `external_id`) are claimed rather than duplicated: a `garmin` row with the same `garmin_activity_id`, a `health_connect` row with the same client record, or one at the same type and start time.
+
+Each recognised session also enqueues a **source enrichment** job so the provider is asked for that session right away instead of at the next poll (one minute delay, retried with backoff; Garmin jobs collapse to one sync per kind per user). Health Connect deletions only remove `health_connect` rows; a re-sourced row belongs to its provider and stays. Nothing is merged or deleted retroactively — pairs that existed before are still hidden by the query-time cross-source merge.
+
 ### Activity notes
 
 `ExerciseSessionRecord.notes` (and the same field on sleep records) are not kept on the activity row itself. They are persisted as rows in the `notes` table with `source = 'health_connect'`, anchored to the activity's id. This means:

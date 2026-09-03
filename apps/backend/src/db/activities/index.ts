@@ -16,6 +16,7 @@ export {
 export { backfillSuperseded, materializeSuperseded } from './supersession.ts'
 
 export {
+  adoptLegacyActivity,
   deleteActivity,
   deleteGarminActivityWithWrongType,
   hardDeleteActivitiesByExternalIdPrefix,
@@ -36,6 +37,7 @@ export {
 
 export {
   checkActivityConflict,
+  findActivityByExternalId,
   findMergeableActivity,
   getActivities,
   getActivitiesByCategory,

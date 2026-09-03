@@ -125,10 +125,12 @@ export {
 
 // Activities
 export {
+  adoptLegacyActivity,
   checkActivityConflict,
   deleteActivity,
   deleteGarminActivityWithWrongType,
   softDeleteActivityByExternalId,
+  findActivityByExternalId,
   findMergeableActivity,
   findMergedGroupForActivity,
   getActivities,

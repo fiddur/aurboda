@@ -10,6 +10,7 @@ import {
   fetchUserSettings,
 } from '../../state/api'
 import { auth } from '../../state/auth'
+import { SyncIntervalField } from './shared'
 import './style.css'
 
 interface SourceInfo {
@@ -108,6 +109,7 @@ export function DataSources() {
   const isOuraConnected = settingsQuery.data?.oura_connected ?? false
   const isGarminConnected = settingsQuery.data?.garmin_connected ?? false
   const isStravaConnected = settingsQuery.data?.strava_connected ?? false
+  const isGravlConnected = !!settingsQuery.data?.gravl_connection
   const isRescueTimeConfigured = !!settingsQuery.data?.rescue_time_key
   const hasLastfm = !!settingsQuery.data?.lastfm_username
   const hasCalendars = (settingsQuery.data?.calendars ?? []).length > 0
@@ -165,6 +167,13 @@ export function DataSources() {
       name: 'Strava',
       path: '/data-sources/strava',
       statusText: isStravaConnected ? 'Connected' : 'Not connected',
+    },
+    {
+      dataTypes: 'Strength workouts: exercises, sets, weight, reps, RPE',
+      isConnected: isGravlConnected,
+      name: 'Gravl',
+      path: '/data-sources/gravl',
+      statusText: isGravlConnected ? 'Connected' : 'Not connected',
     },
     {
       dataTypes: 'App and window usage on desktop',
@@ -234,6 +243,8 @@ export function DataSources() {
           <SourceCard key={source.path} source={source} />
         ))}
       </div>
+
+      <SyncIntervalField provider="default" />
 
       <section class="getting-started-tips">
         <h2>Tips</h2>

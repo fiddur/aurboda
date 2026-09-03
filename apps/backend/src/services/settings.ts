@@ -217,6 +217,7 @@ const settingsWithDefaultsSchema = userSettingsResponseSchema.pick({
   rescue_time_key: true,
   sensitivity_areas: true,
   sex: true,
+  sync_intervals: true,
   tag_icons: true,
   tag_mappings: true,
   timeline_show_replies: true,
@@ -245,6 +246,13 @@ export const getSettingsResponse = async (user: string): Promise<SettingsRespons
   const stravaConfigured =
     !!(await centralDb.getServerSetting('strava_client_id')) &&
     !!(await centralDb.getServerSetting('strava_client_secret'))
+  const gravlConfigured =
+    !!(await centralDb.getServerSetting('gravl_client_id')) &&
+    !!(await centralDb.getServerSetting('gravl_client_secret'))
+  const gravlToken = await getOAuthToken(user, 'gravl')
+  // Mirrors the client's credential order: an OAuth grant wins over a pasted token.
+  const gravlConnection =
+    gravlToken !== null && gravlToken.access_token !== '' ? 'oauth' : settings.gravl_api_token ? 'token' : null
 
   const goals = await getEffectiveGoals(user)
 
@@ -252,6 +260,8 @@ export const getSettingsResponse = async (user: string): Promise<SettingsRespons
     ...withDefaults(settings),
     garmin_connected: garminToken !== null && garminToken.access_token !== '',
     goals,
+    gravl_configured: gravlConfigured,
+    gravl_connection: gravlConnection,
     hr_zone_start: zones,
     hr_zone_start_source: source,
     lastfm_configured: lastFmConfigured,
@@ -273,6 +283,8 @@ const buildErrorSettingsResponse = async (errorMessage: string): Promise<Setting
     ...settingsWithDefaultsSchema.parse({}),
     error: errorMessage,
     goals: defaultGoals,
+    gravl_configured: false,
+    gravl_connection: null,
     hr_zone_start: calculateDefaultHrZones(null),
     hr_zone_start_source: 'default' as const,
     lastfm_configured: lastFmConfigured,

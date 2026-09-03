@@ -12,6 +12,7 @@ import type { GarminActivityDetailResponse } from './client.ts'
 
 import {
   activityTypeExists,
+  adoptLegacyActivity,
   getTimeSeries,
   insertLocations,
   insertRawRecord,
@@ -43,6 +44,7 @@ describe('Garmin resync integration', () => {
 
   const realDeps = {
     activityTypeExists,
+    adoptLegacyActivity,
     auditError,
     auditInfo,
     auditWarn,

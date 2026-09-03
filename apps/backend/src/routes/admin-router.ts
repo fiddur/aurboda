@@ -47,6 +47,8 @@ export const createAdminRouter = (
         stravaClientSecret,
         ouraWebhookAvailable,
         sentryDsn,
+        gravlClientId,
+        gravlClientSecret,
       ] = await Promise.all([
         centralDb.getSignupMode(),
         centralDb.getAdminCount(),
@@ -59,10 +61,14 @@ export const createAdminRouter = (
         centralDb.getServerSetting('strava_client_secret'),
         ouraWebhookManager ? ouraWebhookManager.canEnable() : Promise.resolve(false),
         centralDb.getServerSetting('sentry_dsn'),
+        centralDb.getServerSetting('gravl_client_id'),
+        centralDb.getServerSetting('gravl_client_secret'),
       ])
       res.json({
         admin_count: adminCount,
         audit_log_retention_days: auditLogRetentionDays,
+        gravl_client_id_set: !!gravlClientId,
+        gravl_client_secret_set: !!gravlClientSecret,
         lastfm_api_key_set: !!lastFmApiKey,
         oura_client_id_set: !!ouraClientId,
         oura_client_secret_set: !!ouraClientSecret,
@@ -88,6 +94,8 @@ export const createAdminRouter = (
     async (req, res) => {
       const {
         audit_log_retention_days,
+        gravl_client_id,
+        gravl_client_secret,
         lastfm_api_key,
         oura_client_id,
         oura_client_secret,
@@ -131,6 +139,12 @@ export const createAdminRouter = (
       if (sentry_dsn !== undefined) {
         await centralDb.setServerSetting('sentry_dsn', sentry_dsn ?? '')
       }
+      if (gravl_client_id !== undefined) {
+        await centralDb.setServerSetting('gravl_client_id', gravl_client_id ?? '')
+      }
+      if (gravl_client_secret !== undefined) {
+        await centralDb.setServerSetting('gravl_client_secret', gravl_client_secret ?? '')
+      }
       const [
         currentMode,
         adminCount,
@@ -143,6 +157,8 @@ export const createAdminRouter = (
         currentStravaClientSecret,
         ouraWebhookAvailable,
         currentSentryDsn,
+        currentGravlClientId,
+        currentGravlClientSecret,
       ] = await Promise.all([
         centralDb.getSignupMode(),
         centralDb.getAdminCount(),
@@ -155,10 +171,14 @@ export const createAdminRouter = (
         centralDb.getServerSetting('strava_client_secret'),
         ouraWebhookManager ? ouraWebhookManager.canEnable() : Promise.resolve(false),
         centralDb.getServerSetting('sentry_dsn'),
+        centralDb.getServerSetting('gravl_client_id'),
+        centralDb.getServerSetting('gravl_client_secret'),
       ])
       res.json({
         admin_count: adminCount,
         audit_log_retention_days: currentRetentionDays,
+        gravl_client_id_set: !!currentGravlClientId,
+        gravl_client_secret_set: !!currentGravlClientSecret,
         lastfm_api_key_set: !!lastFmApiKey,
         oura_client_id_set: !!currentOuraClientId,
         oura_client_secret_set: !!currentOuraClientSecret,

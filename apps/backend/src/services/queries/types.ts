@@ -90,6 +90,8 @@ export interface SyncProvider {
   syncCalendarsIfNeeded: (user: string) => Promise<void>
   /** Sync Last.fm scrobbles if stale */
   syncLastFmIfNeeded: (user: string) => Promise<void>
+  /** Sync Gravl workouts if stale */
+  syncGravlIfNeeded: (user: string) => Promise<void>
 }
 
 export interface MetricDataPoint {

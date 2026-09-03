@@ -7,10 +7,12 @@
 import type { Express } from 'express'
 
 import type { GarminClient } from '../integrations/garmin/client.ts'
+import type { GravlClient } from '../integrations/gravl/client.ts'
 import type { ouraClient } from '../integrations/oura/client.ts'
 import type { CalorieQueue } from '../services/calorie-queue.ts'
 import type { CentralDb } from '../services/central-db.ts'
 import type { ActivityNotifier } from '../services/deduction-queue.ts'
+import type { SourceEnrichQueue } from '../services/source-enrich-queue.ts'
 import type { StravaQueue } from '../services/strava-queue.ts'
 import type { AnyMiddleware } from '../typed-router.ts'
 
@@ -30,6 +32,7 @@ import {
 } from '../db/index.ts'
 import { processActivityWatchEvents } from '../integrations/activitywatch/sync.ts'
 import { syncAllGarminData } from '../integrations/garmin/sync.ts'
+import { getGravlSyncStates, resetGravlSyncState, syncGravlWorkouts } from '../integrations/gravl/sync.ts'
 import { syncAllCalendars } from '../integrations/ical/sync.ts'
 import { syncLastFmData } from '../integrations/lastfm/sync.ts'
 import { syncAllOuraData } from '../integrations/oura/sync.ts'
@@ -47,8 +50,10 @@ interface SyncSetupDeps {
   centralDb: CentralDb
   oura: OuraClient
   garmin: GarminClient
+  gravl: GravlClient
   stravaQueue: StravaQueue | null
   calorieQueue: CalorieQueue | null
+  sourceEnrichQueue: SourceEnrichQueue | null
   activityNotifier: ActivityNotifier
 }
 
@@ -58,8 +63,10 @@ export const mountSyncRouter = ({
   centralDb,
   oura,
   garmin,
+  gravl,
   stravaQueue,
   calorieQueue,
+  sourceEnrichQueue,
   activityNotifier,
 }: SyncSetupDeps): void => {
   // Transform SyncState to ProviderSyncStatus format (undefined -> null)
@@ -151,6 +158,12 @@ export const mountSyncRouter = ({
         syncLastFm: transformLastFmSyncResult,
         syncOura: transformOuraSyncResults,
         syncRescueTime: transformRescueTimeSyncResult,
+        syncGravl: (user, options) => syncGravlWorkouts(user, gravl, options),
+        getGravlSyncStates,
+        resetGravlSyncState,
+        onSourceArrivals: sourceEnrichQueue
+          ? (user, arrivals) => void sourceEnrichQueue.enqueue(user, arrivals)
+          : undefined,
         triggerCalorieComputation: (user: string, start: Date, end: Date) =>
           triggerCalorieComputation(user, start, end),
         enqueueCalorieComputation: calorieQueue?.enqueueComputation,

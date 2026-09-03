@@ -189,6 +189,23 @@ export const getSleepSessions = async (user: string, start: Date, end: Date): Pr
  * per-second detail data synced yet. Includes merged activities (source may be
  * 'health_connect' or 'aurboda' after merging).
  */
+/** Look up a non-deleted activity by its provider identity, e.g. `('gravl', 'gravl-workout-<uuid>')`. */
+export const findActivityByExternalId = async (
+  user: string,
+  source: string,
+  externalId: string,
+): Promise<Activity | null> => {
+  const result = await query(
+    user,
+    `SELECT ${ACTIVITY_COLUMNS_ALIAS}
+     FROM activities a
+     WHERE a.source = $1 AND a.external_id = $2 AND a.deleted_at IS NULL
+     LIMIT 1`,
+    [source, externalId],
+  )
+  return result.rows.length > 0 ? mapActivityRow(result.rows[0]) : null
+}
+
 export const getActivitiesNeedingDetail = async (
   user: string,
   { forceAll = false, limit = 10 }: { forceAll?: boolean; limit?: number } = {},

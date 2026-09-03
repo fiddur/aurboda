@@ -25,6 +25,7 @@ const makeHangingSync = (): { sync: SyncProvider; calls: string[] } => {
       return never()
     }),
     syncLastFmIfNeeded: vi.fn(() => never()),
+    syncGravlIfNeeded: vi.fn(() => never()),
   }
   return { sync, calls }
 }
@@ -49,6 +50,7 @@ describe('triggerCorrelationSyncs', () => {
       syncRescueTimeIfNeeded: vi.fn(resolve),
       syncCalendarsIfNeeded: vi.fn(resolve),
       syncLastFmIfNeeded: vi.fn(resolve),
+      syncGravlIfNeeded: vi.fn(resolve),
     }
     triggerCorrelationSyncs(sync, 'user-1')
     // allSettled must absorb the rejection: awaiting the same set here must not

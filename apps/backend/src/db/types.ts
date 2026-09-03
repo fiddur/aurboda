@@ -104,6 +104,19 @@ export interface Activity {
   override_target_ids?: string[]
 }
 
+/**
+ * How to find an activity row written before external ids existed, so it can
+ * be claimed for a `(source, external_id)` identity instead of duplicated
+ * (#1080). Every matcher implies `external_id IS NULL AND deleted_at IS NULL`.
+ */
+export type LegacyMatch =
+  /** A `garmin` row keyed only by `data.garmin_activity_id`. */
+  | { kind: 'garmin_activity_id'; garmin_activity_id: number }
+  /** A `health_connect` row whose HC metadata names this origin + client record. */
+  | { kind: 'hc_client_record'; data_origin: string; client_record_id: string }
+  /** A row of the given source at exactly this type + start (HC re-sending an older record). */
+  | { kind: 'source_type_start'; source: string; activity_type: string; start_time: Date }
+
 export interface MergedActivity extends Activity {
   source_ids?: string[] // only set when 2+ activities were merged
 }
@@ -490,7 +503,16 @@ export interface UserSettings {
   tag_mappings?: Record<string, string> // Tag name mappings from UUIDs to display names
   training_load?: TrainingLoadSettings // Training load (Banister model) parameters
   garmin_disabled_data_types?: GarminDataType[] // Garmin data types to skip during sync
+  gravl_api_token?: string // Gravl personal access token (used when no OAuth grant exists)
+  sync_intervals?: SyncIntervals // Per-provider background poll intervals in minutes, `default` as fallback
 }
+
+/**
+ * Background sync poll intervals in minutes, keyed by provider
+ * (`gravl`, `garmin`, `oura`, `rescuetime`, `lastfm`, `calendar`) with
+ * `default` as the fallback for providers without an explicit entry.
+ */
+export type SyncIntervals = Partial<Record<string, number>>
 
 // ============================================================================
 // MCP Sessions

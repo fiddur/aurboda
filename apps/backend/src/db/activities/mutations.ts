@@ -5,7 +5,7 @@
  */
 import format from 'pg-format'
 
-import type { Activity, ActivityUpdate } from '../types.ts'
+import type { Activity, ActivityUpdate, LegacyMatch } from '../types.ts'
 
 import { query } from '../connection.ts'
 import { buildDynamicUpdate, type UpdateEntry } from '../dynamic-update.ts'
@@ -394,9 +394,13 @@ export const updateActivity = async (
 }
 
 /**
- * Delete a Garmin activity that has the given garmin_activity_id but a different activity_type.
- * Used during re-sync to prevent duplicates when the type mapping changes
- * (e.g., meditation activities previously imported as exercise).
+ * Delete a legacy Garmin activity (no `external_id`) that has the given
+ * garmin_activity_id but a different activity_type. Used during re-sync to
+ * prevent duplicates when the type mapping changes (e.g., meditation
+ * activities previously imported as exercise). Rows keyed by `external_id`
+ * are left alone: the external-id upsert overwrites `activity_type` in place,
+ * and deleting them would also take the enriched Health Connect data and
+ * any notes with them (#1080).
  */
 export const deleteGarminActivityWithWrongType = async (
   user: string,
@@ -407,6 +411,7 @@ export const deleteGarminActivityWithWrongType = async (
     user,
     `DELETE FROM activities
      WHERE source = 'garmin'
+       AND external_id IS NULL
        AND (data->>'garmin_activity_id')::bigint = $1
        AND activity_type != $2
        AND deleted_at IS NULL
@@ -414,6 +419,60 @@ export const deleteGarminActivityWithWrongType = async (
     [garminActivityId, correctType],
   )
   return result.rows.length > 0 ? (result.rows[0].id as string) : null
+}
+
+const legacyMatchSql = (match: LegacyMatch, params: unknown[]): string => {
+  switch (match.kind) {
+    case 'garmin_activity_id':
+      params.push(match.garmin_activity_id)
+      return `source = 'garmin' AND (data->>'garmin_activity_id') = $${params.length}::text`
+    case 'hc_client_record':
+      params.push(match.data_origin, match.client_record_id)
+      return `source = 'health_connect'
+         AND data->'metadata'->>'dataOrigin' = $${params.length - 1}
+         AND data->'metadata'->>'clientRecordId' = $${params.length}`
+    case 'source_type_start':
+      params.push(match.source, match.activity_type, match.start_time)
+      return `source = $${params.length - 2} AND activity_type = $${params.length - 1} AND start_time = $${params.length}`
+  }
+}
+
+/**
+ * Claim a row written before external ids existed for the identity
+ * `(source, external_id)`, so the following upsert enriches it instead of
+ * creating a duplicate (#1080). Tries the matchers in order and re-sources the
+ * first legacy row found (`external_id IS NULL`, not deleted, oldest first).
+ * A no-op when a row for the identity already exists. Returns the adopted
+ * row's id, or null when nothing was adopted.
+ */
+export const adoptLegacyActivity = async (
+  user: string,
+  identity: { source: string; external_id: string },
+  matches: LegacyMatch[],
+): Promise<string | null> => {
+  for (const match of matches) {
+    const params: unknown[] = [identity.source, identity.external_id]
+    const where = legacyMatchSql(match, params)
+    const result = await query(
+      user,
+      `UPDATE activities SET source = $1, external_id = $2
+       WHERE id = (
+         SELECT id FROM activities
+         WHERE ${where}
+           AND external_id IS NULL
+           AND deleted_at IS NULL
+           AND NOT EXISTS (
+             SELECT 1 FROM activities existing WHERE existing.source = $1 AND existing.external_id = $2
+           )
+         ORDER BY created_at ASC
+         LIMIT 1
+       )
+       RETURNING id`,
+      params,
+    )
+    if (result.rows.length > 0) return result.rows[0].id as string
+  }
+  return null
 }
 
 /** Mark an activity's detail data as synced using JSONB merge (preserves existing data). */
