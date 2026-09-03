@@ -74,9 +74,13 @@ funnel into this. When B === A, steps 1–5 collapse to a direct local membershi
 persisted per member; a failed fetch falls back to last-known data flagged `stale`)
 and computes local members in-process.
 
-Each standing carries a **`last_updated`** — the timestamp of that member's most
-recent _contributing_ data point within the challenge window (`MAX(time)` of the
-measured metric/activity, using the same source filter as the total). A member with
+Each standing carries a **`last_updated`** — when that member's _contributing_ data
+last changed. For a metric it is the newest `updated_at` among the contributing points
+(the moment a point's value last changed; daily aggregates such as steps keep one row
+per day at local midnight and are rewritten in place all day, so their `time` would
+always read 00:00), falling back to the point's `time` for rows stored before
+`updated_at` existed. For an activity type it is `MAX(start_time)` of the matching
+activities. The same source filter bounds it as bounds the total. A member with
 no data yet reports `null` (rendered as "—"), never the request time — so members on
 0 don't all share a bogus "just now". Remote members report their own `last_updated`;
 the host persists it (distinct from `last_fetched_at`, which is when the host fetched)

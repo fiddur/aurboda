@@ -57,12 +57,16 @@ export interface MemberSeries {
 }
 
 /**
- * The most recent contributing data point for a challenge spec in a window.
+ * When a member's contributing data for a challenge spec last changed.
  *
  * Mirrors the filters `getChartData` uses to build the total so the timestamp
  * belongs to a record that actually counts:
- *  - `metric`: MAX(time) of the stored series (respecting the metric's trusted
- *    source filter). HR-zone metrics are computed from heart-rate samples, so
+ *  - `metric`: the newest of each contributing point's `updated_at` (when its
+ *    value last changed) or, for rows from before that column existed, its
+ *    `time`. Daily aggregates such as steps keep one row per day at local
+ *    midnight and are rewritten all day, so `time` alone would always read
+ *    "00:00" no matter how often the total moved. Respects the metric's trusted
+ *    source filter; HR-zone metrics are computed from heart-rate samples, so
  *    we read the underlying `heart_rate` series instead.
  *  - `activity_type`: MAX(start_time) of the matching (non-deleted, current)
  *    activities.
@@ -88,7 +92,7 @@ const resolveLastDataTime = async (
     }
     const result = await query<{ latest: Date | null }>(
       user,
-      `SELECT MAX(time) AS latest
+      `SELECT MAX(COALESCE(updated_at, time)) AS latest
          FROM time_series
         WHERE metric = $1
           AND time BETWEEN $2 AND $3

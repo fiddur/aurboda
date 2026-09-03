@@ -192,7 +192,7 @@ export const challengeStandingSchema = z
     identity_base_url: z.string(),
     last_updated: z.string().nullable().meta({
       description:
-        "Timestamp of this member's most recent contributing data point in the window, or null if they have no data yet",
+        "When this member's contributing data last changed: the newest point's value-change time (daily aggregates like steps are rewritten in place all day), falling back to the point's own timestamp for data stored before that was tracked; null if they have no data yet",
     }),
     stale: z.boolean().meta({ description: 'True if the latest fetch failed (showing last-known data)' }),
     status: z.enum(['active', 'withdrawn']),
