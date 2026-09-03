@@ -58,6 +58,8 @@ CREATE TABLE time_series (
     value           DOUBLE PRECISION NOT NULL,
     unit            VARCHAR(20) NOT NULL,  -- 'bpm', 'kg', 'count', 'ms', etc.
     source          VARCHAR(50) NOT NULL,  -- Origin system
+    deleted_at      TIMESTAMPTZ,           -- Soft delete
+    updated_at      TIMESTAMPTZ DEFAULT NOW(),  -- When the value last changed (NULL for rows from before it was tracked)
 
     PRIMARY KEY (time, metric, source)
 );

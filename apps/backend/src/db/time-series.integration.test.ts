@@ -8,6 +8,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
+import { query } from './connection.ts'
 import {
   deleteTimeSeriesBySource,
   deleteTimeSeriesMetric,
@@ -80,6 +81,32 @@ describe('Time Series Integration Tests', () => {
 
       expect(data).toHaveLength(1)
       expect(data[0][1]).toBe(76.0)
+    })
+
+    test('stamps updated_at on insert and moves it only when the value changes', async () => {
+      const user = getTestUser()
+      const point = {
+        metric: 'steps',
+        source: 'health_connect_aggregate' as const,
+        time: new Date('2026-06-02T00:00:00Z'),
+      }
+      const readStamp = async () => {
+        const r = await query(user, `SELECT updated_at FROM time_series WHERE metric = 'steps'`)
+        return r.rows[0].updated_at as Date
+      }
+
+      await insertTimeSeries(user, [{ ...point, value: 5000 }])
+      const first = await readStamp()
+      expect(Date.now() - first.getTime()).toBeLessThan(60_000)
+
+      await query(user, `UPDATE time_series SET updated_at = $1`, [new Date('2026-06-02T06:00:00Z')])
+      await insertTimeSeries(user, [{ ...point, value: 5000 }])
+      expect((await readStamp()).toISOString()).toBe('2026-06-02T06:00:00.000Z')
+
+      await insertTimeSeries(user, [{ ...point, value: 5100 }])
+      const bumped = await readStamp()
+      expect(bumped.getTime()).toBeGreaterThan(new Date('2026-06-02T06:00:00Z').getTime())
+      expect(Date.now() - bumped.getTime()).toBeLessThan(60_000)
     })
 
     test('handles empty array gracefully', async () => {

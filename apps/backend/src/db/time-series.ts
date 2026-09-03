@@ -48,12 +48,20 @@ export const insertTimeSeries = async (user: string, points: TimeSeriesPoint[]) 
     p.source,
   ])
 
+  // `updated_at` defaults to NOW() on insert and moves only when a re-sent
+  // point actually changes the value, so it answers "when did this number last
+  // change" rather than "when was it last written".
   await query(
     user,
     format(
       `INSERT INTO time_series (time, metric, value, unit, source)
        VALUES %L
-       ON CONFLICT (time, metric, source) DO UPDATE SET value = EXCLUDED.value
+       ON CONFLICT (time, metric, source) DO UPDATE SET
+         value = EXCLUDED.value,
+         updated_at = CASE
+           WHEN time_series.value IS DISTINCT FROM EXCLUDED.value THEN NOW()
+           ELSE time_series.updated_at
+         END
        WHERE time_series.deleted_at IS NULL`,
       values,
     ),

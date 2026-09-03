@@ -664,7 +664,12 @@ export const processDailyAggregate = async (
     user,
     `INSERT INTO time_series (time, metric, value, unit, source)
      VALUES ($1, $2, $3, $4, 'health_connect_aggregate')
-     ON CONFLICT (time, metric, source) DO UPDATE SET value = EXCLUDED.value`,
+     ON CONFLICT (time, metric, source) DO UPDATE SET
+       value = EXCLUDED.value,
+       updated_at = CASE
+         WHEN time_series.value IS DISTINCT FROM EXCLUDED.value THEN NOW()
+         ELSE time_series.updated_at
+       END`,
     [time, metric, aggregate.value, metricUnits[metric]],
   )
 

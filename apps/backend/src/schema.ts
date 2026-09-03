@@ -73,6 +73,7 @@ export const tableCreationOrder = [
   'raw_records_indexes',
   'time_series',
   'time_series_indexes',
+  'time_series_updated_at',
   'activity_type_definitions',
   'activity_type_definitions_indexes',
   'activity_type_definitions_seed',
