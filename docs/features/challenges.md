@@ -100,9 +100,12 @@ announces nothing.
 
 - **Host setting:** `announce_winner` on the challenge (default **true**). In the web
   app: the "Announce the winner to my feed when it ends" checkbox when creating, and an
-  "Announce winner" toggle on each hosted row until the announcement has been made
-  (`result_published_at` set); over the API the field is on `POST`/`PUT /challenges`
-  and the `create_challenge` / `update_challenge` MCP tools.
+  "Announce winner" toggle on each hosted row while `announcement_pending` is true —
+  the announcement has not been made or skipped (`result_published_at` unset) and the
+  challenge has not ended, or ended within the 3-day announce window; older ones are
+  never visited by the sweep, so the toggle disappears rather than promising nothing
+  (#1078). Over the API the field is on `POST`/`PUT /challenges` and the
+  `create_challenge` / `update_challenge` MCP tools.
 - **Timing:** a scheduled sweep (pg-boss cron, every 10 minutes, over every user's
   hosted challenges) announces a challenge once it has been over for a **6-hour grace
   period**, so members' last-day data has had time to sync before the podium is
@@ -121,17 +124,20 @@ announces nothing.
   A sweep also publishes at most **20** posts (`MAX_ANNOUNCEMENTS_PER_SWEEP`); the rest
   wait for the next tick. Switching `announce_winner` off before the sweep runs
   suppresses the post; switching it back on later (still inside the window) re-arms it.
-  `result_published_at` is exposed on the hosted `Challenge`, and the web toggle stays
-  available until it is set.
+  `result_published_at` and the derived `announcement_pending` are exposed on the
+  hosted `Challenge`.
 - **Result payload** (`ChallengeResult` on the post's `challenge.result`): a snapshot
   of names, identities, ranks and totals as of the announcement. A winner's identity
   (`<base>/u/<user>`) maps to their actor id (`<base>/users/<user>`) for the `Mention`,
   and to their `@user@host` handle for its name; the federated HTML links the winner
   Mastodon-style (`h-card` / `u-url mention`).
 
-The public challenge page shows the same podium once the window has closed (🏆/🥈/🥉 in
-the rank column, final standings heading), and the Android widget shows a result
-banner (see below).
+The public challenge page medals the podium as soon as the window has closed (🏆/🥈/🥉
+in the rank column), and the Android widget shows a result banner (see below). Both are
+**provisional until the announcement**: the host's post freezes the podium only after
+the grace period (up to 24 h with a stale member), and a member's last-day data syncing
+in the meantime can still reorder the page (#1076). The page says so rather than
+calling the standings final.
 
 ## Security & trust
 

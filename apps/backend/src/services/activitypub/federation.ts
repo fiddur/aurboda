@@ -377,6 +377,8 @@ export const createFeedFederation = (
   onFollowAccepted?: (user: string, actorUri: string) => void,
   /** Deployed software version (BUILD_SHA), reported in NodeInfo. */
   version = 'dev',
+  /** Whether anyone can sign up (`signup_mode = 'open'`), reported as NodeInfo `openRegistrations` (#1050). */
+  isSignupOpen: () => Promise<boolean> = async () => false,
 ): Federation<void> => {
   const federation = createFederation<void>({
     kv: new MemoryKvStore(),
@@ -402,7 +404,8 @@ export const createFeedFederation = (
   // Usage statistics are deliberately absent/zero: the per-user-database
   // architecture has no cheap global user or post counts, and NodeInfo allows
   // omitting `users.total`.
-  federation.setNodeInfoDispatcher('/nodeinfo/2.1', () => ({
+  federation.setNodeInfoDispatcher('/nodeinfo/2.1', async () => ({
+    openRegistrations: await isSignupOpen().catch(() => false),
     protocols: ['activitypub'],
     software: {
       name: 'aurboda',

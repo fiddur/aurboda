@@ -49,6 +49,18 @@ export const MAX_ANNOUNCEMENTS_PER_SWEEP = 20
  */
 export const STALE_ACCEPT_AFTER_MS = 24 * 60 * 60 * 1000
 
+/**
+ * Whether the announcement can still happen for a hosted challenge: it has not
+ * been made or skipped yet, and the challenge either hasn't ended or ended
+ * within `MAX_ANNOUNCE_AGE_MS`. Older ones are never visited by the sweep, so
+ * offering the `announce_winner` toggle for them would promise nothing (#1078).
+ */
+export const announcementPending = (
+  challenge: { end_ts: Date; result_published_at: Date | null },
+  now: Date,
+): boolean =>
+  challenge.result_published_at === null && challenge.end_ts.getTime() > now.getTime() - MAX_ANNOUNCE_AGE_MS
+
 /** True when an active member's standing is last-known/zero data from a failed fetch. */
 export const hasStaleMember = (standings: ChallengeStanding[]): boolean =>
   standings.some((s) => s.status === 'active' && s.stale)

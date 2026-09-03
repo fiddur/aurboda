@@ -111,7 +111,7 @@ Some apps that write to Health Connect are also synced directly by Aurboda, and 
 | SleepSessionRecord    | `com.garmin.android.apps.connectmobile` | epoch ms of local midnight    | `source = 'garmin'`, `external_id = 'garmin-sleep-<YYYY-MM-DD>'` |
 | anything else         |                                         |                               | `source = 'health_connect'` (unchanged)                |
 
-The Garmin sleep date comes from the client record id plus the offset in the record's own `startTime`; if Garmin ever keys sleep differently the row simply falls back to a plain `garmin` row at the same start, still merged at query time.
+The Garmin sleep date comes from the client record id plus the offset in the record's own `startTime`; if the id cannot be read that way the record is stored as a plain `health_connect` row, still merged with the scraper's `garmin` row at query time.
 
 The provider's own sync then upserts onto the **same row** (`ON CONFLICT (source, external_id)`) and enriches it: Gravl adds the sets, Garmin adds distance/calories/HR and the per-second detail. Rows written before this existed (no `external_id`) are claimed rather than duplicated: a `garmin` row with the same `garmin_activity_id`, a `health_connect` row with the same client record, or one at the same type and start time.
 

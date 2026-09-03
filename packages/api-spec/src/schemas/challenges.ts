@@ -104,6 +104,10 @@ export const challengeSchema = z
     end_ts: z.string().meta({ description: 'End instant, exclusive (ISO 8601)' }),
     id: z.string().uuid().meta({ description: 'Challenge ID' }),
     name: challengeNameSchema,
+    announcement_pending: z.boolean().default(false).meta({
+      description:
+        'Whether the completion announcement can still happen: not yet made or skipped, and the challenge either has not ended or ended within the announce window (3 days). The web shows the "Announce winner" toggle only while this is true.',
+    }),
     result_published_at: z.string().nullable().optional().meta({
       description:
         'When the final standings were announced to the feed (or the announcement was deliberately skipped); null while still pending',

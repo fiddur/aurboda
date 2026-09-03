@@ -114,7 +114,7 @@ describe('formatGravlSetsNote', () => {
 })
 
 describe('processGravlWorkout', () => {
-  const makeDeps = (existing: { id: string } | null): GravlProcessDeps => ({
+  const makeDeps = (existing: { id: string; data?: Record<string, unknown> } | null): GravlProcessDeps => ({
     adoptLegacyActivity: vi.fn().mockResolvedValue(null),
     findActivityByExternalId: vi.fn().mockResolvedValue(existing),
     insertActivity: vi.fn().mockResolvedValue('act-1'),
@@ -167,6 +167,11 @@ describe('processGravlWorkout', () => {
   it('reports a created activity when nothing existed for the identity', async () => {
     const deps = makeDeps(null)
     expect(await processGravlWorkout('alice', detail(), deps)).toBe('created')
+  })
+
+  it('reports a re-processed Gravl row as updated, not enriched', async () => {
+    const deps = makeDeps({ data: { sets: [] }, id: 'act-1' })
+    expect(await processGravlWorkout('alice', detail(), deps)).toBe('updated')
   })
 
   it('treats external workouts by type, not by name', () => {

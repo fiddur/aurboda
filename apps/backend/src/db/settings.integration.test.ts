@@ -58,6 +58,17 @@ describe('Settings Integration Tests', () => {
       expect(settings?.tag_mappings).toEqual({})
     })
 
+    test('clears a key listed in clear so the setting reverts to its default (#1063)', async () => {
+      const user = getTestUser()
+
+      await upsertUserSettings(user, { lastfm_username: 'bob', tag_mappings: { 'test-uuid': 'Test' } })
+      await upsertUserSettings(user, {}, ['tag_mappings'])
+
+      const settings = await getUserSettings(user)
+      expect(settings?.tag_mappings).toBeUndefined()
+      expect(settings?.lastfm_username).toBe('bob')
+    })
+
     test('preserves tag_mappings when update does not include tag_mappings', async () => {
       const user = getTestUser()
       const mappings = { 'test-uuid': 'Test' }

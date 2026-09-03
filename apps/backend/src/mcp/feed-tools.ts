@@ -230,7 +230,7 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
 
   server.tool(
     'delete_feed_post',
-    'Delete a feed post (activity share or article) by ID. Unpublishes it and stops its public series from resolving.',
+    'Delete a feed post of any kind (activity share, article, or challenge) by ID. Unpublishes it and stops its public series from resolving.',
     { id: z.string().uuid().describe('Feed post ID') },
     async ({ id }) => {
       const existing = await getFeedPostById(user, id)

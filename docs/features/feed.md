@@ -400,7 +400,9 @@ fire-and-forget pass that gives a small batch (3, newest first) of such Aurboda-
 one more attempt through the same enricher. A **definitive** outcome (payload stored, or a
 gone/unauthorized/malformed response) stamps `enrich_attempted_at` so the entry is never
 retried; a **transient** failure (network error, timeout) leaves it unstamped for a later
-read. At most one pass runs per user at a time, and a partial index keeps the drained-backlog
+read — up to `MAX_TRANSIENT_ATTEMPTS` (3): the third transient failure stamps the entry
+too, so a permanently unreachable peer can't hold the head of the newest-first queue
+(#1021). At most one pass runs per user at a time, and a partial index keeps the drained-backlog
 case free. An `Update` redelivery still re-enriches through the normal ingest path. The read
 itself is never delayed; entries that gain a payload render natively on the next load.
 

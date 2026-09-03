@@ -37,8 +37,8 @@ export const DEFAULT_SYNC_HISTORY_DAYS = 90
 /** Days re-fetched before the last sync to pick up edited workouts. */
 const OVERLAP_DAYS = 2
 
-/** Backoff when Gravl sends no Retry-After (minutes). */
-const RATE_LIMIT_BACKOFF_MINUTES = [5, 15, 60]
+/** Hold when Gravl sends no Retry-After (minutes). */
+const RATE_LIMIT_FALLBACK_MINUTES = 5
 
 export interface GravlSyncDeps {
   auditError: typeof auditError
@@ -61,11 +61,10 @@ const defaultDeps = (): GravlSyncDeps => ({
 export const isRateLimited = (state: SyncState | null): boolean =>
   !!state?.retry_after && state.status === 'rate_limited' && isFuture(state.retry_after)
 
-export const calculateRetryAfter = (now: Date, retryAfterSeconds?: number, attempt = 0): Date => {
-  if (retryAfterSeconds !== undefined && retryAfterSeconds > 0) return addSeconds(now, retryAfterSeconds)
-  const index = Math.min(attempt, RATE_LIMIT_BACKOFF_MINUTES.length - 1)
-  return addMinutes(now, RATE_LIMIT_BACKOFF_MINUTES[index])
-}
+export const calculateRetryAfter = (now: Date, retryAfterSeconds?: number): Date =>
+  retryAfterSeconds !== undefined && retryAfterSeconds > 0
+    ? addSeconds(now, retryAfterSeconds)
+    : addMinutes(now, RATE_LIMIT_FALLBACK_MINUTES)
 
 const emptyCounts = () => ({ activities_created: 0, activities_enriched: 0, workouts_processed: 0 })
 
@@ -75,7 +74,7 @@ const countOutcome = (counts: SyncCounts, outcome: GravlProcessOutcome): void =>
   if (outcome === 'skipped') return
   counts.workouts_processed++
   if (outcome === 'enriched') counts.activities_enriched++
-  else counts.activities_created++
+  else if (outcome === 'created') counts.activities_created++
 }
 
 /** Page through the window, fetching detail for every real workout. Throws on API failure. */
@@ -173,14 +172,20 @@ export const syncGravlWorkouts = async (
 /**
  * Fetch and store one workout by id — the enrichment path taken when Health
  * Connect delivers a Gravl session (#1080). Throws on API failure so the
- * queue can retry; returns 'skipped' for external round-trips.
+ * queue can retry; returns 'skipped' for external round-trips and while a
+ * rate-limit hold is in force (the next poll re-covers the workout).
  */
 export const enrichGravlWorkout = async (
   user: string,
   client: GravlClient,
   workoutId: string,
-  deps: Pick<GravlSyncDeps, 'processWorkout'> = defaultDeps(),
+  deps: Pick<GravlSyncDeps, 'auditInfo' | 'getSyncState' | 'processWorkout'> = defaultDeps(),
 ): Promise<GravlProcessOutcome> => {
+  const state = await deps.getSyncState(user, GRAVL_PROVIDER, GRAVL_DATA_TYPE)
+  if (isRateLimited(state)) {
+    deps.auditInfo(user, 'sync', 'Gravl enrichment skipped - rate limited', { workout_id: workoutId })
+    return 'skipped'
+  }
   const token = await client.getAccessToken(user)
   const detail = await client.getWorkout(token, workoutId)
   return deps.processWorkout(user, detail)
@@ -193,6 +198,8 @@ export const getGravlSyncStates = async (user: string) => {
     last_sync_time: s.last_sync_time?.toISOString() ?? null,
     provider: GRAVL_PROVIDER,
     retry_after: s.retry_after?.toISOString() ?? null,
+    // Same folding as the shared transform in api/sync-setup.ts, so the web's
+    // sync bar flags a hold the way it flags any other provider's error.
     status: s.status === 'rate_limited' ? ('error' as const) : (s.status ?? 'idle'),
   }))
 }

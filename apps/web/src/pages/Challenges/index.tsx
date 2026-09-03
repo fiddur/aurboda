@@ -276,10 +276,9 @@ function HostedRow({ challenge, now }: { challenge: Challenge; now: Date }) {
     onError: () => alert('Failed to update the challenge.'),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['challenges'] }),
   })
-  // The announcement is made a grace period after the window closes, and the
-  // setting matters right up to then — so gate on the announcement itself
-  // (or its deliberate skip) having happened, not on the end date.
-  const canToggleAnnounce = !challenge.result_published_at
+  // Server-derived: the announcement has not been made or skipped, and the
+  // challenge is still inside the window the sweep looks at (#1078).
+  const canToggleAnnounce = challenge.announcement_pending
 
   const copy = async () => {
     try {

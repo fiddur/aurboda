@@ -62,7 +62,7 @@ const makeClient = (overrides: Partial<GravlClient> = {}): GravlClient =>
 
 const makeDeps = (
   state: SyncState | null,
-  outcomes: Record<string, 'enriched' | 'created' | 'skipped'> = {},
+  outcomes: Record<string, 'enriched' | 'updated' | 'created' | 'skipped'> = {},
 ) => {
   const deps: GravlSyncDeps = {
     auditError: vi.fn(),
@@ -202,27 +202,49 @@ describe('syncGravlWorkouts', () => {
 })
 
 describe('enrichGravlWorkout', () => {
+  const enrichDeps = (state: SyncState | null, processWorkout = vi.fn().mockResolvedValue('enriched')) => ({
+    auditInfo: vi.fn(),
+    getSyncState: vi.fn().mockResolvedValue(state),
+    processWorkout,
+  })
+
   it('fetches one workout and processes it', async () => {
     const client = makeClient()
-    const processWorkout = vi.fn().mockResolvedValue('enriched')
-    expect(await enrichGravlWorkout('alice', client, 'a', { processWorkout })).toBe('enriched')
+    const deps = enrichDeps(null)
+    expect(await enrichGravlWorkout('alice', client, 'a', deps)).toBe('enriched')
     expect(client.getWorkout).toHaveBeenCalledWith('gat', 'a')
-    expect(processWorkout).toHaveBeenCalledWith('alice', expect.objectContaining({ id: 'a' }))
+    expect(deps.processWorkout).toHaveBeenCalledWith('alice', expect.objectContaining({ id: 'a' }))
   })
 
   it('propagates API failures so the queue can retry', async () => {
     const client = makeClient({
       getWorkout: vi.fn().mockRejectedValue(new GravlApiError('Gravl API 404', 404)),
     })
-    await expect(enrichGravlWorkout('alice', client, 'a', { processWorkout: vi.fn() })).rejects.toThrow(/404/)
+    await expect(enrichGravlWorkout('alice', client, 'a', enrichDeps(null))).rejects.toThrow(/404/)
+  })
+
+  it('skips while a rate-limit hold is in force instead of hitting Gravl again', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(NOW)
+    const client = makeClient()
+    const deps = enrichDeps({
+      data_type: 'workouts',
+      provider: 'gravl',
+      retry_after: new Date(NOW.getTime() + 600_000),
+      status: 'rate_limited',
+    })
+    expect(await enrichGravlWorkout('alice', client, 'a', deps)).toBe('skipped')
+    vi.useRealTimers()
+    expect(client.getWorkout).not.toHaveBeenCalled()
+    expect(deps.auditInfo).toHaveBeenCalled()
   })
 })
 
 describe('helpers', () => {
-  it('prefers Retry-After over the backoff table', () => {
+  it('prefers Retry-After over the fallback hold', () => {
     expect(calculateRetryAfter(NOW, 30)).toEqual(new Date('2026-09-03T10:00:30Z'))
     expect(calculateRetryAfter(NOW)).toEqual(new Date('2026-09-03T10:05:00Z'))
-    expect(calculateRetryAfter(NOW, undefined, 5)).toEqual(new Date('2026-09-03T11:00:00Z'))
+    expect(calculateRetryAfter(NOW, 0)).toEqual(new Date('2026-09-03T10:05:00Z'))
   })
 
   it('only treats a future rate_limited hold as limiting', () => {
