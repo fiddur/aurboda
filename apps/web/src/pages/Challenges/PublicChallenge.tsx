@@ -67,8 +67,10 @@ export function PublicChallenge({
   }
 
   const standings = (standingsQuery.data ?? []).filter((s) => s.status === 'active')
-  // Once the window has closed the leaderboard is final: medal the podium (equal
-  // totals share a rank), mirroring the host's completion post and the Android widget.
+  // Once the window has closed, medal the podium (equal totals share a rank) like
+  // the host's completion post and the Android widget do. It is provisional until
+  // the host's announcement freezes it (grace period, up to 24 h with a stale
+  // member) — late-syncing last-day data can still reorder it (#1076).
   const ended = Date.now() >= new Date(challenge.end_ts).getTime()
   const ranks = competitionRanks(standings.map((s) => s.total))
   const series = standings
@@ -143,7 +145,7 @@ export function PublicChallenge({
       </div>
 
       {ended && standings.some((s) => s.total > 0) && (
-        <p class="challenge-final">🏁 Finished — final standings</p>
+        <p class="challenge-final">🏁 Finished — standings settle once the host has announced the result</p>
       )}
       <table class="challenge-leaderboard">
         <thead>

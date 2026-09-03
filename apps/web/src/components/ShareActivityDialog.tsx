@@ -201,6 +201,11 @@ export function ShareActivityDialog({
     },
   })
 
+  const previewImages = [
+    ...(canMap && includeMap ? ['the route-map image'] : []),
+    ...(canChart && series.has('heart_rate') ? ['the heart-rate chart image'] : []),
+  ]
+
   return (
     <div class="share-dialog-backdrop" onClick={onClose}>
       <div class="share-dialog" onClick={(e) => e.stopPropagation()}>
@@ -300,8 +305,7 @@ export function ShareActivityDialog({
           <legend>Preview</legend>
           <p class="share-dialog-note">
             Exactly what a follower on Mastodon sees
-            {canMap && includeMap ? ' — plus the route-map image' : ''}
-            {canChart && series.has('heart_rate') ? ' and the heart-rate chart image' : ''}.
+            {previewImages.length > 0 ? ` — plus ${previewImages.join(' and ')}` : ''}.
           </p>
           {previewContent ? (
             // Server-built, HTML-escaped content of the user's OWN data — the

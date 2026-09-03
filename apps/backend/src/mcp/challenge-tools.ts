@@ -22,6 +22,7 @@ import {
   upsertChallengeMember,
 } from '../db/index.ts'
 import { joinChallenge } from '../services/challenge-federation.ts'
+import { announcementPending } from '../services/challenge-results.ts'
 import { specToApi } from '../services/challenge-spec.ts'
 import { buildProfileUrl, buildShareUrl } from '../services/share-urls.ts'
 import { isPublicToVisibility, visibilityToIsPublic } from '../services/visibility.ts'
@@ -38,6 +39,7 @@ const toSpecFields = (spec: ChallengeSpec): ChallengeSpecFields => ({
 
 const serialize = (record: ChallengeRecord, webHost: string | undefined, user: string) => ({
   announce_winner: record.announce_winner,
+  announcement_pending: announcementPending(record, new Date()),
   created_at: record.created_at.toISOString(),
   end_ts: record.end_ts.toISOString(),
   id: record.id,

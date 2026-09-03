@@ -121,8 +121,8 @@ import { createPgBoss } from './services/pg-boss.ts'
 import { installProcessGuards } from './services/process-guards.ts'
 import { safeFetchGet } from './services/safe-fetch.ts'
 import { initSentry, Sentry } from './services/sentry.ts'
-import { createStravaQueue, type StravaQueue } from './services/strava-queue.ts'
 import { createSourceEnrichQueue, type SourceEnrichQueue } from './services/source-enrich-queue.ts'
+import { createStravaQueue, type StravaQueue } from './services/strava-queue.ts'
 import { createSyncProvider } from './services/sync-provider.ts'
 import { createSyncScheduler } from './services/sync-scheduler.ts'
 import { createTimelineHub } from './services/timeline-hub.ts'
@@ -402,6 +402,7 @@ const main = async () => {
     onNewTimelineEntry,
     (user, actorUri) => backfill(user, actorUri),
     wellKnown.version,
+    async () => (await centralDb.getSignupMode()) === 'open',
   )
   const backfill = createTimelineBackfiller(feedFederation, webHost)
   const feedDeps = { apiBaseUrl, federation: feedFederation, origin: webHost }
@@ -545,7 +546,9 @@ const main = async () => {
     }
   }
   if (!sourceEnrichQueue) {
-    console.warn('⚠️ Source enrichment disabled (no job queue) - Health Connect arrivals wait for the next poll')
+    console.warn(
+      '⚠️ Source enrichment disabled (no job queue) - Health Connect arrivals wait for the next poll',
+    )
   }
 
   // Background polling (#1042): every 5 minutes, sync whatever each user's

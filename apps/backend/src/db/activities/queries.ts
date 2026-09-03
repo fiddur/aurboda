@@ -184,11 +184,6 @@ export const getSleepSessions = async (user: string, start: Date, end: Date): Pr
   return mergeOverlappingActivities(activities)
 }
 
-/**
- * Get activities that have a garmin_activity_id but haven't had their
- * per-second detail data synced yet. Includes merged activities (source may be
- * 'health_connect' or 'aurboda' after merging).
- */
 /** Look up a non-deleted activity by its provider identity, e.g. `('gravl', 'gravl-workout-<uuid>')`. */
 export const findActivityByExternalId = async (
   user: string,
@@ -206,6 +201,11 @@ export const findActivityByExternalId = async (
   return result.rows.length > 0 ? mapActivityRow(result.rows[0]) : null
 }
 
+/**
+ * Get activities that have a garmin_activity_id but haven't had their
+ * per-second detail data synced yet. Includes merged activities (source may be
+ * 'health_connect' or 'aurboda' after merging).
+ */
 export const getActivitiesNeedingDetail = async (
   user: string,
   { forceAll = false, limit = 10 }: { forceAll?: boolean; limit?: number } = {},

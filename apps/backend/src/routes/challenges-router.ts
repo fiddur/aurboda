@@ -40,6 +40,7 @@ import {
   upsertChallengeMember,
 } from '../db/index.ts'
 import { JoinChallengeError, joinChallenge } from '../services/challenge-federation.ts'
+import { announcementPending } from '../services/challenge-results.ts'
 import { specToApi } from '../services/challenge-spec.ts'
 import { getChallengeStandings } from '../services/challenge-standings.ts'
 import { buildProfileUrl, buildShareUrl } from '../services/share-urls.ts'
@@ -62,6 +63,7 @@ const serializeParticipation = (p: ChallengeParticipationRecord) => ({
 
 const serialize = (record: ChallengeRecord, webHost: string, username: string): Challenge => ({
   announce_winner: record.announce_winner,
+  announcement_pending: announcementPending(record, new Date()),
   created_at: record.created_at.toISOString(),
   end_ts: record.end_ts.toISOString(),
   id: record.id,

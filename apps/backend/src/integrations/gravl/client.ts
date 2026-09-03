@@ -192,6 +192,13 @@ export const gravlClient = (
 ) => {
   const deps: GravlClientDeps = { ...defaultDeps(), ...overrides }
   const redirectUri = `${apiBaseUrl}/auth/gravlcb`
+  /**
+   * Refresh tokens are single-use: the scheduler, a pre-query auto-sync and an
+   * enrichment job can all need a token for the same user at once, and the
+   * second refresh would send an already-rotated token. Callers on this
+   * instance share one in-flight refresh per user instead.
+   */
+  const refreshing = new Map<string, Promise<string>>()
 
   const tokenRequest = async (form: Record<string, string>): Promise<GravlTokenResponse> => {
     try {
@@ -256,24 +263,32 @@ export const gravlClient = (
           grant.expires_at !== undefined &&
           isAfter(addSeconds(grant.expires_at, -TOKEN_EXPIRY_BUFFER_SECONDS), deps.now())
         if (stillValid) return grant.access_token
-        if (!grant.refresh_token) return grant.access_token
-        const credentials = await getCredentials()
-        if (!credentials) throw new Error('Gravl OAuth grant exists but the server has no Gravl credentials')
-        const refreshed = await tokenRequest({
-          client_id: credentials.clientId,
-          client_secret: credentials.clientSecret,
-          grant_type: 'refresh_token',
-          refresh_token: grant.refresh_token,
-        })
-        await storeGrant(user, refreshed)
-        return refreshed.access_token
+        const refreshToken = grant.refresh_token
+        if (!refreshToken) return grant.access_token
+        const inFlight = refreshing.get(user)
+        if (inFlight) return inFlight
+        const refresh = (async () => {
+          const credentials = await getCredentials()
+          if (!credentials) {
+            throw new Error('Gravl OAuth grant exists but the server has no Gravl credentials')
+          }
+          const refreshed = await tokenRequest({
+            client_id: credentials.clientId,
+            client_secret: credentials.clientSecret,
+            grant_type: 'refresh_token',
+            refresh_token: refreshToken,
+          })
+          await storeGrant(user, refreshed)
+          return refreshed.access_token
+        })().finally(() => refreshing.delete(user))
+        refreshing.set(user, refresh)
+        return refresh
       }
       const personal = await deps.getPersonalToken(user)
       if (personal) return personal
       throw new Error('Gravl is not connected: connect via OAuth or add a personal token in settings')
     },
 
-    // Returns the OAuth authorize URL as JSON (called with authMiddleware, uses req.user)
     async getAuthorizeUrl(req: Request, res: Response) {
       const user = req.user
       if (!user) {

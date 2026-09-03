@@ -95,17 +95,17 @@ export const createSourceEnrichQueue = async (
 ): Promise<SourceEnrichQueue> => {
   await boss.createQueue(QUEUE_NAME)
 
+  // One job per batch: pg-boss completes or fails a batch as a unit, so a
+  // throwing job (a Gravl 404 while the workout is still saving) would otherwise
+  // re-queue its batch-mates too. A failure propagates so pg-boss retries it.
   await boss.work<SourceEnrichJobData>(
     QUEUE_NAME,
-    { batchSize: 5, pollingIntervalSeconds: 10 },
-    async (jobs) => {
-      for (const job of jobs) {
-        // Let one failure propagate so pg-boss retries that job; the others in
-        // the batch already ran or will run on their own retries.
-        const outcome = await runSourceEnrichment(job.data, deps)
-        if (outcome === 'enriched') {
-          console.info(`🔗 enriched ${job.data.provider} ${job.data.kind} for ${job.data.user}`)
-        }
+    { batchSize: 1, pollingIntervalSeconds: 10 },
+    async ([job]) => {
+      if (!job) return
+      const outcome = await runSourceEnrichment(job.data, deps)
+      if (outcome === 'enriched') {
+        console.info(`🔗 enriched ${job.data.provider} ${job.data.kind} for ${job.data.user}`)
       }
     },
   )

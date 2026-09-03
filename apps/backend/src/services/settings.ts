@@ -101,8 +101,9 @@ export const getSettings = async (user: string): Promise<UserSettings> => {
 const updateSettingsInternal = async (
   user: string,
   updates: Partial<UserSettings>,
+  clear: string[] = [],
 ): Promise<UserSettings> => {
-  return await upsertUserSettings(user, updates)
+  return await upsertUserSettings(user, updates, clear)
 }
 
 /**
@@ -252,7 +253,11 @@ export const getSettingsResponse = async (user: string): Promise<SettingsRespons
   const gravlToken = await getOAuthToken(user, 'gravl')
   // Mirrors the client's credential order: an OAuth grant wins over a pasted token.
   const gravlConnection =
-    gravlToken !== null && gravlToken.access_token !== '' ? 'oauth' : settings.gravl_api_token ? 'token' : null
+    gravlToken !== null && gravlToken.access_token !== ''
+      ? 'oauth'
+      : settings.gravl_api_token
+        ? 'token'
+        : null
 
   const goals = await getEffectiveGoals(user)
 
@@ -309,15 +314,17 @@ export const validateAndUpdateSettings = async (user: string, input: unknown): P
     await replaceGoals(user, newGoals)
   }
 
-  // Build updates object, converting null to undefined (which clears/resets the field in storage).
+  // Build the updates object. A `null` clears the stored key so the field
+  // falls back to its default (#1063) — `undefined` would be dropped by the
+  // merge in `upsertUserSettings` and silently keep the old value.
   // Derive field list from the schema to keep it in sync with api-spec.
   const settingsFields = Object.keys(updateSettingsInputSchema.shape).filter((k) => k !== 'goals')
   const updates: Partial<UserSettings> = {}
+  const clear: string[] = []
   for (const field of settingsFields) {
     const value = parsed.data[field as keyof typeof parsed.data]
-    if (value !== undefined) {
-      ;(updates as Record<string, unknown>)[field] = value === null ? undefined : value
-    }
+    if (value === null) clear.push(field)
+    else if (value !== undefined) (updates as Record<string, unknown>)[field] = value
   }
 
   // Shallow-merge dict fields so partial updates don't wipe existing entries.
@@ -328,7 +335,7 @@ export const validateAndUpdateSettings = async (user: string, input: unknown): P
   }
 
   // Apply updates (only if there are non-goals fields to update)
-  await updateSettingsInternal(user, updates)
+  await updateSettingsInternal(user, updates, clear)
 
   // Return updated settings
   return getSettingsResponse(user)

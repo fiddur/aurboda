@@ -72,14 +72,14 @@ Then **Sync Now**, or wait for the background poll.
 
 ## How Sync Works
 
-- **REST:** `POST /api/sync/gravl` — `{ "full_resync": true, "start_date": "YYYY-MM-DD" }` optional
+- **REST:** `POST /api/sync/gravl` — `{ "full_resync": true, "start_date": "YYYY-MM-DD" }` optional. The result counts `workouts_processed` (real workouts seen), `activities_enriched` (Health Connect sessions that gained their sets) and `activities_created`; a re-processed Gravl row counts only as processed.
 - **MCP:** `sync_gravl()`
 - **Status:** `GET /api/sync/gravl/status`, `get_sync_status(provider: "gravl")`
 - **Reset:** `DELETE /api/sync/gravl/state`
 
 A run lists workouts in a window, drops `External` ones, fetches each real workout's detail (the list has no sets) and stores it. The window is 90 days on the first run or a full resync, otherwise from **two days before the last successful sync** — Gravl workouts get edited after the fact, and re-processing is idempotent.
 
-**Rate limits:** 100 requests per 15 minutes per app + user. A run costs one list page plus one detail request per workout. On a 429 the sync state records Gravl's `Retry-After` (or a 5/15/60-minute backoff), later runs are skipped until it passes, and `last_sync_time` is not advanced so the same window is re-covered.
+**Rate limits:** 100 requests per 15 minutes per app + user. A run costs one list page plus one detail request per workout. On a 429 the sync state records Gravl's `Retry-After` (or a 5-minute hold when the header is missing); later runs and Health Connect-triggered enrichments are skipped until it passes, and `last_sync_time` is not advanced so the same window is re-covered.
 
 ### Triggered by Health Connect
 

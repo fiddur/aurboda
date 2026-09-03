@@ -179,7 +179,12 @@ export const buildGravlRawRecord = (detail: GravlWorkoutDetail): RawRecord => ({
   source: 'gravl',
 })
 
-export type GravlProcessOutcome = 'enriched' | 'created' | 'skipped'
+/**
+ * `enriched`: a row that reached us another way (Health Connect) gained its
+ * sets; `updated`: a row Gravl itself wrote earlier was re-processed;
+ * `created`: nothing existed for the workout; `skipped`: an External round-trip.
+ */
+export type GravlProcessOutcome = 'enriched' | 'updated' | 'created' | 'skipped'
 
 /**
  * Store one Gravl workout. Claims the Health Connect copy of the session
@@ -226,5 +231,6 @@ export const processGravlWorkout = async (
     )
   }
 
-  return existing ? 'enriched' : 'created'
+  if (!existing) return 'created'
+  return Array.isArray(existing.data?.sets) ? 'updated' : 'enriched'
 }

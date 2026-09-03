@@ -1,7 +1,7 @@
 import type { ArticleContent } from '@aurboda/api-spec'
 
-import { Mention, Note, Tombstone } from '@fedify/fedify/vocab'
-import { describe, expect, test } from 'vitest'
+import { Delete, Mention, Note, Person, Tombstone } from '@fedify/fedify/vocab'
+import { describe, expect, test, vi } from 'vitest'
 
 import {
   buildArticleNote,
@@ -13,6 +13,9 @@ import {
   type DeliverableArticle,
   type DeliverableChallenge,
   type DeliverablePost,
+  deliverFeedChallengePost,
+  deliverFeedDelete,
+  type FeedDeliveryDeps,
   imageAttachments,
   recipients,
 } from './deliver.ts'
@@ -302,5 +305,101 @@ describe('buildChallengeNote / buildChallengeNoteCreate', () => {
 
     const create = buildChallengeNoteCreate(ctx, 'fiddur', post)
     expect(hrefs([...create.ccIds])).toContain('https://other.example/users/alice')
+  })
+})
+
+describe('completion-post fan-out to tagged winners (#1074, #1079)', () => {
+  const ORIGIN = 'https://aurboda.example'
+  const WINNER_ACTOR = 'https://peer.example/users/rival'
+  const completion = (): DeliverableChallenge => ({
+    challenge: {
+      name: 'August 10k',
+      result: {
+        member_count: 2,
+        podium: [
+          { display_name: 'rival', identity_base_url: 'https://peer.example/u/rival', rank: 1, total: 42 },
+          { display_name: 'fiddur', identity_base_url: `${ORIGIN}/u/fiddur`, rank: 2, total: 10 },
+        ],
+        unit: 'km',
+      },
+      url: `${ORIGIN}/u/fiddur/august-10k`,
+    },
+    created_at: new Date('2026-08-01T00:00:00Z'),
+    id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+    message: null,
+    updated_at: new Date('2026-08-01T00:00:00Z'),
+    visibility: 'public',
+  })
+
+  const fakeDeps = async (overrides: { lookupObject?: unknown; sendActivity?: unknown } = {}) => {
+    const ctx = await createFeedFederation(ORIGIN, `${ORIGIN}/api`).createContext(new URL(ORIGIN))
+    const sendActivity = vi.fn().mockResolvedValue(undefined)
+    const lookupObject = vi.fn().mockResolvedValue(new Person({ id: new URL(WINNER_ACTOR) }))
+    Object.assign(ctx, { lookupObject, sendActivity, ...overrides })
+    const deps: FeedDeliveryDeps = {
+      apiBaseUrl: `${ORIGIN}/api`,
+      federation: { createContext: async () => ctx } as unknown as FeedDeliveryDeps['federation'],
+      origin: ORIGIN,
+    }
+    return { deps, lookupObject, sendActivity }
+  }
+
+  const sentTo = (sendActivity: ReturnType<typeof vi.fn>) =>
+    sendActivity.mock.calls.map(([, recipient]) =>
+      typeof recipient === 'string' ? recipient : recipient.id?.href,
+    )
+
+  test('the Delete of a completion post reaches followers and each tagged winner', async () => {
+    const { deps, sendActivity } = await fakeDeps()
+    const post = completion()
+    await deliverFeedDelete(deps, 'fiddur', {
+      challenge: post.challenge,
+      created_at: post.created_at,
+      id: post.id,
+      image_token: 'tok',
+      include_chart: false,
+      include_map: false,
+      included_metrics: [],
+      series_metrics: [],
+      updated_at: post.updated_at,
+      visibility: 'public',
+    })
+    expect(sentTo(sendActivity).sort()).toEqual(['followers', WINNER_ACTOR])
+    for (const [, , activity] of sendActivity.mock.calls) expect(activity).toBeInstanceOf(Delete)
+  })
+
+  test('a plain post’s Delete goes to followers only', async () => {
+    const { deps, sendActivity, lookupObject } = await fakeDeps()
+    await deliverFeedDelete(deps, 'fiddur', {
+      created_at: new Date(),
+      id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+      image_token: 'tok',
+      include_chart: false,
+      include_map: false,
+      included_metrics: [],
+      series_metrics: [],
+      updated_at: new Date(),
+      visibility: 'public',
+    })
+    expect(sentTo(sendActivity)).toEqual(['followers'])
+    expect(lookupObject).not.toHaveBeenCalled()
+  })
+
+  test('a dead follower inbox no longer cancels the winner delivery, and still surfaces', async () => {
+    const sendActivity = vi.fn(async (_sender: unknown, recipient: unknown) => {
+      if (recipient === 'followers') throw new Error('connect ECONNREFUSED')
+    })
+    const { deps } = await fakeDeps({ sendActivity })
+    await expect(deliverFeedChallengePost(deps, 'fiddur', completion())).rejects.toThrow('ECONNREFUSED')
+    expect(sentTo(sendActivity).sort()).toEqual(['followers', WINNER_ACTOR])
+  })
+
+  test('an unresolvable winner is skipped with a warning instead of silently', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const { deps, sendActivity } = await fakeDeps({ lookupObject: vi.fn().mockResolvedValue(null) })
+    await deliverFeedChallengePost(deps, 'fiddur', completion())
+    expect(sentTo(sendActivity)).toEqual(['followers'])
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('actor not resolvable'))
+    warn.mockRestore()
   })
 })

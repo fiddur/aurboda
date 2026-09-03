@@ -23,7 +23,17 @@ import type { ArticleContent, ChallengeShare, FeedVisibility } from '@aurboda/ap
  */
 import type { Context, Federation } from '@fedify/fedify'
 
-import { Create, Delete, Image, isActor, Mention, Note, Tombstone, Update } from '@fedify/fedify/vocab'
+import {
+  type Activity,
+  Create,
+  Delete,
+  Image,
+  isActor,
+  Mention,
+  Note,
+  Tombstone,
+  Update,
+} from '@fedify/fedify/vocab'
 
 import type { FeedPostRecord } from '../../db/index.ts'
 
@@ -302,11 +312,14 @@ export const deliverFeedUpdate = async (
 export const deliverFeedDelete = async (
   deps: FeedDeliveryDeps,
   user: string,
-  post: DeliverablePost,
+  post: DeliverablePost & { challenge?: ChallengeShare | null },
 ): Promise<void> => {
   const ctx = await deps.federation.createContext(new URL(deps.origin))
   const del = buildFeedDelete(ctx, user, post)
-  await ctx.sendActivity({ identifier: user }, 'followers', del)
+  // A completion post was also delivered to each tagged winner's inbox (they
+  // need not follow the host), so the Delete goes there too (#1074) — and, like
+  // Create/Update, independently of the followers fan-out (#1079).
+  await sendToFollowersAndMentioned(ctx, user, post.challenge ?? null, del)
 }
 
 // ---------------------------------------------------------------------------
@@ -580,20 +593,46 @@ export const buildChallengeNoteUpdate = (
 const deliverToMentioned = async (
   ctx: Context<void>,
   user: string,
-  post: DeliverableChallenge,
-  activity: Create | Update,
+  challenge: ChallengeShare,
+  activity: Activity,
 ): Promise<void> => {
   const self = ctx.getActorUri(user).href
-  for (const mention of challengeMentions(post.challenge)) {
+  for (const mention of challengeMentions(challenge)) {
     if (mention.actorUri.href === self) continue
     try {
       const actor = await ctx.lookupObject(mention.actorUri)
-      if (!isActor(actor)) continue
+      if (!isActor(actor)) {
+        // `lookupObject` yields null (not an error) when the actor document can't
+        // be loaded; without this line a lost winner notification is invisible.
+        console.warn(`⚠️ Challenge result delivery to ${mention.handle} skipped: actor not resolvable`)
+        continue
+      }
       await ctx.sendActivity({ identifier: user }, actor, activity)
     } catch (error) {
       console.warn(`⚠️ Challenge result delivery to ${mention.handle} failed:`, error)
     }
   }
+}
+
+/**
+ * Fan an activity out to followers and, for a completion post, to each tagged
+ * winner — as two independent deliveries. Without an outbox queue Fedify
+ * awaits every follower inbox and one dead instance rejects the whole send,
+ * which used to cancel the winner delivery that exists precisely for members
+ * who don't follow the host (#1079). Winners go first (named recipients); a
+ * followers failure still surfaces to the caller after both have run.
+ */
+const sendToFollowersAndMentioned = async (
+  ctx: Context<void>,
+  user: string,
+  challenge: ChallengeShare | null,
+  activity: Activity,
+): Promise<void> => {
+  const [followers] = await Promise.allSettled([
+    ctx.sendActivity({ identifier: user }, 'followers', activity),
+    challenge && challenge.result ? deliverToMentioned(ctx, user, challenge, activity) : Promise.resolve(),
+  ])
+  if (followers.status === 'rejected') throw followers.reason
 }
 
 /**
@@ -607,8 +646,7 @@ export const deliverFeedChallengePost = async (
 ): Promise<void> => {
   const ctx = await deps.federation.createContext(new URL(deps.origin))
   const create = buildChallengeNoteCreate(ctx, user, post)
-  await ctx.sendActivity({ identifier: user }, 'followers', create)
-  await deliverToMentioned(ctx, user, post, create)
+  await sendToFollowersAndMentioned(ctx, user, post.challenge, create)
 }
 
 /** Build and send the `Update{Note}` for an edited challenge share to followers (and tagged winners). */
@@ -619,6 +657,5 @@ export const deliverFeedChallengeUpdate = async (
 ): Promise<void> => {
   const ctx = await deps.federation.createContext(new URL(deps.origin))
   const update = buildChallengeNoteUpdate(ctx, user, post)
-  await ctx.sendActivity({ identifier: user }, 'followers', update)
-  await deliverToMentioned(ctx, user, post, update)
+  await sendToFollowersAndMentioned(ctx, user, post.challenge, update)
 }

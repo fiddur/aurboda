@@ -104,6 +104,39 @@ describe('challengeRangeLabel', () => {
   test('an invalid timezone falls back to the viewer timezone instead of throwing', () => {
     expect(challengeRangeLabel(start, end, 'Not/A_Zone', 'en-GB')).toBe('1 Jun – 7 Jun 2026')
   })
+
+  test('a window crossing New Year carries the start year too (#1071)', () => {
+    expect(
+      challengeRangeLabel('2026-07-01T00:00:00Z', '2027-01-16T23:00:00Z', 'Europe/Stockholm', 'en-GB'),
+    ).toBe('1 Jul 2026 – 16 Jan 2027')
+  })
+})
+
+describe('day counts agree with the printed dates (#1070)', () => {
+  test('counts days in the challenge timezone, not the viewer’s', () => {
+    // Hosted in Auckland: 1 Sep 00:00 NZST .. 8 Sep 00:00 NZST (exclusive). For a
+    // viewer in Europe on the evening of 27 Aug it is already 28 Aug in Auckland,
+    // so the row reads "Starts in 4 days · Sep 1 – Sep 7" — one frame, no contradiction.
+    const now = new Date('2026-08-27T16:07:00Z')
+    expect(challengeTimePhrase('2026-08-31T12:00:00Z', '2026-09-07T12:00:00Z', 'Pacific/Auckland', now)).toBe(
+      'Starts in 4 days',
+    )
+    expect(
+      challengeRangeLabel('2026-08-31T12:00:00Z', '2026-09-07T12:00:00Z', 'Pacific/Auckland', 'en-US'),
+    ).toBe('Sep 1 – Sep 7, 2026')
+  })
+
+  test('the last included day is "today" in the challenge zone even when the viewer is a day behind', () => {
+    // 7 Sep 23:00 NZST = 7 Sep 11:00Z; the window closes 8 Sep 00:00 NZST.
+    expect(
+      challengeTimePhrase(
+        '2026-08-31T12:00:00Z',
+        '2026-09-07T12:00:00Z',
+        'Pacific/Auckland',
+        new Date('2026-09-07T11:00:00Z'),
+      ),
+    ).toBe('Ends today')
+  })
 })
 
 describe('groupChallengeItems', () => {
@@ -117,6 +150,7 @@ describe('groupChallengeItems', () => {
 
   const hostedAt = (id: string, startLocal: string, endLocal: string): Challenge => ({
     announce_winner: true,
+    announcement_pending: true,
     created_at: iso(startLocal),
     end_ts: iso(endLocal),
     id,
