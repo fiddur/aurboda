@@ -13,7 +13,14 @@ import {
   verifyGarminMfa,
 } from '../../state/api'
 import { auth } from '../../state/auth'
-import { type DataTypeItem, DataTypesList, LoginRequired, StatusBanner, SyncStatusBar } from './shared'
+import {
+  type DataTypeItem,
+  DataTypesList,
+  LoginRequired,
+  StatusBanner,
+  SyncIntervalField,
+  SyncStatusBar,
+} from './shared'
 import './style.css'
 
 interface GarminDataTypeInfo {
@@ -365,6 +372,7 @@ function GarminConnectionSection({
           <GarminLoginForm onMfaRequired={() => setLoginStatus('mfa')} onSuccess={handleLoginSuccess} />
         )}
       </section>
+      <SyncIntervalField provider="garmin" />
     </>
   )
 }

@@ -77,6 +77,29 @@ export const rescueTimeKeySchema = z.string().min(1, 'RescueTime API key cannot 
 })
 
 /**
+ * Gravl personal access token schema.
+ */
+export const gravlApiTokenSchema = z.string().min(1, 'Gravl API token cannot be empty').meta({
+  description: 'Gravl personal access token (gat_…), used when no OAuth grant exists',
+})
+
+/**
+ * Background sync poll intervals, minutes per provider.
+ */
+export const syncIntervalsSchema = z
+  .record(
+    z.string().meta({ description: 'Provider name (gravl, garmin, oura, rescuetime, lastfm, calendar) or "default"' }),
+    z.number().int().min(5).max(1440).meta({ description: 'Poll interval in minutes (5–1440)' }),
+  )
+  .meta({
+    id: 'SyncIntervals',
+    description:
+      'How often the background scheduler polls each pull-based provider, in minutes. Keyed by provider name; the "default" key applies to providers without their own entry. Providers not listed fall back to the server default.',
+  })
+
+export type SyncIntervals = z.infer<typeof syncIntervalsSchema>
+
+/**
  * Last.fm username schema.
  */
 export const lastFmUsernameSchema = z.string().min(1, 'Last.fm username cannot be empty').meta({
@@ -239,6 +262,12 @@ export const updateSettingsInputSchema = z
     garmin_disabled_data_types: z.array(garminDataTypeSchema).nullable().optional().meta({
       description: 'Garmin data types to skip during sync (set to null to clear, enabling all)',
     }),
+    gravl_api_token: gravlApiTokenSchema.nullable().optional().meta({
+      description: 'Gravl personal access token (set to null to clear). Ignored for sync while an OAuth grant exists.',
+    }),
+    sync_intervals: syncIntervalsSchema.nullable().optional().meta({
+      description: 'Background sync poll intervals in minutes per provider (set to null to reset to server defaults)',
+    }),
   })
   .meta({ id: 'UpdateSettingsInput' })
 
@@ -293,6 +322,15 @@ export const userSettingsResponseSchema = baseResponseSchema
       .default(false)
       .meta({ description: 'Whether Oura OAuth is configured on server' }),
     oura_connected: z.boolean().default(false).meta({ description: 'Whether Oura is connected via OAuth' }),
+    gravl_configured: z
+      .boolean()
+      .default(false)
+      .meta({ description: 'Whether a Gravl OAuth app is configured on the server (enables "Connect Gravl")' }),
+    gravl_connection: z
+      .enum(['oauth', 'token'])
+      .nullable()
+      .default(null)
+      .meta({ description: 'How Gravl is connected: an OAuth grant, a personal token, or null when not connected' }),
     rescue_time_key: z.string().nullable().default(null).meta({ description: 'RescueTime API key' }),
     timeline_show_replies: z.boolean().default(false).meta({
       description:
@@ -309,6 +347,9 @@ export const userSettingsResponseSchema = baseResponseSchema
     sensitivity_areas: sensitivityAreasSchema
       .default([])
       .meta({ description: 'Sensitivity areas to track in meals' }),
+    sync_intervals: syncIntervalsSchema.default({}).meta({
+      description: 'Background sync poll intervals in minutes per provider (empty = server defaults)',
+    }),
     sex: biologicalSexSchema
       .nullable()
       .default(null)

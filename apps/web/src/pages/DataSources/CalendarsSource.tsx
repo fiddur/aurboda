@@ -5,7 +5,14 @@ import { useCallback, useState } from 'preact/hooks'
 
 import { fetchUserSettings, type UpdateSettingsInput, updateUserSettings } from '../../state/api'
 import { auth } from '../../state/auth'
-import { DataTypesList, LoginRequired, type SaveStatus, SaveStatusIndicator, StatusBanner } from './shared'
+import {
+  DataTypesList,
+  LoginRequired,
+  type SaveStatus,
+  SaveStatusIndicator,
+  StatusBanner,
+  SyncIntervalField,
+} from './shared'
 import './style.css'
 
 const DATA_TYPES = ['Calendar events (imported as tags)', 'Event titles and times']
@@ -98,68 +105,71 @@ export function CalendarsSource() {
         </div>
 
         {!isLoading && (
-          <section class="settings-section">
-            <div class="section-header-row">
-              <h2>Calendars</h2>
-              <SaveStatusIndicator state={saveStatus} />
-            </div>
+          <>
+            <section class="settings-section">
+              <div class="section-header-row">
+                <h2>Calendars</h2>
+                <SaveStatusIndicator state={saveStatus} />
+              </div>
 
-            {(userSettings?.calendars ?? []).length > 0 && (
-              <div class="calendars-list">
-                {(userSettings?.calendars ?? []).map((cal, index) => (
-                  <div class="calendar-item" key={`${cal.name}-${index}`}>
-                    <div class="calendar-info">
-                      <span class="calendar-name">{cal.name}</span>
-                      <span class="calendar-url">{cal.url}</span>
+              {(userSettings?.calendars ?? []).length > 0 && (
+                <div class="calendars-list">
+                  {(userSettings?.calendars ?? []).map((cal, index) => (
+                    <div class="calendar-item" key={`${cal.name}-${index}`}>
+                      <div class="calendar-info">
+                        <span class="calendar-name">{cal.name}</span>
+                        <span class="calendar-url">{cal.url}</span>
+                      </div>
+                      <button
+                        type="button"
+                        class="remove-calendar-button"
+                        onClick={() => handleRemoveCalendar(index)}
+                      >
+                        Remove
+                      </button>
                     </div>
-                    <button
-                      type="button"
-                      class="remove-calendar-button"
-                      onClick={() => handleRemoveCalendar(index)}
-                    >
-                      Remove
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
+                  ))}
+                </div>
+              )}
 
-            <div class="add-calendar-form">
-              <div class="form-field">
-                <label for="calendar-name">Calendar Name</label>
-                <input
-                  id="calendar-name"
-                  type="text"
-                  value={newCalendarName}
-                  onInput={(e) => setNewCalendarName((e.target as HTMLInputElement).value)}
-                  placeholder="e.g., Work, Personal"
-                />
+              <div class="add-calendar-form">
+                <div class="form-field">
+                  <label for="calendar-name">Calendar Name</label>
+                  <input
+                    id="calendar-name"
+                    type="text"
+                    value={newCalendarName}
+                    onInput={(e) => setNewCalendarName((e.target as HTMLInputElement).value)}
+                    placeholder="e.g., Work, Personal"
+                  />
+                </div>
+                <div class="form-field">
+                  <label for="calendar-url">ICS URL</label>
+                  <input
+                    id="calendar-url"
+                    type="url"
+                    value={newCalendarUrl}
+                    onInput={(e) => setNewCalendarUrl((e.target as HTMLInputElement).value)}
+                    placeholder="https://calendar.google.com/calendar/ical/..."
+                  />
+                </div>
+                <button
+                  type="button"
+                  class="connect-button"
+                  onClick={handleAddCalendar}
+                  disabled={!newCalendarName.trim() || !newCalendarUrl.trim()}
+                >
+                  Add Calendar
+                </button>
               </div>
-              <div class="form-field">
-                <label for="calendar-url">ICS URL</label>
-                <input
-                  id="calendar-url"
-                  type="url"
-                  value={newCalendarUrl}
-                  onInput={(e) => setNewCalendarUrl((e.target as HTMLInputElement).value)}
-                  placeholder="https://calendar.google.com/calendar/ical/..."
-                />
-              </div>
-              <button
-                type="button"
-                class="connect-button"
-                onClick={handleAddCalendar}
-                disabled={!newCalendarName.trim() || !newCalendarUrl.trim()}
-              >
-                Add Calendar
-              </button>
-            </div>
 
-            <p class="field-description">
-              For Google Calendar: Go to Settings &gt; calendar &gt; Integrate calendar &gt; copy the
-              &quot;Secret address in iCal format&quot; URL.
-            </p>
-          </section>
+              <p class="field-description">
+                For Google Calendar: Go to Settings &gt; calendar &gt; Integrate calendar &gt; copy the
+                &quot;Secret address in iCal format&quot; URL.
+              </p>
+            </section>
+            <SyncIntervalField provider="calendar" />
+          </>
         )}
       </div>
     </div>

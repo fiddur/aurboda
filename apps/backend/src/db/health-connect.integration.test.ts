@@ -2,10 +2,12 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from 'vit
 
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import { query } from './connection.ts'
+import { getActivityById, insertActivity } from './activities/index.ts'
 import {
   deleteHealthConnectRecords,
   getDailyAggregateValue,
   processDailyAggregate,
+  processHealthConnectBatch,
   processHealthConnectData,
 } from './health-connect.ts'
 import { getTimeSeries } from './time-series.ts'
@@ -255,6 +257,110 @@ describe('Health Connect Integration Tests', () => {
       // Aggregate should still exist
       const aggregate = await getDailyAggregateValue(user, 'steps', new Date('2024-01-15'))
       expect(aggregate).toBe(10000)
+    })
+  })
+  describe('source identity (#1080)', () => {
+    const garminSession = (clientRecordId: string) => ({
+      endTime: '2026-09-03T07:43:57.343+02:00',
+      exerciseType: 70,
+      metadata: {
+        clientRecordId,
+        dataOrigin: 'com.garmin.android.apps.connectmobile',
+        id: `hc-${clientRecordId}`,
+      },
+      startTime: '2026-09-03T07:16:21+02:00',
+    })
+
+    test('stores a Garmin-origin exercise under the garmin identity and reports the arrival', async () => {
+      const user = getTestUser()
+
+      const arrivals = await processHealthConnectBatch(user, 'ExerciseSessionRecord', [
+        garminSession('24218667980'),
+      ])
+
+      expect(arrivals).toEqual([{ key: '24218667980', kind: 'activity', provider: 'garmin' }])
+      const rows = await query(
+        user,
+        `SELECT source, external_id, activity_type, data FROM activities WHERE deleted_at IS NULL`,
+      )
+      expect(rows.rows).toHaveLength(1)
+      expect(rows.rows[0]).toMatchObject({
+        activity_type: 'strength_training',
+        external_id: 'garmin-activity-24218667980',
+        source: 'garmin',
+      })
+      expect(rows.rows[0].data.garmin_activity_id).toBe(24218667980)
+      expect(rows.rows[0].data.metadata.clientRecordId).toBe('24218667980')
+    })
+
+    test('enriches the legacy garmin row the scraper already wrote instead of duplicating it', async () => {
+      const user = getTestUser()
+      const legacyId = await insertActivity(user, {
+        activity_type: 'strength_training',
+        data: { calories: 300, garmin_activity_id: 24218667980 },
+        end_time: new Date('2026-09-03T05:43:57Z'),
+        source: 'garmin',
+        start_time: new Date('2026-09-03T05:16:21Z'),
+        title: 'Strength',
+      })
+
+      await processHealthConnectData(user, 'ExerciseSessionRecord', garminSession('24218667980'))
+
+      const row = await getActivityById(user, legacyId!)
+      expect(row?.external_id).toBe('garmin-activity-24218667980')
+      expect(row?.data).toMatchObject({ calories: 300, garmin_activity_id: 24218667980 })
+      const count = await query(user, `SELECT count(*)::int AS n FROM activities WHERE deleted_at IS NULL`)
+      expect(count.rows[0].n).toBe(1)
+    })
+
+    test('re-sources an older health_connect row when HC re-sends the record', async () => {
+      const user = getTestUser()
+      const oldId = await insertActivity(user, {
+        activity_type: 'strength_training',
+        data: { metadata: { id: 'hc-old' } },
+        source: 'health_connect',
+        start_time: new Date('2026-09-03T05:16:21Z'),
+      })
+
+      await processHealthConnectBatch(user, 'ExerciseSessionRecord', [garminSession('24218667980')])
+
+      const row = await getActivityById(user, oldId!)
+      expect(row?.source).toBe('garmin')
+      expect(row?.external_id).toBe('garmin-activity-24218667980')
+    })
+
+    test('keys a Garmin sleep by its local calendar date', async () => {
+      const user = getTestUser()
+      const arrivals = await processHealthConnectBatch(user, 'SleepSessionRecord', [
+        {
+          endTime: '2026-09-03T06:40:43+02:00',
+          metadata: {
+            clientRecordId: '1788386400000',
+            dataOrigin: 'com.garmin.android.apps.connectmobile',
+            id: 'hc-sleep',
+          },
+          stages: [],
+          startTime: '2026-09-03T00:49:43+02:00',
+        },
+      ])
+      expect(arrivals).toEqual([{ key: '2026-09-03', kind: 'sleep', provider: 'garmin' }])
+      const rows = await query(user, `SELECT source, external_id FROM activities`)
+      expect(rows.rows[0]).toEqual({ external_id: 'garmin-sleep-2026-09-03', source: 'garmin' })
+    })
+
+    test('leaves sessions from unknown apps as plain health_connect rows', async () => {
+      const user = getTestUser()
+      const arrivals = await processHealthConnectBatch(user, 'ExerciseSessionRecord', [
+        {
+          endTime: '2026-09-03T07:43:57+02:00',
+          exerciseType: 56,
+          metadata: { clientRecordId: 'abc', dataOrigin: 'com.polar.polarflow', id: 'hc-polar' },
+          startTime: '2026-09-03T07:16:21+02:00',
+        },
+      ])
+      expect(arrivals).toEqual([])
+      const rows = await query(user, `SELECT source, external_id FROM activities`)
+      expect(rows.rows[0]).toEqual({ external_id: null, source: 'health_connect' })
     })
   })
 })

@@ -74,6 +74,15 @@ export const dataSources: DataSourceInfo[] = [
     userSetup: 'OAuth connect',
   },
   {
+    name: 'Gravl',
+    homepage: 'https://gravl.ai/',
+    doc: 'gravl.md',
+    provides: 'Strength workouts with per-set exercise, weight, reps, RPE and set type',
+    how: 'Pull (API) + on Health Connect arrival',
+    adminSetup: 'Optional OAuth app (admin setting)',
+    userSetup: 'Personal token, or OAuth connect when configured',
+  },
+  {
     name: 'OwnTracks',
     homepage: 'https://owntracks.org/',
     doc: 'owntracks.md',

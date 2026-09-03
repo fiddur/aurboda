@@ -5,6 +5,7 @@ import {
   outboundSyncAckItemSchema,
   syncCalendarsBodySchema,
   syncGarminBodySchema,
+  syncGravlBodySchema,
   syncLastFmBodySchema,
   syncOuraBodySchema,
   syncProviderSchema,
@@ -16,6 +17,7 @@ import { subDays } from 'date-fns'
 import { z } from 'zod'
 
 import type { GarminClient } from '../integrations/garmin/client.ts'
+import type { GravlClient } from '../integrations/gravl/client.ts'
 import type { ouraClient } from '../integrations/oura/client.ts'
 import type { ActivityNotifier } from '../services/deduction-queue.ts'
 import type { StravaQueue } from '../services/strava-queue.ts'
@@ -30,6 +32,7 @@ import {
   resetSyncState,
 } from '../db/index.ts'
 import { type GarminDataType, syncAllGarminData } from '../integrations/garmin/sync.ts'
+import { syncGravlWorkouts } from '../integrations/gravl/sync.ts'
 import { syncAllCalendars } from '../integrations/ical/sync.ts'
 import { DEFAULT_SYNC_HISTORY_DAYS, syncLastFmData } from '../integrations/lastfm/sync.ts'
 import { syncAllOuraData } from '../integrations/oura/sync.ts'
@@ -49,6 +52,7 @@ export const registerSyncTools = (
   garmin?: GarminClient,
   stravaQueue?: StravaQueue,
   notifier?: ActivityNotifier,
+  gravl?: GravlClient,
 ) => {
   // Tool: sync_oura
   server.tool(
@@ -252,6 +256,32 @@ export const registerSyncTools = (
     },
   )
 
+  // Tool: sync_gravl
+  server.tool(
+    'sync_gravl',
+    'Sync strength workouts from Gravl (gravl.ai): exercises and per-set weight/reps/RPE. Enriches the matching Health Connect session when one exists, otherwise creates a strength_training activity. Needs a Gravl OAuth connection or a personal token in user settings.',
+    { ...syncGravlBodySchema.shape },
+    async ({ full_resync, start_date }) => {
+      if (!gravl) {
+        return errorResponse('Gravl integration is not available on this server.')
+      }
+      if ((await gravl.connectionKind(user)) === null) {
+        return errorResponse('Gravl is not connected. Connect via OAuth or add a personal token in settings first.')
+      }
+
+      try {
+        const result = await syncGravlWorkouts(user, gravl, {
+          fullResync: full_resync,
+          startDate: start_date ? new Date(start_date) : undefined,
+        })
+        return jsonResponse({ result, success: result.status === 'success' })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        return jsonResponse({ error: message, success: false })
+      }
+    },
+  )
+
   // Tool: get_sync_status
   const syncProviders = [
     'oura',
@@ -261,11 +291,12 @@ export const registerSyncTools = (
     'calendar',
     'lastfm',
     'activitywatch',
+    'gravl',
   ] as const
 
   server.tool(
     'get_sync_status',
-    'Get the current sync status for Oura, Garmin, Strava, RescueTime, Calendar, Last.fm, and ActivityWatch data sources. Shows last sync time, status, and any errors. For Strava, also includes queue counts (pending and active jobs).',
+    'Get the current sync status for Oura, Garmin, Strava, RescueTime, Calendar, Last.fm, ActivityWatch and Gravl data sources. Shows last sync time, status, and any errors. For Strava, also includes queue counts (pending and active jobs).',
     {
       provider: syncProviderSchema.optional().describe('Which provider to check. Defaults to "all".'),
       tz: tzSchema,

@@ -46,6 +46,7 @@ import {
   listChallengesAwaitingResult,
   listReplyUncheckedEntries,
   listUnenrichedAurbodaEntries,
+  getOAuthToken,
   listUserNames,
   loginToUserDb,
   markChallengeResultPublished,
@@ -61,6 +62,10 @@ import {
 } from './db/index.ts'
 import { httpError, isHttpError } from './http-error.ts'
 import { garminClient } from './integrations/garmin/client.ts'
+import { garminDataTypes } from './integrations/garmin/process.ts'
+import { syncActivityDetails, syncGarminDataType } from './integrations/garmin/sync.ts'
+import { gravlClient } from './integrations/gravl/client.ts'
+import { enrichGravlWorkout } from './integrations/gravl/sync.ts'
 import { ouraClient } from './integrations/oura/client.ts'
 import { createOwnTracksRouter } from './integrations/owntracks/router.ts'
 import { stravaClient } from './integrations/strava/client.ts'
@@ -117,7 +122,9 @@ import { installProcessGuards } from './services/process-guards.ts'
 import { safeFetchGet } from './services/safe-fetch.ts'
 import { initSentry, Sentry } from './services/sentry.ts'
 import { createStravaQueue, type StravaQueue } from './services/strava-queue.ts'
+import { createSourceEnrichQueue, type SourceEnrichQueue } from './services/source-enrich-queue.ts'
 import { createSyncProvider } from './services/sync-provider.ts'
+import { createSyncScheduler } from './services/sync-scheduler.ts'
 import { createTimelineHub } from './services/timeline-hub.ts'
 import {
   backfillReplyLinks,
@@ -254,6 +261,15 @@ const main = async () => {
       centralDb.upsertStravaAthleteMapping(stravaAthleteId, username),
   })
 
+  // Gravl: OAuth app is optional (admin setting); users can also paste a
+  // personal token, so the client is always created and resolves per user.
+  const getGravlCredentials = async () => {
+    const clientId = await centralDb.getServerSetting('gravl_client_id')
+    const clientSecret = await centralDb.getServerSetting('gravl_client_secret')
+    return clientId && clientSecret ? { clientId, clientSecret } : null
+  }
+  const gravl = gravlClient(getGravlCredentials, apiBaseUrl)
+
   // Deduction queue is assigned once pg-boss is up (below). The notifier closes
   // over the variable, so it starts enqueuing as soon as the queue exists.
   let deductionQueue: DeductionQueue | null = null
@@ -277,6 +293,7 @@ const main = async () => {
   const syncProvider = createSyncProvider({
     garmin,
     getLastFmApiKey: () => centralDb.getLastFmApiKey(),
+    gravl,
     oura,
     onActivitySynced: activityNotifier,
   })
@@ -504,6 +521,47 @@ const main = async () => {
   if (!autoshareQueue) {
     console.warn('⚠️ Auto-share evaluation disabled (no job queue)')
   }
+  // Source enrichment (#1080): a Health Connect session from Garmin or Gravl
+  // triggers that provider's own sync for it, so the row Health Connect just
+  // created gets its sets / detail within minutes instead of at the next poll.
+  let sourceEnrichQueue: SourceEnrichQueue | null = null
+  if (boss) {
+    try {
+      sourceEnrichQueue = await createSourceEnrichQueue(boss, {
+        enrichGravl: (user, workoutId) => enrichGravlWorkout(user, gravl, workoutId),
+        isGarminConnected: async (user) => {
+          const token = await getOAuthToken(user, 'garmin')
+          return token !== null && token.access_token !== ''
+        },
+        isGravlConnected: async (user) => (await gravl.connectionKind(user)) !== null,
+        onEnriched: (user) => activityNotifier(user, '*', new Date(Date.now() - 86_400_000), new Date()),
+        syncGarmin: async (user, dataType) => {
+          await syncGarminDataType(user, garmin, dataType)
+          if (dataType === 'activities') await syncActivityDetails(user, garmin)
+        },
+      })
+    } catch (error) {
+      console.error('Failed to initialize source enrichment queue:', error)
+    }
+  }
+  if (!sourceEnrichQueue) {
+    console.warn('⚠️ Source enrichment disabled (no job queue) - Health Connect arrivals wait for the next poll')
+  }
+
+  // Background polling (#1042): every 5 minutes, sync whatever each user's
+  // `sync_intervals` says is due, through the same sync provider queries use.
+  if (boss) {
+    try {
+      await createSyncScheduler(boss, {
+        garminDataTypes,
+        listUsers: () => listUserNames(userDb),
+        sync: syncProvider,
+      })
+    } catch (error) {
+      console.error('Failed to initialize sync scheduler:', error)
+    }
+  }
+
   // Challenge completion: a scheduled sweep over every user's hosted challenges
   // that closed (grace period ago) posts the final standings — winners tagged —
   // to the host's feed through the SAME challenge fan-out a manual share uses.
@@ -558,6 +616,7 @@ const main = async () => {
       followActions,
       followerActions,
       garmin,
+      gravl,
       onActivityMutated: activityNotifier,
       oura,
       retroEnrichTimeline,
@@ -616,8 +675,10 @@ const main = async () => {
     centralDb,
     oura,
     garmin,
+    gravl,
     stravaQueue,
     calorieQueue,
+    sourceEnrichQueue,
     activityNotifier,
   })
 
@@ -627,6 +688,7 @@ const main = async () => {
     authMiddleware,
     centralDb,
     garmin,
+    gravl,
     oura,
     strava,
   })

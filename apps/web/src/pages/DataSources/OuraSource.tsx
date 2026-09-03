@@ -5,7 +5,14 @@ import { useCallback, useState } from 'preact/hooks'
 
 import { fetchOuraSyncStatus, fetchUserSettings, getOuraConnectUrl, syncOura } from '../../state/api'
 import { auth } from '../../state/auth'
-import { type DataTypeItem, DataTypesList, LoginRequired, StatusBanner, SyncStatusBar } from './shared'
+import {
+  type DataTypeItem,
+  DataTypesList,
+  LoginRequired,
+  StatusBanner,
+  SyncIntervalField,
+  SyncStatusBar,
+} from './shared'
 import './style.css'
 
 const DATA_TYPES: DataTypeItem[] = [
@@ -113,6 +120,7 @@ function OuraConnection({
           </>
         )}
       </section>
+      <SyncIntervalField provider="oura" />
     </>
   )
 }

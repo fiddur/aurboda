@@ -149,6 +149,10 @@ export const adminSettingsResponseSchema = baseResponseSchema
       .number()
       .int()
       .meta({ description: 'Number of days to keep audit log entries (default: 3)' }),
+    gravl_client_id_set: z.boolean().meta({ description: 'Whether a Gravl OAuth client ID is configured' }),
+    gravl_client_secret_set: z
+      .boolean()
+      .meta({ description: 'Whether a Gravl OAuth client secret is configured' }),
     lastfm_api_key_set: z.boolean().meta({ description: 'Whether a Last.fm API key is configured' }),
     oura_client_id_set: z.boolean().meta({ description: 'Whether an Oura client ID is configured' }),
     oura_client_secret_set: z.boolean().meta({ description: 'Whether an Oura client secret is configured' }),
@@ -182,6 +186,16 @@ export const updateAdminSettingsBodySchema = z
       .max(365)
       .optional()
       .meta({ description: 'Number of days to keep audit log entries (1-365, default: 3)' }),
+    gravl_client_id: z
+      .string()
+      .nullable()
+      .optional()
+      .meta({ description: 'Gravl OAuth client ID, gci_… (set to null to clear)' }),
+    gravl_client_secret: z
+      .string()
+      .nullable()
+      .optional()
+      .meta({ description: 'Gravl OAuth client secret, gcs_… (set to null to clear)' }),
     lastfm_api_key: z
       .string()
       .nullable()

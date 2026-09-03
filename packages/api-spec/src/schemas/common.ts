@@ -177,6 +177,7 @@ export const dataSourceSchema = z
     'lab_report',
     'oura',
     'garmin',
+    'gravl',
     'rescuetime',
     'owntracks',
     'strava',

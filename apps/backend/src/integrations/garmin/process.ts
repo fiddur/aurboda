@@ -24,6 +24,7 @@ import type {
 
 import {
   activityTypeExists,
+  adoptLegacyActivity,
   deleteGarminActivityWithWrongType,
   insertActivity,
   insertLocations,
@@ -32,6 +33,11 @@ import {
   softDeleteSupersededLocations,
 } from '../../db/index.ts'
 import { auditError, auditInfo, auditWarn } from '../../services/audit-log.ts'
+import {
+  GARMIN_HC_ORIGIN,
+  garminActivityExternalId,
+  garminSleepExternalId,
+} from '../../services/source-identity.ts'
 import { activityTrackSources, gpsPrecedenceSpan } from '../gps-precedence.ts'
 
 // ============================================================================
@@ -71,6 +77,7 @@ export const garminDataTypes: GarminDataType[] = [
 
 export interface GarminProcessDeps {
   activityTypeExists: typeof activityTypeExists
+  adoptLegacyActivity: typeof adoptLegacyActivity
   auditError: typeof auditError
   auditInfo: typeof auditInfo
   auditWarn: typeof auditWarn
@@ -94,6 +101,7 @@ export interface ProcessActivityDetailOptions {
 
 const defaultDeps: GarminProcessDeps = {
   activityTypeExists,
+  adoptLegacyActivity,
   auditError,
   auditInfo,
   auditWarn,
@@ -320,7 +328,11 @@ const processHrv = async (user: string, data: GarminHrvData, deps: GarminProcess
 // Sleep
 // ---------------------------------------------------------------------------
 
-/** Build a sleep activity record from the daily sleep DTO. */
+/**
+ * Build a sleep activity record from the daily sleep DTO. Keyed by calendar
+ * date (`garmin-sleep-<date>`), the same id the Health Connect processor
+ * derives for a Garmin-written sleep session, so both paths share one row (#1080).
+ */
 const buildSleepActivity = (dto: SleepData['dailySleepDTO']): Activity | null => {
   const startTime = dto.sleepStartTimestampGMT ? new Date(dto.sleepStartTimestampGMT) : null
   const endTime = dto.sleepEndTimestampGMT ? new Date(dto.sleepEndTimestampGMT) : null
@@ -336,6 +348,7 @@ const buildSleepActivity = (dto: SleepData['dailySleepDTO']): Activity | null =>
       sleep_score: dto.sleepScores?.overall?.value,
     },
     end_time: endTime,
+    external_id: garminSleepExternalId(dto.calendarDate),
     source: 'garmin',
     start_time: startTime,
     title: 'Sleep',
@@ -424,7 +437,20 @@ const processSleep = async (user: string, data: SleepData, deps: GarminProcessDe
   await deps.insertRawRecord(user, makeRaw('garmin_sleep', `garmin-sleep-${dto.calendarDate}`, time, data))
 
   const activity = buildSleepActivity(dto)
-  if (activity) await deps.insertActivity(user, activity)
+  if (activity) {
+    // Claim the row written before sleep had an external id (same start), or
+    // the Health Connect copy of this night, so the upsert enriches it.
+    await deps.adoptLegacyActivity(user, { external_id: activity.external_id!, source: 'garmin' }, [
+      { activity_type: 'sleep', kind: 'source_type_start', source: 'garmin', start_time: activity.start_time },
+      {
+        activity_type: 'sleep',
+        kind: 'source_type_start',
+        source: 'health_connect',
+        start_time: activity.start_time,
+      },
+    ])
+    await deps.insertActivity(user, activity)
+  }
 
   for (const nap of dto.dailyNapDTOS ?? []) {
     const napActivity = buildNapActivity(nap)
@@ -523,7 +549,7 @@ const processActivity = async (
   deps: GarminProcessDeps,
   typeCache: Map<string, ResolvedActivityType>,
 ): Promise<void> => {
-  const externalId = `garmin-activity-${act.activityId}`
+  const externalId = garminActivityExternalId(act.activityId)
   const startTime = new Date(act.startTimeGMT || act.beginTimestamp)
   const durationMs = (act.duration || act.elapsedDuration || 0) * 1000
   const endTime = new Date(startTime.getTime() + durationMs)
@@ -534,8 +560,18 @@ const processActivity = async (
   const resolved = await resolveActivityType(user, activityTypeKey, deps, typeCache)
   const exerciseTitle = act.activityName || activityTypeKey
 
-  // Clean up any existing activity with a different type (handles re-sync after type mapping changes)
+  // Legacy rows (no external_id) with a different type are removed so a
+  // re-sync after a type-mapping change doesn't leave a duplicate; keyed rows
+  // are simply updated in place by the upsert below.
   await deps.deleteGarminActivityWithWrongType(user, act.activityId, resolved.activity_type)
+
+  // Claim the row this activity may already have — written by an older sync
+  // without an external id, or by Health Connect from the Garmin app — so the
+  // upsert enriches it instead of adding a second row (#1080).
+  await deps.adoptLegacyActivity(user, { external_id: externalId, source: 'garmin' }, [
+    { garmin_activity_id: act.activityId, kind: 'garmin_activity_id' },
+    { client_record_id: String(act.activityId), data_origin: GARMIN_HC_ORIGIN, kind: 'hc_client_record' },
+  ])
 
   const activity: Activity = {
     activity_type: resolved.activity_type,
@@ -551,6 +587,7 @@ const processActivity = async (
       vo2_max: act.vO2MaxValue,
     },
     end_time: endTime,
+    external_id: externalId,
     source: 'garmin',
     start_time: startTime,
     title: exerciseTitle,

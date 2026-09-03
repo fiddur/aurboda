@@ -24,6 +24,7 @@ import { AndroidAppSource } from './pages/DataSources/AndroidAppSource.jsx'
 import { AurbodaSource } from './pages/DataSources/AurbodaSource.jsx'
 import { CalendarsSource } from './pages/DataSources/CalendarsSource.jsx'
 import { GarminSource } from './pages/DataSources/GarminSource.jsx'
+import { GravlSource } from './pages/DataSources/GravlSource.jsx'
 import { DataSources } from './pages/DataSources/index.jsx'
 import { LastFmSource } from './pages/DataSources/LastFmSource.jsx'
 import { OuraSource } from './pages/DataSources/OuraSource.jsx'
@@ -116,6 +117,7 @@ function AppShell() {
             <Route path="/data-sources/oura" component={OuraSource} />
             <Route path="/data-sources/garmin" component={GarminSource} />
             <Route path="/data-sources/strava" component={StravaSource} />
+            <Route path="/data-sources/gravl" component={GravlSource} />
             <Route path="/data-sources/activitywatch-desktop" component={ActivityWatchDesktopSource} />
             <Route path="/data-sources/activitywatch-android" component={ActivityWatchAndroidSource} />
             <Route path="/data-sources/rescue-time" component={RescueTimeSource} />

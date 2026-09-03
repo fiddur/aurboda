@@ -13,6 +13,7 @@ import { type Request, type Response, Router } from 'express'
 
 import type { Auth } from './auth.ts'
 import type { GarminClient } from './integrations/garmin/client.ts'
+import type { GravlClient } from './integrations/gravl/client.ts'
 import type { ouraClient } from './integrations/oura/client.ts'
 import type { AutosharePreviewDeps } from './mcp/autoshare-rule-tools.ts'
 import type { FeedDeliver } from './routes/feed-router.ts'
@@ -66,6 +67,7 @@ interface McpDeps {
   followActions?: FollowActions
   followerActions?: FollowerActions
   garmin?: GarminClient
+  gravl?: GravlClient
   onActivityMutated?: ActivityNotifier
   oura?: OuraClientType
   retroEnrichTimeline?: RetroEnrichTrigger
@@ -88,7 +90,7 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
   registerActivityTypeTools(server, user)
   registerDeductionRuleTools(server, user, engineDeps, deps.deductionQueue)
   if (deps.autosharePreviewDeps) registerAutoshareRuleTools(server, user, deps.autosharePreviewDeps)
-  registerSyncTools(server, user, deps.oura, deps.garmin, deps.stravaQueue, deps.onActivityMutated)
+  registerSyncTools(server, user, deps.oura, deps.garmin, deps.stravaQueue, deps.onActivityMutated, deps.gravl)
   registerSettingsTools(server, user)
   registerLocationTools(server, user)
   registerCorrelationTools(server, user, deps.sync)

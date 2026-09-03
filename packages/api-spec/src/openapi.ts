@@ -50,6 +50,9 @@ import {
   healthConnectDeletionsBodySchema,
   healthConnectSyncBodySchema,
   syncOuraBodySchema,
+  syncGravlBodySchema,
+  gravlSyncResponseSchema,
+  gravlSyncStatusResponseSchema,
   syncRescueTimeBodySchema,
   syncResponseSchema,
   syncStatusResponseSchema,
@@ -732,6 +735,43 @@ const openApiDocument = createDocument({
         },
         security: [{ bearerAuth: [] }],
         summary: 'Sync RescueTime data',
+        tags: ['Sync'],
+      },
+    },
+
+    '/sync/gravl': {
+      post: {
+        description:
+          'Sync strength workouts from Gravl (gravl.ai): exercises with per-set weight, reps, RPE and set type. A workout that already reached Aurboda through Health Connect is enriched in place; otherwise a strength_training activity is created. Requires a Gravl OAuth connection or a personal token in user settings.',
+        requestBody: {
+          content: { 'application/json': { schema: syncGravlBodySchema } },
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: gravlSyncResponseSchema } },
+            description: 'Sync result',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Gravl integration unavailable',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Sync Gravl workouts',
+        tags: ['Sync'],
+      },
+    },
+    '/sync/gravl/status': {
+      get: {
+        description: 'Current Gravl sync state: last sync time, status, error and rate-limit hold.',
+        responses: {
+          200: {
+            content: { 'application/json': { schema: gravlSyncStatusResponseSchema } },
+            description: 'Successful response',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get Gravl sync status',
         tags: ['Sync'],
       },
     },

@@ -41,12 +41,21 @@ vi.mock('../integrations/rescuetime/sync.ts', () => ({
   syncRescueTimeData: vi.fn(),
 }))
 
+vi.mock('../integrations/gravl/sync.ts', () => ({
+  DEFAULT_SYNC_HISTORY_DAYS: 90,
+  isRateLimited: vi.fn().mockReturnValue(false),
+  syncGravlWorkouts: vi.fn(),
+}))
+
+import type { GravlClient } from '../integrations/gravl/client.ts'
+
 import { syncGarminDataType } from '../integrations/garmin/sync.ts'
+import { syncGravlWorkouts } from '../integrations/gravl/sync.ts'
 import { syncLastFmData } from '../integrations/lastfm/sync.ts'
 import { syncOuraDataType } from '../integrations/oura/sync.ts'
 import { syncRescueTimeData } from '../integrations/rescuetime/sync.ts'
 import { getSettings } from './settings.ts'
-import { createSyncProvider } from './sync-provider.ts'
+import { createSyncProvider, resolveSyncInterval } from './sync-provider.ts'
 
 describe('createSyncProvider › syncLastFmIfNeeded', () => {
   const lastSync = new Date('2026-06-01T00:00:00Z')
@@ -258,5 +267,75 @@ describe('createSyncProvider › syncRescueTimeIfNeeded', () => {
 
     expect(syncRescueTimeData).not.toHaveBeenCalled()
     expect(onActivitySynced).not.toHaveBeenCalled()
+  })
+})
+
+describe('resolveSyncInterval', () => {
+  test('prefers the provider entry, then default, then the server fallback', () => {
+    expect(resolveSyncInterval({ default: 60, gravl: 15 }, 'gravl', 30)).toBe(15)
+    expect(resolveSyncInterval({ default: 60, gravl: 15 }, 'garmin', 30)).toBe(60)
+    expect(resolveSyncInterval({}, 'garmin', 30)).toBe(30)
+    expect(resolveSyncInterval(undefined, 'oura', 30)).toBe(30)
+  })
+
+  test('ignores non-positive values', () => {
+    expect(resolveSyncInterval({ gravl: 0 }, 'gravl', 30)).toBe(30)
+  })
+})
+
+describe('createSyncProvider › syncGravlIfNeeded', () => {
+  const lastSync = new Date('2026-06-01T00:00:00Z')
+
+  const gravl = (kind: 'oauth' | 'token' | null) =>
+    ({ connectionKind: vi.fn().mockResolvedValue(kind) }) as unknown as GravlClient
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(getSettings).mockResolvedValue({} as never)
+    vi.mocked(dbIndex.getSyncState).mockResolvedValue({ last_sync_time: lastSync } as never)
+    vi.mocked(syncGravlWorkouts).mockResolvedValue({
+      activities_created: 0,
+      activities_enriched: 2,
+      status: 'success',
+      workouts_processed: 2,
+    })
+  })
+
+  test('syncs a connected user whose last sync is stale and fires deduction over the window', async () => {
+    const onActivitySynced = vi.fn()
+    const client = gravl('token')
+    const provider = createSyncProvider({ gravl: client, onActivitySynced })
+
+    await provider.syncGravlIfNeeded('alice')
+
+    expect(syncGravlWorkouts).toHaveBeenCalledWith('alice', client)
+    expect(onActivitySynced).toHaveBeenCalledWith('alice', '*', lastSync, expect.any(Date))
+  })
+
+  test('does nothing for a user without a Gravl connection', async () => {
+    const provider = createSyncProvider({ gravl: gravl(null) })
+    await provider.syncGravlIfNeeded('alice')
+    expect(syncGravlWorkouts).not.toHaveBeenCalled()
+  })
+
+  test('honours the user’s own interval over the server threshold', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-06-01T00:20:00Z'))
+    vi.mocked(getSettings).mockResolvedValue({ sync_intervals: { gravl: 60 } } as never)
+    const provider = createSyncProvider({ gravl: gravl('oauth'), syncThresholdMinutes: 10 })
+
+    await provider.syncGravlIfNeeded('alice')
+    expect(syncGravlWorkouts).not.toHaveBeenCalled()
+
+    vi.mocked(getSettings).mockResolvedValue({ sync_intervals: { default: 15 } } as never)
+    await provider.syncGravlIfNeeded('alice')
+    expect(syncGravlWorkouts).toHaveBeenCalledTimes(1)
+    vi.useRealTimers()
+  })
+
+  test('skips when the gravl integration is not configured', async () => {
+    const provider = createSyncProvider({})
+    await provider.syncGravlIfNeeded('alice')
+    expect(syncGravlWorkouts).not.toHaveBeenCalled()
   })
 })

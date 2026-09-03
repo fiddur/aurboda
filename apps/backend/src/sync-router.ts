@@ -16,6 +16,7 @@ import {
   syncActivityWatchBodySchema,
   syncCalendarsBodySchema,
   syncGarminBodySchema,
+  syncGravlBodySchema,
   syncLastFmBodySchema,
   syncOuraBodySchema,
   syncRescueTimeBodySchema,
@@ -32,6 +33,9 @@ import {
   type GarminSyncResponse,
   type GarminSyncResult,
   type GarminSyncStatusResponse,
+  type GravlSyncResponse,
+  type GravlSyncResult,
+  type GravlSyncStatusResponse,
   type HealthConnectDeletionsBody,
   type HealthConnectRecord,
   type HealthConnectSyncBody,
@@ -54,6 +58,7 @@ import {
   type SyncActivityWatchBody,
   type SyncCalendarsBody,
   type SyncGarminBody,
+  type SyncGravlBody,
   type SyncLastFmBody,
   type SyncOuraBody,
   type SyncRescueTimeBody,
@@ -62,6 +67,8 @@ import {
 } from '@aurboda/api-spec'
 
 import { maxOf, minOf } from './services/numeric-extremes.ts'
+import type { SourceArrival } from './services/source-identity.ts'
+
 import { type TypedRouter, typedRouter } from './typed-router.ts'
 import { validateBody } from './validation.ts'
 
@@ -99,8 +106,12 @@ export interface SyncRouterDeps {
     user: string,
     recordType: string,
     records: HealthConnectRecord[],
-  ) => Promise<void>
-  processHealthConnectData: (user: string, recordType: string, data: HealthConnectRecord) => Promise<void>
+  ) => Promise<SourceArrival[] | void>
+  processHealthConnectData: (
+    user: string,
+    recordType: string,
+    data: HealthConnectRecord,
+  ) => Promise<SourceArrival[] | void>
   triggerCalorieComputation: (user: string, start: Date, end: Date) => Promise<void>
   /**
    * Optional pg-boss-backed enqueue. When present, HR ingestion enqueues a
@@ -158,6 +169,10 @@ export interface SyncRouterDeps {
   getStravaSyncStates: (user: string) => Promise<ProviderSyncStatus[]>
   getStravaQueueStatus?: () => Promise<{ queued_count: number; active_count: number }>
   resetStravaSyncState: (user: string, dataType?: string) => Promise<void>
+  /** Absent when the Gravl integration is not wired (tests). */
+  syncGravl?: (user: string, options: { fullResync?: boolean; startDate?: Date }) => Promise<GravlSyncResult>
+  getGravlSyncStates?: (user: string) => Promise<ProviderSyncStatus[]>
+  resetGravlSyncState?: (user: string) => Promise<void>
   getActivityWatchSyncStates: (user: string) => Promise<ProviderSyncStatus[]>
   // Outbound sync (Health Connect write-back)
   getPendingOutboundSync: (user: string, limit?: number) => Promise<PendingOutboundSyncResult>
@@ -170,6 +185,11 @@ export interface SyncRouterDeps {
   requeueOutboundSync: (user: string, id: string) => Promise<boolean>
   getOutboundSyncHistory: (user: string, limit?: number) => Promise<OutboundSyncEntry[]>
   onActivitySynced?: (user: string, activityType: string, start: Date, end: Date) => void
+  /**
+   * Health Connect sessions that map to a provider we sync directly (#1080),
+   * so the enrichment queue can fetch the source's own detail right away.
+   */
+  onSourceArrivals?: (user: string, arrivals: SourceArrival[]) => void
 }
 
 /**
@@ -621,6 +641,53 @@ export const createSyncRouter = (deps: SyncRouterDeps, authMiddleware: RequestHa
     },
   )
 
+  // Gravl sync endpoints (synchronous like RescueTime: a run is a few requests)
+  router.post<ParamsDictionary, GravlSyncResponse, SyncGravlBody>(
+    '/gravl',
+    authMiddleware,
+    validateBody(syncGravlBodySchema),
+    async (req, res) => {
+      const user = req.user!
+      const { full_resync, start_date } = req.body
+      if (!deps.syncGravl) {
+        return res.status(400).json({ error: 'Gravl integration is not available', success: false })
+      }
+
+      try {
+        const result = await deps.syncGravl(user, {
+          fullResync: full_resync,
+          startDate: start_date ? new Date(start_date) : undefined,
+        })
+        res.json({ result, success: true })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        res.status(500).json({ error: message, success: false })
+      }
+    },
+  )
+
+  router.get<ParamsDictionary, GravlSyncStatusResponse>('/gravl/status', authMiddleware, async (req, res) => {
+    const user = req.user!
+    try {
+      const states = deps.getGravlSyncStates ? await deps.getGravlSyncStates(user) : []
+      res.json({ states, success: true })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error'
+      res.status(500).json({ error: message, success: false })
+    }
+  })
+
+  router.delete<ParamsDictionary, SyncResponse>('/gravl/state', authMiddleware, async (req, res) => {
+    const user = req.user!
+    try {
+      await deps.resetGravlSyncState?.(user)
+      res.json({ success: true })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error'
+      res.status(500).json({ error: message, success: false })
+    }
+  })
+
   // ===========================================================================
   // Outbound sync endpoints (Health Connect write-back)
   // ===========================================================================
@@ -760,7 +827,8 @@ export const createSyncRouter = (deps: SyncRouterDeps, authMiddleware: RequestHa
       const user = req.user!
 
       // Process all records in batch (bulk inserts)
-      await deps.processHealthConnectBatch(user, recordType, records)
+      const arrivals = (await deps.processHealthConnectBatch(user, recordType, records)) ?? []
+      if (arrivals.length > 0) deps.onSourceArrivals?.(user, arrivals)
 
       // Notify deduction queue
       deps.onActivitySynced?.(user, '*', new Date(Date.now() - 86400000), new Date())

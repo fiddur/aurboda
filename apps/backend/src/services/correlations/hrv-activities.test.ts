@@ -165,6 +165,7 @@ describe('getHrvActivitiesCorrelation', () => {
       syncCalendarsIfNeeded: vi.fn().mockResolvedValue(undefined),
       syncGarminIfNeeded: vi.fn().mockResolvedValue(undefined),
       syncLastFmIfNeeded: vi.fn().mockResolvedValue(undefined),
+      syncGravlIfNeeded: vi.fn().mockResolvedValue(undefined),
       syncOuraIfNeeded: vi.fn().mockResolvedValue(undefined),
       syncRescueTimeIfNeeded: vi.fn().mockResolvedValue(undefined),
     }

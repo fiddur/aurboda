@@ -55,7 +55,7 @@ export type SyncStatusResponse = z.infer<typeof syncStatusResponseSchema>
 export const syncStatusQuerySchema = z
   .object({
     provider: z
-      .enum(['oura', 'garmin', 'strava', 'rescuetime', 'calendar', 'lastfm', 'activitywatch', 'all'])
+      .enum(['oura', 'garmin', 'strava', 'rescuetime', 'calendar', 'lastfm', 'activitywatch', 'gravl', 'all'])
       .optional()
       .meta({
         description: 'Provider to check (defaults to all)',
@@ -69,7 +69,7 @@ export type SyncStatusQuery = z.infer<typeof syncStatusQuerySchema>
  * Sync provider schema (for MCP).
  */
 export const syncProviderSchema = z
-  .enum(['oura', 'garmin', 'strava', 'rescuetime', 'calendar', 'lastfm', 'activitywatch', 'all'])
+  .enum(['oura', 'garmin', 'strava', 'rescuetime', 'calendar', 'lastfm', 'activitywatch', 'gravl', 'all'])
   .meta({
     description: 'Which provider to check',
   })
@@ -111,6 +111,18 @@ export const syncRescueTimeBodySchema = z
   .meta({ id: 'SyncRescueTimeBody' })
 
 export type SyncRescueTimeBody = z.infer<typeof syncRescueTimeBodySchema>
+
+/**
+ * Sync Gravl body schema.
+ */
+export const syncGravlBodySchema = z
+  .object({
+    full_resync: fullResyncSchema,
+    start_date: startDateSyncSchema,
+  })
+  .meta({ id: 'SyncGravlBody' })
+
+export type SyncGravlBody = z.infer<typeof syncGravlBodySchema>
 
 /**
  * Sync Calendars body schema.
@@ -430,6 +442,53 @@ export const rescueTimeSyncResultSchema = z
   .meta({ id: 'RescueTimeSyncResult' })
 
 export type RescueTimeSyncResult = z.infer<typeof rescueTimeSyncResultSchema>
+
+/**
+ * Gravl sync result schema.
+ */
+export const gravlSyncResultSchema = z
+  .object({
+    activities_created: z
+      .number()
+      .int()
+      .meta({ description: 'Workouts stored as new activities (no Health Connect session to enrich)' }),
+    activities_enriched: z
+      .number()
+      .int()
+      .meta({ description: 'Existing Health Connect sessions enriched with Gravl set detail' }),
+    error: z.string().optional().meta({ description: 'Error message if status is error' }),
+    retry_after: iso8601DateTimeSchema.optional().meta({ description: 'Time when retry is allowed' }),
+    status: syncResultStatusSchema,
+    workouts_processed: z
+      .number()
+      .int()
+      .meta({ description: 'Real (non-external) Gravl workouts seen in the sync window' }),
+  })
+  .meta({ id: 'GravlSyncResult' })
+
+export type GravlSyncResult = z.infer<typeof gravlSyncResultSchema>
+
+/**
+ * Gravl sync response.
+ */
+export const gravlSyncResponseSchema = baseResponseSchema
+  .extend({
+    result: gravlSyncResultSchema.optional().meta({ description: 'Sync result' }),
+  })
+  .meta({ id: 'GravlSyncResponse' })
+
+export type GravlSyncResponse = z.infer<typeof gravlSyncResponseSchema>
+
+/**
+ * Gravl sync status response.
+ */
+export const gravlSyncStatusResponseSchema = baseResponseSchema
+  .extend({
+    states: z.array(providerSyncStatusSchema).optional().meta({ description: 'Gravl sync states' }),
+  })
+  .meta({ id: 'GravlSyncStatusResponse' })
+
+export type GravlSyncStatusResponse = z.infer<typeof gravlSyncStatusResponseSchema>
 
 /**
  * Oura sync response with typed results.

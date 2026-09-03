@@ -9,7 +9,14 @@ import {
   updateUserSettings,
 } from '../../state/api'
 import { auth } from '../../state/auth'
-import { DataTypesList, LoginRequired, type SaveStatus, SaveStatusIndicator, StatusBanner } from './shared'
+import {
+  DataTypesList,
+  LoginRequired,
+  type SaveStatus,
+  SaveStatusIndicator,
+  StatusBanner,
+  SyncIntervalField,
+} from './shared'
 import './style.css'
 
 const DATA_TYPES = ['App usage', 'Website usage', 'Productivity scores', 'Time spent per category']
@@ -112,29 +119,32 @@ export function RescueTimeSource() {
         </div>
 
         {!isLoading && (
-          <section class="settings-section">
-            <div class="section-header-row">
-              <h2>API Key</h2>
-              <SaveStatusIndicator state={saveStatus} />
-            </div>
-            {isConfigured && <p class="connected-status">Configured</p>}
-            <div class="form-field">
-              <input
-                type="password"
-                value={rescueTimeKey}
-                onInput={(e) => setRescueTimeKey((e.target as HTMLInputElement).value)}
-                onBlur={handleRescueTimeKeyBlur}
-                placeholder={isConfigured ? 'Enter new key to update' : 'Enter your RescueTime API key'}
-              />
-              <p class="field-description">
-                Get your API key from{' '}
-                <a href="https://www.rescuetime.com/anapi/manage" target="_blank" rel="noopener noreferrer">
-                  RescueTime API settings
-                </a>
-                . Saves automatically when you leave the field.
-              </p>
-            </div>
-          </section>
+          <>
+            <section class="settings-section">
+              <div class="section-header-row">
+                <h2>API Key</h2>
+                <SaveStatusIndicator state={saveStatus} />
+              </div>
+              {isConfigured && <p class="connected-status">Configured</p>}
+              <div class="form-field">
+                <input
+                  type="password"
+                  value={rescueTimeKey}
+                  onInput={(e) => setRescueTimeKey((e.target as HTMLInputElement).value)}
+                  onBlur={handleRescueTimeKeyBlur}
+                  placeholder={isConfigured ? 'Enter new key to update' : 'Enter your RescueTime API key'}
+                />
+                <p class="field-description">
+                  Get your API key from{' '}
+                  <a href="https://www.rescuetime.com/anapi/manage" target="_blank" rel="noopener noreferrer">
+                    RescueTime API settings
+                  </a>
+                  . Saves automatically when you leave the field.
+                </p>
+              </div>
+            </section>
+            <SyncIntervalField provider="rescuetime" />
+          </>
         )}
       </div>
 

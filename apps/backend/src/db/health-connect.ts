@@ -39,12 +39,82 @@ const stripExerciseTypeFromData = (data: Record<string, unknown>): Record<string
   return rest
 }
 
-import { insertActivities, insertActivity } from './activities/index.ts'
+/**
+ * Claim a legacy row for a session that maps to a synced provider (#1080), so
+ * the insert that follows enriches it instead of adding a duplicate. Besides
+ * the identity's own matchers, an older `health_connect` row at exactly this
+ * type + start (HC re-sending a record from before re-sourcing existed) is
+ * adopted too.
+ */
+const adoptForIdentity = async (
+  user: string,
+  identity: SourceIdentity,
+  activityType: string,
+  startTime: Date,
+): Promise<void> => {
+  await adoptLegacyActivity(user, identity, [
+    ...identity.legacy,
+    {
+      activity_type: activityType,
+      kind: 'source_type_start',
+      source: 'health_connect',
+      start_time: startTime,
+    },
+  ])
+}
+
+import {
+  resolveHealthConnectIdentity,
+  type SourceArrival,
+  type SourceIdentity,
+  toArrival,
+} from '../services/source-identity.ts'
+import { adoptLegacyActivity, insertActivities, insertActivity } from './activities/index.ts'
 import { query } from './connection.ts'
 import { insertMeal } from './meals.ts'
 import { upsertSyncedNote } from './notes.ts'
 import { insertRawRecord, insertRawRecords } from './raw-records.ts'
 import { insertTimeSeries } from './time-series.ts'
+
+/**
+ * Store one exercise / sleep record as an activity (single-record path).
+ * A session from an app we sync directly is stored under that provider's
+ * identity so its own sync enriches this row rather than duplicating it.
+ * Returns the arrival to enrich, if any.
+ */
+const storeHealthConnectActivity = async (
+  user: string,
+  recordType: string,
+  data: Record<string, unknown>,
+): Promise<SourceArrival[]> => {
+  const baseActivityType = healthConnectActivityMapping[recordType]
+  if (!baseActivityType) return []
+
+  // For exercise sessions, resolve the specific exercise type (yoga, running, etc.)
+  const activityType = baseActivityType === 'exercise' ? resolveExerciseActivityType(data) : baseActivityType
+  const startTime = new Date(data.startTime as string)
+  const endTime = data.endTime ? new Date(data.endTime as string) : undefined
+  const identity = resolveHealthConnectIdentity(recordType, data)
+  if (identity) await adoptForIdentity(user, identity, activityType, startTime)
+  const activityId = await insertActivity(user, {
+    activity_type: activityType,
+    data: { ...stripExerciseTypeFromData(data), ...identity?.data },
+    end_time: endTime,
+    external_id: identity?.external_id,
+    source: identity?.source ?? 'health_connect',
+    start_time: startTime,
+    title: data.title as string | undefined,
+  })
+  // HC sends `notes` as a single string. Persist it as a synced note row
+  // (source='health_connect') so it round-trips cleanly: outbound HC sync
+  // only includes user-authored (source IS NULL) notes, so this row never
+  // gets echoed back as user input.
+  const hcNotes = data.notes as string | undefined
+  if (activityId && hcNotes) {
+    await upsertSyncedNote(user, 'activity', activityId, 'health_connect', hcNotes, startTime, endTime)
+  }
+  return identity ? [toArrival(identity)] : []
+}
 
 /**
  * Process incoming Health Connect data and normalize into appropriate tables.
@@ -53,7 +123,7 @@ export const processHealthConnectData = async (
   user: string,
   recordType: string,
   data: Record<string, unknown>,
-) => {
+): Promise<SourceArrival[]> => {
   const externalId = (data.metadata as Record<string, unknown>)?.id as string | undefined
 
   // Always store raw record
@@ -99,30 +169,7 @@ export const processHealthConnectData = async (
   }
 
   // Normalize to activities if applicable
-  const baseActivityType = healthConnectActivityMapping[recordType]
-  if (baseActivityType) {
-    // For exercise sessions, resolve the specific exercise type (yoga, running, etc.)
-    const activityType =
-      baseActivityType === 'exercise' ? resolveExerciseActivityType(data) : baseActivityType
-    const startTime = new Date(data.startTime as string)
-    const endTime = data.endTime ? new Date(data.endTime as string) : undefined
-    const activityId = await insertActivity(user, {
-      activity_type: activityType,
-      data: stripExerciseTypeFromData(data),
-      end_time: endTime,
-      source: 'health_connect',
-      start_time: startTime,
-      title: data.title as string | undefined,
-    })
-    // HC sends `notes` as a single string. Persist it as a synced note row
-    // (source='health_connect') so it round-trips cleanly: outbound HC sync
-    // only includes user-authored (source IS NULL) notes, so this row never
-    // gets echoed back as user input.
-    const hcNotes = data.notes as string | undefined
-    if (activityId && hcNotes) {
-      await upsertSyncedNote(user, 'activity', activityId, 'health_connect', hcNotes, startTime, endTime)
-    }
-  }
+  return storeHealthConnectActivity(user, recordType, data)
 }
 
 /**
@@ -140,13 +187,15 @@ export const processHealthConnectBatch = async (
   user: string,
   recordType: string,
   records: Record<string, unknown>[],
-) => {
-  if (records.length === 0) return
+): Promise<SourceArrival[]> => {
+  if (records.length === 0) return []
 
   // Collect all inserts across the batch
   const rawRecords: RawRecord[] = []
   const allTimeSeriesPoints: TimeSeriesPoint[] = []
   const activities: Activity[] = []
+  /** Sessions that map to a synced provider (#1080): adopted before insert, reported after. */
+  const identified: { identity: SourceIdentity; activityType: string; startTime: Date }[] = []
   const activityNotes: {
     externalId: string | undefined
     activityType: string
@@ -206,11 +255,14 @@ export const processHealthConnectBatch = async (
         baseActivityType === 'exercise' ? resolveExerciseActivityType(data) : baseActivityType
       const startTime = new Date(data.startTime as string)
       const endTime = data.endTime ? new Date(data.endTime as string) : undefined
+      const identity = resolveHealthConnectIdentity(recordType, data)
+      if (identity) identified.push({ activityType: resolvedType, identity, startTime })
       activities.push({
         activity_type: resolvedType,
-        data: stripExerciseTypeFromData(data),
+        data: { ...stripExerciseTypeFromData(data), ...identity?.data },
         end_time: endTime,
-        source: 'health_connect',
+        external_id: identity?.external_id,
+        source: identity?.source ?? 'health_connect',
         start_time: startTime,
         title: data.title as string | undefined,
       })
@@ -220,7 +272,7 @@ export const processHealthConnectBatch = async (
           activityType: resolvedType,
           content: noteContent,
           endTime,
-          externalId,
+          externalId: identity?.external_id,
           startTime,
         })
       }
@@ -235,10 +287,14 @@ export const processHealthConnectBatch = async (
   }
 
   if (activities.length > 0) {
+    for (const { identity, activityType, startTime } of identified) {
+      await adoptForIdentity(user, identity, activityType, startTime)
+    }
     const inserted = await insertActivities(user, activities)
     // Persist notes for activities that carry them. Match on (external_id) for
-    // HC records (always present) and fall back to (type + start_time) just in
-    // case. upsertSyncedNote is idempotent so re-syncing the same HC record
+    // sessions stored under a provider identity and fall back to
+    // (type + start_time) for plain HC rows, which carry no external_id.
+    // upsertSyncedNote is idempotent so re-syncing the same HC record
     // updates the existing note in place.
     //
     // Soft-deleted-row caveat: insertActivities' upsert is gated by
@@ -276,6 +332,8 @@ export const processHealthConnectBatch = async (
   for (const data of mealRecords) {
     await processNutritionRecord(user, data)
   }
+
+  return identified.map(({ identity }) => toArrival(identity))
 }
 
 /**
