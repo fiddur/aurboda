@@ -94,6 +94,7 @@ import { evaluateAutoshareWindow } from './services/autoshare.ts'
 import { triggerCalorieComputation } from './services/calorie-computation.ts'
 import { createCalorieQueue, type CalorieQueue } from './services/calorie-queue.ts'
 import { getCentralDb, initializeCentralDb } from './services/central-db.ts'
+import { createChallengeDiscovery, defaultChallengeDiscoveryDeps } from './services/challenge-discovery.ts'
 import { createChallengeResultsQueue } from './services/challenge-results-queue.ts'
 import { publishFinishedChallengeResults } from './services/challenge-results.ts'
 import { getChallengeStandings } from './services/challenge-standings.ts'
@@ -605,6 +606,10 @@ const main = async () => {
     reject: (user, id) => rejectFollower(feedDeps, user, id),
   }
 
+  // Open challenges from followed peers, shared by REST and MCP. One instance
+  // so the per-instance well-known memo is shared too.
+  const discoverChallenges = createChallengeDiscovery(defaultChallengeDiscoveryDeps(webHost))
+
   // Mount MCP server BEFORE body-parser (MCP SDK needs raw body)
   // Stateless mode — no session tracking needed (tools only, no subscriptions)
   httpd.use(
@@ -614,6 +619,7 @@ const main = async () => {
       autosharePreviewDeps: autoshareDeps,
       centralDb,
       deductionQueue: deductionQueue ?? undefined,
+      discoverChallenges,
       engineDeps,
       feedDeliver,
       followActions,
@@ -763,6 +769,7 @@ const main = async () => {
     authMiddleware,
     centralDb,
     deductionQueue,
+    discoverChallenges,
     engineDeps,
     feedDeliver,
     followActions,

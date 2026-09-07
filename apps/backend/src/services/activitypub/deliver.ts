@@ -603,7 +603,7 @@ const deliverToMentioned = async (
       const actor = await ctx.lookupObject(mention.actorUri)
       if (!isActor(actor)) {
         // `lookupObject` yields null (not an error) when the actor document can't
-        // be loaded; without this line a lost winner notification is invisible.
+        // be loaded.
         console.warn(`⚠️ Challenge result delivery to ${mention.handle} skipped: actor not resolvable`)
         continue
       }
@@ -619,8 +619,8 @@ const deliverToMentioned = async (
  * winner — as two independent deliveries. Without an outbox queue Fedify
  * awaits every follower inbox and one dead instance rejects the whole send,
  * which used to cancel the winner delivery that exists precisely for members
- * who don't follow the host (#1079). Winners go first (named recipients); a
- * followers failure still surfaces to the caller after both have run.
+ * who don't follow the host (#1079). Both run concurrently; a followers
+ * failure still surfaces to the caller after both have settled.
  */
 const sendToFollowersAndMentioned = async (
   ctx: Context<void>,

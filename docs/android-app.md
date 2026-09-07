@@ -133,15 +133,25 @@ Two `AppWidgetProvider`s live in `widget/`:
   SharedPreferences (`ChallengeWidgetPrefs.kt`). Rendering — including the
   network fetch — runs in `ChallengeWidgetWorker` (WorkManager, unique
   `APPEND_OR_REPLACE`), enqueued by the provider's `onUpdate`/resize, the config
-  screen, and after every sync; the receiver itself never blocks. Data comes from
-  the user's own instance for the challenge itself (name, unit, window — so a
-  rename or a left challenge shows) and from the **hosting** instance's public
+  screen, and after every sync; the receiver itself never blocks. The worker
+  fetches the user's hosted + joined lists **once** per refresh and shares them
+  with every widget (`fetchChallengeWidgetLists`, #991); the challenge itself
+  (name, unit, window — so a rename or a left challenge shows) comes from those
+  lists, the standings from the **hosting** instance's public
   `GET /public/:username/:slug/standings` (discovered via `/.well-known/aurboda`
-  like a federated join, `ChallengeApi.kt`). The chart is a Canvas bitmap
+  like a federated join, `ChallengeApi.kt`). A cancelled worker propagates its
+  `CancellationException` out of the API helpers instead of turning it into an
+  error result. The chart is a Canvas bitmap
   (`ChallengeChart.kt`) — a widget can't host a WebView — with the same member
-  palette as the web page; the leaderboard rows are added with
+  palette as the web page; bucket ends come from the host's
+  `effective_bucket_size` on the standings response (calendar days/weeks/months
+  in the challenge zone, `bucketEndAt`), inferred from the data only for a host
+  that doesn't send it. The leaderboard rows are added with
   `RemoteViews.addView`, as many as fit for the launcher-reported size
-  (`planChallengeWidgetLayout`), always keeping the signed-in user's row. All
+  (`planChallengeWidgetLayout`), always keeping the signed-in user's row; when
+  that row was pulled up from below the cut on a widget too narrow for the rank
+  column, it alone keeps its rank, prefixed "…" (`rankCellText`, #992), so a
+  10th place never reads as 2nd. All
   the pure logic (series, rows, layout, texts) is in `ChallengeWidgetModel.kt`
   and unit-tested. Once the challenge has **ended** the widget shows the final
   standings: a result banner above the chart — a big 🏆 "You won!" when the
@@ -157,6 +167,16 @@ Two `AppWidgetProvider`s live in `widget/`:
   eventually announced.
   Tapping the widget deep-links to `/u/<owner>/<slug>` (or the
   absolute URL for a challenge on another instance) in the More tab.
+  **Moving on:** each refresh runs `widgetTarget` over the user's picks — a
+  running, upcoming or less-than-a-day-finished challenge is kept; a day after
+  the end (or at once when the challenge is gone from the lists) the widget
+  advances to the running pick ending soonest, else the soonest upcoming, and
+  rewrites its stored config; with nothing open it asks
+  `GET /challenges/discover` and renders the first result as a **suggestion**
+  ("Join a challenge?" + name, host, window; tap opens the challenge page, whose
+  Join button does the join), falling back to the finished challenge's final
+  standings when there is none, or to "No open challenges — tap to pick one"
+  (opens the picker) when there isn't even that.
 
 Widget taps and notification taps reach `MainActivity` as `EXTRA_OPEN_TAB` /
 `EXTRA_MORE_PATH` extras (`deepLinkFrom` in `AppState.kt`). On a cold start they

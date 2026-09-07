@@ -7,12 +7,14 @@ import io.ktor.client.request.headers
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
+import kotlinx.coroutines.CancellationException
 import net.aurboda.api.models.Challenge
 import net.aurboda.api.models.ChallengeParticipation
 import net.aurboda.api.models.ChallengeParticipationsResponse
-import net.aurboda.api.models.ChallengeStanding
 import net.aurboda.api.models.ChallengeStandingsResponse
 import net.aurboda.api.models.ChallengesResponse
+import net.aurboda.api.models.DiscoverChallengesResponse
+import net.aurboda.api.models.DiscoveredChallenge
 import net.aurboda.api.models.WellKnownAurboda
 import java.net.URLEncoder
 
@@ -78,16 +80,31 @@ suspend fun fetchChallengeParticipations(
     getJson<ChallengeParticipationsResponse>(httpClient, "$apiUrl/challenges/participations/mine", authToken)
         .map { it.participations }
 
-/** Public standings of the challenge at `/u/[username]/[slug]` on the instance serving [apiBase]. */
+/**
+ * Public standings of the challenge at `/u/[username]/[slug]` on the instance
+ * serving [apiBase]: the members plus the bucket size the host aggregated with.
+ */
 suspend fun fetchPublicChallengeStandings(
     httpClient: HttpClient,
     apiBase: String,
     username: String,
     slug: String,
-): DataResult<List<ChallengeStanding>> {
+): DataResult<ChallengeStandingsResponse> {
     val url = "${apiBase.trimEnd('/')}/public/${urlEncode(username)}/${urlEncode(slug)}/standings"
-    return getJson<ChallengeStandingsResponse>(httpClient, url).map { it.members ?: emptyList() }
+    return getJson<ChallengeStandingsResponse>(httpClient, url)
 }
+
+/**
+ * Open challenges hosted by people the signed-in user follows that they haven't
+ * joined — ongoing first, soonest to end (the server walks the followed
+ * instances, so this is the slow one of the challenge calls).
+ */
+suspend fun fetchDiscoverChallenges(
+    httpClient: HttpClient,
+    apiUrl: String,
+    authToken: String,
+): DataResult<List<DiscoveredChallenge>> =
+    getJson<DiscoverChallengesResponse>(httpClient, "$apiUrl/challenges/discover", authToken).map { it.challenges }
 
 private fun urlEncode(s: String): String = URLEncoder.encode(s, "UTF-8").replace("+", "%20")
 
@@ -112,6 +129,9 @@ private suspend inline fun <reified T> getJson(
             Log.e(TAG, "GET $url failed: ${response.status}")
             DataResult.Error("Server returned ${response.status}")
         }
+    } catch (e: CancellationException) {
+        // A stopped worker must stop, not carry on with a fake "error" result.
+        throw e
     } catch (e: Exception) {
         Log.e(TAG, "GET $url threw", e)
         DataResult.Error(e.message ?: "Unknown error")

@@ -56,6 +56,7 @@ Endpoints (under each instance's API base):
 | `POST /public/:username/:slug/members`  | none              | Register-back: a joining instance adds itself as a remote member                      |
 | `GET /public/:username/:slug/standings` | none (slug-gated) | Host-aggregated standings (`?refresh=1` busts the cache)                              |
 | `GET /challenge-data/:username/:token`  | none (token)      | A member instance serves its own series for one challenge                             |
+| `GET /public/:username/dashboards`      | none              | Public profile listing: public dashboards + public challenges (name, link, window, spec) |
 
 **Join (canonical: "join by challenge URL on your own instance B", host = A):**
 
@@ -85,6 +86,19 @@ no data yet reports `null` (rendered as "—"), never the request time — so me
 0 don't all share a bogus "just now". Remote members report their own `last_updated`;
 the host persists it (distinct from `last_fetched_at`, which is when the host fetched)
 and surfaces it in standings.
+
+**Discovery — open challenges from people you follow:** `GET /challenges/discover`
+(MCP `discover_challenges`) walks the user's accepted ActivityPub followees. A followee
+whose actor id has the `<base>/users/<name>` shape is a _candidate_ Aurboda peer
+(Mastodon mints the same shape); `<base>/.well-known/aurboda` decides, remembered per
+instance for an hour so a Mastodon followee costs one probe, not one per page load. An
+Aurboda peer's public challenges are read from its public-profile listing (a followee on
+the same instance in-process); ended ones, anything the user hosts, joined or left, and
+any link that doesn't point into the host's own `/u/<name>/` space are dropped. The
+result is ongoing first (soonest to end), then upcoming, plus `peers_unreachable` — how
+many followed instances didn't answer this round. Unlisted challenges are not
+discoverable, by design; a peer from before the listing carried windows lists name +
+link only and is skipped rather than shown as "ongoing".
 
 ## Completion & winner announcement
 
@@ -167,6 +181,10 @@ the backend directly need no extra config.
   metric or activity type, sum/count, unit, date range with This-week/This-month
   quick-sets, public/unlisted), copy its link, delete it; see challenges you've
   joined; and **join by URL** (paste any challenge link — local or remote).
+- **From people you follow:** open challenges hosted by followed users (any Aurboda
+  instance) that you haven't joined, each with a one-click **Join** — see _Discovery_
+  above. The section is hidden while there is nothing to show; a note says when a
+  followed instance couldn't be reached.
 - **View** at `/u/<username>/<slug>`: a cumulative **race chart** (one line per
   member) + a **leaderboard** (rank, colour dot matching the member's chart line,
   `@member · host`, total, freshness). This is
@@ -195,14 +213,22 @@ instance's public standings endpoint, so it works for challenges hosted elsewher
 too. Once the challenge has ended the widget shows the **final standings**: a
 banner with a big 🏆 "You won!" when you won (🥈 / 🥉 "You came 2nd/3rd" with the
 winner named when you made the podium; otherwise who won and where you finished),
-and medals in the leaderboard's rank column. See `docs/android-app.md` →
-_Home-screen widgets_.
+and medals in the leaderboard's rank column.
+
+Reconfiguring a widget is awkward on some launchers, so a day after its challenge
+ends the widget **moves on by itself**: to the running challenge of yours that ends
+soonest, else the upcoming one that starts soonest (a challenge that vanished from
+your lists — left, or deleted by its host — is replaced right away). With nothing
+of your own open it **suggests** the first discovered challenge (see _Discovery_)
+— "Join a challenge?" with its name, host and window; a tap opens its page with
+the Join button. Without a suggestion the finished challenge's result stays up.
+See `docs/android-app.md` → _Home-screen widgets_.
 
 ## API surface (authed, owner/joiner)
 
 `/challenges` — `GET` (list hosted), `POST` (create), `GET/PUT/DELETE /:id`,
 `GET /:id/standings`, `GET /:id/members`, `DELETE /:id/members/:memberId`,
-`GET /challenges/participations/mine`, `POST /challenges/join`,
+`GET /challenges/participations/mine`, `GET /challenges/discover`, `POST /challenges/join`,
 `DELETE /challenges/participations/:id`. The same CRUD + join is available over MCP
 (`create/list/update/delete_challenge`, `join_challenge`). A hosted challenge carries
 `announce_winner` (create/update/read; see _Completion & winner announcement_).

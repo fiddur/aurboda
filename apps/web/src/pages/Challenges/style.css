@@ -159,7 +159,24 @@
 
 .challenge-row-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.4rem;
+}
+
+.challenge-row-toggle {
+  min-width: 0;
+}
+
+/* Open challenges from people you follow (discovery) */
+.challenge-row-badge-open {
+  color: #92400e;
+  background: #fef3c7;
+}
+
+.challenge-discover-note {
+  font-size: 0.8rem;
+  color: #6b7280;
+  margin: 0.25rem 0 0;
 }
 
 .challenge-row-actions .btn-danger,

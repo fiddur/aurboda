@@ -5,14 +5,16 @@
  * Upcoming, with Ended tucked into a collapsed section — so what needs
  * attention right now is unmissable. Create a competition on a metric or
  * activity type over a date range (public or unlisted), copy its link, delete
- * it; join a challenge by URL (local or on another Aurboda instance).
- * Federation happens server-side.
+ * it; join a challenge by URL (local or on another Aurboda instance). Open
+ * challenges hosted by people you follow that you haven't joined are listed
+ * for one-click joining. Federation happens server-side.
  */
 import type {
   Challenge,
   ChallengeBucketSizeChoice,
   ChallengeParticipation,
   CreateChallengeBody,
+  DiscoveredChallenge,
   ShareVisibility,
 } from '@aurboda/api-spec'
 
@@ -26,6 +28,7 @@ import { SHARE_VISIBILITY_OPTIONS, VisibilitySelector } from '../../components/V
 import {
   createChallenge,
   deleteChallenge,
+  discoverChallenges,
   joinChallengeByUrl,
   leaveChallenge,
   listChallenges,
@@ -38,6 +41,7 @@ import {
   challengeRangeLabel,
   challengeTimePhrase,
   challengeTimeStatus,
+  discoveredHostLabel,
   groupChallengeItems,
 } from './challenge-status'
 import {
@@ -220,6 +224,8 @@ function CreateChallengeForm({ onCreated }: { onCreated: () => void }) {
   )
 }
 
+const ROLE_LABELS = { hosted: 'Hosted by you', joined: 'Joined', open: 'Open to join' } as const
+
 function RowMain({
   endTs,
   meta,
@@ -234,7 +240,7 @@ function RowMain({
   meta: string
   name: string
   now: Date
-  role: 'hosted' | 'joined'
+  role: 'hosted' | 'joined' | 'open'
   startTs: string
   timezone: string
   url: string
@@ -246,9 +252,7 @@ function RowMain({
         <a class="challenge-row-name" href={url}>
           {name}
         </a>
-        <span class={`challenge-row-badge challenge-row-badge-${role}`}>
-          {role === 'hosted' ? 'Hosted by you' : 'Joined'}
-        </span>
+        <span class={`challenge-row-badge challenge-row-badge-${role}`}>{ROLE_LABELS[role]}</span>
       </div>
       <span class="challenge-row-meta">{meta}</span>
       <span class="challenge-row-dates">
@@ -276,8 +280,6 @@ function HostedRow({ challenge, now }: { challenge: Challenge; now: Date }) {
     onError: () => alert('Failed to update the challenge.'),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['challenges'] }),
   })
-  // Server-derived: the announcement has not been made or skipped, and the
-  // challenge is still inside the window the sweep looks at (#1078).
   const canToggleAnnounce = challenge.announcement_pending
 
   const copy = async () => {
@@ -391,6 +393,80 @@ function JoinedRow({ now, participation }: { now: Date; participation: Challenge
   )
 }
 
+function DiscoveredRow({
+  challenge,
+  joining,
+  now,
+  onJoin,
+}: {
+  challenge: DiscoveredChallenge
+  joining: boolean
+  now: Date
+  onJoin: (url: string) => void
+}) {
+  return (
+    <li class="challenge-row">
+      <RowMain
+        endTs={challenge.end_ts}
+        meta={`${discoveredHostLabel(challenge)} · ${challenge.spec.pattern} · ${challenge.spec.aggregation}`}
+        name={challenge.name}
+        now={now}
+        role="open"
+        startTs={challenge.start_ts}
+        timezone={challenge.timezone}
+        url={challenge.share_url}
+      />
+      <div class="challenge-row-actions">
+        <a class="btn-secondary" href={challenge.share_url}>
+          View
+        </a>
+        <button class="btn-primary" disabled={joining} onClick={() => onJoin(challenge.share_url)}>
+          Join
+        </button>
+      </div>
+    </li>
+  )
+}
+
+/**
+ * Open challenges hosted by people the user follows (on any Aurboda instance)
+ * that they haven't joined. Hidden while empty; a note says when some followed
+ * instance couldn't be asked, so an empty list isn't mistaken for "nothing on".
+ */
+function DiscoverSection({
+  joining,
+  now,
+  onJoin,
+}: {
+  joining: boolean
+  now: Date
+  onJoin: (url: string) => void
+}) {
+  const query = useQuery({ queryFn: discoverChallenges, queryKey: ['challengeDiscover'], staleTime: 300_000 })
+  const challenges = query.data?.challenges ?? []
+  const unreachable = query.data?.peers_unreachable ?? 0
+  if (challenges.length === 0 && unreachable === 0) return null
+  return (
+    <section class="challenge-group challenge-group-discover">
+      <h2>From people you follow</h2>
+      {challenges.length > 0 && (
+        <ul class="challenge-list">
+          {challenges.map((c) => (
+            <DiscoveredRow key={c.share_url} challenge={c} joining={joining} now={now} onJoin={onJoin} />
+          ))}
+        </ul>
+      )}
+      {unreachable > 0 && (
+        <p class="challenge-discover-note">
+          {unreachable === 1
+            ? "One instance you follow people on couldn't be reached — its challenges may be missing."
+            : `${unreachable} instances you follow people on couldn't be reached — their challenges may be missing.`}
+        </p>
+      )}
+    </section>
+  )
+}
+
 function ChallengeRows({ items, now }: { items: ChallengeItem[]; now: Date }) {
   return (
     <ul class="challenge-list">
@@ -422,6 +498,7 @@ export function Challenges() {
     onSuccess: () => {
       setJoinUrl('')
       queryClient.invalidateQueries({ queryKey: ['challengeParticipations'] })
+      queryClient.invalidateQueries({ queryKey: ['challengeDiscover'] })
     },
   })
 
@@ -479,6 +556,12 @@ export function Challenges() {
           <ChallengeRows items={groups.upcoming} now={now} />
         </section>
       )}
+
+      <DiscoverSection
+        joining={joinMutation.isPending}
+        now={now}
+        onJoin={(url) => joinMutation.mutate(url)}
+      />
 
       {groups.ended.length > 0 && (
         <details class="challenge-group challenge-group-ended">

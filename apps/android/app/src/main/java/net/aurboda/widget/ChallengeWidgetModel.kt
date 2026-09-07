@@ -1,8 +1,10 @@
 package net.aurboda.widget
 
 import net.aurboda.api.models.Challenge
+import net.aurboda.api.models.ChallengeEffectiveBucketSize
 import net.aurboda.api.models.ChallengeParticipation
 import net.aurboda.api.models.ChallengeStanding
+import net.aurboda.api.models.DiscoveredChallenge
 import java.text.NumberFormat
 import java.time.DateTimeException
 import java.time.Instant
@@ -53,7 +55,12 @@ data class ChallengePick(
     val endTs: String,
     /** IANA zone the window was chosen in — dates are rendered in it, as on the web. */
     val timezone: String,
-)
+    val unit: String,
+) {
+    /** What the widget shows about this challenge itself. */
+    fun summary(): ChallengeSummary =
+        ChallengeSummary(url, name, unit, parseInstantMillis(startTs), parseInstantMillis(endTs), timezone)
+}
 
 /**
  * The challenges offered in the widget configuration screen: everything the user
@@ -71,6 +78,7 @@ fun challengePicks(hosted: List<Challenge>, joined: List<ChallengeParticipation>
                 startTs = it.startTs,
                 endTs = it.endTs,
                 timezone = it.timezone,
+                unit = it.spec.unit,
             )
         }
     val others =
@@ -85,10 +93,60 @@ fun challengePicks(hosted: List<Challenge>, joined: List<ChallengeParticipation>
                     startTs = it.startTs,
                     endTs = it.endTs,
                     timezone = it.timezone,
+                    unit = it.spec.unit,
                 )
             }
     return own + others
 }
+
+/** How long a finished challenge stays on the widget before it moves on to another one. */
+const val WIDGET_ADVANCE_AFTER_MILLIS: Long = DAY_MILLIS
+
+/** What the refresh should render for a widget configured to one challenge. */
+sealed class WidgetTarget {
+    /** The configured challenge: running, upcoming, or over for less than a day. */
+    data class Keep(val pick: ChallengePick) : WidgetTarget()
+
+    /** The configured one is long over (or gone from the user's lists): move on to [pick] and remember it. */
+    data class Advance(val pick: ChallengePick) : WidgetTarget()
+
+    /**
+     * Nothing of the user's own is worth showing — suggest one to join. [fallback]
+     * is the finished challenge to keep showing when no suggestion turns up.
+     */
+    data class Suggest(val fallback: ChallengePick?) : WidgetTarget()
+}
+
+/**
+ * Where a widget configured to [currentUrl] should point now. Reconfiguring a
+ * widget is awkward on some launchers, so a finished challenge is kept for a
+ * day (its result banner) and then the widget moves on by itself: to the running
+ * challenge that ends soonest, else the upcoming one that starts soonest, else
+ * to a suggestion. A challenge that vanished from the user's lists (left, or
+ * deleted by its host) moves on right away.
+ */
+fun widgetTarget(currentUrl: String, picks: List<ChallengePick>, nowMillis: Long): WidgetTarget {
+    val wanted = currentUrl.trimEnd('/')
+    val current = picks.firstOrNull { it.url.trimEnd('/') == wanted }
+    if (current != null && nowMillis < parseInstantMillis(current.endTs) + WIDGET_ADVANCE_AFTER_MILLIS) {
+        return WidgetTarget.Keep(current)
+    }
+    val next = nextChallengePick(picks.filter { it.url.trimEnd('/') != wanted }, nowMillis)
+    return if (next != null) WidgetTarget.Advance(next) else WidgetTarget.Suggest(current)
+}
+
+/** The challenge worth showing next: a running one (soonest to end), else the soonest upcoming; null when none is open. */
+fun nextChallengePick(picks: List<ChallengePick>, nowMillis: Long): ChallengePick? {
+    val open = picks.filter { parseInstantMillis(it.endTs) > nowMillis }
+    val running = open.filter { parseInstantMillis(it.startTs) <= nowMillis }.minByOrNull { parseInstantMillis(it.endTs) }
+    return running ?: open.minByOrNull { parseInstantMillis(it.startTs) }
+}
+
+/** Who hosts a discovered challenge, as people know them: handle, else display name, else identity URL. */
+fun discoveredHostLabel(c: DiscoveredChallenge): String = c.hostHandle ?: c.hostDisplayName ?: c.hostIdentity
+
+/** The body of the widget while it suggests a challenge to join instead of showing one. */
+fun challengeSuggestionText(name: String, host: String): String = "$name\nby $host\n\nTap to see and join"
 
 /** What the widget shows about the challenge itself (name, unit, window). */
 data class ChallengeSummary(
@@ -97,23 +155,9 @@ data class ChallengeSummary(
     val unit: String,
     val startMillis: Long,
     val endMillis: Long,
+    /** IANA zone the window was chosen in — calendar buckets (days, months) end in it. */
+    val timezone: String,
 )
-
-/** Find [url] among the user's hosted / joined challenges (trailing slashes ignored). */
-fun findChallengeSummary(
-    url: String,
-    hosted: List<Challenge>,
-    joined: List<ChallengeParticipation>,
-): ChallengeSummary? {
-    val wanted = url.trimEnd('/')
-    hosted.firstOrNull { it.shareUrl.trimEnd('/') == wanted }?.let {
-        return ChallengeSummary(it.shareUrl, it.name, it.spec.unit, parseInstantMillis(it.startTs), parseInstantMillis(it.endTs))
-    }
-    joined.firstOrNull { it.challengeUrl.trimEnd('/') == wanted }?.let {
-        return ChallengeSummary(it.challengeUrl, it.name, it.spec.unit, parseInstantMillis(it.startTs), parseInstantMillis(it.endTs))
-    }
-    return null
-}
 
 /** Epoch millis of an ISO-8601 instant; 0 if it doesn't parse (a bad value must not crash a widget). */
 fun parseInstantMillis(iso: String): Long =
@@ -146,6 +190,44 @@ fun inferBucketMillis(standings: List<ChallengeStanding>): Long {
     return if (best == Long.MAX_VALUE) DAY_MILLIS else best
 }
 
+private const val MINUTE_MILLIS: Long = 60L * 1000
+
+private fun zoneOf(timezone: String): ZoneId =
+    try {
+        ZoneId.of(timezone)
+    } catch (e: DateTimeException) {
+        ZoneId.systemDefault()
+    }
+
+/**
+ * When the bucket starting at [startMillis] ends: by the host's [effective]
+ * bucket size when the standings carry one — calendar days, weeks and months in
+ * the challenge [timezone], so a month bucket ends at the next month's midnight
+ * and a DST day is 23 or 25 hours — else [fallbackMillis] inferred from the data.
+ */
+fun bucketEndAt(startMillis: Long, effective: ChallengeEffectiveBucketSize?, timezone: String, fallbackMillis: Long): Long {
+    val zoned = { Instant.ofEpochMilli(startMillis).atZone(zoneOf(timezone)) }
+    return when (effective) {
+        ChallengeEffectiveBucketSize._5m -> startMillis + 5 * MINUTE_MILLIS
+        ChallengeEffectiveBucketSize._15m -> startMillis + 15 * MINUTE_MILLIS
+        ChallengeEffectiveBucketSize._1h -> startMillis + 60 * MINUTE_MILLIS
+        ChallengeEffectiveBucketSize._1d -> zoned().plusDays(1).toInstant().toEpochMilli()
+        ChallengeEffectiveBucketSize._1w -> zoned().plusWeeks(1).toInstant().toEpochMilli()
+        ChallengeEffectiveBucketSize._1M -> zoned().plusMonths(1).toInstant().toEpochMilli()
+        null -> startMillis + fallbackMillis
+    }
+}
+
+/** The bucket-end function for one set of standings: the host's size when sent, inference otherwise (#991). */
+fun bucketEndFunction(
+    effective: ChallengeEffectiveBucketSize?,
+    timezone: String,
+    standings: List<ChallengeStanding>,
+): (Long) -> Long {
+    val inferred = inferBucketMillis(standings)
+    return { start -> bucketEndAt(start, effective, timezone, inferred) }
+}
+
 /**
  * A member's running total as a line: a zero point on the start line, then the
  * cumulative total plotted at the *end* of each bucket (a bucket's steps are only
@@ -155,14 +237,14 @@ fun cumulativeSeries(
     standing: ChallengeStanding,
     color: Int,
     startMillis: Long,
-    bucketMillis: Long,
+    bucketEnd: (Long) -> Long,
 ): RaceSeries {
     val points = ArrayList<RacePoint>(standing.buckets.size + 1)
     points.add(RacePoint(startMillis, 0.0))
     var running = 0.0
     for (b in standing.buckets.sortedBy { it.bucketStart }) {
         running += b.value
-        points.add(RacePoint(parseInstantMillis(b.bucketStart) + bucketMillis, running))
+        points.add(RacePoint(bucketEnd(parseInstantMillis(b.bucketStart)), running))
     }
     return RaceSeries(color, points)
 }
@@ -213,6 +295,26 @@ fun podiumMedal(rank: Int): String? =
  */
 fun rankLabel(rank: Int, ended: Boolean, total: Double): String =
     (if (ended && total > 0) podiumMedal(rank) else null) ?: rank.toString()
+
+/** True when [visible] ends with the signed-in user's row pulled up from below the cut (see [visibleRows]). */
+fun hasSubstitutedMeRow(visible: List<LeaderboardRow>, all: List<LeaderboardRow>): Boolean {
+    val last = visible.lastOrNull() ?: return false
+    return last.isMe && all.indexOf(last) >= visible.size
+}
+
+/**
+ * The text of a row's rank cell, or null when the cell is hidden. The narrowest
+ * widgets drop ranks to give names room — except on a "me" row that replaced
+ * the last visible row (#992): without its rank a 10th place right under the
+ * leader reads as 2nd, so that row keeps its rank, prefixed "…" to say rows
+ * were skipped.
+ */
+fun rankCellText(row: LeaderboardRow, showRank: Boolean, ended: Boolean, substituted: Boolean): String? =
+    when {
+        showRank -> rankLabel(row.rank, ended, row.total)
+        substituted && row.isMe -> "…" + rankLabel(row.rank, ended, row.total)
+        else -> null
+    }
 
 /** The banner a finished challenge shows above the chart: a big emoji, a headline, a detail line. */
 data class ChallengeResultBanner(val emoji: String, val headline: String, val detail: String)
@@ -363,13 +465,7 @@ fun challengeMetaLine(unit: String, startMillis: Long, endMillis: Long, nowMilli
  * back to the device zone for an unknown zone id.
  */
 fun challengeDateRange(startTs: String, endTs: String, timezone: String, locale: Locale = Locale.getDefault()): String {
-    val zone =
-        try {
-            ZoneId.of(timezone)
-        } catch (e: DateTimeException) {
-            ZoneId.systemDefault()
-        }
-    val fmt = DateTimeFormatter.ofPattern("MMM d", locale).withZone(zone)
+    val fmt = DateTimeFormatter.ofPattern("MMM d", locale).withZone(zoneOf(timezone))
     val start = Instant.ofEpochMilli(parseInstantMillis(startTs))
     val end = Instant.ofEpochMilli(parseInstantMillis(endTs) - 1)
     return "${fmt.format(start)} – ${fmt.format(end)}"

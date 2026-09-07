@@ -91,8 +91,11 @@ describe('Time Series Integration Tests', () => {
         time: new Date('2026-06-02T00:00:00Z'),
       }
       const readStamp = async () => {
-        const r = await query(user, `SELECT updated_at FROM time_series WHERE metric = 'steps'`)
-        return r.rows[0].updated_at as Date
+        const r = await query<{ updated_at: Date }>(
+          user,
+          `SELECT updated_at FROM time_series WHERE metric = 'steps'`,
+        )
+        return r.rows[0].updated_at
       }
 
       await insertTimeSeries(user, [{ ...point, value: 5000 }])

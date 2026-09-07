@@ -17,8 +17,6 @@ import androidx.compose.runtime.setValue
 import kotlinx.coroutines.launch
 import net.aurboda.CredentialsManager
 import net.aurboda.DataResult
-import net.aurboda.fetchChallengeParticipations
-import net.aurboda.fetchChallenges
 import net.aurboda.syncHttpClient
 import net.aurboda.ui.screens.ChallengeWidgetConfigScreen
 import net.aurboda.ui.screens.ChallengeWidgetConfigState
@@ -73,12 +71,11 @@ suspend fun loadChallengePicks(context: Context): ChallengeWidgetConfigState {
     val credentials = CredentialsManager.getCredentials(context) ?: return ChallengeWidgetConfigState.SignedOut
     val httpClient = syncHttpClient()
     try {
-        val hosted = fetchChallenges(httpClient, credentials.apiUrl, credentials.authToken)
-        val joined = fetchChallengeParticipations(httpClient, credentials.apiUrl, credentials.authToken)
-        if (hosted !is DataResult.Success || joined !is DataResult.Success) {
-            return ChallengeWidgetConfigState.Error("Couldn't load your challenges. Check your connection and try again.")
+        return when (val lists = fetchChallengeWidgetLists(httpClient, credentials)) {
+            is DataResult.Error ->
+                ChallengeWidgetConfigState.Error("Couldn't load your challenges. Check your connection and try again.")
+            is DataResult.Success -> ChallengeWidgetConfigState.Ready(challengePicks(lists.data.hosted, lists.data.joined))
         }
-        return ChallengeWidgetConfigState.Ready(challengePicks(hosted.data, joined.data))
     } finally {
         httpClient.close()
     }

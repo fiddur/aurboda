@@ -37,8 +37,8 @@ export const getChallengeStandings = async (
       }
 
       // Local member: compute directly from this instance's data. `last_updated`
-      // is the time of their most recent contributing data point (null if none),
-      // not "now" — so a member on 0 shows no update rather than a fake one.
+      // is when their contributing data last changed (null if none), not "now" —
+      // so a member on 0 shows no update rather than a fake one.
       if (member.kind === 'local' && member.local_user) {
         const { buckets, last_updated, total } = await resolveMemberSeries(
           member.local_user,

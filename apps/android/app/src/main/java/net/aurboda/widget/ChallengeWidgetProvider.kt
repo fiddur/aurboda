@@ -21,11 +21,13 @@ import android.text.Spanned
 import android.text.style.StyleSpan
 import android.view.View
 import io.ktor.client.HttpClient
+import kotlinx.coroutines.CancellationException
 import net.aurboda.CredentialsManager
 import net.aurboda.DataResult
 import net.aurboda.MainActivity
 import net.aurboda.R
 import net.aurboda.api.models.ChallengeStanding
+import net.aurboda.api.models.DiscoveredChallenge
 import net.aurboda.parseChallengeUrl
 import net.aurboda.syncHttpClient
 
@@ -34,9 +36,11 @@ private const val TAG = "ChallengeWidget"
 /**
  * Home-screen widget showing one challenge: its race chart and leaderboard, tap
  * to open that challenge in the app. Which challenge is chosen per widget in
- * [ChallengeWidgetConfigActivity]. All rendering — including the network fetch —
- * happens in [ChallengeWidgetWorker]; the receiver itself only enqueues it, so
- * a slow server can't hit the broadcast timeout.
+ * [ChallengeWidgetConfigActivity]; a day after it ends the widget moves on by
+ * itself to another challenge of the user's, or suggests one to join (see
+ * [widgetTarget]). All rendering — including the network fetch — happens in
+ * [ChallengeWidgetWorker]; the receiver itself only enqueues it, so a slow
+ * server can't hit the broadcast timeout.
  */
 class ChallengeWidgetProvider : AppWidgetProvider() {
     override fun onUpdate(context: Context, appWidgetManager: AppWidgetManager, appWidgetIds: IntArray) {
@@ -87,11 +91,16 @@ class ChallengeWidgetWorker(
         val manager = AppWidgetManager.getInstance(applicationContext)
         val ids = manager.getAppWidgetIds(ComponentName(applicationContext, ChallengeWidgetProvider::class.java))
         if (ids.isEmpty()) return Result.success()
+        val credentials = CredentialsManager.getCredentials(applicationContext)
         val httpClient: HttpClient = syncHttpClient()
         try {
+            // The user's own challenges are the same for every widget: one round-trip per refresh.
+            val lists = credentials?.let { fetchChallengeWidgetLists(httpClient, it) }
             for (id in ids) {
                 try {
-                    renderChallengeWidget(applicationContext, manager, id, httpClient)
+                    renderChallengeWidget(applicationContext, manager, id, httpClient, credentials, lists)
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     // One broken widget must not stop the others from refreshing.
                     Log.e(TAG, "Rendering widget $id failed", e)
@@ -115,42 +124,89 @@ class ChallengeWidgetWorker(
     }
 }
 
-/** Fetch one widget's data and push its views (or an explanatory state) to the launcher. */
+/**
+ * Decide what one widget shows (see [widgetTarget]), fetch it and push the views
+ * (or an explanatory state) to the launcher. [lists] is the user's hosted +
+ * joined challenges, fetched once by the worker for all widgets; null when
+ * signed out.
+ */
 suspend fun renderChallengeWidget(
     context: Context,
     appWidgetManager: AppWidgetManager,
     appWidgetId: Int,
     httpClient: HttpClient,
+    credentials: CredentialsManager.Credentials?,
+    lists: DataResult<ChallengeWidgetLists>?,
 ) {
     val config = loadChallengeWidgetConfig(context, appWidgetId)
     if (config == null) {
-        appWidgetManager.updateAppWidget(appWidgetId, unconfiguredViews(context, appWidgetId))
+        appWidgetManager.updateAppWidget(appWidgetId, unconfiguredViews(context, appWidgetId, "Tap to choose a challenge"))
         return
     }
-    val credentials = CredentialsManager.getCredentials(context)
-    if (credentials == null) {
+    if (credentials == null || lists == null) {
         appWidgetManager.updateAppWidget(
             appWidgetId,
             statusViews(context, appWidgetId, config, serverUrl = null, "Sign in to Aurboda to see standings"),
         )
         return
     }
-    val views =
-        when (val data = loadChallengeWidgetData(httpClient, credentials, config.url)) {
+    val loaded =
+        when (lists) {
             is DataResult.Error -> {
-                Log.w(TAG, "Widget $appWidgetId: ${data.message}")
-                statusViews(context, appWidgetId, config, credentials.serverUrl, data.message)
+                Log.w(TAG, "Widget $appWidgetId: ${lists.message}")
+                appWidgetManager.updateAppWidget(
+                    appWidgetId,
+                    statusViews(context, appWidgetId, config, credentials.serverUrl, lists.message),
+                )
+                return
             }
-            is DataResult.Success -> {
+            is DataResult.Success -> lists.data
+        }
+    val nowMillis = System.currentTimeMillis()
+    val picks = challengePicks(loaded.hosted, loaded.joined)
+    val views =
+        when (val target = widgetTarget(config.url, picks, nowMillis)) {
+            is WidgetTarget.Keep -> {
                 // Refresh the cached name so a rename shows up in the loading/error states too.
-                if (data.data.summary.name != config.name) {
-                    saveChallengeWidgetConfig(context, appWidgetId, config.copy(name = data.data.summary.name))
+                if (target.pick.name != config.name) {
+                    saveChallengeWidgetConfig(context, appWidgetId, config.copy(name = target.pick.name))
                 }
-                challengeViews(context, appWidgetManager, appWidgetId, credentials, data.data)
+                standingsViews(context, appWidgetManager, appWidgetId, httpClient, credentials, target.pick)
+            }
+            is WidgetTarget.Advance -> {
+                Log.i(TAG, "Widget $appWidgetId: moving on from \"${config.name}\" to \"${target.pick.name}\"")
+                saveChallengeWidgetConfig(context, appWidgetId, ChallengeWidgetConfig(target.pick.url, target.pick.name))
+                standingsViews(context, appWidgetManager, appWidgetId, httpClient, credentials, target.pick)
+            }
+            is WidgetTarget.Suggest -> {
+                val suggestion = fetchWidgetSuggestion(httpClient, credentials)
+                when {
+                    suggestion != null -> suggestionViews(context, appWidgetId, suggestion, credentials.serverUrl, nowMillis)
+                    target.fallback != null ->
+                        standingsViews(context, appWidgetManager, appWidgetId, httpClient, credentials, target.fallback)
+                    else -> unconfiguredViews(context, appWidgetId, "No open challenges — tap to pick one")
+                }
             }
         }
     appWidgetManager.updateAppWidget(appWidgetId, views)
 }
+
+/** The race chart + leaderboard of [pick], or a status line when its standings can't be loaded. */
+private suspend fun standingsViews(
+    context: Context,
+    appWidgetManager: AppWidgetManager,
+    appWidgetId: Int,
+    httpClient: HttpClient,
+    credentials: CredentialsManager.Credentials,
+    pick: ChallengePick,
+): RemoteViews =
+    when (val data = loadChallengeWidgetData(httpClient, credentials, pick.summary())) {
+        is DataResult.Error -> {
+            Log.w(TAG, "Widget $appWidgetId: ${data.message}")
+            statusViews(context, appWidgetId, ChallengeWidgetConfig(pick.url, pick.name), credentials.serverUrl, data.message)
+        }
+        is DataResult.Success -> challengeViews(context, appWidgetManager, appWidgetId, credentials, data.data)
+    }
 
 /** The sizes the launcher may show this widget at (portrait/landscape), in dp. */
 fun widgetSizes(appWidgetManager: AppWidgetManager, appWidgetId: Int): List<SizeF> {
@@ -210,14 +266,44 @@ fun challengeDeepLinkPath(serverUrl: String?, challengeUrl: String): String {
     return challengeUrl
 }
 
-private fun unconfiguredViews(context: Context, appWidgetId: Int): RemoteViews =
+/** Nothing to show: [message] explains why, and a tap opens the picker. */
+private fun unconfiguredViews(context: Context, appWidgetId: Int, message: String): RemoteViews =
     RemoteViews(context.packageName, R.layout.widget_challenge).apply {
         setTextViewText(R.id.challenge_title, "Challenge")
         setTextViewText(R.id.challenge_meta, "")
         setViewVisibility(R.id.challenge_body, View.GONE)
         setViewVisibility(R.id.challenge_status, View.VISIBLE)
-        setTextViewText(R.id.challenge_status, "Tap to choose a challenge")
+        setTextViewText(R.id.challenge_status, message)
         setOnClickPendingIntent(R.id.widget_root, configureIntent(context, appWidgetId))
+    }
+
+/**
+ * A challenge to join instead of one to follow: hosted by someone the user
+ * follows, open, not yet joined. A tap opens its page, where the Join button is.
+ */
+private fun suggestionViews(
+    context: Context,
+    appWidgetId: Int,
+    suggestion: DiscoveredChallenge,
+    serverUrl: String,
+    nowMillis: Long,
+): RemoteViews =
+    RemoteViews(context.packageName, R.layout.widget_challenge).apply {
+        setTextViewText(R.id.challenge_title, "Join a challenge?")
+        setTextViewText(
+            R.id.challenge_meta,
+            challengeMetaLine(
+                suggestion.spec.unit,
+                parseInstantMillis(suggestion.startTs),
+                parseInstantMillis(suggestion.endTs),
+                nowMillis,
+            ),
+        )
+        setViewVisibility(R.id.challenge_body, View.GONE)
+        setViewVisibility(R.id.challenge_status, View.VISIBLE)
+        setTextViewText(R.id.challenge_status, challengeSuggestionText(suggestion.name, discoveredHostLabel(suggestion)))
+        val target = ChallengeWidgetConfig(url = suggestion.shareUrl, name = suggestion.name)
+        setOnClickPendingIntent(R.id.widget_root, openChallengeIntent(context, appWidgetId, target, serverUrl))
     }
 
 private fun statusViews(
@@ -252,11 +338,11 @@ private fun challengeViews(
     // Over: final standings — medal the podium and say who won (and where you finished).
     val ended = nowMillis >= data.summary.endMillis
     val banner = challengeResultBanner(rows, ended, data.summary.unit)
-    val bucketMillis = inferBucketMillis(data.standings)
+    val bucketEnd = bucketEndFunction(data.effectiveBucketSize, data.summary.timezone, data.standings)
     val series =
         data.standings
             .filter { it.status == ChallengeStanding.Status.active }
-            .mapIndexed { i, s -> cumulativeSeries(s, challengeMemberColor(i), data.summary.startMillis, bucketMillis) }
+            .mapIndexed { i, s -> cumulativeSeries(s, challengeMemberColor(i), data.summary.startMillis, bucketEnd) }
 
     val perSize =
         widgetSizes(appWidgetManager, appWidgetId).associateWith { size ->
@@ -295,17 +381,25 @@ private fun challengeViews(
                     R.id.leaderboard_empty,
                     if (rows.isEmpty()) View.VISIBLE else View.GONE,
                 )
-                for (row in visible) addView(R.id.leaderboard, rowViews(context, row, layout.showRank, ended))
+                val substituted = hasSubstitutedMeRow(visible, rows)
+                for (row in visible) addView(R.id.leaderboard, rowViews(context, row, layout.showRank, ended, substituted))
                 setOnClickPendingIntent(R.id.widget_root, click)
             }
         }
     return if (perSize.size == 1) perSize.values.first() else RemoteViews(perSize)
 }
 
-private fun rowViews(context: Context, row: LeaderboardRow, showRank: Boolean, ended: Boolean): RemoteViews =
+private fun rowViews(
+    context: Context,
+    row: LeaderboardRow,
+    showRank: Boolean,
+    ended: Boolean,
+    substituted: Boolean,
+): RemoteViews =
     RemoteViews(context.packageName, R.layout.widget_challenge_row).apply {
-        setTextViewText(R.id.member_rank, rankLabel(row.rank, ended, row.total))
-        setViewVisibility(R.id.member_rank, if (showRank) View.VISIBLE else View.GONE)
+        val rank = rankCellText(row, showRank, ended, substituted)
+        setTextViewText(R.id.member_rank, rank ?: "")
+        setViewVisibility(R.id.member_rank, if (rank != null) View.VISIBLE else View.GONE)
         setInt(R.id.member_color, "setColorFilter", row.color)
         val name: CharSequence =
             if (row.isMe) {

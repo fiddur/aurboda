@@ -118,7 +118,7 @@ export const getUserSettings = async (user: string): Promise<UserSettings | null
 export const upsertUserSettings = async (
   user: string,
   updates: Partial<UserSettings>,
-  clear: string[] = [],
+  clear: (keyof UserSettings)[] = [],
 ): Promise<UserSettings> => {
   // Get existing settings
   const existing = (await getUserSettings(user)) ?? {}
@@ -128,7 +128,7 @@ export const upsertUserSettings = async (
   const { tag_icons, ...rest } = updates
   const defined = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined))
   const merged: UserSettings = { ...existing, ...defined }
-  for (const key of clear) delete (merged as Record<string, unknown>)[key]
+  for (const key of clear) delete merged[key]
   if (tag_icons !== undefined) {
     merged.item_icons = { ...merged.item_icons, ...tag_icons }
   }

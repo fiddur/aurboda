@@ -54,6 +54,13 @@ export type ChallengeBucketSizeChoice = z.infer<typeof challengeBucketSizeSchema
  * Concrete bucket size the race chart is actually rendered with, resolved from
  * `bucket_size` + the challenge window.
  */
+/**
+ * Shared by `ChallengeStanding.last_updated` and `ChallengeDataResponse.last_updated`
+ * (one member's own report of the same value), so the two cannot drift (#1090).
+ */
+const lastUpdatedDescription =
+  "When this member's contributing data last changed: the newest point's value-change time (daily aggregates like steps are rewritten in place all day), falling back to the point's own timestamp for data stored before that was tracked; null if they have no data yet"
+
 export const challengeEffectiveBucketSizeSchema = z.enum(['5m', '15m', '1h', '1d', '1w', '1M']).meta({
   description: 'Resolved chart bucket size (from bucket_size + window) the race chart is rendered with',
   id: 'ChallengeEffectiveBucketSize',
@@ -100,14 +107,14 @@ export const announceWinnerSchema = z.boolean().meta({
 export const challengeSchema = z
   .object({
     announce_winner: announceWinnerSchema.default(true),
-    created_at: z.string().meta({ description: 'Creation timestamp (ISO 8601)' }),
-    end_ts: z.string().meta({ description: 'End instant, exclusive (ISO 8601)' }),
-    id: z.string().uuid().meta({ description: 'Challenge ID' }),
-    name: challengeNameSchema,
     announcement_pending: z.boolean().default(false).meta({
       description:
         'Whether the completion announcement can still happen: not yet made or skipped, and the challenge either has not ended or ended within the announce window (3 days). The web shows the "Announce winner" toggle only while this is true.',
     }),
+    created_at: z.string().meta({ description: 'Creation timestamp (ISO 8601)' }),
+    end_ts: z.string().meta({ description: 'End instant, exclusive (ISO 8601)' }),
+    id: z.string().uuid().meta({ description: 'Challenge ID' }),
+    name: challengeNameSchema,
     result_published_at: z.string().nullable().optional().meta({
       description:
         'When the final standings were announced to the feed (or the announcement was deliberately skipped); null while still pending',
@@ -190,10 +197,7 @@ export const challengeStandingSchema = z
     buckets: z.array(chartDataBucketSchema).meta({ description: 'Per-bucket values over the window' }),
     display_name: z.string(),
     identity_base_url: z.string(),
-    last_updated: z.string().nullable().meta({
-      description:
-        "When this member's contributing data last changed: the newest point's value-change time (daily aggregates like steps are rewritten in place all day), falling back to the point's own timestamp for data stored before that was tracked; null if they have no data yet",
-    }),
+    last_updated: z.string().nullable().meta({ description: lastUpdatedDescription }),
     stale: z.boolean().meta({ description: 'True if the latest fetch failed (showing last-known data)' }),
     status: z.enum(['active', 'withdrawn']),
     total: z.number().meta({ description: 'Cumulative total over the window' }),
@@ -204,6 +208,10 @@ export type ChallengeStanding = z.infer<typeof challengeStandingSchema>
 
 export const challengeStandingsResponseSchema = baseResponseSchema
   .extend({
+    effective_bucket_size: challengeEffectiveBucketSizeSchema.optional().meta({
+      description:
+        "The bucket size the members' series were aggregated with, so a client can plot bucket ends without inferring the size from the data",
+    }),
     members: z.array(challengeStandingSchema).optional(),
   })
   .meta({ id: 'ChallengeStandingsResponse' })
@@ -312,10 +320,7 @@ export const challengeDataResponseSchema = baseResponseSchema
   .extend({
     buckets: z.array(chartDataBucketSchema).optional(),
     display_name: z.string().optional(),
-    last_updated: z.string().nullable().optional().meta({
-      description:
-        'Timestamp of the most recent contributing data point in the window, or null if there is no data yet',
-    }),
+    last_updated: z.string().nullable().optional().meta({ description: lastUpdatedDescription }),
     total: z.number().optional(),
     unit: z.string().optional(),
   })
@@ -375,6 +380,58 @@ export const joinChallengeBodySchema = z
   .meta({ id: 'JoinChallengeBody' })
 
 export type JoinChallengeBody = z.infer<typeof joinChallengeBodySchema>
+
+// =============================================================================
+// Discovery: open challenges from people you follow
+// =============================================================================
+
+export const discoveredChallengeSchema = z
+  .object({
+    end_ts: z.string().meta({ description: 'End instant, exclusive (ISO 8601)' }),
+    host_actor_uri: z
+      .string()
+      .meta({ description: "The host's ActivityPub actor URI — the followee this came from" }),
+    host_display_name: z
+      .string()
+      .nullable()
+      .meta({ description: "The host's display name as cached from their actor, if known" }),
+    host_handle: z
+      .string()
+      .nullable()
+      .meta({ description: 'The host handle, e.g. `@alice@aurboda.net`, if known' }),
+    host_identity: z.string().meta({
+      description:
+        "The host's identity URL (`<instance>/u/<username>`), as in `ChallengeParticipation.host_identity`",
+    }),
+    name: challengeNameSchema,
+    share_url: z.string().meta({ description: "The challenge's public URL — the join-by-URL target" }),
+    spec: challengeSpecSchema,
+    start_ts: z.string().meta({ description: 'Start instant, inclusive (ISO 8601)' }),
+    status: z.enum(['ongoing', 'upcoming']).meta({
+      description: 'Whether the window is already running or starts later; ended challenges are never listed',
+    }),
+    timezone: z.string().meta({ description: 'IANA timezone the date range was chosen in' }),
+  })
+  .meta({
+    description: 'A public challenge hosted by someone the user follows that the user has not joined',
+    id: 'DiscoveredChallenge',
+  })
+
+export type DiscoveredChallenge = z.infer<typeof discoveredChallengeSchema>
+
+export const discoverChallengesResponseSchema = baseResponseSchema
+  .extend({
+    challenges: z.array(discoveredChallengeSchema).meta({
+      description: 'Ongoing challenges first (soonest to end), then upcoming ones (soonest to start)',
+    }),
+    peers_unreachable: z.number().int().nonnegative().meta({
+      description:
+        'Followed Aurboda instances that could not be listed this time; their challenges may be missing from the list',
+    }),
+  })
+  .meta({ id: 'DiscoverChallengesResponse' })
+
+export type DiscoverChallengesResponse = z.infer<typeof discoverChallengesResponseSchema>
 
 // =============================================================================
 // Federation discovery

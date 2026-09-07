@@ -2,12 +2,14 @@ package net.aurboda.widget
 
 import net.aurboda.api.models.Challenge
 import net.aurboda.api.models.ChallengeAggregation
+import net.aurboda.api.models.ChallengeEffectiveBucketSize
 import net.aurboda.api.models.ChallengeBucketSize
 import net.aurboda.api.models.ChallengeParticipation
 import net.aurboda.api.models.ChallengeSourceType
 import net.aurboda.api.models.ChallengeSpec
 import net.aurboda.api.models.ChallengeStanding
 import net.aurboda.api.models.ChartDataBucket
+import net.aurboda.api.models.DiscoveredChallenge
 import net.aurboda.api.models.ShareVisibility
 import net.aurboda.parseChallengeUrl
 import org.junit.Assert.assertEquals
@@ -129,15 +131,84 @@ class ChallengeWidgetModelTest {
     }
 
     @Test
-    fun `findChallengeSummary matches hosted or joined by URL, ignoring trailing slashes`() {
-        val hostedList = listOf(hosted("mine", "https://aurboda.net/u/me/mine"))
-        val joinedList = listOf(joined("theirs", "https://other.example/u/anna/theirs"))
-        assertEquals("mine", findChallengeSummary("https://aurboda.net/u/me/mine/", hostedList, joinedList)?.name)
-        assertEquals("theirs", findChallengeSummary("https://other.example/u/anna/theirs", hostedList, joinedList)?.name)
-        assertNull(findChallengeSummary("https://aurboda.net/u/me/gone", hostedList, joinedList))
-        val s = findChallengeSummary("https://aurboda.net/u/me/mine", hostedList, joinedList)!!
+    fun `a pick's summary carries the unit, window and zone the widget renders with`() {
+        val pick = challengePicks(listOf(hosted("mine", "https://aurboda.net/u/me/mine")), emptyList()).single()
+        val s = pick.summary()
+        assertEquals("mine", s.name)
         assertEquals("steps", s.unit)
+        assertEquals("Europe/Stockholm", s.timezone)
         assertEquals(parseInstantMillis("2026-07-31T22:00:00.000Z"), s.startMillis)
+        assertEquals(parseInstantMillis("2026-08-31T22:00:00.000Z"), s.endMillis)
+    }
+
+    // --- Moving on once a challenge is over ------------------------------
+
+    private fun pick(name: String, startTs: String, endTs: String, url: String = "https://aurboda.net/u/me/$name") =
+        challengePicks(listOf(hosted(name, url).copy(startTs = startTs, endTs = endTs)), emptyList()).single()
+
+    private val ongoing = pick("ongoing", "2026-09-01T00:00:00Z", "2026-10-01T00:00:00Z")
+    private val ongoingEndsSooner = pick("sooner", "2026-08-15T00:00:00Z", "2026-09-15T00:00:00Z")
+    private val upcoming = pick("upcoming", "2026-10-05T00:00:00Z", "2026-11-01T00:00:00Z")
+    private val upcomingLater = pick("later", "2026-11-05T00:00:00Z", "2026-12-01T00:00:00Z")
+    private val over = pick("over", "2026-08-01T00:00:00Z", "2026-09-01T00:00:00Z")
+    private val now = parseInstantMillis("2026-09-07T12:00:00Z")
+
+    @Test
+    fun `nextChallengePick prefers the running challenge ending soonest, then the soonest upcoming`() {
+        assertEquals("sooner", nextChallengePick(listOf(upcoming, ongoing, ongoingEndsSooner, over), now)?.name)
+        assertEquals("ongoing", nextChallengePick(listOf(upcomingLater, ongoing, upcoming), now)?.name)
+        assertEquals("upcoming", nextChallengePick(listOf(upcomingLater, upcoming, over), now)?.name)
+        assertNull(nextChallengePick(listOf(over), now))
+        assertNull(nextChallengePick(emptyList(), now))
+    }
+
+    @Test
+    fun `widgetTarget keeps a running, upcoming or freshly finished challenge`() {
+        val picks = listOf(ongoing, upcoming, over)
+        assertEquals(WidgetTarget.Keep(ongoing), widgetTarget(ongoing.url, picks, now))
+        assertEquals(WidgetTarget.Keep(upcoming), widgetTarget("${upcoming.url}/", picks, now))
+        // Ended 2026-09-01T00:00Z: 23 hours later the result banner is still up.
+        val dayAfterEnd = parseInstantMillis("2026-09-01T23:00:00Z")
+        assertEquals(WidgetTarget.Keep(over), widgetTarget(over.url, picks, dayAfterEnd))
+    }
+
+    @Test
+    fun `widgetTarget moves a widget on a day after its challenge ended, and at once when the challenge is gone`() {
+        assertEquals(WidgetTarget.Advance(ongoing), widgetTarget(over.url, listOf(ongoing, upcoming, over), now))
+        assertEquals(WidgetTarget.Advance(upcoming), widgetTarget(over.url, listOf(upcoming, over), now))
+        assertEquals(WidgetTarget.Advance(ongoing), widgetTarget("https://aurboda.net/u/me/deleted", listOf(ongoing), now))
+        // Own challenge joined too: the same URL appears twice and must not count as "another" challenge.
+        val joinedTwin = challengePicks(emptyList(), listOf(joined("over", over.url).copy(startTs = over.startTs, endTs = over.endTs))).single()
+        assertEquals(WidgetTarget.Suggest(over), widgetTarget(over.url, listOf(over, joinedTwin), now))
+    }
+
+    @Test
+    fun `widgetTarget asks for a suggestion when nothing of the user's own is open`() {
+        assertEquals(WidgetTarget.Suggest(over), widgetTarget(over.url, listOf(over), now))
+        assertEquals(WidgetTarget.Suggest(null), widgetTarget("https://aurboda.net/u/me/deleted", listOf(over), now))
+        assertEquals(WidgetTarget.Suggest(null), widgetTarget("https://aurboda.net/u/me/deleted", emptyList(), now))
+    }
+
+    @Test
+    fun `a suggestion names the host the way people know them`() {
+        val base =
+            DiscoveredChallenge(
+                endTs = "2026-10-01T00:00:00Z",
+                hostActorUri = "https://peer.example/users/alice",
+                hostDisplayName = "Alice",
+                hostHandle = "@alice@peer.example",
+                hostIdentity = "https://peer.example/u/alice",
+                name = "October steps",
+                shareUrl = "https://peer.example/u/alice/oct",
+                spec = spec,
+                startTs = "2026-09-01T00:00:00Z",
+                status = DiscoveredChallenge.Status.ongoing,
+                timezone = "Europe/Stockholm",
+            )
+        assertEquals("@alice@peer.example", discoveredHostLabel(base))
+        assertEquals("Alice", discoveredHostLabel(base.copy(hostHandle = null)))
+        assertEquals("https://peer.example/u/alice", discoveredHostLabel(base.copy(hostHandle = null, hostDisplayName = null)))
+        assertEquals("October steps\nby Alice\n\nTap to see and join", challengeSuggestionText("October steps", "Alice"))
     }
 
     // --- Series -----------------------------------------------------------
@@ -166,12 +237,37 @@ class ChallengeWidgetModelTest {
                 "https://x/u/a",
                 listOf("2026-08-02T00:00:00Z" to 3000.0, "2026-08-01T00:00:00Z" to 5000.0),
             )
-        val series = cumulativeSeries(s, 0xFF123456.toInt(), start, DAY_MILLIS)
+        val series = cumulativeSeries(s, 0xFF123456.toInt(), start) { it + DAY_MILLIS }
         assertEquals(0xFF123456.toInt(), series.color)
         assertEquals(listOf(0.0, 5000.0, 8000.0), series.points.map { it.value })
         assertEquals(start, series.points[0].timeMillis)
         assertEquals(parseInstantMillis("2026-08-02T00:00:00Z"), series.points[1].timeMillis)
         assertEquals(parseInstantMillis("2026-08-03T00:00:00Z"), series.points[2].timeMillis)
+    }
+
+    @Test
+    fun `bucketEndAt uses the host's bucket size in the challenge zone, inference only without one`() {
+        val tz = "Europe/Stockholm"
+        val midnight = parseInstantMillis("2026-10-24T22:00:00Z") // Oct 25 00:00 CEST, the DST fall-back day
+        assertEquals(parseInstantMillis("2026-10-24T22:05:00Z"), bucketEndAt(midnight, ChallengeEffectiveBucketSize._5m, tz, 1))
+        assertEquals(parseInstantMillis("2026-10-24T22:15:00Z"), bucketEndAt(midnight, ChallengeEffectiveBucketSize._15m, tz, 1))
+        assertEquals(parseInstantMillis("2026-10-24T23:00:00Z"), bucketEndAt(midnight, ChallengeEffectiveBucketSize._1h, tz, 1))
+        // A 25-hour day: the next local midnight is 23:00Z.
+        assertEquals(parseInstantMillis("2026-10-25T23:00:00Z"), bucketEndAt(midnight, ChallengeEffectiveBucketSize._1d, tz, 1))
+        assertEquals(parseInstantMillis("2026-10-31T23:00:00Z"), bucketEndAt(midnight, ChallengeEffectiveBucketSize._1w, tz, 1))
+        val sep1 = parseInstantMillis("2026-08-31T22:00:00Z")
+        assertEquals(parseInstantMillis("2026-09-30T22:00:00Z"), bucketEndAt(sep1, ChallengeEffectiveBucketSize._1M, tz, 1))
+        assertEquals(midnight + 4242, bucketEndAt(midnight, null, tz, 4242))
+        // An unknown zone falls back to the device zone rather than crashing the widget.
+        assertTrue(bucketEndAt(midnight, ChallengeEffectiveBucketSize._1d, "Mars/Olympus", 1) > midnight)
+    }
+
+    @Test
+    fun `bucketEndFunction infers from the data only when the host sent no bucket size`() {
+        val hourly = standing("b", "https://x/u/b", listOf("2026-08-01T00:00:00Z" to 1.0, "2026-08-01T01:00:00Z" to 1.0))
+        val start = parseInstantMillis("2026-08-01T00:00:00Z")
+        assertEquals(start + 60L * 60 * 1000, bucketEndFunction(null, "UTC", listOf(hourly))(start))
+        assertEquals(start + DAY_MILLIS, bucketEndFunction(ChallengeEffectiveBucketSize._1d, "UTC", listOf(hourly))(start))
     }
 
     // --- Leaderboard ------------------------------------------------------
@@ -208,6 +304,23 @@ class ChallengeWidgetModelTest {
         assertTrue(visibleRows(rows, 0).isEmpty())
         val nobodyIsMe = rows.map { it.copy(isMe = false) }
         assertEquals(listOf(1, 2, 3), visibleRows(nobodyIsMe, 3).map { it.rank })
+    }
+
+    @Test
+    fun `a substituted me row keeps its rank on a narrow widget, marked as skipped`() {
+        val rows = (1..6).map { LeaderboardRow(rank = it, name = "m$it", color = 0, total = (10 - it).toDouble(), isMe = it == 5) }
+        val cut = visibleRows(rows, 3) // 1, 2, me(5)
+        assertTrue(hasSubstitutedMeRow(cut, rows))
+        assertFalse(hasSubstitutedMeRow(visibleRows(rows, 6), rows))
+        assertFalse(hasSubstitutedMeRow(emptyList(), rows))
+        // Ranks hidden (2×2): only the pulled-up row shows one, with the gap marker.
+        assertEquals(listOf(null, null, "…5"), cut.map { rankCellText(it, showRank = false, ended = false, substituted = true) })
+        // Ranks shown: plain numbers (medals once over), no marker needed.
+        assertEquals(listOf("1", "2", "5"), cut.map { rankCellText(it, showRank = true, ended = false, substituted = true) })
+        assertEquals(listOf("🏆", "🥈", "5"), cut.map { rankCellText(it, showRank = true, ended = true, substituted = true) })
+        // A contiguous top list on a narrow widget hides every rank, the me row's included.
+        val meOnTop = visibleRows(rows.map { it.copy(isMe = it.rank == 2) }, 3)
+        assertEquals(listOf(null, null, null), meOnTop.map { rankCellText(it, showRank = false, ended = false, substituted = false) })
     }
 
     // --- Layout + text ----------------------------------------------------

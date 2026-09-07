@@ -49,9 +49,11 @@ export interface MemberSeries {
   buckets: ChartDataBucket[]
   total: number
   /**
-   * Timestamp of the member's most recent contributing data point in the
-   * window (ISO 8601), or null if they have no data. This is the honest "last
-   * updated" for standings — a member with no data reports null, not "now".
+   * When the member's contributing data last changed (ISO 8601): the newest
+   * value-change stamp among the points in the window (falling back to a
+   * point's own time for rows stored before that was tracked), or the latest
+   * matching activity start; null if they have no data. This is the honest
+   * "last updated" for standings — a member with no data reports null, not "now".
    */
   last_updated: string | null
 }

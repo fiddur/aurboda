@@ -15,6 +15,7 @@ import { loginBodySchema, loginResponseSchema } from './schemas/admin.ts'
 import {
   challengeParticipationsResponseSchema,
   challengesResponseSchema,
+  discoverChallengesResponseSchema,
   challengeStandingsResponseSchema,
   wellKnownAurbodaSchema,
   wellKnownQuantpubSchema,
@@ -135,6 +136,21 @@ const openApiDocument = createDocument({
         },
         security: [{ bearerAuth: [] }],
         summary: 'List my challenges',
+        tags: ['Challenges'],
+      },
+    },
+    '/challenges/discover': {
+      get: {
+        description:
+          'Open challenges hosted by people the authenticated user follows (on this or any Aurboda instance) that they have not joined: ongoing first, then upcoming; ended challenges are never listed.',
+        responses: {
+          200: {
+            content: { 'application/json': { schema: discoverChallengesResponseSchema } },
+            description: 'Successful response',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Discover challenges from people I follow',
         tags: ['Challenges'],
       },
     },

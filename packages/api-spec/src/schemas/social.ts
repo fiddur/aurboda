@@ -15,6 +15,7 @@
 
 import { z } from 'zod'
 
+import { challengeSpecSchema } from './challenges.ts'
 import { chartDataBreakdownBucketSchema, chartDataBucketSchema } from './chart-data.ts'
 import { baseResponseSchema } from './common.ts'
 import { dashboardConfigSchema } from './dashboard.ts'
@@ -277,13 +278,30 @@ export const publicDashboardListItemSchema = z
 export type PublicDashboardListItem = z.infer<typeof publicDashboardListItemSchema>
 
 /**
+ * A public challenge as listed on a user's public profile. The window and spec
+ * let a reader (the challenge discovery of a following instance, a profile page)
+ * tell an ongoing challenge from an ended one without fetching each; they are
+ * optional only because instances from before 2026-09 list name + link alone.
+ */
+export const publicChallengeListItemSchema = publicDashboardListItemSchema
+  .extend({
+    end_ts: z.string().optional().meta({ description: 'End instant, exclusive (ISO 8601)' }),
+    spec: challengeSpecSchema.optional(),
+    start_ts: z.string().optional().meta({ description: 'Start instant, inclusive (ISO 8601)' }),
+    timezone: z.string().optional().meta({ description: 'IANA timezone the date range was chosen in' }),
+  })
+  .meta({ id: 'PublicChallengeListItem' })
+
+export type PublicChallengeListItem = z.infer<typeof publicChallengeListItemSchema>
+
+/**
  * Response for a user's public profile page. Payload fields are optional so
  * error/not-found responses (which carry only `success`/`error`) type-check.
  */
 export const publicProfileResponseSchema = baseResponseSchema
   .extend({
     challenges: z
-      .array(publicDashboardListItemSchema)
+      .array(publicChallengeListItemSchema)
       .optional()
       .meta({ description: 'Public challenges hosted by this user' }),
     dashboards: z

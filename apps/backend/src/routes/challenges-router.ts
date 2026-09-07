@@ -19,11 +19,14 @@ import {
   type ChallengeStandingsResponse,
   type CreateChallengeBody,
   createChallengeBodySchema,
+  type DiscoverChallengesResponse,
   type JoinChallengeBody,
   joinChallengeBodySchema,
   type UpdateChallengeBody,
   updateChallengeBodySchema,
 } from '@aurboda/api-spec'
+
+import type { DiscoverChallenges } from '../services/challenge-discovery.ts'
 
 import {
   type ChallengeParticipationRecord,
@@ -41,7 +44,7 @@ import {
 } from '../db/index.ts'
 import { JoinChallengeError, joinChallenge } from '../services/challenge-federation.ts'
 import { announcementPending } from '../services/challenge-results.ts'
-import { specToApi } from '../services/challenge-spec.ts'
+import { effectiveBucketSize, specToApi } from '../services/challenge-spec.ts'
 import { getChallengeStandings } from '../services/challenge-standings.ts'
 import { buildProfileUrl, buildShareUrl } from '../services/share-urls.ts'
 import { isPublicToVisibility, visibilityToIsPublic } from '../services/visibility.ts'
@@ -82,6 +85,7 @@ export const createChallengesRouter = (
   authMiddleware: RequestHandler,
   webHost: string,
   apiBaseUrl: string,
+  discoverChallenges: DiscoverChallenges,
 ): TypedRouter => {
   const router = typedRouter()
 
@@ -121,6 +125,16 @@ export const createChallengesRouter = (
         local_user: user,
       })
       res.json({ challenge: serialize(record, webHost, user), success: true })
+    },
+  )
+
+  // Before `/:id`, or "discover" would be looked up as a challenge id.
+  router.get<Record<string, never>, DiscoverChallengesResponse>(
+    '/discover',
+    authMiddleware,
+    async (req, res) => {
+      const result = await discoverChallenges(req.user!)
+      res.json({ ...result, success: true })
     },
   )
 
@@ -176,7 +190,11 @@ export const createChallengesRouter = (
       const record = await getChallengeById(user, req.params.id)
       if (!record) return res.status(404).json({ error: 'Challenge not found', success: false })
       const members = await getChallengeStandings(user, record, { refresh: req.query.refresh === '1' })
-      res.json({ members, success: true })
+      res.json({
+        effective_bucket_size: effectiveBucketSize(record.spec.bucket_size, record.start_ts, record.end_ts),
+        members,
+        success: true,
+      })
     },
   )
 
