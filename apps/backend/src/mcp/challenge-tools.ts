@@ -1,6 +1,7 @@
 /**
- * MCP challenge tools — create/list/update/delete a hosted challenge and join
- * one by URL (local or federated). Mirrors the REST `/challenges` capability.
+ * MCP challenge tools — create/list/update/delete a hosted challenge, join one
+ * by URL (local or federated), and discover open ones from followed peers.
+ * Mirrors the REST `/challenges` capability.
  */
 import type { ChallengeSpec } from '@aurboda/api-spec'
 
@@ -12,6 +13,7 @@ import {
 import { z } from 'zod'
 
 import type { ChallengeRecord, ChallengeSpecFields } from '../db/index.ts'
+import type { DiscoverChallenges } from '../services/challenge-discovery.ts'
 
 import {
   createChallenge,
@@ -56,7 +58,7 @@ const serialize = (record: ChallengeRecord, webHost: string | undefined, user: s
 export const registerChallengeTools = (
   server: McpServer,
   user: string,
-  deps: { webHost?: string; apiBaseUrl?: string },
+  deps: { webHost?: string; apiBaseUrl?: string; discoverChallenges?: DiscoverChallenges },
 ) => {
   server.tool(
     'list_challenges',
@@ -144,6 +146,16 @@ export const registerChallengeTools = (
       } catch (error) {
         return errorResponse(error instanceof Error ? error.message : 'Failed to join challenge')
       }
+    },
+  )
+
+  server.tool(
+    'discover_challenges',
+    'Open (ongoing or upcoming) public challenges hosted by people you follow — on this or any Aurboda instance — that you have not joined. Ongoing first, soonest to end. Join one with join_challenge and its share_url.',
+    {},
+    async () => {
+      if (!deps.discoverChallenges) return errorResponse('Federation is not configured on this server')
+      return jsonResponse(await deps.discoverChallenges(user))
     },
   )
 }

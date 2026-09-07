@@ -8,6 +8,7 @@ import type {
   ChallengeStanding,
   ChallengeStandingsResponse,
   CreateChallengeBody,
+  DiscoverChallengesResponse,
   PublicChallengeResponse,
   PublicSharedDashboardResponse,
   UpdateChallengeBody,
@@ -66,6 +67,14 @@ export const joinChallengeByUrl = async (challengeUrl: string): Promise<Challeng
 
 export const leaveChallenge = async (participationId: string): Promise<void> => {
   await axios.delete(`${API_URL}/challenges/participations/${participationId}`, { headers: authHeaders() })
+}
+
+/** Open challenges hosted by people you follow that you haven't joined (walks their instances, so it can take a moment). */
+export const discoverChallenges = async (): Promise<DiscoverChallengesResponse> => {
+  const res = await axios.get<DiscoverChallengesResponse>(`${API_URL}/challenges/discover`, {
+    headers: authHeaders(),
+  })
+  return res.data
 }
 
 // ===========================================================================

@@ -7,7 +7,7 @@
  * fourth day is Aug 31 (#1070).
  */
 
-import type { Challenge, ChallengeParticipation } from '@aurboda/api-spec'
+import type { Challenge, ChallengeParticipation, DiscoveredChallenge } from '@aurboda/api-spec'
 
 export type ChallengeTimeStatus = 'ended' | 'ongoing' | 'upcoming'
 
@@ -23,10 +23,6 @@ export const lastIncludedMoment = (endTs: string): Date => new Date(new Date(end
 
 /** Local midnight of a date — anchors calendar-day arithmetic, DST-safe via rounding. */
 const localMidnight = (d: Date): Date => new Date(d.getFullYear(), d.getMonth(), d.getDate())
-
-/** Whole calendar days from `now`'s local day to `target`'s local day (0 = same day). */
-export const calendarDaysUntil = (target: Date, now: Date): number =>
-  Math.round((localMidnight(target).getTime() - localMidnight(now).getTime()) / 86_400_000)
 
 /** Calendar date of an instant in an IANA zone, as a UTC day number; the viewer's zone when the zone is invalid. */
 const zonedDayNumber = (d: Date, timeZone: string): number => {
@@ -159,3 +155,7 @@ export const groupChallengeItems = (
   groups.ended.sort((a, b) => endMs(b) - endMs(a))
   return groups
 }
+
+/** Who hosts a discovered challenge, as people know them: handle, else display name, else identity URL. */
+export const discoveredHostLabel = (c: DiscoveredChallenge): string =>
+  c.host_handle ?? c.host_display_name ?? c.host_identity

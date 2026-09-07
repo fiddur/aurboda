@@ -11,6 +11,7 @@ import type { Auth } from '../auth.ts'
 import type { GarminClient } from '../integrations/garmin/client.ts'
 import type { AutoshareDeps } from '../services/autoshare.ts'
 import type { CentralDb } from '../services/central-db.ts'
+import type { DiscoverChallenges } from '../services/challenge-discovery.ts'
 import type { DeductionEngineDeps } from '../services/deduction-engine.ts'
 import type { ActivityNotifier, DeductionQueue } from '../services/deduction-queue.ts'
 import type { FollowerActions } from '../services/followers.ts'
@@ -85,6 +86,8 @@ interface RestRoutesDeps {
   webHost: string
   webIndexPath: string | undefined
   apiBaseUrl: string
+  /** Open challenges from followed peers (`GET /challenges/discover`). */
+  discoverChallenges: DiscoverChallenges
   garmin: GarminClient
   syncProvider: SyncProvider
   activityNotifier: ActivityNotifier
@@ -118,6 +121,7 @@ export const mountRestRouters = ({
   webHost,
   webIndexPath,
   apiBaseUrl,
+  discoverChallenges,
   garmin,
   syncProvider,
   activityNotifier,
@@ -181,7 +185,7 @@ export const mountRestRouters = ({
     '/feed',
     createFeedRouter(authMiddleware, feedDeliver, timelineHub, apiBaseUrl, retroEnrichTimeline, webHost),
   )
-  httpd.use('/challenges', createChallengesRouter(authMiddleware, webHost, apiBaseUrl))
+  httpd.use('/challenges', createChallengesRouter(authMiddleware, webHost, apiBaseUrl, discoverChallenges))
   httpd.use(createChallengeDataRouter())
   // Public feed series must be mounted before the generic /public/:username/:slug
   // resolver so `series` is not matched as a share slug.

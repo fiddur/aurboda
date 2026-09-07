@@ -23,8 +23,8 @@ export const metricsTables: Record<string, string> = {
   // data point's own timestamp. Daily aggregates (steps, distance, …) keep one
   // row per day stamped at local midnight and are rewritten in place all day,
   // so \`time\` never says when the number moved. Added without a default and
-  // only then given one: an ADD COLUMN with a volatile default would rewrite
-  // the (large) table and stamp every historic row with the migration time.
+  // only then given one: ADD COLUMN ... DEFAULT NOW() would stamp every
+  // historic row with the migration time, which is not when its value changed.
   // Pre-existing rows stay NULL ("unknown"); readers fall back to \`time\`.
   time_series_updated_at: `
     ALTER TABLE time_series ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ;

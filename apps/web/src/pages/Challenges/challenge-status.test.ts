@@ -3,11 +3,11 @@ import type { Challenge, ChallengeParticipation } from '@aurboda/api-spec'
 import { describe, expect, test } from 'vitest'
 
 import {
-  calendarDaysUntil,
   challengeItemKey,
   challengeRangeLabel,
   challengeTimePhrase,
   challengeTimeStatus,
+  discoveredHostLabel,
   groupChallengeItems,
 } from './challenge-status'
 
@@ -36,20 +36,6 @@ describe('challengeTimeStatus', () => {
 
   test('the end instant itself is ended (exclusive)', () => {
     expect(challengeTimeStatus(start, end, new Date(end))).toBe('ended')
-  })
-})
-
-describe('calendarDaysUntil', () => {
-  test('same local day is 0 regardless of clock time', () => {
-    expect(calendarDaysUntil(new Date('2026-06-03T23:00:00'), new Date('2026-06-03T01:00:00'))).toBe(0)
-  })
-
-  test('counts local calendar days, not 24h periods', () => {
-    expect(calendarDaysUntil(new Date('2026-06-04T01:00:00'), new Date('2026-06-03T23:00:00'))).toBe(1)
-  })
-
-  test('is negative for past days', () => {
-    expect(calendarDaysUntil(new Date('2026-06-01T12:00:00'), new Date('2026-06-03T12:00:00'))).toBe(-2)
   })
 })
 
@@ -203,5 +189,35 @@ describe('groupChallengeItems', () => {
 
   test('empty inputs give empty groups', () => {
     expect(groupChallengeItems([], [], now)).toEqual({ ended: [], ongoing: [], upcoming: [] })
+  })
+})
+
+describe('discoveredHostLabel', () => {
+  const base = {
+    end_ts: '2026-10-01T00:00:00Z',
+    host_actor_uri: 'https://peer.example/users/alice',
+    host_display_name: 'Alice',
+    host_handle: '@alice@peer.example',
+    host_identity: 'https://peer.example/u/alice',
+    name: 'October steps',
+    share_url: 'https://peer.example/u/alice/oct',
+    spec: {
+      aggregation: 'sum' as const,
+      bucket_size: 'auto' as const,
+      pattern: 'steps',
+      source_type: 'metric' as const,
+      unit: 'steps',
+    },
+    start_ts: '2026-09-01T00:00:00Z',
+    status: 'ongoing' as const,
+    timezone: 'Europe/Stockholm',
+  }
+
+  test('handle, then display name, then identity URL', () => {
+    expect(discoveredHostLabel(base)).toBe('@alice@peer.example')
+    expect(discoveredHostLabel({ ...base, host_handle: null })).toBe('Alice')
+    expect(discoveredHostLabel({ ...base, host_display_name: null, host_handle: null })).toBe(
+      'https://peer.example/u/alice',
+    )
   })
 })

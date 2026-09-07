@@ -18,6 +18,7 @@ import type { ouraClient } from './integrations/oura/client.ts'
 import type { AutosharePreviewDeps } from './mcp/autoshare-rule-tools.ts'
 import type { FeedDeliver } from './routes/feed-router.ts'
 import type { CentralDb } from './services/central-db.ts'
+import type { DiscoverChallenges } from './services/challenge-discovery.ts'
 import type { DeductionEngineDeps } from './services/deduction-engine.ts'
 import type { ActivityNotifier, DeductionQueue } from './services/deduction-queue.ts'
 import type { FollowerActions } from './services/followers.ts'
@@ -62,6 +63,8 @@ interface McpDeps {
   autosharePreviewDeps?: AutosharePreviewDeps
   centralDb?: CentralDb
   deductionQueue?: DeductionQueue
+  /** Open challenges from followed peers (`discover_challenges`). */
+  discoverChallenges?: DiscoverChallenges
   engineDeps?: DeductionEngineDeps
   feedDeliver?: FeedDeliver
   followActions?: FollowActions
@@ -90,7 +93,15 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
   registerActivityTypeTools(server, user)
   registerDeductionRuleTools(server, user, engineDeps, deps.deductionQueue)
   if (deps.autosharePreviewDeps) registerAutoshareRuleTools(server, user, deps.autosharePreviewDeps)
-  registerSyncTools(server, user, deps.oura, deps.garmin, deps.stravaQueue, deps.onActivityMutated, deps.gravl)
+  registerSyncTools(
+    server,
+    user,
+    deps.oura,
+    deps.garmin,
+    deps.stravaQueue,
+    deps.onActivityMutated,
+    deps.gravl,
+  )
   registerSettingsTools(server, user)
   registerLocationTools(server, user)
   registerCorrelationTools(server, user, deps.sync)
@@ -115,7 +126,11 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
     retroEnrichTimeline: deps.retroEnrichTimeline,
     webHost: deps.webHost,
   })
-  registerChallengeTools(server, user, { apiBaseUrl: deps.apiBaseUrl, webHost: deps.webHost })
+  registerChallengeTools(server, user, {
+    apiBaseUrl: deps.apiBaseUrl,
+    discoverChallenges: deps.discoverChallenges,
+    webHost: deps.webHost,
+  })
   registerScreentimeCategoryTools(server, user)
   registerDebugTools(server, user)
 

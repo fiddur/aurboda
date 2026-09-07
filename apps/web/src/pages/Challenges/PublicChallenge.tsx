@@ -170,7 +170,6 @@ export function PublicChallenge({
                 )}
               </td>
               <td>
-                {/* Same palette index as the member's line in the race chart above. */}
                 <span
                   aria-hidden="true"
                   class="challenge-member-color"

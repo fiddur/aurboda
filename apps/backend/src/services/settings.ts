@@ -8,6 +8,7 @@ import {
   type HrZoneSecs,
   type HrZoneSource,
   type HrZoneThresholds,
+  type UpdateSettingsInput,
   updateSettingsInputSchema,
   userSettingsResponseSchema,
   type UserSettingsResponse,
@@ -101,10 +102,14 @@ export const getSettings = async (user: string): Promise<UserSettings> => {
 const updateSettingsInternal = async (
   user: string,
   updates: Partial<UserSettings>,
-  clear: string[] = [],
+  clear: (keyof UserSettings)[] = [],
 ): Promise<UserSettings> => {
   return await upsertUserSettings(user, updates, clear)
 }
+
+/** A key of the update input that is stored as a settings key (goals live in their own table). */
+const isStoredSettingsKey = (key: string): key is Exclude<keyof UpdateSettingsInput, 'goals'> =>
+  key !== 'goals' && key in updateSettingsInputSchema.shape
 
 /**
  * Get effective HR zones for a user.
@@ -318,11 +323,11 @@ export const validateAndUpdateSettings = async (user: string, input: unknown): P
   // falls back to its default (#1063) — `undefined` would be dropped by the
   // merge in `upsertUserSettings` and silently keep the old value.
   // Derive field list from the schema to keep it in sync with api-spec.
-  const settingsFields = Object.keys(updateSettingsInputSchema.shape).filter((k) => k !== 'goals')
   const updates: Partial<UserSettings> = {}
-  const clear: string[] = []
-  for (const field of settingsFields) {
-    const value = parsed.data[field as keyof typeof parsed.data]
+  const clear: (keyof UserSettings)[] = []
+  for (const field of Object.keys(updateSettingsInputSchema.shape)) {
+    if (!isStoredSettingsKey(field)) continue
+    const value = parsed.data[field]
     if (value === null) clear.push(field)
     else if (value !== undefined) (updates as Record<string, unknown>)[field] = value
   }
