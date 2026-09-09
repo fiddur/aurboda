@@ -12,8 +12,6 @@ import type {
   OvernightStay,
 } from '@aurboda/api-spec'
 
-import { Temporal } from '@js-temporal/polyfill'
-
 import { getPlaceVisits as defaultGetPlaceVisits, type PlaceVisit } from '../locations.ts'
 
 const DEFAULT_DEPARTURE_AFTER = '17:00'

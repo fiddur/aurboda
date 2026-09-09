@@ -4,8 +4,6 @@
 
 import type { CustomMetricDefinition } from '@aurboda/api-spec'
 
-import { Temporal } from '@js-temporal/polyfill'
-
 import type {
   BucketMetricStats,
   BucketSize,
