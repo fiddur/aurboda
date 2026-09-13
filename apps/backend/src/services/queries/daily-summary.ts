@@ -28,6 +28,7 @@ import {
   getNonSleepActivitiesMerged,
   getNotesByEntityIds,
   getNotesForTimeRange,
+  getRepliesForRootIds,
   getProductivity,
   getScreentimeActivities,
   getSleepSessions,
@@ -493,6 +494,11 @@ export async function getDailySummary(
   const activityIds = allActivities.map((a) => a.id).filter((id): id is string => id !== undefined)
   const siblingIds = allActivities.flatMap((a) => a.source_ids ?? [])
   const commentsMap = await getCommentsMap(user, 'activity', [...new Set([...activityIds, ...siblingIds])])
+  const mealCommentsMap = await getCommentsMap(
+    user,
+    'meal',
+    dayMeals.map((m) => m.id),
+  )
 
   // Build unified activities array from DB activities (excludes screentime — handled separately)
   const activities: ActivitySummary[] = allActivities
@@ -592,10 +598,20 @@ export async function getDailySummary(
     }
   })
 
-  // Filter notes: only include orphaned notes (not attached to an activity in the list)
+  // Filter notes: only include orphaned notes — ones not already shown under
+  // an activity or a meal in this day's lists.
   const activityIdSet = new Set(activityIds)
+  const mealIdSet = new Set(dayMeals.map((m) => m.id))
   const orphanedNotes = dayNotes.filter(
-    (n) => !(n.entity_type === 'activity' && n.entity_id && activityIdSet.has(n.entity_id)),
+    (n) =>
+      !(n.entity_type === 'activity' && n.entity_id && activityIdSet.has(n.entity_id)) &&
+      !(n.entity_type === 'meal' && n.entity_id && mealIdSet.has(n.entity_id)),
+  )
+
+  // Nest each day-level comment's thread under it (one batched lookup).
+  const orphanedReplies = await getRepliesForRootIds(
+    user,
+    orphanedNotes.map((n) => n.id),
   )
 
   const dateStr = date.toISOString().split('T')[0]
@@ -604,17 +620,22 @@ export async function getDailySummary(
     activities,
     date: dateStr,
     heart_rate: heartRateStats,
-    meals: dayMeals.map((m) => ({
-      calories: m.calories,
-      carbs: m.carbs,
-      fat: m.fat,
-      fiber: m.fiber,
-      food_items: m.food_items?.map((fi) => fi.name),
-      meal_type: m.meal_type,
-      name: m.name,
-      protein: m.protein,
-      time: m.time.toISOString(),
-    })),
+    meals: dayMeals.map((m) => {
+      const comments = mealCommentsMap.get(m.id)
+      return {
+        calories: m.calories,
+        carbs: m.carbs,
+        comments: comments && comments.length > 0 ? comments : undefined,
+        fat: m.fat,
+        fiber: m.fiber,
+        food_items: m.food_items?.map((fi) => fi.name),
+        id: m.id,
+        meal_type: m.meal_type,
+        name: m.name,
+        protein: m.protein,
+        time: m.time.toISOString(),
+      }
+    }),
     metrics_latest: metricsLatest,
     metrics_today: metricsToday,
     notes: orphanedNotes.map((n) => ({
@@ -624,6 +645,16 @@ export async function getDailySummary(
       entity_id: n.entity_id,
       entity_type: n.entity_type,
       id: n.id,
+      replies: (orphanedReplies.get(n.id) ?? []).map((r) => ({
+        content: r.content,
+        created_at: r.created_at.toISOString(),
+        end_time: r.end_time?.toISOString(),
+        id: r.id,
+        source: r.source,
+        start_time: r.start_time?.toISOString(),
+        updated_at: r.updated_at.toISOString(),
+      })),
+      source: n.source,
       start_time: n.start_time?.toISOString(),
       updated_at: n.updated_at.toISOString(),
     })),

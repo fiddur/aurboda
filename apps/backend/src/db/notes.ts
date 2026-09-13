@@ -6,6 +6,7 @@ import type { EntityType, Note } from './types.ts'
  * Notes CRUD operations.
  */
 import { query } from './connection.ts'
+import { buildDynamicUpdate } from './dynamic-update.ts'
 import { mapNoteRow } from './row-mappers.ts'
 
 const NOTE_COLUMNS =
@@ -14,7 +15,7 @@ const NOTE_COLUMNS =
 export const insertNote = async (
   user: string,
   entityType: EntityType,
-  entityId: string,
+  entityId: string | null,
   content: string,
   startTime?: Date,
   endTime?: Date,
@@ -53,17 +54,48 @@ export const getNotesForEntity = async (
   return result.rows.map(mapNoteRow)
 }
 
-export const updateNote = async (user: string, id: string, content: string): Promise<Note | null> => {
-  const result = await query(
-    user,
-    `UPDATE notes SET content = $1, updated_at = NOW()
-     WHERE id = $2
-     RETURNING ${NOTE_COLUMNS}`,
-    [content, id],
-  )
+export interface NoteFieldUpdates {
+  content?: string
+  start_time?: Date
+  end_time?: Date | null
+}
+
+/**
+ * Update a note's content and/or its own time anchor. `updated_at` is always
+ * bumped, so passing no fields still touches the row.
+ */
+export const updateNoteFields = async (
+  user: string,
+  id: string,
+  fields: NoteFieldUpdates,
+): Promise<Note | null> => {
+  const entries = []
+  if (fields.content !== undefined) entries.push({ column: 'content', value: fields.content })
+  if (fields.start_time !== undefined) entries.push({ column: 'start_time', value: fields.start_time })
+  if (fields.end_time !== undefined) entries.push({ column: 'end_time', value: fields.end_time })
+
+  const update = buildDynamicUpdate('notes', id, entries, {
+    defaultClauses: ['updated_at = NOW()'],
+    returning: NOTE_COLUMNS,
+  })
+  if (!update) return null
+
+  const result = await query(user, update.sql, update.params)
 
   if (result.rows.length === 0) return null
   return mapNoteRow(result.rows[0])
+}
+
+/**
+ * Resolve a note to its thread root. A reply (`entity_type = 'note'`) resolves
+ * to the note its `entity_id` points at; anything else resolves to itself.
+ * One hop is enough: replies-to-replies are re-anchored at write time.
+ */
+export const getNoteRoot = async (user: string, id: string): Promise<Note | null> => {
+  const note = await getNoteById(user, id)
+  if (!note) return null
+  if (note.entity_type !== 'note' || !note.entity_id) return note
+  return getNoteById(user, note.entity_id)
 }
 
 /**
@@ -81,6 +113,15 @@ export const updateNoteTimesForEntity = async (
     user,
     `UPDATE notes SET start_time = $1, end_time = $2, updated_at = NOW()
      WHERE entity_type = $3 AND entity_id = $4`,
+    [startTime, endTime ?? null, entityType, entityId],
+  )
+
+  // Replies sit at the same point in time as the comment they hang off.
+  await query(
+    user,
+    `UPDATE notes SET start_time = $1, end_time = $2, updated_at = NOW()
+     WHERE entity_type = 'note'
+       AND entity_id IN (SELECT id::text FROM notes WHERE entity_type = $3 AND entity_id = $4)`,
     [startTime, endTime ?? null, entityType, entityId],
   )
 }
@@ -101,12 +142,20 @@ export const getNotesByEntityIds = async (
   const map = new Map<string, Note[]>()
   for (const row of result.rows) {
     const note = mapNoteRow(row)
+    if (note.entity_id === null) continue
     const existing = map.get(note.entity_id) ?? []
     existing.push(note)
     map.set(note.entity_id, existing)
   }
   return map
 }
+
+/**
+ * Get the replies of a set of thread roots, keyed by root note id, oldest first.
+ * Threads are one level deep, so the result never needs recursing into.
+ */
+export const getRepliesForRootIds = async (user: string, rootIds: string[]): Promise<Map<string, Note[]>> =>
+  getNotesByEntityIds(user, 'note', rootIds)
 
 /**
  * Get all notes whose time range overlaps [start, end].
@@ -116,12 +165,14 @@ export const getNotesByEntityIds = async (
  *  - It has a start_time but no end_time (point-in-time), and start_time falls within [start, end]
  *
  * Notes with no start_time (e.g. metric notes using composite entity_id) are excluded from this query.
+ * Replies (`entity_type = 'note'`) are excluded too — they only ever surface nested under their root.
  */
 export const getNotesForTimeRange = async (user: string, start: Date, end: Date): Promise<Note[]> => {
   const result = await query(
     user,
     `SELECT ${NOTE_COLUMNS} FROM notes
      WHERE start_time IS NOT NULL
+       AND entity_type <> 'note'
        AND ((end_time IS NOT NULL AND start_time <= $2 AND end_time >= $1)
             OR (end_time IS NULL AND start_time >= $1 AND start_time <= $2))
      ORDER BY start_time ASC, created_at ASC`,
@@ -131,8 +182,16 @@ export const getNotesForTimeRange = async (user: string, start: Date, end: Date)
   return result.rows.map(mapNoteRow)
 }
 
+/**
+ * Delete a note and, when it is a thread root, every reply hanging off it.
+ * There is no FK between a reply and its root, so the cascade is explicit.
+ */
 export const deleteNote = async (user: string, id: string): Promise<boolean> => {
-  const result = await query(user, `DELETE FROM notes WHERE id = $1`, [id])
+  const result = await query(
+    user,
+    `DELETE FROM notes WHERE id = $1 OR (entity_type = 'note' AND entity_id = $1::text)`,
+    [id],
+  )
   return (result.rowCount ?? 0) > 0
 }
 
@@ -154,10 +213,17 @@ export const replaceUserNotes = async (
 ): Promise<void> => {
   await query(user, 'BEGIN')
   try {
-    await query(user, `DELETE FROM notes WHERE entity_type = $1 AND entity_id = $2 AND source IS NULL`, [
-      entityType,
-      entityId,
-    ])
+    const deleted = await query<{ id: string }>(
+      user,
+      `DELETE FROM notes WHERE entity_type = $1 AND entity_id = $2 AND source IS NULL RETURNING id`,
+      [entityType, entityId],
+    )
+    // Replies hang off the notes we just removed; drop them too rather than
+    // leaving them orphaned (there is no FK to cascade for us).
+    const deletedIds = deleted.rows.map((r) => r.id)
+    if (deletedIds.length > 0) {
+      await query(user, `DELETE FROM notes WHERE entity_type = 'note' AND entity_id = ANY($1)`, [deletedIds])
+    }
     if (content.length > 0) {
       await query(
         user,
@@ -177,6 +243,9 @@ export const replaceUserNotes = async (
  * Join all user-authored notes (`source IS NULL`) for an entity into a single
  * string, ordered chronologically by created_at. Returns undefined if none.
  * Used for outbound HC sync, where the destination has a single `notes` field.
+ *
+ * Replies never surface here: they carry `entity_type = 'note'`, so the
+ * entity_type filter already excludes them.
  */
 export const getUserNotesJoined = async (
   user: string,

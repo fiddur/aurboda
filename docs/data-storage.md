@@ -250,6 +250,49 @@ CREATE INDEX idx_lab_results_category ON lab_results (test_category, test_date D
 - `inflammation` - CRP, ESR
 - `hormones` - Testosterone, cortisol, estrogen
 
+#### `notes` - Comments on Anything
+
+Free-text comments with a polymorphic reference. One table carries all three
+shapes, and `(entity_type, entity_id)` is what distinguishes them. See
+[Comments](features/comments.md) for the feature-level description.
+
+```sql
+CREATE TABLE notes (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    entity_type     VARCHAR(50) NOT NULL,  -- 'activity' | 'productivity' | 'metric' | 'report' | 'meal' | 'note' | 'time'
+    entity_id       TEXT,                  -- NULL only for entity_type = 'time'
+    content         TEXT NOT NULL,
+    source          VARCHAR(50),           -- NULL for user-typed; set for synced comments ('health_connect', 'oura', …)
+    start_time      TIMESTAMPTZ,
+    end_time        TIMESTAMPTZ,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT notes_shape_check CHECK (
+        (entity_type = 'time' AND entity_id IS NULL AND start_time IS NOT NULL)
+        OR (entity_type <> 'time' AND entity_id IS NOT NULL)
+    )
+);
+```
+
+**The three shapes:**
+
+- **On an entity** -- `entity_type` names a real entity and `entity_id` points at
+  it (a UUID, or for metrics the composite key `<iso_time>|<metric>|<source>`).
+  `start_time`/`end_time` are a *cache* of the parent's timing so comments can be
+  queried by time range; they are rewritten whenever the parent moves and are not
+  editable directly.
+- **On a moment** -- `entity_type = 'time'`, `entity_id IS NULL`. `start_time` is
+  required and `end_time` optional; both are user input and editable.
+- **A reply** -- `entity_type = 'note'`, `entity_id` is the root comment's id. It
+  inherits the root's times, so the whole thread sits at one point in time, while
+  its own `created_at` records when it was written. Threads are exactly one level
+  deep: replying to a reply re-anchors to that reply's root.
+
+Replies are never top-level -- `getNotesForTimeRange` and the Health Connect
+notes join both filter `entity_type <> 'note'`. Deleting a thread root deletes
+its replies (done explicitly; there is no FK).
+
 #### `oauth_tokens` - API Credentials
 
 Secure storage for third-party API tokens.

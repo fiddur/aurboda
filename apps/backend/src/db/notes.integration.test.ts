@@ -5,12 +5,17 @@ import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-te
 import {
   deleteNote,
   getNoteById,
+  getNoteRoot,
   getNotesByEntityIds,
   getNotesForEntity,
   getNotesForTimeRange,
+  getRepliesForRootIds,
+  getUserNotesJoined,
   insertNote,
-  updateNote,
+  replaceUserNotes,
+  updateNoteFields,
   updateNoteTimesForEntity,
+  upsertSyncedNote,
 } from './notes.ts'
 
 const CONTAINER_TIMEOUT = 120_000
@@ -133,22 +138,48 @@ describe('Notes Integration Tests', () => {
     })
   })
 
-  describe('updateNote', () => {
+  describe('updateNoteFields', () => {
     test('updates note content and updated_at', async () => {
       const user = getTestUser()
       const entityId = randomUUID()
 
       const created = await insertNote(user, 'activity', entityId, 'Original content')
-      const updated = await updateNote(user, created.id, 'Updated content')
+      const updated = await updateNoteFields(user, created.id, { content: 'Updated content' })
 
       expect(updated).not.toBeNull()
       expect(updated!.content).toBe('Updated content')
       expect(updated!.updated_at.getTime()).toBeGreaterThanOrEqual(created.updated_at.getTime())
     })
 
+    test('changes content alone without touching the times', async () => {
+      const user = getTestUser()
+      const start = new Date('2024-01-15T09:00:00Z')
+      const end = new Date('2024-01-15T10:00:00Z')
+
+      const created = await insertNote(user, 'time', null, 'Original', start, end)
+      const updated = await updateNoteFields(user, created.id, { content: 'Reworded' })
+
+      expect(updated!.content).toBe('Reworded')
+      expect(updated!.start_time).toEqual(start)
+      expect(updated!.end_time).toEqual(end)
+    })
+
+    test('moves a note in time without touching the content', async () => {
+      const user = getTestUser()
+      const created = await insertNote(user, 'time', null, 'Moment', new Date('2024-01-15T09:00:00Z'))
+
+      const newStart = new Date('2024-01-15T11:30:00Z')
+      const newEnd = new Date('2024-01-15T12:00:00Z')
+      const updated = await updateNoteFields(user, created.id, { end_time: newEnd, start_time: newStart })
+
+      expect(updated!.content).toBe('Moment')
+      expect(updated!.start_time).toEqual(newStart)
+      expect(updated!.end_time).toEqual(newEnd)
+    })
+
     test('returns null for non-existent note', async () => {
       const user = getTestUser()
-      const updated = await updateNote(user, randomUUID(), 'New content')
+      const updated = await updateNoteFields(user, randomUUID(), { content: 'New content' })
       expect(updated).toBeNull()
     })
   })
@@ -463,7 +494,182 @@ describe('Notes Integration Tests', () => {
     })
   })
 
+  describe('time-anchored notes', () => {
+    test('stores a note anchored to a moment with a null entity_id', async () => {
+      const user = getTestUser()
+      const start = new Date('2024-01-15T12:00:00Z')
+      const end = new Date('2024-01-15T12:30:00Z')
+
+      const note = await insertNote(user, 'time', null, 'Headache came on', start, end)
+
+      expect(note.entity_id).toBeNull()
+      expect(note.entity_type).toBe('time')
+      expect(note.start_time).toEqual(start)
+      expect(note.end_time).toEqual(end)
+
+      const found = await getNoteById(user, note.id)
+      expect(found!.entity_id).toBeNull()
+    })
+
+    test('the CHECK constraint rejects a time note carrying an entity_id', async () => {
+      const user = getTestUser()
+      await expect(
+        insertNote(user, 'time', randomUUID(), 'Bad shape', new Date('2024-01-15T12:00:00Z')),
+      ).rejects.toThrow(/notes_shape_check/)
+    })
+
+    test('the CHECK constraint rejects a time note with no start_time', async () => {
+      const user = getTestUser()
+      await expect(insertNote(user, 'time', null, 'No anchor')).rejects.toThrow(/notes_shape_check/)
+    })
+
+    test('the CHECK constraint rejects an anchored note with no entity_id', async () => {
+      const user = getTestUser()
+      await expect(insertNote(user, 'activity', null, 'Dangling')).rejects.toThrow(/notes_shape_check/)
+    })
+  })
+
+  describe('replies', () => {
+    test('getRepliesForRootIds groups replies by root, oldest first', async () => {
+      const user = getTestUser()
+      const start = new Date('2024-01-15T12:00:00Z')
+      const rootA = await insertNote(user, 'time', null, 'Root A', start)
+      const rootB = await insertNote(user, 'time', null, 'Root B', start)
+
+      await insertNote(user, 'note', rootA.id, 'A first', start)
+      await insertNote(user, 'note', rootA.id, 'A second', start)
+      await insertNote(user, 'note', rootB.id, 'B only', start)
+
+      const replies = await getRepliesForRootIds(user, [rootA.id, rootB.id])
+
+      expect(replies.get(rootA.id)!.map((r) => r.content)).toEqual(['A first', 'A second'])
+      expect(replies.get(rootB.id)!.map((r) => r.content)).toEqual(['B only'])
+    })
+
+    test('getNoteRoot resolves a reply to its root and a root to itself', async () => {
+      const user = getTestUser()
+      const start = new Date('2024-01-15T12:00:00Z')
+      const root = await insertNote(user, 'time', null, 'Root', start)
+      const reply = await insertNote(user, 'note', root.id, 'Reply', start)
+
+      expect((await getNoteRoot(user, reply.id))!.id).toBe(root.id)
+      expect((await getNoteRoot(user, root.id))!.id).toBe(root.id)
+      expect(await getNoteRoot(user, randomUUID())).toBeNull()
+    })
+
+    test('getNotesForTimeRange returns roots only — a reply never appears', async () => {
+      const user = getTestUser()
+      const start = new Date('2024-01-15T12:00:00Z')
+      const root = await insertNote(user, 'time', null, 'Root', start)
+      await insertNote(user, 'note', root.id, 'Reply', start)
+
+      const results = await getNotesForTimeRange(
+        user,
+        new Date('2024-01-15T00:00:00Z'),
+        new Date('2024-01-15T23:59:59Z'),
+      )
+
+      expect(results.map((n) => n.content)).toEqual(['Root'])
+    })
+
+    test('updateNoteTimesForEntity moves a root and its replies together', async () => {
+      const user = getTestUser()
+      const entityId = randomUUID()
+      const start = new Date('2024-01-15T08:00:00Z')
+
+      const root = await insertNote(user, 'activity', entityId, 'Root', start)
+      const reply = await insertNote(user, 'note', root.id, 'Reply', start)
+
+      const newStart = new Date('2024-01-15T10:00:00Z')
+      const newEnd = new Date('2024-01-15T11:00:00Z')
+      await updateNoteTimesForEntity(user, 'activity', entityId, newStart, newEnd)
+
+      expect((await getNoteById(user, root.id))!.start_time).toEqual(newStart)
+      expect((await getNoteById(user, reply.id))!.start_time).toEqual(newStart)
+      expect((await getNoteById(user, reply.id))!.end_time).toEqual(newEnd)
+    })
+
+    test('getUserNotesJoined never includes a reply', async () => {
+      const user = getTestUser()
+      const entityId = randomUUID()
+      const start = new Date('2024-01-15T08:00:00Z')
+
+      const root = await insertNote(user, 'activity', entityId, 'Visible note', start)
+      await insertNote(user, 'note', root.id, 'Thread chatter', start)
+
+      const joined = await getUserNotesJoined(user, 'activity', entityId)
+
+      expect(joined).toBe('Visible note')
+    })
+  })
+
+  describe('replaceUserNotes', () => {
+    test('removes the replies of the user notes it wipes', async () => {
+      const user = getTestUser()
+      const entityId = randomUUID()
+      const start = new Date('2024-01-15T08:00:00Z')
+
+      const root = await insertNote(user, 'activity', entityId, 'Old note', start)
+      const reply = await insertNote(user, 'note', root.id, 'Reply to old', start)
+
+      await replaceUserNotes(user, 'activity', entityId, 'New note', start)
+
+      expect(await getNoteById(user, root.id)).toBeNull()
+      expect(await getNoteById(user, reply.id)).toBeNull()
+
+      const remaining = await getNotesForEntity(user, 'activity', entityId)
+      expect(remaining.map((n) => n.content)).toEqual(['New note'])
+    })
+
+    test('leaves a synced note and its replies alone', async () => {
+      const user = getTestUser()
+      const entityId = randomUUID()
+      const start = new Date('2024-01-15T08:00:00Z')
+
+      await upsertSyncedNote(user, 'activity', entityId, 'health_connect', 'Synced note', start)
+      const synced = (await getNotesForEntity(user, 'activity', entityId))[0]
+      const syncedReply = await insertNote(user, 'note', synced.id, 'Reply to synced', start)
+      const userRoot = await insertNote(user, 'activity', entityId, 'User note', start)
+      const userReply = await insertNote(user, 'note', userRoot.id, 'Reply to user note', start)
+
+      await replaceUserNotes(user, 'activity', entityId, 'Replacement', start)
+
+      expect(await getNoteById(user, synced.id)).not.toBeNull()
+      expect(await getNoteById(user, syncedReply.id)).not.toBeNull()
+      expect(await getNoteById(user, userRoot.id)).toBeNull()
+      expect(await getNoteById(user, userReply.id)).toBeNull()
+    })
+  })
+
   describe('deleteNote', () => {
+    test('deleting a root removes its replies too', async () => {
+      const user = getTestUser()
+      const start = new Date('2024-01-15T12:00:00Z')
+      const root = await insertNote(user, 'time', null, 'Root', start)
+      const reply = await insertNote(user, 'note', root.id, 'Reply', start)
+      const otherRoot = await insertNote(user, 'time', null, 'Untouched', start)
+
+      expect(await deleteNote(user, root.id)).toBe(true)
+
+      expect(await getNoteById(user, root.id)).toBeNull()
+      expect(await getNoteById(user, reply.id)).toBeNull()
+      expect(await getNoteById(user, otherRoot.id)).not.toBeNull()
+    })
+
+    test('deleting a reply removes only itself', async () => {
+      const user = getTestUser()
+      const start = new Date('2024-01-15T12:00:00Z')
+      const root = await insertNote(user, 'time', null, 'Root', start)
+      const reply1 = await insertNote(user, 'note', root.id, 'Reply 1', start)
+      const reply2 = await insertNote(user, 'note', root.id, 'Reply 2', start)
+
+      expect(await deleteNote(user, reply1.id)).toBe(true)
+
+      expect(await getNoteById(user, reply1.id)).toBeNull()
+      expect(await getNoteById(user, reply2.id)).not.toBeNull()
+      expect(await getNoteById(user, root.id)).not.toBeNull()
+    })
+
     test('deletes note and returns true', async () => {
       const user = getTestUser()
       const entityId = randomUUID()

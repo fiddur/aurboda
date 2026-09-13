@@ -218,14 +218,17 @@ export {
 export {
   deleteNote,
   getNoteById,
+  getNoteRoot,
   getNotesByEntityIds,
   getNotesForEntity,
   getNotesForTimeRange,
+  getRepliesForRootIds,
   getUserNotesJoined,
   insertNote,
+  type NoteFieldUpdates,
   reanchorNotes,
   replaceUserNotes,
-  updateNote,
+  updateNoteFields,
   updateNoteTimesForEntity,
   upsertSyncedNote,
 } from './notes.ts'

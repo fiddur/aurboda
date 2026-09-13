@@ -10,18 +10,24 @@ import {
   addNote,
   deleteNoteById,
   getNotesForEntity,
+  getNotesInRange,
   syncNoteTimesForEntity,
-  updateNoteContent,
+  updateNote,
 } from './notes.ts'
 
 vi.mock('../db', () => ({
   deleteNote: vi.fn(),
   getActivityById: vi.fn(),
+  getMealById: vi.fn(),
+  getNoteById: vi.fn(),
+  getNoteRoot: vi.fn(),
   getNotesForEntity: vi.fn(),
+  getNotesForTimeRange: vi.fn(),
   getProductivityById: vi.fn(),
   getReportById: vi.fn(),
+  getRepliesForRootIds: vi.fn(async () => new Map()),
   insertNote: vi.fn(),
-  updateNote: vi.fn(),
+  updateNoteFields: vi.fn(),
   updateNoteTimesForEntity: vi.fn(),
 }))
 
@@ -40,6 +46,7 @@ const makeNote = (overrides = {}) => ({
 describe('addNote', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.mocked(db.getRepliesForRootIds).mockResolvedValue(new Map())
   })
 
   test('inherits start_time and end_time from a tag entity (now activity)', async () => {
@@ -223,34 +230,252 @@ describe('addNote', () => {
   })
 })
 
-describe('updateNoteContent', () => {
+describe('addNote — time comments and replies', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.mocked(db.getRepliesForRootIds).mockResolvedValue(new Map())
+  })
+
+  test('inserts a time comment with a null entity_id and the supplied times', async () => {
+    const start = new Date('2024-01-15T12:00:00Z')
+    const end = new Date('2024-01-15T13:00:00Z')
+    vi.mocked(db.insertNote).mockResolvedValue(
+      makeNote({ end_time: end, entity_id: null, entity_type: 'time', start_time: start }),
+    )
+
+    const result = await addNote('user', {
+      content: 'Felt off around lunch',
+      end_time: end.toISOString(),
+      entity_type: 'time',
+      start_time: start.toISOString(),
+    })
+
+    expect(db.insertNote).toHaveBeenCalledWith('user', 'time', null, 'Felt off around lunch', start, end)
+    expect(result.success).toBe(true)
+    expect(result.data?.entity_id).toBeNull()
+  })
+
+  test('rejects a time comment without start_time', async () => {
+    const result = await addNote('user', { content: 'When?', entity_type: 'time' })
+
+    expect(result.success).toBe(false)
+    expect(result.error).toBe("start_time is required when entity_type is 'time'")
+    expect(db.insertNote).not.toHaveBeenCalled()
+  })
+
+  test('rejects a time comment that also carries an entity_id', async () => {
+    const result = await addNote('user', {
+      content: 'Ambiguous',
+      entity_id: randomUUID(),
+      entity_type: 'time',
+      start_time: '2024-01-15T12:00:00.000Z',
+    })
+
+    expect(result.success).toBe(false)
+    expect(result.error).toBe("entity_id must be omitted when entity_type is 'time'")
+    expect(db.insertNote).not.toHaveBeenCalled()
+  })
+
+  test('rejects times on a comment anchored to an entity', async () => {
+    const result = await addNote('user', {
+      content: 'Nope',
+      entity_id: randomUUID(),
+      entity_type: 'activity',
+      start_time: '2024-01-15T12:00:00.000Z',
+    })
+
+    expect(result.success).toBe(false)
+    expect(result.error).toBe('Times can only be set on a time-anchored comment')
+    expect(db.insertNote).not.toHaveBeenCalled()
+  })
+
+  test('rejects a comment with no entity_id on an anchored type', async () => {
+    const result = await addNote('user', { content: 'Nope', entity_type: 'activity' })
+
+    expect(result.success).toBe(false)
+    expect(result.error).toBe("entity_id is required unless entity_type is 'time'")
+    expect(db.insertNote).not.toHaveBeenCalled()
+  })
+
+  test('replying to a reply re-anchors to the thread root', async () => {
+    const rootId = randomUUID()
+    const replyId = randomUUID()
+    const rootStart = new Date('2024-01-15T12:00:00Z')
+    const rootEnd = new Date('2024-01-15T12:30:00Z')
+
+    // getNoteRoot resolves the reply to its root for us.
+    vi.mocked(db.getNoteRoot).mockResolvedValue(
+      makeNote({
+        end_time: rootEnd,
+        entity_id: null,
+        entity_type: 'time',
+        id: rootId,
+        start_time: rootStart,
+      }),
+    )
+    vi.mocked(db.insertNote).mockResolvedValue(
+      makeNote({
+        end_time: rootEnd,
+        entity_id: rootId,
+        entity_type: 'note',
+        start_time: rootStart,
+      }),
+    )
+
+    const result = await addNote('user', {
+      content: 'Me too',
+      entity_id: replyId,
+      entity_type: 'note',
+    })
+
+    expect(db.getNoteRoot).toHaveBeenCalledWith('user', replyId)
+    expect(db.insertNote).toHaveBeenCalledWith('user', 'note', rootId, 'Me too', rootStart, rootEnd)
+    expect(result.success).toBe(true)
+    expect(result.data?.entity_id).toBe(rootId)
+  })
+
+  test('fails when the comment being replied to does not exist', async () => {
+    vi.mocked(db.getNoteRoot).mockResolvedValue(null)
+
+    const result = await addNote('user', {
+      content: 'Hello?',
+      entity_id: randomUUID(),
+      entity_type: 'note',
+    })
+
+    expect(result.success).toBe(false)
+    expect(result.error).toBe('Comment to reply to not found')
+    expect(db.insertNote).not.toHaveBeenCalled()
+  })
+
+  test('inherits the meal time for a comment on a meal', async () => {
+    const mealId = randomUUID()
+    const mealTime = new Date('2024-01-15T18:30:00Z')
+    vi.mocked(db.getMealById).mockResolvedValue({
+      created_at: mealTime,
+      id: mealId,
+      source: 'aurboda',
+      time: mealTime,
+    })
+    vi.mocked(db.insertNote).mockResolvedValue(
+      makeNote({ entity_id: mealId, entity_type: 'meal', start_time: mealTime }),
+    )
+
+    await addNote('user', { content: 'Too salty', entity_id: mealId, entity_type: 'meal' })
+
+    expect(db.getMealById).toHaveBeenCalledWith('user', mealId)
+    expect(db.insertNote).toHaveBeenCalledWith('user', 'meal', mealId, 'Too salty', mealTime, undefined)
+  })
+})
+
+describe('getNotesInRange', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  test("nests each root comment's replies, oldest first", async () => {
+    const rootId = randomUUID()
+    const root = makeNote({ content: 'Root', entity_id: null, entity_type: 'time', id: rootId })
+    vi.mocked(db.getNotesForTimeRange).mockResolvedValue([root])
+    vi.mocked(db.getRepliesForRootIds).mockResolvedValue(
+      new Map([
+        [
+          rootId,
+          [
+            makeNote({ content: 'First reply', entity_id: rootId, entity_type: 'note' }),
+            makeNote({ content: 'Second reply', entity_id: rootId, entity_type: 'note' }),
+          ],
+        ],
+      ]),
+    )
+
+    const from = new Date('2024-01-15T00:00:00Z')
+    const to = new Date('2024-01-15T23:59:59Z')
+    const result = await getNotesInRange('user', from, to)
+
+    expect(db.getNotesForTimeRange).toHaveBeenCalledWith('user', from, to)
+    expect(db.getRepliesForRootIds).toHaveBeenCalledWith('user', [rootId])
+    expect(result).toHaveLength(1)
+    expect(result[0].replies?.map((r) => r.content)).toEqual(['First reply', 'Second reply'])
+  })
+
+  test('skips the reply lookup when the window has no comments', async () => {
+    vi.mocked(db.getNotesForTimeRange).mockResolvedValue([])
+
+    const result = await getNotesInRange('user', new Date(), new Date())
+
+    expect(result).toEqual([])
+    expect(db.getRepliesForRootIds).not.toHaveBeenCalled()
+  })
+})
+
+describe('updateNote', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(db.getRepliesForRootIds).mockResolvedValue(new Map())
   })
 
   test('returns updated note with time fields', async () => {
     const noteId = randomUUID()
     const start = new Date('2024-01-15T08:00:00Z')
     const end = new Date('2024-01-15T09:00:00Z')
+    const existing = makeNote({ end_time: end, entity_type: 'activity', id: noteId, start_time: start })
 
-    vi.mocked(db.updateNote).mockResolvedValue(
-      makeNote({ end_time: end, entity_type: 'activity', id: noteId, start_time: start }),
-    )
+    vi.mocked(db.getNoteById).mockResolvedValue(existing)
+    vi.mocked(db.updateNoteFields).mockResolvedValue(existing)
 
-    const result = await updateNoteContent('user', noteId, 'Updated content')
+    const result = await updateNote('user', noteId, { content: 'Updated content' })
 
+    expect(db.updateNoteFields).toHaveBeenCalledWith('user', noteId, {
+      content: 'Updated content',
+      end_time: undefined,
+      start_time: undefined,
+    })
     expect(result.success).toBe(true)
     expect(result.data?.start_time).toBe(start.toISOString())
     expect(result.data?.end_time).toBe(end.toISOString())
   })
 
   test('returns error when note not found', async () => {
-    vi.mocked(db.updateNote).mockResolvedValue(null)
+    vi.mocked(db.getNoteById).mockResolvedValue(null)
 
-    const result = await updateNoteContent('user', randomUUID(), 'Content')
+    const result = await updateNote('user', randomUUID(), { content: 'Content' })
 
     expect(result.success).toBe(false)
     expect(result.error).toBe('Note not found')
+    expect(db.updateNoteFields).not.toHaveBeenCalled()
+  })
+
+  test('rejects setting times on a note anchored to an entity', async () => {
+    const noteId = randomUUID()
+    vi.mocked(db.getNoteById).mockResolvedValue(makeNote({ entity_type: 'activity', id: noteId }))
+
+    const result = await updateNote('user', noteId, { start_time: '2024-01-15T08:00:00.000Z' })
+
+    expect(result.success).toBe(false)
+    expect(result.error).toBe('Times can only be set on a time-anchored comment')
+    expect(db.updateNoteFields).not.toHaveBeenCalled()
+  })
+
+  test('moves a time note and cascades the new times to its replies', async () => {
+    const noteId = randomUUID()
+    const newStart = new Date('2024-01-15T11:00:00Z')
+    vi.mocked(db.getNoteById).mockResolvedValue(
+      makeNote({ entity_id: null, entity_type: 'time', id: noteId }),
+    )
+    vi.mocked(db.updateNoteFields).mockResolvedValue(
+      makeNote({ entity_id: null, entity_type: 'time', id: noteId, start_time: newStart }),
+    )
+
+    const result = await updateNote('user', noteId, { start_time: newStart.toISOString() })
+
+    expect(result.success).toBe(true)
+    expect(db.updateNoteFields).toHaveBeenCalledWith('user', noteId, {
+      content: undefined,
+      end_time: undefined,
+      start_time: newStart,
+    })
+    expect(db.updateNoteTimesForEntity).toHaveBeenCalledWith('user', 'note', noteId, newStart, undefined)
   })
 })
 
@@ -275,6 +500,7 @@ describe('deleteNoteById', () => {
 describe('getNotesForEntity', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.mocked(db.getRepliesForRootIds).mockResolvedValue(new Map())
   })
 
   test('maps notes to serialized format including time fields', async () => {

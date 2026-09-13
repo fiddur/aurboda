@@ -6,10 +6,12 @@ import {
   mapMcpSessionRow,
   mapMealRow,
   mapNamedLocationRow,
+  mapNoteRow,
   mapReportEntryRow,
   mapSyncStateRow,
   parseActivityType,
   parseDataSource,
+  parseEntityType,
   parseGeocodeStatus,
   parseSyncStatus,
 } from './row-mappers.ts'
@@ -391,6 +393,51 @@ describe('mapMealRow', () => {
     expect(result.calories).toBe(500)
     expect(result.food_items).toEqual([{ name: 'Rice' }])
     expect(result.micros).toEqual({ iron: 2 })
+  })
+})
+
+describe('mapNoteRow', () => {
+  const baseRow = {
+    content: 'A comment',
+    created_at: '2024-01-15T10:00:00.000Z',
+    end_time: null,
+    entity_id: 'e6f9f3a2-3f6b-4a4e-9f4a-1b2c3d4e5f60',
+    entity_type: 'activity',
+    id: '9d0124e7-d161-4855-a54f-fa8bdb45c4f2',
+    source: null,
+    start_time: null,
+    updated_at: '2024-01-15T10:00:00.000Z',
+  }
+
+  test('maps an entity-anchored note', () => {
+    const note = mapNoteRow(baseRow)
+    expect(note.entity_type).toBe('activity')
+    expect(note.entity_id).toBe('e6f9f3a2-3f6b-4a4e-9f4a-1b2c3d4e5f60')
+    expect(note.source).toBeUndefined()
+  })
+
+  test('passes a null entity_id through for a time-anchored note', () => {
+    const note = mapNoteRow({
+      ...baseRow,
+      entity_id: null,
+      entity_type: 'time',
+      start_time: '2024-01-15T12:00:00.000Z',
+    })
+    expect(note.entity_id).toBeNull()
+    expect(note.entity_type).toBe('time')
+    expect(note.start_time).toEqual(new Date('2024-01-15T12:00:00.000Z'))
+  })
+
+  test('maps a reply', () => {
+    const note = mapNoteRow({ ...baseRow, entity_type: 'note' })
+    expect(note.entity_type).toBe('note')
+  })
+
+  test('parseEntityType accepts the widened set and rejects unknown values', () => {
+    expect(parseEntityType('meal')).toBe('meal')
+    expect(parseEntityType('note')).toBe('note')
+    expect(parseEntityType('time')).toBe('time')
+    expect(() => parseEntityType('nonsense')).toThrow(/Invalid EntityType/)
   })
 })
 

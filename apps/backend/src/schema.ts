@@ -134,6 +134,8 @@ export const tableCreationOrder = [
   'audit_log',
   'audit_log_indexes',
   'notes',
+  'notes_entity_nullable',
+  'notes_shape_check',
   'notes_indexes',
   'shared_dashboards',
   'shared_dashboards_indexes',

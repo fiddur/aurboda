@@ -210,9 +210,18 @@ export const mealSummarySchema = z
   .object({
     calories: z.number().optional().meta({ description: 'Total energy in kcal' }),
     carbs: z.number().optional().meta({ description: 'Total carbohydrates in grams' }),
+    comments: z.array(commentSchema).optional().meta({
+      description:
+        'All comments attached to this meal. User-typed comments carry no `source`; synced ones carry their origin. Each comment carries its own thread in `replies`.',
+    }),
     fat: z.number().optional().meta({ description: 'Total fat in grams' }),
     fiber: z.number().optional().meta({ description: 'Total dietary fiber in grams' }),
     food_items: z.array(z.string()).optional().meta({ description: 'Food item names included in this meal' }),
+    id: z
+      .string()
+      .uuid()
+      .optional()
+      .meta({ description: 'Meal ID — use it to attach a comment (`entity_type: "meal"`)' }),
     meal_type: z
       .string()
       .optional()

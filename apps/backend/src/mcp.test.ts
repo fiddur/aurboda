@@ -23,12 +23,17 @@ vi.mock('./services/mutations', () => ({
   addActivity: vi.fn(),
   addCustomMetric: vi.fn(),
   addMetric: vi.fn(),
+  addNote: vi.fn(),
   addTag: vi.fn(),
   deleteActivity: vi.fn(),
   deleteCustomMetric: vi.fn(),
+  deleteNoteById: vi.fn(),
   getCustomMetrics: vi.fn().mockResolvedValue([]),
+  getNotesForEntity: vi.fn().mockResolvedValue([]),
+  getNotesInRange: vi.fn().mockResolvedValue([]),
   restoreActivity: vi.fn(),
   updateActivity: vi.fn(),
+  updateNote: vi.fn(),
 }))
 
 // Mock db for sync status and stored detected locations
@@ -1222,6 +1227,110 @@ describe('MCP Server', () => {
 
       expect(response.status).toBe(200)
       expect(resetSpy).not.toHaveBeenCalled()
+    })
+  })
+  describe('Tools: notes', () => {
+    async function callNoteTool(
+      app: express.Express,
+      token: string,
+      toolName: string,
+      args: Record<string, unknown>,
+    ) {
+      const response = await mcpPost(app)
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          id: 1,
+          jsonrpc: '2.0',
+          method: 'tools/call',
+          params: { arguments: args, name: toolName },
+        })
+      const parsed = parseSSEResponse(response.text) as { result: { content: { text: string }[] } }
+      return { response, toolResult: JSON.parse(parsed.result.content[0].text) }
+    }
+
+    test('registers the note tools including query_notes', async () => {
+      const app = createTestApp()
+      const token = auth.createToken('testuser')
+
+      const response = await mcpPost(app)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ id: 1, jsonrpc: '2.0', method: 'tools/list' })
+
+      const parsed = parseSSEResponse(response.text) as { result: { tools: { name: string }[] } }
+      const names = parsed.result.tools.map((t) => t.name)
+
+      expect(names).toContain('add_note')
+      expect(names).toContain('get_notes')
+      expect(names).toContain('query_notes')
+      expect(names).toContain('update_note')
+      expect(names).toContain('delete_note')
+    })
+
+    test('add_note accepts the time shape (no entity_id)', async () => {
+      const app = createTestApp()
+      const token = auth.createToken('testuser')
+
+      vi.mocked(mutations.addNote).mockResolvedValue({
+        data: {
+          content: 'Felt dizzy',
+          created_at: '2024-01-15T12:00:00.000Z',
+          entity_id: null,
+          entity_type: 'time',
+          id: 'note-1',
+          start_time: '2024-01-15T12:00:00.000Z',
+          updated_at: '2024-01-15T12:00:00.000Z',
+        },
+        success: true,
+      })
+
+      const { response, toolResult } = await callNoteTool(app, token, 'add_note', {
+        content: 'Felt dizzy',
+        entity_type: 'time',
+        start_time: '2024-01-15T12:00:00Z',
+      })
+
+      expect(response.status).toBe(200)
+      expect(toolResult.success).toBe(true)
+      expect(mutations.addNote).toHaveBeenCalledWith('testuser', {
+        content: 'Felt dizzy',
+        end_time: undefined,
+        entity_id: undefined,
+        entity_type: 'time',
+        start_time: '2024-01-15T12:00:00Z',
+      })
+    })
+
+    test('query_notes lists comments in a time range', async () => {
+      const app = createTestApp()
+      const token = auth.createToken('testuser')
+
+      vi.mocked(mutations.getNotesInRange).mockResolvedValue([
+        {
+          content: 'Felt dizzy',
+          created_at: '2024-01-15T12:00:00.000Z',
+          entity_id: null,
+          entity_type: 'time',
+          id: 'note-1',
+          replies: [],
+          start_time: '2024-01-15T12:00:00.000Z',
+          updated_at: '2024-01-15T12:00:00.000Z',
+        },
+      ])
+
+      const { response, toolResult } = await callNoteTool(app, token, 'query_notes', {
+        from: '2024-01-15T00:00:00Z',
+        to: '2024-01-15T23:59:59Z',
+        tz: 'UTC',
+      })
+
+      expect(response.status).toBe(200)
+      expect(toolResult.success).toBe(true)
+      expect(toolResult.data).toHaveLength(1)
+      expect(mutations.getNotesInRange).toHaveBeenCalledWith(
+        'testuser',
+        new Date('2024-01-15T00:00:00Z'),
+        new Date('2024-01-15T23:59:59Z'),
+      )
     })
   })
 })

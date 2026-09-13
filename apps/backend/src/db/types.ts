@@ -294,7 +294,12 @@ export type { EntityType }
 export interface Note {
   id: string
   entity_type: EntityType
-  entity_id: string
+  /**
+   * The entity this note hangs off. Null for an `entity_type = 'time'` note,
+   * which is anchored to a moment rather than an entity. For a reply
+   * (`entity_type = 'note'`) it is the id of the root comment.
+   */
+  entity_id: string | null
   content: string
   /** Data source that created this note (e.g. 'oura'). Null for user-created notes. */
   source?: DataSource
