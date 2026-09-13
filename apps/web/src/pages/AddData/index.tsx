@@ -9,8 +9,8 @@ import { ActivityTypePicker } from '../../components/ActivityTypePicker'
 import { MetricPicker } from '../../components/MetricPicker'
 import {
   addActivity,
+  addEntityComment,
   addMetric,
-  addNote,
   fetchActivityTypeDefinitions,
   uploadFitFile,
   type ActivityType,
@@ -25,9 +25,25 @@ const setAddMore = (value: boolean): void => localStorage.setItem(STORAGE_KEY, S
 
 const nowLocal = () => format(new Date(), "yyyy-MM-dd'T'HH:mm")
 
+/**
+ * `?time=<iso>` prefill (the Timeline's right-click "Add activity/metric" menu
+ * sends the picked moment this way). An unparseable value is ignored rather
+ * than blowing up the form.
+ */
+const parsePrefillTime = (value: string | undefined): string | undefined => {
+  if (!value) return undefined
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? undefined : format(date, "yyyy-MM-dd'T'HH:mm")
+}
+
+/** Seed for a form's time field: the `?time=` prefill when there is one, else now. */
+const seedTime = (initialTime: string | undefined): string => initialTime ?? nowLocal()
+
 interface FormProps {
   /** Called after successful creation. If it returns true, the form was navigated away. */
   onCreated: (entityType: string, entityId: string | undefined) => boolean
+  /** `yyyy-MM-ddTHH:mm` seed for the form's time fields, from `?time=`. */
+  initialTime?: string
 }
 
 const FitUpload = ({ onCreated }: FormProps) => {
@@ -140,12 +156,12 @@ const SchemaFieldInput = ({
   )
 }
 
-const AddActivityForm = ({ onCreated }: FormProps) => {
+const AddActivityForm = ({ onCreated, initialTime }: FormProps) => {
   const queryClient = useQueryClient()
   const [activityType, setActivityType] = useState<ActivityType>('')
   const [title, setTitle] = useState('')
-  const [startTime, setStartTime] = useState(nowLocal())
-  const [endTime, setEndTime] = useState(nowLocal())
+  const [startTime, setStartTime] = useState(seedTime(initialTime))
+  const [endTime, setEndTime] = useState(seedTime(initialTime))
   const [hasEndTime, setHasEndTime] = useState(true)
   const [notes, setNotes] = useState('')
   const [comment, setComment] = useState('')
@@ -176,7 +192,7 @@ const AddActivityForm = ({ onCreated }: FormProps) => {
       })
       if (comment.trim() && result.data?.id) {
         try {
-          await addNote('activity', result.data.id, comment.trim())
+          await addEntityComment('activity', result.data.id, comment.trim())
         } catch {
           // Activity was created successfully; comment save failed silently
         }
@@ -307,10 +323,10 @@ const AddActivityForm = ({ onCreated }: FormProps) => {
   )
 }
 
-const AddMetricForm = ({ onCreated }: FormProps) => {
+const AddMetricForm = ({ onCreated, initialTime }: FormProps) => {
   const [metric, setMetric] = useState('')
   const [value, setValue] = useState('')
-  const [time, setTime] = useState(nowLocal())
+  const [time, setTime] = useState(seedTime(initialTime))
   const [comment, setComment] = useState('')
   const [success, setSuccess] = useState('')
   const [error, setError] = useState('')
@@ -325,7 +341,7 @@ const AddMetricForm = ({ onCreated }: FormProps) => {
       })
       if (comment.trim() && result.success && result.entity_id) {
         try {
-          await addNote('metric', result.entity_id, comment.trim())
+          await addEntityComment('metric', result.entity_id, comment.trim())
         } catch {
           // Metric was recorded successfully; comment save failed silently
         }
@@ -402,8 +418,11 @@ const AddMetricForm = ({ onCreated }: FormProps) => {
 }
 
 export const AddData = () => {
-  const { route } = useLocation()
-  const [activeTab, setActiveTab] = useState<Tab>('activity')
+  const { query, route } = useLocation()
+  // Read once on mount: `?tab=` picks the initial tab and `?time=` seeds the
+  // time fields. Later edits to the form must not be clobbered by the URL.
+  const [initialTime] = useState(() => parsePrefillTime(query.time))
+  const [activeTab, setActiveTab] = useState<Tab>(() => (query.tab === 'metric' ? 'metric' : 'activity'))
   const [addMore, setAddMoreState] = useState(getAddMore)
 
   const handleTabClick = useCallback((tab: Tab) => {
@@ -468,10 +487,10 @@ export const AddData = () => {
         <>
           <FitUpload onCreated={handleCreated} />
           <div class="form-divider">or enter manually</div>
-          <AddActivityForm onCreated={handleCreated} />
+          <AddActivityForm onCreated={handleCreated} initialTime={initialTime} />
         </>
       )}
-      {activeTab === 'metric' && <AddMetricForm onCreated={handleCreated} />}
+      {activeTab === 'metric' && <AddMetricForm onCreated={handleCreated} initialTime={initialTime} />}
     </div>
   )
 }

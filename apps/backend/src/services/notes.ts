@@ -46,8 +46,8 @@ export interface UpdateNoteInput {
   content?: string
   /** Only for `entity_type: 'time'`. */
   start_time?: string
-  /** Only for `entity_type: 'time'`. */
-  end_time?: string
+  /** Only for `entity_type: 'time'`. Null clears it, making the comment a point in time. */
+  end_time?: string | null
 }
 
 export interface NoteReplyData {
@@ -226,7 +226,8 @@ export async function updateNote(user: string, id: string, fields: UpdateNoteInp
 
   const note = await dbUpdateNoteFields(user, id, {
     content: fields.content,
-    end_time: fields.end_time === undefined ? undefined : new Date(fields.end_time),
+    // null clears the end, turning a span back into a point in time.
+    end_time: fields.end_time == null ? fields.end_time : new Date(fields.end_time),
     start_time: fields.start_time === undefined ? undefined : new Date(fields.start_time),
   })
   if (!note) {

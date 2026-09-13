@@ -436,6 +436,33 @@ describe('updateNote', () => {
     expect(result.data?.end_time).toBe(end.toISOString())
   })
 
+  test('clears the end of a time comment when end_time is null', async () => {
+    const noteId = randomUUID()
+    const start = new Date('2024-01-15T08:00:00Z')
+    const existing = makeNote({
+      end_time: new Date('2024-01-15T09:00:00Z'),
+      entity_id: null,
+      entity_type: 'time',
+      id: noteId,
+      start_time: start,
+    })
+
+    vi.mocked(db.getNoteById).mockResolvedValue(existing)
+    vi.mocked(db.updateNoteFields).mockResolvedValue(
+      makeNote({ end_time: undefined, entity_id: null, entity_type: 'time', id: noteId, start_time: start }),
+    )
+
+    const result = await updateNote('user', noteId, { end_time: null })
+
+    expect(db.updateNoteFields).toHaveBeenCalledWith('user', noteId, {
+      content: undefined,
+      end_time: null,
+      start_time: undefined,
+    })
+    expect(result.success).toBe(true)
+    expect(result.data?.end_time).toBeUndefined()
+  })
+
   test('returns error when note not found', async () => {
     vi.mocked(db.getNoteById).mockResolvedValue(null)
 

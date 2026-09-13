@@ -748,6 +748,7 @@ describe('getDailySummary', () => {
       fat: 20,
       fiber: 5,
       food_items: ['Oatmeal', 'Banana', 'Honey'],
+      id: 'meal-1',
       meal_type: 'breakfast',
       name: 'Morning oatmeal',
       protein: 15,

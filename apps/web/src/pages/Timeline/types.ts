@@ -1,4 +1,11 @@
-export type Column = 'Activity' | 'Sleep / Rest' | 'Exercise' | 'Location' | 'Screen Time' | 'Music'
+export type Column =
+  | 'Activity'
+  | 'Sleep / Rest'
+  | 'Exercise'
+  | 'Location'
+  | 'Screen Time'
+  | 'Music'
+  | 'Comments'
 
 export type Orientation = 'horizontal' | 'vertical'
 
@@ -23,4 +30,6 @@ export interface ChartItem {
   activity_type?: string
   /** Emoji or icon URL to render instead of the default point marker */
   icon?: string
+  /** Id of the comment thread root this item stands for — set only on Comments items. */
+  comment_id?: string
 }

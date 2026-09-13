@@ -19,6 +19,7 @@ import {
 } from '../../state/api'
 import { createDebouncedFlusher } from '../../utils/debouncedFlusher'
 import { LocationInfo, MEAL_LOCATION_WINDOW_MS } from '../EntityDetail/LocationInfo'
+import { NotesSection } from '../EntityDetail/NotesSection'
 import './MealDetail.css'
 import { editItemsToBody, type FoodItemEdit, mealItemsToEdit, scaleNutrient } from './mealItems'
 import { DEFAULT_CUSTOM_TYPE, MEAL_TYPES, resolveMealTypeChange } from './mealTypes'
@@ -824,6 +825,8 @@ export function MealDetail() {
           <div class="nutrient-breakdown nutrient-placeholder" />
         )}
       </div>
+
+      <NotesSection entityType="meal" entityId={id} />
     </div>
   )
 }

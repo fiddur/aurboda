@@ -164,6 +164,18 @@ describe('Notes Integration Tests', () => {
       expect(updated!.end_time).toEqual(end)
     })
 
+    test('clears the end when end_time is null, turning a span into a point', async () => {
+      const user = getTestUser()
+      const start = new Date('2024-01-15T09:00:00Z')
+      const end = new Date('2024-01-15T10:00:00Z')
+
+      const created = await insertNote(user, 'time', null, 'Spanning', start, end)
+      const updated = await updateNoteFields(user, created.id, { end_time: null })
+
+      expect(updated!.start_time).toEqual(start)
+      expect(updated!.end_time).toBeUndefined()
+    })
+
     test('moves a note in time without touching the content', async () => {
       const user = getTestUser()
       const created = await insertNote(user, 'time', null, 'Moment', new Date('2024-01-15T09:00:00Z'))

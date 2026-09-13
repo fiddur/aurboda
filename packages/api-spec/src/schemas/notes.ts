@@ -195,8 +195,9 @@ export type AddNoteBody = z.infer<typeof addNoteBodySchema>
 export const updateNoteBodySchema = z
   .object({
     content: z.string().min(1).optional().meta({ description: 'Updated note content (markdown)' }),
-    end_time: iso8601DateTimeSchema.optional().meta({
-      description: "New end time. Only for a comment with `entity_type: 'time'`.",
+    end_time: iso8601DateTimeSchema.nullable().optional().meta({
+      description:
+        "New end time, or null to clear it and make the comment a point in time. Only for a comment with `entity_type: 'time'`.",
     }),
     start_time: iso8601DateTimeSchema.optional().meta({
       description: "New start time. Only for a comment with `entity_type: 'time'`.",

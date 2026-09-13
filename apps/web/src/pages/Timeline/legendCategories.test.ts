@@ -67,6 +67,12 @@ describe('static CATEGORY_MATCHERS (built without screentime sub-entries)', () =
     expect(m.music(makeItem({ column: 'Music' }))).toBe(true)
   })
 
+  it('comments matches the Comments column only', () => {
+    expect(m.comments(makeItem({ column: 'Comments' }))).toBe(true)
+    expect(m.comments(makeItem({ column: 'Activity' }))).toBe(false)
+    expect(m.comments(makeItem({ column: 'Location' }))).toBe(false)
+  })
+
   it('exercise matches activity_type exercise', () => {
     expect(m.exercise(makeItem({ activity_type: 'exercise' }))).toBe(true)
     expect(m.exercise(makeItem({ activity_type: 'sleep' }))).toBe(false)

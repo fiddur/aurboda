@@ -52,8 +52,12 @@ tree.
   shown under an activity or a meal in that day's lists is not repeated at day
   level, so nothing is said twice.
 - **Timeline** -- a 💬 track for comments anchored in the visible window, so a
-  remark sits next to the heart-rate spike it is about. The backend read
-  (`GET /notes?from=&to=`) is in place; the track itself lands with the UI slice.
+  remark sits next to the heart-rate spike it is about: a column of its own in
+  vertical mode, a lane at the very top in horizontal. Clicking a bubble opens
+  the thread -- reply, edit, move a `time` comment, or follow the link back to
+  whatever the comment hangs off. Right-clicking (or long-pressing) anywhere on
+  the chart adds a comment, an activity or a metric at that moment. The legend's
+  **Comments** toggle hides the track and skips the fetch.
   See [Timeline](./timeline.md).
 
 Replies never appear as top-level entries anywhere -- not in the day's `notes`,
