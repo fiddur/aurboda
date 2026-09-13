@@ -25,6 +25,7 @@ vi.mock('../../db', () => ({
   getNotesByEntityIds: vi.fn(),
   getNotesForTimeRange: vi.fn(),
   getProductivity: vi.fn(),
+  getRepliesForRootIds: vi.fn().mockResolvedValue(new Map()),
   getScreentimeActivities: vi.fn().mockResolvedValue([]),
   getSleepSessions: vi.fn(),
   getTimeSeries: vi.fn(),
@@ -53,6 +54,8 @@ describe('getDailySummary', () => {
     vi.mocked(db.getNotesForTimeRange).mockResolvedValue([])
     // Default: no notes for activities
     vi.mocked(db.getNotesByEntityIds).mockResolvedValue(new Map())
+    // Default: no replies on any comment
+    vi.mocked(db.getRepliesForRootIds).mockResolvedValue(new Map())
     // Default: no meals
     vi.mocked(db.getMeals).mockResolvedValue([])
     // Default: no non-sleep activities
@@ -745,6 +748,7 @@ describe('getDailySummary', () => {
       fat: 20,
       fiber: 5,
       food_items: ['Oatmeal', 'Banana', 'Honey'],
+      id: 'meal-1',
       meal_type: 'breakfast',
       name: 'Morning oatmeal',
       protein: 15,
@@ -1197,6 +1201,99 @@ describe('getDailySummary', () => {
     expect(result.notes).toHaveLength(1)
     expect(result.notes[0].id).toBe('note-orphan')
     expect(result.notes[0].content).toBe('General note for the day')
+  })
+
+  test("nests a time comment's replies under it", async () => {
+    vi.mocked(db.getTimeSeries).mockResolvedValue([])
+    vi.mocked(db.getSleepSessions).mockResolvedValue([])
+    vi.mocked(db.getProductivity).mockResolvedValue([])
+    vi.mocked(locationsService.getPlaceVisits).mockResolvedValue([])
+    vi.mocked(db.getDailyAggregateValue).mockResolvedValue(null)
+    vi.mocked(db.getTimeSeriesMultiMetric).mockResolvedValue({} as Record<MetricType, [Date, number][]>)
+
+    const rootId = 'note-root'
+    vi.mocked(db.getNotesForTimeRange).mockResolvedValue([
+      {
+        content: 'Felt dizzy',
+        created_at: new Date('2024-01-15T12:00:00Z'),
+        entity_id: null,
+        entity_type: 'time',
+        id: rootId,
+        start_time: new Date('2024-01-15T12:00:00Z'),
+        updated_at: new Date('2024-01-15T12:00:00Z'),
+      },
+    ])
+    vi.mocked(db.getRepliesForRootIds).mockResolvedValue(
+      new Map([
+        [
+          rootId,
+          [
+            {
+              content: 'Drank water',
+              created_at: new Date('2024-01-15T12:05:00Z'),
+              entity_id: rootId,
+              entity_type: 'note' as const,
+              id: 'reply-1',
+              updated_at: new Date('2024-01-15T12:05:00Z'),
+            },
+            {
+              content: 'Better now',
+              created_at: new Date('2024-01-15T12:30:00Z'),
+              entity_id: rootId,
+              entity_type: 'note' as const,
+              id: 'reply-2',
+              updated_at: new Date('2024-01-15T12:30:00Z'),
+            },
+          ],
+        ],
+      ]),
+    )
+
+    const result = await getDailySummary('testuser', new Date('2024-01-15'))
+
+    expect(result.notes).toHaveLength(1)
+    expect(result.notes[0].entity_id).toBeNull()
+    expect(result.notes[0].replies).toHaveLength(2)
+    expect(result.notes[0].replies!.map((r) => r.content)).toEqual(['Drank water', 'Better now'])
+  })
+
+  test('attaches comments to meals and keeps them out of the day-level notes', async () => {
+    const mealId = 'meal-123'
+    vi.mocked(db.getTimeSeries).mockResolvedValue([])
+    vi.mocked(db.getSleepSessions).mockResolvedValue([])
+    vi.mocked(db.getProductivity).mockResolvedValue([])
+    vi.mocked(locationsService.getPlaceVisits).mockResolvedValue([])
+    vi.mocked(db.getDailyAggregateValue).mockResolvedValue(null)
+    vi.mocked(db.getTimeSeriesMultiMetric).mockResolvedValue({} as Record<MetricType, [Date, number][]>)
+    vi.mocked(db.getMeals).mockResolvedValue([
+      {
+        created_at: new Date('2024-01-15T12:00:00Z'),
+        id: mealId,
+        name: 'Lunch',
+        source: 'aurboda',
+        time: new Date('2024-01-15T12:00:00Z'),
+      },
+    ])
+
+    const mealNote = {
+      content: 'Too salty',
+      created_at: new Date('2024-01-15T12:10:00Z'),
+      entity_id: mealId,
+      entity_type: 'meal' as const,
+      id: 'note-meal',
+      start_time: new Date('2024-01-15T12:00:00Z'),
+      updated_at: new Date('2024-01-15T12:10:00Z'),
+    }
+    vi.mocked(db.getNotesForTimeRange).mockResolvedValue([mealNote])
+    vi.mocked(db.getNotesByEntityIds).mockImplementation(async (_user, entityType) =>
+      entityType === 'meal' ? new Map([[mealId, [mealNote]]]) : new Map(),
+    )
+
+    const result = await getDailySummary('testuser', new Date('2024-01-15'))
+
+    expect(result.notes).toHaveLength(0)
+    expect(result.meals[0].comments).toHaveLength(1)
+    expect(result.meals[0].comments![0].content).toBe('Too salty')
   })
 
   test('activities are sorted chronologically', async () => {

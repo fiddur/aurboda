@@ -9,6 +9,7 @@ import { type FrequentFoodItem, type FrequentMeal, NUTRIENT_FIELD_NAMES } from '
 
 import {
   deleteMeal as dbDeleteMeal,
+  deleteNotesForEntity as dbDeleteNotesForEntity,
   findMealsContainingFoodItem,
   type FoodItemPortionRow,
   getFoodItemPortionById,
@@ -38,6 +39,7 @@ import {
   type MergedFoodItem,
   resolveFoodItemDisplay,
 } from './food-items.ts'
+import { syncNoteTimesForEntity } from './notes.ts'
 
 // ============================================================================
 // Types
@@ -616,6 +618,14 @@ export async function updateMealById(user: string, id: string, input: UpdateMeal
     if (recomputed) meal = recomputed
   }
 
+  // Comments on a meal cache the meal's time so the Timeline can place them.
+  // Moving the meal has to move its comment threads with it, or a bubble stays
+  // at the old moment — and a meal moved across midnight leaves its comment
+  // behind as a stray note on the old day.
+  if (input.time !== undefined) {
+    await syncNoteTimesForEntity(user, 'meal', id, meal.time)
+  }
+
   const [enriched] = await attachFoodItems(user, [meal])
   return { data: formatMeal(enriched), success: true }
 }
@@ -858,5 +868,10 @@ export async function deleteMealById(
   if (!deleted) {
     return { error: 'Meal not found', success: false }
   }
+  // A meal row is removed for good — unlike a soft-deleted activity, it cannot
+  // be restored — so its comments have nothing left to hang off. Left behind
+  // they would keep drawing a Timeline bubble whose "On this meal" link 404s,
+  // and list forever as loose day-level notes in the daily summary.
+  await dbDeleteNotesForEntity(user, 'meal', id)
   return { success: true }
 }

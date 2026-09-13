@@ -7,6 +7,7 @@ import { queryTags } from './tags.ts'
 vi.mock('../../db', () => ({
   getActivitiesExcludingCategories: vi.fn(),
   getNotesByEntityIds: vi.fn(),
+  getRepliesForRootIds: vi.fn().mockResolvedValue(new Map()),
 }))
 
 describe('queryTags with comments', () => {

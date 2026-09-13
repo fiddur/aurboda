@@ -5,7 +5,7 @@ import { formatISO } from 'date-fns'
 import type { ChartItem, Column } from './types'
 
 import { NOW_COLOR } from './colors'
-import { attachHoverHandlers, drawItemIcon, getDetailUrl, truncateLabel } from './drawItems'
+import { attachHoverHandlers, attachItemClick, drawItemIcon, getDetailUrl, truncateLabel } from './drawItems'
 import { formatTime } from './formatting'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -167,6 +167,7 @@ export const drawPointMarker = (
   detailUrl: string | undefined,
   showTooltip: (event: MouseEvent, item: ChartItem) => void,
   hideTooltip: () => void,
+  onItemClick?: (item: ChartItem) => void,
 ): void => {
   const cursor = detailUrl ? 'pointer' : 'default'
   const iconSize = Math.max(18, Math.min(laneWidth, boxHeight))
@@ -174,16 +175,18 @@ export const drawPointMarker = (
   const iconEl = drawItemIcon(parent, item.icon, cx, cy, iconSize, { cursor, pointerEvents: 'all' })
   if (iconEl) {
     iconEl.on('mouseenter', (event: MouseEvent) => showTooltip(event, item)).on('mouseleave', hideTooltip)
+    attachItemClick(iconEl, item, onItemClick)
     return
   }
 
-  parent
+  const marker = parent
     .append('polygon')
     .attr('points', `${cx},${cy - size} ${cx + size},${cy} ${cx},${cy + size} ${cx - size},${cy}`)
     .attr('fill', item.color)
     .attr('opacity', 0.85)
     .on('mouseenter', (event: MouseEvent) => showTooltip(event, item))
     .on('mouseleave', hideTooltip)
+  attachItemClick(marker, item, onItemClick)
 
   const labelX = x + 2 * size + 6
   const availableWidth = laneWidth - 2 * size - 8
@@ -239,6 +242,7 @@ export const drawItem = (
   showTooltip: (event: MouseEvent, item: ChartItem) => void,
   hideTooltip: () => void,
   xOffset = 0,
+  onItemClick?: (item: ChartItem) => void,
 ): void => {
   const y1 = yScale(item.start)
   const y2 = yScale(item.end)
@@ -265,6 +269,7 @@ export const drawItem = (
       detailUrl,
       showTooltip,
       hideTooltip,
+      onItemClick,
     )
     return
   }
@@ -280,6 +285,7 @@ export const drawItem = (
     .attr('fill', item.color)
     .attr('opacity', 0.75)
   attachHoverHandlers(rect, item, showTooltip, hideTooltip, 0.75, 0.95)
+  attachItemClick(rect, item, onItemClick)
 
   drawBlockOverlay(parent, item, x, y1, laneWidth, blockHeight)
 }
@@ -293,6 +299,7 @@ export const drawColumnItems = (
   yScale: d3.ScaleTime<number, number>,
   showTooltip: (event: MouseEvent, item: ChartItem) => void,
   hideTooltip: () => void,
+  onItemClick?: (item: ChartItem) => void,
 ): void => {
   for (let colIdx = 0; colIdx < columnData.length; colIdx++) {
     const { items: packedItems, laneCount } = columnData[colIdx]!
@@ -325,6 +332,7 @@ export const drawColumnItems = (
         showTooltip,
         hideTooltip,
         xOffset,
+        onItemClick,
       )
     }
   }

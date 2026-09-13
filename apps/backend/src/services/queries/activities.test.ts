@@ -9,6 +9,7 @@ vi.mock('../../db', () => ({
   getActivities: vi.fn(),
   getActivityTypeDefinitions: vi.fn().mockResolvedValue([]),
   getNotesByEntityIds: vi.fn(),
+  getRepliesForRootIds: vi.fn().mockResolvedValue(new Map()),
   getTimeSeries: vi.fn(),
   getTimeSeriesMultiMetric: vi.fn().mockResolvedValue({}),
   getUserSettings: vi.fn(),

@@ -18,12 +18,15 @@ export const systemTables: Record<string, string> = {
     CREATE INDEX IF NOT EXISTS idx_mcp_sessions_last_activity ON mcp_sessions (last_activity)
   `,
 
-  // Notes/comments on any entity (polymorphic reference)
+  // Notes/comments on any entity (polymorphic reference).
+  // entity_id is nullable: an `entity_type = 'time'` note is anchored to a
+  // moment rather than an entity, and carries its own start_time/end_time.
+  // A reply is `entity_type = 'note'` with entity_id = the root comment's id.
   notes: `
     CREATE TABLE IF NOT EXISTS notes (
       id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       entity_type     VARCHAR(50) NOT NULL,
-      entity_id       TEXT NOT NULL,
+      entity_id       TEXT,
       content         TEXT NOT NULL,
       source          VARCHAR(50),
       start_time      TIMESTAMPTZ,
@@ -33,10 +36,26 @@ export const systemTables: Record<string, string> = {
     )
   `,
 
+  // Migration for databases created before `time` notes existed.
+  notes_entity_nullable: `ALTER TABLE notes ALTER COLUMN entity_id DROP NOT NULL`,
+
+  notes_shape_check: `
+    DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'notes_shape_check') THEN
+        ALTER TABLE notes ADD CONSTRAINT notes_shape_check CHECK (
+          (entity_type = 'time' AND entity_id IS NULL AND start_time IS NOT NULL)
+          OR (entity_type <> 'time' AND entity_id IS NOT NULL)
+        );
+      END IF;
+    END $$;
+  `,
+
   notes_indexes: `
     CREATE INDEX IF NOT EXISTS idx_notes_entity ON notes (entity_type, entity_id);
     CREATE INDEX IF NOT EXISTS idx_notes_created ON notes (created_at DESC);
-    CREATE INDEX IF NOT EXISTS idx_notes_time ON notes (start_time, end_time)
+    CREATE INDEX IF NOT EXISTS idx_notes_time ON notes (start_time, end_time);
+    CREATE INDEX IF NOT EXISTS idx_notes_roots_time ON notes (start_time, end_time)
+      WHERE entity_type <> 'note'
   `,
 
   // OAuth tokens for third-party APIs

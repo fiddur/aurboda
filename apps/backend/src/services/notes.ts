@@ -1,47 +1,125 @@
 /**
- * Notes service — CRUD operations for entity notes.
+ * Notes service — CRUD operations for comments.
  *
- * Notes inherit time information from their parent entity (tag, activity, productivity record)
- * so they can be queried by time range. Metric notes (composite entity_id) do not have
- * inherited times since they reference a point in time already encoded in the entity_id.
+ * A comment is a row in `notes` and comes in three shapes:
+ *  - **on an entity** — `entity_type` is one of the real entities (activity,
+ *    productivity, metric, report, meal) and `entity_id` points at it. Its
+ *    `start_time`/`end_time` are a cache of the parent's timing, rewritten by
+ *    `syncNoteTimesForEntity` whenever the parent moves.
+ *  - **on a moment** — `entity_type = 'time'`, no `entity_id`; `start_time`
+ *    (required) and `end_time` (optional) are user input and editable.
+ *  - **a reply** — `entity_type = 'note'`, `entity_id` is the root comment's id.
+ *    It inherits the root's times so the whole thread sits at one point in time.
+ *
+ * Threads are exactly one level deep: replying to a reply re-anchors to its root.
  */
 
 import {
   deleteNote as dbDeleteNote,
+  getNoteById as dbGetNoteById,
+  getNoteRoot as dbGetNoteRoot,
   getNotesForEntity as dbGetNotesForEntity,
+  getNotesForTimeRange as dbGetNotesForTimeRange,
+  getRepliesForRootIds as dbGetRepliesForRootIds,
   insertNote as dbInsertNote,
-  updateNote as dbUpdateNote,
+  updateNoteFields as dbUpdateNoteFields,
   updateNoteTimesForEntity as dbUpdateNoteTimesForEntity,
   getActivityById,
+  getMealById,
   getProductivityById,
   getReportById,
   type EntityType,
+  type Note as DbNote,
 } from '../db/index.ts'
 
 export interface AddNoteInput {
   entity_type: EntityType
-  entity_id: string
+  entity_id?: string | null
   content: string
+  /** Only for `entity_type: 'time'`. */
+  start_time?: string
+  /** Only for `entity_type: 'time'`. */
+  end_time?: string
+}
+
+export interface UpdateNoteInput {
+  content?: string
+  /** Only for `entity_type: 'time'`. */
+  start_time?: string
+  /** Only for `entity_type: 'time'`. Null clears it, making the comment a point in time. */
+  end_time?: string | null
+}
+
+export interface NoteReplyData {
+  id: string
+  content: string
+  source?: string
+  start_time?: string
+  end_time?: string
+  created_at: string
+  updated_at: string
+}
+
+export interface NoteData {
+  id: string
+  entity_type: EntityType
+  entity_id: string | null
+  content: string
+  source?: string
+  start_time?: string
+  end_time?: string
+  created_at: string
+  updated_at: string
+  replies?: NoteReplyData[]
 }
 
 export interface NoteResult {
   success: boolean
-  data?: {
-    id: string
-    entity_type: EntityType
-    entity_id: string
-    content: string
-    start_time?: string
-    end_time?: string
-    created_at: string
-    updated_at: string
-  }
+  data?: NoteData
   error?: string
+}
+
+const TIMES_ON_ANCHORED_NOTE = 'Times can only be set on a time-anchored comment'
+const SYNCED_NOTE_NOT_EDITABLE =
+  'This comment came from a synced source and cannot be edited — the next sync would overwrite it'
+
+const toReplyData = (note: DbNote): NoteReplyData => ({
+  content: note.content,
+  created_at: note.created_at.toISOString(),
+  end_time: note.end_time?.toISOString(),
+  id: note.id,
+  source: note.source,
+  start_time: note.start_time?.toISOString(),
+  updated_at: note.updated_at.toISOString(),
+})
+
+const toNoteData = (note: DbNote, replies?: DbNote[]): NoteData => ({
+  content: note.content,
+  created_at: note.created_at.toISOString(),
+  end_time: note.end_time?.toISOString(),
+  entity_id: note.entity_id,
+  entity_type: note.entity_type,
+  id: note.id,
+  replies: replies?.map(toReplyData),
+  source: note.source,
+  start_time: note.start_time?.toISOString(),
+  updated_at: note.updated_at.toISOString(),
+})
+
+/** Attach each root's replies, oldest first, in one batched lookup. */
+const withReplies = async (user: string, roots: DbNote[]): Promise<NoteData[]> => {
+  if (roots.length === 0) return []
+  const repliesByRoot = await dbGetRepliesForRootIds(
+    user,
+    roots.map((n) => n.id),
+  )
+  return roots.map((n) => toNoteData(n, repliesByRoot.get(n.id) ?? []))
 }
 
 /**
  * Look up the time range of the parent entity to inherit into the note.
- * Returns undefined for metric entity types since they use a composite key.
+ * Returns undefined for metric entity types since they use a composite key,
+ * and for `time` notes whose times come from the request instead.
  */
 async function getEntityTimes(
   user: string,
@@ -68,10 +146,59 @@ async function getEntityTimes(
       if (!report) return undefined
       return { start_time: report.report_date }
     }
+    case 'meal': {
+      const meal = await getMealById(user, entityId)
+      if (!meal) return undefined
+      return { start_time: meal.time }
+    }
+    case 'note': {
+      // A reply sits at the same point in time as the comment it hangs off.
+      const parent = await dbGetNoteById(user, entityId)
+      if (!parent?.start_time) return undefined
+      return { end_time: parent.end_time, start_time: parent.start_time }
+    }
+    case 'time':
+      // Times are supplied by the caller, not inherited.
+      return undefined
   }
 }
 
 export async function addNote(user: string, input: AddNoteInput): Promise<NoteResult> {
+  if (input.entity_type === 'time') {
+    if (input.entity_id) {
+      return { error: "entity_id must be omitted when entity_type is 'time'", success: false }
+    }
+    if (!input.start_time) {
+      return { error: "start_time is required when entity_type is 'time'", success: false }
+    }
+    const note = await dbInsertNote(
+      user,
+      'time',
+      null,
+      input.content,
+      new Date(input.start_time),
+      input.end_time ? new Date(input.end_time) : undefined,
+    )
+    return { data: toNoteData(note), success: true }
+  }
+
+  if (!input.entity_id) {
+    return { error: "entity_id is required unless entity_type is 'time'", success: false }
+  }
+  if (input.start_time !== undefined || input.end_time !== undefined) {
+    return { error: TIMES_ON_ANCHORED_NOTE, success: false }
+  }
+
+  if (input.entity_type === 'note') {
+    // Threads are one level deep: replying to a reply re-anchors to its root.
+    const root = await dbGetNoteRoot(user, input.entity_id)
+    if (!root) {
+      return { error: 'Comment to reply to not found', success: false }
+    }
+    const reply = await dbInsertNote(user, 'note', root.id, input.content, root.start_time, root.end_time)
+    return { data: toNoteData(reply), success: true }
+  }
+
   const times = await getEntityTimes(user, input.entity_type, input.entity_id)
   const note = await dbInsertNote(
     user,
@@ -81,39 +208,46 @@ export async function addNote(user: string, input: AddNoteInput): Promise<NoteRe
     times?.start_time,
     times?.end_time,
   )
-  return {
-    data: {
-      content: note.content,
-      created_at: note.created_at.toISOString(),
-      end_time: note.end_time?.toISOString(),
-      entity_id: note.entity_id,
-      entity_type: note.entity_type,
-      id: note.id,
-      start_time: note.start_time?.toISOString(),
-      updated_at: note.updated_at.toISOString(),
-    },
-    success: true,
-  }
+  return { data: toNoteData(note), success: true }
 }
 
-export async function updateNoteContent(user: string, id: string, content: string): Promise<NoteResult> {
-  const note = await dbUpdateNote(user, id, content)
+/**
+ * Update a comment's content and — for a `time` comment only — its time anchor.
+ * Moving a `time` comment moves its whole thread with it.
+ */
+export async function updateNote(user: string, id: string, fields: UpdateNoteInput): Promise<NoteResult> {
+  const existing = await dbGetNoteById(user, id)
+  if (!existing) {
+    return { error: 'Note not found', success: false }
+  }
+
+  // A synced comment (Oura, Health Connect, …) is owned by its source: the next
+  // sync rewrites it through upsertSyncedNote, so an edit here would silently
+  // vanish. The web UI hides Edit; REST and MCP need the same answer.
+  if (existing.source) {
+    return { error: SYNCED_NOTE_NOT_EDITABLE, success: false }
+  }
+
+  const movesInTime = fields.start_time !== undefined || fields.end_time !== undefined
+  if (movesInTime && existing.entity_type !== 'time') {
+    return { error: TIMES_ON_ANCHORED_NOTE, success: false }
+  }
+
+  const note = await dbUpdateNoteFields(user, id, {
+    content: fields.content,
+    // null clears the end, turning a span back into a point in time.
+    end_time: fields.end_time == null ? fields.end_time : new Date(fields.end_time),
+    start_time: fields.start_time === undefined ? undefined : new Date(fields.start_time),
+  })
   if (!note) {
     return { error: 'Note not found', success: false }
   }
-  return {
-    data: {
-      content: note.content,
-      created_at: note.created_at.toISOString(),
-      end_time: note.end_time?.toISOString(),
-      entity_id: note.entity_id,
-      entity_type: note.entity_type,
-      id: note.id,
-      start_time: note.start_time?.toISOString(),
-      updated_at: note.updated_at.toISOString(),
-    },
-    success: true,
+
+  if (movesInTime && note.start_time) {
+    await dbUpdateNoteTimesForEntity(user, 'note', note.id, note.start_time, note.end_time)
   }
+
+  return { data: toNoteData(note), success: true }
 }
 
 export async function deleteNoteById(
@@ -124,18 +258,23 @@ export async function deleteNoteById(
   return { deleted, success: deleted }
 }
 
-export async function getNotesForEntity(user: string, entityType: EntityType, entityId: string) {
+/** All comments on an entity, each with its own thread nested under `replies`. */
+export async function getNotesForEntity(
+  user: string,
+  entityType: EntityType,
+  entityId: string,
+): Promise<NoteData[]> {
   const notes = await dbGetNotesForEntity(user, entityType, entityId)
-  return notes.map((n) => ({
-    content: n.content,
-    created_at: n.created_at.toISOString(),
-    end_time: n.end_time?.toISOString(),
-    entity_id: n.entity_id,
-    entity_type: n.entity_type,
-    id: n.id,
-    start_time: n.start_time?.toISOString(),
-    updated_at: n.updated_at.toISOString(),
-  }))
+  return withReplies(user, notes)
+}
+
+/**
+ * Every comment anchored in [from, to] — thread roots only, each with its
+ * replies nested. This is what the Timeline's comment track reads.
+ */
+export async function getNotesInRange(user: string, from: Date, to: Date): Promise<NoteData[]> {
+  const roots = await dbGetNotesForTimeRange(user, from, to)
+  return withReplies(user, roots)
 }
 
 /**

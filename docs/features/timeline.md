@@ -8,11 +8,11 @@ The Timeline has two layouts, each suited to different screen shapes and use cas
 
 ### Vertical (portrait)
 
-Time flows top-to-bottom. Data tracks appear as side-by-side columns: **Activity**, **Location**, **Tags / Events**, **Screen Time**, and **Music**. Heart rate and HRV appear as sparkline overlays inside activity blocks (sleep, exercise, meditation). This layout works well on phones and when you want a detailed view of a single day.
+Time flows top-to-bottom. Data tracks appear as side-by-side columns: **Activity**, **Location**, **Tags / Events**, **Screen Time**, **Music**, and **Comments** (rightmost). Heart rate and HRV appear as sparkline overlays inside activity blocks (sleep, exercise, meditation). This layout works well on phones and when you want a detailed view of a single day.
 
 ### Horizontal (landscape)
 
-Time flows left-to-right. Data tracks are stacked as horizontal swim lanes: **Music** (top), **Activity**, **Metrics**, and **Location** (bottom). The Metrics lane shows heart rate and HRV as ribbon charts, plus steps, calories, training load, and screen time as bar charts. This layout works well on desktop screens and when viewing multi-day ranges or analyzing metric trends alongside activities.
+Time flows left-to-right. Data tracks are stacked as horizontal swim lanes: **Comments** (top), **Music**, **Activity**, **Metrics**, and **Location** (bottom). The Metrics lane shows heart rate and HRV as ribbon charts, plus steps, calories, training load, and screen time as bar charts. This layout works well on desktop screens and when viewing multi-day ranges or analyzing metric trends alongside activities.
 
 The default orientation is chosen based on screen aspect ratio, but you can switch at any time with the orientation toggle button. Your choice is preserved in the URL.
 
@@ -99,6 +99,40 @@ Hovering shows fitness (CTL), fatigue (ATL), form (TSB), impulse values, recover
 
 **Data source:** Computed from exercise activities and daily activity metrics.
 
+### Comments
+
+Every [comment](./comments.md) anchored in the visible window gets a 💬 bubble on
+the Timeline, so a remark sits next to the data it is about. A comment on a run
+shows at the run's time, right beside the run; a comment on a bare moment shows
+wherever you put it. Replies never get a bubble of their own -- they ride along
+inside their thread.
+
+In **vertical mode** the comments are a column of their own, rightmost. In
+**horizontal mode** they get a thin lane at the very top, above Music: one 💬
+glyph centred on the comment's start, with a slim bar underneath when the comment
+covers a span rather than a moment.
+
+**Clicking a bubble** opens the comment panel: the whole thread, with Edit,
+Delete and a reply box. A comment that hangs off something links back to it, so
+you can get from the remark to the run it is about in one click. A comment about
+a bare moment can be moved -- its start and end times are editable right in the
+panel. Comments that arrived from a data source (Oura, Health Connect) show a
+source badge and cannot be edited here: the next sync would overwrite them. They
+can still be replied to and deleted. Press **Escape** or click outside to close
+the panel.
+
+**Right-click** anywhere on the chart (or **long-press** on touch) to act on the
+moment under the pointer:
+
+- **💬 Add comment** -- opens the panel with an empty comment anchored at that
+  moment, with editable start and optional end times.
+- **Add activity** / **Add metric** -- jumps to the Add Data page with that tab
+  selected and the time already filled in.
+
+Press **Escape**, scroll, or click elsewhere to dismiss the menu.
+
+**Data sources:** Manual comments, Oura, Health Connect.
+
 ## Navigation
 
 ### Zoom and Pan
@@ -125,7 +159,7 @@ The refresh button reloads all data for the current view. Useful after adding ne
 
 ## Legend and Filters
 
-A legend bar below the controls lets you toggle individual data tracks on and off. There are four top-level toggles (Music, Activity, Metrics, Location) and sub-toggles within Activity and Metrics.
+A legend bar below the controls lets you toggle individual data tracks on and off. There are five top-level toggles (Music, Activity, Metrics, Location, Comments) and sub-toggles within Activity and Metrics.
 
 ### Activity sub-toggles
 

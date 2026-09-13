@@ -12,10 +12,12 @@ import {
   queryMeals,
   updateMealById,
 } from './meals.ts'
+import * as notesSvc from './notes.ts'
 
 // Mock the db module
 vi.mock('../db', () => ({
   deleteMeal: vi.fn(),
+  deleteNotesForEntity: vi.fn().mockResolvedValue(0),
   findMealsContainingFoodItem: vi.fn().mockResolvedValue([]),
   getFoodItemSensitivityNamesBatch: vi.fn().mockResolvedValue(new Map()),
   getMealById: vi.fn(),
@@ -36,6 +38,13 @@ vi.mock('./central-db.ts', () => ({
     getSharedFoodItemByName: vi.fn().mockResolvedValue(null),
     searchSharedFoodItems: vi.fn().mockResolvedValue([]),
   }),
+}))
+
+// A comment on a meal caches the meal's time, so moving the meal re-syncs its
+// comment threads. Stub the notes service — its real module reaches into the db
+// mock for functions these tests don't stub.
+vi.mock('./notes.ts', () => ({
+  syncNoteTimesForEntity: vi.fn().mockResolvedValue(undefined),
 }))
 
 vi.mock('./food-items.ts', () => ({
@@ -238,13 +247,24 @@ describe('deleteMealById', () => {
     expect(mockDeleteMeal).toHaveBeenCalledWith('testuser', 'meal-1')
   })
 
+  test("removes the meal's comments, which cannot outlive it", async () => {
+    vi.mocked(db.deleteNotesForEntity).mockClear()
+    mockDeleteMeal.mockResolvedValue(true)
+
+    await deleteMealById('testuser', 'meal-1')
+
+    expect(db.deleteNotesForEntity).toHaveBeenCalledWith('testuser', 'meal', 'meal-1')
+  })
+
   test('returns error when meal not found', async () => {
+    vi.mocked(db.deleteNotesForEntity).mockClear()
     mockDeleteMeal.mockResolvedValue(false)
 
     const result = await deleteMealById('testuser', 'nonexistent')
 
     expect(result.success).toBe(false)
     expect(result.error).toBe('Meal not found')
+    expect(db.deleteNotesForEntity).not.toHaveBeenCalled()
   })
 })
 
@@ -270,6 +290,38 @@ describe('updateMealById', () => {
       'meal-1',
       expect.objectContaining({ sensitivities: ['gluten', 'dairy'] }),
     )
+  })
+
+  test('re-syncs comment times when the meal moves', async () => {
+    vi.mocked(notesSvc.syncNoteTimesForEntity).mockClear()
+    const movedTo = new Date('2025-06-16T12:30:00Z')
+    mockUpdateMeal.mockResolvedValue({
+      created_at: new Date('2025-06-15T10:00:00Z'),
+      id: 'meal-1',
+      meal_type: 'lunch',
+      source: 'manual',
+      time: movedTo,
+    })
+
+    const result = await updateMealById('testuser', 'meal-1', { time: movedTo.toISOString() })
+
+    expect(result.success).toBe(true)
+    expect(notesSvc.syncNoteTimesForEntity).toHaveBeenCalledWith('testuser', 'meal', 'meal-1', movedTo)
+  })
+
+  test('leaves comment times alone when the time is not part of the update', async () => {
+    vi.mocked(notesSvc.syncNoteTimesForEntity).mockClear()
+    mockUpdateMeal.mockResolvedValue({
+      created_at: new Date('2025-06-15T10:00:00Z'),
+      id: 'meal-1',
+      meal_type: 'dinner',
+      source: 'manual',
+      time: new Date('2025-06-15T18:00:00Z'),
+    })
+
+    await updateMealById('testuser', 'meal-1', { name: 'Renamed' })
+
+    expect(notesSvc.syncNoteTimesForEntity).not.toHaveBeenCalled()
   })
 
   test('returns error when meal not found', async () => {

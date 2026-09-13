@@ -18,6 +18,7 @@ export type LegendCategory =
   | 'activity'
   | 'metrics'
   | 'location'
+  | 'comments'
   // Activity sub-toggles (curated)
   | 'sleep_rest' // replaces sleep+nap+rest
   | 'meditation'
@@ -62,6 +63,7 @@ const STATIC_CATEGORY_MATCHERS: Record<
   activity: (item) => item.column === 'Activity' || item.column === 'Screen Time',
   calendar: (item) => item.column === 'Activity' && item.color === tagSourceColors.calendar,
   calories: () => false, // metrics sub-toggles handled at draw level
+  comments: (item) => item.column === 'Comments',
   exercise: (item) => item.column === 'Activity' && item.activity_type === 'exercise',
   hr: () => false,
   hrv: () => false,

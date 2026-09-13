@@ -5,6 +5,7 @@ import type { Orientation } from './types'
 
 import {
   activityColors,
+  COMMENT_COLOR,
   hrZoneColors,
   MUSIC_COLOR,
   placeColorPalette,
@@ -155,6 +156,18 @@ export const TimelineLegend: FunctionComponent<TimelineLegendProps> = ({
           >
             <span class="legend-dot" style={{ background: placeColorPalette[0]! }} />
             Location
+          </button>
+
+          <span class="legend-separator" />
+
+          {/* ── Comments (top-level) ── */}
+          <button
+            key="comments"
+            class={`legend-item${hiddenCategories.has('comments') ? ' legend-item-hidden' : ''}`}
+            onClick={() => toggleCategory('comments')}
+            type="button"
+          >
+            <span class="legend-dot" style={{ background: COMMENT_COLOR }} />💬 Comments
           </button>
         </div>
       )}

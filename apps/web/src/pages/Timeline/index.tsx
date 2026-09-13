@@ -9,7 +9,9 @@ import type { ChartItem, Orientation } from './types'
 import { aggregateBucketsAligned } from '../../utils/chart'
 import { packLanes } from '../../utils/lanePacking'
 import { computeBarLayout, type BarSlot } from './barLayout'
+import { CommentPanel, type CommentPanelState } from './CommentPanel'
 import { drawActivitySparklines } from './drawActivitySparklines'
+import { COMMENTS_TRACK_HEIGHT, drawCommentsTrack } from './drawCommentsTrack'
 import { attachHoverHandlers, clampLabelLayout, drawItemIcon, getDetailUrl, truncateLabel } from './drawItems'
 import { computeYScales, drawMetricsTrack, HR_COLOR, HRV_COLOR } from './drawMetricsTrack'
 import {
@@ -23,9 +25,11 @@ import { drawScreentimeBars } from './drawScreentimeTrack'
 import { drawTrainingLoadTrack } from './drawTrainingLoadTrack'
 import { drawColumnItems, drawHorizontalNowLine, drawNowLine } from './drawVerticalHelpers'
 import { findOverlappingScrobbles } from './findOverlappingScrobbles'
+import { TimelineContextMenu } from './TimelineContextMenu'
 import { TimelineControls } from './TimelineControls'
 import { TimelineLegend } from './TimelineLegend'
 import { buildTooltipHtml } from './tooltipBuilder'
+import { useTimelineContextMenu } from './useTimelineContextMenu'
 import { useTimelineData } from './useTimelineData'
 import { _initialHash, useTimelineNavigation } from './useTimelineNavigation'
 import { HORIZONTAL_MARGIN, useTimelineZoom, VERTICAL_MARGIN } from './useTimelineZoom'
@@ -137,6 +141,7 @@ export const Timeline = () => {
     chartItems,
     columnData,
     columns,
+    commentNotes,
     sparklineBuckets,
     horizontalMetricBuckets,
     scrobbles,
@@ -175,6 +180,20 @@ export const Timeline = () => {
     })
   }, [])
 
+  // ── Comments track ────────────────────────────────────────────────────────
+  // `chartItems` has already dropped hidden categories, so an empty list means
+  // either the track is toggled off or the window holds no comments — both of
+  // which mean "reserve no lane for it".
+  const [commentPanel, setCommentPanel] = useState<CommentPanelState | null>(null)
+
+  const commentItems = useMemo(() => chartItems.filter((i) => i.column === 'Comments'), [chartItems])
+  const showCommentsTrack = commentItems.length > 0
+
+  const handleCommentClick = useCallback((item: ChartItem) => {
+    if (!item.comment_id) return
+    setCommentPanel({ kind: 'thread', rootId: item.comment_id })
+  }, [])
+
   // ── Refs ───────────────────────────────────────────────────────────────────
 
   const containerRef = useRef<HTMLDivElement>(null)
@@ -208,6 +227,11 @@ export const Timeline = () => {
     orientation,
     svgRef,
   })
+
+  // ── Context menu (right-click / long-press on the chart) ──────────────────
+  // Reads the live zoom scale from the ref, so the picked moment always matches
+  // what the user is looking at.
+  const contextMenu = useTimelineContextMenu({ containerRef, currentScaleRef, orientationRef })
 
   // ── showTooltip / hideTooltip (shared) ────────────────────────────────────
 
@@ -321,7 +345,7 @@ export const Timeline = () => {
     // affect lane positions, labels, and Y-axes). Track this so we rebuild when they change.
     const layoutKey =
       orientation === 'horizontal'
-        ? `${scrobbles.length > 0 && !hiddenCategories.has('music')}_${!hiddenCategories.has('activity')}_${!hiddenCategories.has('metrics')}_${!hiddenCategories.has('location')}`
+        ? `${scrobbles.length > 0 && !hiddenCategories.has('music')}_${!hiddenCategories.has('activity')}_${!hiddenCategories.has('metrics')}_${!hiddenCategories.has('location')}_${showCommentsTrack}`
         : ''
 
     // The base scale domain must match the fetch range (horizontal) or today (vertical).
@@ -376,15 +400,18 @@ export const Timeline = () => {
         const showMetricsTrackS = !hiddenCategories.has('metrics')
         const showLocationTrackS = !hiddenCategories.has('location')
 
+        const commentsTrackHeight = showCommentsTrack ? COMMENTS_TRACK_HEIGHT : 0
         const musicTrackHeight = showMusicTrackS ? MUSIC_STAFF_HEIGHT : 0
         const locationTrackHeight = showLocationTrackS ? LOCATION_TRACK_HEIGHT : 0
-        const remainingHeight = chartHeight - musicTrackHeight - locationTrackHeight
+        const remainingHeight = chartHeight - commentsTrackHeight - musicTrackHeight - locationTrackHeight
         const dynamicTrackCount = [showActivityTrackS, showMetricsTrackS].filter(Boolean).length
         const dynamicTrackHeight = dynamicTrackCount > 0 ? remainingHeight / dynamicTrackCount : 0
         const activityTrackHeightS = showActivityTrackS ? Math.max(40, dynamicTrackHeight) : 0
         const metricsTrackHeightS = showMetricsTrackS ? Math.max(40, dynamicTrackHeight) : 0
 
         let nextY = 0
+        const trackCommentsS = nextY
+        nextY += commentsTrackHeight
         const trackMusicS = nextY
         nextY += musicTrackHeight
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -411,7 +438,8 @@ export const Timeline = () => {
 
         // Static lane separators
         const separatorYs: number[] = []
-        if (showMusicTrackS && musicTrackHeight > 0) separatorYs.push(musicTrackHeight)
+        if (showCommentsTrack && commentsTrackHeight > 0) separatorYs.push(commentsTrackHeight)
+        if (showMusicTrackS && musicTrackHeight > 0) separatorYs.push(trackMusicS + musicTrackHeight)
         if (showActivityTrackS && showMetricsTrackS) separatorYs.push(trackMetricsS)
         if (showLocationTrackS && locationTrackHeight > 0) separatorYs.push(trackPlacesS)
         for (const sy of separatorYs) {
@@ -427,6 +455,9 @@ export const Timeline = () => {
 
         // Static lane labels
         const laneLabels: { label: string; y: number; height: number }[] = [
+          ...(showCommentsTrack
+            ? [{ height: commentsTrackHeight, label: 'Comments', y: trackCommentsS }]
+            : []),
           ...(showMusicTrackS ? [{ height: musicTrackHeight, label: 'Music', y: trackMusicS }] : []),
           ...(showActivityTrackS
             ? [{ height: activityTrackHeightS, label: 'Activity', y: _trackActivityS }]
@@ -622,6 +653,7 @@ export const Timeline = () => {
           currentYScale,
           showTooltip,
           hideTooltip,
+          handleCommentClick,
         )
 
         const showSparkHR = !hiddenCategories.has('hr')
@@ -671,15 +703,18 @@ export const Timeline = () => {
       const showMetricsTrackH = !hiddenCategories.has('metrics')
       const showLocationTrack = !hiddenCategories.has('location')
 
+      const commentsTrackHeight = showCommentsTrack ? COMMENTS_TRACK_HEIGHT : 0
       const musicTrackHeight = showMusicTrack ? MUSIC_STAFF_HEIGHT : 0
       const locationTrackHeight = showLocationTrack ? LOCATION_TRACK_HEIGHT : 0
-      const remainingHeight = chartHeight - musicTrackHeight - locationTrackHeight
+      const remainingHeight = chartHeight - commentsTrackHeight - musicTrackHeight - locationTrackHeight
       const dynamicTrackCount = [showActivityTrack, showMetricsTrackH].filter(Boolean).length
       const dynamicTrackHeight = dynamicTrackCount > 0 ? remainingHeight / dynamicTrackCount : 0
       const activityTrackHeight = showActivityTrack ? Math.max(40, dynamicTrackHeight) : 0
       const metricsTrackHeight = showMetricsTrackH ? Math.max(40, dynamicTrackHeight) : 0
 
       let nextY = 0
+      const trackComments = nextY
+      nextY += commentsTrackHeight
       const trackMusic = nextY
       nextY += musicTrackHeight
       const trackActivity = nextY
@@ -778,6 +813,18 @@ export const Timeline = () => {
             .attr('stroke-opacity', 0.3)
             .attr('stroke-width', 1.5)
             .attr('stroke-dasharray', '6,3')
+        }
+
+        if (showCommentsTrack) {
+          drawCommentsTrack({
+            chartGroup,
+            hideTooltip,
+            items: commentItems.filter(isInViewport),
+            onItemClick: handleCommentClick,
+            showTooltip,
+            trackY: trackComments,
+            xScale: currentXScale,
+          })
         }
 
         if (showMusicTrack) {
@@ -1034,6 +1081,9 @@ export const Timeline = () => {
     chartItems,
     columnData,
     columns,
+    commentItems,
+    showCommentsTrack,
+    handleCommentClick,
     effectiveViewEnd,
     effectiveViewStart,
     sparklineBuckets,
@@ -1111,11 +1161,36 @@ export const Timeline = () => {
         </div>
       )}
 
-      <div class="timeline-chart-container" ref={containerRef} onPointerDown={hideTooltip}>
+      <div
+        class="timeline-chart-container"
+        ref={containerRef}
+        onContextMenu={contextMenu.onContextMenu}
+        onPointerDown={(e) => {
+          hideTooltip()
+          contextMenu.onPointerDown(e)
+        }}
+        onPointerMove={contextMenu.onPointerMove}
+        onPointerUp={contextMenu.cancelLongPress}
+        onPointerCancel={contextMenu.cancelLongPress}
+        onPointerLeave={contextMenu.cancelLongPress}
+      >
         <svg ref={svgRef} />
         {isInitialLoad && <div class="timeline-chart-loading">Loading…</div>}
         <div class="timeline-tooltip" ref={tooltipRef} style={{ display: 'none' }} />
+        {contextMenu.menu && (
+          <TimelineContextMenu
+            x={contextMenu.menu.x}
+            y={contextMenu.menu.y}
+            at={contextMenu.menu.at}
+            onAddComment={(at) => setCommentPanel({ at, kind: 'new' })}
+            onClose={contextMenu.close}
+          />
+        )}
       </div>
+
+      {commentPanel && (
+        <CommentPanel state={commentPanel} roots={commentNotes} onClose={() => setCommentPanel(null)} />
+      )}
 
       <p class="timeline-help">Scroll to zoom · Drag to pan · Double-click to reset</p>
     </div>

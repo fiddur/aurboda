@@ -7,6 +7,8 @@ import type { Activity, ProductivityRecord } from '../../state/api'
 export const MUSIC_COLOR = '#ec4899'
 export const TAG_COLOR = '#8b5cf6'
 export const NOW_COLOR = '#ef4444'
+/** Muted slate for the 💬 comments track — a remark should not shout over the data. */
+export const COMMENT_COLOR = '#64748b'
 
 export const activityColors: Record<string, string> = {
   meditation: '#a855f7',

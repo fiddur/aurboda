@@ -91,6 +91,41 @@ export const attachHoverHandlers = (
 }
 
 /**
+ * How far the pointer may travel between press and release and still count as a
+ * click rather than a pan. The chart is drag-to-pan, so a press that starts on a
+ * comment bubble and ends 200px away must not open its panel.
+ */
+export const CLICK_MOVE_TOLERANCE_PX = 4
+
+/**
+ * Make a drawn element open something on click (used by the comments track,
+ * which has no detail URL and so is never wrapped in an `<a>`). A no-op unless
+ * both a handler and a `comment_id` are present.
+ */
+export const attachItemClick = (
+  selection: SvgParent,
+  item: ChartItem,
+  onItemClick: ((item: ChartItem) => void) | undefined,
+): void => {
+  if (!onItemClick || !item.comment_id) return
+
+  let downX = 0
+  let downY = 0
+  selection
+    .attr('cursor', 'pointer')
+    .on('pointerdown', (event: PointerEvent) => {
+      downX = event.clientX
+      downY = event.clientY
+    })
+    .on('click', (event: MouseEvent) => {
+      if (Math.hypot(event.clientX - downX, event.clientY - downY) > CLICK_MOVE_TOLERANCE_PX) return
+      event.preventDefault()
+      event.stopPropagation()
+      onItemClick(item)
+    })
+}
+
+/**
  * Truncate a label to fit within a pixel width, assuming a fixed character width.
  */
 export const truncateLabel = (label: string, widthPx: number, charWidth = 6): string => {
