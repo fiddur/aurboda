@@ -31,7 +31,8 @@ const buildApp = () => {
 
   registerAuthRoutes({
     auth: { createToken: vi.fn(() => 'signed-token') } as never,
-    authMiddleware: ((_req, _res, next) => next()) as never,
+    authMiddleware: ((_req: express.Request, _res: express.Response, next: express.NextFunction) =>
+      next()) as never,
     centralDb: {
       getAdminCount: vi.fn(async () => 1),
       getAuditLogRetentionDays: vi.fn(async () => 30),
