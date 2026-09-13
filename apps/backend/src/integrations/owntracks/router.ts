@@ -1,3 +1,4 @@
+import { isInvalidPasswordError } from '../../db/index.ts'
 import { type TypedRouter, typedRouter } from '../../typed-router.ts'
 
 export interface OwnTracksDeps {
@@ -106,7 +107,7 @@ export function createOwnTracksRouter(deps: OwnTracksDeps): TypedRouter {
       res.end(`[]`)
     } catch (error) {
       // Authentication failure or DB error
-      if (error instanceof Error && error.message.includes('authentication failed')) {
+      if (isInvalidPasswordError(error)) {
         res
           .status(401)
           .set('WWW-Authenticate', 'Basic realm="OwnTracks"')

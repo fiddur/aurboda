@@ -20,9 +20,9 @@ import type { AnyMiddleware } from '../typed-router.ts'
 
 import {
   initializeSchema,
+  isInvalidPasswordError,
   loginToUserDb,
   makeNewUserDb,
-  migrateSchema,
   query,
   schemaInitialized,
 } from '../db/index.ts'
@@ -171,23 +171,41 @@ export const registerAuthRoutes = ({
 
   httpd.post<Record<string, never>, LoginResponse>('/login', async (req, res, next) => {
     const { username: user, password } = req.body
-    if (!user) return next(unauthorized)
+    if (!user || typeof user !== 'string' || typeof password !== 'string') return next(unauthorized)
 
     // Check if user exists as a PSQL user role
     const userRows = await query(userDb, 'SELECT usename FROM pg_user WHERE usename=$1', [user])
-    if (userRows.rowCount === 1) {
-      try {
-        await loginToUserDb(user, password)
-        // Ensure schema is initialized and migrated
-        if (!(await schemaInitialized(user))) {
-          await initializeSchema(user)
-        } else {
-          await migrateSchema(user)
-        }
-      } catch {
-        return next(unauthorized)
+    if (userRows.rowCount !== 1) return next(unauthorized)
+
+    // Only a password Postgres itself rejects is a failed login. Every other
+    // failure here is ours — an unreachable database, a saturated connection
+    // limit — and reporting those as "Unauthorized" is what made this
+    // undebuggable: the user saw a rejected credential and the logs said
+    // nothing at all (#1123).
+    try {
+      await loginToUserDb(user, password)
+    } catch (err) {
+      if (isInvalidPasswordError(err)) return next(unauthorized)
+      console.error(`Login for ${user} failed to reach the database (not a bad password):`, err)
+      return next(err)
+    }
+
+    // Schema drift is repaired lazily: `query()` retries through
+    // `_runMigrationOnce` whenever a statement hits a schema error, so login
+    // has no reason to sweep the schema itself. It used to call
+    // `migrateSchema` on EVERY login — ~130 statements including full-table
+    // rewrites of activities, tags and user_settings — which grew with the
+    // data until it outran the proxy timeout and every login failed (#1123).
+    // Creating the schema outright still belongs here: it is one cheap check,
+    // and a user whose database somehow has no tables cannot use the app.
+    try {
+      if (!(await schemaInitialized(user))) {
+        await initializeSchema(user)
       }
-    } else return next(unauthorized)
+    } catch (err) {
+      console.error(`Login for ${user} could not initialize the schema:`, err)
+      return next(err)
+    }
 
     const token = auth.createToken(user)
     const isAdmin = await centralDb.isAdmin(user)
