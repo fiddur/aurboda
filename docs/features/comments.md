@@ -77,6 +77,13 @@ replies, untouched.
 Deleting a thread root deletes the replies hanging off it. Deleting a reply
 removes only that reply.
 
+Deleting the **thing** a comment is about depends on whether that thing can come
+back. An activity or productivity record is soft-deleted and restorable, so its
+comments are kept and reappear with it. A **meal** is removed for good, so
+deleting one deletes its comments and their replies too — otherwise they would
+keep drawing a Timeline bubble linking to a meal page that no longer exists, and
+list forever as loose day-level notes in the daily summary.
+
 ## REST API
 
 | Method   | Path          | What it does                                                                                         |

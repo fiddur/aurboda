@@ -17,6 +17,7 @@ import * as notesSvc from './notes.ts'
 // Mock the db module
 vi.mock('../db', () => ({
   deleteMeal: vi.fn(),
+  deleteNotesForEntity: vi.fn().mockResolvedValue(0),
   findMealsContainingFoodItem: vi.fn().mockResolvedValue([]),
   getFoodItemSensitivityNamesBatch: vi.fn().mockResolvedValue(new Map()),
   getMealById: vi.fn(),
@@ -246,13 +247,24 @@ describe('deleteMealById', () => {
     expect(mockDeleteMeal).toHaveBeenCalledWith('testuser', 'meal-1')
   })
 
+  test("removes the meal's comments, which cannot outlive it", async () => {
+    vi.mocked(db.deleteNotesForEntity).mockClear()
+    mockDeleteMeal.mockResolvedValue(true)
+
+    await deleteMealById('testuser', 'meal-1')
+
+    expect(db.deleteNotesForEntity).toHaveBeenCalledWith('testuser', 'meal', 'meal-1')
+  })
+
   test('returns error when meal not found', async () => {
+    vi.mocked(db.deleteNotesForEntity).mockClear()
     mockDeleteMeal.mockResolvedValue(false)
 
     const result = await deleteMealById('testuser', 'nonexistent')
 
     expect(result.success).toBe(false)
     expect(result.error).toBe('Meal not found')
+    expect(db.deleteNotesForEntity).not.toHaveBeenCalled()
   })
 })
 

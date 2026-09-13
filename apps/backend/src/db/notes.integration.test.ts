@@ -4,6 +4,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import {
   deleteNote,
+  deleteNotesForEntity,
   getNoteById,
   getNoteRoot,
   getNotesByEntityIds,
@@ -650,6 +651,35 @@ describe('Notes Integration Tests', () => {
       expect(await getNoteById(user, syncedReply.id)).not.toBeNull()
       expect(await getNoteById(user, userRoot.id)).toBeNull()
       expect(await getNoteById(user, userReply.id)).toBeNull()
+    })
+  })
+
+  describe('deleteNotesForEntity', () => {
+    test('removes every comment on the entity and their replies', async () => {
+      const user = getTestUser()
+      const mealId = randomUUID()
+      const otherMealId = randomUUID()
+      const start = new Date('2024-01-15T12:00:00Z')
+
+      const root1 = await insertNote(user, 'meal', mealId, 'Too salty', start)
+      const root2 = await insertNote(user, 'meal', mealId, 'Second thought', start)
+      const reply = await insertNote(user, 'note', root1.id, 'Still too salty', start)
+      const otherRoot = await insertNote(user, 'meal', otherMealId, 'Different meal', start)
+      const otherReply = await insertNote(user, 'note', otherRoot.id, 'Untouched', start)
+
+      expect(await deleteNotesForEntity(user, 'meal', mealId)).toBe(2)
+
+      expect(await getNoteById(user, root1.id)).toBeNull()
+      expect(await getNoteById(user, root2.id)).toBeNull()
+      expect(await getNoteById(user, reply.id)).toBeNull()
+      expect(await getNoteById(user, otherRoot.id)).not.toBeNull()
+      expect(await getNoteById(user, otherReply.id)).not.toBeNull()
+    })
+
+    test('returns 0 when the entity has no comments', async () => {
+      const user = getTestUser()
+
+      expect(await deleteNotesForEntity(user, 'meal', randomUUID())).toBe(0)
     })
   })
 

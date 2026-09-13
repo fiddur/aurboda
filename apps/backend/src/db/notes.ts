@@ -196,6 +196,36 @@ export const deleteNote = async (user: string, id: string): Promise<boolean> => 
 }
 
 /**
+ * Delete every comment on an entity, replies included. For an entity that is
+ * removed for good (a meal, unlike a soft-deleted activity), its comments have
+ * nothing left to hang off: they would keep drawing a Timeline bubble linking
+ * to a page that 404s. Returns how many thread roots were removed.
+ */
+export const deleteNotesForEntity = async (
+  user: string,
+  entityType: EntityType,
+  entityId: string,
+): Promise<number> => {
+  await query(user, 'BEGIN')
+  try {
+    const deleted = await query<{ id: string }>(
+      user,
+      `DELETE FROM notes WHERE entity_type = $1 AND entity_id = $2 RETURNING id`,
+      [entityType, entityId],
+    )
+    const deletedIds = deleted.rows.map((r) => r.id)
+    if (deletedIds.length > 0) {
+      await query(user, `DELETE FROM notes WHERE entity_type = 'note' AND entity_id = ANY($1)`, [deletedIds])
+    }
+    await query(user, 'COMMIT')
+    return deletedIds.length
+  } catch (err) {
+    await query(user, 'ROLLBACK').catch(() => {})
+    throw err
+  }
+}
+
+/**
  * Replace all user-authored notes (`source IS NULL`) for an entity with a
  * single new note. Synced notes (source = 'health_connect', 'oura', …) are
  * left untouched. If `content` is empty, just clears the user notes.

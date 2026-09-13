@@ -217,6 +217,7 @@ export {
 // Notes
 export {
   deleteNote,
+  deleteNotesForEntity,
   getNoteById,
   getNoteRoot,
   getNotesByEntityIds,
