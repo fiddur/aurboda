@@ -463,6 +463,23 @@ describe('updateNote', () => {
     expect(result.data?.end_time).toBeUndefined()
   })
 
+  test('refuses to edit a synced comment', async () => {
+    const noteId = randomUUID()
+    const existing = makeNote({
+      entity_type: 'activity',
+      id: noteId,
+      source: 'health_connect',
+    })
+
+    vi.mocked(db.getNoteById).mockResolvedValue(existing)
+
+    const result = await updateNote('user', noteId, { content: 'Mine now' })
+
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('synced source')
+    expect(db.updateNoteFields).not.toHaveBeenCalled()
+  })
+
   test('returns error when note not found', async () => {
     vi.mocked(db.getNoteById).mockResolvedValue(null)
 

@@ -80,6 +80,8 @@ export interface NoteResult {
 }
 
 const TIMES_ON_ANCHORED_NOTE = 'Times can only be set on a time-anchored comment'
+const SYNCED_NOTE_NOT_EDITABLE =
+  'This comment came from a synced source and cannot be edited — the next sync would overwrite it'
 
 const toReplyData = (note: DbNote): NoteReplyData => ({
   content: note.content,
@@ -217,6 +219,13 @@ export async function updateNote(user: string, id: string, fields: UpdateNoteInp
   const existing = await dbGetNoteById(user, id)
   if (!existing) {
     return { error: 'Note not found', success: false }
+  }
+
+  // A synced comment (Oura, Health Connect, …) is owned by its source: the next
+  // sync rewrites it through upsertSyncedNote, so an edit here would silently
+  // vanish. The web UI hides Edit; REST and MCP need the same answer.
+  if (existing.source) {
+    return { error: SYNCED_NOTE_NOT_EDITABLE, success: false }
   }
 
   const movesInTime = fields.start_time !== undefined || fields.end_time !== undefined

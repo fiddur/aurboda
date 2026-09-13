@@ -38,6 +38,7 @@ import {
   type MergedFoodItem,
   resolveFoodItemDisplay,
 } from './food-items.ts'
+import { syncNoteTimesForEntity } from './notes.ts'
 
 // ============================================================================
 // Types
@@ -614,6 +615,14 @@ export async function updateMealById(user: string, id: string, input: UpdateMeal
     }
     const recomputed = await recomputeMealMacros(user, id, pickExplicitMacros(input))
     if (recomputed) meal = recomputed
+  }
+
+  // Comments on a meal cache the meal's time so the Timeline can place them.
+  // Moving the meal has to move its comment threads with it, or a bubble stays
+  // at the old moment — and a meal moved across midnight leaves its comment
+  // behind as a stray note on the old day.
+  if (input.time !== undefined) {
+    await syncNoteTimesForEntity(user, 'meal', id, meal.time)
   }
 
   const [enriched] = await attachFoodItems(user, [meal])
