@@ -12,6 +12,34 @@ const dbByUser: Record<string, Client> = {}
 const userDbName = (user: string) => `aurboda_${user}`
 
 /**
+ * How long to wait for a Postgres connection before giving up. `pg` defaults
+ * to waiting forever, so an unreachable or saturated server left `/login`
+ * hanging until the OS TCP timeout — minutes — and its caller reported that as
+ * a rejected password (#1123).
+ */
+const CONNECT_TIMEOUT_MS = 10_000
+
+/**
+ * Postgres SQLSTATEs that mean "the credentials are wrong", as opposed to
+ * "the database could not be reached": 28P01 invalid_password and 28000
+ * invalid_authorization_specification. Anything else is a server-side fault
+ * and must not be reported to the caller as a bad password.
+ */
+const INVALID_CREDENTIAL_CODES = new Set(['28000', '28P01'])
+
+/**
+ * True when Postgres rejected the credentials themselves. Prefers the
+ * SQLSTATE; falls back to the message because some drivers and the OwnTracks
+ * path surface only `password authentication failed for user "…"`.
+ */
+export const isInvalidPasswordError = (error: unknown): boolean => {
+  if (!(error instanceof Error)) return false
+  const code = (error as Error & { code?: string }).code
+  if (code) return INVALID_CREDENTIAL_CODES.has(code)
+  return error.message.includes('authentication failed')
+}
+
+/**
  * Inject a database client for a user. Used for testing with testcontainers.
  * @internal
  */
@@ -75,18 +103,41 @@ export const query = async <T extends QueryResultRow = QueryResultRow>(
   }
 }
 
+/**
+ * Authenticate a user by connecting to their database as that Postgres role.
+ * Throws when the connection fails; `isInvalidPasswordError` separates a wrong
+ * password from an unreachable database.
+ *
+ * This ALWAYS opens a connection, even when `dbByUser` already holds a client
+ * for the user. A cached client proves nothing about the password: it is
+ * normally filled by `getDbForUser`, which connects as the service role and
+ * does `SET ROLE`, so any token-authenticated request (a sync push, an MCP
+ * call) warms it. The previous early return therefore let every caller that
+ * authenticates by password — `/login`, the OAuth password grant, the
+ * OwnTracks endpoint — accept an arbitrary password for any username whose
+ * cache happened to be warm (#1123).
+ */
 export const loginToUserDb = async (user: string, password: string) => {
-  // Check if we already have a connection for this user
-  const existing = dbByUser[user]
-  if (existing) {
-    // Already connected - auth is handled by tokens, no need to re-verify password
-    // This avoids storing passwords in memory while maintaining security via token auth
-    return
+  const client = new Client({
+    connectionTimeoutMillis: CONNECT_TIMEOUT_MS,
+    database: userDbName(user),
+    password,
+    user,
+  })
+
+  try {
+    await client.connect()
+  } catch (error) {
+    await client.end().catch(() => {})
+    throw error
   }
 
-  const database = userDbName(user)
-  const client = new Client({ database, password, user })
-  await client.connect()
+  // Keep the freshly authenticated client only when nothing is cached yet;
+  // otherwise the cached one stays and this one was purely a password check.
+  if (dbByUser[user]) {
+    await client.end().catch(() => {})
+    return
+  }
   dbByUser[user] = client
 }
 
@@ -162,7 +213,7 @@ export const listUserNames = async (client: Client): Promise<string[]> => {
 
 export const getDbForUser = async (user: string) => {
   if (dbByUser[user]) return dbByUser[user]
-  const client = new Client({ database: userDbName(user) })
+  const client = new Client({ connectionTimeoutMillis: CONNECT_TIMEOUT_MS, database: userDbName(user) })
   await client.connect()
   await query(client, format('SET ROLE %L', user))
   dbByUser[user] = client

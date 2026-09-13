@@ -53,6 +53,7 @@ export {
   dropUserDb,
   getDbForUser,
   initializeSchema,
+  isInvalidPasswordError,
   listUserNames,
   loginToUserDb,
   makeNewUserDb,

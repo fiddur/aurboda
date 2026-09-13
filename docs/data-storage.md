@@ -473,6 +473,28 @@ Support manual data entry with `source = 'manual'` for:
 - Lab results
 - Activity logs
 
+## When migrations run
+
+Each user has their own database, so schema changes are applied per user, lazily
+and on demand:
+
+- **On a schema error.** `query(user, …)` catches PostgreSQL schema errors
+  (missing table or column, and NOT NULL violations from a column that has
+  become nullable), runs the full `migrateSchema` sweep once per user via
+  `_runMigrationOnce`, and retries the statement. This is the normal path — any
+  request that needs newer schema triggers the repair itself.
+- **At signup.** `makeNewUserDb` runs `initializeSchema` to create every table.
+- **At login, only if the user has no schema at all.** `/login` checks
+  `schemaInitialized` and creates the schema if it is missing; it does **not**
+  run `migrateSchema`. It used to, on every login — roughly 130 statements
+  including full-table rewrites of `activities`, `tags` and `user_settings` —
+  which grew with the data until it exceeded the reverse proxy's timeout and
+  every login failed as "Unauthorized" with nothing in the logs (#1123).
+
+A consequence worth knowing when debugging: a freshly deployed migration may not
+have been applied to a given user's database yet. It lands the first time that
+user makes a request needing it.
+
 ## Migration Notes
 
 This schema replaces the previous ad-hoc table creation. Key changes:

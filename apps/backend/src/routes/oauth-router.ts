@@ -9,6 +9,7 @@ import express, { Router, type Request, type Response } from 'express'
 
 import type { CentralDb } from '../services/central-db.ts'
 
+import { isInvalidPasswordError } from '../db/index.ts'
 import {
   createAuthorizationCode,
   exchangeAuthorizationCode,
@@ -138,10 +139,16 @@ export const createOAuthRouter = (deps: OAuthRouterDeps): Router => {
       return
     }
 
-    // Authenticate user
+    // Authenticate user. A database we cannot reach is not a bad password —
+    // saying so sends the user off changing a credential that was fine, and
+    // leaves no trace of the real fault (#1123).
     try {
       await loginToUserDb(username, password)
-    } catch {
+    } catch (err) {
+      const badCredentials = isInvalidPasswordError(err)
+      if (!badCredentials) {
+        console.error(`OAuth login for ${username} failed to reach the database:`, err)
+      }
       res.type('html').send(
         loginFormHtml({
           client_id,
@@ -149,7 +156,9 @@ export const createOAuthRouter = (deps: OAuthRouterDeps): Router => {
           state: state ?? '',
           code_challenge,
           code_challenge_method,
-          error: 'Invalid username or password',
+          error: badCredentials
+            ? 'Invalid username or password'
+            : 'Could not reach the database — this is a server problem, not your password. Try again shortly.',
         }),
       )
       return
