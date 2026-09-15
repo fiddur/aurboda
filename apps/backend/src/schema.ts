@@ -8,6 +8,8 @@
  * See docs/data-storage.md for design decisions and data flow documentation.
  */
 
+import { createHash } from 'node:crypto'
+
 import { activitiesTables } from './schema/activities.ts'
 import { locationsTables } from './schema/locations.ts'
 import { mealsTables } from './schema/meals.ts'
@@ -204,3 +206,37 @@ export {
   isHealthConnectSyncableMetric,
   metricToHealthConnectType,
 } from './schema-health-connect.ts'
+
+/**
+ * Bump when the imperative parts of `migrateSchema` change — the backfills and
+ * data fixes that are not expressed in `createTableStatements`. DDL changes are
+ * picked up automatically by the fingerprint below.
+ */
+export const MIGRATION_REVISION = 1
+
+/**
+ * Hash the inputs a migration is derived from. Split out from
+ * `schemaFingerprint` so a test can prove the revision participates without
+ * pinning the real schema's hash.
+ * @internal Exported for testing.
+ */
+export const _hashSchema = (revision: number, statements: [string, string][]): string =>
+  createHash('sha256')
+    .update(JSON.stringify([revision, statements]))
+    .digest('hex')
+    .slice(0, 16)
+
+/**
+ * Identifies the schema this build expects: a hash over every DDL statement in
+ * creation order plus `MIGRATION_REVISION`. A user's database records the
+ * fingerprint it was last migrated to, so `migrateSchema` can skip its ~130
+ * statements when there is nothing to do (#1125).
+ *
+ * A function rather than a module-level constant: cheap, called rarely, and no
+ * module state to go stale.
+ */
+export const schemaFingerprint = (): string =>
+  _hashSchema(
+    MIGRATION_REVISION,
+    tableCreationOrder.map((key) => [key, createTableStatements[key]]),
+  )

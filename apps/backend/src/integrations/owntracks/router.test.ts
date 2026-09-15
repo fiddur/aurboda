@@ -38,10 +38,14 @@ describe('parseBasicAuth', () => {
     expect(result).toEqual({ password: 'pass:with:colons', username: 'user' })
   })
 
-  test('handles empty password', () => {
+  test('rejects an empty password — pg would fall back to PGPASSWORD', () => {
     const encoded = Buffer.from('user:').toString('base64')
-    const result = parseBasicAuth(`Basic ${encoded}`)
-    expect(result).toEqual({ password: '', username: 'user' })
+    expect(parseBasicAuth(`Basic ${encoded}`)).toBeUndefined()
+  })
+
+  test('rejects an empty username', () => {
+    const encoded = Buffer.from(':pass').toString('base64')
+    expect(parseBasicAuth(`Basic ${encoded}`)).toBeUndefined()
   })
 
   test('handles special characters in credentials', () => {
@@ -119,6 +123,20 @@ describe('OwnTracks Router', () => {
 
       expect(response.status).toBe(401)
       expect(response.body.error).toBe('Unauthorized')
+    })
+
+    test('returns 401 for an empty password, without attempting a login', async () => {
+      // `pg` treats an empty password as unset and falls back to PGPASSWORD
+      // from the environment, so this must never reach loginToUserDb.
+      const app = createTestApp()
+      const response = await request(app)
+        .post('/ownTracks')
+        .set('Authorization', basicAuth('testuser', ''))
+        .send({ _type: 'location' })
+
+      expect(response.status).toBe(401)
+      expect(response.body.error).toBe('Unauthorized')
+      expect(mockDeps.loginToUserDb).not.toHaveBeenCalled()
     })
 
     test('returns 401 when loginToUserDb fails with authentication error', async () => {

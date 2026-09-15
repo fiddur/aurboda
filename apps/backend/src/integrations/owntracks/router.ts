@@ -33,6 +33,10 @@ export interface OwnTracksDeps {
 /**
  * Parse HTTP Basic authentication header.
  * Returns { username, password } if valid, undefined otherwise.
+ *
+ * An empty username or password counts as invalid: `pg` treats an empty
+ * password as unset and falls back to PGPASSWORD from the environment, so
+ * passing one down would authenticate as the service role instead of failing.
  */
 export function parseBasicAuth(
   authHeader: string | undefined,
@@ -46,10 +50,11 @@ export function parseBasicAuth(
     const colonIndex = decoded.indexOf(':')
     if (colonIndex === -1) return undefined
 
-    return {
-      password: decoded.slice(colonIndex + 1),
-      username: decoded.slice(0, colonIndex),
-    }
+    const username = decoded.slice(0, colonIndex)
+    const password = decoded.slice(colonIndex + 1)
+    if (!username || !password) return undefined
+
+    return { password, username }
   } catch {
     return undefined
   }

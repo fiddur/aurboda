@@ -60,7 +60,6 @@ const login = (body: unknown) =>
 beforeEach(() => {
   vi.clearAllMocks()
   vi.mocked(db.query).mockResolvedValue({ rowCount: 1, rows: [{ usename: 'alice' }] } as never)
-  vi.mocked(db.schemaInitialized).mockResolvedValue(true)
   vi.mocked(db.loginToUserDb).mockResolvedValue(undefined)
   vi.mocked(db.isInvalidPasswordError).mockReturnValue(false)
 })
@@ -90,6 +89,15 @@ describe('POST /login', () => {
     expect(db.loginToUserDb).not.toHaveBeenCalled()
   })
 
+  test('rejects an empty password rather than letting pg fall back to PGPASSWORD', async () => {
+    // `pg` treats '' as unset and uses PGPASSWORD from the environment, so an
+    // empty password would be a connection attempt as the service role.
+    const response = await login({ password: '', username: 'alice' })
+
+    expect(response.status).toBe(401)
+    expect(db.loginToUserDb).not.toHaveBeenCalled()
+  })
+
   test('answers 401 when Postgres rejects the password', async () => {
     vi.mocked(db.loginToUserDb).mockRejectedValue(pgError('28P01', 'password authentication failed'))
     vi.mocked(db.isInvalidPasswordError).mockReturnValue(true)
@@ -100,7 +108,7 @@ describe('POST /login', () => {
     expect(response.body.error).toBe('Unauthorized')
   })
 
-  test('answers 500, not 401, when the database cannot be reached', async () => {
+  test('answers 503, not 401, when the database cannot be reached', async () => {
     // Reporting this as a bad credential is what made the outage invisible:
     // the user saw "wrong password" and the logs said nothing.
     vi.mocked(db.loginToUserDb).mockRejectedValue(pgError('08006', 'connection terminated'))
@@ -108,42 +116,38 @@ describe('POST /login', () => {
 
     const response = await login({ password: 'secret', username: 'alice' })
 
-    expect(response.status).toBe(500)
+    expect(response.status).toBe(503)
     expect(response.body.error).not.toBe('Unauthorized')
   })
 
-  test('answers 500 when a connect timeout expires', async () => {
+  test('answers 503 when a connect timeout expires', async () => {
     vi.mocked(db.loginToUserDb).mockRejectedValue(new Error('timeout expired'))
 
     const response = await login({ password: 'secret', username: 'alice' })
 
-    expect(response.status).toBe(500)
+    expect(response.status).toBe(503)
   })
 
-  test('never sweeps the schema — that is repaired lazily on a schema error', async () => {
-    // migrateSchema is ~130 statements including full-table rewrites. Running
-    // it per login grew with the data until it outran the proxy timeout.
-    await login({ password: 'secret', username: 'alice' })
+  test('never leaks the pg failure to an anonymous caller', async () => {
+    // The central handler replies with `err.message`, and a pg failure names
+    // internal hosts, database names and connection limits.
+    vi.mocked(db.loginToUserDb).mockRejectedValue(pgError('08006', 'connect ECONNREFUSED 10.0.0.7:5432'))
 
-    expect(db.migrateSchema).not.toHaveBeenCalled()
-    expect(db.initializeSchema).not.toHaveBeenCalled()
+    const response = await login({ password: 'secret', username: 'alice' })
+
+    expect(JSON.stringify(response.body)).not.toContain('ECONNREFUSED')
+    expect(JSON.stringify(response.body)).not.toContain('10.0.0.7')
   })
 
-  test('creates the schema when the user has none', async () => {
-    vi.mocked(db.schemaInitialized).mockResolvedValue(false)
-
+  test('does no schema work at all — login only authenticates', async () => {
+    // migrateSchema is ~130 statements including full-table rewrites, and even
+    // the cheap `schemaInitialized` check belongs to the migration triggers
+    // (the deploy sweep, the auth middleware, the lazy retry), not to login.
     const response = await login({ password: 'secret', username: 'alice' })
 
     expect(response.status).toBe(200)
-    expect(db.initializeSchema).toHaveBeenCalledWith('alice')
-  })
-
-  test('answers 500 when schema initialization fails, not 401', async () => {
-    vi.mocked(db.schemaInitialized).mockRejectedValue(new Error('disk full'))
-
-    const response = await login({ password: 'secret', username: 'alice' })
-
-    expect(response.status).toBe(500)
-    expect(response.body.error).not.toBe('Unauthorized')
+    expect(db.migrateSchema).not.toHaveBeenCalled()
+    expect(db.initializeSchema).not.toHaveBeenCalled()
+    expect(db.schemaInitialized).not.toHaveBeenCalled()
   })
 })

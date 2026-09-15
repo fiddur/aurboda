@@ -57,7 +57,9 @@ export {
   listUserNames,
   loginToUserDb,
   makeNewUserDb,
+  migrateAllUsers,
   migrateSchema,
+  migrateSchemaIfNeeded,
   query,
   schemaInitialized,
 } from './connection.ts'

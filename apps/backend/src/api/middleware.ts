@@ -8,7 +8,7 @@ import type { Auth } from '../auth.ts'
 import type { CentralDb } from '../services/central-db.ts'
 import type { AnyMiddleware } from '../typed-router.ts'
 
-import { migrateSchema } from '../db/index.ts'
+import { migrateSchemaIfNeeded } from '../db/index.ts'
 import { auditError, auditInfo, auditWarn } from '../services/audit-log.ts'
 import { backfillScreentimeActivities } from '../services/backfill-screentime-activities.ts'
 
@@ -72,10 +72,15 @@ export const createAuditLogMiddleware =
   }
 
 /**
- * Auth middleware: extracts Bearer token, sets `req.user`, and runs schema migration
- * once per user per server lifetime. First request blocks on migration; subsequent
- * requests wait if migration is still in flight. Also kicks off a one-shot background
- * backfill of historical screentime activities, gated via sync_state.
+ * Auth middleware: extracts Bearer token, sets `req.user`, and checks the
+ * user's schema once per user per server lifetime. The check is gated by the
+ * schema fingerprint, so it is normally a single `SELECT` and only actually
+ * sweeps when this build's DDL differs from what the database records — and
+ * after a deploy the background sweep in `api.ts` has usually done that
+ * already. The first request still awaits it, so no request runs against
+ * stale schema; subsequent requests wait if it is still in flight. Also kicks
+ * off a one-shot background backfill of historical screentime activities,
+ * gated via sync_state.
  */
 export const createAuthMiddleware = (auth: Auth, unauthorized: Error): AnyMiddleware => {
   const migratedUsers = new Map<string, Promise<void>>()
@@ -88,7 +93,7 @@ export const createAuthMiddleware = (auth: Auth, unauthorized: Error): AnyMiddle
         req.user = user
 
         if (!migratedUsers.has(user)) {
-          const migrationPromise = migrateSchema(user)
+          const migrationPromise = migrateSchemaIfNeeded(user)
             .then(() => {
               void backfillScreentimeActivities(user).catch((err) =>
                 console.error(`⚠️ Screentime backfill failed for ${user}:`, err),

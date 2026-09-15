@@ -139,9 +139,8 @@ export const createOAuthRouter = (deps: OAuthRouterDeps): Router => {
       return
     }
 
-    // Authenticate user. A database we cannot reach is not a bad password —
-    // saying so sends the user off changing a credential that was fine, and
-    // leaves no trace of the real fault (#1123).
+    // A database we cannot reach is not a bad password: report it as one and
+    // the user goes off changing a credential that was fine.
     try {
       await loginToUserDb(username, password)
     } catch (err) {

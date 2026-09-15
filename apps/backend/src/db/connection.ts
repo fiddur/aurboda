@@ -5,7 +5,7 @@ import { NUTRIENT_FIELD_NAMES } from '@aurboda/api-spec'
 import { Client, type QueryResultRow } from 'pg'
 import format from 'pg-format'
 
-import { createTableStatements, tableCreationOrder } from '../schema.ts'
+import { createTableStatements, schemaFingerprint, tableCreationOrder } from '../schema.ts'
 
 const dbByUser: Record<string, Client> = {}
 
@@ -13,9 +13,8 @@ const userDbName = (user: string) => `aurboda_${user}`
 
 /**
  * How long to wait for a Postgres connection before giving up. `pg` defaults
- * to waiting forever, so an unreachable or saturated server left `/login`
- * hanging until the OS TCP timeout — minutes — and its caller reported that as
- * a rejected password (#1123).
+ * to waiting forever, so an unreachable or saturated server would leave a
+ * caller hanging until the OS TCP timeout — minutes.
  */
 const CONNECT_TIMEOUT_MS = 10_000
 
@@ -60,25 +59,82 @@ export const _isSchemaError = (error: unknown): boolean => {
   return code === '42P01' || code === '42703' || code === '23502'
 }
 
-const migrationInProgress: Record<string, Promise<void> | undefined> = {}
+const migrationInProgress: Record<string, { forced: boolean; promise: Promise<void> } | undefined> = {}
 
 /**
  * Run migration for a user, coalescing concurrent calls.
- * If a migration is already in progress for the user, returns the existing promise.
+ *
+ * The default migration FORCES a full sweep, ignoring the schema fingerprint:
+ * this is the lazy repair path, reached from `query` when a statement hit a
+ * schema error. The error proves something is missing, so the recorded
+ * fingerprint has to be treated as a lie.
+ *
+ * Coalescing accounts for that difference. A forced caller joins an in-flight
+ * forced run, but must NOT join an in-flight gated one: the gated run may
+ * decide to skip on a fingerprint the forced caller already knows is wrong,
+ * and the statement waiting on it would then fail anyway. So it waits for the
+ * gated run to settle and sweeps for real afterwards.
+ *
  * @internal Exported for testing — pass a custom migrate function in tests.
  */
 export const _runMigrationOnce = (
   user: string,
-  migrate: (user: string) => Promise<void> = migrateSchema,
+  migrate: (user: string) => Promise<void> = (u) => migrateSchema(u, { force: true }),
+  forced = true,
 ): Promise<void> => {
   const existing = migrationInProgress[user]
-  if (existing) return existing
+  if (existing && (existing.forced || !forced)) return existing.promise
 
-  const promise = migrate(user).finally(() => {
-    delete migrationInProgress[user]
+  // Only the chained case defers: with nothing in flight, `migrate` is invoked
+  // synchronously, as callers of this function have always been able to assume.
+  const swept = existing ? existing.promise.catch(() => {}).then(() => migrate(user)) : migrate(user)
+  const promise: Promise<void> = swept.finally(() => {
+    // Only clear our own entry: a forced run chained behind this one has
+    // already replaced it.
+    if (migrationInProgress[user]?.promise === promise) delete migrationInProgress[user]
   })
-  migrationInProgress[user] = promise
+  migrationInProgress[user] = { forced, promise }
   return promise
+}
+
+/**
+ * Migrate a user only when this build's schema fingerprint is not already
+ * recorded in their database, coalescing concurrent callers. Normally one
+ * `SELECT` — the entry point for the deploy-time sweep and for the auth
+ * middleware, neither of which has evidence that anything is missing.
+ */
+export const migrateSchemaIfNeeded = (user: string): Promise<void> =>
+  _runMigrationOnce(user, (u) => migrateSchema(u), false)
+
+/**
+ * Sweep every user's database, so a deploy's migrations land in the background
+ * rather than on whoever makes the first authenticated request.
+ *
+ * Sequential on purpose: a parallel sweep opens a connection per user at once.
+ * One user's broken database is logged and skipped rather than stopping the rest.
+ */
+export const migrateAllUsers = async (
+  adminClient: Client,
+): Promise<{ failed: number; migrated: number; skipped: number }> => {
+  const users = await listUserNames(adminClient)
+  const summary = { failed: 0, migrated: 0, skipped: 0 }
+
+  for (const user of users) {
+    try {
+      // Classify before migrating, so the deploy log says how many databases
+      // this build actually changed. One extra cheap marker read per user, in
+      // a background task that visits each user once.
+      const alreadyCurrent = await schemaUpToDate(await getDbForUser(user), schemaFingerprint())
+      await migrateSchemaIfNeeded(user)
+      if (alreadyCurrent) summary.skipped += 1
+      else summary.migrated += 1
+    } catch (error) {
+      summary.failed += 1
+      console.error(`⚠️ Schema migration failed for ${user}:`, error)
+    }
+  }
+
+  return summary
 }
 
 export const query = async <T extends QueryResultRow = QueryResultRow>(
@@ -112,10 +168,7 @@ export const query = async <T extends QueryResultRow = QueryResultRow>(
  * for the user. A cached client proves nothing about the password: it is
  * normally filled by `getDbForUser`, which connects as the service role and
  * does `SET ROLE`, so any token-authenticated request (a sync push, an MCP
- * call) warms it. The previous early return therefore let every caller that
- * authenticates by password — `/login`, the OAuth password grant, the
- * OwnTracks endpoint — accept an arbitrary password for any username whose
- * cache happened to be warm (#1123).
+ * call) warms it.
  */
 export const loginToUserDb = async (user: string, password: string) => {
   const client = new Client({
@@ -643,13 +696,55 @@ const migrateTagsToActivities = async (db: Client, existingTableNames: Set<strin
 }
 
 /**
+ * The ledger of applied migrations. Idempotent, and needed before anything
+ * reads it — `schemaUpToDate` runs on databases that predate the table.
+ */
+export const ensureSchemaMigrationsTable = async (db: Client) => {
+  await query(
+    db,
+    `CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`,
+  )
+}
+
+/** True when this user's database has already been migrated to `fingerprint`. */
+export const schemaUpToDate = async (db: Client, fingerprint: string): Promise<boolean> => {
+  await ensureSchemaMigrationsTable(db)
+  const result = await query(db, `SELECT 1 FROM schema_migrations WHERE name = $1`, [`schema@${fingerprint}`])
+  return result.rowCount !== 0
+}
+
+/**
+ * Record that this user's database is migrated to `fingerprint`. Append-only:
+ * the rows left behind read as the database's migration history.
+ */
+export const recordSchemaFingerprint = async (db: Client, fingerprint: string) => {
+  await ensureSchemaMigrationsTable(db)
+  await query(db, `INSERT INTO schema_migrations (name) VALUES ($1) ON CONFLICT DO NOTHING`, [
+    `schema@${fingerprint}`,
+  ])
+}
+
+/**
  * Run database migrations for a user.
  * Checks which tables exist and creates missing ones.
+ *
+ * Returns immediately when the database already records this build's schema
+ * fingerprint, because the sweep below is ~130 statements including full-table
+ * rewrites of `activities`, `tags`, `food_items` and `user_settings` — minutes
+ * on a database with years of data (#1125). Pass `{ force: true }` to sweep
+ * regardless: a caller that has already seen a schema error knows the
+ * fingerprint is wrong.
  */
 // eslint-disable-next-line complexity -- migration functions inherently have many conditional branches
-export const migrateSchema = async (user: string) => {
+export const migrateSchema = async (user: string, opts?: { force?: boolean }) => {
   const db = await getDbForUser(user)
   const database = `aurboda_${user}`
+  const fingerprint = schemaFingerprint()
+
+  if (!opts?.force && (await schemaUpToDate(db, fingerprint))) {
+    console.info(`Schema for ${user} already at ${fingerprint}, skipping migration`)
+    return
+  }
 
   // Check which tables exist
   const existingTables = await query(
@@ -816,10 +911,7 @@ export const migrateSchema = async (user: string) => {
     // don't scan activities twice on every connection. Also gated on the
     // legacy column's presence — the INSERT SQL references `overrides_id`
     // so it can't be parsed on post-#735 DBs.
-    await query(
-      db,
-      `CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`,
-    )
+    await ensureSchemaMigrationsTable(db)
     const migrationApplied = await query(
       db,
       `SELECT 1 FROM schema_migrations WHERE name = 'backfill_user_edited_to_overrides'`,
@@ -1541,6 +1633,9 @@ export const migrateSchema = async (user: string) => {
        END $$`,
     )
   }
+
+  // Last, and only on success: a sweep that threw must run again next time.
+  await recordSchemaFingerprint(db, fingerprint)
 }
 
 /**
