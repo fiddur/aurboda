@@ -475,25 +475,56 @@ Support manual data entry with `source = 'manual'` for:
 
 ## When migrations run
 
-Each user has their own database, so schema changes are applied per user, lazily
-and on demand:
+Each user has their own database, so schema changes are applied per user. The
+full `migrateSchema` sweep is roughly 130 statements including full-table
+rewrites of `activities`, `tags`, `food_items` and `user_settings` — minutes on
+a database with years of data — so it is gated by a schema fingerprint and runs
+only when there is something to do (#1125).
 
+- **At signup.** `makeNewUserDb` runs `initializeSchema`, which creates every
+  table from `createTableStatements`.
+- **Just after the server starts listening**, in the background: a
+  `postListenCallbacks` task runs `migrateAllUsers`, which visits every
+  `aurboda_*` database sequentially. This is where a deploy's migrations
+  normally land, before any user asks for anything. One user's broken database
+  is logged and skipped rather than stopping the sweep.
+- **On a user's first authenticated request per server process.** The auth
+  middleware awaits `migrateSchemaIfNeeded` once per user, so no request runs
+  against stale schema. Gated by the fingerprint, so it is normally a single
+  `SELECT` — and after a deploy the background sweep has usually already done
+  the work.
 - **On a schema error.** `query(user, …)` catches PostgreSQL schema errors
   (missing table or column, and NOT NULL violations from a column that has
-  become nullable), runs the full `migrateSchema` sweep once per user via
-  `_runMigrationOnce`, and retries the statement. This is the normal path — any
-  request that needs newer schema triggers the repair itself.
-- **At signup.** `makeNewUserDb` runs `initializeSchema` to create every table.
-- **At login, only if the user has no schema at all.** `/login` checks
-  `schemaInitialized` and creates the schema if it is missing; it does **not**
-  run `migrateSchema`. It used to, on every login — roughly 130 statements
-  including full-table rewrites of `activities`, `tags` and `user_settings` —
-  which grew with the data until it exceeded the reverse proxy's timeout and
-  every login failed as "Unauthorized" with nothing in the logs (#1123).
+  become nullable), runs a **forced** full sweep once per user via
+  `_runMigrationOnce`, and retries the statement. This is the correctness
+  safety net.
+- **Never at login.** `/login` only authenticates. It used to sweep the schema
+  on every login, which grew with the data until it exceeded the reverse
+  proxy's timeout and every login failed as "Unauthorized" with nothing in the
+  logs (#1123).
 
-A consequence worth knowing when debugging: a freshly deployed migration may not
-have been applied to a given user's database yet. It lands the first time that
-user makes a request needing it.
+### The schema fingerprint
+
+`schemaFingerprint()` (in `apps/backend/src/schema.ts`) is a SHA-256 over every
+DDL statement in `tableCreationOrder`, in order, plus `MIGRATION_REVISION`. A
+successful sweep appends a `schema@<fingerprint>` row to the user's
+`schema_migrations` table; `migrateSchema` returns immediately when that row is
+already present. The rows are append-only, so what is left behind reads as the
+database's migration history.
+
+Two halves, because migrations have two kinds of content:
+
+- **DDL is covered automatically.** Any change to a statement in
+  `createTableStatements`, or to the order they run in, changes the hash. It
+  cannot be forgotten.
+- **`MIGRATION_REVISION` covers the rest** — the imperative backfills and data
+  fixes inside `migrateSchema` that are not expressed as DDL. Bump it when you
+  add or change one, or the sweep will be skipped on databases that already
+  record the current fingerprint.
+
+A sweep that throws records nothing, so it is retried. And the lazy path
+deliberately ignores the fingerprint: a schema error proves something is
+missing, which means the recorded fingerprint is wrong and must not be trusted.
 
 ## Migration Notes
 

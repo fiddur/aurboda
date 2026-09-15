@@ -51,6 +51,7 @@ import {
   loginToUserDb,
   markChallengeResultPublished,
   markEnrichTransientFailure,
+  migrateAllUsers,
   openTimelineChannel,
   resolveOrCreateActivityType,
   markTimelineEntryReplyChecked,
@@ -379,6 +380,15 @@ const main = async () => {
 
   const userDb = new Client({ database: 'postgres' })
   await userDb.connect()
+
+  // Land this deploy's schema changes in the background, so no user's first
+  // authenticated request pays for the sweep (#1125). Gated per user by the
+  // schema fingerprint, so a deploy that changed no DDL only reads one marker
+  // row per user.
+  postListenCallbacks.push(async () => {
+    const { migrated, skipped, failed } = await migrateAllUsers(userDb)
+    console.info(`🗃️ Schema sweep done: ${migrated} migrated, ${skipped} already current, ${failed} failed`)
+  })
 
   // CORS must come first for preflight requests
   httpd.use(cors({ origin: true }))
