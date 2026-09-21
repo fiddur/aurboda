@@ -171,9 +171,12 @@ Row mappers in `db/row-mappers.ts` use type guards with api-spec constants (e.g.
 ## Working an issue: merge on approval
 
 This project works **merge on approval**: once an issue is ironed out and assigned,
-take it end to end, up to the merge. A webhook service reviews every PR that carries the
-`needs-review` label, so getting one reviewed, approved and ready needs nobody's
-attention.
+take it end to end, up to the merge. A claude.ai routine reviews every PR that carries
+the `needs-review` label, so getting one reviewed, approved and ready needs nobody's
+attention. The label is the whole protocol: the routine fires on the PR event, swaps
+`needs-review` for `reviewing` while it owns the PR, posts its review as a `COMMENTED`
+review on the head commit, and removes `reviewing` when done. A PR with neither label
+has either not asked for a review or already got one.
 
 **The merge itself needs the go-ahead, and "merge on approval" is it.** Said once it
 stands for the whole run — the PR in hand and every later one in the same session.
@@ -183,8 +186,9 @@ and say it is ready. The rule is spelled out here in full because a cloud sessio
 no `~/.claude` to find it in: this file is the whole rulebook wherever the session runs.
 
 1. Sync: `git checkout develop && git fetch origin develop && git reset --hard
-origin/develop`. Reset rather than pull — squash merges make local `develop`
-   diverge. Where `develop` cannot be checked out (another worktree holds it) or
+origin/develop`. Reset rather than pull, so local `develop` is exactly
+   `origin/develop` whatever was left on it. Where `develop` cannot be checked out
+   (another worktree holds it) or
    is not there at all (a fresh cloud clone), skip the local branch: `git fetch
 origin develop` and branch from `origin/develop`.
 2. Branch off `develop`.
@@ -205,18 +209,15 @@ origin develop` and branch from `origin/develop`.
    carrying the label — the GitHub MCP tools, see
    [Running in the cloud](#running-in-the-cloud).
 7. Wait for the review. It arrives by itself, as a `COMMENTED` review, a few
-   minutes after the label goes on.
-   - **On Fredrik's machine** the review service writes
-     `/home/fiddur/src/codereview/events.log`, one `<ISO time> <pr url> <event>` per
-     line. Wait for `<pr url> updated`; `review started` means it has only begun.
-     Poll the file by line offset — note `wc -l` before adding the label, then sleep
-     and read only what is new — because a backgrounded `tail -F … | grep` prints
-     its match and then never exits. Do not poll GitHub on a timer there.
-   - **Anywhere that file does not exist** (the cloud), GitHub is the only signal:
-     see [Running in the cloud](#running-in-the-cloud).
-
-   Either way bound the wait with a deadline, and when it runs out say the review
-   service may be wedged rather than ending silently.
+   minutes after the label goes on. GitHub is the only signal, everywhere: there is
+   no log file to watch. It has landed when the newest review's commit is the PR's
+   current head sha — `gh pr view <n> --json reviews,headRefOid` on Fredrik's
+   machine, `get_reviews` against `get` in the cloud (see
+   [Running in the cloud](#running-in-the-cloud)). A review on an older commit is
+   stale, whatever it says. Poll a minute or two apart, and bound the wait: forty
+   minutes with the label still `needs-review` means the routine never fired, forty
+   minutes in `reviewing` means it died mid-run. Say which rather than ending
+   silently.
 
 8. Read the review body **and every inline comment**. Fix genuine
    correctness/security findings; for trivial or subjective nits, resolve the
@@ -258,7 +259,7 @@ been told once, asking again on the next PR is the same failure as never asking.
 not let an author approve their own pull request, and every commit and review here
 is authored by the same account, so a required-approval rule would deadlock rather
 than protect: the `✅ Approved` gate is discipline, and this document is the only
-thing enforcing it. The review service's verdicts are `COMMENTED`, not `APPROVED`.
+thing enforcing it. The review routine's verdicts are `COMMENTED`, not `APPROVED`.
 A green rollup means the tests passed and the branch is mergeable; it does not mean
 anything reviewed the change. Check the ruleset rather than trust a description of
 it:
@@ -374,8 +375,9 @@ this section is the difference.
   `get_check_runs`, every run `completed` and `success`. The review: `get_reviews`, and
   it has landed when the newest review's `commit_id` is the head sha that `get`
   reports — its body's first line opens with ✅ when the gate's first part holds. A
-  review on an older commit is stale, whatever it says. Forty minutes without one
-  after the label went on means the review service is down; say so.
+  review on an older commit is stale, whatever it says. The PR's labels say where the
+  routine is (`issue_read`): still `needs-review` after forty minutes and it never
+  fired, `reviewing` that long and it died mid-run; say which.
 - **Threads still have to be resolved.** `get_review_comments` lists them with their
   ids; `resolve_review_thread` closes one. If the proxy refuses either, answer every
   thread in a reply, and report that the threads need resolving by hand — that is a
@@ -385,6 +387,12 @@ this section is the difference.
 
 - Prefer code that is testable without heavy mocking.
 - Prefer functional style, no classes.
+- No unnecessary code comments. The reader is a person or an agent who reads the code,
+  the types and the tests faster than prose about them, so a comment that restates what
+  the code does, narrates PR history, or labels a section is noise. Reserve comments for
+  the genuinely non-obvious: a subtle invariant, a non-local consequence, or why an
+  obvious alternative was rejected. Existing comments that fail this test are cleaned up
+  in later refactoring, not in unrelated PRs.
 - Store data in normalized form: reference entities by ID, not by duplicating names or other mutable fields. Resolve names at query time (e.g. in the API response layer) so data stays consistent when referenced entities are renamed.
 
 ## Testing
