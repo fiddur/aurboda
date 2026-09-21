@@ -74,6 +74,17 @@ stays light: it is built against a day/night-themed context
 app's `prefers-color-scheme` resolves to dark when the system is dark and its own
 dark CSS applies (the page declares `color-scheme: light dark`).
 
+### Page height and `vh` units
+
+The WebView can resolve CSS viewport units (`100vh`, `40vh`) and the `%` height
+chain to 0 even when the view itself is sized correctly, collapsing full-height
+pages. `EmbeddedWebScreen` injects a viewport fix that pins `<html>` to
+`window.innerHeight` in px (re-applied on resize and page finish) so `body` and
+`#app` fill via `%`. Page CSS that must work embedded should therefore size from
+that flex chain (`%`, `flex`) rather than from `vh`: a `vh` cap on an
+`overflow: hidden` panel renders it empty in the app while looking fine in a
+desktop browser (the Places list did exactly this).
+
 ### Soft keyboard
 
 Focusing an input — a native text field or one inside an embedded page — must

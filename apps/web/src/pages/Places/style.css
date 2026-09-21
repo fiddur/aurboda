@@ -395,7 +395,9 @@
 
   .places-list {
     width: 100%;
-    max-height: 40vh;
+    /* Not vh: the Android WebView resolves viewport units to 0, which would
+       collapse the list behind overflow: hidden (see EmbeddedWebScreen.kt). */
+    max-height: 40%;
     flex-shrink: 0;
   }
 
