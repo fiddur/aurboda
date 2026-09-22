@@ -105,13 +105,13 @@ describe('buildGravlActivity', () => {
 describe('formatGravlSetsNote', () => {
   it('renders one line per exercise with warmup, failure, rpe and timed sets', () => {
     expect(formatGravlSetsNote(detail())).toBe(
-      'Felt strong\n\nBench Press: 10×40 kg (w), 8×80 kg, 6×80 kg (f) @8\nPlank: 0:40',
+      'Felt strong\n\nBench Press: 10×40 kg (w), 8×80 kg, 6×80 kg (f) @8\nPlank: 0:40 (drop)',
     )
   })
 
   it('omits the notes block when the workout has none', () => {
     expect(formatGravlSetsNote(detail({ notes: null }))).toBe(
-      'Bench Press: 10×40 kg (w), 8×80 kg, 6×80 kg (f) @8\nPlank: 0:40',
+      'Bench Press: 10×40 kg (w), 8×80 kg, 6×80 kg (f) @8\nPlank: 0:40 (drop)',
     )
   })
 })
