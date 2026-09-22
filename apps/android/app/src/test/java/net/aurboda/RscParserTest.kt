@@ -159,7 +159,6 @@ class RscParserTest {
 
     @Test
     fun `cadence is doubled from raw stride rate to step rate`() {
-        // Verify the stride-to-step conversion explicitly
         // Walking at 55 strides/min should show as 110 steps/min
         val data = byteArrayOf(0x00, 0x00, 0x01, 55)
 

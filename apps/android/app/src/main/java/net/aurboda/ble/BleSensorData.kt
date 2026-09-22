@@ -53,9 +53,6 @@ sealed class BleConnectionState {
   ) : BleConnectionState()
 }
 
-/**
- * Serializable representation of a device saved for auto-reconnect.
- */
 @Serializable
 data class SavedDevice(
   val address: String,
@@ -67,9 +64,6 @@ private const val PREFS_NAME = "ble_auto_reconnect"
 private const val KEY_SAVED_DEVICES = "saved_devices"
 private const val AUTO_RECONNECT_TAG = "AutoReconnectPrefs"
 
-/**
- * Manages persisted auto-reconnect device list in SharedPreferences.
- */
 object AutoReconnectPrefs {
   private val json = Json { ignoreUnknownKeys = true }
 
@@ -89,7 +83,6 @@ object AutoReconnectPrefs {
     device: SavedDevice,
   ) {
     val current = getSavedDevices(context).toMutableList()
-    // Replace if already present (address match), otherwise add
     current.removeAll { it.address == device.address }
     current.add(device)
     save(context, current)

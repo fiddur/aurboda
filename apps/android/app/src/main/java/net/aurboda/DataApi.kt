@@ -107,8 +107,6 @@ fun formatZoneTime(seconds: Double): String {
     }
 }
 
-// --- Add Activity ---
-
 @Serializable
 data class AddActivityBody(
     @SerialName("activity_type") val activityType: String,
@@ -166,8 +164,6 @@ suspend fun postActivity(
     }
 }
 
-// --- Add Metric ---
-
 suspend fun postMetric(
     httpClient: HttpClient,
     serverUrl: String,
@@ -197,8 +193,6 @@ suspend fun postMetric(
         DataResult.Error(e.message ?: "Unknown error")
     }
 }
-
-// --- Activity Types ---
 
 @Serializable
 data class DataFieldDefinition(
@@ -259,8 +253,6 @@ suspend fun fetchActivityTypes(
         DataResult.Error(e.message ?: "Unknown error")
     }
 }
-
-// --- Custom Metrics ---
 
 @Serializable
 data class CustomMetricDefinition(

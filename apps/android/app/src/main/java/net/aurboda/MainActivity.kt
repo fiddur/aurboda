@@ -69,7 +69,6 @@ import net.aurboda.update.checkForUpdate
 import net.aurboda.update.downloadUpdate
 import net.aurboda.update.getExistingDownloadState
 import net.aurboda.update.installApk
-// Import record type lists from HealthDataModels
 import net.aurboda.allRecordTypes
 import net.aurboda.writableRecordTypes
 import java.io.File
@@ -119,7 +118,6 @@ private fun loadChangesToken(context: Context): String? {
 }
 
 /**
- * Check if the set of granted record types has changed since last fetch.
  * If changed, invalidate the changes token to force a full re-fetch.
  */
 private fun invalidateTokenIfGrantedTypesChanged(
@@ -236,7 +234,6 @@ fun AurbodaApp(
   val scope = rememberCoroutineScope()
   val ktorHttpClient = remember { syncHttpClient() }
 
-  // Update check state
   var updateAvailable by remember { mutableStateOf<VersionInfo?>(null) }
   var showUpdateDialog by remember { mutableStateOf(false) }
   var showDownloadingDialog by remember { mutableStateOf(false) }
@@ -244,7 +241,6 @@ fun AurbodaApp(
   var downloadedApkFile by remember { mutableStateOf<File?>(null) }
   var updateError by remember { mutableStateOf<String?>(null) }
 
-  // Check for updates on app launch
   LaunchedEffect(Unit) {
     val currentVersionCode = BuildConfig.VERSION_CODE_INT
     Log.d("UpdateChecker", "Checking for updates. Current version code: $currentVersionCode")
@@ -253,7 +249,6 @@ fun AurbodaApp(
         Log.d("UpdateChecker", "Update available: ${result.versionInfo.versionName}")
         updateAvailable = result.versionInfo
 
-        // Check if we already have this download in progress or finished
         when (val downloadState = getExistingDownloadState(context, result.versionInfo.versionName)) {
           is DownloadState.Downloaded -> {
             Log.d("UpdateChecker", "APK already downloaded: ${downloadState.apkFile.name}")
@@ -278,7 +273,6 @@ fun AurbodaApp(
     }
   }
 
-  // Update dialogs
   if (showUpdateDialog && updateAvailable != null) {
     UpdateAvailableDialog(
       versionInfo = updateAvailable!!,
@@ -412,7 +406,6 @@ fun HealthConnectScreen(
   val lifecycleOwner = LocalLifecycleOwner.current
   val healthConnectClient = remember { HealthConnectClient.getOrCreate(context) }
 
-  // -- Permission state (partial permissions support) --
   var grantedPermissions by remember { mutableStateOf<Set<String>>(emptySet()) }
   val grantedRecordTypes by remember(grantedPermissions) {
     derivedStateOf { getGrantedRecordTypes(grantedPermissions) }
@@ -451,7 +444,6 @@ fun HealthConnectScreen(
   }
   val bgSyncStatus by bgSyncStatusFlow.collectAsState()
 
-  // -- ActivityWatch state --
   var awSyncEnabled by remember { mutableStateOf(isActivityWatchSyncEnabled(context)) }
   var awSyncResult by remember { mutableStateOf<ActivityWatchSyncResult?>(null) }
 
@@ -646,7 +638,6 @@ fun HealthConnectScreen(
     }
   }
 
-  /** Re-query actual granted permissions from system after launcher returns. */
   suspend fun refreshPermissions() {
     grantedPermissions = healthConnectClient.permissionController.getGrantedPermissions()
     val count = grantedRecordTypes.size
@@ -705,7 +696,6 @@ fun HealthConnectScreen(
     reporter.begin()
     var fatal: String? = null
     try {
-      // Daily aggregates
       try {
         val aggregates = fetchDailyAggregates(healthConnectClient, grantedRecordTypes.toSet(), days = 7)
         if (aggregates.isNotEmpty()) {
@@ -828,7 +818,6 @@ fun HealthConnectScreen(
     }
   }
 
-  // Periodic sync while app is open (when background sync is enabled)
   LaunchedEffect(backgroundSyncEnabled, hasAnyPermissions) {
     if (backgroundSyncEnabled && hasAnyPermissions) {
       Log.d("HealthConnectScreen", "Starting periodic sync loop (60s interval)")
@@ -842,14 +831,11 @@ fun HealthConnectScreen(
     }
   }
 
-  // --- UI ---
-
   LazyColumn(
     modifier = modifier.fillMaxSize().padding(16.dp),
     verticalArrangement = Arrangement.spacedBy(12.dp),
     horizontalAlignment = Alignment.CenterHorizontally,
   ) {
-    // -- Sync Status Card --
     item {
       androidx.compose.material3.Card(
         modifier = Modifier.fillMaxWidth(),
@@ -1041,7 +1027,6 @@ fun HealthConnectScreen(
       }
     }
 
-    // -- ActivityWatch Sync Card --
     item {
       androidx.compose.material3.Card(
         modifier = Modifier.fillMaxWidth(),
@@ -1112,7 +1097,6 @@ fun HealthConnectScreen(
       }
     }
 
-    // -- Data Source Category Cards --
     items(categoryStatuses.size) { index ->
       val status = categoryStatuses[index]
       val iconText =
@@ -1179,7 +1163,6 @@ fun HealthConnectScreen(
       }
     }
 
-    // -- Empty state --
     if (!hasAnyPermissions && !isProcessing) {
       item {
         Text(
@@ -1193,7 +1176,6 @@ fun HealthConnectScreen(
     }
   }
 
-  // Battery optimization dialog
   if (showBatteryOptimizationDialog) {
     AlertDialog(
       onDismissRequest = { showBatteryOptimizationDialog = false },
