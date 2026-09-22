@@ -83,7 +83,11 @@ pages. `EmbeddedWebScreen` injects a viewport fix that pins `<html>` to
 `#app` fill via `%`. Page CSS that must work embedded should therefore size from
 that flex chain (`%`, `flex`) rather than from `vh`: a `vh` cap on an
 `overflow: hidden` panel renders it empty in the app while looking fine in a
-desktop browser (the Places list did exactly this).
+desktop browser (the Places list did exactly this). A page that fills the shell
+(`height: 100%`, internal scrolling) must also not let its content size the
+shell: on narrow screens `.app-content` is `height: auto`, so a tall list would
+inflate it past the viewport and the page would scroll instead. `contain: size`
+on the page root prevents that (see the Places page).
 
 ### Soft keyboard
 

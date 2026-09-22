@@ -2,6 +2,11 @@
   display: flex;
   flex-direction: column;
   height: 100%;
+  /* Size containment keeps the page from contributing its content height to
+     the shell: on narrow screens .app-content is height: auto, so without it a
+     long list inflates the shell past the viewport, the document scrolls and
+     the map ends up filling the screen with no way to scroll back past it. */
+  contain: size;
   padding: 1rem;
 }
 
