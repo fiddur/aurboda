@@ -3,14 +3,12 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 import * as db from '../../db/index.ts'
 import { getActivityImpact } from './activity-impact.ts'
 
-// Mock db module
 vi.mock('../../db', () => ({
   getAllActivitiesInRange: vi.fn(),
   getProductivity: vi.fn(),
   getTimeSeries: vi.fn(),
 }))
 
-// Mock locations module
 vi.mock('../locations', () => ({
   getPlaceVisits: vi.fn(),
 }))

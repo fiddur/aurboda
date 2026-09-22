@@ -1,6 +1,4 @@
 /**
- * Public sharing routes (UNAUTHENTICATED).
- *
  * Handles `/public/:username/...` for both shared dashboards and challenges.
  * Never uses `req.user`; targets the owner's database directly by username
  * (validated against the same rules as signup). Dashboards return sanitized,

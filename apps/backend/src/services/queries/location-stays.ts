@@ -1,6 +1,4 @@
 /**
- * Overnight stay detection and location summary queries.
- *
  * Detects nights spent at a named location and aggregates visit statistics.
  * Computed at query time from PlaceVisits — no schema changes required.
  */
@@ -110,9 +108,6 @@ const periodKey = (date: Temporal.PlainDate, groupBy: LocationSummaryGroupBy): s
   }
 }
 
-/**
- * Aggregate stats for a set of visits to a single location.
- */
 export const summarizeVisits = (visits: PlaceVisit[], options: SummaryOptions): LocationSummary => {
   const totalHours = visits.reduce((sum, v) => sum + v.duration_minutes / 60, 0)
   const overnight = detectOvernightStays(visits, options.tz)

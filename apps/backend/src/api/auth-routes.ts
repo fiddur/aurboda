@@ -1,5 +1,4 @@
 /**
- * Auth-related HTTP routes: /version, /status, /signup, /login, /auth/token.
  * These stay close to server setup (vs being moved into a Router) because they
  * directly use the central DB, user DB connection, and the Auth instance.
  */
@@ -96,7 +95,6 @@ export const registerAuthRoutes = ({
 
     const { username: user, password, invitation } = req.body
 
-    // In invite_only mode, require valid invitation token
     if (signupMode === 'invite_only') {
       if (!invitation || typeof invitation !== 'string') {
         res.status(403).json({
@@ -121,7 +119,6 @@ export const registerAuthRoutes = ({
       return
     }
 
-    // Validate username format (alphanumeric, lowercase, no special chars for PostgreSQL role)
     if (!USERNAME_REGEX.test(user)) {
       res.status(400).json({
         error:
@@ -136,7 +133,6 @@ export const registerAuthRoutes = ({
       return
     }
 
-    // Check if user already exists
     const existingUser = await query(userDb, 'SELECT usename FROM pg_user WHERE usename=$1', [user])
     if (existingUser.rowCount && existingUser.rowCount > 0) {
       res.status(409).json({ error: 'Username already exists', success: false })
@@ -147,7 +143,6 @@ export const registerAuthRoutes = ({
       await makeNewUserDb(userDb, user, password)
       const token = auth.createToken(user)
 
-      // First user becomes admin automatically
       const adminCount = await centralDb.getAdminCount()
       let isAdmin = false
       if (adminCount === 0) {
@@ -172,7 +167,6 @@ export const registerAuthRoutes = ({
       return next(unauthorized)
     }
 
-    // Check if user exists as a PSQL user role
     const userRows = await query(userDb, 'SELECT usename FROM pg_user WHERE usename=$1', [user])
     if (userRows.rowCount !== 1) return next(unauthorized)
 
@@ -194,7 +188,6 @@ export const registerAuthRoutes = ({
     const token = auth.createToken(user)
     const isAdmin = await centralDb.isAdmin(user)
 
-    // Prune old audit log entries in the background
     centralDb
       .getAuditLogRetentionDays()
       .then((days) => pruneAuditLog(user, days))

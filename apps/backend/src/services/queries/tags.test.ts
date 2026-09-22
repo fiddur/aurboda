@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 import * as db from '../../db/index.ts'
 import { queryTags } from './tags.ts'
 
-// Mock the db module
 vi.mock('../../db', () => ({
   getActivitiesExcludingCategories: vi.fn(),
   getNotesByEntityIds: vi.fn(),

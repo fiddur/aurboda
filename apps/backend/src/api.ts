@@ -1,17 +1,3 @@
-/**
- * Express server entry point.
- *
- * Setup is split across helpers in `api/`:
- *   - middleware.ts  — audit log, auth, admin
- *   - auth-routes.ts — /version, /status, /signup, /login, /auth/token
- *   - oauth-routes.ts — Garmin / Strava / Oura connect+disconnect
- *   - sync-setup.ts  — `/sync` router wiring
- *   - webhooks-setup.ts — Strava + Oura push integrations
- *   - rest-routes.ts — per-domain REST router mounts
- *
- * This file orchestrates: clients, queues, central DB, auth, error handler,
- * server lifecycle.
- */
 import { integrateFederation } from '@fedify/express'
 import cors from 'cors'
 import express, { json, type NextFunction, type Request, type Response } from 'express'
@@ -140,7 +126,6 @@ import {
 import { ownActorUri } from './services/timeline.ts'
 import { createWebAuthnService } from './services/webauthn.ts'
 
-/** Grace period for in-flight requests before sockets are forced closed. */
 const SHUTDOWN_DRAIN_MS = 3000
 
 declare global {
@@ -161,10 +146,8 @@ const main = async () => {
   const auth = createAuth(sessionSecret)
   const invitationAuth = createInvitationAuth(sessionSecret)
 
-  // Callbacks to run after httpd.listen() — for tasks that need the server to be reachable
   const postListenCallbacks: Array<() => Promise<void>> = []
 
-  // Initialize central database (server settings, admins)
   await initializeCentralDb()
   const centralDb = getCentralDb()
 
@@ -216,7 +199,6 @@ const main = async () => {
     version: process.env.BUILD_SHA ?? 'dev',
   }
 
-  // Migrate legacy OURA_CLIENT/OURA_SECRET env vars into server_settings if DB empty
   const envOuraClientId = process.env.OURA_CLIENT
   const envOuraClientSecret = process.env.OURA_SECRET
   if (envOuraClientId || envOuraClientSecret) {
@@ -250,10 +232,10 @@ const main = async () => {
     onUserAuthenticated: (ouraUserId, username) => centralDb.upsertOuraUserMapping(ouraUserId, username),
   })
 
-  // Create Garmin client (no server-side credentials needed - uses per-user session tokens)
+  // No server-side credentials: the client uses per-user session tokens.
   const garmin = garminClient()
 
-  // Create Strava client with dynamic credentials (reads from DB on each request)
+  // Credentials are read from the DB on each request, not captured at startup.
   const getStravaCredentials = async () => {
     const clientId = await centralDb.getServerSetting('strava_client_id')
     const clientSecret = await centralDb.getServerSetting('strava_client_secret')
@@ -343,7 +325,6 @@ const main = async () => {
     console.warn('⚠️ Calorie queue disabled - HR ingestion will fire-and-forget computation')
   }
 
-  // Initialize Strava queue (uses shared boss + strava client)
   let stravaQueue: StravaQueue | null = null
   if (boss) {
     try {
@@ -700,13 +681,11 @@ const main = async () => {
 
   httpd.use(json({ limit: '10mb' }))
 
-  // Audit-log middleware: records non-GET requests with response status / body
   httpd.use(createAuditLogMiddleware(auth))
 
   const authMiddleware = createAuthMiddleware(auth, unauthorized)
   const adminMiddleware = createAdminMiddleware(centralDb, unauthorized, forbidden)
 
-  // Auth-related routes (version, status, signup, login, /auth/token)
   registerAuthRoutes({
     httpd,
     auth,
@@ -717,7 +696,6 @@ const main = async () => {
     unauthorized,
   })
 
-  // /sync router (cross-provider sync orchestration)
   mountSyncRouter({
     httpd,
     authMiddleware,
@@ -731,7 +709,6 @@ const main = async () => {
     activityNotifier,
   })
 
-  // Per-provider OAuth/connect endpoints
   registerOAuthRoutes({
     httpd,
     authMiddleware,
@@ -742,7 +719,6 @@ const main = async () => {
     strava,
   })
 
-  // Strava webhook push integration
   if (stravaQueue) {
     const ensureStravaWebhook = setupStravaWebhook({
       httpd,
@@ -755,7 +731,6 @@ const main = async () => {
     postListenCallbacks.push(ensureStravaWebhook)
   }
 
-  // Oura webhook push integration (admin-configurable via Web UI)
   const ouraWebhookManager = await setupOuraWebhook({
     httpd,
     apiBaseUrl,
@@ -764,7 +739,6 @@ const main = async () => {
     getOuraCredentials,
   })
 
-  // Initialize geocode queue (uses shared boss)
   let geocodeQueue: Awaited<ReturnType<typeof createGeocodeQueue>> | null = null
   if (boss) {
     try {
@@ -799,7 +773,6 @@ const main = async () => {
     }),
   )
 
-  // Per-domain REST routers
   mountRestRouters({
     activityNotifier,
     autosharePreviewDeps: autoshareDeps,
@@ -840,7 +813,6 @@ const main = async () => {
   // error middleware. No-op if Sentry was not initialized.
   Sentry.setupExpressErrorHandler(httpd)
 
-  // Centralized error handler
   httpd.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
     const status = isHttpError(err) ? err.status : 500
     if (status >= 500) console.error(err)
@@ -855,7 +827,6 @@ const main = async () => {
     res.status(status).json({ success: false, error: err.message })
   })
 
-  // Server startup
   const port = Number(process.env.PORT ?? 80)
   const server = httpd.listen(port, () => {
     console.info(`> Running on localhost:${port}`)
@@ -867,7 +838,6 @@ const main = async () => {
     }
   })
 
-  // Graceful shutdown
   const shutdown = async () => {
     console.info('Shutting down...')
     detectionTrigger.clearPendingDetections()

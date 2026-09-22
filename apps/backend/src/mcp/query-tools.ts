@@ -1,6 +1,3 @@
-/**
- * MCP query tools - read-only data retrieval.
- */
 import {
   activityTypeSchema,
   bucketSizeSchema,
@@ -42,7 +39,6 @@ import {
 } from './helpers.ts'
 
 export const registerQueryTools = (server: McpServer, user: string, sync?: SyncProvider) => {
-  // Tool: query_metrics
   server.tool(
     'query_metrics',
     'Query health metrics for a time range. Returns time series data with timestamps and values.',
@@ -59,7 +55,6 @@ export const registerQueryTools = (server: McpServer, user: string, sync?: SyncP
     },
   )
 
-  // Tool: query_metrics_bucketed
   server.tool(
     'query_metrics_bucketed',
     `Query pre-aggregated health metrics in time buckets. Returns buckets with min/max/avg/count for each metric.
@@ -103,7 +98,6 @@ Use cases:
     },
   )
 
-  // Tool: get_daily_summary
   server.tool(
     'get_daily_summary',
     'Get a comprehensive daily timeline of health data. Returns a unified chronological `activities` array combining exercises, meditations, screen time categories, and all other activities — each with optional stress_zone_secs and hr_zone_secs. Screen time entries have a category_path (e.g., ["Work & Dev", "Software Dev"]).\n\nAlso includes: heart_rate stats, steps, sleep_sessions (with stages, location, date attribution), meals (with macros), productivity summary (with category breakdown), places, Oura scores, and day-level stress_zones.\n\nDesigned for AI correlation analysis — overlay activities with stress/HR data to find patterns.',
@@ -127,7 +121,6 @@ Use cases:
     },
   )
 
-  // Tool: query_period_summary
   server.tool(
     'query_period_summary',
     'Get aggregated statistics for a time period. Returns min/max/avg/stddev for each metric, trend compared to previous period, and data completeness.',
@@ -142,7 +135,6 @@ Use cases:
     },
   )
 
-  // Tool: query_tags
   server.tool(
     'query_tags',
     'Query non-exercise/sleep activities (formerly called tags) for a time range. Returns all tags with start times, optional end times, and tag text.',
@@ -153,7 +145,6 @@ Use cases:
     },
   )
 
-  // Tool: query_activities
   server.tool(
     'query_activities',
     'Query activities (sleep, exercise, meditation, nap, rest) for a time range. Returns activity sessions with duration, HR zones for exercise, and other metadata.',
@@ -199,7 +190,6 @@ Use cases:
     },
   )
 
-  // Tool: get_activity_detail
   server.tool(
     'get_activity_detail',
     `Deep-dive detail for a single activity: summary metrics (distance, avg pace, avg cadence, avg power, avg ground contact time, body battery before/after, elevation gain/loss, HR zones), GPS trace, and per-metric time-series.
@@ -261,7 +251,6 @@ Source-agnostic: works for any activity that has time-series and/or GPS populate
     },
   )
 
-  // Tool: query_productivity
   server.tool(
     'query_productivity',
     'Query productivity data (from RescueTime) for a time range. Returns application/website usage with productivity scores.',
@@ -272,7 +261,6 @@ Source-agnostic: works for any activity that has time-series and/or GPS populate
     },
   )
 
-  // Tool: query_productivity_bucketed
   server.tool(
     'query_productivity_bucketed',
     'Query screentime/productivity data bucketed by time interval, grouped by category. Returns stacked duration per category per bucket. Useful for visualizing time spent on different activities over time.',
@@ -296,7 +284,6 @@ Source-agnostic: works for any activity that has time-series and/or GPS populate
     },
   )
 
-  // Tool: query_locations
   server.tool(
     'query_locations',
     'Query location/place visits for a time range. Returns places visited with names, coordinates, duration, and source (named, detected, or owntracks).',
@@ -307,7 +294,6 @@ Source-agnostic: works for any activity that has time-series and/or GPS populate
     },
   )
 
-  // Tool: query_overnight_stays
   server.tool(
     'query_overnight_stays',
     `Detect overnight stays at a named location.
@@ -332,7 +318,6 @@ timestamps but with distinct overnight_date values.`,
     },
   )
 
-  // Tool: get_location_summary
   server.tool(
     'get_location_summary',
     `Aggregated statistics for time spent at a named location: total visits, total nights,

@@ -1,6 +1,4 @@
 /**
- * The AS2 representation of an article's prose and inline blocks for federation.
- *
  * An article federates as a `Note` (built in `deliver.ts`): the title is its
  * `name`, the prose is HTML `content`, and each chart/correlation block is an
  * attached PNG so a plain fediverse client (Mastodon) shows the prose + images

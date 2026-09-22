@@ -1,10 +1,5 @@
-/**
- * Garmin Connect API client tests.
- */
-
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-// Mock the GarminConnect class from the library
 const mockGarminConnect = vi.hoisted(() => ({
   exportToken: vi.fn().mockReturnValue({ oauth1: 'token1', oauth2: 'token2' }),
   get: vi.fn().mockResolvedValue({}),

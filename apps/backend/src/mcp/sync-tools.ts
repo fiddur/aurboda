@@ -1,6 +1,3 @@
-/**
- * MCP sync tools - data synchronization with external services.
- */
 import {
   outboundSyncAckItemSchema,
   syncCalendarsBodySchema,
@@ -54,7 +51,6 @@ export const registerSyncTools = (
   notifier?: ActivityNotifier,
   gravl?: GravlClient,
 ) => {
-  // Tool: sync_oura
   server.tool(
     'sync_oura',
     'Sync data from Oura Ring API. Fetches cardiovascular age, readiness, resilience, sleep scores, meditation sessions, and tags.',
@@ -85,7 +81,6 @@ export const registerSyncTools = (
     },
   )
 
-  // Tool: sync_garmin
   server.tool(
     'sync_garmin',
     'Sync data from Garmin Connect. Fetches daily summary, heart rate, HRV, sleep, stress, body battery, activities, SpO2, respiration, training readiness, and intensity minutes.',
@@ -95,7 +90,6 @@ export const registerSyncTools = (
         return errorResponse('Garmin integration is not available.')
       }
 
-      // Verify user has connected Garmin
       const garminToken = await getOAuthToken(user, 'garmin')
       if (!garminToken || !garminToken.access_token) {
         return errorResponse('Garmin Connect is not connected. Please connect Garmin in Settings first.')
@@ -124,7 +118,6 @@ export const registerSyncTools = (
     },
   )
 
-  // Tool: sync_rescuetime
   server.tool(
     'sync_rescuetime',
     'Sync productivity data from RescueTime API. Fetches application and website usage with productivity scores.',
@@ -154,7 +147,6 @@ export const registerSyncTools = (
     },
   )
 
-  // Tool: sync_calendars
   server.tool(
     'sync_calendars',
     'Sync events from configured calendar ICS URLs. Fetches ICS data and stores events as tags for correlation analysis.',
@@ -183,7 +175,6 @@ export const registerSyncTools = (
     },
   )
 
-  // Tool: sync_lastfm
   server.tool(
     'sync_lastfm',
     'Sync scrobbles from Last.fm. Fetches recent tracks and applies auto-tagging rules.',
@@ -231,7 +222,6 @@ export const registerSyncTools = (
     },
   )
 
-  // Tool: sync_strava
   server.tool(
     'sync_strava',
     'Sync activities from Strava. Fetches activity list, detailed metrics (HR, cadence, power), and GPS routes. Uses a queue with rate limiting (fire-and-forget).',
@@ -256,7 +246,6 @@ export const registerSyncTools = (
     },
   )
 
-  // Tool: sync_gravl
   server.tool(
     'sync_gravl',
     'Sync strength workouts from Gravl (gravl.ai): exercises and per-set weight/reps/RPE. Enriches the matching Health Connect session when one exists, otherwise creates a strength_training activity. Needs a Gravl OAuth connection or a personal token in user settings.',
@@ -282,7 +271,6 @@ export const registerSyncTools = (
     },
   )
 
-  // Tool: get_sync_status
   const syncProviders = [
     'oura',
     'garmin',
@@ -323,7 +311,6 @@ export const registerSyncTools = (
     },
   )
 
-  // Tool: reset_sync_state
   const resettableProviders = ['oura', 'garmin', 'strava', 'rescuetime', 'calendar', 'lastfm'] as const
 
   server.tool(
@@ -349,7 +336,6 @@ export const registerSyncTools = (
     },
   )
 
-  // Tool: get_outbound_sync
   server.tool(
     'get_outbound_sync',
     'Get pending outbound sync entries that need to be written to Health Connect. Returns changes (inserts, updates, deletes) queued for the Android app to apply.',
@@ -380,7 +366,6 @@ export const registerSyncTools = (
     },
   )
 
-  // Tool: ack_outbound_sync
   server.tool(
     'ack_outbound_sync',
     'Acknowledge that outbound sync entries were successfully written to Health Connect. Pass the entry ID and optionally the Health Connect record ID assigned after writing.',
@@ -405,7 +390,6 @@ export const registerSyncTools = (
     },
   )
 
-  // Tool: requeue_outbound_sync
   server.tool(
     'requeue_outbound_sync',
     'Re-queue a failed or synced outbound sync entry for retry to Health Connect.',
@@ -423,7 +407,6 @@ export const registerSyncTools = (
     },
   )
 
-  // Tool: get_outbound_sync_history
   server.tool(
     'get_outbound_sync_history',
     'Get outbound sync history including completed and failed entries. Shows fail_count and fail_reason for debugging sync issues.',

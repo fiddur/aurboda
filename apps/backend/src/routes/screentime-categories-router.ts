@@ -1,10 +1,5 @@
 import type { RequestHandler } from 'express'
 
-/**
- * Screentime categories route group.
- *
- * Handles: /screentime-categories/*
- */
 import {
   type CreateScreentimeCategoryBody,
   createScreentimeCategoryBodySchema,

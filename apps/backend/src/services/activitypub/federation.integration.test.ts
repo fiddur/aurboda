@@ -101,7 +101,6 @@ describe('Feed federation actor + WebFinger', () => {
     expect(doc.followers).toBe(`${ORIGIN}/users/${user}/followers`)
     expect(doc.following).toBe(`${ORIGIN}/users/${user}/following`)
     expect(doc.publicKey).toBeDefined()
-    // The published key is a PEM-encoded RSA public key.
     const publicKey = doc.publicKey as { owner?: string; publicKeyPem?: string }
     expect(publicKey.owner).toBe(`${ORIGIN}/users/${user}`)
     expect(publicKey.publicKeyPem).toContain('BEGIN PUBLIC KEY')
@@ -256,7 +255,6 @@ describe('Feed federation actor + WebFinger', () => {
     const res = await fetchAs2(`/users/${user}/following`)
     expect(res.status).toBe(200)
     const doc = (await res.json()) as { totalItems?: number; orderedItems?: string[] }
-    // Only the accepted follow is published.
     expect(doc.totalItems).toBe(1)
     expect(doc.orderedItems).toContain('https://mastodon.example/users/carol')
     expect(doc.orderedItems).not.toContain('https://remote.example/users/dave')
@@ -267,7 +265,6 @@ describe('Feed federation actor + WebFinger', () => {
     const activityId = await insertExercise(user)
     const post = await sharePost(user, activityId)
 
-    // Root collection: totalItems + a `first` page link (items live on the page).
     const root = (await (await fetchAs2(`/users/${user}/outbox`)).json()) as {
       totalItems?: number
       first?: string
@@ -277,7 +274,6 @@ describe('Feed federation actor + WebFinger', () => {
     expect(root.first).toBe(`${ORIGIN}/users/${user}/outbox?cursor=0`)
     expect(root.orderedItems).toBeUndefined()
 
-    // First page: the Create for the shared post.
     const page = (await (await fetchAs2(`/users/${user}/outbox?cursor=0`)).json()) as {
       orderedItems?: unknown[]
     }

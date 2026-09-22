@@ -72,7 +72,6 @@ describe('processStravaActivity', () => {
       }),
     )
 
-    // Verify activity data fields
     const activityArg = vi.mocked(deps.insertActivity).mock.calls[0][1]
     expect(activityArg.data).toMatchObject({
       average_hr: 145,

@@ -1,22 +1,12 @@
-/**
- * Statistical helper functions for correlation analysis.
- */
-
 import type { HrvStats, HrvStatsWithDelta } from './types.ts'
 
 import { chiSquared2x2, chiSquaredPValue1df } from './stats.ts'
 
-/**
- * Calculate mean of an array of numbers.
- */
 export const mean = (values: number[]): number | null => {
   if (values.length === 0) return null
   return values.reduce((a, b) => a + b, 0) / values.length
 }
 
-/**
- * Calculate standard deviation of an array of numbers.
- */
 export const stddev = (values: number[]): number | null => {
   if (values.length < 2) return null
   const avg = mean(values)!
@@ -24,9 +14,6 @@ export const stddev = (values: number[]): number | null => {
   return Math.sqrt(squareDiffs.reduce((a, b) => a + b, 0) / (values.length - 1))
 }
 
-/**
- * Calculate Pearson correlation coefficient between two arrays.
- */
 export const pearsonCorrelation = (x: number[], y: number[]): number | null => {
   if (x.length !== y.length || x.length < 3) return null
 
@@ -52,9 +39,6 @@ export const pearsonCorrelation = (x: number[], y: number[]): number | null => {
   return numerator / denominator
 }
 
-/**
- * Calculate chi-squared statistic and approximate p-value for 2x2 contingency table.
- */
 export const chiSquaredTest = (
   observed: [[number, number], [number, number]],
 ): { chiSquared: number; pValue: number } | null => {
@@ -95,9 +79,6 @@ export const getDataInRange = (data: [Date, number][], start: Date, end: Date): 
   return data.slice(startIdx, lo).map(([, v]) => v)
 }
 
-/**
- * Calculate HRV stats from raw data arrays.
- */
 export const calculateHrvStats = (
   hrvValues: number[],
   hrValues: number[],
@@ -114,9 +95,6 @@ export const calculateHrvStats = (
   stddev_stress: stressValues.length > 0 ? stddev(stressValues) : null,
 })
 
-/**
- * Add baseline delta to HRV stats.
- */
 export const addBaselineDelta = (stats: HrvStats, baseline: HrvStats): HrvStatsWithDelta => ({
   ...stats,
   hr_delta_from_baseline:

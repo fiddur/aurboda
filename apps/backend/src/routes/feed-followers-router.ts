@@ -1,12 +1,6 @@
 import type { RequestHandler } from 'express'
 
 /**
- * Feed *followers* route group (owner-facing) — manage the remote actors that
- * follow this user: list them (all, or just pending requests / accepted), and —
- * when the user requires manual approval — approve or reject a request.
- *
- * Handles: /feed/followers/*
- *
  * Listing is pure DB; approve/reject go through the injected `FollowerActions`
  * (which flip the row and send the signed `Accept` / `Reject`), keeping this
  * router decoupled from the ActivityPub layer. A `DELETE` on an already-accepted

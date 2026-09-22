@@ -1,7 +1,4 @@
 /**
- * The shared server-side correlation **scatter** renderer: an aligned daily
- * `trigger` × `outcome` series → a self-contained SVG **string**.
- *
  * The companion to `chart-svg.ts` for the *correlation* article block. It is the
  * server-side twin of the web `ArticleCorrelationBlock` scatter — same maths
  * (`linearRegression`, `describeSelectorAxis` from the shared api-spec source),

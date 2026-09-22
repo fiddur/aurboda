@@ -1,6 +1,4 @@
 /**
- * Integration test for Garmin activity type resolution.
- *
  * Runs processGarminData against a real PostgreSQL instance so the
  * activities → activity_type_definitions foreign key is actually enforced:
  * an unmapped Garmin typeKey must degrade to a defined type instead of

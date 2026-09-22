@@ -1,7 +1,3 @@
-/**
- * Daily summary query function.
- */
-
 import { builtinMetricsForDailySummary } from '@aurboda/api-spec'
 
 import type {
@@ -48,10 +44,6 @@ import {
 import { computeHrZoneSecs, getEffectiveHrZones } from '../settings.ts'
 import { computeSleepMinutes } from '../sleep-duration.ts'
 import { buildCategoryMap, getCommentsMap } from './types.ts'
-
-// ============================================================================
-// Sleep stage computation
-// ============================================================================
 
 /**
  * Health Connect sleep stage codes -> named stages.
@@ -106,15 +98,10 @@ export const computeSleepStageSummary = (
   }
 }
 
-// ============================================================================
-// Stress zone computation
-// ============================================================================
-
 const STRESS_MAX_GAP_SECONDS = 300 // 5 minutes — stress samples are typically 3 minutes apart
 const STRESS_SINGLE_SAMPLE_SECONDS = 180 // Garmin reports every ~3 minutes
 
 /**
- * Compute time spent in each stress zone for a time window.
  * Uses the same gap-based accumulation pattern as computeHrZoneSecs.
  */
 export const computeStressZoneSecs = (
@@ -124,7 +111,6 @@ export const computeStressZoneSecs = (
 ): StressZoneSecs => {
   const result: StressZoneSecs = { high: 0, low: 0, medium: 0, rest: 0 }
 
-  // Filter to time window if specified
   const filtered = start && end ? stressData.filter(([time]) => time >= start && time <= end) : stressData
 
   if (filtered.length === 0) return result
@@ -155,7 +141,6 @@ export const computeStressZoneSecs = (
   const lastZone = getStressZone(filtered[filtered.length - 1][1])
   result[lastZone] += Math.min(meanGap, STRESS_MAX_GAP_SECONDS)
 
-  // Round to whole seconds
   result.rest = Math.round(result.rest)
   result.low = Math.round(result.low)
   result.medium = Math.round(result.medium)
@@ -165,7 +150,6 @@ export const computeStressZoneSecs = (
 }
 
 /**
- * Find the best-guess sleep location from place visits overlapping a sleep window.
  * Returns the place with the longest overlap during the sleep window.
  */
 export function findSleepLocation(
@@ -177,7 +161,6 @@ export function findSleepLocation(
   let bestOverlap = 0
 
   for (const visit of placeVisits) {
-    // Calculate overlap between sleep window and visit
     const overlapStart = Math.max(sleepStart.getTime(), visit.start_time.getTime())
     const overlapEnd = Math.min(sleepEnd.getTime(), visit.end_time.getTime())
     const overlap = overlapEnd - overlapStart
@@ -198,14 +181,6 @@ export function findSleepLocation(
   }
 }
 
-// ============================================================================
-// Daily summary metrics (metrics_today / metrics_latest)
-// ============================================================================
-
-/**
- * Resolve the set of metric names that should be surfaced in the daily summary.
- * Built-in defaults union with any custom metric flagged include_in_daily_summary.
- */
 export const resolveDailySummaryMetrics = async (user: string): Promise<string[]> => {
   const custom = await getCustomMetricDefinitions(user)
   const customFlagged = custom.filter((m) => m.include_in_daily_summary === true).map((m) => m.name)
@@ -213,10 +188,6 @@ export const resolveDailySummaryMetrics = async (user: string): Promise<string[]
   return [...new Set<string>([...builtinMetricsForDailySummary, ...customFlagged])]
 }
 
-/**
- * Build the metrics_today block: per-metric stats and verbatim entries (with notes)
- * for entries logged in [start, end].
- */
 export const buildMetricsToday = async (
   user: string,
   metrics: string[],
@@ -306,7 +277,6 @@ export const buildMetricsLatest = async (
 }
 
 /**
- * Get a comprehensive summary of health data for a specific day.
  * @param sync Optional sync provider to auto-refresh stale data before querying
  */
 // eslint-disable-next-line complexity -- TODO: refactor
@@ -357,7 +327,6 @@ export async function getDailySummary(
   const categoryMap = await buildCategoryMap(user)
   const dailySummaryMetrics = await resolveDailySummaryMetrics(user)
 
-  // Run queries in parallel
   const [
     heartRateData,
     stepsData,
@@ -397,7 +366,6 @@ export async function getDailySummary(
     buildMetricsLatest(user, dailySummaryMetrics),
   ])
 
-  // Calculate heart rate stats
   const heartRates = heartRateData.map(([, value]) => value)
   const heartRateStats: HeartRateStats | null =
     heartRates.length > 0
@@ -413,7 +381,6 @@ export async function getDailySummary(
   const totalSteps =
     stepsAggregate !== null ? stepsAggregate : stepsData.reduce((sum, [, value]) => sum + value, 0)
 
-  // Calculate productivity summary with category breakdown
   const excludedCategoryPaths = screentimeCategories
     .filter((c) => c.exclude_from_screentime)
     .map((c) => c.name)
@@ -439,7 +406,6 @@ export async function getDailySummary(
 
           for (const record of productivity) {
             totals.total_duration_sec += record.duration_sec
-            // Use record productivity, falling back to category score
             const score =
               record.productivity ?? categoryScoreMap.get(JSON.stringify(record.resolved_category ?? []))
             if (score !== undefined && score !== null) {
@@ -463,7 +429,6 @@ export async function getDailySummary(
         })()
       : null
 
-  // Build scores object (get first value for each metric if available)
   const sleepScoreData = scoreMetrics['sleep_score']
   const readinessScoreData = scoreMetrics['readiness_score']
   const resilienceScoreData = scoreMetrics['resilience_score']
@@ -484,7 +449,6 @@ export async function getDailySummary(
       }
     : null
 
-  // Get user's HR zones for exercise session HR zone calculation
   const { zones: hrZones } = await getEffectiveHrZones(user)
 
   // Fetch comments for all activities, including the ids of any siblings that
@@ -525,7 +489,6 @@ export async function getDailySummary(
       }
       if (collected.size > 0) activity.comments = [...collected.values()]
 
-      // HR zones for activities with time range
       if (s.end_time) {
         const sessionHrData = heartRateData.filter(([time]) => time >= s.start_time && time <= s.end_time!)
         if (sessionHrData.length > 0) {
@@ -533,7 +496,6 @@ export async function getDailySummary(
         }
       }
 
-      // Stress zones for activities with time range
       if (s.end_time && stressData.length > 0) {
         const zones = computeStressZoneSecs(stressData, s.start_time, s.end_time)
         const hasStressData = zones.rest + zones.low + zones.medium + zones.high > 0
@@ -543,7 +505,6 @@ export async function getDailySummary(
       return activity
     })
 
-  // Add screentime activities from the activities table, filtering excluded categories
   for (const s of screentimeActivities) {
     const categoryPath = getScreentimeCategoryPath(s)
     if (!categoryPath) continue
@@ -557,7 +518,6 @@ export async function getDailySummary(
       title: categoryPathToString(categoryPath),
     }
 
-    // Stress zones for screentime spans
     if (s.end_time && stressData.length > 0) {
       const zones = computeStressZoneSecs(stressData, s.start_time, s.end_time)
       const hasStressData = zones.rest + zones.low + zones.medium + zones.high > 0
@@ -567,13 +527,10 @@ export async function getDailySummary(
     activities.push(activity)
   }
 
-  // Sort all activities chronologically
   activities.sort((a, b) => a.start_time.localeCompare(b.start_time))
 
-  // Day-level stress zones
   const stressZones: StressZoneSecs | null = stressData.length > 0 ? computeStressZoneSecs(stressData) : null
 
-  // Build sleep session summaries with sleep_date and sleep_location
   const sleepSessionSummaries: SleepSessionSummary[] = sleepSessions.map((s) => {
     const timeInBed = s.end_time
       ? Math.round((s.end_time.getTime() - s.start_time.getTime()) / 1000 / 60)

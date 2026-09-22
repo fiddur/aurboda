@@ -1,8 +1,4 @@
 /**
- * Public feed read surface (UNAUTHENTICATED).
- *
- * Handles: GET /public/:username/series
- *
  * Returns bucketed samples for a single metric over a window — but ONLY when a
  * feed post explicitly shared that metric as a series for an activity whose
  * window covers the request. There is no auth token (this is deliberately

@@ -1,7 +1,3 @@
-/**
- * Generic correlation analysis supporting compound triggers and multiple outcome types.
- */
-
 import type { MetricType } from '@aurboda/api-spec'
 
 import type { SyncProvider } from '../queries/index.ts'
@@ -105,7 +101,6 @@ export async function getGenericCorrelation(
   // Fire-and-forget: never block the analysis on live external syncs.
   triggerCorrelationSyncs(sync, user)
 
-  // Determine which data we need based on triggers and outcome
   const needsActivities =
     triggers.some((t) => t.type === 'activity' || t.type === 'tag') || outcome.type === 'tag'
   const needsProductivity =
@@ -113,7 +108,6 @@ export async function getGenericCorrelation(
     outcome.type === 'productivity'
   const needsMetrics = outcome.type === 'metric'
 
-  // Fetch data in parallel
   const [activities, productivity, metricData] = await Promise.all([
     needsActivities ? getAllActivitiesInRange(user, start, end) : Promise.resolve([]),
     needsProductivity ? getProductivity(user, start, end) : Promise.resolve([]),
@@ -122,7 +116,6 @@ export async function getGenericCorrelation(
       : Promise.resolve([] as [Date, number][]),
   ])
 
-  // Build a list of all trigger events with timestamps
   const triggerEvents: EventWithTime[] = []
 
   for (const trigger of triggers) {
@@ -172,23 +165,19 @@ export async function getGenericCorrelation(
     }
   }
 
-  // Check if this is a "simple" trigger setup (single trigger with default counts)
   // For simple triggers, we use actual event times; for compound, we use day-based windows
   const isSimpleTrigger =
     triggers.length === 1 && (triggers[0].min_count ?? 1) === 1 && (triggers[0].window_days ?? 1) === 1
 
-  // Find windows where ALL trigger conditions are met
   const matchedWindowEnds: Date[] = []
   const unmatchedDays: string[] = []
 
   if (isSimpleTrigger) {
-    // Simple case: use actual trigger event times
     const trigger = triggers[0]
     const matchingEvents = triggerEvents.filter(
       (e) => e.type === trigger.type && matchesPattern(e.value, trigger.pattern ?? ''),
     )
 
-    // Use each trigger event time as a matched window
     for (const event of matchingEvents) {
       if (event.time >= start && event.time <= end) {
         matchedWindowEnds.push(event.time)
@@ -206,7 +195,6 @@ export async function getGenericCorrelation(
       }
     }
   } else {
-    // Compound case: iterate through each day and check if all conditions are met
     for (let dayOffset = 0; dayOffset < analysisDays; dayOffset++) {
       const windowEnd = new Date(start)
       windowEnd.setDate(windowEnd.getDate() + dayOffset)
@@ -222,7 +210,6 @@ export async function getGenericCorrelation(
         windowStart.setDate(windowStart.getDate() - windowDays + 1)
         windowStart.setHours(0, 0, 0, 0)
 
-        // Count events matching this trigger in the window
         const count = triggerEvents.filter((e) => {
           if (e.type !== trigger.type) return false
           if (!matchesPattern(e.value, trigger.pattern ?? '')) return false
@@ -243,10 +230,8 @@ export async function getGenericCorrelation(
     }
   }
 
-  // Calculate outcomes for each lag window
   const postTrigger: Record<string, LagResult> = {}
 
-  // Get outcome events/data for tag outcomes
   const outcomeTagEvents =
     outcome.type === 'tag'
       ? activities.filter((a) => matchesPattern(a.activity_type, outcome.pattern)).map((a) => a.start_time)
@@ -257,7 +242,6 @@ export async function getGenericCorrelation(
     if (lagMs === null) continue
 
     if (outcome.type === 'tag') {
-      // Count how many matched windows had the outcome tag within the lag window
       let windowsWithOutcome = 0
 
       for (const windowEnd of matchedWindowEnds) {
@@ -282,7 +266,6 @@ export async function getGenericCorrelation(
         relative_risk: Math.round(relativeRisk * 100) / 100,
       }
     } else if (outcome.type === 'metric') {
-      // Collect metric values within the lag window after each matched window
       const valuesAfterTrigger: number[] = []
 
       for (const windowEnd of matchedWindowEnds) {
@@ -317,7 +300,6 @@ export async function getGenericCorrelation(
         stddev: stddevAfter !== null ? Math.round(stddevAfter * 100) / 100 : null,
       }
     } else if (outcome.type === 'productivity') {
-      // Sum time in the specified category/app within the lag window
       let totalMinutes = 0
       let daysCounted = 0
 
@@ -339,7 +321,6 @@ export async function getGenericCorrelation(
         }
       }
 
-      // Calculate baseline
       const lagDays = lagMs / (24 * 60 * 60 * 1000)
       let baselineTotalMinutes = 0
       let baselineDays = 0
@@ -374,7 +355,6 @@ export async function getGenericCorrelation(
     }
   }
 
-  // Calculate baseline stats
   let baseline: BaselineStats
 
   if (outcome.type === 'tag') {

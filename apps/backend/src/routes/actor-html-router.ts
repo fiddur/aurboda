@@ -1,8 +1,4 @@
 /**
- * Browser-facing fallback for ActivityPub actor URLs (#1047).
- *
- * Handles: GET /users/:username with an HTML-preferring Accept header.
- *
  * Fedify's actor dispatcher content-negotiates: an ActivityPub client gets the
  * actor document, but a browser (`Accept: text/html`) makes `@fedify/express`
  * fall through (`next()`) and then answer `406 Not acceptable` — unless a later

@@ -8,7 +8,6 @@ import { createMcpRouter } from './mcp.ts'
 import * as mutations from './services/mutations.ts'
 import * as queries from './services/queries/index.ts'
 
-// Mock the services
 vi.mock('./services/queries/index', () => ({
   getDailySummary: vi.fn(),
   getPeriodSummary: vi.fn(),
@@ -36,7 +35,6 @@ vi.mock('./services/mutations', () => ({
   updateNote: vi.fn(),
 }))
 
-// Mock db for sync status and stored detected locations
 vi.mock('./db', () => ({
   activityTypeExists: vi.fn().mockResolvedValue(true),
   deleteActivityTypeDefinition: vi.fn().mockResolvedValue(false),
@@ -84,7 +82,6 @@ vi.mock('./db', () => ({
   findActivityByExternalId: vi.fn(),
 }))
 
-// Mock the sync modules
 vi.mock('./services/deduction-deps', () => ({
   createDefaultEngineDeps: vi.fn().mockReturnValue({
     deleteStaleRuleActivities: vi.fn().mockResolvedValue(0),
@@ -117,7 +114,6 @@ function createTestApp() {
   return app
 }
 
-// Helper to make MCP requests with proper headers
 function mcpPost(app: express.Express) {
   return request(app).post('/mcp').set('Accept', 'application/json, text/event-stream')
 }
@@ -126,7 +122,6 @@ function mcpDelete(app: express.Express) {
   return request(app).delete('/mcp').set('Accept', 'application/json, text/event-stream')
 }
 
-// Parse SSE response to extract JSON-RPC result
 function parseSSEResponse(text: string): unknown {
   const lines = text.split('\n')
   for (const line of lines) {
@@ -227,7 +222,6 @@ describe('MCP Server', () => {
           params: { arguments: args, name: toolName },
         })
 
-      // Parse SSE response
       const parsed = parseSSEResponse(response.text) as { result: { content: { text: string }[] } }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let toolResult: any = null
@@ -247,7 +241,6 @@ describe('MCP Server', () => {
       const app = createTestApp()
       const token = auth.createToken('testuser')
 
-      // Mock service response
       vi.mocked(queries.getPeriodSummary).mockResolvedValue({
         end: '2024-01-31T23:59:59.000Z',
         metrics: [
@@ -286,7 +279,6 @@ describe('MCP Server', () => {
       expect(result.metrics[0].unit).toBe('ms')
       expect(result.metrics[0].trend_per_day).toBe(5)
 
-      // Verify service was called with correct arguments
       expect(queries.getPeriodSummary).toHaveBeenCalledWith(
         'testuser',
         ['hrv_rmssd'],

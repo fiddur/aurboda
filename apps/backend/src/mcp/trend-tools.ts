@@ -1,6 +1,3 @@
-/**
- * MCP trend analysis tools.
- */
 import { getTrendQuerySchema } from '@aurboda/api-spec'
 
 import { getCustomMetrics } from '../services/mutations.ts'
@@ -8,7 +5,6 @@ import { getTrend } from '../services/trends.ts'
 import { jsonResponse, type McpServer } from './helpers.ts'
 
 export const registerTrendTools = (server: McpServer, user: string) => {
-  // Tool: get_trend
   server.tool(
     'get_trend',
     `Calculate time-weighted trend for tags or metrics using Exponential Moving Average (EMA).

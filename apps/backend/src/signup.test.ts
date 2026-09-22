@@ -1,15 +1,7 @@
 import { describe, expect, test } from 'vitest'
 
-/**
- * Test the username validation rules used by the signup endpoint.
- * Username must be 3-31 characters, start with a letter, and contain
- * only lowercase letters, numbers, and underscores.
- */
 const isValidUsername = (username: string): boolean => /^[a-z][a-z0-9_]{2,30}$/.test(username)
 
-/**
- * Reserved usernames that cannot be used for signup.
- */
 const reservedUsernames = [
   'postgres',
   'admin',

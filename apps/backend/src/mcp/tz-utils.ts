@@ -1,6 +1,4 @@
 /**
- * Timezone utilities for MCP timestamp handling.
- *
  * Uses Temporal API for DST-correct timezone conversion.
  */
 import { Temporal } from '@js-temporal/polyfill'

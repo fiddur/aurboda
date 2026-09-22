@@ -1,7 +1,3 @@
-/**
- * Session grouping utility tests.
- */
-
 import { describe, expect, it } from 'vitest'
 
 import { groupIntoSessions, type TimestampedEvent } from './session-grouping.ts'

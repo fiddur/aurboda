@@ -1,8 +1,4 @@
-/**
- * MCP feed tools — publish activities to the user's federated feed, manage the
- * resulting posts, and follow/unfollow other actors. Mirrors the REST `/feed`
- * and `/feed/following` capabilities.
- */
+/** Mirrors the REST `/feed` and `/feed/following` capabilities. */
 import {
   createArticleBodySchema,
   feedPostsQuerySchema,
@@ -65,7 +61,6 @@ const followerStatusFilter = (status: 'accepted' | 'all' | 'pending'): { accepte
   return {}
 }
 
-/** The injectable collaborators behind the feed tools (all optional). */
 export interface FeedToolsOptions {
   deliver?: FeedDeliver
   followActions?: FollowActions

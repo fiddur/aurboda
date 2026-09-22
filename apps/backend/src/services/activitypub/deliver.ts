@@ -1,7 +1,5 @@
 import type { ArticleContent, ChallengeShare, FeedVisibility } from '@aurboda/api-spec'
 /**
- * Build and deliver a shared feed post over ActivityPub.
- *
  * The Mastodon-compatible representation is a Fedify `Create{Note}` — an HTML
  * `content` summary + `name`/`url`, addressed per the post's visibility. The
  * `Note`'s id is its object-dispatcher URL (`getObjectUri(Note, …)`), so the
@@ -10,8 +8,7 @@ import type { ArticleContent, ChallengeShare, FeedVisibility } from '@aurboda/ap
  *
  * `deliverFeedPost` fans the `Create` out via `ctx.sendActivity(..., 'followers',
  * …)`, which Fedify signs and dedupes by shared inbox. Delivery is synchronous
- * (no message queue configured), so it awaits the outbound POSTs; retry/
- * durability via a persistent queue is a later slice.
+ * (no message queue configured), so it awaits the outbound POSTs.
  *
  * Every activity Note also carries the QuantPub `quant:` extension (#896):
  * Fedify's typed vocab drops unknown properties, so `withQuantJsonLd` splices
@@ -285,7 +282,6 @@ export const buildFeedDelete = (ctx: Context<void>, user: string, post: Delivera
   })
 }
 
-/** Build and send the `Create{Note}` for a freshly-shared post to its followers. */
 export const deliverFeedPost = async (
   deps: FeedDeliveryDeps,
   user: string,
@@ -297,7 +293,6 @@ export const deliverFeedPost = async (
   await ctx.sendActivity({ identifier: user }, 'followers', create)
 }
 
-/** Build and send the `Update{Note}` for an edited post to its followers. */
 export const deliverFeedUpdate = async (
   deps: FeedDeliveryDeps,
   user: string,
@@ -309,10 +304,6 @@ export const deliverFeedUpdate = async (
   await ctx.sendActivity({ identifier: user }, 'followers', update)
 }
 
-/**
- * Build and send the `Delete{Tombstone}` for a removed post to its followers,
- * and to anyone the post itself tagged.
- */
 export const deliverFeedDelete = async (
   deps: FeedDeliveryDeps,
   user: string,
@@ -342,7 +333,6 @@ export const deliverFeedDelete = async (
   )
 }
 
-// ---------------------------------------------------------------------------
 // Articles (long-form posts). An article federates as a `Note` — Mastodon
 // discards `content` for AS2 `Article` (a converted type) and renders only
 // name + url, so a Note is what actually shows the prose + attached images. The
@@ -350,7 +340,6 @@ export const deliverFeedDelete = async (
 // never collide — a post is one or the other), so a deleted article tombstones
 // there like any post. Aurboda peers get the richer inline render via structured
 // enrichment (a later slice), not the AS2 object type. No activity to resolve.
-// ---------------------------------------------------------------------------
 
 /** The delivery-facing view of an article post (its `article` guaranteed present). */
 export interface DeliverableArticle {
@@ -362,7 +351,6 @@ export interface DeliverableArticle {
   article: ArticleContent
 }
 
-/** Narrow a stored feed post to a `DeliverableArticle`, or null when it isn't an article. */
 export const toDeliverableArticle = (post: FeedPostRecord): DeliverableArticle | null =>
   post.kind === 'article' && post.article != null
     ? {
@@ -447,7 +435,6 @@ export const buildArticleNoteUpdate = (
   })
 }
 
-/** Build and send the `Create{Note}` for a freshly-published article to its followers. */
 export const deliverFeedArticlePost = async (
   deps: FeedDeliveryDeps,
   user: string,
@@ -461,7 +448,6 @@ export const deliverFeedArticlePost = async (
   )
 }
 
-/** Build and send the `Update{Note}` for an edited article to its followers. */
 export const deliverFeedArticleUpdate = async (
   deps: FeedDeliveryDeps,
   user: string,
@@ -475,13 +461,11 @@ export const deliverFeedArticleUpdate = async (
   )
 }
 
-// ---------------------------------------------------------------------------
 // Challenge shares (#994). A challenge invitation federates as a `Note` (like
 // an article): the user's markdown note + the challenge's canonical public
 // URL. Mastodon renders the link with the challenge page's existing OG preview
 // card. Served on the SAME object path as every post kind, so it tombstones
 // like any post. No activity to resolve and no attachments in phase 1.
-// ---------------------------------------------------------------------------
 
 /** The delivery-facing view of a challenge post (its `challenge` guaranteed present). */
 export interface DeliverableChallenge {
@@ -493,7 +477,6 @@ export interface DeliverableChallenge {
   message: string | null
 }
 
-/** Narrow a stored feed post to a `DeliverableChallenge`, or null when it isn't one. */
 export const toDeliverableChallenge = (post: FeedPostRecord): DeliverableChallenge | null =>
   post.kind === 'challenge' && post.challenge != null
     ? {
@@ -688,10 +671,6 @@ const sendToFollowersAndMentioned = async (
   if (followers.status === 'rejected') throw followers.reason
 }
 
-/**
- * Build and send the `Create{Note}` for a freshly-shared challenge to
- * followers, and to each tagged winner of a completion post.
- */
 export const deliverFeedChallengePost = async (
   deps: FeedDeliveryDeps,
   user: string,
@@ -702,7 +681,6 @@ export const deliverFeedChallengePost = async (
   await sendToFollowersAndMentioned(ctx, user, challengeMentions(post.challenge), create)
 }
 
-/** Build and send the `Update{Note}` for an edited challenge share to followers (and tagged winners). */
 export const deliverFeedChallengeUpdate = async (
   deps: FeedDeliveryDeps,
   user: string,
@@ -713,13 +691,11 @@ export const deliverFeedChallengeUpdate = async (
   await sendToFollowersAndMentioned(ctx, user, challengeMentions(post.challenge), update)
 }
 
-// ---------------------------------------------------------------------------
 // Replies (comments). A reply federates as a `Note` with `inReplyTo` pointing at
 // the post it answers and a `Mention` of that post's author — exactly how
 // Mastodon threads a reply. It is delivered to our followers AND to the
 // author's own inbox, because they need not follow us. Served on the SAME
 // object path as every other post kind, so it tombstones like any post.
-// ---------------------------------------------------------------------------
 
 /** The delivery-facing view of a reply post (its reply target guaranteed present). */
 export interface DeliverableReply {
@@ -733,7 +709,6 @@ export interface DeliverableReply {
   in_reply_to_handle: string | null
 }
 
-/** Narrow a stored feed post to a `DeliverableReply`, or null when it isn't one. */
 export const toDeliverableReply = (post: FeedPostRecord): DeliverableReply | null =>
   post.kind === 'reply' && post.in_reply_to_uri != null && post.in_reply_to_actor_uri != null
     ? {
@@ -848,7 +823,6 @@ export const deliverFeedReplyPost = async (
   await sendToFollowersAndMentioned(ctx, user, replyMentions(post, authorInbox), create)
 }
 
-/** Build and send the `Update{Note}` for an edited reply to followers and the answered author. */
 export const deliverFeedReplyUpdate = async (
   deps: FeedDeliveryDeps,
   user: string,

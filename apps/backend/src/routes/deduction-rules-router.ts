@@ -1,10 +1,5 @@
 import type { RequestHandler } from 'express'
 
-/**
- * Deduction rules route group.
- *
- * Handles: /deduction-rules/*
- */
 import {
   type AddDeductionRuleBody,
   addDeductionRuleBodySchema,

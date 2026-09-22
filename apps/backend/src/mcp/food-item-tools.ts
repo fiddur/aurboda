@@ -1,6 +1,4 @@
 /**
- * MCP food item tools.
- *
  * Search and read go through the merged food-items service so MCP callers
  * see central shared-library items (e.g. Livsmedelsverket) alongside the
  * user's own. Writes (add/update/delete) target the per-user table only —
@@ -344,12 +342,10 @@ export const registerFoodItemTools = (server: McpServer, user: string, centralDb
     },
   )
 
-  // ────────────────────────────────────────────────────────────────────────
   // Portion sizings — extra units a food can be logged in, beyond its base
   // unit. Each portion is a named unit (`label_unit`) plus `base_equivalent`:
   // how many of the food's base unit ONE of this unit equals. Works for
   // per-user OR central food items via the soft pointer on food_item_id.
-  // ────────────────────────────────────────────────────────────────────────
 
   server.tool(
     'list_food_item_portions',

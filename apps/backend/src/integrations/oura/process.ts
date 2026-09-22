@@ -1,10 +1,3 @@
-/**
- * Oura data processing module.
- *
- * Handles transforming Oura API responses into database records.
- * Separated from oura-sync.ts to keep file sizes manageable.
- */
-
 import type { MetricType } from '../../schema.ts'
 import type { OuraSleepPeriodRaw, OuraTagWithComment } from './client.ts'
 
@@ -17,7 +10,6 @@ import {
   upsertSyncedNote,
 } from '../../db/index.ts'
 
-/** Oura data types that can be synced */
 export type OuraDataType =
   | 'dailyCardiovascularAge'
   | 'dailyReadiness'
@@ -83,9 +75,6 @@ interface OuraSession {
   motion?: unknown
 }
 
-/**
- * Process Oura cardiovascular age data.
- */
 const processCardiovascularAge = async (user: string, data: OuraCardiovascularAge[]) => {
   const points: TimeSeriesPoint[] = []
 
@@ -115,9 +104,6 @@ const processCardiovascularAge = async (user: string, data: OuraCardiovascularAg
   }
 }
 
-/**
- * Process Oura readiness data.
- */
 const processReadiness = async (user: string, data: OuraReadiness[]) => {
   const points: TimeSeriesPoint[] = []
 
@@ -147,9 +133,6 @@ const processReadiness = async (user: string, data: OuraReadiness[]) => {
   }
 }
 
-/**
- * Process Oura resilience data.
- */
 const processResilience = async (user: string, data: OuraResilience[]) => {
   const points: TimeSeriesPoint[] = []
   const levelToScore: Record<string, number> = {
@@ -185,7 +168,6 @@ const processResilience = async (user: string, data: OuraResilience[]) => {
   }
 }
 
-/** Mapping from Oura sleep contributor names to our metric types */
 const sleepContributorMetricMap: Record<string, MetricType> = {
   deep_sleep: 'sleep_deep_score',
   efficiency: 'sleep_efficiency',
@@ -196,9 +178,6 @@ const sleepContributorMetricMap: Record<string, MetricType> = {
   total_sleep: 'sleep_total_score',
 }
 
-/**
- * Process Oura daily sleep data.
- */
 const processDailySleep = async (user: string, data: OuraSleep[]) => {
   const points: TimeSeriesPoint[] = []
 
@@ -222,7 +201,6 @@ const processDailySleep = async (user: string, data: OuraSleep[]) => {
       })
     }
 
-    // Extract sleep contributors as separate metrics
     if (record.contributors) {
       for (const [key, value] of Object.entries(record.contributors)) {
         const metric = sleepContributorMetricMap[key]
@@ -243,9 +221,6 @@ const processDailySleep = async (user: string, data: OuraSleep[]) => {
   }
 }
 
-/**
- * Extract time series points from Oura interval-based data.
- */
 const extractIntervalPoints = (
   startTime: Date,
   intervalData: OuraIntervalData | undefined,
@@ -299,7 +274,6 @@ const processSessions = async (user: string, data: OuraSession[]) => {
       title: record.type,
     })
 
-    // Extract HR and HRV samples to time series
     const hrPoints = extractIntervalPoints(record.startTime, record.heartRate, 'heart_rate')
     const hrvPoints = extractIntervalPoints(record.startTime, record.hrv, 'hrv_rmssd')
     const timeSeriesPoints = [...hrPoints, ...hrvPoints]
@@ -309,8 +283,6 @@ const processSessions = async (user: string, data: OuraSession[]) => {
     }
   }
 }
-
-// ── Oura sleep period processing ─────────────────────────────────────────────
 
 /**
  * Mapping from Oura sleep_phase_5_min digits to Health Connect stage numbers.
@@ -348,12 +320,11 @@ export const convertOuraSleepPhases = (phases: string | null, bedtimeStart: Date
 
   for (let i = 0; i < phases.length; i++) {
     const hcStage = OURA_PHASE_TO_HC_STAGE[phases[i]]
-    if (hcStage === undefined) continue // skip unknown digits
+    if (hcStage === undefined) continue
 
     const epochStart = new Date(bedtimeStart.getTime() + i * epochMs)
 
     if (hcStage !== currentStage) {
-      // Close previous stage
       if (currentStage !== null && stageStart !== null) {
         stages.push({
           endTime: epochStart.toISOString(),
@@ -366,7 +337,6 @@ export const convertOuraSleepPhases = (phases: string | null, bedtimeStart: Date
     }
   }
 
-  // Close final stage
   if (currentStage !== null && stageStart !== null) {
     const finalEnd = new Date(bedtimeStart.getTime() + phases.length * epochMs)
     stages.push({
@@ -404,9 +374,6 @@ const OURA_SLEEP_TYPE_MAP: Record<string, 'sleep' | 'meditation'> = {
   rest: 'meditation',
 }
 
-/**
- * Process Oura individual sleep period data (night sleep, naps, rest).
- */
 const processSleep = async (user: string, data: OuraSleepPeriodRaw[]) => {
   for (const record of data) {
     const bedtimeStart = new Date(record.bedtime_start)
@@ -457,7 +424,6 @@ const processSleep = async (user: string, data: OuraSleepPeriodRaw[]) => {
       title,
     })
 
-    // Extract HR and HRV interval data to time series
     const hrPoints = extractIntervalPoints(bedtimeStart, record.heart_rate ?? undefined, 'heart_rate')
     const hrvPoints = extractIntervalPoints(
       bedtimeStart,
@@ -472,9 +438,6 @@ const processSleep = async (user: string, data: OuraSleepPeriodRaw[]) => {
   }
 }
 
-/**
- * Process Oura tag data.
- */
 const processTags = async (user: string, data: OuraTagWithComment[]) => {
   for (const record of data) {
     await insertRawRecord(user, {
@@ -485,7 +448,6 @@ const processTags = async (user: string, data: OuraTagWithComment[]) => {
       source: 'oura',
     })
 
-    // Resolve or auto-create an activity type definition from the tag display name
     const activityType = await resolveOrCreateActivityType(user, record.tag)
 
     const activityId = await insertActivity(user, {
@@ -509,13 +471,6 @@ const processTags = async (user: string, data: OuraTagWithComment[]) => {
   }
 }
 
-/**
- * Process Oura data and store in database.
- *
- * @param user - The user identifier
- * @param dataType - The type of Oura data being processed
- * @param data - Array of Oura records
- */
 export const processOuraData = async (
   user: string,
   dataType: OuraDataType,

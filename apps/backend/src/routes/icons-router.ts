@@ -1,12 +1,3 @@
-/**
- * Icons route group.
- *
- * Handles: /icons/*
- *
- * POST /icons — upload an icon (authenticated)
- * GET /icons/:user/:id — serve an icon (public, cached 1 year)
- * DELETE /icons/:id — delete an icon (authenticated)
- */
 import type { RequestHandler } from 'express'
 
 import multer from 'multer'

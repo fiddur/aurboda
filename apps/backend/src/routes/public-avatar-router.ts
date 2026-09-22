@@ -1,6 +1,4 @@
 /**
- * Public avatar serving (UNAUTHENTICATED).
- *
  * `GET /u/:username/avatar.png` returns the user's uploaded avatar, or a
  * deterministic identicon when none is set / the user is unknown — so the
  * profile page, OG cards, and the ActivityPub actor `icon` always have an

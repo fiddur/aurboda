@@ -1,8 +1,4 @@
-/**
- * MCP challenge tools — create/list/update/delete a hosted challenge, join one
- * by URL (local or federated), and discover open ones from followed peers.
- * Mirrors the REST `/challenges` capability.
- */
+/** Mirrors the REST `/challenges` capability. */
 import type { ChallengeSpec } from '@aurboda/api-spec'
 
 import {

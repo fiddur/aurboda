@@ -1,6 +1,4 @@
 /**
- * OpenStreetMap slippy-map tile helpers for the route basemap.
- *
  * Web Mercator (EPSG:3857) projection math + a tile fetcher for
  * `tile.openstreetmap.org`. The route renderer projects the track into the same
  * world-pixel space as the tiles so they align, fetches the covering tiles, and

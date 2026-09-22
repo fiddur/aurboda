@@ -1,7 +1,6 @@
 /**
- * REST routes for managing user-defined sensitivity flags
- * (dairy / gluten / alcohol / …). The food-item ↔ flag junction lives on
- * the food-items router (set/clear assignments per food item).
+ * The food-item ↔ flag junction lives on the food-items router (set/clear
+ * assignments per food item).
  */
 import {
   type AddSensitivityFlagBody,

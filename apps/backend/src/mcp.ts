@@ -1,6 +1,4 @@
 /**
- * Stateless MCP server router.
- *
  * Each request creates a fresh McpServer + transport pair. No session tracking
  * is needed since the server only exposes tools (no resources, subscriptions,
  * or server-initiated notifications).
@@ -51,7 +49,6 @@ import { registerSensitivityTools } from './mcp/sensitivity-tools.ts'
 import { registerSettingsTools } from './mcp/settings-tools.ts'
 import { registerSharedDashboardTools } from './mcp/shared-dashboard-tools.ts'
 import { registerSyncTools } from './mcp/sync-tools.ts'
-// tag-tools removed: tags are now activities
 import { registerTrainingLoadTools } from './mcp/training-load-tools.ts'
 import { registerTrendTools } from './mcp/trend-tools.ts'
 import { createDefaultEngineDeps } from './services/deduction-deps.ts'
@@ -140,13 +137,6 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
   return server
 }
 
-/**
- * Create a stateless MCP router.
- *
- * Each POST request creates a fresh McpServer and transport. No session
- * persistence or tracking is needed — the server only exposes tools with
- * no server-initiated notifications.
- */
 export function createMcpRouter(auth: Auth, deps: McpDeps = {}): Router {
   const router = Router()
 
@@ -170,7 +160,6 @@ export function createMcpRouter(auth: Auth, deps: McpDeps = {}): Router {
     }
   }
 
-  // POST /mcp - Handle JSON-RPC requests (stateless: fresh server per request)
   router.post('/', async (req: Request, res: Response) => {
     const user = await getAuthenticatedUser(req)
     if (!user) {
