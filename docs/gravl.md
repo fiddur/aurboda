@@ -39,6 +39,7 @@ A synced note (`source = 'gravl'`) renders the same data as text — `Bench Pres
 ### What is deliberately not imported
 
 - **`External` workouts.** These are Health Connect sessions round-tripped _into_ Gravl from other apps (Garmin, Polar, …). They carry no exercise data, and importing them would give every watch session a third copy.
+  The Gravl app also writes them _back_ into Health Connect as strength-training sessions under its own `gravl-session-<uuid>` id, so they first land here as a `gravl` activity (see [Enrich, don't duplicate](#enrich-dont-duplicate)). As soon as the Gravl API reports the workout as `External` — the enrichment job a minute after the Health Connect upload, or the next poll — that copy is soft-deleted and the original session (the Garmin activity, or the other app's Health Connect row) is the one shown again. The soft delete is a tombstone: a re-delivered Health Connect record does not resurrect it.
 - Heart rate, GPS and per-set notes are not in the Gravl API; HR and location come from the watch (Garmin / Health Connect) on the same activity.
 - Personal records, body measurements, templates and splits — see the follow-ups in [#1042](https://github.com/fiddur/aurboda/issues/1042).
 
@@ -77,7 +78,9 @@ Then **Sync Now**, or wait for the background poll.
 - **Status:** `GET /api/sync/gravl/status`, `get_sync_status(provider: "gravl")`
 - **Reset:** `DELETE /api/sync/gravl/state`
 
-A run lists workouts in a window, drops `External` ones, fetches each real workout's detail (the list has no sets) and stores it. The window is 90 days on the first run or a full resync, otherwise from **two days before the last successful sync** — Gravl workouts get edited after the fact, and re-processing is idempotent.
+A run lists workouts in a window, removes Aurboda's own copy of the `External` ones, fetches each real workout's detail (the list has no sets) and stores it. The window is 90 days on the first run or a full resync, otherwise from **two days before the last successful sync** — Gravl workouts get edited after the fact, and re-processing is idempotent.
+
+Removals are reported in the audit log only; they do not change the three counters. Copies stored before this cleanup existed are cleared by the normal window as long as they fall inside it (two days before the last sync); older ones need a full resync — `POST /api/sync/gravl` with `"full_resync": true` (90 days, or from `start_date`).
 
 **Rate limits:** 100 requests per 15 minutes per app + user. A run costs one list page plus one detail request per workout. On a 429 the sync state records Gravl's `Retry-After` (or a 5-minute hold when the header is missing); later runs and Health Connect-triggered enrichments are skipped until it passes, and `last_sync_time` is not advanced so the same window is re-covered.
 

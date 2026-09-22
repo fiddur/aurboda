@@ -7,8 +7,11 @@ vi.mock('../../db/index.ts', () => ({
   findActivityByExternalId: vi.fn(),
   insertActivity: vi.fn(),
   insertRawRecord: vi.fn(),
+  materializeSuperseded: vi.fn(),
+  softDeleteActivityByExternalId: vi.fn(),
 }))
 vi.mock('../../db/notes.ts', () => ({ upsertSyncedNote: vi.fn() }))
+vi.mock('../../services/audit-log.ts', () => ({ auditInfo: vi.fn() }))
 
 import {
   buildGravlActivity,
@@ -114,19 +117,39 @@ describe('formatGravlSetsNote', () => {
 })
 
 describe('processGravlWorkout', () => {
-  const makeDeps = (existing: { id: string; data?: Record<string, unknown> } | null): GravlProcessDeps => ({
+  const makeDeps = (
+    existing: { id: string; data?: Record<string, unknown>; start_time?: Date } | null,
+  ): GravlProcessDeps => ({
     adoptLegacyActivity: vi.fn().mockResolvedValue(null),
     findActivityByExternalId: vi.fn().mockResolvedValue(existing),
     insertActivity: vi.fn().mockResolvedValue('act-1'),
     insertRawRecord: vi.fn(),
+    materializeSuperseded: vi.fn(),
+    softDeleteActivityByExternalId: vi.fn(),
     upsertSyncedNote: vi.fn(),
   })
 
-  it('skips external round-trips without touching the database', async () => {
+  it('skips an external round-trip we never stored', async () => {
     const deps = makeDeps(null)
     expect(await processGravlWorkout('alice', detail({ type: 'External' }), deps)).toBe('skipped')
+    expect(deps.softDeleteActivityByExternalId).not.toHaveBeenCalled()
+    expect(deps.materializeSuperseded).not.toHaveBeenCalled()
     expect(deps.insertRawRecord).not.toHaveBeenCalled()
     expect(deps.insertActivity).not.toHaveBeenCalled()
+  })
+
+  it('removes the Health Connect copy of an external round-trip and re-merges around it', async () => {
+    const deps = makeDeps({ id: 'act-1', start_time: new Date('2026-09-03T05:16:12Z') })
+    expect(await processGravlWorkout('alice', detail({ type: 'External' }), deps)).toBe('removed')
+    expect(deps.softDeleteActivityByExternalId).toHaveBeenCalledWith(
+      'alice',
+      'gravl',
+      'gravl-workout-97248067-7947-4715-8fc9-d0048369a0d0',
+    )
+    expect(deps.materializeSuperseded).toHaveBeenCalledWith('alice', new Date('2026-09-03T05:16:12Z'))
+    expect(deps.insertRawRecord).not.toHaveBeenCalled()
+    expect(deps.insertActivity).not.toHaveBeenCalled()
+    expect(deps.adoptLegacyActivity).not.toHaveBeenCalled()
   })
 
   it('claims the Health Connect copy by Gravl’s clientRecordId, then upserts and writes the note', async () => {

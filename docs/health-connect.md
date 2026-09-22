@@ -115,7 +115,7 @@ The Garmin sleep date comes from the client record id plus the offset in the rec
 
 The provider's own sync then upserts onto the **same row** (`ON CONFLICT (source, external_id)`) and enriches it: Gravl adds the sets, Garmin adds distance/calories/HR and the per-second detail. Rows written before this existed (no `external_id`) are claimed rather than duplicated: a `garmin` row with the same `garmin_activity_id`, a `health_connect` row with the same client record, or one at the same type and start time.
 
-Each recognised session also enqueues a **source enrichment** job so the provider is asked for that session right away instead of at the next poll (one minute delay, retried with backoff; Garmin jobs collapse to one sync per kind per user). Health Connect deletions only remove `health_connect` rows; a re-sourced row belongs to its provider and stays. Nothing is merged or deleted retroactively — pairs that existed before are still hidden by the query-time cross-source merge.
+Each recognised session also enqueues a **source enrichment** job so the provider is asked for that session right away instead of at the next poll (one minute delay, retried with backoff; Garmin jobs collapse to one sync per kind per user). Health Connect deletions only remove `health_connect` rows; a re-sourced row belongs to its provider and stays — though the provider itself can still drop it: Gravl removes its copy of a session its API reports as `External`, a round-trip of another app's session (see [Gravl](./gravl.md#what-is-deliberately-not-imported)). Nothing is merged or deleted retroactively — pairs that existed before are still hidden by the query-time cross-source merge.
 
 ### Activity notes
 

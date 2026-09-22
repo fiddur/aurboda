@@ -18,6 +18,7 @@ import {
   insertActivity,
   insertOverride,
   markActivityDetailSynced,
+  softDeleteActivityByExternalId,
   updateActivity,
 } from './activities/index.ts'
 
@@ -1199,6 +1200,39 @@ describe('Activities Integration Tests', () => {
       expect(await findActivityByExternalId(user, 'garmin', 'gravl-workout-abc')).toBeNull()
       await deleteActivity(user, id!)
       expect(await findActivityByExternalId(user, 'gravl', 'gravl-workout-abc')).toBeNull()
+    })
+  })
+
+  describe('softDeleteActivityByExternalId', () => {
+    test('leaves a tombstone a re-delivered record cannot resurrect', async () => {
+      const user = getTestUser()
+      const id = await insertActivity(user, {
+        activity_type: 'strength_training',
+        data: { set_count: 3 },
+        external_id: 'gravl-workout-tombstone',
+        source: 'gravl',
+        start_time: new Date('2026-09-04T05:16:21Z'),
+        title: 'External round-trip',
+      })
+
+      expect(await softDeleteActivityByExternalId(user, 'gravl', 'gravl-workout-tombstone')).toBe(true)
+      expect(await findActivityByExternalId(user, 'gravl', 'gravl-workout-tombstone')).toBeNull()
+      expect(await softDeleteActivityByExternalId(user, 'gravl', 'gravl-workout-tombstone')).toBe(false)
+
+      await insertActivity(user, {
+        activity_type: 'exercise',
+        external_id: 'gravl-workout-tombstone',
+        source: 'gravl',
+        start_time: new Date('2026-09-04T05:16:21Z'),
+        title: 'Re-delivered',
+      })
+
+      expect(await findActivityByExternalId(user, 'gravl', 'gravl-workout-tombstone')).toBeNull()
+      expect(await getActivityById(user, id)).toBeNull()
+
+      const tombstone = await getActivityById(user, id, true)
+      expect(tombstone).toMatchObject({ activity_type: 'strength_training', title: 'External round-trip' })
+      expect(tombstone?.deleted_at).toBeInstanceOf(Date)
     })
   })
 })
