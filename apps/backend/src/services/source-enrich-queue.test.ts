@@ -72,6 +72,18 @@ describe('runSourceEnrichment', () => {
     expect(deps.onEnriched).not.toHaveBeenCalled()
   })
 
+  it('notifies when the external round-trip copy was removed, so rules re-run', async () => {
+    const deps = makeDeps({ enrichGravl: vi.fn().mockResolvedValue('removed') })
+    expect(await runSourceEnrichment(job(), deps)).toBe('enriched')
+    expect(deps.onEnriched).toHaveBeenCalledWith('alice')
+    expect(auditInfo).toHaveBeenCalledWith(
+      'alice',
+      'sync',
+      expect.stringContaining('removed'),
+      expect.anything(),
+    )
+  })
+
   it('runs the Garmin activities sync for an activity and the sleep sync for a night', async () => {
     const deps = makeDeps()
     expect(await runSourceEnrichment(job({ key: '24218667980', provider: 'garmin' }), deps)).toBe('enriched')

@@ -11,9 +11,12 @@ vi.mock('../../db/index.ts', () => ({
   getSyncState: vi.fn(),
   insertActivity: vi.fn(),
   insertRawRecord: vi.fn(),
+  materializeSuperseded: vi.fn(),
+  softDeleteActivityByExternalId: vi.fn(),
   upsertSyncState: vi.fn(),
 }))
 vi.mock('../../db/notes.ts', () => ({ upsertSyncedNote: vi.fn() }))
+vi.mock('../../services/audit-log.ts', () => ({ auditError: vi.fn(), auditInfo: vi.fn() }))
 vi.mock('../../services/settings.ts', () => ({ getSettings: vi.fn() }))
 
 import { GravlApiError } from './client.ts'
@@ -62,7 +65,7 @@ const makeClient = (overrides: Partial<GravlClient> = {}): GravlClient =>
 
 const makeDeps = (
   state: SyncState | null,
-  outcomes: Record<string, 'enriched' | 'updated' | 'created' | 'skipped'> = {},
+  outcomes: Record<string, 'enriched' | 'updated' | 'created' | 'removed' | 'skipped'> = {},
 ) => {
   const deps: GravlSyncDeps = {
     auditError: vi.fn(),
@@ -70,13 +73,14 @@ const makeDeps = (
     getSyncState: vi.fn().mockResolvedValue(state),
     now: () => NOW,
     processWorkout: vi.fn(async (_user, detail) => outcomes[detail.id] ?? 'created'),
+    removeExternalWorkout: vi.fn().mockResolvedValue('removed'),
     upsertSyncState: vi.fn(),
   }
   return deps
 }
 
 describe('syncGravlWorkouts', () => {
-  it('lists the first-sync window, skips external workouts, fetches detail and counts outcomes', async () => {
+  it('lists the first-sync window, removes external copies, fetches detail and counts outcomes', async () => {
     const client = makeClient()
     const deps = makeDeps(null, { a: 'enriched', b: 'created' })
 
@@ -95,6 +99,7 @@ describe('syncGravlWorkouts', () => {
     })
     expect(client.getWorkout).toHaveBeenCalledTimes(2)
     expect(client.getWorkout).not.toHaveBeenCalledWith('gat', 'ext')
+    expect(deps.removeExternalWorkout).toHaveBeenCalledWith('alice', 'ext')
     expect(deps.upsertSyncState).toHaveBeenLastCalledWith('alice', {
       data_type: 'workouts',
       error_message: undefined,
@@ -214,6 +219,12 @@ describe('enrichGravlWorkout', () => {
     expect(await enrichGravlWorkout('alice', client, 'a', deps)).toBe('enriched')
     expect(client.getWorkout).toHaveBeenCalledWith('gat', 'a')
     expect(deps.processWorkout).toHaveBeenCalledWith('alice', expect.objectContaining({ id: 'a' }))
+  })
+
+  it('reports a removed external round-trip', async () => {
+    const client = makeClient()
+    const deps = enrichDeps(null, vi.fn().mockResolvedValue('removed'))
+    expect(await enrichGravlWorkout('alice', client, 'a', deps)).toBe('removed')
   })
 
   it('propagates API failures so the queue can retry', async () => {

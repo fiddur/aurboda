@@ -2,8 +2,9 @@
  * Gravl sync orchestration (#1042).
  *
  * One sync-state row, `provider = 'gravl'`, `data_type = 'workouts'`. Each run
- * lists workouts in a window, drops the `External` round-trips, fetches every
- * real workout's detail (the list has no sets) and hands it to the processor.
+ * lists workouts in a window, removes our Health Connect copy of the `External`
+ * round-trips, fetches every real workout's detail (the list has no sets) and
+ * hands it to the processor.
  *
  * Windows: 90 days on the first run or a full resync; otherwise from two days
  * before the last successful sync, because Gravl workouts get edited after the
@@ -27,7 +28,7 @@ import type { GravlWorkoutDetail } from './types.ts'
 import { getAllSyncStates, getSyncState, upsertSyncState } from '../../db/index.ts'
 import { auditError, auditInfo } from '../../services/audit-log.ts'
 import { isGravlAuthFailure, isGravlRateLimit } from './client.ts'
-import { isExternalWorkout, processGravlWorkout } from './process.ts'
+import { isExternalWorkout, processGravlWorkout, removeExternalGravlWorkout } from './process.ts'
 
 export const GRAVL_PROVIDER = 'gravl'
 export const GRAVL_DATA_TYPE = 'workouts'
@@ -46,6 +47,7 @@ export interface GravlSyncDeps {
   getSyncState: typeof getSyncState
   now: () => Date
   processWorkout: (user: string, detail: GravlWorkoutDetail) => Promise<GravlProcessOutcome>
+  removeExternalWorkout: (user: string, workoutId: string) => Promise<'removed' | 'skipped'>
   upsertSyncState: typeof upsertSyncState
 }
 
@@ -55,6 +57,7 @@ const defaultDeps = (): GravlSyncDeps => ({
   getSyncState,
   now: () => new Date(),
   processWorkout: (user, detail) => processGravlWorkout(user, detail),
+  removeExternalWorkout: (user, workoutId) => removeExternalGravlWorkout(user, workoutId),
   upsertSyncState,
 })
 
@@ -71,7 +74,7 @@ const emptyCounts = () => ({ activities_created: 0, activities_enriched: 0, work
 type SyncCounts = ReturnType<typeof emptyCounts>
 
 const countOutcome = (counts: SyncCounts, outcome: GravlProcessOutcome): void => {
-  if (outcome === 'skipped') return
+  if (outcome === 'skipped' || outcome === 'removed') return
   counts.workouts_processed++
   if (outcome === 'enriched') counts.activities_enriched++
   else if (outcome === 'created') counts.activities_created++
@@ -83,7 +86,7 @@ const processWindow = async (
   client: GravlClient,
   token: string,
   window: { start: Date; end: Date },
-  deps: Pick<GravlSyncDeps, 'processWorkout'>,
+  deps: Pick<GravlSyncDeps, 'processWorkout' | 'removeExternalWorkout'>,
   counts: SyncCounts,
 ): Promise<void> => {
   let page = 1
@@ -91,7 +94,10 @@ const processWindow = async (
   while (hasNext) {
     const listed = await client.listWorkouts(token, { endDate: window.end, page, startDate: window.start })
     for (const summary of listed.items) {
-      if (isExternalWorkout(summary)) continue
+      if (isExternalWorkout(summary)) {
+        await deps.removeExternalWorkout(user, summary.id)
+        continue
+      }
       const detail = await client.getWorkout(token, summary.id)
       countOutcome(counts, await deps.processWorkout(user, detail))
     }
@@ -172,8 +178,9 @@ export const syncGravlWorkouts = async (
 /**
  * Fetch and store one workout by id — the enrichment path taken when Health
  * Connect delivers a Gravl session (#1080). Throws on API failure so the
- * queue can retry; returns 'skipped' for external round-trips and while a
- * rate-limit hold is in force (the next poll re-covers the workout).
+ * queue can retry; returns 'removed' when the workout turned out to be an
+ * external round-trip whose copy we dropped, and 'skipped' while a rate-limit
+ * hold is in force (the next poll re-covers the workout).
  */
 export const enrichGravlWorkout = async (
   user: string,

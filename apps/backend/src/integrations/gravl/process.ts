@@ -12,6 +12,11 @@
  * (`exercise`, `weight` in kg, `reps`, `time` in seconds) plus Gravl's extras.
  * A human-readable rendering also goes into a synced note so the detail is
  * visible before the UI can render set arrays.
+ *
+ * A workout the Gravl app itself imported from another app (`type: 'External'`)
+ * is a round-trip: Gravl writes it back into Health Connect under its own
+ * `clientRecordId`, so it first lands here as a `gravl` strength session that
+ * outranks the original. Those copies are removed rather than ignored.
  */
 
 import type { Activity, RawRecord } from '../../db/types.ts'
@@ -22,8 +27,11 @@ import {
   findActivityByExternalId,
   insertActivity,
   insertRawRecord,
+  materializeSuperseded,
+  softDeleteActivityByExternalId,
 } from '../../db/index.ts'
 import { upsertSyncedNote } from '../../db/notes.ts'
+import { auditInfo } from '../../services/audit-log.ts'
 import { GRAVL_HC_ORIGIN, gravlWorkoutExternalId } from '../../services/source-identity.ts'
 
 /** Gravl reports every set weight in pounds regardless of the user's unit preference. */
@@ -55,6 +63,8 @@ export interface GravlProcessDeps {
   findActivityByExternalId: typeof findActivityByExternalId
   insertActivity: typeof insertActivity
   insertRawRecord: typeof insertRawRecord
+  materializeSuperseded: typeof materializeSuperseded
+  softDeleteActivityByExternalId: typeof softDeleteActivityByExternalId
   upsertSyncedNote: typeof upsertSyncedNote
 }
 
@@ -63,6 +73,8 @@ const defaultDeps: GravlProcessDeps = {
   findActivityByExternalId,
   insertActivity,
   insertRawRecord,
+  materializeSuperseded,
+  softDeleteActivityByExternalId,
   upsertSyncedNote,
 }
 
@@ -182,9 +194,34 @@ export const buildGravlRawRecord = (detail: GravlWorkoutDetail): RawRecord => ({
 /**
  * `enriched`: a row that reached us another way (Health Connect) gained its
  * sets; `updated`: a row Gravl itself wrote earlier was re-processed;
- * `created`: nothing existed for the workout; `skipped`: an External round-trip.
+ * `created`: nothing existed for the workout; `removed`: an External
+ * round-trip whose Health Connect copy was removed; `skipped`: an External
+ * round-trip with no live row.
  */
-export type GravlProcessOutcome = 'enriched' | 'updated' | 'created' | 'skipped'
+export type GravlProcessOutcome = 'enriched' | 'updated' | 'created' | 'removed' | 'skipped'
+
+/**
+ * Drop our own copy of a session Gravl merely re-exported. The soft delete is a
+ * tombstone: `insertActivity` only updates rows with `deleted_at IS NULL`, so a
+ * re-delivered Health Connect record neither resurrects nor updates it.
+ */
+export const removeExternalGravlWorkout = async (
+  user: string,
+  workoutId: string,
+  deps: GravlProcessDeps = defaultDeps,
+): Promise<'removed' | 'skipped'> => {
+  const externalId = gravlWorkoutExternalId(workoutId)
+  const existing = await deps.findActivityByExternalId(user, 'gravl', externalId)
+  if (!existing) return 'skipped'
+
+  await deps.softDeleteActivityByExternalId(user, 'gravl', externalId)
+  await deps.materializeSuperseded(user, existing.start_time)
+  auditInfo(user, 'sync', 'Removed Health Connect copy of external Gravl workout', {
+    activity_id: existing.id,
+    workout_id: workoutId.toLowerCase(),
+  })
+  return 'removed'
+}
 
 /**
  * Store one Gravl workout. Claims the Health Connect copy of the session
@@ -197,7 +234,7 @@ export const processGravlWorkout = async (
   detail: GravlWorkoutDetail,
   deps: GravlProcessDeps = defaultDeps,
 ): Promise<GravlProcessOutcome> => {
-  if (isExternalWorkout(detail)) return 'skipped'
+  if (isExternalWorkout(detail)) return removeExternalGravlWorkout(user, detail.id, deps)
 
   const activity = buildGravlActivity(detail)
   const externalId = activity.external_id!
