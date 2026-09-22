@@ -1,7 +1,3 @@
-/**
- * Notes schemas.
- */
-
 import { z } from 'zod'
 
 import {
@@ -55,9 +51,6 @@ export const noteReplySchema = z
 
 export type NoteReply = z.infer<typeof noteReplySchema>
 
-/**
- * Note schema.
- */
 export const noteSchema = z
   .object({
     content: z.string().meta({ description: 'Note content (markdown)' }),
@@ -218,9 +211,6 @@ export const updateNoteBodySchema = z
 
 export type UpdateNoteBody = z.infer<typeof updateNoteBodySchema>
 
-/**
- * Notes query schema (by entity).
- */
 export const notesQuerySchema = z
   .object({
     entity_id: z
@@ -246,9 +236,6 @@ export const notesQueryRangeSchema = z
 
 export type NotesRangeQuery = z.infer<typeof notesQueryRangeSchema>
 
-/**
- * Note params (for single note operations).
- */
 export const noteParamsSchema = z
   .object({
     id: z.string().uuid().meta({ description: 'Note ID' }),
@@ -257,27 +244,18 @@ export const noteParamsSchema = z
 
 export type NoteParams = z.infer<typeof noteParamsSchema>
 
-/**
- * Notes response schema.
- */
 export const notesResponseSchema = createDataArrayResponseSchema(noteSchema).meta({
   id: 'NotesResponse',
 })
 
 export type NotesResponse = z.infer<typeof notesResponseSchema>
 
-/**
- * Single note response schema.
- */
 export const noteResponseSchema = createDataResponseSchema(noteSchema).meta({
   id: 'NoteResponse',
 })
 
 export type NoteResponse = z.infer<typeof noteResponseSchema>
 
-/**
- * Delete note response.
- */
 export const deleteNoteResponseSchema = baseResponseSchema.meta({ id: 'DeleteNoteResponse' })
 
 export type DeleteNoteResponse = z.infer<typeof deleteNoteResponseSchema>

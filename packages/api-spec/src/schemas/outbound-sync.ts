@@ -1,6 +1,4 @@
 /**
- * Outbound sync schemas.
- *
  * Used by the Android app to fetch pending changes from the backend
  * and write them to Health Connect.
  */
@@ -9,13 +7,6 @@ import { z } from 'zod'
 
 import { baseResponseSchema, iso8601DateTimeSchema } from './common.ts'
 
-// ============================================================================
-// Outbound Sync Entry
-// ============================================================================
-
-/**
- * Outbound sync operation type.
- */
 export const outboundSyncOperationSchema = z.enum(['insert', 'update', 'delete']).meta({
   description: 'Type of operation to perform in Health Connect',
   id: 'OutboundSyncOperation',
@@ -23,9 +14,6 @@ export const outboundSyncOperationSchema = z.enum(['insert', 'update', 'delete']
 
 export type OutboundSyncOperation = z.infer<typeof outboundSyncOperationSchema>
 
-/**
- * Outbound sync entry status.
- */
 export const outboundSyncStatusSchema = z.enum(['pending', 'synced', 'failed']).meta({
   description: 'Status of the outbound sync entry',
   id: 'OutboundSyncStatus',
@@ -33,9 +21,6 @@ export const outboundSyncStatusSchema = z.enum(['pending', 'synced', 'failed']).
 
 export type OutboundSyncStatus = z.infer<typeof outboundSyncStatusSchema>
 
-/**
- * A single outbound sync entry representing a change to push to Health Connect.
- */
 export const outboundSyncEntrySchema = z
   .object({
     created_at: iso8601DateTimeSchema.meta({ description: 'When the change was queued' }),
@@ -59,13 +44,6 @@ export const outboundSyncEntrySchema = z
 
 export type OutboundSyncEntry = z.infer<typeof outboundSyncEntrySchema>
 
-// ============================================================================
-// API Request/Response Schemas
-// ============================================================================
-
-/**
- * Response schema for GET /sync/outbound - pending changes.
- */
 export const outboundSyncResponseSchema = baseResponseSchema
   .extend({
     data: z.array(outboundSyncEntrySchema).optional().meta({
@@ -79,9 +57,6 @@ export const outboundSyncResponseSchema = baseResponseSchema
 
 export type OutboundSyncResponse = z.infer<typeof outboundSyncResponseSchema>
 
-/**
- * Single ack item for acknowledging a synced entry.
- */
 export const outboundSyncAckItemSchema = z
   .object({
     hc_record_id: z
@@ -94,9 +69,6 @@ export const outboundSyncAckItemSchema = z
 
 export type OutboundSyncAckItem = z.infer<typeof outboundSyncAckItemSchema>
 
-/**
- * Request body for POST /sync/outbound/ack - acknowledge synced entries.
- */
 export const outboundSyncAckBodySchema = z
   .object({
     entries: z.array(outboundSyncAckItemSchema).min(1).meta({
@@ -107,9 +79,6 @@ export const outboundSyncAckBodySchema = z
 
 export type OutboundSyncAckBody = z.infer<typeof outboundSyncAckBodySchema>
 
-/**
- * Response for POST /sync/outbound/ack.
- */
 export const outboundSyncAckResponseSchema = baseResponseSchema
   .extend({
     acknowledged: z.number().int().optional().meta({
@@ -120,13 +89,6 @@ export const outboundSyncAckResponseSchema = baseResponseSchema
 
 export type OutboundSyncAckResponse = z.infer<typeof outboundSyncAckResponseSchema>
 
-// ============================================================================
-// Fail Reporting
-// ============================================================================
-
-/**
- * Single fail item for reporting a sync failure.
- */
 export const outboundSyncFailItemSchema = z
   .object({
     id: z.string().uuid().meta({ description: 'Sync queue entry ID that failed' }),
@@ -136,9 +98,6 @@ export const outboundSyncFailItemSchema = z
 
 export type OutboundSyncFailItem = z.infer<typeof outboundSyncFailItemSchema>
 
-/**
- * Request body for POST /sync/outbound/fail - report sync failures.
- */
 export const outboundSyncFailBodySchema = z
   .object({
     entries: z.array(outboundSyncFailItemSchema).min(1).meta({
@@ -149,9 +108,6 @@ export const outboundSyncFailBodySchema = z
 
 export type OutboundSyncFailBody = z.infer<typeof outboundSyncFailBodySchema>
 
-/**
- * Response for POST /sync/outbound/fail.
- */
 export const outboundSyncFailResponseSchema = baseResponseSchema
   .extend({
     reported: z.number().int().optional().meta({
@@ -162,13 +118,6 @@ export const outboundSyncFailResponseSchema = baseResponseSchema
 
 export type OutboundSyncFailResponse = z.infer<typeof outboundSyncFailResponseSchema>
 
-// ============================================================================
-// Requeue
-// ============================================================================
-
-/**
- * Request body for POST /sync/outbound/requeue - re-queue a failed/synced entry.
- */
 export const outboundSyncRequeueBodySchema = z
   .object({
     id: z.string().uuid().meta({ description: 'Sync queue entry ID to re-queue' }),
@@ -180,9 +129,6 @@ export const outboundSyncRequeueBodySchema = z
 
 export type OutboundSyncRequeueBody = z.infer<typeof outboundSyncRequeueBodySchema>
 
-/**
- * Response for POST /sync/outbound/requeue.
- */
 export const outboundSyncRequeueResponseSchema = baseResponseSchema
   .extend({
     requeued: z.boolean().optional().meta({

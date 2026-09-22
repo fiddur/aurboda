@@ -32,10 +32,6 @@ export type NutrientName = z.infer<typeof nutrientNameSchema>
 
 export { nutrientNameSchema }
 
-// ============================================================================
-// Effective recommendation (returned by GET)
-// ============================================================================
-
 export const nutrientRecommendationSourceSchema = z.enum(['central', 'user']).meta({
   description: 'Whether this recommendation came from the central default or a user override',
   id: 'NutrientRecommendationSource',
@@ -106,10 +102,6 @@ export const clearNutrientRecommendationResponseSchema = baseResponseSchema
 
 export type ClearNutrientRecommendationResponse = z.infer<typeof clearNutrientRecommendationResponseSchema>
 
-// ============================================================================
-// Upsert / clear user override
-// ============================================================================
-
 export const upsertNutrientRecommendationBodySchema = z
   .object({
     recommended_low: z
@@ -132,10 +124,6 @@ export const upsertNutrientRecommendationBodySchema = z
   })
 
 export type UpsertNutrientRecommendationBody = z.infer<typeof upsertNutrientRecommendationBodySchema>
-
-// ============================================================================
-// Period summary (averaged daily nutrient intake)
-// ============================================================================
 
 /** Cap the period-summary window so a buggy or malicious caller can't request a multi-year scan. */
 export const NUTRIENT_PERIOD_SUMMARY_MAX_DAYS = 366

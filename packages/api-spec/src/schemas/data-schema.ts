@@ -1,6 +1,4 @@
 /**
- * Data schema definitions for custom activity type data fields.
- *
  * Activity types can define a schema that describes what fields their `data` JSONB
  * column should contain, enabling validation on write and structured rendering in the UI.
  */

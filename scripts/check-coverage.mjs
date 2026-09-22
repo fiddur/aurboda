@@ -23,9 +23,6 @@ if (!coveragePath || !baselinePath) {
 const coverageFile = resolve(coveragePath)
 const baselineFile = resolve(baselinePath)
 
-// ---------------------------------------------------------------------------
-// Parse Istanbul coverage-final.json
-// ---------------------------------------------------------------------------
 const data = JSON.parse(readFileSync(coverageFile, 'utf8'))
 
 let totalStatements = 0,
@@ -60,9 +57,6 @@ const current = {
   functions: pct(coveredFunctions, totalFunctions),
 }
 
-// ---------------------------------------------------------------------------
-// Compare against baseline
-// ---------------------------------------------------------------------------
 const baseline = JSON.parse(readFileSync(baselineFile, 'utf8'))
 
 const metrics = ['statements', 'branches', 'functions']
@@ -74,9 +68,6 @@ const results = metrics.map((m) => ({
   pass: current[m] >= baseline[m],
 }))
 
-// ---------------------------------------------------------------------------
-// Report
-// ---------------------------------------------------------------------------
 console.log('')
 console.log('📊 Coverage Report')
 console.log('─'.repeat(58))

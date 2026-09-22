@@ -16,8 +16,6 @@ import { resolve } from 'node:path'
 
 import { NUTRIENT_FIELD_NAMES } from '../../packages/api-spec/src/schemas/nutrients.ts'
 
-// ── Config ───────────────────────────────────────────────────────────────────
-
 const loadConfig = (): { baseUrl: string; token: string } => {
   const configPath = resolve(homedir(), '.config/aurboda/config')
   const content = readFileSync(configPath, 'utf-8')
@@ -31,8 +29,6 @@ const loadConfig = (): { baseUrl: string; token: string } => {
   }
   return { baseUrl: vars.AURBODA_BASE_URL, token: vars.AURBODA_TOKEN }
 }
-
-// ── API helpers ──────────────────────────────────────────────────────────────
 
 const apiGet = async (baseUrl: string, token: string, path: string): Promise<unknown> => {
   const res = await fetch(`${baseUrl}/api${path}`, {
@@ -52,12 +48,6 @@ const apiPost = async (baseUrl: string, token: string, path: string, body: unkno
   return res.json()
 }
 
-// ── Nutrient key mapping (from Cronometer JSONB micros to column names) ──────
-
-/**
- * Map JSONB micro keys (from Cronometer import) to column names.
- * E.g., "b1_thiamine" → "b1_thiamine", "vitamin_c" → "vitamin_c"
- */
 const NUTRIENT_FIELD_SET = new Set(NUTRIENT_FIELD_NAMES)
 
 const extractNutrientsFromMicros = (micros?: Record<string, unknown>): Record<string, number> => {
@@ -73,8 +63,6 @@ const extractNutrientsFromMicros = (micros?: Record<string, unknown>): Record<st
   }
   return result
 }
-
-// ── Main ─────────────────────────────────────────────────────────────────────
 
 interface FoodItemFromJson {
   name: string
@@ -104,7 +92,6 @@ const main = async () => {
   const meals = mealsRes.data ?? []
   console.log(`   ${meals.length} meals found`)
 
-  // Build canonical food item map
   const foodItemMap = new Map<string, { name: string; source: string; defaults: Record<string, unknown> }>()
   let totalItems = 0
 
@@ -114,18 +101,15 @@ const main = async () => {
       const key = fi.name.toLowerCase().trim()
       const existing = foodItemMap.get(key)
 
-      // Build defaults from this food item
       const defaults: Record<string, unknown> = {
         default_quantity: fi.quantity,
         default_unit: fi.unit,
       }
-      // Macros
       if (fi.calories !== undefined) defaults.calories = fi.calories
       if (fi.protein !== undefined) defaults.protein = fi.protein
       if (fi.carbs !== undefined) defaults.carbs = fi.carbs
       if (fi.fat !== undefined) defaults.fat = fi.fat
       if (fi.fiber !== undefined) defaults.fiber = fi.fiber
-      // Micros → nutrient columns
       const micros = extractNutrientsFromMicros(fi.micros)
       Object.assign(defaults, micros)
 
@@ -140,7 +124,6 @@ const main = async () => {
 
   console.log(`🍎 ${foodItemMap.size} unique food items from ${totalItems} total entries`)
 
-  // Create canonical food items
   let created = 0
   const foodItemIds = new Map<string, string>() // name_lower → id
 
