@@ -188,7 +188,7 @@
 /* Join is the only .btn-primary outside the create form, so it takes whichever
    global .btn-primary the bundle ends up with — a borderless box that also
    carries `align-self: flex-start`, which is why it sat 11 px shorter than, and
-   top-aligned against, the View link beside it (#1097). Give it the row's own
+   top-aligned against, the View link beside it. Give it the row's own
    button box (same as .btn-danger below) and let it stretch to the row like
    every other action, whatever the globals say. */
 .challenge-row-actions .btn-primary {
@@ -208,7 +208,6 @@
   font-size: 0.875rem;
 }
 
-/* Create form */
 .challenge-create {
   margin-top: 2rem;
   padding: 1.25rem;
@@ -276,7 +275,6 @@
   gap: 0.5rem;
 }
 
-/* Public challenge view */
 .public-challenge .challenge-view-actions {
   display: flex;
   align-items: center;
@@ -346,8 +344,7 @@
   .challenge-row-meta,
   .challenge-row-dates,
   /* The note explaining an incomplete discovery list is the one thing that must
-     stay readable when peers are missing — #6b7280 on the dark page is ~3.6:1
-     (#1096). */
+     stay readable when peers are missing — #6b7280 on the dark page is ~3.6:1. */
   .challenge-discover-note {
     color: #9ca3af;
   }

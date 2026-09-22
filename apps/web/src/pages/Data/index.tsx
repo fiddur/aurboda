@@ -23,8 +23,6 @@ import { toDisplayName } from '../../utils/displayName'
 import { MEAL_LOCATION_WINDOW_MS } from '../EntityDetail/LocationInfo'
 import './style.css'
 
-// ── Types ──────────────────────────────────────────────────────────────────
-
 type ItemType = 'activity' | 'location' | 'music' | 'meal' | 'metric' | 'report' | 'screentime'
 
 interface DataItem {
@@ -36,8 +34,6 @@ interface DataItem {
   start: Date
   type: ItemType
 }
-
-// ── Colors ─────────────────────────────────────────────────────────────────
 
 const ACTIVITY_COLORS: Record<string, string> = {
   exercise: '#10b981',
@@ -53,8 +49,6 @@ const MEAL_COLOR = '#ef4444'
 const METRIC_COLOR = '#f59e0b'
 const REPORT_COLOR = '#14b8a6'
 const SCREENTIME_COLOR = '#8b5cf6'
-
-// ── Helpers ────────────────────────────────────────────────────────────────
 
 /** Format a time, including date prefix when the view spans multiple days. */
 const formatTime = (date: Date, multiDay: boolean): string =>
@@ -136,7 +130,6 @@ const reportToItem = (r: Report, multiDay: boolean): DataItem => ({
   type: 'report',
 })
 
-/** Format a numeric value: integer if whole, otherwise 1 decimal. */
 const formatMetricValue = (n: number): string => {
   const rounded = Math.round(n * 10) / 10
   return Number.isInteger(rounded) ? rounded.toString() : rounded.toFixed(1)
@@ -212,8 +205,6 @@ const productivityToItem = (p: ProductivityRecord, places: Place[], multiDay: bo
     type: 'screentime',
   }
 }
-
-// ── Component ──────────────────────────────────────────────────────────────
 
 const ALL_TYPES: ItemType[] = ['activity', 'location', 'music', 'meal', 'metric', 'report', 'screentime']
 
@@ -341,7 +332,6 @@ export const Data = () => {
   const hasDataFilter = Boolean(typesFilter || dataFilter || deductionRuleId)
   const activeTypes = new Set(ALL_TYPES.filter((t) => !hiddenTypes.has(t)))
 
-  // Sync URL on state changes
   useEffect(() => {
     syncUrl(dateStr, hiddenTypes, timeFrom, timeTo, typesFilter, dataFilter, deductionRuleId)
   }, [dateStr, hiddenTypes, timeFrom, timeTo, typesFilter, dataFilter, deductionRuleId])

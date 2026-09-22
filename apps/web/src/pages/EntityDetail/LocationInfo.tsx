@@ -1,7 +1,3 @@
-/**
- * Displays named location(s) overlapping an entity's time range.
- * Uses the existing fetchPlaceVisits API to resolve time ranges to place visits.
- */
 import { useQuery } from '@tanstack/react-query'
 import { format } from 'date-fns'
 
@@ -50,7 +46,6 @@ export const LocationInfo = ({ start, end }: { start: Date; end: Date }) => {
 
   if (!places || places.length === 0) return null
 
-  // Single location — render inline as a field row
   if (places.length === 1) {
     const p = places[0]
     const color = SOURCE_COLORS[p.source] ?? SOURCE_COLORS.unknown
@@ -72,7 +67,6 @@ export const LocationInfo = ({ start, end }: { start: Date; end: Date }) => {
     )
   }
 
-  // Multiple locations — render as a list
   return (
     <div class="entity-fields">
       <div class="field-row field-row-top">

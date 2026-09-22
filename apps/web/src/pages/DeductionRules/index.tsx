@@ -1,6 +1,3 @@
-/**
- * Deduction Rules list page — shows all deduction rules with enable toggles and actions.
- */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useLocation } from 'preact-iso'
 import { useState } from 'preact/hooks'
@@ -16,10 +13,6 @@ import {
 } from '../../state/api'
 import { auth } from '../../state/auth'
 import './style.css'
-
-// ============================================================================
-// Helpers
-// ============================================================================
 
 const formatCondition = (c: DeductionRuleCondition): string => {
   switch (c.kind) {
@@ -46,10 +39,6 @@ const PRIORITY_LABELS: Record<number, string> = {
   1: 'Normal',
   2: 'High',
 }
-
-// ============================================================================
-// Rule row
-// ============================================================================
 
 function RuleRow({ rule }: { rule: DeductionRule }) {
   const queryClient = useQueryClient()
@@ -112,10 +101,6 @@ function RuleRow({ rule }: { rule: DeductionRule }) {
     </div>
   )
 }
-
-// ============================================================================
-// Main page
-// ============================================================================
 
 export function DeductionRules() {
   const isLoggedIn = auth.value.token

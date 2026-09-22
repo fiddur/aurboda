@@ -4,7 +4,6 @@
   box-sizing: border-box;
 }
 
-/* Dashboard header with title and actions */
 .dashboard .dashboard-header {
   display: flex;
   justify-content: space-between;
@@ -70,7 +69,6 @@
   border-color: #9ca3af;
 }
 
-/* Section header with collapse indicator */
 .dashboard .section-header {
   display: flex;
   align-items: center;
@@ -102,7 +100,6 @@
   color: #888;
 }
 
-/* Responsive sections grid - flows naturally based on available width */
 .dashboard .sections-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 400px), 1fr));
@@ -114,14 +111,12 @@
   min-width: 0; /* Prevent grid blowout */
 }
 
-/* Metrics grid */
 .dashboard .metrics-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 1rem;
 }
 
-/* Metric card */
 .dashboard .metric-card {
   background: #f9fafb;
   border-radius: 12px;
@@ -185,7 +180,6 @@
   padding: 0.5rem;
 }
 
-/* Trend indicator */
 .dashboard .trend-indicator {
   font-size: 0.75rem;
   font-weight: 500;
@@ -208,7 +202,6 @@
   color: #6b7280;
 }
 
-/* Activity summary */
 .dashboard .activity-summary {
   background: #f9fafb;
   border-radius: 12px;
@@ -279,7 +272,6 @@
   margin-top: 0.25rem;
 }
 
-/* Quick links */
 .dashboard .quick-links {
   background: #f9fafb;
   border-radius: 12px;
@@ -335,7 +327,6 @@
   font-weight: 500;
 }
 
-/* Dark mode */
 @media (prefers-color-scheme: dark) {
   .dashboard h1 {
     color: #f3f4f6;
@@ -438,8 +429,6 @@
   }
 }
 
-/* Responsive - sections grid handles this automatically via auto-fit */
-
 @media (max-width: 639px) {
   .dashboard {
     padding: 1rem;
@@ -467,10 +456,6 @@
     gap: 0.75rem;
   }
 }
-
-/* ==========================================================================
-   Widget Editing Mode
-   ========================================================================== */
 
 .dashboard .widget-editing-wrapper {
   position: relative;
@@ -539,7 +524,6 @@
   color: #673ab8;
 }
 
-/* HR Zones widget */
 .dashboard .hr-zones-widget {
   background: #f9fafb;
   border-radius: 12px;
@@ -608,7 +592,6 @@
   color: #6b7280;
 }
 
-/* Goal progress widget */
 .dashboard .goal-progress-widget {
   background: #f9fafb;
   border-radius: 12px;
@@ -641,14 +624,12 @@
   text-decoration: underline;
 }
 
-/* Charts grid for trend/correlation widgets */
 .dashboard .charts-grid {
   display: grid;
   grid-template-columns: 1fr;
   gap: 1rem;
 }
 
-/* Chart widget styles (trend, bar, correlation) */
 .dashboard .chart-widget,
 .dashboard .correlation-widget {
   background: #f9fafb;
@@ -710,12 +691,10 @@
   color: #6b7280;
 }
 
-/* Loading placeholder */
 .dashboard .loading-placeholder {
   color: #9ca3af;
 }
 
-/* Add Section placeholder */
 .dashboard .add-section-placeholder {
   display: flex;
   flex-direction: column;
@@ -748,7 +727,6 @@
   background: #faf5ff;
 }
 
-/* Section editing controls */
 .dashboard .section-edit-controls {
   display: flex;
   gap: 0.5rem;
@@ -785,7 +763,6 @@
   background: #faf5ff;
 }
 
-/* Inline section-title editor */
 .dashboard .section-title-input {
   font-size: 1.25rem;
   font-weight: 700;
@@ -799,7 +776,6 @@
   outline: none;
 }
 
-/* Author-editable prose: dashboard + section intro text */
 .dashboard .dashboard-intro,
 .dashboard .section-intro {
   color: #555;
@@ -844,7 +820,6 @@
   }
 }
 
-/* Dark mode additions for editing */
 @media (prefers-color-scheme: dark) {
   .dashboard .btn-edit {
     background: #374151;

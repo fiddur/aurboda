@@ -53,7 +53,6 @@ describe('findNearest', () => {
       new Date(new Date('2024-01-15T00:00:00Z').getTime() + i * 60000),
       60 + Math.sin(i) * 10,
     ])
-    // Target at 500 minutes in
     const target = new Date(new Date('2024-01-15T00:00:00Z').getTime() + 500 * 60000)
     const result = findNearest(data, target)
     expect(result).toEqual(data[500])

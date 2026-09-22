@@ -65,9 +65,6 @@ import { queryClient } from './state/queryClient.js'
 import './style.css'
 
 function AppShell() {
-  // Public sharing pages (/u/...) hide the nav for anonymous visitors (a clean,
-  // standalone page), but a logged-in user keeps their nav so they can navigate
-  // away without the browser back button. The footer renders on every page.
   const { path } = useLocation()
   // Embedded in the native app's WebView: the app supplies navigation, so hide
   // all web chrome (header, sidebar, footer) and just render page content.

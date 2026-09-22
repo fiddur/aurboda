@@ -1,6 +1,4 @@
 /**
- * D3 bar chart component for bucketed chart data.
- *
  * Uses time-based x-axis positioning so bars are placed at their actual dates
  * with proportional widths and gaps for missing buckets.
  */

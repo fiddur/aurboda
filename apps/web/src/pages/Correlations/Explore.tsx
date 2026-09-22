@@ -29,7 +29,6 @@ import {
 
 type Mode = 'event' | 'continuous'
 
-// --- Form state (module signals, mirroring the rest of this page) ---
 const mode = signal<Mode>('event')
 const triggerSelector = signal<CorrelationSelector>({ kind: 'activity', pattern: '' })
 const outcomeSelector = signal<CorrelationSelector>({ kind: 'metric', metric: '' })
@@ -132,7 +131,6 @@ const PRESETS: { label: string; apply: () => void }[] = [
   { apply: () => applyEventPreset('sauna'), label: 'Sauna → back-pain onset (Event)' },
 ]
 
-/** Build the request body for whichever mode is active. */
 const buildRequest = () => {
   if (mode.value === 'event') {
     const trigger = triggerSelector.value
@@ -154,7 +152,6 @@ const buildRequest = () => {
   return null
 }
 
-// --- Results: per-lag relative-risk bars with 95% CI whiskers ---
 function RrBars({ perLag }: { perLag: LagExposureResultData[] }) {
   const items = perLag.filter((l) => l.relative_risk !== null)
   if (items.length === 0) return null
@@ -194,7 +191,6 @@ function RrBars({ perLag }: { perLag: LagExposureResultData[] }) {
   )
 }
 
-// --- Results: event-outcome table ---
 function EventOutcomeResults({ data }: { data: GenericCorrelationData }) {
   const eo = data.event_outcome
   if (!eo) return <p class="explore-empty">No event-outcome result.</p>
@@ -253,7 +249,6 @@ function EventOutcomeResults({ data }: { data: GenericCorrelationData }) {
   )
 }
 
-// --- Results: present-vs-absent group comparison for a binary trigger ---
 function GroupComparisonPanel({ gc }: { gc: GroupComparison }) {
   const better =
     gc.difference === null ? '' : gc.difference > 0 ? 'higher when present' : 'lower when present'
@@ -281,7 +276,6 @@ const CHART_W = 340
 const CHART_H = 240
 const CHART_PAD = { bottom: 38, left: 46, right: 12, top: 14 }
 
-/** Rotated y-axis label + horizontal x-axis label for a chart. */
 function AxisLabels({ x, y }: { x: string; y: string }) {
   const midX = (CHART_PAD.left + (CHART_W - CHART_PAD.right)) / 2
   const midY = (CHART_PAD.top + (CHART_H - CHART_PAD.bottom)) / 2
@@ -297,7 +291,6 @@ function AxisLabels({ x, y }: { x: string; y: string }) {
   )
 }
 
-// --- Results: continuous scatter with regression line + annotation ---
 function ScatterPlot({ data }: { data: ContinuousCorrelationData }) {
   const points = data.series
   const xs = points.map((p) => p.trigger)
@@ -351,7 +344,6 @@ function ScatterPlot({ data }: { data: ContinuousCorrelationData }) {
   )
 }
 
-// --- Results: present-vs-absent box plot for a binary trigger ---
 function BoxPlot({ data }: { data: ContinuousCorrelationData }) {
   const withVals = data.series.filter((p) => p.trigger > 0).map((p) => p.outcome)
   const withoutVals = data.series.filter((p) => p.trigger === 0).map((p) => p.outcome)
@@ -421,7 +413,6 @@ function BoxPlot({ data }: { data: ContinuousCorrelationData }) {
   )
 }
 
-// --- Results: continuous mode (scatter or box plot, with verdicts) ---
 function ContinuousResults({ data }: { data: ContinuousCorrelationData }) {
   const gc = data.group_comparison
   // A Pearson r on a binary/presence trigger is misleading, so when the trigger

@@ -54,7 +54,6 @@ export const TimelineLegend: FunctionComponent<TimelineLegendProps> = ({
       </button>
       {!legendCollapsed && (
         <div class="timeline-legend" ref={legendRef}>
-          {/* ── Music (top-level) ── */}
           {hasLastFm && (
             <>
               <button
@@ -70,7 +69,6 @@ export const TimelineLegend: FunctionComponent<TimelineLegendProps> = ({
             </>
           )}
 
-          {/* ── Activity group ── */}
           <div class="legend-group">
             <button
               key="activity"
@@ -109,7 +107,6 @@ export const TimelineLegend: FunctionComponent<TimelineLegendProps> = ({
 
           <span class="legend-separator" />
 
-          {/* ── Metrics group ── */}
           <div class="legend-group">
             <button
               key="metrics"
@@ -147,7 +144,6 @@ export const TimelineLegend: FunctionComponent<TimelineLegendProps> = ({
 
           <span class="legend-separator" />
 
-          {/* ── Location (top-level) ── */}
           <button
             key="location"
             class={`legend-item${hiddenCategories.has('location') ? ' legend-item-hidden' : ''}`}
@@ -160,7 +156,6 @@ export const TimelineLegend: FunctionComponent<TimelineLegendProps> = ({
 
           <span class="legend-separator" />
 
-          {/* ── Comments (top-level) ── */}
           <button
             key="comments"
             class={`legend-item${hiddenCategories.has('comments') ? ' legend-item-hidden' : ''}`}

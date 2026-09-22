@@ -135,7 +135,6 @@
   color: #6b7280;
 }
 
-/* Dark mode */
 @media (prefers-color-scheme: dark) {
   .reports-header h1 {
     color: #f9fafb;

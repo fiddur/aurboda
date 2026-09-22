@@ -14,17 +14,14 @@ export const NAV_LINKS_PRIMARY = [
   { href: '/chart', label: 'Chart', icon: '📈' },
 ]
 
-/** The three sharing surfaces, grouped under the "Sharing" section. */
 export const SHARING_LINKS = [
   { href: '/feed', label: 'Feed', icon: '📣' },
   { href: '/shared-dashboards', label: 'Dashboards', icon: '🔆' },
   { href: '/challenges', label: 'Challenges', icon: '🏆' },
 ]
 
-/** Routes that make the "Sharing" section count as active. */
 export const SHARING_PATHS = SHARING_LINKS.map((l) => l.href)
 
-/** Whether the current URL is within the Sharing section (a surface or a sub-route of one). */
 export const isSharingActive = (url: string): boolean =>
   SHARING_PATHS.some((p) => url === p || url.startsWith(`${p}/`))
 

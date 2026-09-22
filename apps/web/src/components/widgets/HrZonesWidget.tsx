@@ -1,6 +1,4 @@
 /**
- * HrZonesWidget - Compact HR zone progress bars for the dashboard.
- *
  * Split into a presentational `HrZonesView` and a fetching container.
  */
 
@@ -42,7 +40,6 @@ function getDateRange(lookbackDays: number): { start: string; end: string } {
   return { end: endDate.toISOString(), start: startDate.toISOString() }
 }
 
-/** Convert the [z1..z5] threshold array to the HrZoneThresholds object form. */
 const toThresholds = (starts: number[] | null): HrZoneThresholds =>
   starts && starts.length === 5
     ? { 1: starts[0], 2: starts[1], 3: starts[2], 4: starts[3], 5: starts[4] }

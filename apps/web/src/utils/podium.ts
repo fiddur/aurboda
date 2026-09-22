@@ -4,7 +4,6 @@
  * ("1224") for a leaderboard already sorted by total, descending.
  */
 
-/** 🏆 for the winner, 🥈/🥉 for the runners-up; null below the podium. */
 export const podiumMedal = (rank: number): string | null =>
   rank === 1 ? '🏆' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : null
 

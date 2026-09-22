@@ -19,8 +19,6 @@ export type ColumnDataEntry = {
 
 export const MIN_ITEM_HEIGHT = 4
 
-// ── Pure helpers (testable) ──────────────────────────────────────────────────
-
 export const mergeSmallItems = (
   packedItems: { item: ChartItem; lane: number }[],
   yScale: d3.ScaleTime<number, number>,
@@ -152,8 +150,6 @@ export const stackIconPoints = (
     return { ...p, xOffset: 0 }
   })
 }
-
-// ── D3 drawing functions ─────────────────────────────────────────────────────
 
 export const drawPointMarker = (
   parent: SvgParent,
@@ -337,8 +333,6 @@ export const drawColumnItems = (
     }
   }
 }
-
-// ── Now line helpers ─────────────────────────────────────────────────────────
 
 export const drawNowLine = (
   chartGroup: d3.Selection<SVGGElement, unknown, null, undefined>,

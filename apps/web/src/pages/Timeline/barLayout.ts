@@ -1,6 +1,4 @@
 /**
- * Bar layout system for the horizontal timeline.
- *
  * Computes side-by-side positions for bar-shaped data (steps, calories,
  * training load impulse bars, screentime). Each bar type gets an equal
  * fraction of the bucket width.
@@ -10,14 +8,11 @@
  */
 
 export interface BarSlot {
-  /** Unique identifier for this bar slot. */
   id: string
-  /** Whether this slot is currently visible (for counting active slots). */
   visible: boolean
 }
 
 export interface BarLayoutResult {
-  /** Total number of visible bar slots. */
   totalSlots: number
   /** Get the fractional x-offset (0..1) for a given slot id within a bucket. */
   getOffset: (slotId: string) => number
@@ -26,10 +21,7 @@ export interface BarLayoutResult {
 }
 
 /**
- * Compute bar layout from the list of active bar slots.
  * Each visible slot gets an equal share of the bucket width.
- *
- * Returns a layout object that maps slot IDs to their fractional x-offset.
  */
 export const computeBarLayout = (slots: BarSlot[]): BarLayoutResult => {
   const visibleSlots = slots.filter((s) => s.visible)
@@ -52,9 +44,6 @@ export const computeBarLayout = (slots: BarSlot[]): BarLayoutResult => {
   }
 }
 
-/**
- * Convert a fractional offset+width into pixel values for a specific bucket.
- */
 export const slotPixels = (
   bucketX: number,
   bucketWidth: number,

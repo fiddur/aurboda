@@ -45,7 +45,6 @@ export const parseViewHash = (): {
   }
 }
 
-/** Build hash string from current view state. */
 export const buildViewHash = (
   start: Date | null,
   end: Date | null,

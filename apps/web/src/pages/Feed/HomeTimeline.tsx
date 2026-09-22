@@ -22,7 +22,6 @@ import { TimelineEntryHead } from './TimelineEntryHead'
 import { TimelineStructured } from './TimelineStructured'
 import { useTimelineLive } from './useTimelineLive'
 
-/** Query key for one card's live reply thread. */
 const repliesKey = (entryId: string) => ['feed', 'timeline', entryId, 'replies'] as const
 
 /** De-duplicate entries by `object_uri`, keeping the first (newest) occurrence. */

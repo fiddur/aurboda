@@ -75,7 +75,6 @@ export function MetricPicker({
       entry.value.toLowerCase().includes(inputValue.toLowerCase()),
   )
 
-  // Group filtered entries for display
   const builtinEntries = filtered.filter((e) => e.group === 'builtin')
   const customEntries = filtered.filter((e) => e.group === 'custom')
   const flatFiltered = [...builtinEntries, ...customEntries]

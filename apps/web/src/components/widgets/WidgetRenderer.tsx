@@ -1,7 +1,3 @@
-/**
- * WidgetRenderer - Routes widget type to correct component.
- */
-
 import type { DashboardWidget } from '@aurboda/api-spec'
 
 import { ActivitySummaryWidget } from './ActivitySummaryWidget'
@@ -20,7 +16,6 @@ interface WidgetRendererProps {
   onRemove?: () => void
   /** Board this widget belongs to ('home' or a shared-dashboard id) — enables update-in-place from the chart page. */
   boardId?: string
-  /** Section this widget belongs to. */
   sectionId?: string
 }
 

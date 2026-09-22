@@ -1,6 +1,4 @@
 /**
- * Metric entity content with edit/delete support.
- *
  * Editing works via upsert (add) then conditional delete:
  * - If only value changed: addMetric upserts (backend uses ON CONFLICT DO UPDATE)
  * - If time changed: addMetric creates new point, then old point is deleted

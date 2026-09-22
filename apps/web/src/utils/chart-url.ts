@@ -9,7 +9,6 @@ export interface ChartOrigin {
   widget_id: string
 }
 
-/** Build a /chart URL from widget config parameters. */
 export function buildChartUrl(params: {
   aggregation?: string
   bucket_size?: string

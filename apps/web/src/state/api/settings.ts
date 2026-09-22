@@ -14,7 +14,6 @@ export const generateApiToken = async (): Promise<string> => {
   return response.data.token
 }
 
-// Fetch user settings (including HR zone thresholds)
 export const fetchUserSettings = async (): Promise<UserSettingsResponse> => {
   const { token } = auth.value
   const response = await axios.get<UserSettingsResponse>(`${API_URL}/user/settings`, {
@@ -24,7 +23,6 @@ export const fetchUserSettings = async (): Promise<UserSettingsResponse> => {
   return response.data
 }
 
-// Update user settings
 export const updateUserSettings = async (params: UpdateSettingsInput): Promise<UserSettingsResponse> => {
   const { token } = auth.value
   const response = await axios.patch<UserSettingsResponse>(`${API_URL}/user/settings`, params, {
@@ -34,7 +32,6 @@ export const updateUserSettings = async (params: UpdateSettingsInput): Promise<U
   return response.data
 }
 
-// Upload an icon image, returns { id, url }
 export const uploadIcon = async (file: File): Promise<{ id: string; url: string }> => {
   const { token } = auth.value
   const formData = new FormData()
@@ -47,7 +44,6 @@ export const uploadIcon = async (file: File): Promise<{ id: string; url: string 
   return { id: response.data.id, url: response.data.url }
 }
 
-/** Fetch item icons from user settings. */
 export const fetchItemIcons = async (): Promise<Record<string, string>> => {
   const settings = await fetchUserSettings()
   return settings.item_icons ?? {}

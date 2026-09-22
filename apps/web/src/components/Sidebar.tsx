@@ -69,7 +69,6 @@ export function Sidebar() {
               </a>
             ))}
 
-            {/* Sharing group (collapsed sidebar: the three surfaces as plain links) */}
             {collapsed ? (
               SHARING_LINKS.map((link) => (
                 <a
@@ -122,7 +121,6 @@ export function Sidebar() {
               </a>
             ))}
 
-            {/* Data Sources expandable (collapsed: just a link) */}
             {collapsed ? (
               <a
                 href="/data-sources"

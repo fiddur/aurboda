@@ -1,6 +1,4 @@
 /**
- * GoalProgressWidget - Displays goal progress bars on the dashboard.
- *
  * Split into a presentational `GoalProgressView` and a fetching container.
  */
 

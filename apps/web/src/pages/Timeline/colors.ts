@@ -2,8 +2,6 @@ import type { ScreentimeCategory } from '@aurboda/api-spec'
 
 import type { Activity, ProductivityRecord } from '../../state/api'
 
-// ── Color palettes ───────────────────────────────────────────────────────────
-
 export const MUSIC_COLOR = '#ec4899'
 export const TAG_COLOR = '#8b5cf6'
 export const NOW_COLOR = '#ef4444'
@@ -52,8 +50,6 @@ export const placeColorPalette = [
   '#84cc16',
   '#6366f1',
 ]
-
-// ── Color lookup functions ───────────────────────────────────────────────────
 
 export const getPlaceColor = (name: string, allNames: string[]): string => {
   if (!name || name === 'Travel' || name === 'Unknown') return '#9ca3af'

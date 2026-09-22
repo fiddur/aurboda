@@ -14,9 +14,8 @@ const durationMinutes = (a: SummarizableActivity): number =>
 const durationHours = (a: SummarizableActivity): number => durationMinutes(a) / 60
 
 /**
- * Summarize activities by category for the ActivitySummaryWidget cards.
  * Exercise counts include every Health Connect exercise subtype (running,
- * cycling, …) plus the generic `'exercise'` bucket — see #748.
+ * cycling, …) plus the generic `'exercise'` bucket.
  */
 export const summarizeActivities = (activities: readonly SummarizableActivity[]) => {
   const exerciseSessions = activities.filter((a) => isExerciseActivityType(a.activity_type))

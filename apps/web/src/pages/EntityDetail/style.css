@@ -4,7 +4,6 @@
   box-sizing: border-box;
 }
 
-/* Deleted banner */
 .deleted-banner {
   display: flex;
   align-items: center;
@@ -38,7 +37,6 @@
   cursor: not-allowed;
 }
 
-/* Entity info */
 .entity-info {
   margin-bottom: 1.5rem;
 }
@@ -176,7 +174,6 @@ a.entity-type-badge:hover {
   color: #374151;
 }
 
-/* Detail grid layout for rich detail views */
 .detail-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
@@ -188,7 +185,6 @@ a.entity-type-badge:hover {
   grid-column: 1 / -1;
 }
 
-/* Oura metric summary cards */
 .metric-cards {
   display: flex;
   flex-wrap: wrap;
@@ -223,7 +219,6 @@ a.entity-type-badge:hover {
   color: #9ca3af;
 }
 
-/* Merged activity indicator */
 .merged-indicator {
   display: inline-block;
   padding: 0.25rem 0.75rem;
@@ -235,7 +230,6 @@ a.entity-type-badge:hover {
   font-weight: 500;
 }
 
-/* Source records */
 .source-records {
   margin-top: 1.5rem;
   border: 1px solid #e5e7eb;
@@ -286,7 +280,6 @@ a.entity-type-badge:hover {
   margin-left: auto;
 }
 
-/* Music playlist */
 .music-playlist {
   border: 1px solid #e5e7eb;
   border-radius: 8px;
@@ -338,7 +331,6 @@ a.entity-type-badge:hover {
   color: #9ca3af;
 }
 
-/* Section card */
 .detail-section {
   border: 1px solid #e5e7eb;
   border-radius: 8px;
@@ -350,7 +342,6 @@ a.entity-type-badge:hover {
   margin: 0 0 0.75rem;
 }
 
-/* HR zones */
 .hr-zones-detail {
   margin-top: 1.25rem;
 }
@@ -393,7 +384,6 @@ a.entity-type-badge:hover {
   border-radius: 2px;
 }
 
-/* Entity actions */
 .entity-actions {
   display: flex;
   gap: 0.5rem;
@@ -422,7 +412,6 @@ a.entity-type-badge:hover {
   cursor: not-allowed;
 }
 
-/* Notes */
 .notes-section {
   margin-top: 1.5rem;
   padding-top: 1.5rem;
@@ -561,7 +550,6 @@ a.entity-type-badge:hover {
   background: #f3f4f6;
 }
 
-/* Edit mode */
 .btn-edit {
   background: #f3f4f6;
   border: 1px solid #e5e7eb;
@@ -655,7 +643,6 @@ a.entity-type-badge:hover {
   margin: 0.5rem 0 0.75rem;
 }
 
-/* Loading & error */
 .entity-detail-page .loading,
 .entity-detail-page .error {
   text-align: center;
@@ -667,7 +654,6 @@ a.entity-type-badge:hover {
   color: #dc2626;
 }
 
-/* Location info */
 .location-dot {
   display: inline-block;
   width: 8px;
@@ -723,7 +709,6 @@ a.entity-type-badge:hover {
   align-items: flex-start;
 }
 
-/* Dark mode */
 @media (prefers-color-scheme: dark) {
   .deleted-banner {
     background: #450a0a;
@@ -913,7 +898,6 @@ a.entity-type-badge:hover {
   }
 }
 
-/* Merge panel */
 .merge-panel {
   margin-top: 1rem;
   padding: 1rem;
@@ -1008,7 +992,6 @@ a.entity-type-badge:hover {
   }
 }
 
-/* Responsive */
 @media (max-width: 639px) {
   .entity-detail-page {
     padding: 1rem;
