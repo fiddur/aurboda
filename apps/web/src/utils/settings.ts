@@ -2,17 +2,11 @@ import type { HrZoneThresholds, UpdateSettingsInput, UserSettingsResponse } from
 
 import { defaultHrZoneThresholds } from './hrZones'
 
-/**
- * Parse a zone value string to a number, returning null if invalid
- */
 export const parseZoneValue = (value: string): number | null => {
   const numValue = parseInt(value, 10)
   return isNaN(numValue) ? null : numValue
 }
 
-/**
- * Update a single zone threshold value in a thresholds object
- */
 export const updateZoneThreshold = (
   currentZones: HrZoneThresholds | null,
   zone: keyof HrZoneThresholds,
@@ -23,7 +17,6 @@ export const updateZoneThreshold = (
 }
 
 /**
- * Compute the update params to send to the API based on form vs server state
  * Returns only the changed fields, or null if nothing changed
  */
 export const computeSettingsUpdateParams = (
@@ -34,7 +27,6 @@ export const computeSettingsUpdateParams = (
 ): UpdateSettingsInput | null => {
   const params: UpdateSettingsInput = {}
 
-  // Check birth_date changes
   const serverBirthDate = serverSettings?.birth_date ?? ''
   if (formBirthDate !== serverBirthDate) {
     params.birth_date = formBirthDate || null
@@ -46,7 +38,6 @@ export const computeSettingsUpdateParams = (
     params.hr_zone_start = formHrZones
   }
 
-  // Check rescue_time_key changes
   const serverRescueTimeKey = serverSettings?.rescue_time_key ?? ''
   if (formRescueTimeKey !== serverRescueTimeKey) {
     params.rescue_time_key = formRescueTimeKey || null

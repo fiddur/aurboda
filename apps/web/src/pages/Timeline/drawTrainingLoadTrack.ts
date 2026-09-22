@@ -1,22 +1,9 @@
-/**
- * Draws the training load track in horizontal timeline mode.
- *
- * Polar Recovery Status-style visualization:
- * - Stacked bars per hour: training impulse (purple) + activity impulse (blue)
- * - CTL (fitness) curve as a filled area showing accumulated past load
- * - ATL (fatigue) line
- * - TSB (form) line: green when positive, red when negative
- * - Horizontal zone bands: Undertrained / Balanced / Strained / Very Strained
- * - Crosshair overlay for tooltips
- */
 import type { RecoveryZones, TrainingLoadPoint, WorkoutTrimp } from '@aurboda/api-spec'
 
 import * as d3 from 'd3'
 import { format } from 'date-fns'
 
 import type { BarLayoutResult } from './barLayout'
-
-// ── Colors ────────────────────────────────────────────────────────────────────
 
 export const CTL_COLOR = '#3b82f6' // blue (fitness)
 export const ATL_COLOR = '#f97316' // orange (fatigue)
@@ -30,13 +17,10 @@ const ATL_BAR_LOW_COLOR = '#93c5fd' // light blue (low fatigue)
 const ATL_BAR_MID_COLOR = '#f97316' // orange (moderate fatigue)
 const ATL_BAR_HIGH_COLOR = '#dc2626' // red (high fatigue)
 
-// Zone band colors (semi-transparent)
 const ZONE_UNDERTRAINED_COLOR = 'rgba(59, 130, 246, 0.06)' // light blue tint
 const ZONE_BALANCED_COLOR = 'rgba(34, 197, 94, 0.06)' // light green tint
 const ZONE_STRAINED_COLOR = 'rgba(249, 115, 22, 0.06)' // light orange tint
 const ZONE_VERY_STRAINED_COLOR = 'rgba(239, 68, 68, 0.06)' // light red tint
-
-// ── Types ─────────────────────────────────────────────────────────────────────
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type SvgGroup = d3.Selection<any, unknown, null, undefined>
@@ -46,9 +30,7 @@ export interface TrainingLoadTrackConfig {
   chartGroup: SvgGroup
   /** Current x-scale (time -> pixels). */
   xScale: d3.ScaleTime<number, number>
-  /** Hourly training load points. */
   points: TrainingLoadPoint[]
-  /** Per-workout TRIMP scores. */
   workouts: WorkoutTrimp[]
   /** Whether data is in bootstrapping period (< 6 weeks). */
   bootstrapping: boolean
@@ -60,12 +42,9 @@ export interface TrainingLoadTrackConfig {
   trackHeight: number
   /** Bar layout for side-by-side rendering. */
   barLayout?: BarLayoutResult
-  /** Slot IDs for the training load bars in the layout. */
   fatigueSlotId?: string
   impulseSlotId?: string
 }
-
-// ── Y-scale computation ───────────────────────────────────────────────────────
 
 interface TrainingLoadYScales {
   /** Scale for ATL/CTL (always >= 0). Used for fatigue bars too. */
@@ -94,7 +73,6 @@ const computeYScales = (
     if (p.atl > maxLoad) maxLoad = p.atl
     if (p.ctl > maxLoad) maxLoad = p.ctl
   }
-  // Include zone thresholds in domain so zone bands are always visible
   if (zones) {
     if (zones.balanced_min < minLoad) minLoad = zones.balanced_min
     if (zones.strained_max > maxLoad) maxLoad = zones.strained_max
@@ -108,7 +86,6 @@ const computeYScales = (
     .domain([Math.max(0, minLoad - loadPadding), maxLoad + loadPadding])
     .range([trackBottom, trackY])
 
-  // TSB scale: symmetric around 0
   let maxTsbAbs = 10
   for (const p of points) {
     const abs = Math.abs(p.tsb)
@@ -120,7 +97,6 @@ const computeYScales = (
     .domain([-maxTsbAbs * 1.2, maxTsbAbs * 1.2])
     .range([trackBottom, trackY])
 
-  // Impulse bar scale: max of stacked (training + activity) impulse
   let maxImpulse = 1
   for (const p of points) {
     const total = p.training_impulse + p.activity_impulse
@@ -135,17 +111,11 @@ const computeYScales = (
   return { yImpulse, yLoad, yTsb }
 }
 
-// ── Drawing ───────────────────────────────────────────────────────────────────
-
 export const MS_PER_HOUR = 3600_000
 
 const parseTime = (timeStr: string): Date => new Date(timeStr)
 
-/**
- * Find the training load point nearest to the given time.
- * Tries exact hour match first, then falls back to nearest within tolerance.
- * Default tolerance is 2 hours; pass a larger value for weekly/daily bucketed data.
- */
+/** Default tolerance is 2 hours; pass a larger value for weekly/daily bucketed data. */
 export const findTrainingLoadPoint = (
   points: TrainingLoadPoint[],
   time: Date,
@@ -155,12 +125,10 @@ export const findTrainingLoadPoint = (
   const flooredHour = new Date(timeMs - (timeMs % MS_PER_HOUR))
   const flooredIso = flooredHour.toISOString()
 
-  // Exact match first
   for (const p of points) {
     if (p.time === flooredIso) return p
   }
 
-  // Fall back to nearest within tolerance
   let nearest: TrainingLoadPoint | null = null
   let bestDist = Infinity
   for (const p of points) {
@@ -186,7 +154,6 @@ export const findNearbyWorkouts = (workouts: WorkoutTrimp[], hourTime: Date): Wo
   })
 }
 
-/** Draw recovery zone bands (horizontal stripes). */
 const drawZoneBands = (
   group: SvgGroup,
   zones: RecoveryZones,
@@ -286,10 +253,7 @@ const drawZoneBands = (
     .text('Strained')
 }
 
-/**
- * Draw ATL (fatigue) as filled bars per hour — Polar Recovery Status style.
- * Bar height = ATL value. Color shifts from blue (low) to orange/red (high).
- */
+/** Draw ATL (fatigue) as filled bars per hour — Polar Recovery Status style. */
 const drawFatigueBars = (
   group: SvgGroup,
   points: TrainingLoadPoint[],
@@ -300,20 +264,17 @@ const drawFatigueBars = (
   barLayout?: BarLayoutResult,
   slotId?: string,
 ): void => {
-  // Compute bar width from x-scale and bucket duration
   const sampleTime = points[0] ? parseTime(points[0].time) : new Date()
   const nextTime = new Date(sampleTime.getTime() + barDurationMs)
   const fullBarWidth = Math.max(1, Math.abs(xScale(nextTime) - xScale(sampleTime)) - 1)
   // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- barLayout could be missing
   const barWidth = barLayout && slotId ? fullBarWidth * barLayout.slotWidth : fullBarWidth
 
-  // Find max ATL for color scaling
   let maxAtl = 1
   for (const p of points) {
     if (p.atl > maxAtl) maxAtl = p.atl
   }
 
-  // Color interpolation: low fatigue (blue) → high fatigue (orange-red)
   const colorScale = d3
     .scaleLinear<string>()
     .domain([0, maxAtl * 0.5, maxAtl])
@@ -342,7 +303,6 @@ const drawFatigueBars = (
   }
 }
 
-/** Draw stacked impulse bars (training + activity) per bucket. */
 const drawImpulseBars = (
   group: SvgGroup,
   points: TrainingLoadPoint[],
@@ -353,7 +313,6 @@ const drawImpulseBars = (
   barLayout?: BarLayoutResult,
   slotId?: string,
 ): void => {
-  // Compute bar width from x-scale and bucket duration
   const sampleTime = points[0] ? parseTime(points[0].time) : new Date()
   const nextTime = new Date(sampleTime.getTime() + barDurationMs)
   const fullBarWidth = Math.max(1, Math.abs(xScale(nextTime) - xScale(sampleTime)) - 1)
@@ -405,8 +364,7 @@ const drawImpulseBars = (
   }
 }
 
-/** Draw CTL (fitness) area and ATL (fatigue) line.
- *  Points are anchored at the bucket midpoint for correct visual alignment. */
+/** Points are anchored at the bucket midpoint for correct visual alignment. */
 const drawLoadCurves = (
   group: SvgGroup,
   points: TrainingLoadPoint[],
@@ -421,7 +379,6 @@ const drawLoadCurves = (
   const halfBucket = barDurationMs / 2
   const midX = (d: TrainingLoadPoint) => xScale(new Date(parseTime(d.time).getTime() + halfBucket))
 
-  // CTL area (fitness) - filled below the line
   const ctlArea = d3
     .area<TrainingLoadPoint>()
     .x(midX)
@@ -437,7 +394,6 @@ const drawLoadCurves = (
     .attr('fill-opacity', bootstrapping ? 0.06 : 0.12)
     .attr('pointer-events', 'none')
 
-  // CTL line
   const ctlLine = d3
     .line<TrainingLoadPoint>()
     .x(midX)
@@ -456,8 +412,7 @@ const drawLoadCurves = (
     .attr('stroke-dasharray', bootstrapping ? '4,3' : 'none')
 }
 
-/** Draw TSB (form) as a color-coded line.
- *  Points are anchored at the bucket midpoint for correct visual alignment. */
+/** Points are anchored at the bucket midpoint for correct visual alignment. */
 const drawTsbLine = (
   group: SvgGroup,
   points: TrainingLoadPoint[],
@@ -470,7 +425,6 @@ const drawTsbLine = (
   const halfBucket = barDurationMs / 2
   const midTime = (p: TrainingLoadPoint) => new Date(parseTime(p.time).getTime() + halfBucket)
 
-  // Zero reference line
   const zeroY = yScale(0)
   group
     .append('line')
@@ -484,7 +438,6 @@ const drawTsbLine = (
     .attr('stroke-dasharray', '3,3')
     .attr('pointer-events', 'none')
 
-  // Draw TSB as colored line segments
   for (let i = 1; i < points.length; i++) {
     const prev = points[i - 1]!
     const curr = points[i]!
@@ -502,8 +455,6 @@ const drawTsbLine = (
       .attr('pointer-events', 'none')
   }
 }
-
-// ── Tooltip ───────────────────────────────────────────────────────────────────
 
 export const buildTrainingLoadTooltipHtml = (
   point: TrainingLoadPoint,
@@ -529,7 +480,6 @@ export const buildTrainingLoadTooltipHtml = (
     html += `<div class="tooltip-detail" style="color:${ACTIVITY_IMPULSE_COLOR}">Activity: ${point.activity_impulse.toFixed(1)}</div>`
   }
 
-  // Show zone if zones are available
   if (zones) {
     let zoneName: string
     if (point.atl < zones.balanced_min) zoneName = 'Undertrained'
@@ -548,10 +498,7 @@ export const buildTrainingLoadTooltipHtml = (
   return html
 }
 
-// ── Main draw function ────────────────────────────────────────────────────────
-
 /**
- * Infer bucket duration from consecutive points.
  * If points are pre-bucketed (daily/weekly), the gap between them reveals the bucket size.
  * Falls back to 1 hour for hourly or single-point data.
  */
@@ -566,11 +513,7 @@ export const inferBucketDuration = (points: TrainingLoadPoint[]): number => {
   return MS_PER_HOUR
 }
 
-/**
- * Draw the training load track: stacked impulse bars, CTL/ATL curves,
- * TSB line, zone bands, and an interactive crosshair overlay for tooltips.
- * Points may be hourly, daily, or weekly (pre-bucketed by backend).
- */
+/** Points may be hourly, daily, or weekly (pre-bucketed by backend). */
 export const drawTrainingLoadTrack = (config: TrainingLoadTrackConfig): void => {
   const { chartGroup, xScale, points, bootstrapping, zones, trackY, trackHeight } = config
 

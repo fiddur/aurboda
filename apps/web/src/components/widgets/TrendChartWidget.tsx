@@ -1,6 +1,4 @@
 /**
- * TrendChartWidget - Displays EMA trend visualization using the shared TrendLineChart.
- *
  * Split into a presentational `TrendChartView` and a fetching container. The
  * view links to the full chart page only when an `href` is supplied (the home
  * dashboard); the public renderer omits it.

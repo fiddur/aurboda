@@ -1,5 +1,5 @@
 /**
- * Share a challenge to the user's federated feed (#994): a personal note
+ * Share a challenge to the user's federated feed: a personal note
  * (markdown, previewed through the shared sanitiser) plus the challenge's
  * canonical join-by-URL link, with the usual feed audience choice. The server
  * resolves the linked name/URL from the challenge (or joined participation)
@@ -88,7 +88,7 @@ export function ShareChallengeDialog({
               <strong>{challengeName}</strong>
             </p>
             {message.trim() !== '' && (
-              // Same sanitising renderer as article prose (#910) — the backend
+              // Same sanitising renderer as article prose — the backend
               // runs the authored markdown through its own equivalent boundary.
               <div dangerouslySetInnerHTML={{ __html: renderMarkdown(message) }} />
             )}

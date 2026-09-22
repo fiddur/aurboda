@@ -18,8 +18,6 @@ import {
   tryMergeActivityIntoItem,
 } from './activityMerge'
 
-// -- Helpers ------------------------------------------------------------------
-
 const makeActivity = (overrides: Partial<Activity> = {}): Activity => ({
   activity_type: 'holosync',
   end_time: new Date('2026-01-01T09:00:00Z'),
@@ -51,8 +49,6 @@ const makeChartItem = (overrides: Partial<ChartItem> = {}): ChartItem => ({
   ...overrides,
 })
 
-// -- isDurationActivityLike ---------------------------------------------------
-
 describe('isDurationActivityLike', () => {
   it('returns false for point activities (no end_time)', () => {
     expect(isDurationActivityLike(makeActivity({ end_time: undefined }))).toBe(false)
@@ -79,8 +75,6 @@ describe('isDurationActivityLike', () => {
   })
 })
 
-// -- overlapMinutes -----------------------------------------------------------
-
 describe('overlapMinutes', () => {
   const h = (hour: number) => new Date(`2026-01-01T${String(hour).padStart(2, '0')}:00:00Z`)
 
@@ -101,8 +95,6 @@ describe('overlapMinutes', () => {
     expect(overlapMinutes(h(8), h(9), h(9), h(10))).toBe(0)
   })
 })
-
-// -- tryMergeActivityIntoItem -------------------------------------------------
 
 describe('tryMergeActivityIntoItem', () => {
   it('merges holosync activity into meditation item with >50% overlap', () => {
@@ -133,7 +125,6 @@ describe('tryMergeActivityIntoItem', () => {
   it('does not merge when item activity type does not match', () => {
     const item = makeChartItem({ activity_type: 'exercise' })
     const activity = makeActivity({ activity_type: 'breathwork' }) // maps to meditation only
-    // Breathwork merges with meditation, not exercise
     const result = tryMergeActivityIntoItem(activity, [item])
     expect(result).toBe(false)
   })
@@ -144,8 +135,6 @@ describe('tryMergeActivityIntoItem', () => {
     expect(tryMergeActivityIntoItem(activity, [item])).toBe(true)
   })
 })
-
-// -- buildActivityColumnItems -------------------------------------------------
 
 describe('buildActivityColumnItems', () => {
   const activityColors = {
@@ -192,7 +181,6 @@ describe('buildActivityColumnItems', () => {
       buildSleepDetails,
       scrobbles,
     )
-    // Should be 1 item (merged), not 2
     expect(items).toHaveLength(1)
     expect(items[0].tooltip.details).toContain('Also tagged: Holosync')
   })
@@ -252,7 +240,6 @@ describe('buildActivityColumnItems', () => {
       buildSleepDetails,
       scrobbles,
     )
-    // lastfm activity should not appear in Activity column
     expect(items).toHaveLength(1)
     expect(items[0].entity_type).toBe('activity')
   })
@@ -292,8 +279,6 @@ describe('buildActivityColumnItems', () => {
   })
 })
 
-// -- resolveCollapseTarget ----------------------------------------------------
-
 describe('resolveCollapseTarget', () => {
   const typeDefs = new Map([
     ['running', { parent_type: 'exercise' }],
@@ -321,8 +306,6 @@ describe('resolveCollapseTarget', () => {
     expect(resolveCollapseTarget('some_type', orphaned)).toBeNull()
   })
 })
-
-// -- ancestorChain / rootTypeOf -----------------------------------------------
 
 describe('ancestorChain', () => {
   const typeDefs = new Map([
@@ -383,8 +366,6 @@ describe('rootTypeOf', () => {
     expect(rootTypeOf('mystery', typeDefs)).toBe('mystery')
   })
 })
-
-// -- collapseToParentType -----------------------------------------------------
 
 describe('collapseToParentType', () => {
   const typeDefs = new Map([
@@ -677,8 +658,6 @@ describe('collapseToParentType', () => {
   })
 })
 
-// -- mergeAdjacentByKey --------------------------------------------------------
-
 describe('mergeAdjacentByKey', () => {
   const d = (h: number, m = 0) => new Date(Date.UTC(2026, 0, 1, h, m, 0))
   const byType = (a: Activity) => a.activity_type
@@ -743,8 +722,6 @@ describe('mergeAdjacentByKey', () => {
     expect(mergeAdjacentByKey([], byType, 60 * 1000)).toEqual([])
   })
 })
-
-// -- mergeScreentimeActivities -------------------------------------------------
 
 describe('mergeScreentimeActivities', () => {
   const d = (h: number, m = 0) => new Date(Date.UTC(2026, 0, 1, h, m, 0))

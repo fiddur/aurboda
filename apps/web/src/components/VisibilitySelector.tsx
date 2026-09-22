@@ -19,13 +19,11 @@ export interface VisibilityOption<T extends string> {
   hint: string
 }
 
-/** Dashboards + challenges: public (listed on your profile) or unlisted (link-only). */
 export const SHARE_VISIBILITY_OPTIONS: VisibilityOption<ShareVisibility>[] = [
   { hint: 'Listed on your public profile; anyone can find it.', label: 'Public', value: 'public' },
   { hint: 'Reachable only by its link; kept off your public profile.', label: 'Unlisted', value: 'unlisted' },
 ]
 
-/** Feed posts: the shared audiences plus followers-only. */
 export const FEED_VISIBILITY_OPTIONS: VisibilityOption<FeedVisibility>[] = [
   { hint: 'Anyone can see it; appears in public timelines.', label: 'Public', value: 'public' },
   { hint: 'Anyone with the link; kept out of public timelines.', label: 'Unlisted', value: 'unlisted' },

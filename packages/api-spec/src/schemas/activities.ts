@@ -1,7 +1,3 @@
-/**
- * Activities schemas.
- */
-
 import { z } from 'zod'
 
 import {
@@ -132,12 +128,10 @@ export const isValidExerciseType = (name: string): name is ExerciseTypeName => n
 export const isExerciseActivityType = (activityType: string): boolean =>
   activityType === 'exercise' || activityType in exerciseTypes
 
-/** Reverse lookup: Health Connect exercise type integer → exercise type name. */
 const exerciseTypesByValue = Object.fromEntries(
   Object.entries(exerciseTypes).map(([name, value]) => [value, name]),
 ) as Record<number, ExerciseTypeName>
 
-/** Get the exercise type name from its Health Connect integer value, or undefined if unknown. */
 export const getExerciseTypeName = (value: number): ExerciseTypeName | undefined =>
   exerciseTypesByValue[value]
 
@@ -203,9 +197,6 @@ export const activityComputedMetricsSchema = activitySummaryMetricsSchema
 
 export type ActivityComputedMetrics = z.infer<typeof activityComputedMetricsSchema>
 
-/**
- * Activity schema.
- */
 export const activitySchema = activityComputedMetricsSchema
   .extend({
     activity_type: z.string().meta({ description: 'Activity type' }),
@@ -235,9 +226,6 @@ export const activitySchema = activityComputedMetricsSchema
 
 export type Activity = z.infer<typeof activitySchema>
 
-/**
- * Source record schema for multi-source merged activities.
- */
 export const sourceRecordSchema = z
   .object({
     activity_type: z.string().optional().meta({ description: 'Activity type (e.g. yoga, running)' }),
@@ -252,9 +240,6 @@ export const sourceRecordSchema = z
 
 export type SourceRecord = z.infer<typeof sourceRecordSchema>
 
-/**
- * Activity detail response schema (single activity with optional merge info).
- */
 export const activityDetailSchema = activitySchema
   .extend({
     merged_end_time: iso8601DateTimeSchema
@@ -272,9 +257,6 @@ export const activityDetailSchema = activitySchema
 
 export type ActivityDetail = z.infer<typeof activityDetailSchema>
 
-/**
- * Activities query schema.
- */
 export const activitiesQuerySchema = timeRangeQuerySchema
   .extend({
     types: z.string().optional().meta({
@@ -298,18 +280,12 @@ export const activitiesQuerySchema = timeRangeQuerySchema
 
 export type ActivitiesQuery = z.infer<typeof activitiesQuerySchema>
 
-/**
- * Activities response schema.
- */
 export const activitiesResponseSchema = createDataArrayResponseSchema(activitySchema).meta({
   id: 'ActivitiesResponse',
 })
 
 export type ActivitiesResponse = z.infer<typeof activitiesResponseSchema>
 
-/**
- * Add activity request body schema.
- */
 export const addActivityBodySchema = z
   .object({
     activity_type: activityTypeSchema.meta({ description: 'Type of activity' }),
@@ -337,9 +313,6 @@ export const addActivityBodySchema = z
 
 export type AddActivityBody = z.infer<typeof addActivityBodySchema>
 
-/**
- * Added activity data schema.
- */
 const addedActivitySchema = z.object({
   activity_type: activityTypeSchema,
   end_time: iso8601DateTimeSchema.optional(),
@@ -348,9 +321,6 @@ const addedActivitySchema = z.object({
   title: z.string().optional(),
 })
 
-/**
- * Add activity response schema.
- */
 export const addActivityResponseSchema = baseResponseSchema
   .extend({
     data: addedActivitySchema.optional(),
@@ -359,9 +329,6 @@ export const addActivityResponseSchema = baseResponseSchema
 
 export type AddActivityResponse = z.infer<typeof addActivityResponseSchema>
 
-/**
- * Delete activity params.
- */
 export const deleteActivityParamsSchema = z
   .object({
     id: z.string().uuid().meta({ description: 'ID of the activity to delete' }),
@@ -370,17 +337,10 @@ export const deleteActivityParamsSchema = z
 
 export type DeleteActivityParams = z.infer<typeof deleteActivityParamsSchema>
 
-/**
- * Delete activity response.
- */
 export const deleteActivityResponseSchema = baseResponseSchema.meta({ id: 'DeleteActivityResponse' })
 
 export type DeleteActivityResponse = z.infer<typeof deleteActivityResponseSchema>
 
-/**
- * Update activity request body schema.
- * All fields are optional - only provided fields will be updated.
- */
 export const updateActivityBodySchema = z
   .object({
     activity_type: activityTypeSchema.optional().meta({ description: 'New activity type' }),
@@ -403,9 +363,6 @@ export const updateActivityBodySchema = z
 
 export type UpdateActivityBody = z.infer<typeof updateActivityBodySchema>
 
-/**
- * Update activity params.
- */
 export const updateActivityParamsSchema = z
   .object({
     id: z.string().uuid().meta({ description: 'ID of the activity to update' }),
@@ -414,9 +371,6 @@ export const updateActivityParamsSchema = z
 
 export type UpdateActivityParams = z.infer<typeof updateActivityParamsSchema>
 
-/**
- * Update activity response schema.
- */
 export const updateActivityResponseSchema = baseResponseSchema
   .extend({
     data: addedActivitySchema.optional(),
@@ -425,9 +379,6 @@ export const updateActivityResponseSchema = baseResponseSchema
 
 export type UpdateActivityResponse = z.infer<typeof updateActivityResponseSchema>
 
-/**
- * Merge activities request body schema.
- */
 export const mergeActivitiesBodySchema = z
   .object({
     activity_ids: z
@@ -441,9 +392,6 @@ export const mergeActivitiesBodySchema = z
 
 export type MergeActivitiesBody = z.infer<typeof mergeActivitiesBodySchema>
 
-/**
- * Merge activities response schema.
- */
 export const mergeActivitiesResponseSchema = baseResponseSchema
   .extend({
     data: activitySchema.optional(),
@@ -452,9 +400,6 @@ export const mergeActivitiesResponseSchema = baseResponseSchema
 
 export type MergeActivitiesResponse = z.infer<typeof mergeActivitiesResponseSchema>
 
-/**
- * Nearby activities query schema.
- */
 export const nearbyActivitiesQuerySchema = z
   .object({
     hours: z.coerce
@@ -467,19 +412,12 @@ export const nearbyActivitiesQuerySchema = z
 
 export type NearbyActivitiesQuery = z.infer<typeof nearbyActivitiesQuerySchema>
 
-/**
- * Nearby activities response schema.
- */
 export const nearbyActivitiesResponseSchema = createDataArrayResponseSchema(activitySchema).meta({
   id: 'NearbyActivitiesResponse',
 })
 
 export type NearbyActivitiesResponse = z.infer<typeof nearbyActivitiesResponseSchema>
 
-/**
- * Single activity detail response (for activity detail page).
- * Includes referenced_rules map for resolving rule IDs to names.
- */
 export const activityDetailResponseSchema = createDataResponseSchema(activitySchema)
   .extend({
     referenced_rules: z
@@ -493,9 +431,6 @@ export const activityDetailResponseSchema = createDataResponseSchema(activitySch
 
 export type ActivityDetailResponse = z.infer<typeof activityDetailResponseSchema>
 
-/**
- * Re-sync activity detail response.
- */
 export const resyncActivityDetailResponseSchema = baseResponseSchema
   .extend({
     points: z.number().int().meta({ description: 'Number of detail data points synced' }),
@@ -534,9 +469,6 @@ export const activityFullDetailQuerySchema = z
 
 export type ActivityFullDetailQuery = z.infer<typeof activityFullDetailQuerySchema>
 
-/**
- * GPS trace point for an activity.
- */
 export const activityGpsPointSchema = z
   .object({
     lat: latSchema,
@@ -587,9 +519,6 @@ export const activityFullDetailSchema = activityDetailSchema
 
 export type ActivityFullDetail = z.infer<typeof activityFullDetailSchema>
 
-/**
- * Response for the activity full-detail endpoint.
- */
 export const activityFullDetailResponseSchema = createDataResponseSchema(activityFullDetailSchema)
   .extend({
     referenced_rules: z

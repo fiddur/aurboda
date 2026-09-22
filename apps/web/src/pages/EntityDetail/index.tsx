@@ -1,10 +1,3 @@
-/**
- * Entity detail page — shows an activity, tag, productivity record, or metric data point
- * with notes and action buttons (delete / restore).
- *
- * Activity detail is data-driven: features are shown based on what data exists
- * (sleep stages, HR zones, exercise type) rather than hard-coded by display_category.
- */
 import { isExerciseActivityType } from '@aurboda/api-spec'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
@@ -72,8 +65,6 @@ const SourceRecordsSection = ({ records }: { records: SourceRecord[] }) => (
   </div>
 )
 
-// ── Notes / comments helpers ──────────────────────────────────────────────────
-
 /**
  * Join all user-typed comments (no `source`) attached to the activity into a
  * single string. Source-tagged comments (e.g. health_connect, oura) live in
@@ -89,8 +80,6 @@ const getUserNotesContent = (activity: Activity): string => {
     .join('\n')
 }
 
-// ── Exercise helpers ──────────────────────────────────────────────────────────
-
 const formatExerciseTypeName = (name: string): string => name.replaceAll('_', ' ')
 
 /**
@@ -102,8 +91,6 @@ export const resolveExerciseType = (activity: Activity): string | undefined => {
   if (!type || type === 'exercise') return undefined
   return isExerciseActivityType(type) ? type : undefined
 }
-
-// ── HR Zone Bar ───────────────────────────────────────────────────────────────
 
 const hrZoneLabels = ['Rest', 'Zone 1', 'Zone 2', 'Zone 3', 'Zone 4', 'Zone 5']
 const hrZoneColors = ['#22c55e', '#22c55e', '#3b82f6', '#f59e0b', '#f97316', '#ef4444']
@@ -145,8 +132,6 @@ const HrZoneBar = ({ zones }: { zones: Record<number, number> }) => {
     </div>
   )
 }
-
-// ── Sleep Metrics ────────────────────────────────────────────────────────────
 
 const extractSleepMetrics = (
   buckets: Array<{ metrics: Record<string, { avg: number }> }>,
@@ -199,8 +184,6 @@ const ActivityStatsTable = (props: BuildActivityStatRowsInput) => {
   )
 }
 
-// ── Unified Activity Detail ──────────────────────────────────────────────────
-
 /** Data-driven activity detail: shows features based on what data exists, not display_category. */
 // eslint-disable-next-line complexity -- unified component replaces 3 separate ones
 const ActivityDetailContent = ({
@@ -233,7 +216,6 @@ const ActivityDetailContent = ({
   const musicEnd = displayEnd
   const hasSourceRecords = activity.source_records && activity.source_records.length > 1
 
-  // Resolve type info
   const exerciseType = resolveExerciseType(activity)
   const currentActivityType = isEditing ? draft.activity_type : activity.activity_type
   const typeDef = typeDefinitions?.find((d) => d.name === currentActivityType)
@@ -241,7 +223,6 @@ const ActivityDetailContent = ({
     ? formatExerciseTypeName(exerciseType)
     : (typeDef?.display_name ?? toDisplayName(activity.activity_type))
 
-  // Resolve icon: exercise icon key → legacy exercise:{TypeName} → type def → activity icon
   const exerciseDisplayName = exerciseType ? formatExerciseTypeName(exerciseType) : undefined
   const exerciseIconKey = exerciseDisplayName ? `exercise:${exerciseDisplayName}` : undefined
   // For migrated exercise types (e.g., activity_type='yoga'), also try "exercise:Yoga"
@@ -269,7 +250,6 @@ const ActivityDetailContent = ({
   const hasExerciseType = Boolean(exerciseType)
   const [hoverTime, setHoverTime] = useState<Date | null>(null)
 
-  // Sleep metrics (only fetch when sleep stages exist)
   const endDateStr = hasSleepStages ? format(displayEnd, 'yyyy-MM-dd') : ''
   const sleepMetricsQuery = useQuery({
     enabled: hasSleepStages,
@@ -284,7 +264,6 @@ const ActivityDetailContent = ({
   const sleepMetrics = hasSleepStages ? extractSleepMetrics(sleepMetricsQuery.data?.buckets ?? []) : {}
   const hasSleepMetrics = Object.keys(sleepMetrics).length > 0
 
-  // Active calories (only fetch when exercise type exists)
   const caloriesQuery = useQuery({
     enabled: hasExerciseType && hasEndTime,
     queryFn: () => fetchMetricTimeSeries('calories_active', displayStart, displayEnd),
@@ -296,10 +275,8 @@ const ActivityDetailContent = ({
       ? Math.round(caloriesQuery.data.reduce((sum, [, val]) => sum + val, 0))
       : undefined
 
-  // Badge link: exercise sub-type or activity type
   const badgeHref = `/activity-type/${encodeURIComponent(exerciseType ?? activity.activity_type)}`
 
-  // User-typed description (first comment), shown as a markdown block under the title
   const description = getUserNotesContent(activity)
 
   return (
@@ -345,7 +322,6 @@ const ActivityDetailContent = ({
           />
         )}
 
-        {/* Schema data fields — editable in edit mode, read-only otherwise */}
         {typeDef?.data_schema && (isEditing || activity.data) && (
           <SchemaDataFields
             data={isEditing ? (draft.data ?? {}) : ((activity.data as Record<string, unknown>) ?? {})}
@@ -356,7 +332,6 @@ const ActivityDetailContent = ({
           />
         )}
 
-        {/* Read-only stats — shown based on data presence, not activity type */}
         {!isEditing && (
           <>
             <ActivityStatsTable
@@ -412,7 +387,6 @@ const makeDraft = (activity: Activity): ActivityDraft => {
   }
 }
 
-/** Activity entity content with edit/save logic. */
 const ResyncDetailButton = ({
   activity,
   activityId,
@@ -675,7 +649,6 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
   )
 }
 
-/** Productivity entity content. */
 const ProductivityContent = ({ entityId }: { entityId: string }) => {
   const queryClient = useQueryClient()
   const {

@@ -24,8 +24,6 @@ import './MealDetail.css'
 import { editItemsToBody, type FoodItemEdit, mealItemsToEdit, scaleNutrient } from './mealItems'
 import { DEFAULT_CUSTOM_TYPE, MEAL_TYPES, resolveMealTypeChange } from './mealTypes'
 
-// ── Sub-components ───────────────────────────────────────────────────────────
-
 function MealTypeEditor({
   value,
   onChange,
@@ -278,7 +276,6 @@ function FoodItemRow({
 
   useAutoDefaultPortion(item, detail, (p, count, isBackfill) => {
     if (!p) {
-      // Base unit is the default — just prefill the quantity.
       update({ quantity: count, _isNew: false })
       return
     }
@@ -456,10 +453,6 @@ function FoodItemsEditor({
   )
 }
 
-// ── Read-only info rows ──────────────────────────────────────────────────────
-
-// ── Nutrient breakdown ───────────────────────────────────────────────────────
-
 const NUTRIENT_CATEGORIES = [
   { key: 'macro', label: 'Macros' },
   { key: 'extended_macro', label: 'Extended' },
@@ -502,8 +495,6 @@ function NutrientBreakdown({ nutrients }: { nutrients: Record<string, number> })
   )
 }
 
-// ── Save indicator ───────────────────────────────────────────────────────────
-
 function SaveIndicator({
   isPending,
   showSaved,
@@ -518,8 +509,6 @@ function SaveIndicator({
   if (showSaved) return <span class="save-status save-ok">Saved ✓</span>
   return null
 }
-
-// ── Main component ───────────────────────────────────────────────────────────
 
 const FOOD_ITEM_DEBOUNCE_MS = 600
 
@@ -570,9 +559,9 @@ export function MealDetail() {
     createDebouncedFlusher<string>(FOOD_ITEM_DEBOUNCE_MS, (v) => saveRef.current({ meal_type: v })),
   )
 
-  // The previous unmount-time invalidate of ['meals'] was redundant — every
-  // save mutation already invalidates the list. It also caused a flicker when
-  // a flushed save and the manual invalidate raced. Removed.
+  // No unmount-time invalidate of ['meals']: every save mutation already
+  // invalidates the list, and a manual invalidate racing a flushed save
+  // caused a flicker.
 
   // Clear pending flash timer + flush both debouncers on unmount so any
   // mid-debounce edit is persisted before the route changes.
@@ -634,12 +623,10 @@ export function MealDetail() {
     },
   })
 
-  // Apply a partial update if the new value differs from the current server value.
   const save = (body: UpdateMealBody) => {
     setSaveError(null)
     updateMutation.mutate(body)
   }
-  // Keep the debouncers' save callback up to date with the latest closure.
   saveRef.current = save
 
   if (isLoading) {
@@ -692,7 +679,7 @@ export function MealDetail() {
   }
   const commitTime = () => {
     const d = new Date(timeStr)
-    if (Number.isNaN(d.getTime())) return // ignore invalid/empty datetime input
+    if (Number.isNaN(d.getTime())) return
     const iso = d.toISOString()
     if (iso !== meal.time.toISOString()) save({ time: iso })
   }

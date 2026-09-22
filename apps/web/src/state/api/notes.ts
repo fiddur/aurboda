@@ -20,7 +20,6 @@ const requireNote = (note: Note | undefined): Note => {
  * back nested as `replies[]` on their thread root, oldest first.
  */
 
-/** Every comment on one entity, each thread root with its replies nested. */
 export const fetchComments = async (entityType: EntityType, entityId: string): Promise<Note[]> => {
   const response = await axios.get<NotesResponse>(`${API_URL}/notes`, {
     headers: authHeaders(),
@@ -30,7 +29,6 @@ export const fetchComments = async (entityType: EntityType, entityId: string): P
   return response.data.data ?? []
 }
 
-/** Every thread root anchored in a time window, with replies nested. */
 export const fetchCommentsInRange = async (from: Date, to: Date): Promise<Note[]> => {
   const response = await axios.get<NotesResponse>(`${API_URL}/notes`, {
     headers: authHeaders(),

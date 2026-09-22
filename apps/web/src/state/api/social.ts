@@ -15,10 +15,6 @@ import { auth } from '../auth'
 
 const authHeaders = () => ({ Authorization: `Bearer ${auth.value.token}` })
 
-// ===========================================================================
-// Owner-facing CRUD (authenticated)
-// ===========================================================================
-
 export const listSharedDashboards = async (): Promise<SharedDashboard[]> => {
   const response = await axios.get<SharedDashboardsResponse>(`${API_URL}/shared-dashboards`, {
     headers: authHeaders(),
@@ -48,10 +44,6 @@ export const updateSharedDashboard = async (
 export const deleteSharedDashboard = async (id: string): Promise<void> => {
   await axios.delete(`${API_URL}/shared-dashboards/${id}`, { headers: authHeaders() })
 }
-
-// ===========================================================================
-// Public viewing (unauthenticated — no Authorization header)
-// ===========================================================================
 
 export const fetchPublicProfile = async (username: string): Promise<PublicProfileResponse> => {
   const response = await axios.get<PublicProfileResponse>(

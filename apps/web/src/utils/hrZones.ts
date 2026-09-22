@@ -23,11 +23,6 @@ export const hrZoneColors = [
   '#F44336', // Zone 5: Red - Max effort
 ]
 
-/**
- * Format seconds as human-readable time string
- * @param seconds - Time in seconds
- * @returns Formatted string like "1 h 30 min" or "45 min"
- */
 export const formatZoneTime = (seconds: number): string => {
   const totalMinutes = Math.floor(seconds / 60)
   if (totalMinutes >= 60) {
@@ -38,12 +33,6 @@ export const formatZoneTime = (seconds: number): string => {
   return `${totalMinutes} min`
 }
 
-/**
- * Format BPM range string for a given HR zone
- * @param zoneIndex - Zone index (0-5)
- * @param thresholds - HR zone thresholds
- * @returns Formatted string like "102 - 117 bpm"
- */
 export const formatBpmRange = (zoneIndex: number, thresholds: HrZoneThresholds): string => {
   const zoneStarts = [0, thresholds[1], thresholds[2], thresholds[3], thresholds[4], thresholds[5]]
   switch (zoneIndex) {
@@ -56,12 +45,6 @@ export const formatBpmRange = (zoneIndex: number, thresholds: HrZoneThresholds):
   }
 }
 
-/**
- * Find metric time in seconds from a list of period metrics
- * @param metrics - List of period metric stats
- * @param metricName - Name of the metric to find
- * @returns Time in seconds (avg value) or 0 if not found
- */
 export const findMetricTimeSeconds = (metrics: PeriodMetricStats[], metricName: string): number => {
   const metric = metrics.find((m) => m.metric === metricName)
   return metric?.avg ?? 0

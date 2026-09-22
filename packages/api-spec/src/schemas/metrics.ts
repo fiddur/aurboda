@@ -1,7 +1,3 @@
-/**
- * Metrics query schemas.
- */
-
 import { z } from 'zod'
 
 import {
@@ -12,21 +8,14 @@ import {
   timeRangeQuerySchema,
 } from './common.ts'
 
-// Shared metric value field
 const metricValueSchema = z.number().meta({ description: 'Metric value' })
 
-/**
- * Metric name field that accepts both built-in and custom metric names.
- * Validation against the user's custom metrics is done at the service layer.
- */
+/** Validation against the user's custom metrics happens at the service layer. */
 const metricNameSchema = z.string().min(1).max(50).meta({
   description: 'Metric name (built-in or custom)',
   example: 'heart_rate',
 })
 
-/**
- * Metric data point schema.
- */
 export const metricDataPointSchema = z
   .object({
     source: z
@@ -40,9 +29,6 @@ export const metricDataPointSchema = z
 
 export type MetricDataPoint = z.infer<typeof metricDataPointSchema>
 
-/**
- * Query metrics response schema.
- */
 export const queryMetricsResponseSchema = baseResponseSchema
   .extend({
     count: z.number().int().optional().meta({ description: 'Number of data points' }),
@@ -54,9 +40,6 @@ export const queryMetricsResponseSchema = baseResponseSchema
 
 export type QueryMetricsResponse = z.infer<typeof queryMetricsResponseSchema>
 
-/**
- * Query metrics request params.
- */
 export const queryMetricsParamsSchema = z
   .object({
     metric: metricTypeSchema,
@@ -65,17 +48,10 @@ export const queryMetricsParamsSchema = z
 
 export type QueryMetricsParams = z.infer<typeof queryMetricsParamsSchema>
 
-/**
- * Query metrics request query.
- */
 export const queryMetricsQuerySchema = timeRangeQuerySchema.meta({ id: 'QueryMetricsQuery' })
 
 export type QueryMetricsQuery = z.infer<typeof queryMetricsQuerySchema>
 
-/**
- * Add metric request body.
- * Accepts both built-in and custom metric names (validated at service layer).
- */
 export const addMetricBodySchema = z
   .object({
     metric: metricNameSchema,
@@ -88,9 +64,6 @@ export const addMetricBodySchema = z
 
 export type AddMetricBody = z.infer<typeof addMetricBodySchema>
 
-/**
- * Add metric response.
- */
 export const addMetricResponseSchema = baseResponseSchema
   .extend({
     entity_id: z.string().optional().meta({
@@ -101,13 +74,6 @@ export const addMetricResponseSchema = baseResponseSchema
 
 export type AddMetricResponse = z.infer<typeof addMetricResponseSchema>
 
-// ============================================================================
-// Bulk Metric Insert
-// ============================================================================
-
-/**
- * Single item within a bulk metric insert request.
- */
 export const bulkMetricItemSchema = z
   .object({
     metric: metricNameSchema,
@@ -119,10 +85,6 @@ export const bulkMetricItemSchema = z
 
 export type BulkMetricItem = z.infer<typeof bulkMetricItemSchema>
 
-/**
- * Bulk metric insert request body.
- * Accepts up to 10,000 metric data points per request.
- */
 export const bulkMetricsBodySchema = z
   .object({
     data: z
@@ -144,9 +106,6 @@ export const bulkMetricsBodySchema = z
 
 export type BulkMetricsBody = z.infer<typeof bulkMetricsBodySchema>
 
-/**
- * Per-item error in bulk insert response.
- */
 export const bulkMetricErrorSchema = z
   .object({
     error: z.string().meta({ description: 'Error message' }),
@@ -156,9 +115,6 @@ export const bulkMetricErrorSchema = z
 
 export type BulkMetricError = z.infer<typeof bulkMetricErrorSchema>
 
-/**
- * Bulk metric insert response.
- */
 export const bulkMetricsResponseSchema = baseResponseSchema
   .extend({
     errors: z.array(bulkMetricErrorSchema).optional().meta({ description: 'Per-item validation errors' }),
@@ -168,21 +124,11 @@ export const bulkMetricsResponseSchema = baseResponseSchema
 
 export type BulkMetricsResponse = z.infer<typeof bulkMetricsResponseSchema>
 
-// ============================================================================
-// Custom Metric Management
-// ============================================================================
-
-/**
- * Add custom metric request body.
- */
 export const addCustomMetricBodySchema = customMetricDefinitionSchema.meta({ id: 'AddCustomMetricBody' })
 
 export type AddCustomMetricBody = z.infer<typeof addCustomMetricBodySchema>
 
-/**
- * Update custom metric request body.
- * All fields are optional; null clears minValue/maxValue.
- */
+/** All fields are optional; null clears minValue/maxValue. */
 export const updateCustomMetricBodySchema = z
   .object({
     description: z.string().optional().meta({ description: 'Human-readable description' }),
@@ -211,9 +157,6 @@ export const updateCustomMetricBodySchema = z
 
 export type UpdateCustomMetricBody = z.infer<typeof updateCustomMetricBodySchema>
 
-/**
- * Delete metric query schema for single measurement deletion.
- */
 export const deleteMetricQuerySchema = z
   .object({
     source: z.string().describe('Data source of the measurement'),
@@ -223,9 +166,6 @@ export const deleteMetricQuerySchema = z
 
 export type DeleteMetricQuery = z.infer<typeof deleteMetricQuerySchema>
 
-/**
- * Delete metric response.
- */
 export const deleteMetricResponseSchema = baseResponseSchema
   .extend({
     deleted: z.boolean().meta({ description: 'Whether the measurement was deleted' }),
@@ -237,9 +177,6 @@ export const deleteMetricResponseSchema = baseResponseSchema
 
 export type DeleteMetricResponse = z.infer<typeof deleteMetricResponseSchema>
 
-/**
- * Custom metric response.
- */
 export const customMetricResponseSchema = baseResponseSchema
   .extend({
     data: customMetricDefinitionSchema.optional(),
@@ -248,9 +185,6 @@ export const customMetricResponseSchema = baseResponseSchema
 
 export type CustomMetricResponse = z.infer<typeof customMetricResponseSchema>
 
-/**
- * List custom metrics response.
- */
 export const customMetricsListResponseSchema = baseResponseSchema
   .extend({
     data: z.array(customMetricDefinitionSchema).optional(),
@@ -259,15 +193,6 @@ export const customMetricsListResponseSchema = baseResponseSchema
 
 export type CustomMetricsListResponse = z.infer<typeof customMetricsListResponseSchema>
 
-// =============================================================================
-// Bucketed Metrics Query
-// =============================================================================
-
-/**
- * Bucket size for time-based aggregation.
- * Format: {number}{unit} where unit is s (seconds), m (minutes), h (hours), d (days), w (weeks), M (months).
- * Examples: '10s', '5m', '1h', '1d', '1w', '1M'
- */
 export const bucketSizeSchema = z
   .string()
   .regex(/^\d+[smhdwM]$/, 'Must be {number}{unit} where unit is s, m, h, d, w, or M')
@@ -280,9 +205,6 @@ export const bucketSizeSchema = z
 
 export type BucketSize = z.infer<typeof bucketSizeSchema>
 
-/**
- * Statistics for a single metric within a bucket.
- */
 export const bucketMetricStatsSchema = z
   .object({
     avg: z.number().meta({ description: 'Average value in bucket' }),
@@ -304,10 +226,7 @@ export const bucketMetricStatsSchema = z
 
 export type BucketMetricStats = z.infer<typeof bucketMetricStatsSchema>
 
-/**
- * A single time bucket with aggregated metrics.
- * Note: Not all metrics will have data in every bucket, so only present metrics are included.
- */
+/** Not all metrics have data in every bucket, so only present metrics are included. */
 export const metricBucketSchema = z
   .object({
     end: iso8601DateTimeSchema.meta({ description: 'Bucket end time' }),
@@ -320,11 +239,6 @@ export const metricBucketSchema = z
 
 export type MetricBucket = z.infer<typeof metricBucketSchema>
 
-/**
- * Query bucketed metrics request query.
- * If metrics is omitted, returns all metrics with data in the time range.
- * Use exclude to skip specific metrics when fetching all.
- */
 export const queryMetricsBucketedQuerySchema = timeRangeQuerySchema
   .extend({
     bucket: bucketSizeSchema,
@@ -350,9 +264,6 @@ export const queryMetricsBucketedQuerySchema = timeRangeQuerySchema
 
 export type QueryMetricsBucketedQuery = z.infer<typeof queryMetricsBucketedQuerySchema>
 
-/**
- * Query bucketed metrics response.
- */
 export const queryMetricsBucketedResponseSchema = baseResponseSchema
   .extend({
     bucket: bucketSizeSchema.optional(),
@@ -364,14 +275,6 @@ export const queryMetricsBucketedResponseSchema = baseResponseSchema
 
 export type QueryMetricsBucketedResponse = z.infer<typeof queryMetricsBucketedResponseSchema>
 
-// =============================================================================
-// Calorie Recalculation
-// =============================================================================
-
-/**
- * Recalculate calories request body.
- * Computes calorie burn from HR data for the given time range.
- */
 export const recalculateCaloriesBodySchema = z
   .object({
     end: iso8601DateTimeSchema.meta({ description: 'End date/time' }),
@@ -384,9 +287,6 @@ export const recalculateCaloriesBodySchema = z
 
 export type RecalculateCaloriesBody = z.infer<typeof recalculateCaloriesBodySchema>
 
-/**
- * Recalculate calories response.
- */
 export const recalculateCaloriesResponseSchema = baseResponseSchema
   .extend({
     points_computed: z
@@ -408,13 +308,9 @@ export const recalculateCaloriesResponseSchema = baseResponseSchema
 
 export type RecalculateCaloriesResponse = z.infer<typeof recalculateCaloriesResponseSchema>
 
-// =============================================================================
-// Latest Metric Value
-// =============================================================================
-
 /**
- * Latest metric query — returns the most recent value for a metric regardless of age.
- * Useful for lab data that may be months old (e.g., "what was last VO2 max?").
+ * Returns the most recent value for a metric regardless of age — useful for lab
+ * data that may be months old (e.g. "what was the last VO2 max?").
  */
 export const latestMetricQuerySchema = z
   .object({
@@ -427,9 +323,6 @@ export const latestMetricQuerySchema = z
 
 export type LatestMetricQuery = z.infer<typeof latestMetricQuerySchema>
 
-/**
- * Latest metric response.
- */
 export const latestMetricResponseSchema = baseResponseSchema
   .extend({
     metric: metricNameSchema.optional(),
@@ -442,14 +335,7 @@ export const latestMetricResponseSchema = baseResponseSchema
 
 export type LatestMetricResponse = z.infer<typeof latestMetricResponseSchema>
 
-// =============================================================================
-// Merge Custom Metric
-// =============================================================================
-
-/**
- * Merge a custom metric into another metric (built-in or custom).
- * All time_series data is reassigned; the source definition is deleted.
- */
+/** All time_series data is reassigned; the source definition is deleted. */
 export const mergeCustomMetricBodySchema = z
   .object({
     source: metricNameSchema.meta({ description: 'Custom metric to merge away' }),
@@ -459,9 +345,6 @@ export const mergeCustomMetricBodySchema = z
 
 export type MergeCustomMetricBody = z.infer<typeof mergeCustomMetricBodySchema>
 
-/**
- * Merge custom metric response.
- */
 export const mergeCustomMetricResponseSchema = baseResponseSchema
   .extend({
     rows_reassigned: z

@@ -1,7 +1,3 @@
-/**
- * Sync schemas.
- */
-
 import { z } from 'zod'
 
 import {
@@ -13,7 +9,6 @@ import {
   syncStatusSchema,
 } from './common.ts'
 
-// Shared sync options fields
 const fullResyncSchema = z.boolean().optional().meta({
   description: 'If true, fetches all historical data',
 })
@@ -21,9 +16,6 @@ const startDateSyncSchema = dateOnlySchema.optional().meta({
   description: 'Start date for sync (only used with full_resync)',
 })
 
-/**
- * Provider sync status schema.
- */
 export const providerSyncStatusSchema = z
   .object({
     error_message: z.string().nullable().meta({ description: 'Error message if status is error' }),
@@ -40,18 +32,12 @@ export const providerSyncStatusSchema = z
 
 export type ProviderSyncStatus = z.infer<typeof providerSyncStatusSchema>
 
-/**
- * Sync status response schema.
- */
 export const syncStatusResponseSchema = createDataArrayResponseSchema(providerSyncStatusSchema).meta({
   id: 'SyncStatusResponse',
 })
 
 export type SyncStatusResponse = z.infer<typeof syncStatusResponseSchema>
 
-/**
- * Sync status query schema.
- */
 export const syncStatusQuerySchema = z
   .object({
     provider: z
@@ -65,9 +51,6 @@ export const syncStatusQuerySchema = z
 
 export type SyncStatusQuery = z.infer<typeof syncStatusQuerySchema>
 
-/**
- * Sync provider schema (for MCP).
- */
 export const syncProviderSchema = z
   .enum(['oura', 'garmin', 'strava', 'rescuetime', 'calendar', 'lastfm', 'activitywatch', 'gravl', 'all'])
   .meta({
@@ -76,9 +59,6 @@ export const syncProviderSchema = z
 
 export type SyncProviderType = z.infer<typeof syncProviderSchema>
 
-/**
- * Sync Oura body schema.
- */
 export const syncOuraBodySchema = z
   .object({
     full_resync: fullResyncSchema,
@@ -88,9 +68,6 @@ export const syncOuraBodySchema = z
 
 export type SyncOuraBody = z.infer<typeof syncOuraBodySchema>
 
-/**
- * Sync Garmin body schema.
- */
 export const syncGarminBodySchema = z
   .object({
     full_resync: fullResyncSchema,
@@ -100,9 +77,6 @@ export const syncGarminBodySchema = z
 
 export type SyncGarminBody = z.infer<typeof syncGarminBodySchema>
 
-/**
- * Sync RescueTime body schema.
- */
 export const syncRescueTimeBodySchema = z
   .object({
     full_resync: fullResyncSchema,
@@ -112,9 +86,6 @@ export const syncRescueTimeBodySchema = z
 
 export type SyncRescueTimeBody = z.infer<typeof syncRescueTimeBodySchema>
 
-/**
- * Sync Gravl body schema.
- */
 export const syncGravlBodySchema = z
   .object({
     full_resync: fullResyncSchema,
@@ -124,9 +95,6 @@ export const syncGravlBodySchema = z
 
 export type SyncGravlBody = z.infer<typeof syncGravlBodySchema>
 
-/**
- * Sync Calendars body schema.
- */
 export const syncCalendarsBodySchema = z
   .object({
     full_resync: fullResyncSchema,
@@ -135,9 +103,6 @@ export const syncCalendarsBodySchema = z
 
 export type SyncCalendarsBody = z.infer<typeof syncCalendarsBodySchema>
 
-/**
- * Sync response schema.
- */
 export const syncResponseSchema = baseResponseSchema
   .extend({
     message: z.string().optional().meta({ description: 'Status message' }),
@@ -146,14 +111,7 @@ export const syncResponseSchema = baseResponseSchema
 
 export type SyncResponse = z.infer<typeof syncResponseSchema>
 
-// ============================================================================
-// Daily Aggregates (Health Connect cumulative metrics)
-// ============================================================================
-
-/**
- * Daily aggregate item schema.
- * Represents a deduplicated daily total for a cumulative metric from Health Connect.
- */
+/** A deduplicated daily total for a cumulative metric from Health Connect. */
 export const dailyAggregateSchema = z
   .object({
     data_origins: z.array(z.string()).meta({ description: 'Contributing app package names' }),
@@ -178,9 +136,6 @@ export interface DailyAggregate {
   value: number
 }
 
-/**
- * Daily aggregates request body schema.
- */
 export const dailyAggregatesBodySchema = z
   .object({
     data: z.array(dailyAggregateSchema).meta({ description: 'Array of daily aggregates' }),
@@ -189,13 +144,6 @@ export const dailyAggregatesBodySchema = z
 
 export type DailyAggregatesBody = z.infer<typeof dailyAggregatesBodySchema>
 
-// ============================================================================
-// Health Connect Generic Sync
-// ============================================================================
-
-/**
- * Health Connect record metadata schema.
- */
 export const healthConnectMetadataSchema = z
   .object({
     id: z.string().optional().meta({ description: 'Record ID from Health Connect' }),
@@ -203,10 +151,7 @@ export const healthConnectMetadataSchema = z
   .passthrough()
   .meta({ id: 'HealthConnectMetadata' })
 
-/**
- * Health Connect record schema.
- * Generic schema for any Health Connect record type.
- */
+/** Generic schema for any Health Connect record type. */
 export const healthConnectRecordSchema = z
   .object({
     end_time: iso8601DateTimeSchema.optional().meta({ description: 'End time for interval records' }),
@@ -219,9 +164,6 @@ export const healthConnectRecordSchema = z
 
 export type HealthConnectRecord = z.infer<typeof healthConnectRecordSchema>
 
-/**
- * Health Connect sync request body schema.
- */
 export const healthConnectSyncBodySchema = z
   .object({
     data: z.union([healthConnectRecordSchema, z.array(healthConnectRecordSchema)]).meta({
@@ -232,14 +174,7 @@ export const healthConnectSyncBodySchema = z
 
 export type HealthConnectSyncBody = z.infer<typeof healthConnectSyncBodySchema>
 
-// ============================================================================
-// Health Connect Deletions
-// ============================================================================
-
-/**
- * Health Connect deletions request body schema.
- * Used when Health Connect reports deleted records that should be removed from the backend.
- */
+/** Sent when Health Connect reports records deleted on the device. */
 export const healthConnectDeletionsBodySchema = z
   .object({
     data: z.array(z.string()).min(1).meta({
@@ -250,13 +185,6 @@ export const healthConnectDeletionsBodySchema = z
 
 export type HealthConnectDeletionsBody = z.infer<typeof healthConnectDeletionsBodySchema>
 
-// ============================================================================
-// Provider-specific status responses
-// ============================================================================
-
-/**
- * Oura sync status response.
- */
 export const ouraSyncStatusResponseSchema = baseResponseSchema
   .extend({
     states: z.array(providerSyncStatusSchema).optional().meta({ description: 'Oura sync states' }),
@@ -265,9 +193,6 @@ export const ouraSyncStatusResponseSchema = baseResponseSchema
 
 export type OuraSyncStatusResponse = z.infer<typeof ouraSyncStatusResponseSchema>
 
-/**
- * RescueTime sync status response.
- */
 export const rescueTimeSyncStatusResponseSchema = baseResponseSchema
   .extend({
     states: z.array(providerSyncStatusSchema).optional().meta({ description: 'RescueTime sync states' }),
@@ -276,13 +201,6 @@ export const rescueTimeSyncStatusResponseSchema = baseResponseSchema
 
 export type RescueTimeSyncStatusResponse = z.infer<typeof rescueTimeSyncStatusResponseSchema>
 
-// ============================================================================
-// Sync result schemas
-// ============================================================================
-
-/**
- * Sync result status.
- */
 export const syncResultStatusSchema = z.enum(['success', 'skipped', 'error', 'rate_limited']).meta({
   description: 'Status of sync operation',
   id: 'SyncResultStatus',
@@ -290,9 +208,6 @@ export const syncResultStatusSchema = z.enum(['success', 'skipped', 'error', 'ra
 
 export type SyncResultStatus = z.infer<typeof syncResultStatusSchema>
 
-/**
- * Oura data types that can be synced.
- */
 export const ouraDataTypeSchema = z
   .enum([
     'dailyCardiovascularAge',
@@ -310,9 +225,6 @@ export const ouraDataTypeSchema = z
 
 export type OuraDataType = z.infer<typeof ouraDataTypeSchema>
 
-/**
- * Oura sync result for a single data type.
- */
 export const ouraSyncResultSchema = z
   .object({
     data_type: ouraDataTypeSchema,
@@ -325,9 +237,6 @@ export const ouraSyncResultSchema = z
 
 export type OuraSyncResult = z.infer<typeof ouraSyncResultSchema>
 
-/**
- * Garmin data types that can be synced.
- */
 export const garminDataTypeSchema = z
   .enum([
     'dailySummary',
@@ -349,9 +258,6 @@ export const garminDataTypeSchema = z
 
 export type GarminDataType = z.infer<typeof garminDataTypeSchema>
 
-/**
- * Garmin sync result for a single data type.
- */
 export const garminSyncResultSchema = z
   .object({
     data_type: garminDataTypeSchema,
@@ -369,9 +275,6 @@ export const garminSyncResultSchema = z
 
 export type GarminSyncResult = z.infer<typeof garminSyncResultSchema>
 
-/**
- * Sync Strava body schema.
- */
 export const syncStravaBodySchema = z
   .object({
     full_resync: fullResyncSchema,
@@ -380,9 +283,6 @@ export const syncStravaBodySchema = z
 
 export type SyncStravaBody = z.infer<typeof syncStravaBodySchema>
 
-/**
- * Strava sync result.
- */
 export const stravaSyncResultSchema = z
   .object({
     error: z.string().optional().meta({ description: 'Error message if status is error' }),
@@ -394,9 +294,6 @@ export const stravaSyncResultSchema = z
 
 export type StravaSyncResult = z.infer<typeof stravaSyncResultSchema>
 
-/**
- * Strava sync response.
- */
 export const stravaSyncResponseSchema = baseResponseSchema
   .extend({
     result: stravaSyncResultSchema.optional().meta({ description: 'Sync result' }),
@@ -405,9 +302,6 @@ export const stravaSyncResponseSchema = baseResponseSchema
 
 export type StravaSyncResponse = z.infer<typeof stravaSyncResponseSchema>
 
-/**
- * Strava queue status (pg-boss counts).
- */
 export const stravaQueueStatusSchema = z
   .object({
     active_count: z.number().int().meta({ description: 'Jobs currently being processed' }),
@@ -417,9 +311,6 @@ export const stravaQueueStatusSchema = z
 
 export type StravaQueueStatusType = z.infer<typeof stravaQueueStatusSchema>
 
-/**
- * Strava sync status response.
- */
 export const stravaSyncStatusResponseSchema = baseResponseSchema
   .extend({
     queue: stravaQueueStatusSchema.optional().meta({ description: 'Strava job queue status' }),
@@ -429,9 +320,6 @@ export const stravaSyncStatusResponseSchema = baseResponseSchema
 
 export type StravaSyncStatusResponse = z.infer<typeof stravaSyncStatusResponseSchema>
 
-/**
- * RescueTime sync result.
- */
 export const rescueTimeSyncResultSchema = z
   .object({
     error: z.string().optional().meta({ description: 'Error message if status is error' }),
@@ -443,9 +331,6 @@ export const rescueTimeSyncResultSchema = z
 
 export type RescueTimeSyncResult = z.infer<typeof rescueTimeSyncResultSchema>
 
-/**
- * Gravl sync result schema.
- */
 export const gravlSyncResultSchema = z
   .object({
     activities_created: z
@@ -468,9 +353,6 @@ export const gravlSyncResultSchema = z
 
 export type GravlSyncResult = z.infer<typeof gravlSyncResultSchema>
 
-/**
- * Gravl sync response.
- */
 export const gravlSyncResponseSchema = baseResponseSchema
   .extend({
     result: gravlSyncResultSchema.optional().meta({ description: 'Sync result' }),
@@ -479,9 +361,6 @@ export const gravlSyncResponseSchema = baseResponseSchema
 
 export type GravlSyncResponse = z.infer<typeof gravlSyncResponseSchema>
 
-/**
- * Gravl sync status response.
- */
 export const gravlSyncStatusResponseSchema = baseResponseSchema
   .extend({
     states: z.array(providerSyncStatusSchema).optional().meta({ description: 'Gravl sync states' }),
@@ -490,9 +369,6 @@ export const gravlSyncStatusResponseSchema = baseResponseSchema
 
 export type GravlSyncStatusResponse = z.infer<typeof gravlSyncStatusResponseSchema>
 
-/**
- * Oura sync response with typed results.
- */
 export const ouraSyncResponseSchema = baseResponseSchema
   .extend({
     results: z.array(ouraSyncResultSchema).optional().meta({ description: 'Sync results per data type' }),
@@ -501,9 +377,6 @@ export const ouraSyncResponseSchema = baseResponseSchema
 
 export type OuraSyncResponse = z.infer<typeof ouraSyncResponseSchema>
 
-/**
- * Garmin sync response with typed results.
- */
 export const garminSyncResponseSchema = baseResponseSchema
   .extend({
     results: z.array(garminSyncResultSchema).optional().meta({ description: 'Sync results per data type' }),
@@ -516,9 +389,6 @@ export const garminSyncResponseSchema = baseResponseSchema
 
 export type GarminSyncResponse = z.infer<typeof garminSyncResponseSchema>
 
-/**
- * Garmin sync status response.
- */
 export const garminSyncStatusResponseSchema = baseResponseSchema
   .extend({
     states: z.array(providerSyncStatusSchema).optional().meta({ description: 'Garmin sync states' }),
@@ -527,9 +397,6 @@ export const garminSyncStatusResponseSchema = baseResponseSchema
 
 export type GarminSyncStatusResponse = z.infer<typeof garminSyncStatusResponseSchema>
 
-/**
- * RescueTime sync response with typed result.
- */
 export const rescueTimeSyncResponseSchema = baseResponseSchema
   .extend({
     result: rescueTimeSyncResultSchema.optional().meta({ description: 'Sync result' }),
@@ -538,13 +405,6 @@ export const rescueTimeSyncResponseSchema = baseResponseSchema
 
 export type RescueTimeSyncResponse = z.infer<typeof rescueTimeSyncResponseSchema>
 
-// ============================================================================
-// Calendar sync schemas
-// ============================================================================
-
-/**
- * Calendar sync status response.
- */
 export const calendarSyncStatusResponseSchema = baseResponseSchema
   .extend({
     states: z.array(providerSyncStatusSchema).optional().meta({ description: 'Calendar sync states' }),
@@ -553,9 +413,6 @@ export const calendarSyncStatusResponseSchema = baseResponseSchema
 
 export type CalendarSyncStatusResponse = z.infer<typeof calendarSyncStatusResponseSchema>
 
-/**
- * Calendar sync result.
- */
 export const calendarSyncResultSchema = z
   .object({
     calendar: z.string().meta({ description: 'Calendar name' }),
@@ -567,9 +424,6 @@ export const calendarSyncResultSchema = z
 
 export type CalendarSyncResult = z.infer<typeof calendarSyncResultSchema>
 
-/**
- * Calendar sync response.
- */
 export const calendarSyncResponseSchema = baseResponseSchema
   .extend({
     results: z.array(calendarSyncResultSchema).optional().meta({ description: 'Sync results per calendar' }),
@@ -578,13 +432,6 @@ export const calendarSyncResponseSchema = baseResponseSchema
 
 export type CalendarSyncResponse = z.infer<typeof calendarSyncResponseSchema>
 
-// ============================================================================
-// Last.fm sync schemas
-// ============================================================================
-
-/**
- * Sync Last.fm body schema.
- */
 export const syncLastFmBodySchema = z
   .object({
     full_resync: z.boolean().optional().meta({
@@ -598,9 +445,6 @@ export const syncLastFmBodySchema = z
 
 export type SyncLastFmBody = z.infer<typeof syncLastFmBodySchema>
 
-/**
- * Last.fm sync result.
- */
 export const lastFmSyncResultSchema = z
   .object({
     error: z.string().optional().meta({ description: 'Error message if status is error' }),
@@ -611,9 +455,6 @@ export const lastFmSyncResultSchema = z
 
 export type LastFmSyncResult = z.infer<typeof lastFmSyncResultSchema>
 
-/**
- * Last.fm sync response.
- */
 export const lastFmSyncResponseSchema = baseResponseSchema
   .extend({
     result: lastFmSyncResultSchema.optional().meta({ description: 'Sync result' }),
@@ -622,9 +463,6 @@ export const lastFmSyncResponseSchema = baseResponseSchema
 
 export type LastFmSyncResponse = z.infer<typeof lastFmSyncResponseSchema>
 
-/**
- * Last.fm sync status response.
- */
 export const lastFmSyncStatusResponseSchema = baseResponseSchema
   .extend({
     states: z.array(providerSyncStatusSchema).optional().meta({ description: 'Last.fm sync states' }),
@@ -632,14 +470,6 @@ export const lastFmSyncStatusResponseSchema = baseResponseSchema
   .meta({ id: 'LastFmSyncStatusResponse' })
 
 export type LastFmSyncStatusResponse = z.infer<typeof lastFmSyncStatusResponseSchema>
-
-// ============================================================================
-// Last.fm scrobbles query schemas
-// ============================================================================
-
-// ============================================================================
-// ActivityWatch push sync schemas
-// ============================================================================
 
 /**
  * A single ActivityWatch event (from aw-watcher-window or aw-watcher-android).
@@ -655,10 +485,7 @@ export const activityWatchEventSchema = z
 
 export type ActivityWatchEvent = z.infer<typeof activityWatchEventSchema>
 
-/**
- * Request body for POST /sync/activitywatch.
- * Sent by the push agent on each device.
- */
+/** Sent by the push agent on each device. */
 export const syncActivityWatchBodySchema = z
   .object({
     device_name: z.string().max(100).optional().meta({
@@ -673,9 +500,6 @@ export const syncActivityWatchBodySchema = z
 
 export type SyncActivityWatchBody = z.infer<typeof syncActivityWatchBodySchema>
 
-/**
- * ActivityWatch sync result.
- */
 export const activityWatchSyncResultSchema = z
   .object({
     device_name: z.string().meta({ description: 'Device name used for deduplication' }),
@@ -687,9 +511,6 @@ export const activityWatchSyncResultSchema = z
 
 export type ActivityWatchSyncResult = z.infer<typeof activityWatchSyncResultSchema>
 
-/**
- * ActivityWatch sync response.
- */
 export const activityWatchSyncResponseSchema = baseResponseSchema
   .extend({
     result: activityWatchSyncResultSchema.optional().meta({ description: 'Sync result' }),
@@ -698,9 +519,6 @@ export const activityWatchSyncResponseSchema = baseResponseSchema
 
 export type ActivityWatchSyncResponse = z.infer<typeof activityWatchSyncResponseSchema>
 
-/**
- * ActivityWatch sync status response.
- */
 export const activityWatchSyncStatusResponseSchema = baseResponseSchema
   .extend({
     states: z
