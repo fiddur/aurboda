@@ -38,7 +38,7 @@ A synced note (`source = 'gravl'`) renders the same data as text — `Bench Pres
 
 ### What is deliberately not imported
 
-- **`External` workouts.** These are Health Connect sessions round-tripped _into_ Gravl from other apps (Garmin, Polar, …). They carry no exercise data, and importing them would give every watch session a third copy.
+- **`External` workouts** (`type: "external"` in the API, which spells its enums in lower camelCase). These are Health Connect sessions round-tripped _into_ Gravl from other apps (Garmin, Polar, …). They carry no exercise data, and importing them would give every watch session a third copy.
   The Gravl app also writes them _back_ into Health Connect as strength-training sessions under its own `gravl-session-<uuid>` id, so they first land here as a `gravl` activity (see [Enrich, don't duplicate](#enrich-dont-duplicate)). As soon as the Gravl API reports the workout as `External` — the enrichment job a minute after the Health Connect upload, or the next poll — that copy is soft-deleted and the original session (the Garmin activity, or the other app's Health Connect row) is the one shown again. The soft delete is a tombstone: a re-delivered Health Connect record does not resurrect it.
 - Heart rate, GPS and per-set notes are not in the Gravl API; HR and location come from the watch (Garmin / Health Connect) on the same activity.
 - Personal records, body measurements, templates and splits — see the follow-ups in [#1042](https://github.com/fiddur/aurboda/issues/1042).

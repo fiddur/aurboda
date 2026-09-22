@@ -9,13 +9,16 @@
  */
 
 /**
- * `External` workouts are Health Connect sessions round-tripped INTO Gravl
+ * `external` workouts are Health Connect sessions round-tripped INTO Gravl
  * from other apps (Garmin, Polar, …). They carry no exercise data and must be
  * dropped, otherwise every watch session would gain a third copy.
+ *
+ * Enum values are spelled as the API serialises them, lower camelCase
+ * (`external`, `newSaved`, `dropSet`), not the PascalCase of Gravl's docs.
  */
-export type GravlWorkoutType = 'Today' | 'Custom' | 'Saved' | 'New' | 'Public' | 'External' | 'NewSaved'
+export type GravlWorkoutType = 'today' | 'custom' | 'saved' | 'new' | 'public' | 'external' | 'newSaved'
 
-export type GravlSetType = 'Normal' | 'Warmup' | 'DropSet' | 'Failure'
+export type GravlSetType = 'normal' | 'warmup' | 'dropSet' | 'failure'
 
 export interface GravlSet {
   order: number

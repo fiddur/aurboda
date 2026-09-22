@@ -34,16 +34,16 @@ const detail = (overrides: Partial<GravlWorkoutDetail> = {}): GravlWorkoutDetail
       exerciseId: 12,
       exerciseName: 'Bench Press',
       sets: [
-        { distance: null, duration: null, order: 2, reps: 8, rpe: null, setType: 'Normal', weight: 176.3698 },
-        { distance: null, duration: null, order: 1, reps: 10, rpe: null, setType: 'Warmup', weight: 88.1849 },
-        { distance: null, duration: null, order: 3, reps: 6, rpe: 8, setType: 'Failure', weight: 176.3698 },
+        { distance: null, duration: null, order: 2, reps: 8, rpe: null, setType: 'normal', weight: 176.3698 },
+        { distance: null, duration: null, order: 1, reps: 10, rpe: null, setType: 'warmup', weight: 88.1849 },
+        { distance: null, duration: null, order: 3, reps: 6, rpe: 8, setType: 'failure', weight: 176.3698 },
       ],
       supersetId: null,
     },
     {
       exerciseId: 40,
       exerciseName: 'Plank',
-      sets: [{ distance: null, duration: 40, order: 1, reps: 0, rpe: null, setType: 'Normal', weight: 0 }],
+      sets: [{ distance: null, duration: 40, order: 1, reps: 0, rpe: null, setType: 'dropSet', weight: 0 }],
       supersetId: 3,
     },
   ],
@@ -52,7 +52,7 @@ const detail = (overrides: Partial<GravlWorkoutDetail> = {}): GravlWorkoutDetail
   notes: 'Felt strong',
   personalRecordCount: 1,
   startDate: '2026-09-03T05:16:12Z',
-  type: 'Today',
+  type: 'today',
   volume: 3527.396,
   ...overrides,
 })
@@ -72,7 +72,7 @@ describe('buildGravlSets', () => {
       ['Bench Press', 1, 'warmup', 40, 10, null, null],
       ['Bench Press', 2, 'normal', 80, 8, null, null],
       ['Bench Press', 3, 'failure', 80, 6, null, 8],
-      ['Plank', 1, 'normal', null, null, 40, null],
+      ['Plank', 1, 'drop_set', null, null, 40, null],
     ])
     expect(sets[3]).toMatchObject({ exercise_id: 40, superset_id: 3 })
     expect('superset_id' in sets[0]).toBe(false)
@@ -97,7 +97,7 @@ describe('buildGravlActivity', () => {
       personal_record_count: 1,
       set_count: 4,
       volume_kg: 1600,
-      workout_type: 'Today',
+      workout_type: 'today',
     })
   })
 })
@@ -131,7 +131,7 @@ describe('processGravlWorkout', () => {
 
   it('skips an external round-trip we never stored', async () => {
     const deps = makeDeps(null)
-    expect(await processGravlWorkout('alice', detail({ type: 'External' }), deps)).toBe('skipped')
+    expect(await processGravlWorkout('alice', detail({ type: 'external' }), deps)).toBe('skipped')
     expect(deps.softDeleteActivityByExternalId).not.toHaveBeenCalled()
     expect(deps.materializeSuperseded).not.toHaveBeenCalled()
     expect(deps.insertRawRecord).not.toHaveBeenCalled()
@@ -140,7 +140,7 @@ describe('processGravlWorkout', () => {
 
   it('removes the Health Connect copy of an external round-trip and re-merges around it', async () => {
     const deps = makeDeps({ id: 'act-1', start_time: new Date('2026-09-03T05:16:12Z') })
-    expect(await processGravlWorkout('alice', detail({ type: 'External' }), deps)).toBe('removed')
+    expect(await processGravlWorkout('alice', detail({ type: 'external' }), deps)).toBe('removed')
     expect(deps.softDeleteActivityByExternalId).toHaveBeenCalledWith(
       'alice',
       'gravl',
@@ -197,8 +197,9 @@ describe('processGravlWorkout', () => {
     expect(await processGravlWorkout('alice', detail(), deps)).toBe('updated')
   })
 
-  it('treats external workouts by type, not by name', () => {
+  it('treats external workouts by type, not by name, whatever the casing', () => {
+    expect(isExternalWorkout({ type: 'external' })).toBe(true)
     expect(isExternalWorkout({ type: 'External' })).toBe(true)
-    expect(isExternalWorkout({ type: 'NewSaved' })).toBe(false)
+    expect(isExternalWorkout({ type: 'newSaved' })).toBe(false)
   })
 })

@@ -13,14 +13,14 @@
  * A human-readable rendering also goes into a synced note so the detail is
  * visible before the UI can render set arrays.
  *
- * A workout the Gravl app itself imported from another app (`type: 'External'`)
+ * A workout the Gravl app itself imported from another app (`type: 'external'`)
  * is a round-trip: Gravl writes it back into Health Connect under its own
  * `clientRecordId`, so it first lands here as a `gravl` strength session that
  * outranks the original. Those copies are removed rather than ignored.
  */
 
 import type { Activity, RawRecord } from '../../db/types.ts'
-import type { GravlSet, GravlWorkoutDetail, GravlWorkoutExercise, GravlWorkoutSummary } from './types.ts'
+import type { GravlSet, GravlWorkoutDetail, GravlWorkoutExercise } from './types.ts'
 
 import {
   adoptLegacyActivity,
@@ -79,16 +79,18 @@ const defaultDeps: GravlProcessDeps = {
 }
 
 /** Health Connect sessions round-tripped into Gravl from other apps carry no sets and must not be imported. */
-export const isExternalWorkout = (workout: Pick<GravlWorkoutSummary, 'type'>): boolean =>
-  workout.type === 'External'
+export const isExternalWorkout = (workout: { type: string }): boolean =>
+  workout.type.toLowerCase() === 'external'
 
+// Compared lowercased: the API serialises these enums in lower camelCase
+// while Gravl's docs spell them in PascalCase.
 const setKind = (setType: GravlSet['setType']): GravlSetKind => {
-  switch (setType) {
-    case 'Warmup':
+  switch (setType.toLowerCase()) {
+    case 'warmup':
       return 'warmup'
-    case 'DropSet':
+    case 'dropset':
       return 'drop_set'
-    case 'Failure':
+    case 'failure':
       return 'failure'
     default:
       return 'normal'
