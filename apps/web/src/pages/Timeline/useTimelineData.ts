@@ -114,7 +114,6 @@ export const useTimelineData = ({
   mergeGapMs,
   collapseDepth,
 }: UseTimelineDataOptions): TimelineData => {
-
   const { data: activityTypeDefs = [] } = useQuery({
     queryFn: fetchActivityTypeDefinitions,
     queryKey: ['activityTypeDefinitions'],
