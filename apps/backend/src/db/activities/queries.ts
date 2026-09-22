@@ -34,7 +34,6 @@ const ACTIVITY_COLUMNS_ALIAS = activityColumns('a')
  * to find the full transitive chain.
  */
 export const getOverlappingActivities = async (user: string, activity: Activity): Promise<Activity[]> => {
-  // Query a wide window around the activity to catch all transitively-connected activities
   const activityTime = activity.start_time.getTime()
   const windowStart = new Date(activityTime - 12 * 60 * 60 * 1000)
   const windowEnd = new Date(activityTime + 24 * 60 * 60 * 1000)
@@ -228,11 +227,7 @@ export const getActivitiesNeedingDetail = async (
   return result.rows.map(mapActivityRow)
 }
 
-/**
- * Find nearby same-type activities for merge suggestions.
- * Returns non-deleted activities of the same type within ±hoursWindow of the given time range,
- * excluding the given activity ID.
- */
+/** Find nearby same-type activities for merge suggestions. */
 export const getNearbyActivities = async (
   user: string,
   activityId: string,
@@ -262,9 +257,8 @@ export const getNearbyActivities = async (
 }
 
 /**
- * Check if an activity with the same (source, activity_type, start_time) already exists,
- * excluding the given activity ID. Used to preemptively detect unique constraint violations
- * before changing an activity's type.
+ * Used to preemptively detect unique constraint violations before changing an
+ * activity's type.
  */
 export const checkActivityConflict = async (
   user: string,
@@ -306,10 +300,7 @@ export const getActivitiesByCategory = async (
   return mergeOverlappingActivities(activities, categoryMap)
 }
 
-/**
- * Get all distinct activity_type values from the activities table.
- * Unlike getActivityTypeNames (which reads from definitions), this reads actual data.
- */
+/** Unlike getActivityTypeNames (which reads from definitions), this reads actual data. */
 export const getAllActivityTypeNames = async (user: string): Promise<string[]> => {
   const result = await query(
     user,
@@ -318,10 +309,7 @@ export const getAllActivityTypeNames = async (user: string): Promise<string[]> =
   return result.rows.map((r) => r.activity_type as string)
 }
 
-/**
- * Get activities whose type definition is NOT in the given display categories.
- * Used to get "tag-like" activities (everything except sleep/exercise).
- */
+/** Used to get "tag-like" activities (everything except sleep/exercise). */
 export const getActivitiesExcludingCategories = async (
   user: string,
   excludeCategories: string[],

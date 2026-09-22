@@ -1,6 +1,4 @@
 /**
- * Gravl workout → activity mapping (#1042).
- *
  * A Gravl workout becomes a `strength_training` activity keyed by
  * `gravl-workout-<uuid>` — the same identity the Health Connect processor
  * derives from Gravl's `clientRecordId` (#1080). So when the session already

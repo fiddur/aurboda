@@ -389,11 +389,9 @@ export function GarminSource() {
 
   const isConnected = userSettings?.garmin_connected ?? false
 
-  // Sync state
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'done' | 'error'>('idle')
   const [syncMessage, setSyncMessage] = useState('')
 
-  // Detect if any data type is currently syncing (drives auto-polling)
   const shouldPoll = syncStatus === 'syncing'
 
   const { data: syncStatusData, isLoading: syncStatusLoading } = useQuery({
@@ -407,7 +405,6 @@ export function GarminSource() {
 
   const [loginStatus, setLoginStatus] = useState<LoginStatus>('idle')
 
-  // Disconnect state
   const [disconnecting, setDisconnecting] = useState(false)
 
   // When polling detects sync finished, update local state

@@ -1,6 +1,4 @@
-/**
- * Deduction rule schemas — rules that automatically create activities from data conditions.
- */
+/** Rules that automatically create activities from data conditions. */
 import { z } from 'zod'
 
 import { activityTypeSchema, baseResponseSchema, createDataArrayResponseSchema } from './common.ts'
@@ -98,9 +96,6 @@ export const conditionSchema = z.discriminatedUnion('kind', [
 
 export type Condition = z.infer<typeof conditionSchema>
 
-/**
- * Deduction rule schema.
- */
 export const deductionRuleModeSchema = z
   .enum(['create', 'enrich'])
   .meta({ id: 'DeductionRuleMode', description: 'Whether to create new activities or enrich existing ones' })
@@ -148,9 +143,6 @@ export const deductionRuleSchema = z
 
 export type DeductionRule = z.infer<typeof deductionRuleSchema>
 
-/**
- * Add deduction rule request body.
- */
 export const addDeductionRuleBodySchema = z
   .object({
     conditions: z
@@ -188,9 +180,6 @@ export const addDeductionRuleBodySchema = z
 
 export type AddDeductionRuleBody = z.infer<typeof addDeductionRuleBodySchema>
 
-/**
- * Update deduction rule request body.
- */
 export const updateDeductionRuleBodySchema = z
   .object({
     conditions: z.array(conditionSchema).min(1).optional().meta({ description: 'New conditions' }),
@@ -217,18 +206,12 @@ export const updateDeductionRuleBodySchema = z
 
 export type UpdateDeductionRuleBody = z.infer<typeof updateDeductionRuleBodySchema>
 
-/**
- * Deduction rules list response.
- */
 export const deductionRulesResponseSchema = createDataArrayResponseSchema(deductionRuleSchema).meta({
   id: 'DeductionRulesResponse',
 })
 
 export type DeductionRulesResponse = z.infer<typeof deductionRulesResponseSchema>
 
-/**
- * Single deduction rule response.
- */
 export const deductionRuleResponseSchema = baseResponseSchema
   .extend({
     data: deductionRuleSchema.optional(),
@@ -237,9 +220,6 @@ export const deductionRuleResponseSchema = baseResponseSchema
 
 export type DeductionRuleResponse = z.infer<typeof deductionRuleResponseSchema>
 
-/**
- * Evaluate deduction rules response.
- */
 export const evaluateDeductionRulesResponseSchema = baseResponseSchema
   .extend({
     activities_created: z.number().int().optional(),
@@ -249,9 +229,7 @@ export const evaluateDeductionRulesResponseSchema = baseResponseSchema
 
 export type EvaluateDeductionRulesResponse = z.infer<typeof evaluateDeductionRulesResponseSchema>
 
-/**
- * Preview deduction rule response — dry-run showing how many activities would be affected.
- */
+/** Dry-run showing how many activities would be affected. */
 export const previewDeductionRuleResponseSchema = baseResponseSchema
   .extend({
     would_affect: z

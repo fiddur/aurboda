@@ -1,6 +1,3 @@
-/**
- * MCP metric management tools.
- */
 import {
   addCustomMetricBodySchema,
   addMetricBodySchema,
@@ -35,7 +32,6 @@ import {
 } from './helpers.ts'
 
 export const registerMetricTools = (server: McpServer, user: string) => {
-  // Tool: add_metric
   server.tool(
     'add_metric',
     'Add a manual health metric measurement. Use this to log data not captured automatically.',
@@ -54,7 +50,6 @@ export const registerMetricTools = (server: McpServer, user: string) => {
     },
   )
 
-  // Tool: add_metrics_bulk
   server.tool(
     'add_metrics_bulk',
     'Bulk insert metric data points for efficient batch imports. Accepts up to 10,000 items per call. Each item requires metric, value, and time. Items with validation errors are skipped (not inserted), and their errors are returned separately.',
@@ -86,7 +81,6 @@ export const registerMetricTools = (server: McpServer, user: string) => {
     },
   )
 
-  // Tool: add_custom_metric
   server.tool(
     'add_custom_metric',
     'Register a new custom metric type. Custom metrics allow tracking data not covered by built-in metrics. Set include_in_daily_summary=true to surface entries and the latest value in get_daily_summary.',
@@ -114,7 +108,6 @@ export const registerMetricTools = (server: McpServer, user: string) => {
     },
   )
 
-  // Tool: list_custom_metrics
   server.tool(
     'list_custom_metrics',
     'List all registered custom metric types for the user.',
@@ -125,7 +118,6 @@ export const registerMetricTools = (server: McpServer, user: string) => {
     },
   )
 
-  // Tool: delete_custom_metric
   server.tool(
     'delete_custom_metric',
     'Delete a custom metric type. Existing data for the metric is preserved.',
@@ -138,7 +130,6 @@ export const registerMetricTools = (server: McpServer, user: string) => {
     },
   )
 
-  // Tool: update_custom_metric
   server.tool(
     'update_custom_metric',
     'Update an existing custom metric definition. Only provided fields are changed. Set min_value/max_value to null to clear them. Toggle include_in_daily_summary to surface or hide this metric in get_daily_summary.',
@@ -163,7 +154,6 @@ export const registerMetricTools = (server: McpServer, user: string) => {
     },
   )
 
-  // Tool: delete_metric
   server.tool(
     'delete_metric',
     'Delete a single metric measurement by metric name, time, and source (soft delete). Works for any source.',
@@ -185,7 +175,6 @@ export const registerMetricTools = (server: McpServer, user: string) => {
     },
   )
 
-  // Tool: delete_metric_data
   server.tool(
     'delete_metric_data',
     'Delete all manual measurements for a metric. Only manual entries are deleted; synced data is preserved.',
@@ -198,7 +187,6 @@ export const registerMetricTools = (server: McpServer, user: string) => {
     },
   )
 
-  // Tool: recalculate_calories
   server.tool(
     'recalculate_calories',
     'Recalculate calories burned from HR data for a time range. Requires sex and birth_date in settings. Uses weight from Health Connect and VO2 max (measured or age/sex fallback). Omit start/end to recompute all historical data. Full recomputes run asynchronously and return immediately.',
@@ -228,7 +216,6 @@ export const registerMetricTools = (server: McpServer, user: string) => {
     },
   )
 
-  // Tool: merge_custom_metric
   server.tool(
     'merge_custom_metric',
     'Merge a custom metric into another metric (built-in or custom). All time_series data points are reassigned to the target metric and the source custom metric definition is deleted. Duplicate data points (same time + source) are skipped.',

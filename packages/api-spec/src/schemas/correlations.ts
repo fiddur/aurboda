@@ -1,16 +1,7 @@
-/**
- * Correlation analysis schemas.
- */
-
 import { z } from 'zod'
 
 import { createDataResponseSchema, isValidMetric, metricUnits } from './common.ts'
 
-// ============================================================================
-// Common schemas
-// ============================================================================
-
-/** HRV statistics schema */
 export const hrvStatsSchema = z
   .object({
     mean_hr: z.number().nullable().meta({ description: 'Mean heart rate during period' }),
@@ -26,7 +17,6 @@ export const hrvStatsSchema = z
 
 export type HrvStats = z.infer<typeof hrvStatsSchema>
 
-/** HRV stats with baseline delta */
 export const hrvStatsWithDeltaSchema = hrvStatsSchema
   .extend({
     hr_delta_from_baseline: z.number().nullable().meta({ description: 'HR change from baseline' }),
@@ -40,11 +30,6 @@ export const hrvStatsWithDeltaSchema = hrvStatsSchema
 
 export type HrvStatsWithDelta = z.infer<typeof hrvStatsWithDeltaSchema>
 
-// ============================================================================
-// Baseline endpoint
-// ============================================================================
-
-/** Baseline query parameters */
 export const baselineQuerySchema = z
   .object({
     reference_date: z.string().optional().meta({
@@ -56,7 +41,6 @@ export const baselineQuerySchema = z
 
 export type BaselineQuery = z.infer<typeof baselineQuerySchema>
 
-/** Baseline result data */
 export const baselineDataSchema = z
   .object({
     hrv: z.object({
@@ -83,16 +67,11 @@ export const baselineDataSchema = z
 
 export type BaselineData = z.infer<typeof baselineDataSchema>
 
-/** Baseline response */
 export const baselineResponseSchema = createDataResponseSchema(baselineDataSchema).meta({
   id: 'BaselineResponse',
 })
 
 export type BaselineResponse = z.infer<typeof baselineResponseSchema>
-
-// ============================================================================
-// HRV-Activities endpoint
-// ============================================================================
 
 /**
  * The autonomic metric the HRV-context analysis correlates against. HRV is the
@@ -107,7 +86,6 @@ export const hrvContextMetricSchema = z.enum(['hrv_rmssd', 'heart_rate', 'stress
 
 export type HrvContextMetric = z.infer<typeof hrvContextMetricSchema>
 
-/** HRV-Activities query parameters */
 export const hrvActivitiesQuerySchema = z
   .object({
     context_metric: hrvContextMetricSchema.optional().meta({ description: 'Metric to correlate against' }),
@@ -120,7 +98,6 @@ export const hrvActivitiesQuerySchema = z
 
 export type HrvActivitiesQuery = z.infer<typeof hrvActivitiesQuerySchema>
 
-/** Productivity correlation */
 export const productivityCorrelationSchema = hrvStatsWithDeltaSchema
   .extend({
     category: z.string().meta({ description: 'RescueTime category name' }),
@@ -130,7 +107,6 @@ export const productivityCorrelationSchema = hrvStatsWithDeltaSchema
 
 export type ProductivityCorrelation = z.infer<typeof productivityCorrelationSchema>
 
-/** Location correlation */
 export const locationCorrelationSchema = hrvStatsWithDeltaSchema
   .extend({
     location_name: z.string().meta({ description: 'Location name' }),
@@ -140,7 +116,6 @@ export const locationCorrelationSchema = hrvStatsWithDeltaSchema
 
 export type LocationCorrelation = z.infer<typeof locationCorrelationSchema>
 
-/** Activity correlation */
 export const activityCorrelationSchema = hrvStatsWithDeltaSchema
   .extend({
     activity_type: z.string().meta({ description: 'Activity type' }),
@@ -154,7 +129,6 @@ export const activityCorrelationSchema = hrvStatsWithDeltaSchema
 
 export type ActivityCorrelation = z.infer<typeof activityCorrelationSchema>
 
-/** HRV-Activities result data */
 export const hrvActivitiesDataSchema = z
   .object({
     baseline: hrvStatsSchema,
@@ -176,18 +150,12 @@ export const hrvActivitiesDataSchema = z
 
 export type HrvActivitiesData = z.infer<typeof hrvActivitiesDataSchema>
 
-/** HRV-Activities response */
 export const hrvActivitiesResponseSchema = createDataResponseSchema(hrvActivitiesDataSchema).meta({
   id: 'HrvActivitiesResponse',
 })
 
 export type HrvActivitiesResponse = z.infer<typeof hrvActivitiesResponseSchema>
 
-// ============================================================================
-// Activity Impact endpoint
-// ============================================================================
-
-/** Activity type enum for impact analysis */
 export const activityImpactTypeSchema = z
   .enum(['productivity_category', 'productivity_app', 'location', 'tag', 'activity_type'])
   .meta({
@@ -198,7 +166,6 @@ export const activityImpactTypeSchema = z
 
 export type ActivityImpactType = z.infer<typeof activityImpactTypeSchema>
 
-/** Activity Impact query parameters */
 export const activityImpactQuerySchema = z
   .object({
     activity_type: activityImpactTypeSchema,
@@ -212,7 +179,6 @@ export const activityImpactQuerySchema = z
 
 export type ActivityImpactQuery = z.infer<typeof activityImpactQuerySchema>
 
-/** Time window stats */
 export const timeWindowStatsSchema = z
   .object({
     mean: z.number().nullable(),
@@ -223,7 +189,6 @@ export const timeWindowStatsSchema = z
 
 export type TimeWindowStats = z.infer<typeof timeWindowStatsSchema>
 
-/** Activity Impact result data */
 export const activityImpactDataSchema = z
   .object({
     activity: z.string().meta({ description: 'Activity name/pattern searched' }),
@@ -256,18 +221,12 @@ export const activityImpactDataSchema = z
 
 export type ActivityImpactData = z.infer<typeof activityImpactDataSchema>
 
-/** Activity Impact response */
 export const activityImpactResponseSchema = createDataResponseSchema(activityImpactDataSchema).meta({
   id: 'ActivityImpactResponse',
 })
 
 export type ActivityImpactResponse = z.infer<typeof activityImpactResponseSchema>
 
-// ============================================================================
-// Event Probability endpoint
-// ============================================================================
-
-/** Event trigger type */
 export const eventTriggerTypeSchema = z.enum(['activity', 'tag']).meta({
   description: 'Type of trigger event',
   example: 'activity',
@@ -276,7 +235,6 @@ export const eventTriggerTypeSchema = z.enum(['activity', 'tag']).meta({
 
 export type EventTriggerType = z.infer<typeof eventTriggerTypeSchema>
 
-/** Event Probability request body */
 export const eventProbabilityBodySchema = z
   .object({
     lag_windows: z
@@ -300,7 +258,6 @@ export const eventProbabilityBodySchema = z
 
 export type EventProbabilityBody = z.infer<typeof eventProbabilityBodySchema>
 
-/** Lag window result */
 export const lagWindowResultSchema = z
   .object({
     occurrences: z.number().int(),
@@ -311,7 +268,6 @@ export const lagWindowResultSchema = z
 
 export type LagWindowResult = z.infer<typeof lagWindowResultSchema>
 
-/** Event Probability result data */
 export const eventProbabilityDataSchema = z
   .object({
     baseline: z.object({
@@ -347,18 +303,12 @@ export const eventProbabilityDataSchema = z
 
 export type EventProbabilityData = z.infer<typeof eventProbabilityDataSchema>
 
-/** Event Probability response */
 export const eventProbabilityResponseSchema = createDataResponseSchema(eventProbabilityDataSchema).meta({
   id: 'EventProbabilityResponse',
 })
 
 export type EventProbabilityResponse = z.infer<typeof eventProbabilityResponseSchema>
 
-// ============================================================================
-// Generic Correlation endpoint
-// ============================================================================
-
-/** Nutrient keys that have authoritative meal-level total columns. */
 export const nutrientKeySchema = z.enum(['calories', 'protein', 'carbs', 'fat', 'fiber']).meta({
   description: 'Nutrient with a per-day meal total',
   example: 'carbs',
@@ -377,7 +327,6 @@ export const thresholdSpecSchema = z
 
 export type ThresholdSpec = z.infer<typeof thresholdSpecSchema>
 
-/** Trigger condition type */
 export const triggerConditionTypeSchema = z
   .enum(['activity', 'tag', 'productivity_category', 'productivity_app', 'nutrition'])
   .meta({
@@ -388,7 +337,6 @@ export const triggerConditionTypeSchema = z
 
 export type TriggerConditionType = z.infer<typeof triggerConditionTypeSchema>
 
-/** Trigger condition schema */
 export const triggerConditionSchema = z
   .object({
     min_count: z.number().int().optional().meta({
@@ -415,7 +363,6 @@ export const triggerConditionSchema = z
 
 export type TriggerCondition = z.infer<typeof triggerConditionSchema>
 
-/** Tag outcome schema */
 export const tagOutcomeSchema = z
   .object({
     pattern: z.string().meta({ description: 'Regex pattern for outcome tag', example: 'headache|migraine' }),
@@ -425,7 +372,6 @@ export const tagOutcomeSchema = z
 
 export type TagOutcome = z.infer<typeof tagOutcomeSchema>
 
-/** Metric outcome schema */
 export const metricOutcomeSchema = z
   .object({
     aggregation: z
@@ -441,7 +387,6 @@ export const metricOutcomeSchema = z
 
 export type MetricOutcome = z.infer<typeof metricOutcomeSchema>
 
-/** Productivity outcome schema */
 export const productivityOutcomeSchema = z
   .object({
     app: z.string().optional().meta({ description: 'Specific app to measure time in', example: 'vscode' }),
@@ -486,7 +431,6 @@ export const eventOutcomeSchema = z
 
 export type EventOutcome = z.infer<typeof eventOutcomeSchema>
 
-/** Outcome configuration (discriminated union) */
 export const outcomeConfigSchema = z.discriminatedUnion('type', [
   tagOutcomeSchema,
   metricOutcomeSchema,
@@ -496,7 +440,6 @@ export const outcomeConfigSchema = z.discriminatedUnion('type', [
 
 export type OutcomeConfig = z.infer<typeof outcomeConfigSchema>
 
-/** Denominator universe for event-outcome analysis. */
 export const denominatorSchema = z.enum(['known', 'all']).meta({
   description:
     'Which days form the denominator: "known" = days where outcome status is known (default), "all" = every day in the window',
@@ -506,7 +449,6 @@ export const denominatorSchema = z.enum(['known', 'all']).meta({
 
 export type CorrelationDenominator = z.infer<typeof denominatorSchema>
 
-/** Generic correlation request body */
 export const genericCorrelationBodySchema = z
   .object({
     denominator: denominatorSchema.optional().meta({
@@ -540,7 +482,6 @@ export const genericCorrelationBodySchema = z
 
 export type GenericCorrelationBody = z.infer<typeof genericCorrelationBodySchema>
 
-/** Tag lag result */
 export const tagLagResultSchema = z
   .object({
     occurrences: z.number().int(),
@@ -549,7 +490,6 @@ export const tagLagResultSchema = z
   })
   .meta({ id: 'GenericTagLagResult' })
 
-/** Metric lag result */
 export const metricLagResultSchema = z
   .object({
     delta_from_baseline: z.number().nullable().meta({ description: 'Difference from baseline mean' }),
@@ -559,7 +499,6 @@ export const metricLagResultSchema = z
   })
   .meta({ id: 'MetricLagResult' })
 
-/** Productivity lag result */
 export const productivityLagResultSchema = z
   .object({
     avg_minutes_per_day: z.number().meta({ description: 'Average minutes per day' }),
@@ -568,7 +507,6 @@ export const productivityLagResultSchema = z
   })
   .meta({ id: 'ProductivityLagResult' })
 
-/** Generic lag result (union) */
 export const genericLagResultSchema = z.union([
   tagLagResultSchema,
   metricLagResultSchema,
@@ -577,7 +515,6 @@ export const genericLagResultSchema = z.union([
 
 export type GenericLagResult = z.infer<typeof genericLagResultSchema>
 
-/** Tag baseline stats */
 export const tagBaselineSchema = z
   .object({
     description: z.string(),
@@ -585,7 +522,6 @@ export const tagBaselineSchema = z
   })
   .meta({ id: 'TagBaseline' })
 
-/** Metric baseline stats */
 export const metricBaselineSchema = z
   .object({
     mean: z.number().nullable(),
@@ -594,7 +530,6 @@ export const metricBaselineSchema = z
   })
   .meta({ id: 'MetricBaseline' })
 
-/** Productivity baseline stats */
 export const productivityBaselineSchema = z
   .object({
     avg_minutes_per_day: z.number(),
@@ -602,7 +537,6 @@ export const productivityBaselineSchema = z
   })
   .meta({ id: 'ProductivityBaseline' })
 
-/** Generic baseline stats (union) */
 export const genericBaselineSchema = z.union([
   tagBaselineSchema,
   metricBaselineSchema,
@@ -657,7 +591,6 @@ export const eventOutcomeDataSchema = z
 
 export type EventOutcomeData = z.infer<typeof eventOutcomeDataSchema>
 
-/** Generic correlation result data */
 export const genericCorrelationDataSchema = z
   .object({
     baseline: genericBaselineSchema.meta({ description: 'Baseline statistics (periods without triggers)' }),
@@ -687,16 +620,11 @@ export const genericCorrelationDataSchema = z
 
 export type GenericCorrelationData = z.infer<typeof genericCorrelationDataSchema>
 
-/** Generic correlation response */
 export const genericCorrelationResponseSchema = createDataResponseSchema(genericCorrelationDataSchema).meta({
   id: 'GenericCorrelationResponse',
 })
 
 export type GenericCorrelationResponse = z.infer<typeof genericCorrelationResponseSchema>
-
-// ============================================================================
-// MCP input schemas (typed params, complementing Express string-based queries)
-// ============================================================================
 
 /** Activity impact MCP input schema (typed numbers instead of query strings) */
 export const activityImpactInputSchema = z
@@ -744,7 +672,6 @@ export const eventProbabilityInputSchema = z
 
 export type EventProbabilityInput = z.infer<typeof eventProbabilityInputSchema>
 
-/** HRV correlation MCP input schema */
 export const hrvCorrelationInputSchema = z
   .object({
     context_metric: hrvContextMetricSchema
@@ -759,10 +686,6 @@ export const hrvCorrelationInputSchema = z
   .meta({ id: 'HrvCorrelationInput' })
 
 export type HrvCorrelationInput = z.infer<typeof hrvCorrelationInputSchema>
-
-// ============================================================================
-// Selectors + continuous correlation (exploratory engine)
-// ============================================================================
 
 /** A data dimension that resolves to events and a daily series. */
 export const selectorSchema = z
@@ -855,7 +778,6 @@ export const linearRegression = (xs: number[], ys: number[]): RegressionLine | n
   return { intercept: (sy - slope * sx) / n, slope }
 }
 
-/** How partially-logged nutrition days are treated in continuous correlation. */
 export const nutritionCompletenessSchema = z.enum(['all', 'complete_only']).meta({
   description:
     "How to treat partial nutrition days: 'all' keeps every known day; 'complete_only' drops days without real macros (flag-only). n_complete is reported either way.",
@@ -864,7 +786,6 @@ export const nutritionCompletenessSchema = z.enum(['all', 'complete_only']).meta
 
 export type NutritionCompleteness = z.infer<typeof nutritionCompletenessSchema>
 
-/** Continuous correlation request body */
 export const continuousCorrelationBodySchema = z
   .object({
     lag_days: z.number().int().optional().meta({
@@ -884,7 +805,6 @@ export const continuousCorrelationBodySchema = z
 
 export type ContinuousCorrelationBody = z.infer<typeof continuousCorrelationBodySchema>
 
-/** Single aligned point in a continuous correlation. */
 export const alignedPointSchema = z
   .object({
     date: z.string(),
@@ -902,7 +822,6 @@ export const welchResultSchema = z
   })
   .meta({ id: 'WelchResult' })
 
-/** Mann–Whitney U test result. */
 export const mannWhitneyResultSchema = z
   .object({
     p_value: z.number().meta({ description: 'Two-sided p-value (normal approximation)' }),
@@ -935,7 +854,6 @@ export const groupComparisonSchema = z
 
 export type GroupComparison = z.infer<typeof groupComparisonSchema>
 
-/** Continuous correlation result data */
 export const continuousCorrelationDataSchema = z
   .object({
     group_comparison: groupComparisonSchema
@@ -968,11 +886,6 @@ export const continuousCorrelationResponseSchema = createDataResponseSchema(
 
 export type ContinuousCorrelationResponse = z.infer<typeof continuousCorrelationResponseSchema>
 
-// ============================================================================
-// Selector discovery (populates the explore UI pickers)
-// ============================================================================
-
-/** One selectable option in a discovery category. */
 export const selectorOptionSchema = z
   .object({
     label: z.string().meta({ description: 'Human-readable label' }),
@@ -980,7 +893,6 @@ export const selectorOptionSchema = z
   })
   .meta({ id: 'SelectorOption' })
 
-/** Available selectors grouped by kind. */
 export const correlationSelectorsDataSchema = z
   .object({
     activity_types: z.array(selectorOptionSchema),

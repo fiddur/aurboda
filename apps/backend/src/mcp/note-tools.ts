@@ -1,6 +1,3 @@
-/**
- * MCP note management tools.
- */
 import {
   addNoteBodySchema,
   notesQueryRangeSchema,
@@ -20,7 +17,6 @@ import {
 import { errorResponse, jsonResponse, type McpServer, tzJsonResponse } from './helpers.ts'
 
 export const registerNoteTools = (server: McpServer, user: string) => {
-  // Tool: add_note
   server.tool(
     'add_note',
     'Add a comment. Three shapes: (1) on an entity — entity_type "activity", "productivity", "report", "meal" or "metric" plus entity_id (for metrics entity_id is a composite key "<iso_time>|<metric>|<source>", e.g. "2024-01-15T10:30:00.000Z|heart_rate|oura"); (2) a reply — entity_type "note" with entity_id set to the comment being replied to (threads are one level deep, so replying to a reply re-anchors to its root); (3) a comment about a moment — entity_type "time" with no entity_id, start_time required and end_time optional. start_time/end_time may only be given for entity_type "time"; every other shape inherits its times from the entity.',
@@ -34,7 +30,6 @@ export const registerNoteTools = (server: McpServer, user: string) => {
     },
   )
 
-  // Tool: get_notes
   server.tool(
     'get_notes',
     'Get all comments on an entity (activity, tag, productivity record, meal, or metric data point). For metrics, use entity_type "metric" with entity_id as a composite key: "<iso_time>|<metric>|<source>". Each comment carries its thread in `replies` (oldest first); replies are never listed as top-level comments.',
@@ -45,7 +40,6 @@ export const registerNoteTools = (server: McpServer, user: string) => {
     },
   )
 
-  // Tool: query_notes
   server.tool(
     'query_notes',
     'List every comment anchored in a time range (threads nested, replies not listed separately). Covers comments on entities, which inherit the entity\'s times, and free-standing "time" comments about a moment.',
@@ -56,7 +50,6 @@ export const registerNoteTools = (server: McpServer, user: string) => {
     },
   )
 
-  // Tool: update_note
   server.tool(
     'update_note',
     'Update a comment by its ID. start_time/end_time can only be changed on a comment with entity_type "time"; moving one moves its whole thread.',
@@ -73,7 +66,6 @@ export const registerNoteTools = (server: McpServer, user: string) => {
     },
   )
 
-  // Tool: delete_note
   server.tool(
     'delete_note',
     'Delete a comment by its ID. Deleting a comment also deletes the replies in its thread.',

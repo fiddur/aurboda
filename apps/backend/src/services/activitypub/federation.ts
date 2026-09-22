@@ -25,27 +25,9 @@ import {
 } from '@fedify/fedify/vocab'
 
 /**
- * The Fedify `Federation` object for the activity feed.
- *
  * Single actor per user: the actor identifier IS the username, and the actor
  * lives at `<host>/users/<username>` — a dedicated prefix that never collides
- * with the SPA's human-facing `/u/<username>` profile/dashboard pages. It wires:
- *
- * - actor document (`Person`) with the user's published RSA public key,
- * - WebFinger (`acct:<user>@<host>` → the actor), via `mapHandle`,
- * - key-pairs dispatcher backed by the per-user `feed_actor` keypair,
- * - inbound inbox: `Follow` → persist follower + (unless the user requires
- *   manual approval) `Accept`; `Undo{Follow}` → drop the follower; `Accept`/
- *   `Reject` → resolve a Follow WE sent (mark the `feed_following` row accepted,
- *   or drop it); `Create`/`Update` of a `Note` from an *accepted followee* →
- *   ingest into the home timeline (sanitised); an `Update` of the SENDING ACTOR
- *   → refresh our cached copies of their presentation; `Delete` → drop the
- *   received post. Fedify verifies the HTTP Signature first.
- * - followers + following collections (the latter lists this user's *accepted*
- *   follows), both backed by Postgres.
- *
- * Delivery is synchronous (no message queue — see `createFeedFederation`); a
- * persistent Postgres queue for retried, durable delivery is a later slice.
+ * with the SPA's human-facing `/u/<username>` profile/dashboard pages.
  */
 import { isValidUsername } from '../../api/auth-routes.ts'
 import {
@@ -111,7 +93,6 @@ import {
   type TimelineBoostSource,
 } from './timeline-ingest.ts'
 
-/** Posts per outbox page (cursor pagination). */
 const OUTBOX_PAGE_SIZE = 20
 
 /** RFC 4122 canonical form — guards `getFeedPostById` from a non-UUID `postId`
@@ -140,10 +121,8 @@ const localFollowerIdentifier = async (
   return recipient != null && isValidUsername(recipient) ? recipient : null
 }
 
-/** How long to wait for a remote ACTOR document (a boosted Note's author, or a reactor). */
 const ACTOR_LOOKUP_TIMEOUT_MS = 5_000
 
-/** What an actor looks like when their document couldn't be read. */
 const NO_PRESENTATION: ActorPresentation = { avatar_url: null, display_name: null, handle: null }
 
 /**
@@ -360,7 +339,6 @@ const resolveBoostAuthor = async (
   return presentation == null ? null : { ...presentation, actor_uri: attributionId.href }
 }
 
-/** An `Announce`'s validated object: the Note, its id, and who it attributes to. */
 interface AnnouncedNote {
   note: Note
   /** The announced Note's own id — the boost card's `boost_of_uri`. */
@@ -396,7 +374,6 @@ const resolveAnnouncedNote = async (
   return attributionId == null ? null : { attributionId, note, uri: note.id.href }
 }
 
-/** The parts of an `Announce` a boost card is built from, once self-consistent. */
 interface ValidatedAnnounce {
   actorId: URL
   /** The `Announce`'s own id — the boost card's `object_uri`. */
@@ -513,7 +490,6 @@ const undoReactionByActivityId = async (ctx: InboxContext<void>, undo: Undo): Pr
  * PRESENTATION is fetched from their id inside `recordInboundFollow`.
  */
 export const handleInboundFollow = async (ctx: InboxContext<void>, follow: Follow): Promise<void> => {
-  // The Follow must target one of our actors.
   if (follow.objectId == null) return
   const target = ctx.parseUri(follow.objectId)
   if (target?.type !== 'actor' || !isValidUsername(target.identifier)) return
@@ -592,20 +568,6 @@ export const handleInboundUndo = async (ctx: InboxContext<void>, undo: Undo): Pr
   }
 }
 
-/**
- * Ingest a `Create`/`Update` of a `Note` into the recipient's home timeline.
- * Two admissible senders (anything else is dropped, so a stranger can't inject
- * arbitrary posts into our timeline by delivering to the inbox):
- *
- * - an *accepted* followee — any of their Notes;
- * - **any actor whose Note is a reply to one of the recipient's own, still
- *   existing posts** (#1060) — the Mastodon-style mention interaction, so a
- *   stranger's "replied to you" shows up (and notifies) like it would there.
- *   The author snapshot comes from the signature-verified sender actor.
- *
- * Best-effort: unresolvable objects and non-Notes are ignored, and a missing DB
- * never 500s (which would invite retries).
- */
 /**
  * The stranger branch of {@link ingestFeedActivity}: admit a non-followee's
  * Note only when the recipient is INVOLVED — it replies to one of their own,

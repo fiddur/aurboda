@@ -20,7 +20,6 @@ import { fetchFeedPostReplies } from '../../state/api'
 import { TimelineActions } from './TimelineActions'
 import { TimelineEntryHead } from './TimelineEntryHead'
 
-/** Query key for one own post's comment list. */
 const postRepliesKey = (postId: string) => ['feed', 'posts', postId, 'replies'] as const
 
 /**

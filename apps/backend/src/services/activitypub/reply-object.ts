@@ -16,7 +16,6 @@
 import { escapeXml } from '../charts/chart-svg.ts'
 import { renderProse } from './article-object.ts'
 
-/** The stored reply fields the content render needs. */
 export interface ReplyContentSource {
   message: string | null
   in_reply_to_actor_uri: string | null

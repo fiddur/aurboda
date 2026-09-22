@@ -1,6 +1,4 @@
 /**
- * QuantPub (`quant:`) JSON-LD extension for federated exercise shares (#896).
- *
  * Implements the vocabulary from `docs/fep/quantpub.md` on the wire: a shared
  * activity's Note is dual-typed `["Note", "quant:Exercise"]` and carries the
  * typed extension properties (`quant:activityType`, `quant:metrics`,
@@ -124,7 +122,6 @@ const withQuantType = (type: unknown): unknown => {
   return type
 }
 
-/** Append the `quant:` term definitions to a serialized `@context` value. */
 const withQuantContext = (context: unknown): unknown => {
   if (context === undefined || context === null) {
     return ['https://www.w3.org/ns/activitystreams', quantContextEntry]

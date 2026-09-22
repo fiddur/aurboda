@@ -14,7 +14,7 @@ import kotlinx.coroutines.withContext
 
 /**
  * Launch-time reconciliation of the per-account notification bells with the
- * device (#1060): the bells on the Feed page set the server-side
+ * device: the bells on the Feed page set the server-side
  * `notify_on_post` flags, but they can only ever produce a notification when
  * the app's poller is on AND Android's permission is granted — without this,
  * bells silently lie to the user.

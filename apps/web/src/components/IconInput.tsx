@@ -1,8 +1,3 @@
-/**
- * Shared icon input — text field for emoji/URL, upload button, preview, and optional emoji suggestion.
- * Used by tag settings, exercise meta, timeline icon settings, screentime category detail,
- * and tag mappings settings.
- */
 import { useRef, useState } from 'preact/hooks'
 
 import { uploadIcon } from '../state/api'
@@ -12,23 +7,16 @@ import './IconInput.css'
 interface IconInputProps {
   /** Current icon value (emoji, URL, or icon path) */
   value: string
-  /** Called when the icon value changes (from typing or upload) */
   onChange: (value: string) => void
-  /** Called on blur (for auto-save patterns) */
   onBlur?: () => void
-  /** Placeholder text */
   placeholder?: string
   /** Icon preview size in pixels */
   size?: number
-  /** Suggested emoji to offer */
   suggestedEmoji?: string
   /** Called when a suggested emoji is accepted (some consumers auto-save on accept) */
   onAcceptSuggestion?: (emoji: string) => void
-  /** CSS class for the text input */
   inputClass?: string
-  /** CSS class for the preview span */
   previewClass?: string
-  /** Disabled state */
   disabled?: boolean
 }
 

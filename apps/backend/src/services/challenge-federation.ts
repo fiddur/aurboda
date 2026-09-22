@@ -1,6 +1,4 @@
 /**
- * Cross-instance challenge federation — server-to-server HTTP.
- *
  * The first real cross-instance traffic in Aurboda. A joining instance fetches
  * the challenge spec from the host, creates a local participation backing a
  * capability data endpoint, and registers itself back to the host. The host
@@ -91,7 +89,6 @@ export const parseChallengeUrl = (url: string): ParsedChallengeUrl | null => {
   return { base, slug, username }
 }
 
-/** Discover an instance's federation metadata from its base URL. */
 export const discoverInstance = async (base: string): Promise<WellKnownAurboda> => {
   const res = await safeFetchGet(joinUrl(base, '.well-known/aurboda'))
   const wellKnown = wellKnownAurbodaSchema.parse(res.data)
@@ -117,7 +114,6 @@ export const fetchChallengeSpec = async (
   return parsed.data.challenge
 }
 
-/** Register a member back to the host instance. */
 export const registerMemberWithHost = async (
   apiBase: string,
   username: string,

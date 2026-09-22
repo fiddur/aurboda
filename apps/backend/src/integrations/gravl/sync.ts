@@ -1,6 +1,4 @@
 /**
- * Gravl sync orchestration (#1042).
- *
  * One sync-state row, `provider = 'gravl'`, `data_type = 'workouts'`. Each run
  * lists workouts in a window, removes our Health Connect copy of the `External`
  * round-trips, fetches every real workout's detail (the list has no sets) and

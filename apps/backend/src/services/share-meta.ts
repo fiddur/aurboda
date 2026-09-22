@@ -1,6 +1,4 @@
 /**
- * Server-rendered <head> metadata for public share pages.
- *
  * JS-less crawlers (Facebook, Slack, LinkedIn, Discord, iMessage) never execute
  * the SPA, so they only see whatever `<head>` the server sends. These pure
  * helpers build Open Graph / Twitter Card / description meta (plus schema.org
@@ -11,7 +9,6 @@
  * callers must resolve visibility first and never pass a private resource in.
  */
 
-/** Human-facing site name used across meta tags. */
 export const SITE_NAME = 'Aurboda'
 
 /** Path (relative to the web host) of the branded fallback preview image. */
@@ -26,7 +23,6 @@ export interface ShareMeta {
   url: string
   /** Absolute URL of the preview image (1200×630). */
   image: string
-  /** Alt text for the preview image. */
   imageAlt: string
   /** Open Graph object type. */
   type: 'website' | 'profile'
@@ -117,11 +113,10 @@ interface DashboardMetaInput {
   username: string
   name: string
   url: string
-  /** Optional author-provided description (added in a later iteration). */
+  /** Optional author-provided description. */
   description?: string
 }
 
-/** Build share meta for a public shared dashboard. */
 export const buildDashboardShareMeta = ({
   username,
   name,
@@ -151,7 +146,6 @@ interface ChallengeMetaInput {
   url: string
 }
 
-/** Build share meta for a public federated challenge. */
 export const buildChallengeShareMeta = ({ username, name, url }: ChallengeMetaInput): ShareMeta => ({
   description: clampDescription(
     `${name} — a federated challenge hosted by ${username} on ${SITE_NAME}. Join from any Aurboda instance.`,
@@ -174,7 +168,6 @@ interface ProfileMetaInput {
   url: string
 }
 
-/** Build share meta for a public profile / actor page. */
 export const buildProfileShareMeta = ({ username, url }: ProfileMetaInput): ShareMeta => ({
   description: clampDescription(`${username}'s public dashboards and challenges on ${SITE_NAME}.`),
   image: resourceOgImage(url),

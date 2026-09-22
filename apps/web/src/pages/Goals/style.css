@@ -144,7 +144,6 @@
   color: #673ab8;
 }
 
-/* Dark mode */
 @media (prefers-color-scheme: dark) {
   .goal-progress {
     background: var(--bg-secondary, #2a2a2a);
@@ -171,7 +170,6 @@
   }
 }
 
-/* Mobile responsive */
 @media (max-width: 639px) {
   .goal-header {
     flex-direction: column;

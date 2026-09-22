@@ -1,6 +1,3 @@
-/**
- * MCP deduction rule management tools.
- */
 import { addDeductionRuleBodySchema, updateDeductionRuleBodySchema } from '@aurboda/api-spec'
 import { z } from 'zod'
 
@@ -62,7 +59,6 @@ Multiple conditions use AND logic — all must overlap in time. The rule is appl
 
       const rule = await insertDeductionRule(user, params)
 
-      // Queue async retroactive evaluation
       if (deductionQueue) {
         deductionQueue.enqueueRuleCrud({ user, rule_ids: [rule.id], mode: 'created' })
       }
@@ -89,7 +85,6 @@ Multiple conditions use AND logic — all must overlap in time. The rule is appl
       const updated = await updateDeductionRule(user, id, updates)
       if (!updated) return errorResponse('Deduction rule not found')
 
-      // Queue async re-evaluation
       if (updated.enabled && deductionQueue) {
         deductionQueue.enqueueRuleCrud({
           user,

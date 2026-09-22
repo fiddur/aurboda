@@ -23,21 +23,12 @@ import { goalProgressSchema } from './goals.ts'
 import { trendHistoryPointSchema } from './trends.ts'
 import { shareVisibilitySchema } from './visibility.ts'
 
-// =============================================================================
-// Shared dashboard (owner-facing CRUD)
-// =============================================================================
-
-/** Display name for a shared dashboard. */
 export const sharedDashboardNameSchema = z
   .string()
   .min(1)
   .max(120)
   .meta({ description: 'Display name for the shared dashboard' })
 
-/**
- * A shared dashboard as seen by its owner (includes the editable config and the
- * absolute share URL).
- */
 export const sharedDashboardSchema = z
   .object({
     config: dashboardConfigSchema.meta({ description: 'The dashboard configuration' }),
@@ -55,7 +46,6 @@ export const sharedDashboardSchema = z
 
 export type SharedDashboard = z.infer<typeof sharedDashboardSchema>
 
-/** Body for creating a shared dashboard. */
 export const createSharedDashboardBodySchema = z
   .object({
     config: dashboardConfigSchema.meta({ description: 'The dashboard configuration to publish' }),
@@ -68,7 +58,6 @@ export const createSharedDashboardBodySchema = z
 
 export type CreateSharedDashboardBody = z.infer<typeof createSharedDashboardBodySchema>
 
-/** Body for updating a shared dashboard (all fields optional). */
 export const updateSharedDashboardBodySchema = z
   .object({
     config: dashboardConfigSchema.optional().meta({ description: 'Replacement dashboard configuration' }),
@@ -81,25 +70,18 @@ export const updateSharedDashboardBodySchema = z
 
 export type UpdateSharedDashboardBody = z.infer<typeof updateSharedDashboardBodySchema>
 
-/** Response wrapping a single shared dashboard. */
 export const sharedDashboardResponseSchema = baseResponseSchema
   .extend({ dashboard: sharedDashboardSchema.optional() })
   .meta({ id: 'SharedDashboardResponse' })
 
 export type SharedDashboardResponse = z.infer<typeof sharedDashboardResponseSchema>
 
-/** Response wrapping the owner's list of shared dashboards. */
 export const sharedDashboardsResponseSchema = baseResponseSchema
   .extend({ dashboards: z.array(sharedDashboardSchema) })
   .meta({ id: 'SharedDashboardsResponse' })
 
 export type SharedDashboardsResponse = z.infer<typeof sharedDashboardsResponseSchema>
 
-// =============================================================================
-// Per-widget data payloads (public viewer — minimal projection)
-// =============================================================================
-
-/** A single point of a metric time series. */
 export const metricSeriesPointSchema = z
   .object({
     time: z.string().meta({ description: 'Timestamp (ISO 8601)' }),
@@ -257,16 +239,10 @@ export type ActivitySummaryData = z.infer<typeof activitySummaryDataSchema>
 export type HrZonesData = z.infer<typeof hrZonesDataSchema>
 export type GoalProgressData = z.infer<typeof goalProgressDataSchema>
 
-/** Map of widget id → resolved widget data. */
 export const widgetDataMapSchema = z.record(z.string(), widgetDataSchema).meta({ id: 'WidgetDataMap' })
 
 export type WidgetDataMap = z.infer<typeof widgetDataMapSchema>
 
-// =============================================================================
-// Public profile + public dashboard (unauthenticated viewer)
-// =============================================================================
-
-/** A public dashboard as listed on a user's public profile. */
 export const publicDashboardListItemSchema = z
   .object({
     name: sharedDashboardNameSchema,

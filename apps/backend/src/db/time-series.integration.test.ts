@@ -1,10 +1,3 @@
-/**
- * Time series integration tests using testcontainers.
- *
- * Tests insertTimeSeries, getTimeSeries, and getTimeSeriesBucketed against a real
- * PostgreSQL instance.
- */
-
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
@@ -115,7 +108,6 @@ describe('Time Series Integration Tests', () => {
     test('handles empty array gracefully', async () => {
       const user = getTestUser()
 
-      // Should not throw
       await insertTimeSeries(user, [])
 
       const data = await getTimeSeries(
@@ -253,10 +245,6 @@ describe('Time Series Integration Tests', () => {
     })
   })
 
-  // ==========================================================================
-  // Time Series With Source
-  // ==========================================================================
-
   describe('getTimeSeriesWithSource', () => {
     test('returns time, value, and source for each data point', async () => {
       const user = getTestUser()
@@ -311,10 +299,6 @@ describe('Time Series Integration Tests', () => {
       expect(data[0].value).toBe(8500)
     })
   })
-
-  // ==========================================================================
-  // Bucketed Time Series
-  // ==========================================================================
 
   describe('getTimeSeriesBucketed', () => {
     test('returns aggregated buckets for a single metric', async () => {
@@ -557,10 +541,6 @@ describe('Time Series Integration Tests', () => {
       expect(buckets[0].max).toBe(75)
     })
   })
-
-  // ==========================================================================
-  // Time Series Deletion
-  // ==========================================================================
 
   describe('deleteTimeSeriesPoint', () => {
     test('soft-deletes a measurement and returns true', async () => {

@@ -1,6 +1,4 @@
 /**
- * MetricCardWidget - Displays a single metric value with optional trend indicator.
- *
  * Split into a presentational `MetricCardView` (renders from a resolved data
  * payload) and a `MetricCardWidget` container that fetches and maps to that
  * payload. The public shared-dashboard renderer reuses `MetricCardView`.
@@ -27,7 +25,6 @@ type BaselineMetric = (typeof baselineMetrics)[number]
 const isBaselineMetric = (metric: string): metric is BaselineMetric =>
   baselineMetrics.includes(metric as BaselineMetric)
 
-// Map widget metric names to API metric names
 const metricToApiMetric: Record<string, string> = {
   body_fat: 'body_fat',
   readiness_score: 'readiness_score',
@@ -63,7 +60,6 @@ const periodToData = (stats: PeriodMetricStats | undefined): MetricCardData => (
   value: stats ? periodStatsValue(stats, 'avg') : null,
 })
 
-/** Compute the display string + dynamic subtitle for a metric card. */
 const computeDisplay = (
   metric: string,
   data: MetricCardData | null,
@@ -91,7 +87,6 @@ const computeDisplay = (
 interface MetricCardViewProps {
   config: MetricCardConfig
   data: MetricCardData | null
-  /** When true, render the loading placeholder instead of the value. */
   loading?: boolean
 }
 

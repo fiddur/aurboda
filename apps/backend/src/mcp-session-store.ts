@@ -1,6 +1,4 @@
 /**
- * MCP Session Store Interface and Implementations
- *
  * Provides session persistence for MCP sessions, allowing them to survive
  * backend restarts. Sessions are lazily restored when clients reconnect.
  */
@@ -14,21 +12,12 @@ import {
   touchMcpSession,
 } from './db/index.ts'
 
-/**
- * Interface for MCP session persistence.
- * Implementations can be in-memory only or database-backed.
- */
 export interface McpSessionStore {
   /**
    * Save a new session or update an existing one.
-   * Returns the session record.
    */
   save(user: string, sessionId: string): Promise<McpSessionRecord>
 
-  /**
-   * Get a session by ID.
-   * Returns null if the session doesn't exist.
-   */
   get(user: string, sessionId: string): Promise<McpSessionRecord | null>
 
   /**
@@ -36,10 +25,6 @@ export interface McpSessionStore {
    */
   touch(user: string, sessionId: string): Promise<void>
 
-  /**
-   * Delete a session.
-   * Returns true if the session was deleted.
-   */
   delete(user: string, sessionId: string): Promise<boolean>
 
   /**
@@ -49,10 +34,6 @@ export interface McpSessionStore {
   cleanup(user: string, maxInactivityMs: number): Promise<string[]>
 }
 
-/**
- * In-memory session store (no persistence across restarts).
- * Useful for testing or when persistence is not needed.
- */
 export const createInMemorySessionStore = (): McpSessionStore => {
   const sessions = new Map<string, McpSessionRecord>()
 
@@ -99,10 +80,6 @@ export const createInMemorySessionStore = (): McpSessionStore => {
   }
 }
 
-/**
- * Database-backed session store.
- * Sessions persist across backend restarts.
- */
 export const createDbSessionStore = (): McpSessionStore => ({
   cleanup: deleteExpiredMcpSessions,
   delete: deleteMcpSession,

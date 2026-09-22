@@ -1,12 +1,3 @@
-/**
- * MCP tools for the multi-day nutrient overview feature.
- *
- * - get_nutrient_recommendations / set_nutrient_recommendation /
- *   clear_nutrient_recommendation manage the per-user override layer over
- *   the central NNR2023 defaults.
- * - query_meals_period_summary returns daily-averaged nutrient intake plus
- *   averaged calories_total burn over a date range.
- */
 import {
   NUTRIENT_FIELD_NAMES,
   nutrientPeriodSummaryQuerySchema,

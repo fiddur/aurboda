@@ -1,6 +1,4 @@
 /**
- * Home-timeline backfill on follow (#884).
- *
  * When a follow WE sent becomes accepted, fetch the followee's recent PUBLIC
  * posts from their ActivityPub outbox and ingest them into the follower's home
  * timeline — so the timeline isn't empty until the followee next posts. The

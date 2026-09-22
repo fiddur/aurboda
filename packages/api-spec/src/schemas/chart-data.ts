@@ -9,9 +9,6 @@ import { z } from 'zod'
 
 import { baseResponseSchema } from './common.ts'
 
-/**
- * Source type for chart data queries.
- */
 export const chartDataSourceTypeSchema = z
   .enum(['tag', 'metric', 'productivity_category', 'activity_type'])
   .meta({
@@ -22,9 +19,6 @@ export const chartDataSourceTypeSchema = z
 
 export type ChartDataSourceType = z.infer<typeof chartDataSourceTypeSchema>
 
-/**
- * Bucket size for chart data aggregation.
- */
 export const chartDataBucketSizeSchema = z.enum(['1m', '5m', '15m', '1h', '1d', '1w', '1M']).meta({
   description:
     'Bucket size for aggregation: 1 minute, 5 minutes, 15 minutes, hourly, daily, weekly, or monthly',
@@ -34,9 +28,6 @@ export const chartDataBucketSizeSchema = z.enum(['1m', '5m', '15m', '1h', '1d', 
 
 export type ChartDataBucketSize = z.infer<typeof chartDataBucketSizeSchema>
 
-/**
- * Aggregation method for chart data.
- */
 export const chartDataAggregationSchema = z.enum(['count', 'sum', 'mean']).meta({
   description: 'Aggregation method: count, sum, or mean',
   example: 'count',
@@ -109,9 +100,6 @@ export const chartDataHttpQuerySchema = z
 
 export type ChartDataHttpQuery = z.infer<typeof chartDataHttpQuerySchema>
 
-/**
- * A single bucket in the chart data response.
- */
 export const chartDataBucketSchema = z
   .object({
     bucket_start: z.string().meta({ description: 'Start of the bucket (ISO 8601 datetime)' }),
@@ -133,9 +121,6 @@ export const chartDataBreakdownBucketSchema = z
 
 export type ChartDataBreakdownBucket = z.infer<typeof chartDataBreakdownBucketSchema>
 
-/**
- * Response schema for chart data endpoint.
- */
 export const chartDataResponseSchema = baseResponseSchema
   .extend({
     data: z

@@ -41,7 +41,6 @@ const DEFAULT_MEAL_SLOTS: MealSlot[] = [
 ]
 
 const formatTime = (hour: number, minute: number): string => `${hour}:${String(minute).padStart(2, '0')}`
-
 /** Convert total minutes since midnight to HH:MM string. */
 const minutesToTime = (totalMinutes: number): string => {
   const h = Math.floor(totalMinutes / 60)
@@ -787,7 +786,6 @@ const buildTimeline = (slots: MealSlot[], meals: Meal[]): TimelineEntry[] => {
   return [...slotEntries, ...otherEntries].sort((a, b) => a.minutes - b.minutes)
 }
 
-/** Hook to manage meal mutations with optimistic updates. */
 function useMealMutations(mealsQueryKey: string[], meals: Meal[] | undefined) {
   const queryClient = useQueryClient()
   const [savingSlots, setSavingSlots] = useState(new Set<string>())

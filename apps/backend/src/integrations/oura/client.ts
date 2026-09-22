@@ -105,7 +105,6 @@ export const ouraClient = (
 
       const user = state as string
 
-      // Ensure schema is initialized for this user
       if (!(await schemaInitialized(user))) {
         await initializeSchema(user)
       }
@@ -149,7 +148,6 @@ export const ouraClient = (
         return token.access_token
       }
 
-      // Refresh the token
       const { clientId, clientSecret } = await getCredentials()
       const tokenUrl = new URL('https://cloud.ouraring.com/oauth/token')
       tokenUrl.searchParams.append('grant_type', 'refresh_token')

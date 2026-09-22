@@ -1,9 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
-/**
- * Integration tests for feed-post CRUD and the series-authorization window
- * lookup that guards the public `/series` endpoint.
- */
 import { cleanTestDb, getTestDbClient, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import { deleteActivity, insertActivity } from './activities/index.ts'
 import {

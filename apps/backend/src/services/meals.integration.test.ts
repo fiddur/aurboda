@@ -1,6 +1,4 @@
 /**
- * Integration tests for the meals service.
- *
  * Covers the canonical-food + scaling pipeline: add_meal/update_meal must
  * snapshot canonical nutrient values into meal_food_items scaled by quantity,
  * and the meal's macro columns must auto-fill from the snapshot sum unless
@@ -221,7 +219,6 @@ describe('Meals service integration tests', () => {
         name: 'Banana',
       })
 
-      // Log a meal with the recipe + banana.
       const created = await addMeal(user, {
         food_items: [
           { food_item_id: recipe.id, name: 'Fat coffee', quantity: 1, unit: 'recipe' },

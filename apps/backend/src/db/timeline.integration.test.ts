@@ -1,9 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
-/**
- * Integration tests for the home-timeline store (posts received from followed
- * actors), including keyset pagination by (published_at DESC, id DESC).
- */
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import { query } from './connection.ts'
 import {

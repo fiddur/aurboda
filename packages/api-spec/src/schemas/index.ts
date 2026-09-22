@@ -1,7 +1,3 @@
-/**
- * Re-export all schemas.
- */
-
 export * from './activities.ts'
 export * from './activity-subtypes.ts'
 export * from './activity-type-definitions.ts'

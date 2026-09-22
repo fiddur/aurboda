@@ -15,7 +15,6 @@ export interface CommentThreadProps {
   /** Thread roots, each carrying its replies nested (oldest first). */
   comments: Note[]
   isLoading?: boolean
-  /** Omitted when the caller has no "new thread" affordance. */
   onAddRoot?: (content: string) => void
   onAddReply: (rootId: string, content: string) => void
   onEdit: (id: string, content: string) => void

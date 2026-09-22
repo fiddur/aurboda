@@ -16,7 +16,7 @@
   gap: 1rem;
   margin-bottom: 1rem;
   /* Let the Share button wrap to a new line instead of being pushed off-screen
-     by a long, non-wrapping `@handle` on narrow viewports (#906). */
+     by a long, non-wrapping `@handle` on narrow viewports. */
   flex-wrap: wrap;
 }
 

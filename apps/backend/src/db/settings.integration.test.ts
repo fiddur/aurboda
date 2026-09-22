@@ -35,10 +35,8 @@ describe('Settings Integration Tests', () => {
     test('updates tag_mappings while preserving other settings', async () => {
       const user = getTestUser()
 
-      // Set initial settings
       await upsertUserSettings(user, { birth_date: '1990-01-15' })
 
-      // Add tag mappings
       const mappings = { 'test-uuid': 'Test Tag' }
       await upsertUserSettings(user, { tag_mappings: mappings })
 

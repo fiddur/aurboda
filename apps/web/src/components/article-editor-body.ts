@@ -1,8 +1,7 @@
 /**
  * Pure state → request-body logic for the article editor, kept out of the JSX so
  * it is unit-testable without rendering (mirrors `feed-metrics.ts`'s
- * `buildShareBody`). Handles the `datetime-local` ⇄ ISO conversion, seeding the
- * editor from an existing post, and building/validating the create/update body.
+ * `buildShareBody`).
  */
 import type {
   ArticleBlock,
@@ -41,7 +40,6 @@ export interface CorrelationDraft {
 }
 export type BlockDraft = ChartDraft | CorrelationDraft | ProseDraft
 
-/** A fresh correlation draft for the "+ Correlation" button (empty selectors). */
 export const emptyCorrelationDraft = (): CorrelationDraft => ({
   caption: '',
   end: '',
@@ -52,7 +50,6 @@ export const emptyCorrelationDraft = (): CorrelationDraft => ({
   type: 'correlation',
 })
 
-/** A selector the author hasn't finished filling in (no metric / no pattern). */
 const selectorIncomplete = (s: CorrelationSelector): boolean =>
   s.kind === 'metric' ? !s.metric.trim() : s.kind === 'nutrition' ? false : !s.pattern.trim()
 
@@ -79,7 +76,6 @@ export const toInputValue = (iso?: string): string => {
 export const toIso = (local: string): string | undefined =>
   local ? new Date(local).toISOString() : undefined
 
-/** Seed the editor's block drafts from an existing article post (edit mode). */
 export const draftsFromPost = (post?: FeedPost): BlockDraft[] => {
   if (!post?.article) return []
   return post.article.blocks.map((b): BlockDraft => {
@@ -106,7 +102,6 @@ export const draftsFromPost = (post?: FeedPost): BlockDraft[] => {
   })
 }
 
-/** Seed the whole editor state from an existing post (edit mode) or empty (compose). */
 export const initialArticleEditorState = (post?: FeedPost): ArticleEditorState => ({
   blocks: draftsFromPost(post),
   defaultEnd: toInputValue(post?.article?.default_end),
@@ -128,7 +123,6 @@ export const deriveSubmitError = (validationError: string | null, mutationError:
 
 type BlockResult = { block: ArticleBlock } | { error: string }
 
-/** Build one chart block from its draft, or a validation error. */
 const buildChartBlock = (b: ChartDraft, i: number): BlockResult => {
   if (!isValidMetric(b.metric)) {
     // An empty pick vs. an unsupported (custom) metric — article charts accept
@@ -151,7 +145,6 @@ const buildChartBlock = (b: ChartDraft, i: number): BlockResult => {
   }
 }
 
-/** Build one correlation block from its draft, or a validation error. */
 const buildCorrelationBlock = (b: CorrelationDraft, i: number): BlockResult => {
   const missing = selectorIncomplete(b.trigger) ? 'trigger' : selectorIncomplete(b.outcome) ? 'outcome' : null
   if (missing) return { error: `Correlation block ${i + 1}: choose a ${missing} (metric or pattern).` }
@@ -173,11 +166,8 @@ const buildCorrelationBlock = (b: CorrelationDraft, i: number): BlockResult => {
 }
 
 /**
- * Build the create/update request body from the editor state, or return a
- * validation error. Requires a title, a valid metric on every chart block, and a
- * filled-in trigger + outcome on every correlation block; empty optional fields
- * are omitted. The server re-validates windows (`buildArticleContent`), so this
- * only guards what the form can catch early.
+ * The server re-validates windows (`buildArticleContent`), so this only guards
+ * what the form can catch early.
  */
 export const buildArticleBody = (state: ArticleEditorState): BuildResult => {
   if (!state.title.trim()) return { error: 'Give your article a title.', ok: false }

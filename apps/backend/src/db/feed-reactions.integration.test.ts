@@ -1,10 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
-/**
- * Integration tests for the two reaction stores: the user's OWN outbound
- * likes/boosts (`feed_reaction`) and the inbound reactions on their own posts
- * (`feed_post_reaction`).
- */
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import {
   countFeedPostReactions,

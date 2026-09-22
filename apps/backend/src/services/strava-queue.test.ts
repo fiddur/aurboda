@@ -154,7 +154,6 @@ describe('createStravaQueue', () => {
   })
 
   describe('dead-letter handler', () => {
-    // Extract the dead-letter handler by finding the boss.work() call for the DLQ
     const getDeadLetterHandler = (boss: ReturnType<typeof createMockBoss>) => {
       const dlqCall = boss.work.mock.calls.find((args) => args[0] === 'strava-sync-dead-letter')
       if (!dlqCall) throw new Error('dead-letter worker not registered')

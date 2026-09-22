@@ -14,7 +14,6 @@ import {
   validateAndUpdateSettings,
 } from './settings.ts'
 
-// Mock the db module
 vi.mock('../db', () => ({
   getGoals: vi.fn().mockResolvedValue([]),
   getOAuthToken: vi.fn(),
@@ -24,7 +23,6 @@ vi.mock('../db', () => ({
   upsertUserSettings: vi.fn(),
 }))
 
-// Mock the central-db module
 vi.mock('./central-db', () => ({
   getCentralDb: () => ({
     getLastFmApiKey: vi.fn().mockResolvedValue(null),

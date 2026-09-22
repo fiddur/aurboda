@@ -1,10 +1,5 @@
 import type { RequestHandler } from 'express'
 
-/**
- * Admin route group.
- *
- * Handles: /admin/*
- */
 import {
   type AdminSettingsResponse,
   type CreateInvitationBody,

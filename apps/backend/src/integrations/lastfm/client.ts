@@ -1,7 +1,4 @@
 /**
- * Last.fm API client.
- *
- * Uses the Last.fm API to fetch user scrobble data.
  * API key is stored at the app level, user provides only their username.
  */
 
@@ -41,8 +38,6 @@ interface LastFmRecentTracksResponse {
 }
 
 /**
- * Create a Last.fm API client.
- *
  * @param apiKey - Last.fm API key (app-level, from LASTFM_API_KEY env var)
  */
 export const lastfmClient = (apiKey: string) => {
@@ -50,9 +45,6 @@ export const lastfmClient = (apiKey: string) => {
 
   return {
     /**
-     * Get recent tracks (scrobbles) for a user.
-     *
-     * @param username - Last.fm username
      * @param from - Optional start date (Unix timestamp or Date)
      * @param to - Optional end date (Unix timestamp or Date)
      * @param limit - Number of tracks per page (max 200, default 200)

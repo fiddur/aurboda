@@ -8,7 +8,6 @@ import type { BiologicalSex, TrainingLoadSettings } from '@aurboda/api-spec'
 import type { Activity, TimeSeriesPoint } from '../../db/types.ts'
 
 export interface TrainingLoadDeps {
-  /** Get exercise activities in a time range */
   getExercises: (user: string, start: Date, end: Date) => Promise<Activity[]>
   /** Get HR time-series data in a time range (bucketed to 5-min) */
   getHrSamples: (user: string, start: Date, end: Date) => Promise<[Date, number][]>
@@ -28,11 +27,8 @@ export interface TrainingLoadDeps {
     start: Date,
     end: Date,
   ) => Promise<number>
-  /** Get the maximum observed HR value */
   getMaxObservedHr: (user: string) => Promise<number | undefined>
-  /** Get the most recent resting HR */
   getLatestRestingHr: (user: string) => Promise<number | undefined>
-  /** Get user settings */
   getUserSettings: (user: string) => Promise<{
     training_load?: TrainingLoadSettings
     sex?: BiologicalSex
@@ -53,9 +49,6 @@ import {
 import { upsertUserSettings } from '../../db/settings.ts'
 import { getSettings } from '../settings.ts'
 
-/**
- * Create production dependencies for the training load computation.
- */
 export const createTrainingLoadDeps = (): TrainingLoadDeps => ({
   deleteImpulseBuckets: async (user, metric, source, start, end) => {
     return deleteTimeSeriesBySource(user, metric, source, start, end)

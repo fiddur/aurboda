@@ -1,6 +1,3 @@
-/**
- * MCP chart data tools — bucketed aggregation for bar charts.
- */
 import { chartDataQuerySchema } from '@aurboda/api-spec'
 
 import { getChartData } from '../services/chart-data.ts'

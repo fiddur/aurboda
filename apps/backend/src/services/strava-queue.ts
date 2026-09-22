@@ -1,6 +1,4 @@
 /**
- * Strava sync queue using pg-boss.
- *
  * Uses the shared pg-boss instance for cross-instance job coordination.
  * batchSize: 1 ensures one Strava API call at a time across all instances,
  * which is critical because Strava rate limits are per-application
@@ -29,10 +27,6 @@ import { processStravaActivity } from '../integrations/strava/process.ts'
 import { parseRateLimitHeaders } from '../integrations/strava/types.ts'
 import { auditError, auditInfo, auditWarn } from './audit-log.ts'
 
-// ============================================================================
-// Types
-// ============================================================================
-
 export interface StravaQueueDeps {
   getAccessToken: (user: string) => Promise<string>
   listActivities: (
@@ -55,10 +49,6 @@ export interface StravaQueue {
   enqueueActivityFetch: (user: string, activityId: number, priority: number) => Promise<void>
   getStatus: () => Promise<StravaQueueStatus>
 }
-
-// ============================================================================
-// Configuration
-// ============================================================================
 
 const QUEUE_NAME = 'strava-sync'
 const DEAD_LETTER_QUEUE = 'strava-sync-dead-letter'
@@ -103,10 +93,6 @@ const msUntilNext15MinBoundary = (): number => {
   if (target <= now) target.setMinutes(target.getMinutes() + 15)
   return target.getTime() - now.getTime()
 }
-
-// ============================================================================
-// Job handler
-// ============================================================================
 
 const createJobHandler = (deps: StravaQueueDeps, boss: PgBoss) => {
   // Rate limit state scoped to this queue instance (not module-level)
@@ -228,10 +214,6 @@ const createJobHandler = (deps: StravaQueueDeps, boss: PgBoss) => {
   }
 }
 
-// ============================================================================
-// Dead-letter handler
-// ============================================================================
-
 /**
  * Receives jobs that exhausted their retry limit. Audit-logs the permanent
  * failure, and for list_activities jobs also marks sync_state as 'error' —
@@ -264,10 +246,6 @@ const createDeadLetterHandler =
       }
     }
   }
-
-// ============================================================================
-// Queue factory
-// ============================================================================
 
 export const createStravaQueue = async (boss: PgBoss, deps: StravaQueueDeps): Promise<StravaQueue> => {
   await boss.createQueue(QUEUE_NAME)

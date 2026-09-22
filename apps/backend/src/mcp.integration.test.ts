@@ -1,9 +1,3 @@
-/**
- * MCP Integration tests with real PostgreSQL.
- *
- * Tests the stateless MCP server against a real database.
- */
-
 import express from 'express'
 import request from 'supertest'
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
@@ -85,7 +79,6 @@ describe('MCP Database Integration Tests (Stateless)', () => {
     const token = auth.createToken('testuser')
     const app = createTestApp()
 
-    // First request
     const response1 = await mcpPost(app)
       .set('Authorization', `Bearer ${token}`)
       .send({

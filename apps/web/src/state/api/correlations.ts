@@ -35,7 +35,6 @@ export const fetchBaseline = async (referenceDate?: string): Promise<BaselineDat
   return response.data.data!
 }
 
-// Fetch HRV-activities correlations
 export const fetchHrvActivitiesCorrelation = async (
   periodDays?: number,
   contextMetric?: HrvContextMetric,

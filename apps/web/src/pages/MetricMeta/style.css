@@ -4,7 +4,6 @@
   box-sizing: border-box;
 }
 
-/* Header */
 .metric-meta-header {
   margin-bottom: 2rem;
 }
@@ -54,7 +53,6 @@
   color: #7c3aed;
 }
 
-/* Sections */
 .metric-meta-section {
   margin-bottom: 2rem;
   padding: 1.25rem;
@@ -102,7 +100,6 @@
   background: #fff;
 }
 
-/* Field rows */
 .metric-meta-field-row {
   display: flex;
   gap: 1rem;
@@ -121,7 +118,6 @@
   font-size: 0.85rem;
 }
 
-/* Custom metric editor */
 .metric-meta-custom-info {
   display: flex;
   justify-content: space-between;
@@ -171,7 +167,6 @@
   gap: 0.75rem;
 }
 
-/* Trend value */
 .metric-meta-trend-value {
   display: flex;
   align-items: baseline;
@@ -190,7 +185,6 @@
   color: #6b7280;
 }
 
-/* Recent values */
 .metric-meta-recent-list {
   display: flex;
   flex-direction: column;
@@ -264,7 +258,6 @@
   margin: 0.5rem 0 0;
 }
 
-/* Source filter chips */
 .source-filter-chips {
   display: flex;
   flex-wrap: wrap;
@@ -295,7 +288,6 @@
   color: white;
 }
 
-/* Quick links */
 .metric-meta-links {
   display: flex;
   flex-wrap: wrap;
@@ -318,7 +310,6 @@
   border-color: #d1d5db;
 }
 
-/* Buttons */
 .metric-meta-page .btn-primary {
   padding: 0.5rem 1rem;
   font-size: 0.85rem;
@@ -415,7 +406,6 @@
   color: #dc2626;
 }
 
-/* Dark mode */
 @media (prefers-color-scheme: dark) {
   .metric-meta-header h1 {
     color: #f9fafb;
@@ -545,7 +535,6 @@
   }
 }
 
-/* Responsive */
 @media (max-width: 639px) {
   .metric-meta-page {
     padding: 1rem;

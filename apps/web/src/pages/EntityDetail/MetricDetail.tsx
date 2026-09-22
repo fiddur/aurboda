@@ -1,7 +1,3 @@
-/**
- * Metric data point detail view.
- * Supports read mode (plain text) and edit mode (input fields).
- */
 import { metricUnits as builtinMetricUnits } from '@aurboda/api-spec'
 import { useQuery } from '@tanstack/react-query'
 import { useEffect } from 'preact/hooks'
@@ -31,7 +27,6 @@ export const parseMetricEntityId = (
   return { metric, source, time }
 }
 
-/** Map metric name to human-readable display label. */
 const formatMetricLabel = (metric: string): string =>
   metric.replaceAll('_', ' ').replaceAll(/\b\w/g, (c) => c.toUpperCase())
 
@@ -75,7 +70,6 @@ export const MetricDetail = ({
 
   const point = pointQuery.data
 
-  // When point loads, populate draft value for editing
   useEffect(() => {
     if (point && onDraftInit) {
       onDraftInit({ value: String(point.value) })

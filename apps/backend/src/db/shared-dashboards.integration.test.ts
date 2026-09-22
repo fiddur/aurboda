@@ -1,10 +1,3 @@
-/**
- * Integration tests for shared dashboards CRUD.
- *
- * Covers create (with unique slug generation), list (all + public-only),
- * lookup by id/slug, partial update, and delete — against a real PostgreSQL
- * instance via testcontainers.
- */
 import type { DashboardConfig } from '@aurboda/api-spec'
 
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'

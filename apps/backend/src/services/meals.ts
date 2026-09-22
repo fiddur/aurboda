@@ -1,10 +1,3 @@
-/**
- * Meals service — CRUD operations for meal/nutrition records.
- *
- * Handles adding, querying, and deleting meals with optional nutrition data.
- * Food items are stored relationally via the food_items + meal_food_items junction table.
- */
-
 import { type FrequentFoodItem, type FrequentMeal, NUTRIENT_FIELD_NAMES } from '@aurboda/api-spec'
 
 import {
@@ -40,10 +33,6 @@ import {
   resolveFoodItemDisplay,
 } from './food-items.ts'
 import { syncNoteTimesForEntity } from './notes.ts'
-
-// ============================================================================
-// Types
-// ============================================================================
 
 interface FoodItemInput {
   food_item_id?: string
@@ -134,10 +123,6 @@ interface MealsResult {
   error?: string
 }
 
-// ============================================================================
-// Helpers
-// ============================================================================
-
 type EnrichedMeal = Meal & { nutrients?: Record<string, number>; nutrient_data_incomplete?: boolean }
 
 /**
@@ -177,7 +162,6 @@ const formatMeal = (meal: EnrichedMeal): MealResponse => ({
 })
 
 /**
- * Convert junction links to the MealFoodItem format for API responses.
  * Name, icon, and sensitivity flag names are all resolved live (not
  * snapshotted): name/icon via `displayMap` against the canonical food
  * item, sensitivities via `sensitivityMap` against the food_item ↔ flag
@@ -218,7 +202,6 @@ const linksToFoodItems = (
   })
 
 /**
- * Aggregate all nutrient columns from junction links into a flat record.
  * Each link is run through `withDerivedNutrients` first so totals include
  * vitamin A (RAE), niacin equivalents, salt/sodium cross-fill, etc. when
  * the food item only carries the precursor fields.
@@ -234,7 +217,6 @@ const aggregateNutrients = (links: MealFoodItemLink[]): Record<string, number> =
       }
     }
   }
-  // Round to 2 decimal places
   for (const key of Object.keys(totals)) {
     totals[key] = Math.round(totals[key] * 100) / 100
   }
@@ -255,11 +237,9 @@ const pickExplicitMacros = (
   return out
 }
 
-/** Check if any food item in the junction links lacks calorie data. */
 export const hasIncompleteNutrients = (links: MealFoodItemLink[]): boolean =>
   links.some((link) => link.calories === undefined || link.calories === null)
 
-/** Attach food items and aggregated nutrients from junction table to meals. */
 const attachFoodItems = async (user: string, meals: Meal[]): Promise<EnrichedMeal[]> => {
   const mealIds = meals.map((m) => m.id)
   const junctionMap = await getMealFoodItemsBatch(user, mealIds)
@@ -511,20 +491,11 @@ const recomputeMealMacros = async (
   return dbUpdateMeal(user, mealId, update)
 }
 
-// ============================================================================
-// Service Functions
-// ============================================================================
-
-/**
- * Add a new meal record.
- */
 export async function addMeal(user: string, input: AddMealInput): Promise<MealResult> {
   const mealTime = new Date(input.time)
 
-  // Pre-validate every food-item input (canonical resolve + portion ownership)
-  // BEFORE writing the meal row. A bad portion id used to throw mid-flight
-  // and leave an orphan meal with no items behind; now we surface the error
-  // cleanly and the route maps it to a 400.
+  // Pre-validate BEFORE writing the meal row: a bad portion id must not leave
+  // an orphan meal with no items behind.
   let prepared: PreparedFoodItem[] = []
   if (input.food_items && input.food_items.length > 0) {
     try {
@@ -566,9 +537,6 @@ export async function addMeal(user: string, input: AddMealInput): Promise<MealRe
   return { data: formatMeal(enriched), success: true }
 }
 
-/**
- * Update an existing meal record.
- */
 export async function updateMealById(user: string, id: string, input: UpdateMealInput): Promise<MealResult> {
   // Pre-validate food items (when provided) before any mutation, same as
   // addMeal — protects against half-applied updates when a portion id is bad.
@@ -693,8 +661,6 @@ export async function resnapshotMealsForFoodItem(
     const links = await getMealFoodItems(user, mealId)
     const updated = links.map((link) => {
       if (link.food_item_id !== foodItemId) {
-        // Preserve other items' snapshots verbatim — this action only refreshes
-        // rows that point at the food item being re-snapshotted.
         return passThroughLink(link)
       }
       // Portion was logged but has since been deleted: don't rescale. The
@@ -725,23 +691,16 @@ export async function resnapshotMealsForFoodItem(
   return { meals_updated: mealIds.length, rows_updated: rowsUpdated }
 }
 
-/**
- * Get a single meal by ID.
- */
 export async function getMeal(user: string, id: string): Promise<MealResult> {
   const meal = await dbGetMealById(user, id)
   if (!meal) {
     return { error: 'Meal not found', errorCode: 'not_found', success: false }
   }
 
-  // Populate food items from junction table
   const [enriched] = await attachFoodItems(user, [meal])
   return { data: formatMeal(enriched), success: true }
 }
 
-/**
- * Query meals with optional filters.
- */
 export async function queryMeals(
   user: string,
   filters: { meal_type?: string; start?: string; end?: string },
@@ -752,7 +711,6 @@ export async function queryMeals(
     start: filters.start ? new Date(filters.start) : undefined,
   })
 
-  // Populate food items from junction table
   const enriched = await attachFoodItems(user, meals)
   return { data: enriched.map(formatMeal), success: true }
 }
@@ -857,9 +815,6 @@ export async function queryFrequentFoodItems(
   }
 }
 
-/**
- * Delete a meal by ID.
- */
 export async function deleteMealById(
   user: string,
   id: string,

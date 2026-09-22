@@ -1,6 +1,3 @@
-/**
- * Shared components for data source pages — save status indicators, status banners, etc.
- */
 import type { ProviderSyncStatus, SyncIntervals } from '@aurboda/api-spec'
 
 import { useQuery, useQueryClient } from '@tanstack/react-query'

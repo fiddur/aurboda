@@ -1,6 +1,4 @@
 /**
- * ActivitySummaryWidget - Displays workout/sleep/meditation stats.
- *
  * Split into a presentational `ActivitySummaryView` and a fetching container.
  * The view renders from pre-aggregated category figures; a null category means
  * it is hidden (the visibility toggle is off), so it is not rendered.

@@ -5,8 +5,6 @@ import { useCallback, useMemo } from 'preact/hooks'
 import { collapseDepthForPixelsPerHour, computePixelsPerHour, mergeGapForZoom } from './collapseTier'
 import { getDefaultViewEnd, getDefaultViewStart, parseViewHash } from './viewHash'
 
-// ── Signals (module-level, persist across SPA navigations) ────────────────────
-
 const fromDate = signal(formatISO(subDays(new Date(), 1), { representation: 'date' }))
 const toDate = signal(formatISO(new Date(), { representation: 'date' }))
 const viewStart = signal<Date | null>(null)

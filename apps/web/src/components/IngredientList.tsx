@@ -1,6 +1,4 @@
 /**
- * Ingredient editor for composite (recipe-style) food items.
- *
  * Each row is one ingredient pointing at another food item — picked via
  * FoodItemAutocomplete (which already merges user + central library), with an
  * inline quantity and a unit picker. The unit picker offers the ingredient
@@ -36,7 +34,6 @@ export interface IngredientRow {
 
 interface Props {
   ingredients: IngredientRow[]
-  /** Called when the list changes — caller persists via PUT /food-items/:id/ingredients. */
   onChange: (ingredients: IngredientRow[]) => void
 }
 

@@ -1,5 +1,4 @@
 /**
- * Greedy interval scheduling for lane packing.
  * Assigns items to the minimum number of lanes such that no two items in the same lane overlap.
  */
 
@@ -24,7 +23,6 @@ export const packLanes = <T>(
 
   const sorted = [...items].sort((a, b) => getStart(a).getTime() - getStart(b).getTime())
 
-  // Track the end time of each lane
   const laneEnds: number[] = []
   const result: PackedItem<T>[] = []
 
@@ -32,7 +30,6 @@ export const packLanes = <T>(
     const start = getStart(item).getTime()
     const end = getEnd(item)?.getTime() ?? start + SYNTHETIC_DURATION_MS
 
-    // Find the first lane whose end <= item start
     let assignedLane = -1
     for (let i = 0; i < laneEnds.length; i++) {
       if ((laneEnds[i] ?? 0) <= start) {

@@ -1,7 +1,4 @@
 /**
- * Category detail/edit page.
- *
- * Serves as both the view and edit page for a screentime category.
  * All fields auto-save on blur. Also handles creation of new categories
  * when navigating to a UUID that doesn't exist yet.
  */
@@ -32,10 +29,6 @@ import {
 import { auth } from '../../state/auth'
 import { isEmoji, suggestEmoji } from '../../utils/emojiLookup'
 import './style.css'
-
-// ============================================================================
-// Helpers
-// ============================================================================
 
 const formatDuration = (totalSec: number): string => {
   const hours = Math.floor(totalSec / 3600)
@@ -80,10 +73,6 @@ const getAllMatchedApps = (apps: DistinctApp[], categoryName: string[]): Distinc
 
 const getUncategorizedApps = (apps: DistinctApp[]): DistinctApp[] =>
   apps.filter((app) => !app.resolved_category)
-
-// ============================================================================
-// Auto-save field component
-// ============================================================================
 
 function AutoSaveText({
   label,
@@ -263,10 +252,6 @@ function CategoryIconEditor({
   )
 }
 
-// ============================================================================
-// Parent selector (for reparenting)
-// ============================================================================
-
 function ParentSelector({
   category,
   allCategories,
@@ -319,10 +304,6 @@ function ParentSelector({
   )
 }
 
-// ============================================================================
-// Editable fields section
-// ============================================================================
-
 function EditableFields({
   category,
   allCategories,
@@ -342,7 +323,6 @@ function EditableFields({
 }) {
   const saveField = (field: string, value: unknown) => {
     const body: Record<string, unknown> = { [field]: value }
-    // If changing regex, also update rule_type
     if (field === 'rule_regex') {
       body.rule_type = value ? 'regex' : 'none'
     }
@@ -409,10 +389,6 @@ function EditableFields({
     </div>
   )
 }
-
-// ============================================================================
-// Matched / Uncategorized app lists (kept from previous implementation)
-// ============================================================================
 
 interface AggregatedApp {
   activity: string
@@ -510,7 +486,6 @@ function MatchedAppList({
   )
 }
 
-// Simplified uncategorized list (the AddConfirmDialog is imported from the previous version)
 const MAX_UNCATEGORIZED_SHOWN = 30
 
 function UncategorizedAppList({
@@ -544,7 +519,6 @@ function UncategorizedAppList({
 
   if (apps.length === 0) return null
 
-  // Filter by search term (case-insensitive match on activity + title)
   const lowerSearch = search.toLowerCase()
   const filtered = search
     ? apps.filter(
@@ -614,10 +588,6 @@ function UncategorizedAppList({
     </div>
   )
 }
-
-// ============================================================================
-// Add confirm dialog (kept from previous version)
-// ============================================================================
 
 const suggestTitleKeyword = (title: string): string | undefined => {
   const parts = title
@@ -749,10 +719,6 @@ function AddConfirmDialog({
   )
 }
 
-// ============================================================================
-// Recent entries section
-// ============================================================================
-
 function RecentEntries({ categoryPath }: { categoryPath: string[] }) {
   const now = new Date()
   const start = subDays(now, 7)
@@ -814,10 +780,6 @@ function RecentEntries({ categoryPath }: { categoryPath: string[] }) {
   )
 }
 
-// ============================================================================
-// Trend section
-// ============================================================================
-
 function CategoryTrendSection({ categoryPath, color }: { categoryPath: string; color: string }) {
   const [lookback, setLookback] = useState(90)
 
@@ -865,10 +827,6 @@ function CategoryTrendSection({ categoryPath, color }: { categoryPath: string; c
   )
 }
 
-// ============================================================================
-// Children list
-// ============================================================================
-
 function ChildCategoriesList({
   children,
   distinctApps,
@@ -909,10 +867,6 @@ function ChildCategoriesList({
   )
 }
 
-// ============================================================================
-// Breadcrumb
-// ============================================================================
-
 function CategoryBreadcrumb({
   categories,
   category,
@@ -947,16 +901,11 @@ function CategoryBreadcrumb({
   )
 }
 
-// ============================================================================
-// New category creation mode
-// ============================================================================
-
 function NewCategoryPage({ categoryId }: { categoryId: string }) {
   const queryClient = useQueryClient()
   const [name, setName] = useState('')
   const [created, setCreated] = useState(false)
 
-  // Parse parent from URL query string
   const urlParams = new URLSearchParams(window.location.search)
   const parentId = urlParams.get('parent')
 
@@ -1041,10 +990,6 @@ function NewCategoryPage({ categoryId }: { categoryId: string }) {
   )
 }
 
-// ============================================================================
-// Main component
-// ============================================================================
-
 export function CategoryDetail() {
   const { params } = useRoute()
   const categoryId = params.id
@@ -1124,7 +1069,6 @@ export function CategoryDetail() {
   )
 }
 
-/** Render an existing category's detail/edit page. */
 function ExistingCategoryPage({
   category,
   allCategories,

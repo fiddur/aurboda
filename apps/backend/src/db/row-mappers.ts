@@ -1,10 +1,5 @@
 import type { QueryResultRow } from 'pg'
 
-/**
- * Row mapper functions for converting PostgreSQL rows to typed objects.
- *
- * Replaces inline `as Type` casts with validated type guards.
- */
 import {
   confidenceSchema,
   dataSourceSchema,
@@ -35,10 +30,6 @@ import type {
   SyncState,
   SyncStatus,
 } from './types.ts'
-
-// ============================================================================
-// Type Guards
-// ============================================================================
 
 const VALID_DATA_SOURCES = dataSourceSchema.options
 const VALID_GEOCODE_STATUSES = geocodeStatusSchema.options
@@ -86,10 +77,6 @@ export const parseMetricType = (value: unknown): MetricType => {
   }
   return value as MetricType
 }
-
-// ============================================================================
-// Row Mappers
-// ============================================================================
 
 /**
  * Map an INSERT … RETURNING row from `activities` to the lean key tuple used
@@ -195,10 +182,6 @@ export const mapNoteRow = (row: QueryResultRow): Note => ({
   updated_at: new Date(row.updated_at),
 })
 
-// ============================================================================
-// Meal Row Mappers
-// ============================================================================
-
 export const mapMealRow = (row: QueryResultRow): Meal => ({
   calories: row.calories ?? undefined,
   carbs: row.carbs ?? undefined,
@@ -216,10 +199,6 @@ export const mapMealRow = (row: QueryResultRow): Meal => ({
   source: row.source,
   time: new Date(row.time),
 })
-
-// ============================================================================
-// Report Row Mappers
-// ============================================================================
 
 const VALID_CONFIDENCES = confidenceSchema.options
 const VALID_REPORT_FLAGS = reportFlagSchema.options

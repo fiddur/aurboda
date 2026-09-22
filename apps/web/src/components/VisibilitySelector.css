@@ -45,7 +45,6 @@
   margin-top: 0.15rem;
 }
 
-/* Compact: inline, borderless, labels only — for dense list rows. */
 .visibility-selector.compact {
   border: none;
   padding: 0;

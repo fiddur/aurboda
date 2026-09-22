@@ -1,18 +1,7 @@
-/**
- * Admin settings schemas.
- */
-
 import { z } from 'zod'
 
 import { baseResponseSchema, iso8601DateTimeSchema } from './common.ts'
 
-// ============================================================================
-// Signup Mode
-// ============================================================================
-
-/**
- * Signup mode enum.
- */
 export const signupModeSchema = z.enum(['open', 'invite_only', 'closed']).meta({
   description: 'Server signup mode',
   example: 'open',
@@ -21,13 +10,6 @@ export const signupModeSchema = z.enum(['open', 'invite_only', 'closed']).meta({
 
 export type SignupMode = z.infer<typeof signupModeSchema>
 
-// ============================================================================
-// Status endpoint (public)
-// ============================================================================
-
-/**
- * Server status response schema.
- */
 export const serverStatusResponseSchema = baseResponseSchema
   .extend({
     federation: z
@@ -38,7 +20,6 @@ export const serverStatusResponseSchema = baseResponseSchema
       .literal('aurboda')
       .optional()
       .meta({ description: 'Product identifier for federation discovery' }),
-    // For backwards compatibility
     signup_allowed: z
       .boolean()
       .meta({ description: 'Whether signup is allowed (deprecated, use signupMode)' }),
@@ -49,13 +30,6 @@ export const serverStatusResponseSchema = baseResponseSchema
 
 export type ServerStatusResponse = z.infer<typeof serverStatusResponseSchema>
 
-// ============================================================================
-// Signup endpoint
-// ============================================================================
-
-/**
- * Signup request body schema.
- */
 export const signupBodySchema = z
   .object({
     invitation: z
@@ -69,9 +43,6 @@ export const signupBodySchema = z
 
 export type SignupBody = z.infer<typeof signupBodySchema>
 
-/**
- * Signup response schema.
- */
 export const signupResponseSchema = baseResponseSchema
   .extend({
     is_admin: z.boolean().optional().meta({ description: 'Whether the user is an admin' }),
@@ -81,13 +52,6 @@ export const signupResponseSchema = baseResponseSchema
 
 export type SignupResponse = z.infer<typeof signupResponseSchema>
 
-// ============================================================================
-// Login endpoint
-// ============================================================================
-
-/**
- * Login request body schema.
- */
 export const loginBodySchema = z
   .object({
     password: z.string().min(1).meta({ description: 'User password' }),
@@ -97,9 +61,6 @@ export const loginBodySchema = z
 
 export type LoginBody = z.infer<typeof loginBodySchema>
 
-/**
- * Login response schema.
- */
 export const loginResponseSchema = z
   .object({
     is_admin: z.boolean().optional().meta({ description: 'Whether the user is an admin' }),
@@ -109,13 +70,6 @@ export const loginResponseSchema = z
 
 export type LoginResponse = z.infer<typeof loginResponseSchema>
 
-// ============================================================================
-// Version and auth token endpoints
-// ============================================================================
-
-/**
- * Version response schema.
- */
 export const versionResponseSchema = baseResponseSchema
   .extend({
     build_sha: z.string().meta({ description: 'Build commit SHA or "dev"' }),
@@ -124,9 +78,6 @@ export const versionResponseSchema = baseResponseSchema
 
 export type VersionResponse = z.infer<typeof versionResponseSchema>
 
-/**
- * Auth token response schema.
- */
 export const authTokenResponseSchema = baseResponseSchema
   .extend({
     token: z.string().meta({ description: 'Fresh API token' }),
@@ -135,13 +86,6 @@ export const authTokenResponseSchema = baseResponseSchema
 
 export type AuthTokenResponse = z.infer<typeof authTokenResponseSchema>
 
-// ============================================================================
-// Admin settings endpoints
-// ============================================================================
-
-/**
- * Admin settings response schema.
- */
 export const adminSettingsResponseSchema = baseResponseSchema
   .extend({
     admin_count: z.number().int().meta({ description: 'Number of admin users' }),
@@ -174,9 +118,6 @@ export const adminSettingsResponseSchema = baseResponseSchema
 
 export type AdminSettingsResponse = z.infer<typeof adminSettingsResponseSchema>
 
-/**
- * Update admin settings body schema.
- */
 export const updateAdminSettingsBodySchema = z
   .object({
     audit_log_retention_days: z
@@ -235,13 +176,6 @@ export const updateAdminSettingsBodySchema = z
 
 export type UpdateAdminSettingsBody = z.infer<typeof updateAdminSettingsBodySchema>
 
-// ============================================================================
-// Invitation endpoints
-// ============================================================================
-
-/**
- * Create invitation body schema.
- */
 export const createInvitationBodySchema = z
   .object({
     expiry_hours: z.number().int().positive().optional().meta({
@@ -253,9 +187,6 @@ export const createInvitationBodySchema = z
 
 export type CreateInvitationBody = z.infer<typeof createInvitationBodySchema>
 
-/**
- * Invitation response schema.
- */
 export const invitationResponseSchema = baseResponseSchema
   .extend({
     expires_at: iso8601DateTimeSchema.meta({ description: 'Expiration timestamp' }),

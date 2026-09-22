@@ -42,7 +42,6 @@ export interface DeductionRuleCondition {
   value?: string | number | boolean
   location_name?: string
   date?: string
-  // Scrobble condition fields
   artist?: string[]
   track?: string
   match_mode?: 'exact' | 'contains'

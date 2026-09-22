@@ -1,6 +1,4 @@
 /**
- * Federated activity feed schemas.
- *
  * A *feed post* publishes one of a user's activities (exercise, sleep, …) to
  * their public feed, choosing per-post exactly which data leaves the instance:
  *
@@ -16,10 +14,6 @@
  * read-only `GET /public/:username/series` endpoint: that endpoint resolves a
  * metric only when a feed post shared *that series* for an activity whose
  * window covers the requested range. See `PublicSeriesQuery`.
- *
- * ActivityPub delivery (actor, outbox, HTTP signatures) and image rendering are
- * layered on top of this persistence model in follow-up work; these schemas are
- * the storage + public-read foundation.
  */
 
 import { z } from 'zod'
@@ -35,8 +29,6 @@ import {
 import { shareVisibilityValues } from './visibility.ts'
 
 /**
- * Who a feed post is addressed to.
- *
  * - `public` — listed on the public timeline and deliverable to the wider fediverse.
  * - `unlisted` — reachable but not surfaced on public timelines.
  * - `followers` — only the actor's followers.
@@ -51,18 +43,15 @@ export const feedVisibilitySchema = z
 
 export type FeedVisibility = z.infer<typeof feedVisibilitySchema>
 
-/** A scalar-summary metric key (e.g. `duration`, `distance`, `heart_rate_avg`). */
 const scalarMetricKeySchema = z.string().min(1).max(64)
 
 /**
- * Max length of a post's personal message. Exported so the share dialog can cap
- * its textarea at the same limit the schemas validate (single source of truth).
+ * Exported so the share dialog can cap its textarea at the same limit the
+ * schemas validate.
  */
 export const feedPostMessageMaxLength = 2000
 
 /**
- * Body for sharing an activity to the feed.
- *
  * Defaults are privacy-conservative: nothing is shared unless listed, and
  * high-resolution `series_metrics` default to empty (opt-in only).
  */
@@ -95,7 +84,6 @@ export const shareActivityBodySchema = z
 
 export type ShareActivityBody = z.infer<typeof shareActivityBodySchema>
 
-/** Body for editing a feed post (all fields optional). */
 export const updateFeedPostBodySchema = z
   .object({
     include_chart: z.boolean().optional().meta({ description: 'Attach a rendered chart image' }),
@@ -119,10 +107,6 @@ export const updateFeedPostBodySchema = z
 
 export type UpdateFeedPostBody = z.infer<typeof updateFeedPostBodySchema>
 
-// =============================================================================
-// Article posts (long-form: title + markdown prose + inline chart blocks)
-// =============================================================================
-
 /**
  * The kind of a feed post. `activity` (the default) shares one of the user's
  * activities; `article` is a long-form post carrying markdown prose and inline
@@ -141,15 +125,10 @@ export const feedPostKindSchema = z.enum(['activity', 'article', 'challenge', 'r
 
 export type FeedPostKind = z.infer<typeof feedPostKindSchema>
 
-// =============================================================================
-// Reply posts (comment on another post — AS2 `Create{Note inReplyTo}`)
-// =============================================================================
-
 /**
- * Body for replying to a post in the home timeline. The reply target (the
- * object id, its author's actor URI and `@user@host` handle) is resolved
- * server-side from the addressed timeline entry, never client-supplied, so a
- * reply can never claim to answer a post it doesn't.
+ * The reply target (the object id, its author's actor URI and `@user@host`
+ * handle) is resolved server-side from the addressed timeline entry, never
+ * client-supplied, so a reply can never claim to answer a post it doesn't.
  *
  * `visibility` defaults to `unlisted`, matching Mastodon's convention that a
  * reply belongs to its thread rather than on public timelines; the author can
@@ -171,10 +150,6 @@ export const replyToPostBodySchema = z
   .meta({ id: 'ReplyToPostBody' })
 
 export type ReplyToPostBody = z.infer<typeof replyToPostBodySchema>
-
-// =============================================================================
-// Challenge posts (share a challenge to the feed — #994)
-// =============================================================================
 
 /**
  * The stored payload of a `challenge` post: what the post links to. A snapshot
@@ -234,7 +209,7 @@ export const shareChallengeBodySchema = z
 
 export type ShareChallengeBody = z.infer<typeof shareChallengeBodySchema>
 
-/** A prose block: a run of markdown, rendered through the shared sanitiser (#910). */
+/** A run of markdown, rendered through the shared sanitiser. */
 export const articleProseBlockSchema = z
   .object({
     markdown: z
@@ -276,8 +251,7 @@ export const articleChartBlockSchema = z
  * Pick a bucket granularity for an article chart block from its window span when
  * the block doesn't fix one (`bucket` omitted). Shared single source used by both
  * the web inline render and the backend server-side chart PNG, so a chart buckets
- * the same in-app and in a federated/exported image: hourly for a window up to
- * two days, otherwise daily.
+ * the same in-app and in a federated/exported image.
  */
 export const defaultArticleChartBucket = (start: Date, end: Date): string =>
   end.getTime() - start.getTime() <= 2 * 86_400_000 ? '1h' : '1d'
@@ -310,7 +284,6 @@ export const articleCorrelationBlockSchema = z
   })
   .meta({ description: 'A correlation scatter over a locked window', id: 'ArticleCorrelationBlock' })
 
-/** An ordered content block of an article. */
 export const articleBlockSchema = z
   .discriminatedUnion('type', [
     articleProseBlockSchema,
@@ -321,10 +294,6 @@ export const articleBlockSchema = z
 
 export type ArticleBlock = z.infer<typeof articleBlockSchema>
 
-/**
- * The stored content of an article post: a title, an optional article-level
- * default window that chart and correlation blocks inherit, and the ordered blocks.
- */
 export const articleContentSchema = z
   .object({
     blocks: z.array(articleBlockSchema).max(100).meta({ description: 'Ordered content blocks' }),
@@ -369,8 +338,6 @@ export const feedPostSchema = z
       .string()
       .optional()
       .meta({ description: "The shared activity's type (e.g. `exercise`)" }),
-    // Present only for `article` posts (the stored title + default window +
-    // ordered blocks); absent for `activity` posts.
     article: articleContentSchema
       .optional()
       .meta({ description: 'Article content, present only for `article` posts' }),
@@ -446,14 +413,12 @@ export const feedPostSchema = z
 
 export type FeedPost = z.infer<typeof feedPostSchema>
 
-/** Response wrapping a single feed post. */
 export const feedPostResponseSchema = baseResponseSchema
   .extend({ post: feedPostSchema.optional() })
   .meta({ id: 'FeedPostResponse' })
 
 export type FeedPostResponse = z.infer<typeof feedPostResponseSchema>
 
-/** Query for the owner's feed listing (keyset pagination, like the home timeline). */
 export const feedPostsQuerySchema = z
   .object({
     cursor: z.string().optional().meta({ description: "Opaque cursor from a previous page's `next_cursor`" }),
@@ -470,9 +435,8 @@ export const feedPostsQuerySchema = z
 export type FeedPostsQuery = z.infer<typeof feedPostsQuerySchema>
 
 /**
- * Query for the UNAUTHENTICATED public profile listing (#1055). Only a cursor:
- * the page size is fixed server-side, since each post carries a full structured
- * payload.
+ * The UNAUTHENTICATED public profile listing takes only a cursor: the page size
+ * is fixed server-side, since each post carries a full structured payload.
  */
 export const publicPostsQuerySchema = z
   .object({
@@ -482,11 +446,6 @@ export const publicPostsQuerySchema = z
 
 export type PublicPostsQuery = z.infer<typeof publicPostsQuerySchema>
 
-/**
- * Response wrapping a list of feed posts. Both the owner's `GET /feed` and the
- * public profile listing page with `next_cursor` (null on the last page); it is
- * absent only where a surface returns everything at once.
- */
 export const feedPostsResponseSchema = baseResponseSchema
   .extend({
     next_cursor: z
@@ -501,7 +460,7 @@ export const feedPostsResponseSchema = baseResponseSchema
 export type FeedPostsResponse = z.infer<typeof feedPostsResponseSchema>
 
 /**
- * Response for the share PREVIEW (#902): the exact federated `content` HTML a
+ * The share PREVIEW returns the exact federated `content` HTML a
  * Mastodon follower would see and the typed scalars behind the native stat
  * grid, resolved for a given share selection WITHOUT creating a post — so the
  * dialog shows precisely what would leave the instance.
@@ -521,10 +480,6 @@ export const sharePreviewResponseSchema = baseResponseSchema
 
 export type SharePreviewResponse = z.infer<typeof sharePreviewResponseSchema>
 
-/**
- * Body for creating an article post. No activity anchor and no shared
- * metrics/series — an article carries its own title, default window, and blocks.
- */
 export const createArticleBodySchema = z
   .object({
     blocks: z
@@ -545,7 +500,6 @@ export const createArticleBodySchema = z
 
 export type CreateArticleBody = z.infer<typeof createArticleBodySchema>
 
-/** Body for editing an article post (all fields optional; a given field replaces the stored one). */
 export const updateArticleBodySchema = z
   .object({
     blocks: z
@@ -562,11 +516,6 @@ export const updateArticleBodySchema = z
 
 export type UpdateArticleBody = z.infer<typeof updateArticleBodySchema>
 
-// =============================================================================
-// Following (the actors this user follows — inbound feed direction)
-// =============================================================================
-
-/** Body for following an actor. */
 export const followActorBodySchema = z
   .object({
     handle: z.string().trim().min(1).max(512).meta({
@@ -603,7 +552,6 @@ export const followingActorSchema = z
 
 export type FollowingActor = z.infer<typeof followingActorSchema>
 
-/** Body for updating a follow's per-actor settings (currently the notify toggle). */
 export const updateFollowingBodySchema = z
   .object({
     notify_on_post: z.boolean().meta({
@@ -614,25 +562,18 @@ export const updateFollowingBodySchema = z
 
 export type UpdateFollowingBody = z.infer<typeof updateFollowingBodySchema>
 
-/** Response wrapping a single follow (e.g. the result of following an actor). */
 export const followActorResponseSchema = baseResponseSchema
   .extend({ actor: followingActorSchema.optional() })
   .meta({ id: 'FollowActorResponse' })
 
 export type FollowActorResponse = z.infer<typeof followActorResponseSchema>
 
-/** Response wrapping the owner's list of followed actors. */
 export const followingResponseSchema = baseResponseSchema
   .extend({ following: z.array(followingActorSchema) })
   .meta({ id: 'FollowingResponse' })
 
 export type FollowingResponse = z.infer<typeof followingResponseSchema>
 
-// =============================================================================
-// Followers (remote actors that follow this user — owner-facing management)
-// =============================================================================
-
-/** Acceptance state of a follower, and the filter used when listing them. */
 export const followerStatusValues = ['pending', 'accepted', 'all'] as const
 
 export const followerStatusSchema = z.enum(followerStatusValues).meta({
@@ -643,7 +584,6 @@ export const followerStatusSchema = z.enum(followerStatusValues).meta({
 
 export type FollowerStatus = z.infer<typeof followerStatusSchema>
 
-/** Query for listing followers, optionally filtered by acceptance state. */
 export const followersQuerySchema = z
   .object({
     status: followerStatusSchema.default('all').meta({
@@ -676,23 +616,17 @@ export const followerActorSchema = z
 
 export type FollowerActor = z.infer<typeof followerActorSchema>
 
-/** Response wrapping the owner's list of followers (pending and/or accepted). */
 export const followersResponseSchema = baseResponseSchema
   .extend({ followers: z.array(followerActorSchema) })
   .meta({ id: 'FollowersResponse' })
 
 export type FollowersResponse = z.infer<typeof followersResponseSchema>
 
-/** Response wrapping a single follower (e.g. the result of approving a request). */
 export const followerResponseSchema = baseResponseSchema
   .extend({ follower: followerActorSchema.optional() })
   .meta({ id: 'FollowerResponse' })
 
 export type FollowerResponse = z.infer<typeof followerResponseSchema>
-
-// =============================================================================
-// Home timeline (posts received from followed actors)
-// =============================================================================
 
 /**
  * An image attached to a received post (e.g. a rendered chart or route map, or a
@@ -728,7 +662,6 @@ export const timelineBoostedBySchema = z
 
 export type TimelineBoostedBy = z.infer<typeof timelineBoostedBySchema>
 
-/** A post received from a followed actor, as shown in the home timeline. */
 export const timelineEntrySchema = z
   .object({
     actor_uri: z.string().meta({ description: "The author's ActivityPub actor URI" }),
@@ -794,7 +727,6 @@ export const timelineEntryResponseSchema = baseResponseSchema
 
 export type TimelineEntryResponse = z.infer<typeof timelineEntryResponseSchema>
 
-/** Query for the home-timeline endpoint (keyset pagination). */
 export const timelineQuerySchema = z
   .object({
     cursor: z.string().optional().meta({ description: "Opaque cursor from a previous page's `next_cursor`" }),
@@ -869,7 +801,7 @@ export type TimelineResponse = z.infer<typeof timelineResponseSchema>
 /**
  * The comments under one of the owner's OWN posts: the replies this instance
  * already holds as timeline entries (ingested from any actor whose Note replied
- * to that post — #1060), oldest first. No network: the origin of each reply is
+ * to that post), oldest first. No network: the origin of each reply is
  * whoever delivered it. They are full `TimelineEntry`s, so each carries the
  * reader's like/boost state and can itself be replied to.
  */
@@ -883,11 +815,6 @@ export const feedPostRepliesResponseSchema = baseResponseSchema
 
 export type FeedPostRepliesResponse = z.infer<typeof feedPostRepliesResponseSchema>
 
-// =============================================================================
-// Reactions on the owner's own posts (inbound Like / Announce)
-// =============================================================================
-
-/** Whether a reaction is a favourite (AS2 `Like`) or a boost (AS2 `Announce`). */
 export const feedReactionKindSchema = z.enum(['like', 'announce']).meta({
   description: 'Reaction kind: `like` (AS2 `Like` — a favourite) or `announce` (AS2 `Announce` — a boost)',
   id: 'FeedReactionKind',
@@ -921,10 +848,6 @@ export const feedPostReactionsResponseSchema = baseResponseSchema
 
 export type FeedPostReactionsResponse = z.infer<typeof feedPostReactionsResponseSchema>
 
-// =============================================================================
-// Public series endpoint (unauthenticated, data-scoped)
-// =============================================================================
-
 /**
  * Bucket size for a public series request. Restricted to sub-day units
  * (`s`/`m`/`h`) because a series window is a single activity; server floors the
@@ -940,8 +863,6 @@ export const seriesBucketSchema = z
   })
 
 /**
- * Query for the public, read-only bucketed series endpoint.
- *
  * Resolves ONLY when a feed post shared `metric` as a series for an activity
  * whose window covers `[start, end]`. The effective range is clamped to that
  * activity's window and the bucket granularity is floored server-side. Requests
@@ -958,7 +879,7 @@ export const publicSeriesQuerySchema = z
 
 export type PublicSeriesQuery = z.infer<typeof publicSeriesQuerySchema>
 
-/** Response for the public series endpoint. Payload fields optional so 404s type-check. */
+/** Payload fields are optional so 404 responses type-check. */
 export const publicSeriesResponseSchema = baseResponseSchema
   .extend({
     bucket: z.string().optional().meta({ description: 'Effective bucket size after server flooring' }),
@@ -982,10 +903,6 @@ export const feedPostStructuredResponseSchema = baseResponseSchema
   .meta({ id: 'FeedPostStructuredResponse' })
 
 export type FeedPostStructuredResponse = z.infer<typeof feedPostStructuredResponseSchema>
-
-// =============================================================================
-// Reddit/markdown export (C4)
-// =============================================================================
 
 /**
  * Response for the article markdown-export endpoint: a paste-ready rendering of

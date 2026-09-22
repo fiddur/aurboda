@@ -1,7 +1,3 @@
-/**
- * Unit tests for contextual HRV filtering.
- */
-
 import { describe, expect, test } from 'vitest'
 
 import { classifyHrvByContext } from './hrv-context.ts'

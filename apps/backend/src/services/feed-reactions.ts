@@ -102,7 +102,6 @@ export interface ReactionActions {
  * in production, by plain URLs in tests.
  */
 export interface ReactionActorContext {
-  /** The reacting user's own actor URI. */
   actorUri: URL
   /** The reacting user's followers collection (an `Announce`'s `cc`). */
   followersUri: URL
@@ -227,7 +226,7 @@ const entryWithReactions = async (
  * Fan an `Announce`/`Undo{Announce}` out to followers AND the post's author as
  * two independent sends: without an outbox queue Fedify awaits every follower
  * inbox, so one dead instance would otherwise cancel the author delivery that
- * tells them who boosted (#1079's lesson, same shape).
+ * tells them who boosted.
  *
  * `allSettled` never rejects, so a failed leg is logged HERE, naming which one
  * failed — `deliverReaction`'s catch can only ever see a `Like`.
@@ -408,7 +407,7 @@ const reply = async (
     visibility: body.visibility,
   })
   // The delivery reuses the inbox resolved above instead of looking the same
-  // actor up again (#1108).
+  // actor up again.
   deliver?.createdReply(user, record, authorInbox)
   return { ok: true, post: await serializeFeedPost(user, record) }
 }

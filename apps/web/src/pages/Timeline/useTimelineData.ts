@@ -67,27 +67,22 @@ const ACTIVITY_CATEGORIES = new Set(['sleep_rest', 'exercise', 'meditation', 'we
 const TIMELINE_EXCLUDED_ACTIVITY_TYPES: string[] = []
 
 export interface TimelineData {
-  // Raw query results needed by rendering
   activities: Activity[]
   scrobbles: Scrobble[]
   /** Comment thread roots anchored in the fetch window, replies nested. */
   commentNotes: Note[]
-  // Derived chart data
   chartItems: ChartItem[]
   activityItems: ChartItem[]
   columnData: { column: Column; items: { item: ChartItem; lane: number }[]; laneCount: number }[]
   columns: Column[]
   sparklineBuckets: ReturnType<typeof parseBucketedData>
   horizontalMetricBuckets: ReturnType<typeof parseBucketedResponse>
-  // Query objects needed for horizontal mode
   trainingLoadQuery: ReturnType<typeof useQuery<Awaited<ReturnType<typeof fetchTrainingLoad>>>>
   screentimeBucketedQuery: ReturnType<typeof useQuery<Awaited<ReturnType<typeof fetchScreentimeBucketed>>>>
   screentimeCategoriesQuery: ReturnType<typeof useQuery<ScreentimeCategory[]>>
-  // Status
   isFetching: boolean
   isInitialLoad: boolean
   errorSources: string[]
-  // Misc
   hasLastFm: boolean
   /** Dynamic screentime sub-toggles to render in the legend. */
   screentimeSubEntries: ScreentimeSubEntry[]
@@ -119,8 +114,6 @@ export const useTimelineData = ({
   mergeGapMs,
   collapseDepth,
 }: UseTimelineDataOptions): TimelineData => {
-  // ── Data queries ───────────────────────────────────────────────────────────
-
   const { data: activityTypeDefs = [] } = useQuery({
     queryFn: fetchActivityTypeDefinitions,
     queryKey: ['activityTypeDefinitions'],
@@ -213,8 +206,6 @@ export const useTimelineData = ({
     queryKey: ['timeline-comments', fromDateKey, toDateKey],
     staleTime: 60 * 1000,
   })
-
-  // ── Derived data ───────────────────────────────────────────────────────────
 
   const typeDefsMap = useMemo(
     () =>

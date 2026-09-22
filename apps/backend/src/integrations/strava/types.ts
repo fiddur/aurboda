@@ -1,7 +1,3 @@
-/**
- * Strava API response types.
- */
-
 /** Summary activity from GET /athlete/activities */
 export interface StravaSummaryActivity {
   id: number
@@ -105,7 +101,6 @@ export interface StravaStream {
 
 export type StravaStreamsResponse = Record<string, StravaStream>
 
-/** Webhook event payload */
 export interface StravaWebhookEvent {
   object_type: 'activity' | 'athlete'
   object_id: number
@@ -155,7 +150,6 @@ export const parseRateLimitHeaders = (headers: Record<string, unknown>): StravaR
   }
 }
 
-/** Strava sync queue job data */
 export interface StravaSyncJobData {
   user: string
   request_type: 'list_activities' | 'fetch_activity'

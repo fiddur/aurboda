@@ -211,10 +211,6 @@ const randomToken = (bytes: number): string => randomBytes(bytes).toString('base
 const isUniqueViolation = (error: unknown): boolean =>
   error instanceof Error && (error as Error & { code?: string }).code === '23505'
 
-// ===========================================================================
-// Challenges (host)
-// ===========================================================================
-
 export const listChallenges = async (user: string): Promise<ChallengeRecord[]> => {
   const result = await query<ChallengeRow>(
     user,
@@ -375,10 +371,6 @@ export const markChallengeResultPublished = async (user: string, id: string): Pr
   return (result.rowCount ?? 0) > 0
 }
 
-// ===========================================================================
-// Members (host)
-// ===========================================================================
-
 export const listChallengeMembers = async (
   user: string,
   challengeId: string,
@@ -479,10 +471,6 @@ export const updateChallengeMemberCache = async (
     ],
   )
 }
-
-// ===========================================================================
-// Participations (joiner)
-// ===========================================================================
 
 export const createChallengeParticipation = async (
   user: string,

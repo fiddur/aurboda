@@ -1,5 +1,4 @@
 /**
- * Formats a JavaScript value for use in PostgreSQL queries.
  * Note: For user input, prefer parameterized queries to prevent SQL injection.
  */
 export const formatValue = (v: unknown): string =>

@@ -20,10 +20,6 @@ import type {
 
 import type { Activity } from '../../db/types.ts'
 
-// ============================================================================
-// Constants
-// ============================================================================
-
 export const DEFAULT_TAU_ACUTE_DAYS = 7
 export const DEFAULT_TAU_CHRONIC_DAYS = 42
 export const DEFAULT_K_MALE = 1.92
@@ -33,17 +29,12 @@ export const HOURS_PER_DAY = 24
 export const BOOTSTRAPPING_DAYS = 42 // CTL needs ~6 weeks to be meaningful
 export const MS_PER_HOUR = 60 * 60 * 1000
 
-/** Settings after resolving defaults — k_factor, tau_acute, tau_chronic are always set. */
 export interface ResolvedTrainingLoadSettings extends TrainingLoadSettings {
   activity_impulse_scale: number
   k_factor: number
   tau_acute: number
   tau_chronic: number
 }
-
-// ============================================================================
-// TRIMP Calculation
-// ============================================================================
 
 export interface TrimpCalcParams {
   /** Duration of workout in minutes */
@@ -59,8 +50,6 @@ export interface TrimpCalcParams {
 }
 
 /**
- * Calculate TRIMP (Training Impulse) for a single workout.
- *
  * Formula: TRIMP = duration_minutes × ΔHR_ratio × e^(k × ΔHR_ratio)
  * where ΔHR_ratio = (HR_avg - HR_rest) / (HR_max - HR_rest)
  */
@@ -77,27 +66,15 @@ export const calculateTrimp = (params: TrimpCalcParams): number => {
   return duration_minutes * clampedRatio * Math.exp(k_factor * clampedRatio)
 }
 
-// ============================================================================
-// Hourly Impulse Bucket Computation
-// ============================================================================
-
-/**
- * Floor a date to the start of its hour.
- */
 export const floorToHour = (date: Date): Date => {
   const d = new Date(date)
   d.setUTCMinutes(0, 0, 0)
   return d
 }
 
-/**
- * Get the start of the current (incomplete) hour.
- */
 export const getCurrentHourStart = (): Date => floorToHour(new Date())
 
 /**
- * Compute TRIMP contribution of a workout to a specific hour.
- *
  * If a workout spans multiple hours, the TRIMP is split proportionally by
  * the fraction of the workout's duration that falls in each hour.
  */
@@ -120,10 +97,6 @@ export const getWorkoutTrimpForHour = (
   return totalTrimp * (overlapMs / totalMs)
 }
 
-/**
- * Extract average HR from HR time-series data for an exercise session.
- * Returns null if no HR samples are available during the session window.
- */
 export const getAverageHrForSession = (
   sessionStart: Date,
   sessionEnd: Date,
@@ -140,14 +113,10 @@ export interface HourlyImpulses {
   training: Map<string, number>
   /** activity_impulse per hour: Map<hourIso, scaledCalories> */
   activity: Map<string, number>
-  /** Workout details for the range */
   workouts: WorkoutTrimp[]
 }
 
 /**
- * Process a single exercise session: compute TRIMP, build a WorkoutTrimp record,
- * and distribute the TRIMP across overlapping hourly buckets.
- *
  * Mutates `training` map in place. Returns the WorkoutTrimp record (or null if
  * the duration is non-positive).
  */
@@ -177,7 +146,6 @@ export const processExercise = (
         })
       : durationMinutes * 0.5
 
-  // Distribute TRIMP across overlapping hours
   let hourCursor = floorToHour(ex.start_time)
   while (hourCursor < sessionEnd) {
     const hourIso = hourCursor.toISOString()
@@ -202,8 +170,6 @@ export const processExercise = (
 }
 
 /**
- * Compute hourly impulse buckets from raw exercise and calorie data.
- *
  * For each completed hour in [start, end):
  *  - training impulse = sum of TRIMP from exercises overlapping that hour
  *  - activity impulse = sum of active calories in that hour × scale factor
@@ -228,7 +194,6 @@ export const computeHourlyImpulses = (
     if (workout) workouts.push(workout)
   }
 
-  // Aggregate active calories into hourly buckets
   for (const [time, kcal] of caloriesSamples) {
     if (time < start || time >= end) continue
     const hourIso = floorToHour(time).toISOString()
@@ -237,10 +202,6 @@ export const computeHourlyImpulses = (
 
   return { activity, training, workouts }
 }
-
-// ============================================================================
-// Hourly Banister EMA
-// ============================================================================
 
 export interface HourlyLoadParams {
   /** Hourly training impulse: Map<hourIso, value> */
@@ -308,10 +269,6 @@ export const computeHourlyLoadSeries = (params: HourlyLoadParams): TrainingLoadP
   return points
 }
 
-// ============================================================================
-// Recovery Zone Computation
-// ============================================================================
-
 /**
  * Compute recovery zone thresholds from historical ATL/CTL data.
  *
@@ -326,7 +283,6 @@ export const computeHourlyLoadSeries = (params: HourlyLoadParams): TrainingLoadP
 export const computeRecoveryZones = (points: TrainingLoadPoint[]): RecoveryZones | undefined => {
   if (points.length < BOOTSTRAPPING_DAYS * HOURS_PER_DAY) return undefined
 
-  // Average CTL over all points
   const totalCtl = points.reduce((sum, p) => sum + p.ctl, 0)
   const avgCtl = totalCtl / points.length
 
@@ -339,13 +295,6 @@ export const computeRecoveryZones = (points: TrainingLoadPoint[]): RecoveryZones
   }
 }
 
-// ============================================================================
-// Settings Helpers
-// ============================================================================
-
-/**
- * Get effective training load settings, filling defaults from user profile.
- */
 export const getEffectiveSettings = (
   userSettings: TrainingLoadSettings | undefined,
   sex: BiologicalSex | undefined,
@@ -362,9 +311,6 @@ export const getEffectiveSettings = (
   }
 }
 
-/**
- * Resolve the effective max HR from settings, observed data, or age estimate.
- */
 export const resolveHrMax = (
   settingsHrMax: number | undefined,
   observedMaxHr: number | undefined,
@@ -387,9 +333,6 @@ export const resolveHrMax = (
   return 190
 }
 
-/**
- * Resolve the effective resting HR from settings or observed data.
- */
 export const resolveHrRest = (
   settingsHrRest: number | undefined,
   latestRestingHr: number | undefined,

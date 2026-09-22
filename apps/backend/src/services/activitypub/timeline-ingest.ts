@@ -1,19 +1,7 @@
 /**
- * Ingest a received ActivityPub `Note` (a post from an actor the user follows)
- * into the home-timeline store.
- *
- * Two concerns live here, both testable in isolation:
- *
- * 1. `sanitizeRemoteHtml` — remote fediverse HTML is **untrusted** and is rendered
- *    with `dangerouslySetInnerHTML` on the web, so it MUST be sanitised before it
- *    is stored. We keep only the small tag set Mastodon-style content uses and
- *    force safe link attributes; scripts, styles, event handlers, iframes, images,
- *    and every other attribute are dropped.
- * 2. `noteToTimelineInput` — map a Fedify `Note` + the (already-known) author to a
- *    `TimelineEntryInput`, or null if it lacks the id/published we need.
- *
- * The inbox handler that calls these (in `federation.ts`) is thin: it checks the
- * sender is a followed, accepted actor and upserts the result.
+ * Remote fediverse HTML is **untrusted** and is rendered with
+ * `dangerouslySetInnerHTML` on the web, so it MUST be sanitised before it is
+ * stored.
  */
 import type { TimelineImage } from '@aurboda/api-spec'
 import type { Note } from '@fedify/fedify/vocab'
@@ -106,7 +94,6 @@ export interface TimelineBoostSource {
   published_at: Date
 }
 
-/** Whether the Note carries a `Mention` tag pointing at `actorUri` (#1060). */
 export const noteMentionsActor = async (note: Note, actorUri: string): Promise<boolean> => {
   for await (const tag of note.getTags({ suppressError: true })) {
     if (tag instanceof Mention && tag.href?.href === actorUri) return true
@@ -163,7 +150,6 @@ const httpsUrl = (raw: URL | Link | null): URL | null => {
   return url?.protocol === 'https:' ? url : null
 }
 
-/** Map one attachment to a `TimelineImage`, or null if it isn't an https image. */
 const attachmentToImage = (att: unknown): TimelineImage | null => {
   // `Image` (our charts / route maps) is a `Document` subtype; Mastodon photos
   // are `Document`s with an `image/*` media type. Both are covered by `Document`.

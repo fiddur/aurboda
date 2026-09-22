@@ -10,8 +10,6 @@
  */
 import type { ShareVisibility } from '@aurboda/api-spec'
 
-/** Map the stored `is_public` boolean to the public `ShareVisibility` vocabulary. */
 export const isPublicToVisibility = (isPublic: boolean): ShareVisibility => (isPublic ? 'public' : 'unlisted')
 
-/** Map a `ShareVisibility` back to the stored `is_public` boolean. */
 export const visibilityToIsPublic = (visibility: ShareVisibility): boolean => visibility === 'public'

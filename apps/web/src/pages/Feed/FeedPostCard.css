@@ -14,7 +14,7 @@
   gap: 0.6rem;
   /* This is a semantic <header>, which the global `header` rule paints purple
      (a hidden legacy top-bar, re-shown here by `display: flex`). Clear it so the
-     card doesn't get a purple banner behind the handle (#916). */
+     card doesn't get a purple banner behind the handle. */
   background: none;
 }
 
@@ -129,7 +129,7 @@
   white-space: pre-line;
 }
 
-/* The activity's own date/window (#998) — quieter than the message/stats. */
+/* The activity's own date/window — quieter than the message/stats. */
 .feed-post-window {
   font-size: 0.85rem;
   color: #6b7280;
@@ -331,10 +331,6 @@
   color: #6b7280;
   margin-bottom: 0.75rem;
 }
-
-/* ---------------------------------------------------------------------------
- * Likes ⭐ and boosts 🔄 on the home timeline.
- * ------------------------------------------------------------------------- */
 
 /* Mastodon's "X boosted" line, above the boosted post's own header. */
 .feed-post-boost-marker {

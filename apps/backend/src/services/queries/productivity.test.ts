@@ -8,7 +8,6 @@ import {
   queryProductivity,
 } from './productivity.ts'
 
-// Mock the db module
 vi.mock('../../db', () => ({
   getNotesByEntityIds: vi.fn(),
   getRepliesForRootIds: vi.fn().mockResolvedValue(new Map()),

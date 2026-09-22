@@ -1,5 +1,3 @@
-// Barrel re-export for the api module. Domain-split files; consumers import
-// `state/api` and resolve through this index.
 export * from './activities'
 export * from './activity-types'
 export * from './admin'

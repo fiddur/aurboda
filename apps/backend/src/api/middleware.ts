@@ -1,7 +1,3 @@
-/**
- * Express middleware factories for the API server: request audit logging,
- * authentication (Bearer token → req.user), and admin authorization.
- */
 import type { RequestHandler } from 'express'
 
 import type { Auth } from '../auth.ts'
@@ -13,7 +9,6 @@ import { auditError, auditInfo, auditWarn } from '../services/audit-log.ts'
 import { backfillScreentimeActivities } from '../services/backfill-screentime-activities.ts'
 
 /**
- * Audit log middleware: records non-GET requests to the user's audit log.
  * Log level is based on response status: 4xx → warn, 5xx → error, otherwise → info.
  * Sanitizes `password` field from request bodies; captures response body for error logs.
  */

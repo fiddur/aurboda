@@ -1,6 +1,4 @@
 /**
- * Strava sync orchestration.
- *
  * Unlike Oura/Garmin which directly call APIs during sync,
  * Strava sync enqueues jobs into the pg-boss queue and returns immediately
  * (fire-and-forget, 202 pattern like Garmin).
@@ -19,33 +17,28 @@ export const syncStrava = async (
   queue: StravaQueue,
   options: { fullResync?: boolean },
 ): Promise<StravaSyncResult> => {
-  // Check if Strava is connected
   const token = await getOAuthToken(user, 'strava')
   if (!token) {
     return { status: 'not_connected' }
   }
 
-  // Check if already syncing
   const syncState = await getSyncState(user, 'strava', 'activities')
   if (syncState?.status === 'syncing') {
     return { status: 'already_syncing' }
   }
 
-  // Mark as syncing
   await upsertSyncState(user, {
     data_type: 'activities',
     provider: 'strava',
     status: 'syncing',
   })
 
-  // Determine the `after` timestamp for incremental sync
   const after = options.fullResync
     ? undefined
     : syncState?.last_sync_time
       ? Math.floor(syncState.last_sync_time.getTime() / 1000)
       : undefined
 
-  // Enqueue the sync job
   await queue.enqueueSync(user, { after, fullResync: options.fullResync })
 
   return { status: options.fullResync ? 'queued' : 'syncing' }

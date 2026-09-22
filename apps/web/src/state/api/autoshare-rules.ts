@@ -1,4 +1,3 @@
-/** API client for auto-share rules (#903). */
 import type {
   AddAutoshareRuleBody,
   AutoshareRule,

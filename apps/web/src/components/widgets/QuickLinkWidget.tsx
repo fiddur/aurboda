@@ -1,7 +1,3 @@
-/**
- * QuickLinkWidget - Navigation card to other pages.
- */
-
 import type { QuickLinkConfig } from '@aurboda/api-spec'
 import type { VNode } from 'preact'
 
@@ -9,7 +5,6 @@ interface QuickLinkWidgetProps {
   config: QuickLinkConfig
 }
 
-// Icon components for each link type
 const icons: Record<string, VNode> = {
   correlations: (
     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -59,7 +54,6 @@ const icons: Record<string, VNode> = {
   ),
 }
 
-// Default icon for unknown types
 const defaultIcon = (
   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
     <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" />

@@ -6,9 +6,8 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /**
- * Data models + pure decision logic for the home-timeline post notifier
- * (NotificationWorker). Only the fields the notifier needs are declared; the
- * shared `appJson` ignores unknown keys, so the rest of the API payload is fine.
+ * Only the fields the notifier needs are declared; the shared `appJson`
+ * ignores unknown keys, so the rest of the API payload is fine.
  */
 
 /** One home-timeline post (subset of the backend `TimelineEntry`). */
@@ -34,7 +33,6 @@ data class TimelineEntry(
     // ORIGINAL post, this the followee who boosted it into the timeline.
     @SerialName("boosted_by") val boostedBy: BoostedBy? = null,
 ) {
-    /** Best available human name for the notification title. */
     val authorLabel: String get() = displayName ?: handle ?: actorUri
 
     /**
@@ -72,7 +70,6 @@ data class FollowingList(
     val following: List<FollowingActorLite> = emptyList(),
 )
 
-/** Outcome of a notifier poll: which posts to notify + the new high-water mark. */
 data class NotifyDecision(
     /** Posts to raise a notification for, oldest-first. */
     val toNotify: List<TimelineEntry>,

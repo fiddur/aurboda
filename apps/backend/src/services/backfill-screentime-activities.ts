@@ -1,7 +1,4 @@
 /**
- * One-shot backfill: convert historical categorized productivity records
- * into `screentime` activities.
- *
  * Before this existed, the v1 of screentime-as-activities (#648) was
  * forward-looking only — new RescueTime / ActivityWatch syncs produced
  * activities, but a user's existing productivity history did not.

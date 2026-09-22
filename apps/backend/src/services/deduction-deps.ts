@@ -2,9 +2,6 @@ import type { DeductionEngineDeps, EvaluationWindow, TimeRange } from './deducti
 import type { ActivityNotifier } from './deduction-queue.ts'
 
 import { query } from '../db/connection.ts'
-/**
- * Default dependencies for the deduction engine, wired to real DB functions.
- */
 import {
   deleteStaleRuleActivities,
   expandActivityTypes,
@@ -244,7 +241,6 @@ const enrichActivities = async (
 ): Promise<string[]> => {
   if (ranges.length === 0 || Object.keys(data).length === 0) return []
 
-  // Find activities of the target type overlapping any of the ranges
   const enrichedIds: string[] = []
 
   for (const range of ranges) {

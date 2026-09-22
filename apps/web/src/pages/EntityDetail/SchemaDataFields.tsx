@@ -1,5 +1,4 @@
 /**
- * Renders activity data fields based on an activity type's data schema definition.
  * Shows labeled values for declared fields, and a greyed-out section for extra undeclared fields.
  * Internal fields (_enriched_by, rule_id, rule_name) are rendered specially or hidden.
  * In edit mode, renders appropriate inputs per field type.

@@ -21,11 +21,6 @@ import {
   updateMealBodySchema,
 } from '@aurboda/api-spec'
 
-/**
- * Meals route group.
- *
- * Handles: /meals/*
- */
 import { getMealLogCompleted, setMealLogCompleted, unsetMealLogCompleted } from '../db/index.ts'
 import {
   addMeal,

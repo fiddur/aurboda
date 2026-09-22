@@ -1,8 +1,4 @@
 /**
- * Interactive GPS route map — the presentational half of the activity detail
- * map, extracted (#1011) so the feed's native post cards render the *same*
- * time-synced map from a structured payload's route points.
- *
  * Shows the track as a polyline and highlights the position nearest to
  * `hoverTime` (the chart crosshair). Renders nothing below two points.
  */

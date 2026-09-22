@@ -1,6 +1,4 @@
 /**
- * Server-rendered HTML for public share pages (UNAUTHENTICATED).
- *
  * nginx proxies `/u/*` to this router so JS-less crawlers receive an
  * index.html whose <head> carries Open Graph / Twitter / description meta for
  * the resolved resource. The body is still the SPA shell — browsers hydrate it
@@ -40,9 +38,7 @@ export interface ShareHtmlDeps {
   webHost: string
   /** Loads the SPA index.html template, or null if unavailable. */
   loadTemplate: () => Promise<string | null>
-  /** Resolve a shared dashboard by owner + slug (null if none). */
   resolveDashboard: (username: string, slug: string) => Promise<ResolvedResource | null>
-  /** Resolve a challenge by owner + slug (null if none). */
   resolveChallenge: (username: string, slug: string) => Promise<ResolvedResource | null>
   /** True if the user's public profile exists (db reachable). */
   profileExists: (username: string) => Promise<boolean>

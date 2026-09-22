@@ -1,8 +1,3 @@
-/**
- * Integration tests for profile avatar storage — insert/replace (upsert),
- * fetch, and delete of the per-user singleton row against a real PostgreSQL
- * instance via testcontainers.
- */
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'

@@ -1,9 +1,4 @@
-/**
- * Shared type definitions for all db modules.
- *
- * Interfaces and type aliases extracted from the monolithic db.ts.
- * These are imported by both domain modules and row-mappers to avoid circular dependencies.
- */
+/** Imported by both domain modules and row-mappers to avoid circular dependencies. */
 import type {
   ActivityType,
   BiologicalSex,
@@ -18,10 +13,6 @@ import type {
   SyncStatus,
   TrainingLoadSettings,
 } from '@aurboda/api-spec'
-
-// ============================================================================
-// Feed (ActivityPub) — cached remote-actor presentation
-// ============================================================================
 
 /**
  * A remote actor's cached presentation snapshot (handle / display name /
@@ -38,10 +29,6 @@ export interface CachedActorPresentation {
   avatar_url: string | null
 }
 
-// ============================================================================
-// Raw Records
-// ============================================================================
-
 export interface RawRecord {
   id?: string
   source: DataSource
@@ -50,10 +37,6 @@ export interface RawRecord {
   recorded_at: Date
   data: Record<string, unknown>
 }
-
-// ============================================================================
-// Time Series
-// ============================================================================
 
 export interface TimeSeriesPoint {
   time: Date
@@ -91,10 +74,6 @@ export interface BucketedMetricData {
   first_time: Date
   last_time: Date
 }
-
-// ============================================================================
-// Activities
-// ============================================================================
 
 export interface Activity {
   id?: string
@@ -147,10 +126,6 @@ export interface ActivityUpdate {
   title?: string
   data?: Record<string, unknown>
 }
-
-// ============================================================================
-// Locations
-// ============================================================================
 
 export interface Location {
   id?: string
@@ -232,10 +207,6 @@ export interface DetectedLocationUpdate {
   geocode_status?: GeocodeStatus
 }
 
-// ============================================================================
-// Productivity
-// ============================================================================
-
 export interface ProductivityRecord {
   id?: string
   source?: DataSource
@@ -251,10 +222,6 @@ export interface ProductivityRecord {
   resolved_category?: string[]
   deleted_at?: Date
 }
-
-// ============================================================================
-// Screentime Categories
-// ============================================================================
 
 export interface ScreentimeCategory {
   id: string
@@ -285,10 +252,6 @@ export interface ScreentimeCategoryInput {
   sort_order?: number
 }
 
-// ============================================================================
-// Notes
-// ============================================================================
-
 export type { EntityType }
 
 export interface Note {
@@ -311,10 +274,6 @@ export interface Note {
   updated_at: Date
 }
 
-// ============================================================================
-// Lab Results
-// ============================================================================
-
 export interface LabResult {
   id?: string
   test_date: Date
@@ -328,10 +287,6 @@ export interface LabResult {
   lab_name?: string
   notes?: string
 }
-
-// ============================================================================
-// Reports (structured lab results)
-// ============================================================================
 
 export type ReportConfidence = Confidence
 export type { ReportFlag }
@@ -358,10 +313,6 @@ export interface Report {
   created_at: Date
   entries: ReportEntry[]
 }
-
-// ============================================================================
-// Meals
-// ============================================================================
 
 export type NutrientValue = number | { value: number; unit: string }
 export type Micros = Record<string, NutrientValue>
@@ -404,10 +355,6 @@ export interface Meal {
   sensitivities?: string[]
   created_at: Date
 }
-
-// ============================================================================
-// Food Items (canonical library)
-// ============================================================================
 
 export interface FoodItemEntity {
   id: string
@@ -458,10 +405,6 @@ export interface MealFoodItemLink {
   [nutrient: string]: string | number | boolean | Date | undefined
 }
 
-// ============================================================================
-// OAuth
-// ============================================================================
-
 export interface OAuthToken {
   provider: string
   access_token: string
@@ -469,10 +412,6 @@ export interface OAuthToken {
   expires_at?: Date
   scopes?: string[]
 }
-
-// ============================================================================
-// Sync State
-// ============================================================================
 
 export type { SyncStatus }
 
@@ -488,20 +427,12 @@ export interface SyncState {
   updated_at?: Date
 }
 
-// ============================================================================
-// Health Connect
-// ============================================================================
-
 export interface DailyAggregate {
   date: string // "2024-01-15"
   metric: string // "steps", "distance", etc.
   value: number
   data_origins: string[] // Contributing app package names
 }
-
-// ============================================================================
-// User Settings
-// ============================================================================
 
 export interface CalendarConfig {
   name: string
@@ -511,7 +442,7 @@ export interface CalendarConfig {
 export interface UserSettings {
   birth_date?: string // YYYY-MM-DD
   calendars?: CalendarConfig[] // Calendar ICS URL configurations
-  dashboard?: DashboardConfig // Custom dashboard configuration
+  dashboard?: DashboardConfig
   device_timezone?: string // IANA timezone from the Android device (e.g. "Europe/Stockholm")
   hr_zone_start?: { 1: number; 2: number; 3: number; 4: number; 5: number }
   lastfm_username?: string // Last.fm username for scrobble sync
@@ -537,10 +468,6 @@ export interface UserSettings {
  * `default` as the fallback for providers without an explicit entry.
  */
 export type SyncIntervals = Partial<Record<string, number>>
-
-// ============================================================================
-// MCP Sessions
-// ============================================================================
 
 export interface McpSessionRecord {
   session_id: string

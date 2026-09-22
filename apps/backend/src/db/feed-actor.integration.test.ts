@@ -1,9 +1,6 @@
 import { createPublicKey } from 'node:crypto'
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
-/**
- * Integration tests for the singleton actor keypair store.
- */
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import { getOrCreateActorKeyPair } from './feed-actor.ts'
 

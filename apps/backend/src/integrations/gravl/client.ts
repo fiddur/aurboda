@@ -1,6 +1,4 @@
 /**
- * Gravl API client — credential resolution + read-only API calls.
- *
  * Two ways in, resolved per request in this order (#1042):
  *
  * 1. An OAuth grant (`oauth_tokens.provider = 'gravl'`), which exists only when
@@ -65,7 +63,6 @@ export type GravlCredentialGetter = () => Promise<GravlCredentials | null>
 export interface GravlClientDeps {
   getOAuthToken: (user: string, provider: string) => Promise<OAuthToken | null>
   upsertOAuthToken: (user: string, token: OAuthToken) => Promise<void>
-  /** The user's pasted personal token, if any. */
   getPersonalToken: (user: string) => Promise<string | null>
   ensureUserSchema: (user: string) => Promise<void>
   http: AxiosInstance
@@ -114,10 +111,6 @@ const toGravlError = (error: unknown): unknown => {
   )
 }
 
-// ---------------------------------------------------------------------------
-// PKCE + sealed state
-// ---------------------------------------------------------------------------
-
 const base64url = (buf: Buffer): string => buf.toString('base64url')
 
 export const createPkcePair = (): { verifier: string; challenge: string } => {
@@ -164,10 +157,6 @@ const isSealedState = (value: unknown): value is SealedState =>
   typeof (value as SealedState).iat === 'number' &&
   typeof (value as SealedState).user === 'string' &&
   typeof (value as SealedState).verifier === 'string'
-
-// ---------------------------------------------------------------------------
-// Client
-// ---------------------------------------------------------------------------
 
 const defaultDeps = (): GravlClientDeps => ({
   ensureUserSchema: async (user) => {

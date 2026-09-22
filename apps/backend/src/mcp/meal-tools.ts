@@ -1,8 +1,3 @@
-/**
- * MCP meal management tools.
- *
- * Provides tools for adding, querying, and deleting meal/nutrition records.
- */
 import {
   addMealBodySchema,
   frequentFoodItemsQuerySchema,
@@ -25,7 +20,6 @@ import {
 import { errorResponse, jsonResponse, type McpServer, tzJsonResponse } from './helpers.ts'
 
 export const registerMealTools = (server: McpServer, user: string) => {
-  // Tool: add_meal
   server.tool(
     'add_meal',
     [
@@ -40,7 +34,6 @@ export const registerMealTools = (server: McpServer, user: string) => {
     },
   )
 
-  // Tool: query_meals
   server.tool(
     'query_meals',
     'Query meals for a date range, optionally filtered by meal type.',
@@ -55,7 +48,6 @@ export const registerMealTools = (server: McpServer, user: string) => {
     },
   )
 
-  // Tool: delete_meal
   server.tool(
     'delete_meal',
     'Delete a meal record by its ID.',
@@ -69,7 +61,6 @@ export const registerMealTools = (server: McpServer, user: string) => {
     },
   )
 
-  // Tool: update_meal
   server.tool(
     'update_meal',
     'Update an existing meal record. Only provided fields are changed.',
@@ -83,7 +74,6 @@ export const registerMealTools = (server: McpServer, user: string) => {
     },
   )
 
-  // Tool: query_frequent_meals
   server.tool(
     'query_frequent_meals',
     'List the meal names a user logs most often within a meal_type (e.g. recurring breakfasts), with the food items from the most recent occurrence so they can be re-logged with one tap.',
@@ -94,7 +84,6 @@ export const registerMealTools = (server: McpServer, user: string) => {
     },
   )
 
-  // Tool: query_frequent_food_items
   server.tool(
     'query_frequent_food_items',
     [
@@ -108,7 +97,6 @@ export const registerMealTools = (server: McpServer, user: string) => {
     },
   )
 
-  // Tool: get_meal
   server.tool(
     'get_meal',
     'Get a single meal by its ID, including food items and nutrition data.',

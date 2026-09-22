@@ -21,10 +21,6 @@ import { auth } from '../auth'
 
 const authHeaders = () => ({ Authorization: `Bearer ${auth.value.token}` })
 
-// ===========================================================================
-// Owner / joiner (authenticated)
-// ===========================================================================
-
 export const listChallenges = async (): Promise<Challenge[]> => {
   const res = await axios.get<ChallengesResponse>(`${API_URL}/challenges`, { headers: authHeaders() })
   return res.data.challenges
@@ -76,10 +72,6 @@ export const discoverChallenges = async (): Promise<DiscoverChallengesResponse> 
   })
   return res.data
 }
-
-// ===========================================================================
-// Public viewing (unauthenticated — no Authorization header)
-// ===========================================================================
 
 /** Resolve a `/u/:username/:slug` resource — either a shared dashboard or a challenge. */
 export const fetchPublicResource = async (

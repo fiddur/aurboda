@@ -1,6 +1,3 @@
-/**
- * Goals CRUD operations.
- */
 import type { Goal, MetricGoal, TrendGoal } from '@aurboda/api-spec'
 
 import { query } from './connection.ts'

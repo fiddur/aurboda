@@ -1,7 +1,3 @@
-/**
- * Restore (undo soft-delete) and additional delete-by-id services.
- */
-
 import type { DeleteActivityResult } from './mutations.ts'
 
 import {

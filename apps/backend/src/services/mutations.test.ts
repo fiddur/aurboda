@@ -19,7 +19,6 @@ import {
   updateCustomMetric,
 } from './mutations.ts'
 
-// Mock the db module
 vi.mock('../db', async () => ({
   activityTypeExists: vi.fn().mockResolvedValue(true),
   checkActivityConflict: vi.fn().mockResolvedValue(false),

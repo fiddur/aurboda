@@ -208,7 +208,6 @@
   margin-bottom: 1rem;
 }
 
-/* Dark mode */
 @media (prefers-color-scheme: dark) {
   .add-data-tabs {
     border-color: #374151;
@@ -272,8 +271,6 @@
     color: #fca5a5;
   }
 }
-
-/* FIT file upload */
 
 .fit-upload {
   margin-bottom: 0;

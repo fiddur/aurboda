@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 import * as db from '../../db/index.ts'
 import { getEventProbability } from './event-probability.ts'
 
-// Mock db module
 vi.mock('../../db', () => ({
   getAllActivitiesInRange: vi.fn(),
 }))

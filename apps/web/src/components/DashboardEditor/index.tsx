@@ -1,7 +1,3 @@
-/**
- * DashboardEditor - Widget picker and configuration modal.
- */
-
 import type { DashboardWidget, SectionType } from '@aurboda/api-spec'
 
 import { useState } from 'preact/hooks'
@@ -17,10 +13,8 @@ interface DashboardEditorProps {
   onClose: () => void
 }
 
-// Generate unique widget ID
 const generateWidgetId = () => `widget-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
 
-// Widget templates for the picker
 interface WidgetTemplate {
   type: DashboardWidget['type']
   label: string
@@ -129,7 +123,6 @@ const widgetTemplates: WidgetTemplate[] = [
   },
 ]
 
-// Link options for quick link widgets
 const linkOptions = [
   { icon: 'timeline', label: 'Timeline', value: '/timeline' },
   { icon: 'sleep', label: 'Sleep', value: '/sleep' },
@@ -144,7 +137,6 @@ export function DashboardEditor({ sectionType, onAddWidget, onClose }: Dashboard
   const [selectedTemplate, setSelectedTemplate] = useState<WidgetTemplate | null>(null)
   const [configValues, setConfigValues] = useState<Record<string, unknown>>({})
 
-  // Filter templates based on section type
   const availableTemplates = widgetTemplates.filter((t) => t.allowedSections.includes(sectionType))
 
   const handleSelectTemplate = (template: WidgetTemplate) => {
@@ -168,7 +160,6 @@ export function DashboardEditor({ sectionType, onAddWidget, onClose }: Dashboard
     setConfigValues((prev) => ({ ...prev, [key]: value }))
   }
 
-  // Render configuration form based on widget type
   // eslint-disable-next-line complexity -- TODO: refactor
   const renderConfigForm = () => {
     if (!selectedTemplate) return null

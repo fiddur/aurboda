@@ -73,10 +73,6 @@ internal val STEP_SENSOR_NAME_PATTERNS = listOf(
     "milestone", "runn", "speed", "cadence"
 )
 
-/**
- * Detect sensor type from device name using known patterns.
- * Returns null if the name doesn't match any known sensor pattern.
- */
 internal fun detectSensorTypeFromName(name: String?): SensorType? {
     if (name == null) return null
     val lowerName = name.lowercase()
@@ -122,16 +118,13 @@ fun scanForSensors(context: Context, scanDurationMs: Long = 10000): Flow<BleScan
             if (address in discoveredAddresses) return
 
             val serviceUuids = result.scanRecord?.serviceUuids?.map { it.uuid } ?: emptyList()
-            // Try both sources for device name - scan record and device object
             val scanRecordName = result.scanRecord?.deviceName
             val deviceName = scanRecordName ?: device.name
 
-            // Log ALL devices with names for debugging
             if (deviceName != null || serviceUuids.isNotEmpty()) {
                 Log.d(TAG, "BLE device found: name='$deviceName' (scanRecord='$scanRecordName', device='${device.name}'), address=$address, services=$serviceUuids, rssi=${result.rssi}")
             }
 
-            // Determine sensor type from advertised service UUIDs first, then fall back to name
             val sensorType = when {
                 HEART_RATE_SERVICE_UUID in serviceUuids -> SensorType.HEART_RATE
                 RUNNING_SPEED_CADENCE_SERVICE_UUID in serviceUuids -> SensorType.RUNNING_SPEED_CADENCE
@@ -182,7 +175,6 @@ fun scanForSensors(context: Context, scanDurationMs: Long = 10000): Flow<BleScan
         return@callbackFlow
     }
 
-    // Set up scan timeout
     val handler = android.os.Handler(android.os.Looper.getMainLooper())
     val stopRunnable = Runnable {
         try {

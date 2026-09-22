@@ -1,9 +1,3 @@
-/**
- * Food items CRUD operations.
- *
- * Canonical food item library — each unique food is a first-class entity.
- */
-
 import { FOOD_ITEM_QUALITY_TIER_SQL, NUTRIENT_FIELD_NAMES } from '@aurboda/api-spec'
 
 import type { FoodItemEntity } from './types.ts'
@@ -52,8 +46,6 @@ const mapFoodItemRow = (row: Record<string, unknown>): FoodItemEntity => {
   return entity as unknown as FoodItemEntity
 }
 
-// ── Input types ──────────────────────────────────────────────────────────────
-
 export interface InsertFoodItemInput {
   name: string
   source?: string
@@ -69,8 +61,6 @@ export interface InsertFoodItemInput {
   icon?: string
   [nutrient: string]: string | number | undefined
 }
-
-// ── CRUD ─────────────────────────────────────────────────────────────────────
 
 const TRIGRAM_SIMILARITY_THRESHOLD = 0.2
 const TRIGRAM_MIN_QUERY_LENGTH = 3
@@ -110,9 +100,6 @@ export const searchFoodItems = async (user: string, q: string, limit = 20): Prom
   return result.rows.map(mapFoodItemRow)
 }
 
-/**
- * Get all food items (with optional limit).
- */
 export const listFoodItems = async (user: string, limit = 100): Promise<FoodItemEntity[]> => {
   const result = await query(
     user,
@@ -122,17 +109,11 @@ export const listFoodItems = async (user: string, limit = 100): Promise<FoodItem
   return result.rows.map(mapFoodItemRow)
 }
 
-/**
- * Get a food item by ID.
- */
 export const getFoodItemById = async (user: string, id: string): Promise<FoodItemEntity | null> => {
   const result = await query(user, `SELECT ${FOOD_ITEM_COLUMNS} FROM food_items WHERE id = $1`, [id])
   return result.rows.length > 0 ? mapFoodItemRow(result.rows[0]) : null
 }
 
-/**
- * Get a food item by name (case-insensitive exact match).
- */
 export const getFoodItemByName = async (user: string, name: string): Promise<FoodItemEntity | null> => {
   const result = await query(user, `SELECT ${FOOD_ITEM_COLUMNS} FROM food_items WHERE name_lower = $1`, [
     name.toLowerCase().trim(),
@@ -212,9 +193,6 @@ export const upsertFoodItem = async (user: string, input: InsertFoodItemInput): 
   return mapFoodItemRow(result.rows[0])
 }
 
-/**
- * Update a food item by ID.
- */
 export const updateFoodItem = async (
   user: string,
   id: string,
@@ -338,8 +316,6 @@ export const setFoodItemReference = async (
   id: string,
   referenceId: string | null,
 ): Promise<FoodItemEntity | null> => {
-  // Allow clearing (referenceId === null) on any row; only block setting on a
-  // composite parent.
   const whereClause = referenceId === null ? 'WHERE id = $1' : 'WHERE id = $1 AND is_composite = FALSE'
   const result = await query(
     user,
@@ -351,10 +327,6 @@ export const setFoodItemReference = async (
   return result.rows.length > 0 ? mapFoodItemRow(result.rows[0]) : null
 }
 
-/**
- * Find a food item by name, or create it if it doesn't exist.
- * Returns the existing or newly created food item.
- */
 export const findOrCreateFoodItem = async (
   user: string,
   name: string,
@@ -488,11 +460,6 @@ export const mergeFoodItems = async (
 
 const FILLABLE_FIELDS = [...NUTRIENT_FIELD_NAMES, 'icon', 'default_quantity', 'default_unit'] as const
 
-/**
- * Copy each NUTRIENT/icon/default_* field from source to target where the
- * target is currently NULL and the source has a value. Returns the names of
- * the fields that were actually filled — useful for the result summary.
- */
 const fillTargetFromSource = async (user: string, sourceId: string, targetId: string): Promise<string[]> => {
   const target = await getFoodItemById(user, targetId)
   const source = await getFoodItemById(user, sourceId)

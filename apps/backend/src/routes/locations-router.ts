@@ -1,10 +1,5 @@
 import type { RequestHandler } from 'express'
 
-/**
- * Locations route group.
- *
- * Handles: /locations/*
- */
 import {
   type AddNamedLocationBody,
   addNamedLocationBodySchema,
@@ -204,7 +199,6 @@ export const createLocationsRouter = (authMiddleware: RequestHandler): TypedRout
     async (req, res) => {
       const user = req.user!
       const detected = await getStoredDetectedLocations(user)
-      // Transform Date objects to ISO strings for API response
       const serialized = detected.map((d) => ({
         ...d,
         first_visit: d.first_visit.toISOString(),

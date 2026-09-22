@@ -1,13 +1,4 @@
-/**
- * Profile route group (owner-facing).
- *
- * Handles: /profile/*
- *
- * POST   /profile/avatar — upload/replace the profile avatar (authenticated)
- * DELETE /profile/avatar — remove it, reverting to the generated identicon
- *
- * The public read side lives in public-avatar-router (`/u/:username/avatar.png`).
- */
+/** The public read side lives in public-avatar-router (`/u/:username/avatar.png`). */
 import type { RequestHandler } from 'express'
 
 import multer from 'multer'

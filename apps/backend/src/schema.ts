@@ -1,6 +1,4 @@
 /**
- * Database schema definitions for Aurboda.
- *
  * Per-domain table SQL lives in `schema/`; this file assembles the full
  * `createTableStatements` map and the dependency-respecting
  * `tableCreationOrder` array consumed by db/connection.ts and migrate.ts.
@@ -19,7 +17,6 @@ import { reportsTables } from './schema/reports.ts'
 import { socialTables } from './schema/social.ts'
 import { systemTables } from './schema/system.ts'
 
-// Re-export common types from shared api-spec package
 export {
   aurbodaOnlyMetrics,
   aurbodaOnlySources,

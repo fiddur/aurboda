@@ -1,12 +1,6 @@
 /**
- * Feed route group (owner-facing).
- *
- * Handles: /feed/*
- *
- * Publish an activity to the user's federated feed with an explicit metric
- * selection, and manage the resulting posts. Consistent with the other
- * owner-facing routers, the acting user comes from `req.user` (not the path);
- * the public read surface lives in `feed-public-router.ts`.
+ * The acting user comes from `req.user` (not the path), like the other
+ * owner-facing routers; the public read surface lives in `feed-public-router.ts`.
  */
 import {
   type ArticleExportResponse,
@@ -90,13 +84,9 @@ export interface FeedDeliver {
   created: (user: string, post: FeedPostRecord, activity: Activity) => void
   updated: (user: string, post: FeedPostRecord) => void
   deleted: (user: string, post: FeedPostRecord) => void
-  /** Fan a freshly-published article out to followers (no linked activity). */
   createdArticle: (user: string, post: FeedPostRecord) => void
-  /** Federate an article edit as an `Update` so followers replace the stored object. */
   updatedArticle: (user: string, post: FeedPostRecord) => void
-  /** Fan a freshly-shared challenge invitation out to followers (#994). */
   createdChallenge: (user: string, post: FeedPostRecord) => void
-  /** Federate a challenge-share edit as an `Update`. */
   updatedChallenge: (user: string, post: FeedPostRecord) => void
   /**
    * Fan a fresh reply out to followers AND the inbox of the author it answers —

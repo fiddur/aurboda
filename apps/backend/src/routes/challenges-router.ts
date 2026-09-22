@@ -1,10 +1,6 @@
 import type { RequestHandler } from 'express'
 
 /**
- * Challenges route group (owner + joiner facing).
- *
- * Handles: /challenges/*
- *
  * Hosts create/manage challenges (members live in the host's DB); any user joins
  * by URL (local shortcut when the host is this instance, else federated). The
  * host is always a member of their own challenge.
@@ -223,7 +219,7 @@ export const createChallengesRouter = (
     },
   )
 
-  // --- Participations (challenges I joined) ---
+  // Participations: challenges this user joined.
 
   router.get<Record<string, never>, ChallengeParticipationsResponse>(
     '/participations/mine',

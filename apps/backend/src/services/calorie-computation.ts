@@ -1,6 +1,4 @@
 /**
- * Service for automatic calorie computation from HR data.
- *
  * Triggered after HR data is ingested (from Health Connect, Oura, Garmin).
  * Computes per-minute calories using the zone-METs model (calibrated HR zones
  * + lab/Mifflin-St Jeor BMR) and stores both `calories_active` and
@@ -34,9 +32,6 @@ import {
 } from './calories.ts'
 import { calculateDefaultHrZones, getSettings } from './settings.ts'
 
-/**
- * Calculate age from birth date string.
- */
 const calculateAge = (birthDate: string): number => {
   const birth = new Date(birthDate)
   const today = new Date()
@@ -48,9 +43,6 @@ const calculateAge = (birthDate: string): number => {
   return age
 }
 
-/**
- * Get the most recent value for a metric before or at the given time.
- */
 const getLatestMetricValue = async (
   user: string,
   metric: string,
@@ -60,7 +52,6 @@ const getLatestMetricValue = async (
   const lookbackStart = new Date(beforeTime.getTime() - lookbackDays * 24 * 60 * 60 * 1000)
   const data = await getTimeSeries(user, metric, lookbackStart, beforeTime)
   if (data.length === 0) return null
-  // Return the most recent value
   return data[data.length - 1][1]
 }
 
@@ -245,7 +236,6 @@ export const computeAndStoreCalories = async (
   end: Date,
   options?: { skipSync?: boolean },
 ): Promise<CalorieComputationResult> => {
-  // 1. Settings + required fields (loaded once, threaded through helpers)
   const settings = await getUserSettings(user)
   if (!settings) return skippedResult('no settings')
 
@@ -255,8 +245,8 @@ export const computeAndStoreCalories = async (
   const age = calculateAge(settings.birth_date)
   const timezone = settings.device_timezone
 
-  // 2. Expand to local-day boundaries so the BMR/min floor covers full days,
-  //    not just the caller's HR-ingest window.
+  // Expand to local-day boundaries so the BMR/min floor covers full days, not
+  // just the caller's HR-ingest window.
   const expandedStart = getLocalDayStart(start, timezone)
   // end is treated as exclusive; bump just past the last touched minute,
   // then snap to next local midnight (DST-safe via getLocalDayStart on +26h).
@@ -264,7 +254,6 @@ export const computeAndStoreCalories = async (
   const lastDayStart = getLocalDayStart(lastTouched, timezone)
   const expandedEnd = getLocalDayStart(new Date(lastDayStart.getTime() + 26 * 60 * 60 * 1000), timezone)
 
-  // 3. Weight + height for BMR fallback
   const weight = await getLatestMetricValue(user, 'weight', expandedEnd)
   if (weight === null) return skippedResult('no weight data')
   // The `height` metric is stored in metres (canonical unit 'm'); Mifflin-St Jeor
@@ -272,28 +261,25 @@ export const computeAndStoreCalories = async (
   const heightMeters = await getLatestMetricValue(user, 'height', expandedEnd, 3650)
   const heightCm = heightMeters !== null ? heightMeters * 100 : null
 
-  // 4. BMR (lab metric → Mifflin-St Jeor fallback)
   const bmr = await resolveBmr(user, expandedEnd, { age, height_cm: heightCm, sex, weight_kg: weight })
   if (bmr === null) return skippedResult('no BMR and no height for fallback')
   const bmrPerMin = bmr.value / 1440
 
-  // 5. Resting HR + zone-METs context
   const restingHrMetric = await getLatestMetricValue(user, 'resting_heart_rate', expandedEnd)
   const restingHr = restingHrMetric ?? DEFAULT_RESTING_HR
   const zoneCtx = resolveZoneMetsContext(settings, age, restingHr)
 
-  // 6. HR data for the full expanded range
   const hrData = await getTimeSeries(user, 'heart_rate', expandedStart, expandedEnd)
 
-  // 7. Always wipe any prior aurboda rows for the expanded range so this run
-  //    becomes the new ground truth. (No 'force' option needed — every call
-  //    is authoritative for the day(s) it touches.)
+  // Always wipe any prior aurboda rows for the expanded range so this run
+  // becomes the new ground truth. (No 'force' option needed — every call is
+  // authoritative for the day(s) it touches.)
   await deleteTimeSeriesBySource(user, 'calories_active', 'aurboda', expandedStart, expandedEnd)
   await deleteTimeSeriesBySource(user, 'calories_active', 'aurboda_gap_fill', expandedStart, expandedEnd)
   await deleteTimeSeriesBySource(user, 'calories_total', 'aurboda', expandedStart, expandedEnd)
 
-  // 8. HR-derived per-minute zone-METs points (empty array is fine — every
-  //    minute still gets a BMR/min floor in step 9).
+  // HR-derived per-minute zone-METs points (empty array is fine — every minute
+  // still gets a BMR/min floor from buildFullDayPoints below).
   const allHrPoints =
     hrData.length === 0
       ? []
@@ -311,7 +297,6 @@ export const computeAndStoreCalories = async (
     (p) => p.time.getTime() >= expandedStart.getTime() && p.time.getTime() < expandedEnd.getTime(),
   )
 
-  // 9. Build full-day points for the expanded range (BMR floor for non-HR mins)
   const { total, active } = buildFullDayPoints(
     expandedStart.getTime(),
     expandedEnd.getTime(),
@@ -319,15 +304,12 @@ export const computeAndStoreCalories = async (
     hrPoints,
   )
 
-  // 10. Insert
   await insertTimeSeries(user, [...total, ...active])
 
-  // 11. Queue outbound sync of active calories (HR-covered minutes only)
   if (!options?.skipSync) {
     await enqueueCalorieSync(user, hrPoints)
   }
 
-  // 12. Invalidate training load impulses from the expanded start
   await invalidateTrainingLoadImpulses(user, expandedStart)
 
   return {
@@ -338,7 +320,6 @@ export const computeAndStoreCalories = async (
 }
 
 /**
- * Get the user's device timezone from settings, or undefined if not set.
  * Used by full-recompute to align day boundaries to local midnight.
  */
 const getDeviceTimezone = async (user: string): Promise<string | undefined> => {
@@ -362,7 +343,6 @@ const getLocalDayStart = (utcTime: Date, timezone?: string): Date => {
 }
 
 /**
- * Recompute all calories_active data from scratch using the full HR data range.
  * Processes in daily chunks to avoid memory issues. Deletes existing aurboda
  * calorie data for each chunk before recomputing.
  */
@@ -424,7 +404,6 @@ export const computeAndStoreCaloriesAll = async (
 }
 
 /**
- * Trigger calorie computation for a time range after HR data ingestion.
  * Best-effort, never throws.
  */
 export const triggerCalorieComputation = async (user: string, start: Date, end: Date): Promise<void> => {

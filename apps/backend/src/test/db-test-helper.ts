@@ -1,10 +1,3 @@
-/**
- * Database test helper using testcontainers.
- *
- * Provides a real PostgreSQL instance for integration testing of db.ts functions.
- * Uses PostGIS image to match production environment.
- */
-
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql'
 import { Client } from 'pg'
 
@@ -17,7 +10,6 @@ let client: Client | null = null
 const TEST_USER = 'testuser'
 
 /**
- * Start a PostgreSQL container and set up the test user's client.
  * Call this in beforeAll().
  */
 export const startTestDb = async (): Promise<void> => {
@@ -33,7 +25,6 @@ export const startTestDb = async (): Promise<void> => {
   })
   await client.connect()
 
-  // Create all tables
   for (const tableName of tableCreationOrder) {
     const statement = createTableStatements[tableName]
     if (statement) {
@@ -55,7 +46,6 @@ export const getTestDbClient = (): Client => {
 }
 
 /**
- * Stop the PostgreSQL container.
  * Call this in afterAll().
  */
 export const stopTestDb = async (): Promise<void> => {
@@ -69,13 +59,9 @@ export const stopTestDb = async (): Promise<void> => {
   }
 }
 
-/**
- * Get the test user name to pass to db.ts functions.
- */
 export const getTestUser = (): string => TEST_USER
 
 /**
- * Clean all data from tables (but keep schema).
  * Call this in beforeEach() for test isolation.
  */
 export const cleanTestDb = async (): Promise<void> => {

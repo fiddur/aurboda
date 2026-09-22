@@ -1,11 +1,6 @@
 import type { RequestHandler } from 'express'
 import type { ZodError } from 'zod'
 
-/**
- * Notes route group.
- *
- * Handles: /notes/*
- */
 import {
   type AddNoteBody,
   addNoteBodySchema,

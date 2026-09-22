@@ -1,7 +1,3 @@
-/**
- * Shared types and helpers for query services.
- */
-
 import type { ActivityComputedMetrics, DataSource, EntityType } from '@aurboda/api-spec'
 
 import type { Note } from '../../db/index.ts'
@@ -9,10 +5,6 @@ import type { MetricType } from '../../schema.ts'
 import type { HrZoneSecs } from '../settings.ts'
 
 import { getActivityTypeDefinitions, getNotesByEntityIds, getRepliesForRootIds } from '../../db/index.ts'
-
-// ============================================================================
-// Helpers
-// ============================================================================
 
 /** Build a map of activity_type -> display_category from type definitions. */
 export const buildCategoryMap = async (user: string): Promise<Map<string, string>> => {
@@ -89,26 +81,15 @@ export const dedupeCommentsForIds = (
   return [...seen.values()]
 }
 
-// ============================================================================
-// Types
-// ============================================================================
-
 /**
  * Provider for auto-syncing data from external sources before queries.
- * Pass this to query functions to enable automatic data refresh.
  */
 export interface SyncProvider {
-  /** Sync Oura data if stale (tags, sessions, etc.) */
   syncOuraIfNeeded: (user: string, dataType: 'tags' | 'sessions') => Promise<void>
-  /** Sync Garmin data if stale */
   syncGarminIfNeeded: (user: string, dataType: string) => Promise<void>
-  /** Sync RescueTime productivity data if stale */
   syncRescueTimeIfNeeded: (user: string) => Promise<void>
-  /** Sync calendar data if stale */
   syncCalendarsIfNeeded: (user: string) => Promise<void>
-  /** Sync Last.fm scrobbles if stale */
   syncLastFmIfNeeded: (user: string) => Promise<void>
-  /** Sync Gravl workouts if stale */
   syncGravlIfNeeded: (user: string) => Promise<void>
 }
 
@@ -130,9 +111,6 @@ export interface QueryMetricsResult {
  */
 export type BucketSize = string
 
-/**
- * Bucket statistics for a single metric.
- */
 export interface BucketMetricStats {
   avg: number
   min: number
@@ -143,18 +121,12 @@ export interface BucketMetricStats {
   last_time: string
 }
 
-/**
- * A single time bucket with aggregated metrics.
- */
 export interface MetricBucket {
   start: string
   end: string
   metrics: Partial<Record<MetricType, BucketMetricStats>>
 }
 
-/**
- * Result of a bucketed metrics query.
- */
 export interface QueryMetricsBucketedResult {
   start: string
   end: string
@@ -381,7 +353,6 @@ export interface ActivityResult extends ActivityComputedMetrics {
 }
 
 /**
- * Productivity record with formatted timestamps.
  * source_ids lists all original record IDs that were merged into this span.
  */
 export interface ProductivityResult {

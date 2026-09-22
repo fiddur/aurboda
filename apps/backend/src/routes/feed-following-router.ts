@@ -1,11 +1,6 @@
 import type { RequestHandler } from 'express'
 
 /**
- * Feed *following* route group (owner-facing) — the inbound direction of the
- * feed: manage the actors this user follows.
- *
- * Handles: /feed/following/*
- *
  * Mounted before `/feed` so its two-segment paths win cleanly. Listing is pure
  * DB; following/unfollowing go through the injected `FollowActions` (which
  * resolve the actor + send the signed `Follow` / `Undo{Follow}`), keeping this

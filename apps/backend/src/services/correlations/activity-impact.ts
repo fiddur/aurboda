@@ -1,7 +1,3 @@
-/**
- * Activity impact timeline analysis.
- */
-
 import type { SyncProvider } from '../queries/index.ts'
 import type { ActivityImpactResult, TimeWindowStats } from './types.ts'
 
@@ -10,9 +6,6 @@ import { getPlaceVisits } from '../locations.ts'
 import { triggerCorrelationSyncs } from './background-sync.ts'
 import { getDataInRange, mean, stddev } from './utils.ts'
 
-/**
- * Get HRV timeline before/during/after a specific activity type.
- */
 // eslint-disable-next-line complexity -- TODO: refactor
 export async function getActivityImpact(
   user: string,
@@ -32,14 +25,12 @@ export async function getActivityImpact(
   // analysis on a slow external sync (see background-sync.ts).
   triggerCorrelationSyncs(sync, user)
 
-  // Fetch HRV/HR/stress data
   const [hrvData, hrData, stressData] = await Promise.all([
     getTimeSeries(user, 'hrv_rmssd', start, end),
     getTimeSeries(user, 'heart_rate', start, end),
     getTimeSeries(user, 'stress_level', start, end),
   ])
 
-  // Find activity occurrences based on type
   interface ActivityWindow {
     startTime: Date
     endTime: Date
@@ -90,7 +81,6 @@ export async function getActivityImpact(
     }
   }
 
-  // Collect HRV/HR/stress for each time window
   const windows = {
     after15min: { hr: [] as number[], hrv: [] as number[], stress: [] as number[] },
     after30min: { hr: [] as number[], hrv: [] as number[], stress: [] as number[] },

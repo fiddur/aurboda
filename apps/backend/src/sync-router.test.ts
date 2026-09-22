@@ -44,7 +44,6 @@ describe('sync router', () => {
     onActivitySynced: vi.fn(),
   }
 
-  // Simple auth middleware that sets req.user for tests
   const testAuthMiddleware: express.RequestHandler = (req, _res, next) => {
     req.user = 'testuser'
     next()

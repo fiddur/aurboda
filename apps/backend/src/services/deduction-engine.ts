@@ -1,6 +1,4 @@
 /**
- * Deduction engine — evaluates rules to automatically create or enrich activities from data conditions.
- *
  * Core algorithm:
  * 1. Each condition resolves to TimeRange[] within an evaluation window
  * 2. Multiple conditions are intersected (AND logic)
@@ -15,10 +13,6 @@ import type { Condition, DeductionRule } from '@aurboda/api-spec'
 import { randomUUID } from 'node:crypto'
 
 import type { Activity } from '../db/types.ts'
-
-// ============================================================================
-// Types
-// ============================================================================
 
 export interface TimeRange {
   start: Date
@@ -90,13 +84,8 @@ export interface DeductionEngineDeps {
   getEarliestActivityTime: (user: string) => Promise<Date | null>
 }
 
-// ============================================================================
-// Time range intersection (pure, unit-testable)
-// ============================================================================
-
 /**
  * Intersect two sorted arrays of time ranges.
- * Returns ranges where both A and B overlap.
  */
 export const intersectTimeRanges = (a: TimeRange[], b: TimeRange[]): TimeRange[] => {
   const result: TimeRange[] = []
@@ -122,9 +111,6 @@ export const intersectTimeRanges = (a: TimeRange[], b: TimeRange[]): TimeRange[]
   return result
 }
 
-/**
- * Merge overlapping or adjacent ranges within a gap threshold.
- */
 export const mergeRangesWithGap = (ranges: TimeRange[], gapMs: number): TimeRange[] => {
   if (ranges.length === 0) return []
 
@@ -136,7 +122,6 @@ export const mergeRangesWithGap = (ranges: TimeRange[], gapMs: number): TimeRang
     const next = sorted[i]
 
     if (next.start.getTime() - current.end.getTime() <= gapMs) {
-      // Extend current range
       if (next.end > current.end) {
         current.end = next.end
       }
@@ -147,10 +132,6 @@ export const mergeRangesWithGap = (ranges: TimeRange[], gapMs: number): TimeRang
 
   return result
 }
-
-// ============================================================================
-// Condition resolvers
-// ============================================================================
 
 type ConditionResolver = (
   user: string,
@@ -217,12 +198,7 @@ const conditionResolvers: Record<string, ConditionResolver> = {
   screentime_category: resolveScreentimeCategory,
 }
 
-// ============================================================================
-// Rule evaluation
-// ============================================================================
-
 /**
- * Resolve conditions and intersect time ranges for a rule.
  * Shared between create, enrich, and dry-run paths.
  */
 const resolveConditions = async (
@@ -260,7 +236,6 @@ export interface EvaluateRuleResult {
 }
 
 /**
- * Evaluate a single deduction rule within a time window.
  * When dryRun is true, returns the count of activities that would be affected without making changes.
  */
 export const evaluateRule = async (
@@ -273,10 +248,8 @@ export const evaluateRule = async (
   const result = await resolveConditions(user, rule, window, deps)
   if (result.length === 0) return { affected_ids: [], would_affect: 0 }
 
-  // Enrich mode: patch existing activities
   if (rule.mode === 'enrich') {
     if (dryRun) {
-      // Count how many target activities overlap the ranges without modifying them
       const targetRanges = await deps.getActivities(user, rule.output_activity_type, window)
       const overlapping = intersectTimeRanges(result, targetRanges)
       return { affected_ids: [], would_affect: overlapping.length }
@@ -315,7 +288,6 @@ export const evaluateRule = async (
 }
 
 /**
- * Evaluate all enabled rules in priority order.
  * Rules at priority N complete before priority N+1 starts (for chaining).
  */
 export const evaluateAllRules = async (
@@ -325,7 +297,6 @@ export const evaluateAllRules = async (
   deps: DeductionEngineDeps,
   dryRun = false,
 ): Promise<{ rules_evaluated: number; activities_created: number }> => {
-  // Group by priority
   const byPriority = new Map<number, DeductionRule[]>()
   for (const rule of rules) {
     const group = byPriority.get(rule.priority) ?? []
@@ -368,7 +339,6 @@ export const evaluateAllRules = async (
 }
 
 /**
- * Build a full retroactive evaluation window for a user.
  * Goes back to the earliest activity, or falls back to the given number of days.
  */
 export const buildFullWindow = async (

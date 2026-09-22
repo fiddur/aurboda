@@ -15,7 +15,6 @@ import type { Activity, ActivityType, Scrobble } from './types'
 import { API_URL } from '../../config'
 import { auth } from '../auth'
 
-// Fetch activities (sleep, exercise, meditation) for the specified date range
 export const fetchActivities = async (
   start: Date,
   end: Date,

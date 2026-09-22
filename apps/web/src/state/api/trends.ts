@@ -22,7 +22,6 @@ export interface FetchTrendParams {
   breakdown_fields?: string[]
 }
 
-// Fetch trend data with EMA calculation
 export const fetchTrend = async (params: FetchTrendParams): Promise<TrendResult> => {
   const { token } = auth.value
   // Only include defined values to avoid sending empty strings

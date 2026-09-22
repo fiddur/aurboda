@@ -1,7 +1,3 @@
-/**
- * User settings service for HR zones and other user preferences.
- */
-
 import {
   defaultGoals,
   type Goal,
@@ -24,43 +20,26 @@ import {
 } from '../db/index.ts'
 import { getCentralDb } from './central-db.ts'
 
-// Re-export types from api-spec for use by other modules
 export type { HrZoneSecs, HrZoneSource, HrZoneThresholds }
-
-// ============================================================================
-// Types
-// ============================================================================
 
 import type { UserSettings } from '../db/types.ts'
 export type { UserSettings }
 
-// Use UserSettingsResponse from api-spec but allow error field for validation failures
 export type SettingsResponse = UserSettingsResponse & { error?: string }
 
-// ============================================================================
-// Constants
-// ============================================================================
-
 const DEFAULT_MAX_HR = 180 // Assumes age ~40
-const MAX_GAP_SECONDS = 5 // Cap time gap between samples
-const SINGLE_SAMPLE_SECONDS = 1 // Default time for single sample
+const MAX_GAP_SECONDS = 5
+const SINGLE_SAMPLE_SECONDS = 1
 
 // Zone percentages of max HR
 const ZONE_PERCENTAGES = {
-  1: 0.5, // 50%
-  2: 0.6, // 60%
-  3: 0.7, // 70%
-  4: 0.8, // 80%
-  5: 0.9, // 90%
+  1: 0.5,
+  2: 0.6,
+  3: 0.7,
+  4: 0.8,
+  5: 0.9,
 }
 
-// ============================================================================
-// Functions
-// ============================================================================
-
-/**
- * Calculate age from birth date.
- */
 const calculateAge = (birthDate: string): number => {
   const birth = new Date(birthDate)
   const today = new Date()
@@ -73,7 +52,6 @@ const calculateAge = (birthDate: string): number => {
 }
 
 /**
- * Calculate default HR zones based on birth date (age-based) or use defaults.
  * Uses the 220-age formula for max HR, with zones at 50/60/70/80/90%.
  */
 export const calculateDefaultHrZones = (birthDate: string | null): HrZoneThresholds => {
@@ -88,9 +66,6 @@ export const calculateDefaultHrZones = (birthDate: string | null): HrZoneThresho
   }
 }
 
-/**
- * Get user settings from database.
- */
 export const getSettings = async (user: string): Promise<UserSettings> => {
   const settings = await getUserSettings(user)
   return settings ?? {}
@@ -112,7 +87,6 @@ const isStoredSettingsKey = (key: string): key is Exclude<keyof UpdateSettingsIn
   key !== 'goals' && key in updateSettingsInputSchema.shape
 
 /**
- * Get effective HR zones for a user.
  * Priority: custom zones > age-based zones (from birth date) > default zones
  */
 export const getEffectiveHrZones = async (
@@ -120,17 +94,14 @@ export const getEffectiveHrZones = async (
 ): Promise<{ zones: HrZoneThresholds; source: HrZoneSource }> => {
   const settings = await getSettings(user)
 
-  // Custom zones take priority
   if (settings.hr_zone_start) {
     return { source: 'custom', zones: settings.hr_zone_start }
   }
 
-  // Age-based zones if birth date is set
   if (settings.birth_date) {
     return { source: 'age_based', zones: calculateDefaultHrZones(settings.birth_date) }
   }
 
-  // Default zones
   return { source: 'default', zones: calculateDefaultHrZones(null) }
 }
 
@@ -139,14 +110,9 @@ export const getEffectiveHrZones = async (
  */
 export const getEffectiveGoals = async (user: string): Promise<Goal[]> => {
   const goals = await getGoals(user)
-  // If the goals table is empty, return defaults
   return goals.length > 0 ? goals : defaultGoals
 }
 
-/**
- * Build the settings updates object for a tag mapping change.
- * Handles both the mapping itself and any icon set/clear.
- */
 export const buildTagMappingUpdates = (
   currentSettings: UserSettings,
   tagKey: string,
@@ -191,10 +157,7 @@ export const setTagMapping = async (
   return updates.tag_mappings!
 }
 
-/**
- * Get tag mappings and icons for a user.
- * Used by both REST API and MCP tools.
- */
+/** Used by both REST API and MCP tools. */
 export const getTagMappings = async (
   user: string,
 ): Promise<{ mappings: Record<string, string>; icons: Record<string, string> }> => {
@@ -205,11 +168,6 @@ export const getTagMappings = async (
   }
 }
 
-/**
- * Map DB settings to response fields, applying schema defaults for missing values.
- * Fields with different DB vs response names are mapped explicitly.
- */
-/** Schema for applying defaults to DB settings. Uses .default() from the response schema. */
 const settingsWithDefaultsSchema = userSettingsResponseSchema.pick({
   birth_date: true,
   calendars: true,
@@ -313,16 +271,15 @@ export const validateAndUpdateSettings = async (user: string, input: unknown): P
     return buildErrorSettingsResponse(parsed.error.issues.map((e) => e.message).join('; '))
   }
 
-  // Handle goals separately — stored in their own table now
   if (parsed.data.goals !== undefined) {
     const newGoals = parsed.data.goals === null ? [] : parsed.data.goals
     await replaceGoals(user, newGoals)
   }
 
-  // Build the updates object. A `null` clears the stored key so the field
-  // falls back to its default (#1063) — `undefined` would be dropped by the
-  // merge in `upsertUserSettings` and silently keep the old value.
-  // Derive field list from the schema to keep it in sync with api-spec.
+  // A `null` clears the stored key so the field falls back to its default —
+  // `undefined` would be dropped by the merge in `upsertUserSettings` and
+  // silently keep the old value. The field list is derived from the schema so
+  // it stays in sync with api-spec.
   const updates: Partial<UserSettings> = {}
   const clear: (keyof UserSettings)[] = []
   for (const field of Object.keys(updateSettingsInputSchema.shape)) {
@@ -339,15 +296,12 @@ export const validateAndUpdateSettings = async (user: string, input: unknown): P
     updates.item_icons = { ...current.item_icons, ...updates.item_icons }
   }
 
-  // Apply updates (only if there are non-goals fields to update)
   await updateSettingsInternal(user, updates, clear)
 
-  // Return updated settings
   return getSettingsResponse(user)
 }
 
 /**
- * Determine which zone a heart rate value belongs to.
  * Zone 0: below zone 1 threshold
  * Zone 1-4: between zone N and zone N+1 threshold
  * Zone 5: at or above zone 5 threshold
@@ -362,7 +316,6 @@ const getZone = (hr: number, zones: HrZoneThresholds): 0 | 1 | 2 | 3 | 4 | 5 => 
 }
 
 /**
- * Compute time spent in each HR zone from heart rate data.
  * Uses actual time gaps between consecutive samples, capped at MAX_GAP_SECONDS.
  * Last sample uses mean gap time from preceding samples.
  */
@@ -373,31 +326,26 @@ export const computeHrZoneSecs = (hrData: [Date, number][], zones: HrZoneThresho
     return result
   }
 
-  // Single sample case
   if (hrData.length === 1) {
     const zone = getZone(hrData[0][1], zones)
     result[zone] = SINGLE_SAMPLE_SECONDS
     return result
   }
 
-  // Calculate gaps and track for mean calculation
   const gaps: number[] = []
 
   for (let i = 0; i < hrData.length - 1; i++) {
     const [time, hr] = hrData[i]
     const nextTime = hrData[i + 1][0]
 
-    // Calculate gap in seconds, capped at MAX_GAP_SECONDS
     const gapMs = nextTime.getTime() - time.getTime()
     const gapSec = Math.min(gapMs / 1000, MAX_GAP_SECONDS)
     gaps.push(gapSec)
 
-    // Add time to appropriate zone
     const zone = getZone(hr, zones)
     result[zone] += gapSec
   }
 
-  // Handle last sample using mean gap time
   const meanGap = gaps.reduce((a, b) => a + b, 0) / gaps.length
   const lastZone = getZone(hrData[hrData.length - 1][1], zones)
   result[lastZone] += Math.min(meanGap, MAX_GAP_SECONDS)

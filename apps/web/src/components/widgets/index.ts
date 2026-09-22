@@ -1,7 +1,3 @@
-/**
- * Widget components for customizable dashboard.
- */
-
 export { ActivitySummaryView, ActivitySummaryWidget } from './ActivitySummaryWidget'
 export { BarChartView, BarChartWidget } from './BarChartWidget'
 export { CorrelationView, CorrelationWidget } from './CorrelationWidget'

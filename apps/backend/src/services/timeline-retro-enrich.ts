@@ -1,5 +1,5 @@
 /**
- * Lazy retro-enrichment of home-timeline entries (#996).
+ * Lazy retro-enrichment of home-timeline entries.
  *
  * Structured enrichment normally happens on ingest, so entries received before
  * enrichment shipped — or whose ingest-time enrichment failed transiently —
@@ -25,7 +25,7 @@ const RETRO_BATCH_SIZE = 3
  * Transient failures allowed per entry before it is stamped out of the
  * candidate set anyway — the candidates are newest-first, so a permanently
  * unreachable peer would otherwise hold the head of the queue and starve every
- * older entry behind it (#1019 review).
+ * older entry behind it.
  */
 export const MAX_TRANSIENT_ATTEMPTS = 3
 
@@ -79,7 +79,7 @@ export const retroEnrichTimelineEntries = async (
       if (structured != null) enriched++
     } catch (error) {
       // Transient (peer blip / timeout / 5xx): keep the entry retryable, but
-      // bounded — a dead host must not hold the queue head forever (#1014).
+      // bounded — a dead host must not hold the queue head forever.
       console.warn(`⚠️ timeline retro-enrichment attempt failed for ${entry.object_uri}:`, error)
       await deps.recordTransientFailure(user, entry.id, MAX_TRANSIENT_ATTEMPTS)
     }
@@ -88,7 +88,7 @@ export const retroEnrichTimelineEntries = async (
 }
 
 /**
- * Reply/Mention state parsed from a fetched AS2 object (#1060): the
+ * Reply/Mention state parsed from a fetched AS2 object: the
  * `inReplyTo` id and whether a `Mention` tag points at `myActorUri`. Exported
  * pure for tests.
  */
@@ -130,7 +130,7 @@ export interface ReplyBackfillDeps {
 }
 
 /**
- * Backfill reply/Mention state for entries ingested before #1060 tracked it —
+ * Backfill reply/Mention state for entries ingested before it was tracked —
  * so a legacy reply stops rendering as a top-level card once the setting hides
  * replies. One attempt per entry, a small batch per timeline read, sequential
  * like the enrichment pass. A fetch that yields no usable AS2 object (post

@@ -18,10 +18,6 @@ export const getDetailUrl = (item: ChartItem): string | undefined =>
     ? `/detail/${item.entity_type}/${encodeURIComponent(item.entity_id)}`
     : undefined)
 
-/**
- * Render an emoji or image icon centered at (cx, cy).
- * Returns the created SVG element selection, or null if no icon was available.
- */
 export const drawItemIcon = (
   parent: SvgParent,
   icon: string | undefined,
@@ -68,9 +64,6 @@ export const drawItemIcon = (
   return null
 }
 
-/**
- * Attach mouseenter/mouseleave hover handlers that toggle opacity and show/hide tooltip.
- */
 export const attachHoverHandlers = (
   selection: SvgParent,
   item: ChartItem,
@@ -125,9 +118,6 @@ export const attachItemClick = (
     })
 }
 
-/**
- * Truncate a label to fit within a pixel width, assuming a fixed character width.
- */
 export const truncateLabel = (label: string, widthPx: number, charWidth = 6): string => {
   const maxChars = Math.floor(widthPx / charWidth)
   if (label.length <= maxChars) return label

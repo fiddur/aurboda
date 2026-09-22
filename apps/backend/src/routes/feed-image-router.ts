@@ -1,12 +1,4 @@
 /**
- * Public feed-post image endpoints (UNAUTHENTICATED).
- *
- * Handles: GET /public/:username/feed/:postId/chart.png
- *          GET /public/:username/feed/:postId/chart.svg
- *          GET /public/:username/feed/:postId/route.png
- *          GET /public/:username/feed/:postId/blocks/:index/image.png
- *          GET /public/:username/feed/:postId/blocks/:index/image.svg
- *
  * The chart is offered both ways from the same series over the same window: a
  * rasterised PNG that every consumer understands (Mastodon attaches it) and a
  * crisp, scalable `image/svg+xml` for Aurboda-native rendering (#901). Rendered

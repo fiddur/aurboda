@@ -206,7 +206,6 @@ fun LoginScreen(
           isLoading = true
           errorMessage = null
 
-          // Normalize server URL
           val normalizedUrl = serverUrl.trimEnd('/')
 
           when (val result = authApi.login(normalizedUrl, username, password)) {

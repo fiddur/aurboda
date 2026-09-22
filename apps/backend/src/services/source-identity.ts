@@ -1,5 +1,5 @@
 /**
- * Source identity for activities that reach us through more than one path (#1080).
+ * Source identity for activities that reach us through more than one path.
  *
  * A Health Connect session written by an app we also sync directly (Garmin
  * Connect, Gravl) carries that app's own id in `metadata.clientRecordId`. We

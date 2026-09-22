@@ -1,7 +1,3 @@
-/**
- * Location query functions.
- */
-
 import type { PlaceSummary } from './types.ts'
 
 import { getNamedLocations, insertActivities } from '../../db/index.ts'

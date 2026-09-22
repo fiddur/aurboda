@@ -63,7 +63,6 @@ export const insertFeedReaction = async (
   return result.rows[0]
 }
 
-/** One outbound reaction by (kind, reacted-to object), or null. */
 export const getFeedReaction = async (
   user: string,
   kind: FeedReactionKind,
@@ -95,7 +94,6 @@ export const removeFeedReaction = async (
   return result.rows[0] ?? null
 }
 
-/** One `(kind, object_uri)` pair the user has reacted to. */
 export interface FeedReactionState {
   kind: FeedReactionKind
   object_uri: string
@@ -249,7 +247,6 @@ export const listFeedPostReactions = async (
   return result.rows
 }
 
-/** A reaction tally for one post + kind. */
 export interface FeedPostReactionCount {
   post_id: string
   kind: FeedReactionKind

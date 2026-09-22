@@ -125,7 +125,6 @@ export const listFeedFollowers = async (
   return result.rows
 }
 
-/** Fetch a single follower by its local id, or null. */
 export const getFeedFollowerById = async (user: string, id: string): Promise<FeedFollowerRecord | null> => {
   const result = await query<FeedFollowerRecord>(
     user,
@@ -135,7 +134,6 @@ export const getFeedFollowerById = async (user: string, id: string): Promise<Fee
   return result.rows[0] ?? null
 }
 
-/** Fetch a single follower by their actor URI, or null. */
 export const getFeedFollowerByActor = async (
   user: string,
   actorUri: string,

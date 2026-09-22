@@ -1,8 +1,6 @@
 import type { ArticleContent, ChallengeShare, FeedPostKind, FeedVisibility } from '@aurboda/api-spec'
 
 /**
- * Feed posts — activities a user published to their federated feed.
- *
  * Posts live in the user's own database. Each records the explicit metric
  * selection that bounds what leaves the instance: `included_metrics` (scalar
  * summaries) and `series_metrics` (high-resolution opt-in). The latter is the
@@ -278,7 +276,6 @@ export const listPublicFeedPosts = async (user: string): Promise<FeedPostRecord[
   return result.rows.map(mapFeedPost)
 }
 
-/** Options for `listPublicFeedPostsPage`. */
 export interface PublicFeedPageOpts {
   /**
    * Whether `reply` posts are listed. The ActivityPub outbox lists everything
@@ -336,7 +333,6 @@ export const listPublicFeedPostsKeyset = async (
   return result.rows.map(mapFeedPostPageRow)
 }
 
-/** Total number of posts on the public outbox (see `listPublicFeedPosts`). */
 export const countPublicFeedPosts = async (user: string): Promise<number> => {
   const result = await query<{ count: number }>(
     user,

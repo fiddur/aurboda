@@ -1,6 +1,4 @@
 /**
- * Enrich a received timeline post with its native Aurboda structured data.
- *
  * A delivered `Note` carries the QuantPub scalar summary in-band (#896), but
  * not the high-resolution series data. So when a followed *Aurboda* instance
  * posts, we fetch the richer structured payload it serves at
@@ -52,10 +50,6 @@ export interface ParsedFeedObject {
   postId: string
 }
 
-/**
- * Parse an Aurboda feed-post object URI into its origin + user + postId, or null
- * if it isn't shaped like one (e.g. a Mastodon status URL).
- */
 export const parseAurbodaFeedUrl = (raw: string): ParsedFeedObject | null => {
   let url: URL
   try {
@@ -138,10 +132,8 @@ export const enrichFromAurboda = async (
 /** Total time budget for one post's enrichment (discovery + structured fetch). */
 const ENRICH_TIMEOUT_MS = 12_000
 
-/** An enricher: object URI (+ optional capability token) → structured payload or null. */
 export type TimelineEnricher = (objectUri: string, token?: string) => Promise<FeedStructuredPost | null>
 
-/** The real dependency wiring shared by both enricher variants below. */
 const realEnrichDeps = (origin: string): AurbodaEnrichDeps => ({
   discover: discoverInstance,
   fetchStructured: async (url) => (await safeFetchGet(url)).data,
