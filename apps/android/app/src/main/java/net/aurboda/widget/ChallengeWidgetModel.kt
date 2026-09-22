@@ -17,10 +17,7 @@ import kotlin.math.floor
 import kotlin.math.roundToLong
 
 /**
- * Pure logic behind the challenge home-screen widget: which challenges can be
- * picked, how standings become race-chart series and leaderboard rows, and how
- * the widget lays itself out at a given size. No Android framework types, so
- * everything here is unit-testable.
+ * No Android framework types here, so all of it is unit-testable.
  */
 
 /**
@@ -57,7 +54,6 @@ data class ChallengePick(
     val timezone: String,
     val unit: String,
 ) {
-    /** What the widget shows about this challenge itself. */
     fun summary(): ChallengeSummary =
         ChallengeSummary(url, name, unit, parseInstantMillis(startTs), parseInstantMillis(endTs), timezone)
 }
@@ -218,7 +214,7 @@ fun bucketEndAt(startMillis: Long, effective: ChallengeEffectiveBucketSize?, tim
     }
 }
 
-/** The bucket-end function for one set of standings: the host's size when sent, inference otherwise (#991). */
+/** The bucket-end function for one set of standings: the host's size when sent, inference otherwise. */
 fun bucketEndFunction(
     effective: ChallengeEffectiveBucketSize?,
     timezone: String,
@@ -249,7 +245,6 @@ fun cumulativeSeries(
     return RaceSeries(color, points)
 }
 
-/** One line of the widget leaderboard. */
 data class LeaderboardRow(
     val rank: Int,
     val name: String,
@@ -279,7 +274,6 @@ fun leaderboard(standings: List<ChallengeStanding>, myIdentityUrl: String?): Lis
     }
 }
 
-/** 🏆 for the winner, 🥈/🥉 for the runners-up; null below the podium. */
 fun podiumMedal(rank: Int): String? =
     when (rank) {
         1 -> "🏆"
@@ -305,7 +299,7 @@ fun hasSubstitutedMeRow(visible: List<LeaderboardRow>, all: List<LeaderboardRow>
 /**
  * The text of a row's rank cell, or null when the cell is hidden. The narrowest
  * widgets drop ranks to give names room — except on a "me" row that replaced
- * the last visible row (#992): without its rank a 10th place right under the
+ * the last visible row: without its rank a 10th place right under the
  * leader reads as 2nd, so that row keeps its rank, prefixed "…" to say rows
  * were skipped.
  */
