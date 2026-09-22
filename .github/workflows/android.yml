@@ -38,6 +38,10 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          # Google no longer serves the obsolete `tools` package, which the
+          # pinned v3 still asks for by default and then fails on.
+          packages: 'platform-tools'
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
