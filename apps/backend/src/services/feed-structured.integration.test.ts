@@ -70,7 +70,7 @@ describe('resolveStructuredPost', () => {
     expect(structured).not.toBeNull()
     if (structured?.kind !== 'activity') throw new Error('expected an activity payload')
     expect(structured.activity_type).toBe('exercise')
-    // The author's personal message rides the structured payload (#995).
+    // The author's personal message rides the structured payload.
     expect(structured.message).toBe('Lovely morning!')
     expect(structured.start_time).toBe(START.toISOString())
     expect(structured.end_time).toBe(END.toISOString())

@@ -56,8 +56,6 @@ const mapJunctionRow = (row: Record<string, unknown>): MealFoodItemLink => {
   return link as unknown as MealFoodItemLink
 }
 
-// ── Types ────────────────────────────────────────────────────────────────────
-
 export interface MealFoodItemInput {
   food_item_id: string
   quantity?: number
@@ -70,11 +68,6 @@ export interface MealFoodItemInput {
   [nutrient: string]: string | number | undefined
 }
 
-// ── Operations ───────────────────────────────────────────────────────────────
-
-/**
- * Get all food items linked to a meal, ordered by sort_order.
- */
 export const getMealFoodItems = async (user: string, mealId: string): Promise<MealFoodItemLink[]> => {
   const result = await query(
     user,
@@ -87,9 +80,6 @@ export const getMealFoodItems = async (user: string, mealId: string): Promise<Me
   return result.rows.map(mapJunctionRow)
 }
 
-/**
- * Replace all food items for a meal (delete existing + bulk insert).
- */
 export const setMealFoodItems = async (
   user: string,
   mealId: string,
@@ -142,10 +132,6 @@ export const findMealsContainingFoodItem = async (user: string, foodItemId: stri
   return result.rows.map((row) => row.meal_id as string)
 }
 
-/**
- * Get food items for multiple meals at once (batch query).
- * Returns a map of meal_id → MealFoodItemLink[].
- */
 export const getMealFoodItemsBatch = async (
   user: string,
   mealIds: string[],

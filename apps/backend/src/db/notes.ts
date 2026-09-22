@@ -2,9 +2,6 @@ import type { DataSource } from '@aurboda/api-spec'
 
 import type { EntityType, Note } from './types.ts'
 
-/**
- * Notes CRUD operations.
- */
 import { query } from './connection.ts'
 import { buildDynamicUpdate } from './dynamic-update.ts'
 import { mapNoteRow } from './row-mappers.ts'
@@ -60,10 +57,7 @@ export interface NoteFieldUpdates {
   end_time?: Date | null
 }
 
-/**
- * Update a note's content and/or its own time anchor. `updated_at` is always
- * bumped, so passing no fields still touches the row.
- */
+/** `updated_at` is always bumped, so passing no fields still touches the row. */
 export const updateNoteFields = async (
   user: string,
   id: string,
@@ -98,10 +92,7 @@ export const getNoteRoot = async (user: string, id: string): Promise<Note | null
   return getNoteById(user, note.entity_id)
 }
 
-/**
- * Update the inherited time fields on all notes for a given entity.
- * Called when the parent entity's timing changes (e.g. a tag is updated).
- */
+/** Called when the parent entity's timing changes (e.g. a tag is updated). */
 export const updateNoteTimesForEntity = async (
   user: string,
   entityType: EntityType,
@@ -150,20 +141,11 @@ export const getNotesByEntityIds = async (
   return map
 }
 
-/**
- * Get the replies of a set of thread roots, keyed by root note id, oldest first.
- * Threads are one level deep, so the result never needs recursing into.
- */
+/** Threads are one level deep, so the result never needs recursing into. */
 export const getRepliesForRootIds = async (user: string, rootIds: string[]): Promise<Map<string, Note[]>> =>
   getNotesByEntityIds(user, 'note', rootIds)
 
 /**
- * Get all notes whose time range overlaps [start, end].
- *
- * A note overlaps the window if:
- *  - It has a start_time and end_time, and they overlap [start, end] (i.e. start_time <= end AND end_time >= start)
- *  - It has a start_time but no end_time (point-in-time), and start_time falls within [start, end]
- *
  * Notes with no start_time (e.g. metric notes using composite entity_id) are excluded from this query.
  * Replies (`entity_type = 'note'`) are excluded too — they only ever surface nested under their root.
  */
@@ -313,11 +295,7 @@ export const reanchorNotes = async (
   )
 }
 
-/**
- * Upsert a note from an external sync source.
- * If a note with the same entity + source already exists, update its content.
- * If the content is empty/null, delete the synced note (comment was removed upstream).
- */
+/** An empty/null content deletes the synced note (the comment was removed upstream). */
 export const upsertSyncedNote = async (
   user: string,
   entityType: EntityType,
@@ -328,7 +306,6 @@ export const upsertSyncedNote = async (
   endTime?: Date,
 ): Promise<void> => {
   if (!content) {
-    // Remove synced note if comment was cleared upstream
     await query(user, `DELETE FROM notes WHERE entity_type = $1 AND entity_id = $2 AND source = $3`, [
       entityType,
       entityId,

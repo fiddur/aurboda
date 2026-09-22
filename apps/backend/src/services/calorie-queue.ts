@@ -1,6 +1,4 @@
 /**
- * Calorie computation job queue using pg-boss.
- *
  * Heart-rate ingestion (`POST /sync/HeartRateRecord`) used to call
  * `triggerCalorieComputation` synchronously inside the request handler.
  * For an initial Android sync that uploads weeks of HR data in 50-sample
@@ -17,10 +15,6 @@
 import type { Job, PgBoss } from './pg-boss.ts'
 
 import { auditError } from './audit-log.ts'
-
-// ============================================================================
-// Types
-// ============================================================================
 
 export interface CalorieJobData {
   user: string
@@ -43,20 +37,14 @@ interface MergedWindow {
   end: Date
 }
 
-// ============================================================================
-// Configuration
-// ============================================================================
-
 const QUEUE_NAME = 'calorie-compute'
-
-// ============================================================================
-// Batch helper (exported for unit testing)
-// ============================================================================
 
 /**
  * Group jobs by user and merge their time windows. When 20 HR-batch requests
  * arrive in a 5-second polling interval, the worker runs `triggerCalorieComputation`
  * once per user across the union window instead of 20 separate times.
+ *
+ * Exported for unit testing.
  */
 export const groupCalorieJobs = (jobs: Job<CalorieJobData>[]): Map<string, MergedWindow> => {
   const byUser = new Map<string, MergedWindow>()
@@ -73,10 +61,6 @@ export const groupCalorieJobs = (jobs: Job<CalorieJobData>[]): Map<string, Merge
   }
   return byUser
 }
-
-// ============================================================================
-// Factory
-// ============================================================================
 
 /* v8 ignore start -- requires real pg-boss instance */
 export const createCalorieQueue = async (boss: PgBoss, deps: CalorieQueueDeps): Promise<CalorieQueue> => {

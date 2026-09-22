@@ -1,7 +1,7 @@
 /**
  * Data resolution behind an article chart/correlation block's rendered image —
  * the single source shared by the block-image routes (`createFeedImageRouter`
- * deps) and the markdown export's eligibility check (#974), so "would this
+ * deps) and the markdown export's eligibility check, so "would this
  * block's image render?" can never drift from what the endpoint actually does.
  */
 import type { CorrelationSelector } from '@aurboda/api-spec'

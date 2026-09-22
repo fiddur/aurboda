@@ -1,11 +1,3 @@
-/**
- * Barrel re-export for activity DB operations. The original `db/activities.ts`
- * was split into:
- *   - merge.ts        — pure merge logic (cross-source + same-type)
- *   - supersession.ts — superseded_by materialization (uses merge)
- *   - mutations.ts    — insert/update/delete writes
- *   - queries.ts      — read operations
- */
 export {
   CROSS_MERGE_SOURCES,
   findMergedGroupForActivity,

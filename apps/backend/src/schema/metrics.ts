@@ -1,7 +1,3 @@
-/**
- * Time-series and metric-domain table SQL: normalized time series, custom
- * metric definitions, and the raw_records sink.
- */
 export const metricsTables: Record<string, string> = {
   // Normalized time-series metrics for fast charting queries
   time_series: `

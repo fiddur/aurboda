@@ -7,7 +7,6 @@ vi.mock('./audit-log', () => ({
   auditWarn: vi.fn(),
 }))
 
-// Mock geocoding
 vi.mock('./geocoding', () => ({
   reverseGeocode: vi.fn().mockResolvedValue({
     data: { address: 'Test Address' },

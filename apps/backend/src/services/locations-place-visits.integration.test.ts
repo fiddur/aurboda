@@ -1,6 +1,4 @@
 /**
- * Integration test for getPlaceVisits — issue #811.
- *
  * A stale GPS fix on the way to an un-named destination used to be merged with
  * every later "unknown" fix (by the shared "Somewhere" name), producing one
  * long stay anchored at the first (travel) fix that swallowed the drive and the

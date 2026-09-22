@@ -46,12 +46,11 @@ import { resolveActivityWindow } from './queries/index.ts'
 import { getSettings } from './settings.ts'
 import { withReplyCounts } from './timeline-replies.ts'
 
-/** Options for `serializeFeedPost`. */
 export interface SerializeFeedPostOpts {
   /**
    * Attach the FULL structured payload (typed metrics + inline series + route),
    * assembled by the same helper the public structured endpoint uses, so the
-   * author's own card renders exactly what a subscribing peer renders (#1008).
+   * author's own card renders exactly what a subscribing peer renders.
    * Off by default: MCP listing tools skip the weight, and the public profile
    * listing attaches structured through its shared per-post LRU instead of
    * this opt-in.
@@ -247,7 +246,6 @@ export type FeedReactionCountsFetcher = (user: string, postIds: string[]) => Pro
 /** Batched reply tallies for a page of posts, keyed by each post's object URI. */
 export type FeedReplyCountsFetcher = (user: string, objectUris: string[]) => Promise<TimelineReplyCount[]>
 
-/** Options for `getFeedPage`: the serialisation opts plus what the counts need. */
 export interface FeedPageOpts extends SerializeFeedPostOpts {
   /**
    * Web origin. Present, each post's `reply_count` is looked up by its object
@@ -282,7 +280,7 @@ const withReactionCounts = async (
 
 /**
  * One keyset page of the owner's feed (newest first) plus the cursor for the
- * next page — null when there are no more (#1012). Shared by the REST `GET
+ * next page — null when there are no more. Shared by the REST `GET
  * /feed` route and the MCP `list_feed` tool (parity), like `getTimelinePage`
  * for the home timeline: fetch `limit + 1` rows to detect a next page without a
  * second query, serialise the page, and encode the last row's `(created_at,
@@ -313,7 +311,7 @@ export const getFeedPage = async (
 }
 
 /**
- * Resolve what a share of `activity` with `selection` WOULD federate (#902):
+ * Resolve what a share of `activity` with `selection` WOULD federate:
  * the exact `content` HTML (via the same `feedPostContent` used for delivery
  * and the owner card) and the typed scalars — without creating a post. Backs
  * the Share dialog's live preview, so what the user sees before clicking

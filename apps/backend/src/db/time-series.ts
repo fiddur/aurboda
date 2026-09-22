@@ -1,6 +1,3 @@
-/**
- * Time series data CRUD, bucketed aggregation, and statistics.
- */
 import format from 'pg-format'
 
 import type { BucketedMetricData, DailyMetricAggregate, MetricStats, TimeSeriesPoint } from './types.ts'
@@ -92,7 +89,6 @@ export const getTimeSeries = async (
   return result.rows.map((row) => [new Date(row.time), row.value])
 }
 
-/** Like getTimeSeries but also returns the source field for each data point. */
 export const getTimeSeriesWithSource = async (
   user: string,
   metric: string,
@@ -155,7 +151,6 @@ export const getRawDailySum = async (
   return Number(result.rows[0].total)
 }
 
-/** Time series entry returned by getTimeSeriesEntriesMultiMetric. */
 export interface TimeSeriesEntry {
   metric: string
   time: Date
@@ -164,10 +159,7 @@ export interface TimeSeriesEntry {
   source: string
 }
 
-/**
- * Fetch all time series entries for a list of metrics in a time range,
- * including unit and source. Supports built-in and custom metric names.
- */
+/** Supports built-in and custom metric names. */
 export const getTimeSeriesEntriesMultiMetric = async (
   user: string,
   metrics: string[],
@@ -257,10 +249,6 @@ export const getTimeSeriesMultiMetric = async (
   return data
 }
 
-// ============================================================================
-// Aggregated Time Series Statistics
-// ============================================================================
-
 export const getTimeSeriesStats = async (
   user: string,
   metrics: string[],
@@ -302,7 +290,6 @@ export const getTimeSeriesStats = async (
     sqlNonCumulative: statsSql(''),
   })
 
-  // Sort by metric name for consistent ordering
   return results.sort((a, b) => a.metric.localeCompare(b.metric))
 }
 
@@ -341,33 +328,12 @@ export const getDailyAggregates = async (
     sqlNonCumulative: dailySql(''),
   })
 
-  // Sort by metric and date for consistent ordering
   return results.sort((a, b) => {
     const metricCmp = a.metric.localeCompare(b.metric)
     if (metricCmp !== 0) return metricCmp
     return a.date.localeCompare(b.date)
   })
 }
-
-// ============================================================================
-// Bucketed Time Series Aggregation
-// ============================================================================
-
-/**
- * Get bucketed/aggregated time series data for multiple metrics.
- *
- * Uses PostgreSQL's date_bin function to efficiently bucket data by time intervals.
- * Returns pre-aggregated statistics (avg, min, max, count) for each bucket.
- *
- * @param user - The username
- * @param metrics - Array of metric types to query
- * @param start - Start of time range
- * @param end - End of time range
- * @param bucketMinutes - Bucket size in minutes (e.g., 5, 15, 30, 60, 1440 for 1 day)
- */
-// ============================================================================
-// Time Range Discovery
-// ============================================================================
 
 /** Get the min and max time for a metric (across all sources). Returns null if no data exists. */
 export const getMetricTimeRange = async (
@@ -382,10 +348,6 @@ export const getMetricTimeRange = async (
   if (result.rows.length === 0 || result.rows[0].min_time === null) return null
   return { max: new Date(result.rows[0].max_time), min: new Date(result.rows[0].min_time) }
 }
-
-// ============================================================================
-// Time Series Deletion (soft delete)
-// ============================================================================
 
 export const deleteTimeSeriesPoint = async (
   user: string,
@@ -492,7 +454,6 @@ export const getTimeSeriesBucketed = async (
   return results.sort((a, b) => a.bucket_start.getTime() - b.bucket_start.getTime())
 }
 
-/** Get distinct metric names that have data in the given time range. */
 export const getDistinctMetrics = async (user: string, start: Date, end: Date): Promise<string[]> => {
   const result = await query(
     user,

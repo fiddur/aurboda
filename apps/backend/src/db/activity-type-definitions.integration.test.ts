@@ -1,10 +1,3 @@
-/**
- * Integration tests for the hierarchical activity type definitions.
- *
- * Verifies parent_type relationships: CRUD, cycle prevention, descendant
- * expansion, reparenting on delete and merge.
- */
-
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'

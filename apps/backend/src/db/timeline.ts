@@ -25,7 +25,6 @@ export interface TimelineEntryRecord {
   url: string | null
   published_at: Date
   received_at: Date
-  /** The `inReplyTo` object id when the post is a reply, or null for a top-level post. */
   in_reply_to_uri: string | null
   /** Whether the post carries a Mention tag for the timeline owner. */
   mentions_me: boolean
@@ -345,7 +344,6 @@ export const isTimelineEntryVisible = async (
   return result.rows.length > 0
 }
 
-/** One timeline entry by its local id, or null. */
 export const getTimelineEntryById = async (user: string, id: string): Promise<TimelineEntryRecord | null> => {
   const result = await query<TimelineEntryRecord>(
     user,
@@ -398,7 +396,6 @@ export const listTimelineRepliesTo = async (
   return result.rows
 }
 
-/** How many replies one object has, per object — the batched form for a feed page. */
 export interface TimelineReplyCount {
   in_reply_to_uri: string
   count: number

@@ -11,7 +11,7 @@
  *
  * **An own post's comments** are the opposite: no network at all. Any actor's
  * Note replying to one of the owner's still-existing posts is already admitted
- * to the timeline on ingest (#1060), so the comments under a post are just the
+ * to the timeline on ingest, so the comments under a post are just the
  * `timeline_entry` rows pointing at it — carrying the reader's like/boost state
  * and repliable in turn, like any other card.
  */
@@ -113,7 +113,7 @@ export interface ThreadSnapshotDeps {
 /**
  * The thread under one timeline post: the origin's snapshot plus the reader's
  * own replies. `fetched: false` means the origin's thread couldn't be read at
- * all — an empty list then means "unknown", not "nothing there" (#1065). Our
+ * all — an empty list then means "unknown", not "nothing there". Our
  * own replies still render either way.
  *
  * Best-effort throughout: a failed own-reply lookup costs the `mine` merge, not

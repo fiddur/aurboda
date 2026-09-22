@@ -10,7 +10,6 @@ import {
   updateReport,
 } from './reports.ts'
 
-// Mock the db module
 vi.mock('../db', () => ({
   deleteReport: vi.fn(),
   getLatestMetricValue: vi.fn(),
@@ -89,7 +88,6 @@ describe('addReport', () => {
     expect(result.data!.report_type).toBe('inbody')
     expect(result.data!.entries).toHaveLength(2)
 
-    // Should write through to time_series
     expect(mockInsertTimeSeries).toHaveBeenCalledWith('testuser', [
       {
         metric: 'weight',
@@ -145,7 +143,6 @@ describe('addReport', () => {
       report_type: 'blood_panel',
     })
 
-    // Check that the entries passed to insertReport have auto-derived flags
     const insertCall = mockInsertReport.mock.calls[0][1]
     expect(insertCall.entries[0].flag).toBe('normal') // 45 is within [20, 200]
     expect(insertCall.entries[1].flag).toBe('high') // 250 is above 170
@@ -350,7 +347,6 @@ describe('updateReport', () => {
       expect(entry).not.toHaveProperty('unit')
     }
 
-    // New time_series entries should be inserted
     expect(mockInsertTimeSeries).toHaveBeenCalledWith('testuser', [
       {
         metric: 'weight',
@@ -385,7 +381,6 @@ describe('updateReport', () => {
 
     expect(result.success).toBe(true)
 
-    // Should sync note times for the new date
     expect(mockUpdateNoteTimesForEntity).toHaveBeenCalledWith(
       'testuser',
       'report',

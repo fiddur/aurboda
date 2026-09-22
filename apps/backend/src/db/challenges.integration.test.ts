@@ -1,8 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
-/**
- * Integration tests for challenges CRUD, members, and participations.
- */
 import type { ChallengeSpecFields } from './challenges.ts'
 
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'

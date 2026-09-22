@@ -220,7 +220,6 @@ describe('Outbound Sync Queue Integration Tests', () => {
         [oldId],
       )
 
-      // Create a recent entry
       await enqueueOutboundSync(user, {
         entity_id: 'recent-exercise',
         entity_type: 'activity',
@@ -252,7 +251,6 @@ describe('Outbound Sync Queue Integration Tests', () => {
         [oldId],
       )
 
-      // Create two recent entries
       await enqueueOutboundSync(user, {
         entity_id: 'recent-1',
         entity_type: 'activity',
@@ -291,7 +289,6 @@ describe('Outbound Sync Queue Integration Tests', () => {
       const ok = await ackOutboundSync(user, id, 'hc-record-abc')
       expect(ok).toBe(true)
 
-      // Should no longer be in pending
       const { entries: pending } = await getPendingOutboundSync(user)
       expect(pending).toHaveLength(0)
     })
@@ -334,7 +331,6 @@ describe('Outbound Sync Queue Integration Tests', () => {
       const ok = await failOutboundSync(user, id)
       expect(ok).toBe(true)
 
-      // Should no longer be in pending
       const { entries: pending } = await getPendingOutboundSync(user)
       expect(pending).toHaveLength(0)
     })
@@ -356,7 +352,6 @@ describe('Outbound Sync Queue Integration Tests', () => {
       expect(result.fail_count).toBe(1)
       expect(result.retrying).toBe(true)
 
-      // Entry should still be pending
       const { entries: pending } = await getPendingOutboundSync(user)
       expect(pending).toHaveLength(1)
       expect(pending[0].fail_count).toBe(1)
@@ -381,12 +376,10 @@ describe('Outbound Sync Queue Integration Tests', () => {
         expect(result.retrying).toBe(true)
       }
 
-      // 5th failure should mark as failed
       const result = await reportSyncFailure(user, id, 'Final failure')
       expect(result.fail_count).toBe(5)
       expect(result.retrying).toBe(false)
 
-      // Entry should no longer be pending
       const { entries: pending } = await getPendingOutboundSync(user)
       expect(pending).toHaveLength(0)
     })
@@ -413,15 +406,12 @@ describe('Outbound Sync Queue Integration Tests', () => {
 
       await failOutboundSync(user, id)
 
-      // Should not be pending
       const { entries: before } = await getPendingOutboundSync(user)
       expect(before).toHaveLength(0)
 
-      // Requeue it
       const ok = await requeueOutboundSync(user, id)
       expect(ok).toBe(true)
 
-      // Should be pending again with reset fail_count
       const { entries: after } = await getPendingOutboundSync(user)
       expect(after).toHaveLength(1)
       expect(after[0].fail_count).toBe(0)

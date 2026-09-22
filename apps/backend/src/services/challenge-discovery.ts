@@ -94,7 +94,6 @@ const TRANSIENT_NETWORK_CODES = new Set([
   'ETIMEDOUT',
 ])
 
-/** The `code` of a Node system error, if this is one. */
 const systemErrorCode = (error: unknown): string | undefined =>
   typeof error === 'object' && error !== null && 'code' in error && typeof error.code === 'string'
     ? error.code

@@ -1,9 +1,3 @@
-/**
- * Oura webhook subscription lifecycle management.
- *
- * Handles: initial subscription creation, periodic renewal, and cleanup.
- */
-
 import { addHours, isBefore } from 'date-fns'
 
 import type { OuraWebhookSubscription } from './central-db.ts'
@@ -49,7 +43,6 @@ export const createOuraWebhookService = (deps: OuraWebhookServiceDeps): OuraWebh
   const initSubscriptions = async (): Promise<void> => {
     console.info('Oura webhook: initializing subscriptions...')
 
-    // Get existing remote subscriptions
     let remoteSubscriptions: OuraSubscriptionResponse[] = []
     try {
       remoteSubscriptions = await deps.listRemoteSubscriptions()
@@ -58,10 +51,8 @@ export const createOuraWebhookService = (deps: OuraWebhookServiceDeps): OuraWebh
       console.error('Oura webhook: failed to list remote subscriptions:', error)
     }
 
-    // Build set of existing (data_type, event_type) pairs
     const existingPairs = new Set(remoteSubscriptions.map((s) => `${s.data_type}:${s.event_type}`))
 
-    // Upsert existing subscriptions to local DB
     for (const sub of remoteSubscriptions) {
       await deps.upsertLocalSubscription({
         callback_url: sub.callback_url,
@@ -72,7 +63,6 @@ export const createOuraWebhookService = (deps: OuraWebhookServiceDeps): OuraWebh
       })
     }
 
-    // Create missing subscriptions
     for (const dataType of OURA_DATA_TYPES) {
       for (const eventType of OURA_EVENT_TYPES) {
         const key = `${dataType}:${eventType}`

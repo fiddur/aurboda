@@ -1,8 +1,4 @@
-/**
- * Activity write operations: insert, update, soft/hard delete, restore, and
- * data-migration helpers. Triggers supersession materialization on writes that
- * may change the merge topology.
- */
+/** Triggers supersession materialization on writes that may change the merge topology. */
 import format from 'pg-format'
 
 import type { Activity, ActivityUpdate, LegacyMatch } from '../types.ts'
@@ -482,13 +478,11 @@ export const markActivityDetailSynced = async (user: string, id: string): Promis
   ])
 }
 
-/** Hard-delete all activities from a given source. */
 export const hardDeleteActivitiesBySource = async (user: string, source: string): Promise<number> => {
   const result = await query(user, `DELETE FROM activities WHERE source = $1`, [source])
   return result.rowCount ?? 0
 }
 
-/** Hard-delete activities by source and external_id prefix. */
 export const hardDeleteActivitiesByExternalIdPrefix = async (
   user: string,
   source: string,
@@ -501,7 +495,6 @@ export const hardDeleteActivitiesByExternalIdPrefix = async (
   return result.rowCount ?? 0
 }
 
-/** Update an activity's end_time by external_id. */
 export const updateActivityEndTimeByExternalId = async (
   user: string,
   externalId: string,
@@ -513,10 +506,7 @@ export const updateActivityEndTimeByExternalId = async (
   ])
 }
 
-/**
- * Update activity_type for all activities with a given tag_key in their data.
- * Used when a user renames a programmatic tag via tag mappings.
- */
+/** Used when a user renames a programmatic tag via tag mappings. */
 export const updateActivityTypeByTagKey = async (
   user: string,
   tagKey: string,
@@ -558,11 +548,7 @@ export const updateScreentimeActivityCategoryPath = async (
   return result.rowCount ?? 0
 }
 
-/**
- * Migrate activities with generic 'exercise' type to their specific type.
- * Handles both legacy activity_type_key and HC exerciseTypeName fields.
- * Returns the number of activities updated.
- */
+/** Handles both legacy activity_type_key and HC exerciseTypeName fields. */
 export const migrateExerciseTypes = async (user: string): Promise<number> => {
   // Step 1: activity_type_key path (legacy)
   const r1 = await query(

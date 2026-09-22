@@ -1,6 +1,4 @@
 /**
- * Deduction rule evaluation queue using pg-boss.
- *
  * Two queues:
  * - `deduction-eval`: Batched evaluation triggered by activity modifications (~10s polling)
  * - `deduction-rule-crud`: One-shot evaluation for rule create/update (~2s polling)
@@ -14,10 +12,6 @@ import type { DeductionEngineDeps, EvaluationWindow } from './deduction-engine.t
 import type { Job, PgBoss } from './pg-boss.ts'
 
 import { auditError, auditInfo } from './audit-log.ts'
-
-// ============================================================================
-// Types
-// ============================================================================
 
 export interface DeductionEvalJobData {
   user: string
@@ -65,17 +59,9 @@ export interface DeductionQueueDeps {
   engineDeps: DeductionEngineDeps
 }
 
-// ============================================================================
-// Configuration
-// ============================================================================
-
 const EVAL_QUEUE = 'deduction-eval'
 const CRUD_QUEUE = 'deduction-rule-crud'
 const WINDOW_BUFFER_MS = 60 * 60 * 1000 // 1 hour buffer on each side
-
-// ============================================================================
-// Batch processing helpers
-// ============================================================================
 
 interface MergedEvaluation {
   window: EvaluationWindow
@@ -95,7 +81,6 @@ export const groupEvalJobs = (jobs: Job<DeductionEvalJobData>[]): Map<string, Me
 
     const existing = byUser.get(user)
     if (existing) {
-      // Merge: widen window, collect source rule IDs
       if (start < existing.window.start) existing.window.start = start
       if (end > existing.window.end) existing.window.end = end
       if (source_rule_id) existing.excludeRuleIds.add(source_rule_id)
@@ -109,33 +94,19 @@ export const groupEvalJobs = (jobs: Job<DeductionEvalJobData>[]): Map<string, Me
   return byUser
 }
 
-/**
- * Expand a window by the buffer on each side.
- */
 const expandWindow = (window: EvaluationWindow): EvaluationWindow => ({
   end: new Date(window.end.getTime() + WINDOW_BUFFER_MS),
   start: new Date(window.start.getTime() - WINDOW_BUFFER_MS),
 })
 
-// ============================================================================
-// Factory
-// ============================================================================
-
-/**
- * Create a deduction evaluation queue using a shared pg-boss instance.
- */
 /* v8 ignore start -- requires real pg-boss instance */
 export const createDeductionQueue = async (
   boss: PgBoss,
   deps: DeductionQueueDeps,
 ): Promise<DeductionQueue> => {
-  // Create both queues
   await boss.createQueue(EVAL_QUEUE)
   await boss.createQueue(CRUD_QUEUE)
 
-  // --------------------------------------------------------------------------
-  // Activity-triggered evaluation worker (batched, ~10s polling)
-  // --------------------------------------------------------------------------
   await boss.work<DeductionEvalJobData>(
     EVAL_QUEUE,
     { batchSize: 100, pollingIntervalSeconds: 10 },
@@ -166,22 +137,17 @@ export const createDeductionQueue = async (
     },
   )
 
-  // --------------------------------------------------------------------------
-  // Rule CRUD evaluation worker (immediate, ~2s polling)
-  // --------------------------------------------------------------------------
   await boss.work<RuleCrudJobData>(CRUD_QUEUE, { batchSize: 1, pollingIntervalSeconds: 2 }, async (jobs) => {
     for (const job of jobs) {
       const { user, rule_ids, mode, cleanup_rule_ids } = job.data
 
       try {
-        // Clean up old activities if requested
         if (cleanup_rule_ids) {
           for (const ruleId of cleanup_rule_ids) {
             await deps.deleteRuleActivities(user, ruleId)
           }
         }
 
-        // Get the rules to evaluate
         let rules: DeductionRule[]
         if (mode === 'evaluate_all') {
           rules = await deps.getEnabledRules(user)

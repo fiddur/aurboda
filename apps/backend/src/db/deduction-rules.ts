@@ -1,6 +1,3 @@
-/**
- * Deduction rule CRUD operations.
- */
 import type { Condition, DeductionRule, DeductionRuleMode } from '@aurboda/api-spec'
 
 import { query } from './connection.ts'
@@ -161,10 +158,7 @@ export const deleteDeductionRule = async (user: string, id: string): Promise<boo
   return (result.rowCount ?? 0) > 0
 }
 
-/**
- * Delete all activities produced by a specific deduction rule.
- * Used when re-evaluating a rule retroactively.
- */
+/** Used when re-evaluating a rule retroactively. */
 export const deleteRuleActivities = async (user: string, ruleId: string): Promise<number> => {
   const result = await query(
     user,
@@ -198,9 +192,6 @@ export const deleteStaleRuleActivities = async (
   return result.rowCount ?? 0
 }
 
-/**
- * Insert a deduction rule run audit record.
- */
 export const insertDeductionRuleRun = async (
   user: string,
   run: {

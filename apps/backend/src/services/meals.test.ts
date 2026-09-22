@@ -14,7 +14,6 @@ import {
 } from './meals.ts'
 import * as notesSvc from './notes.ts'
 
-// Mock the db module
 vi.mock('../db', () => ({
   deleteMeal: vi.fn(),
   deleteNotesForEntity: vi.fn().mockResolvedValue(0),
@@ -334,8 +333,6 @@ describe('updateMealById', () => {
   })
 })
 
-// ── buildScaledJunctionItem ───────────────────────────────────────────────
-
 const canonicalFoodItem = (overrides: Record<string, unknown> = {}) =>
   ({
     calories: 200,
@@ -442,8 +439,6 @@ describe('buildScaledJunctionItem', () => {
   })
 })
 
-// ── hasIncompleteNutrients ─────────────────────────────────────────────────
-
 const makeLink = (overrides: Partial<MealFoodItemLink> = {}): MealFoodItemLink =>
   ({
     id: 'link-1',
@@ -477,8 +472,6 @@ describe('hasIncompleteNutrients', () => {
     expect(hasIncompleteNutrients(links)).toBe(false)
   })
 })
-
-// ── nutrient_data_incomplete in getMeal ─────────────────────────────────────
 
 const mockGetMealFoodItemsBatch = vi.mocked(db.getMealFoodItemsBatch)
 
@@ -535,8 +528,6 @@ describe('getMeal nutrient_data_incomplete', () => {
     expect(result.data!.nutrient_data_incomplete).toBeUndefined()
   })
 })
-
-// ── Display fallback for deleted canonicals ─────────────────────────────────
 
 const foodItems = await import('./food-items.ts')
 const mockResolveFoodItemDisplay = vi.mocked(foodItems.resolveFoodItemDisplay)

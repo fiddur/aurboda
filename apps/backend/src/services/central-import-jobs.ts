@@ -1,6 +1,4 @@
 /**
- * Bulk-import job tracking on the central database.
- *
  * Imports target shared (central) reference data, so the job rows live in
  * the central DB too. State machine: pending → running → completed | failed.
  * The runner ticks `last_progress_at` on every progress update; a heartbeat-

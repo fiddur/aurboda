@@ -10,10 +10,6 @@ import {
   resolveCategory,
 } from './screentime-categories.ts'
 
-// ============================================================================
-// Test fixtures
-// ============================================================================
-
 const makeCategory = (
   partial: Partial<ScreentimeCategory> & Pick<ScreentimeCategory, 'name'>,
 ): ScreentimeCategory => ({
@@ -73,10 +69,6 @@ const sampleCategories: ScreentimeCategory[] = [
   }),
 ]
 
-// ============================================================================
-// compileRules
-// ============================================================================
-
 describe('compileRules', () => {
   test('only compiles categories with regex rules', () => {
     const rules = compileRules(sampleCategories)
@@ -110,10 +102,6 @@ describe('compileRules', () => {
     expect(compileRules(noRuleCategories)).toEqual([])
   })
 })
-
-// ============================================================================
-// resolveCategory
-// ============================================================================
 
 describe('resolveCategory', () => {
   const compiled = compileRules(sampleCategories)
@@ -161,10 +149,6 @@ describe('resolveCategory', () => {
   })
 })
 
-// ============================================================================
-// getColorForCategory
-// ============================================================================
-
 describe('getColorForCategory', () => {
   test('returns exact match color', () => {
     expect(getColorForCategory(['Work'], sampleCategories)).toBe('#22c55e')
@@ -195,10 +179,6 @@ describe('getColorForCategory', () => {
   })
 })
 
-// ============================================================================
-// getScoreForCategory
-// ============================================================================
-
 describe('getScoreForCategory', () => {
   test('returns exact match score', () => {
     expect(getScoreForCategory(['Work'], sampleCategories)).toBe(2)
@@ -227,10 +207,6 @@ describe('getScoreForCategory', () => {
     expect(getScoreForCategory(['Comms'], withZero)).toBe(0)
   })
 })
-
-// ============================================================================
-// convertAwCategories
-// ============================================================================
 
 describe('convertAwCategories', () => {
   test('converts AW categories to create body format', () => {

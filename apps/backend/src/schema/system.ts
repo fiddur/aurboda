@@ -1,7 +1,3 @@
-/**
- * System / cross-cutting table SQL: OAuth, MCP sessions, outbound sync queue,
- * sync state, user settings, audit log, notes, goals, uploaded icons.
- */
 export const systemTables: Record<string, string> = {
   // MCP session persistence for surviving backend restarts
   mcp_sessions: `

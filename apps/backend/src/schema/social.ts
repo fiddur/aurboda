@@ -1,6 +1,4 @@
 /**
- * Social / sharing table SQL.
- *
  * `shared_dashboards` holds a user's published dashboards. It lives in the
  * user's own database (the config is the user's data); the `slug` is globally
  * disambiguated by the `username` in the public URL, so per-DB uniqueness is
@@ -151,7 +149,6 @@ export const socialTables: Record<string, string> = {
       updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `,
-  // Additive columns for feed_posts tables created before the article kind (all idempotent).
   feed_posts_article_columns: `
     ALTER TABLE feed_posts ADD COLUMN IF NOT EXISTS kind VARCHAR(12) NOT NULL DEFAULT 'activity';
     ALTER TABLE feed_posts ADD COLUMN IF NOT EXISTS article JSONB;
@@ -294,7 +291,6 @@ export const socialTables: Record<string, string> = {
       created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `,
-  // Additive migrations for pre-existing feed_follower tables (all idempotent).
   feed_follower_columns: `
     ALTER TABLE feed_follower ADD COLUMN IF NOT EXISTS id UUID NOT NULL DEFAULT gen_random_uuid();
     ALTER TABLE feed_follower ADD COLUMN IF NOT EXISTS handle TEXT;
@@ -327,7 +323,6 @@ export const socialTables: Record<string, string> = {
       created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `,
-  // Additive migration for pre-existing feed_following tables (idempotent).
   feed_following_notify: `
     ALTER TABLE feed_following ADD COLUMN IF NOT EXISTS notify_on_post BOOLEAN NOT NULL DEFAULT true
   `,
@@ -366,7 +361,6 @@ export const socialTables: Record<string, string> = {
       enrich_attempts SMALLINT NOT NULL DEFAULT 0
     )
   `,
-  // Additive columns for DBs created before the structured-timeline / media features.
   timeline_entry_structured: `
     ALTER TABLE timeline_entry ADD COLUMN IF NOT EXISTS structured JSONB
   `,

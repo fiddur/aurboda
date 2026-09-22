@@ -1,6 +1,4 @@
 /**
- * Geocoding job queue using pg-boss.
- *
  * Uses the shared pg-boss instance for cross-instance job coordination.
  * Enforces 1.1s delay between jobs to respect Nominatim rate limits.
  */
@@ -10,10 +8,6 @@ import type { Job, PgBoss } from './pg-boss.ts'
 
 import { auditError, auditInfo, auditWarn } from './audit-log.ts'
 import { reverseGeocode } from './geocoding.ts'
-
-// ============================================================================
-// Types
-// ============================================================================
 
 export interface GeocodeJobData {
   user: string
@@ -31,28 +25,13 @@ export interface GeocodeQueue {
   enqueueJobs: (user: string, locations: Array<{ id: string; lat: number; lon: number }>) => Promise<void>
 }
 
-// ============================================================================
-// Configuration
-// ============================================================================
-
 const QUEUE_NAME = 'geocode-location'
 const RATE_LIMIT_DELAY_MS = 1100 // 1.1 seconds between requests (Nominatim rate limit)
 
-/**
- * Sleep for a specified duration.
- */
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
 
-// ============================================================================
-// Job handler factory
-// ============================================================================
-
-/**
- * Create a job handler with the given dependencies.
- */
 const createJobHandler = (deps: GeocodeQueueDeps) => {
   return async (jobs: Job<GeocodeJobData>[]): Promise<void> => {
-    // Process jobs sequentially with rate limiting
     for (const job of jobs) {
       const { detectedLocationId, lat, lon, user } = job.data
 
@@ -61,7 +40,6 @@ const createJobHandler = (deps: GeocodeQueueDeps) => {
       const result = await reverseGeocode(lat, lon)
 
       // Rate limit: wait before allowing next request
-      // This ensures we respect Nominatim's 1 request/second limit
       await sleep(RATE_LIMIT_DELAY_MS)
 
       if (result.success) {
@@ -71,7 +49,6 @@ const createJobHandler = (deps: GeocodeQueueDeps) => {
         })
         auditInfo(user, 'data', `Geocoded location ${detectedLocationId}`, { address: result.data.address })
       } else {
-        // Handle different error types
         const { error } = result
         if (error.type === 'network') {
           // Network error - retry by throwing
@@ -100,17 +77,6 @@ const createJobHandler = (deps: GeocodeQueueDeps) => {
   }
 }
 
-// ============================================================================
-// Queue Factory
-// ============================================================================
-
-/**
- * Create a geocode queue instance using a shared pg-boss instance.
- *
- * @param boss - Shared pg-boss instance
- * @param deps - Dependencies for the queue (updateDetectedLocation function)
- * @returns GeocodeQueue instance
- */
 export const createGeocodeQueue = async (boss: PgBoss, deps: GeocodeQueueDeps): Promise<GeocodeQueue> => {
   await boss.createQueue(QUEUE_NAME)
 

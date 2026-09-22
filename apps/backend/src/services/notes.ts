@@ -1,6 +1,4 @@
 /**
- * Notes service — CRUD operations for comments.
- *
  * A comment is a row in `notes` and comes in three shapes:
  *  - **on an entity** — `entity_type` is one of the real entities (activity,
  *    productivity, metric, report, meal) and `entity_id` points at it. Its
@@ -278,7 +276,6 @@ export async function getNotesInRange(user: string, from: Date, to: Date): Promi
 }
 
 /**
- * Sync the inherited time fields on all notes for an entity when the entity's timing changes.
  * Call this from tag/activity update handlers.
  */
 export async function syncNoteTimesForEntity(

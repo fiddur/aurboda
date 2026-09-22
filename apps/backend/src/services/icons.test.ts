@@ -76,7 +76,6 @@ describe('processIcon', () => {
       expect(result.data.length).toBeLessThanOrEqual(MAX_BYTES)
       expect(result.content_type).toBe('image/png')
 
-      // Verify resized dimensions
       const metadata = await sharp(result.data).metadata()
       expect(metadata.width).toBeLessThanOrEqual(256)
       expect(metadata.height).toBeLessThanOrEqual(256)

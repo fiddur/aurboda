@@ -129,13 +129,12 @@ describe('feed service', () => {
       expect(dto.activity_type).toBe('exercise')
       expect(dto.activity_start_time).toBe(ANCHOR_START.toISOString())
       expect(dto.activity_end_time).toBe(MERGED_END.toISOString())
-      // Rendered `content` HTML (as federated) with the title headline (#884 §1).
+      // Rendered `content` HTML (as federated) with the title headline.
       expect(dto.content).toContain('<strong>Merged run</strong>')
-      // The activity-date line is part of the federated content (#998).
+      // The activity-date line is part of the federated content.
       expect(dto.content).toMatch(/<p>\w{3}, \d+ \w{3} \d{4}/)
-      // Typed resolved scalars back the web's native stat grid (#997).
+      // Typed resolved scalars back the web's native stat grid.
       expect(dto.metrics).toEqual([expect.objectContaining({ key: 'duration', value: expect.any(Number) })])
-      // Base fields still present.
       expect(dto.included_metrics).toEqual(['duration'])
       expect(dto.visibility).toBe('public')
     })
@@ -177,7 +176,7 @@ describe('feed service', () => {
     test('structured payload matches the public structured endpoint exactly, series and route included (#1001 parity)', async () => {
       const user = getTestUser()
       const anchorId = await insertAnchor(user)
-      // Real data behind both the opted-in series and the route (#1011).
+      // Real data behind both the opted-in series and the route.
       await insertTimeSeries(user, [
         { metric: 'heart_rate', source: 'garmin', time: new Date('2026-07-01T08:05:00Z'), value: 140 },
         { metric: 'heart_rate', source: 'garmin', time: new Date('2026-07-01T08:10:00Z'), value: 150 },
@@ -199,7 +198,7 @@ describe('feed service', () => {
         expect.objectContaining({ metric: 'heart_rate', samples: expect.any(Array) }),
       ])
       expect(dto.structured.series[0]?.samples.length).toBeGreaterThan(0)
-      // The route rides along under the include_map opt-in, endpoints intact (#1011).
+      // The route rides along under the include_map opt-in, endpoints intact.
       expect(dto.structured.route).toEqual([
         { lat: 59.33, lon: 18.06, t: '2026-07-01T08:05:00.000Z' },
         { lat: 59.34, lon: 18.07, t: '2026-07-01T08:15:00.000Z' },

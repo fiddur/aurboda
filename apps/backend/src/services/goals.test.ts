@@ -5,7 +5,6 @@ import { getGoalsProgress, getWidgetGoalsProgress } from './goals.ts'
 import * as settings from './settings.ts'
 import * as trends from './trends.ts'
 
-// Mock the db module
 vi.mock('../db', () => ({
   getDailyAggregateValue: vi.fn(),
   getDailyAggregates: vi.fn(),
@@ -14,14 +13,12 @@ vi.mock('../db', () => ({
   getTimeSeries: vi.fn(),
 }))
 
-// Mock the settings module
 vi.mock('./settings', () => ({
   computeHrZoneSecs: vi.fn(),
   getEffectiveGoals: vi.fn(),
   getEffectiveHrZones: vi.fn(),
 }))
 
-// Mock the trends module
 vi.mock('./trends', () => ({
   getTrend: vi.fn(),
 }))

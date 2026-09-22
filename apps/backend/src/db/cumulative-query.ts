@@ -1,8 +1,6 @@
 import type { QueryResultRow } from 'pg'
 
 /**
- * Helper for splitting metric queries by cumulative/non-cumulative type.
- *
  * Cumulative metrics (steps, distance, etc.) use only trusted sources
  * to avoid mixing raw readings with deduplicated daily totals.
  *
@@ -31,7 +29,6 @@ export const splitMetricsByCumulative = (
 })
 
 interface SplitQueryOptions<T> {
-  /** The metric names to query */
   metrics: string[]
   /** Shared query parameters after the metrics array (e.g. start, end dates) */
   params: unknown[]
@@ -41,9 +38,7 @@ interface SplitQueryOptions<T> {
   sqlCumulative: string
   /** SQL for non-cumulative metrics (all sources). $1 = metrics array, remaining = params */
   sqlNonCumulative: string
-  /** Map a database row to the result type */
   mapRow: (row: QueryResultRow) => T
-  /** Execute a query and return rows */
   queryFn: (sql: string, params: unknown[]) => Promise<{ rows: QueryResultRow[] }>
 }
 
@@ -80,9 +75,7 @@ export const querySplitByCumulative = async <T>(options: SplitQueryOptions<T>): 
   }
 
   if (aurbodaOnly.length > 0) {
-    // Use the same cumulative SQL template but with aurbodaOnlySources (HR-computed + gap-fill)
     const extraParams = options.cumulativeExtraParams ?? []
-    // Replace the cumulativeSources param with aurbodaOnlySources
     // The cumulativeExtraParams[0] is the sources array, so we override it
     const aurbodaExtraParams =
       extraParams.length > 0 ? [aurbodaOnlySources, ...extraParams.slice(1)] : [aurbodaOnlySources]

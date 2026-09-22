@@ -113,11 +113,6 @@ export const insertAutoshareRule = async (
   return result.rows[0]
 }
 
-/**
- * Patch a rule. Flipping `enabled` to true stamps `enabled_at = NOW()` (the
- * no-retroactive-sharing gate); disabling leaves the old stamp in place so a
- * disable/enable cycle moves the gate forward, never backwards.
- */
 /** The directly patchable columns, in a fixed order (column name = patch key). */
 const PATCH_COLUMNS = [
   'name',
@@ -148,7 +143,8 @@ export const updateAutoshareRule = async (
     params.push(value)
     sets.push(`${column} = $${params.length}`)
   }
-  // Flipping enabled ON stamps the no-retroactive-sharing gate.
+  // Flipping enabled ON stamps the no-retroactive-sharing gate; disabling leaves
+  // the old stamp in place, so a disable/enable cycle moves the gate forward, never back.
   if (patch.enabled === true) sets.push('enabled_at = NOW()')
 
   const result = await query<AutoshareRuleRecord>(

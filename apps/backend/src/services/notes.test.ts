@@ -1,7 +1,3 @@
-/**
- * Unit tests for the notes service.
- * Tests time-inheritance logic (getEntityTimes) and all exported functions.
- */
 import { randomUUID } from 'node:crypto'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
