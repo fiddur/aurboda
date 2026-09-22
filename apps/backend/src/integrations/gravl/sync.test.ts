@@ -30,7 +30,7 @@ import {
 
 const NOW = new Date('2026-09-03T10:00:00Z')
 
-const summary = (id: string, type: GravlWorkoutSummary['type'] = 'Today'): GravlWorkoutSummary => ({
+const summary = (id: string, type: GravlWorkoutSummary['type'] = 'today'): GravlWorkoutSummary => ({
   calories: 0,
   durationMinutes: 30,
   endDate: '2026-09-02T06:30:00Z',
@@ -59,7 +59,7 @@ const makeClient = (overrides: Partial<GravlClient> = {}): GravlClient =>
   ({
     getAccessToken: vi.fn().mockResolvedValue('gat'),
     getWorkout: vi.fn(async (_token: string, id: string) => detailOf(id)),
-    listWorkouts: vi.fn().mockResolvedValue(page([summary('a'), summary('ext', 'External'), summary('b')])),
+    listWorkouts: vi.fn().mockResolvedValue(page([summary('a'), summary('ext', 'external'), summary('b')])),
     ...overrides,
   }) as unknown as GravlClient
 
