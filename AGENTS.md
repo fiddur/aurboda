@@ -7,6 +7,8 @@ See README.md for general setup. Specific docs in docs/ directory.
 - Android App: apps/android (kotlin)
 - Shared typing and OpenAPI spec: packages/api-spec (typescript and generated yaml/kotlin)
 - Database: PostgreSQL
+- Post-merge tryouts: tryouts (the rig, the recipes and the routine — see
+  [tryouts/AGENTS.md](tryouts/AGENTS.md))
 
 ## API and MCP Parity
 
@@ -382,6 +384,12 @@ this section is the difference.
   ids; `resolve_review_thread` closes one. If the proxy refuses either, answer every
   thread in a reply, and report that the threads need resolving by hand — that is a
   stop, not a reason to look for another way past the gate.
+- **Post-merge tryouts run here too**, as a separate routine driven from
+  [`tryouts/`](tryouts/AGENTS.md): it boots the image CI built for the merge commit and
+  exercises what the PR promised. Its environment is the **one exception** to the
+  empty-setup-script rule above, and the exception is for a browser, not the toolchain —
+  `tryouts/setup-environment.sh` caches puppeteer's Chrome into the environment image.
+  [`tryouts/routine.md`](tryouts/routine.md) holds its settings and instructions.
 
 ## Code style
 
