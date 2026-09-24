@@ -337,17 +337,14 @@ this section is the difference.
 - **The hook also runs `pnpm install --frozen-lockfile` and builds
   `@aurboda/api-spec`**, because the clone has no `node_modules` and the backend and
   web import the package's `dist`. Those and the Node download are the only things
-  there that need the network: `registry.npmjs.org`, `nodejs.org` and
-  `codeload.github.com`, all on the _Trusted_ network level's default list. **One
-  dependency is not served there anyway:** `@flow-js/garmin-connect` is a `github:`
-  dependency of the backend, which pnpm fetches as a tarball from
-  `codeload.github.com`, and the session's GitHub proxy answers 403 for repositories
-  not attached to the session (`fiddur/garmin-connect` is not aurboda). The hook
-  says so and exits 1. That is the environment's policy, not something to route
-  around — do not swap the dependency for a git clone, hand-build the tarball, or
-  install only the packages that happen to resolve: say so and stop, rather than
-  splitting the work into what can be done without it. A 403 from
-  `registry.npmjs.org` is the same kind of stop.
+  there that need the network: `registry.npmjs.org` and `nodejs.org`, both on the
+  _Trusted_ network level's default list. Every dependency comes from the npm
+  registry — the Garmin client is our fork published as `@fiddur/garmin-connect`,
+  not a `github:` dependency, so nothing is fetched from `codeload.github.com`. If
+  the install fails (a 403 from `registry.npmjs.org`, say), the hook says so and
+  exits 1. That is the environment's policy, not something to route around — do
+  not hand-build tarballs or install only the packages that happen to resolve: say
+  so and stop, rather than splitting the work into what can be done without it.
 - **Backend integration tests need a Docker daemon** (`testcontainers` starts
   `postgis/postgis`), and the VM has `dockerd` installed but not running. The hook
   starts it in the background when it can; `docker ps` tells. Without it every

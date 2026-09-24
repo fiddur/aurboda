@@ -36,10 +36,8 @@ and correct this file in the same PR.
 - **Docker is required**, and it is what makes this environment different from the reviewer's. The
   VM has `dockerd` installed but not running; `up.sh` starts it (with `sudo` when it is not root).
   Without a daemon there is no tryout at all.
-- **Node.** Nothing in `tryouts/` needs the Node 25 the session-start hook installs, or the
-  `node_modules` it fails to install (`@flow-js/garmin-connect` is a `github:` dependency the
-  session's proxy answers 403 for). The scripts run on the stock Node; puppeteer resolves from
-  `/opt/tryout`.
+- **Node.** Nothing in `tryouts/` needs the Node 25 or the `node_modules` the session-start
+  hook installs. The scripts run on the stock Node; puppeteer resolves from `/opt/tryout`.
 - **Network.** The rig pulls images, so it needs `registry-1.docker.io`, `auth.docker.io`,
   `production.cloudflare.docker.com` and `hub.docker.com`. `setup-environment.sh` needs
   `registry.npmjs.org`, **`storage.googleapis.com`** (where `puppeteer browsers install chrome`

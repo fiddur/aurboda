@@ -52,14 +52,10 @@ if command -v dockerd >/dev/null && ! docker ps >/dev/null 2>&1; then
   docker ps >/dev/null 2>&1 || echo "⚠️  dockerd did not come up; see /tmp/dockerd.log" >&2
 fi
 
-# @flow-js/garmin-connect is a github: dependency, which pnpm fetches as a
-# tarball from codeload.github.com. The session's GitHub proxy answers 403 for
-# repositories not attached to the session; that is policy, not something to
-# route around.
+# Every dependency comes from registry.npmjs.org. A failure here is the
+# environment's network policy, not something to route around.
 if ! pnpm install --frozen-lockfile; then
-  echo "❌ pnpm install failed. A 403 from codeload.github.com is the session's GitHub" >&2
-  echo "   proxy: it serves tarballs only for repositories attached to the session, and" >&2
-  echo "   fiddur/garmin-connect is not. See 'Running in the cloud' in AGENTS.md." >&2
+  echo "❌ pnpm install failed. See 'Running in the cloud' in AGENTS.md." >&2
   exit 1
 fi
 

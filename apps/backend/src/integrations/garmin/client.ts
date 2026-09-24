@@ -5,9 +5,9 @@
  * blob in oauth_tokens. Credentials are never stored.
  */
 
-import type { IGarminTokens } from '@flow-js/garmin-connect'
+import type { IGarminTokens } from '@fiddur/garmin-connect'
 
-import garminConnectPkg from '@flow-js/garmin-connect'
+import garminConnectPkg from '@fiddur/garmin-connect'
 const { GarminConnect } = garminConnectPkg
 
 import { getOAuthToken, upsertOAuthToken } from '../../db/index.ts'

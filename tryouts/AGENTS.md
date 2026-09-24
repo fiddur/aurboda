@@ -47,10 +47,9 @@ AURBODA_TAG=1a2b3c4 tryouts/up.sh --fresh --wait-image
 
 **Node.** Every script here runs on the VM's stock Node (≥ 20) with no dependencies — `fetch`,
 `node:crypto`, `node:fs` and nothing else — and puppeteer resolves out of `$TRYOUT_HOME`. That
-is deliberate: `.claude/hooks/session-start.sh` installs Node 25 but then **fails** on
-`pnpm install`, because `@flow-js/garmin-connect` is a `github:` dependency the session's proxy
-answers 403 for (see [Running in the cloud](../AGENTS.md#running-in-the-cloud)). A tryout never
-needs `node_modules`, so that failure does not block it.
+is deliberate: a tryout never needs the Node 25 or the `node_modules` that
+`.claude/hooks/session-start.sh` installs (see
+[Running in the cloud](../AGENTS.md#running-in-the-cloud)), so a failed install does not block it.
 
 **Docker.** The VM has `dockerd` installed but usually not running; `up.sh` starts it. `docker
 ps` is the check. The rig itself reaches `registry-1.docker.io`, `auth.docker.io` and
