@@ -16,7 +16,7 @@
     "@aurboda/api-spec": "workspace:*",
     "@fedify/express": "^2.3.1",
     "@fedify/fedify": "^2.3.1",
-    "@flow-js/garmin-connect": "github:fiddur/garmin-connect#feat/mfa-support",
+    "@fiddur/garmin-connect": "^1.7.0",
     "@js-temporal/polyfill": "^0.5.1",
     "@modelcontextprotocol/sdk": "^1.25.2",
     "@sentry/node": "^10.52.0",

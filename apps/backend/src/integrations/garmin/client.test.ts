@@ -13,7 +13,7 @@ const mockGarminConnect = vi.hoisted(() => ({
   verifyMfa: vi.fn().mockResolvedValue(undefined),
 }))
 
-vi.mock('@flow-js/garmin-connect', () => {
+vi.mock('@fiddur/garmin-connect', () => {
   const MockGarminConnect = vi.fn()
   Object.assign(MockGarminConnect.prototype, mockGarminConnect)
   return {
@@ -22,7 +22,7 @@ vi.mock('@flow-js/garmin-connect', () => {
   }
 })
 
-import garminConnectPkg from '@flow-js/garmin-connect'
+import garminConnectPkg from '@fiddur/garmin-connect'
 const { GarminConnect } = garminConnectPkg
 
 import { garminClient, type GarminClientDeps } from './client.ts'

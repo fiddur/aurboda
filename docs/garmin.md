@@ -1,6 +1,6 @@
 # Garmin Connect
 
-[Garmin Connect](https://connect.garmin.com/) provides fitness and health data from Garmin wearable devices (watches, fitness trackers). Aurboda syncs data by scraping the Garmin Connect web API using a [fork of `@flow-js/garmin-connect`](https://github.com/fiddur/garmin-connect) with MFA support, since Garmin's official API requires a partner license.
+[Garmin Connect](https://connect.garmin.com/) provides fitness and health data from Garmin wearable devices (watches, fitness trackers). Aurboda syncs data by scraping the Garmin Connect web API using [`@fiddur/garmin-connect`](https://www.npmjs.com/package/@fiddur/garmin-connect), our [fork](https://github.com/fiddur/garmin-connect) of `@flow-js/garmin-connect` with two-step MFA login, since Garmin's official API requires a partner license.
 
 ## Data Synced
 

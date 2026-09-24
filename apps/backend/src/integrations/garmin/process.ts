@@ -1,5 +1,5 @@
-import type { IActivity } from '@flow-js/garmin-connect/dist/garmin/types/activity'
-import type { GarminNapDTO, SleepData } from '@flow-js/garmin-connect/dist/garmin/types/sleep'
+import type { IActivity } from '@fiddur/garmin-connect/dist/garmin/types/activity'
+import type { GarminNapDTO, SleepData } from '@fiddur/garmin-connect/dist/garmin/types/sleep'
 
 import type { Activity, Location, RawRecord, TimeSeriesPoint } from '../../db/types.ts'
 import type { ActivitySpan } from '../gps-precedence.ts'
@@ -401,7 +401,12 @@ const processSleep = async (user: string, data: SleepData, deps: GarminProcessDe
     // Claim the row written before sleep had an external id (same start), or
     // the Health Connect copy of this night, so the upsert enriches it.
     await deps.adoptLegacyActivity(user, { external_id: activity.external_id!, source: 'garmin' }, [
-      { activity_type: 'sleep', kind: 'source_type_start', source: 'garmin', start_time: activity.start_time },
+      {
+        activity_type: 'sleep',
+        kind: 'source_type_start',
+        source: 'garmin',
+        start_time: activity.start_time,
+      },
       {
         activity_type: 'sleep',
         kind: 'source_type_start',
