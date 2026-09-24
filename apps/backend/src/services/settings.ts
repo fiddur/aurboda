@@ -28,7 +28,7 @@ export type { UserSettings }
 export type SettingsResponse = UserSettingsResponse & { error?: string }
 
 const DEFAULT_MAX_HR = 180 // Assumes age ~40
-const MAX_GAP_SECONDS = 5
+const MAX_GAP_SECONDS = 60
 const SINGLE_SAMPLE_SECONDS = 1
 
 // Zone percentages of max HR
