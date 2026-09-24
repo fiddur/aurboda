@@ -48,7 +48,6 @@
   flex-wrap: wrap;
 }
 
-/* Following management panel. */
 .following-panel {
   border: 1px solid #e5e7eb;
   border-radius: 8px;
@@ -194,7 +193,6 @@
   cursor: default;
 }
 
-/* Followers panel — pending-request subsection + approve/reject actions. */
 .followers-subtitle {
   margin: 0.75rem 0 0;
   font-size: 0.9rem;
@@ -222,7 +220,6 @@
 /* The `.feed-post*` card styles live in FeedPostCard.css (owned by the card, so
    the public profile can render it too). */
 
-/* "Load more" at the foot of the home timeline. */
 .timeline-more {
   display: block;
   margin: 0.25rem auto 1rem;
@@ -277,7 +274,6 @@
   }
 }
 
-/* Auto-share rules panel (#903) */
 .autoshare-section {
   margin-bottom: 1.5rem;
 }
@@ -369,7 +365,7 @@
   margin: 0;
 }
 
-/* "auto-shared" marker on posts created by a rule (#903). */
+/* "auto-shared" marker on posts created by a rule. */
 .feed-post-via-rule {
   font-size: 0.8rem;
   color: #6b7280;

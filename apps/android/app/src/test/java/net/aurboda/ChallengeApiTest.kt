@@ -45,10 +45,40 @@ class ChallengeApiTest {
         assertEquals("https://aurboda.net/api/public/fiddur/august%20steppers/standings", seen?.first)
         assertEquals(null, seen?.second)
         assertTrue(result is DataResult.Success)
-        val members = (result as DataResult.Success).data
+        val members = (result as DataResult.Success).data.members!!
         assertEquals(1, members.size)
         assertEquals(4486.0, members[0].total, 0.0)
         assertEquals("2026-08-01T00:00:00.000Z", members[0].buckets[0].bucketStart)
+    }
+
+    @Test
+    fun `fetchDiscoverChallenges sends the bearer token and unwraps the list`() = runTest {
+        var seen: Pair<String, String?>? = null
+        val http =
+            client { url, auth ->
+                seen = url to auth
+                HttpStatusCode.OK to
+                    """{"success":true,"peers_unreachable":1,"challenges":[{"end_ts":"2026-10-01T00:00:00.000Z",
+                       "host_actor_uri":"https://peer.example/users/alice","host_display_name":"Alice","host_handle":"@alice@peer.example",
+                       "host_identity":"https://peer.example/u/alice","name":"October steps","share_url":"https://peer.example/u/alice/oct",
+                       "spec":{"aggregation":"sum","bucket_size":"auto","pattern":"steps","source_type":"metric","unit":"steps"},
+                       "start_ts":"2026-09-01T00:00:00.000Z","status":"ongoing","timezone":"Europe/Stockholm"}]}"""
+            }
+        val result = fetchDiscoverChallenges(http, "https://aurboda.net/api", "tok")
+        assertEquals("https://aurboda.net/api/challenges/discover" to "Bearer tok", seen)
+        val found = (result as DataResult.Success).data.single()
+        assertEquals("October steps", found.name)
+        assertEquals("@alice@peer.example", found.hostHandle)
+    }
+
+    @Test
+    fun `a cancelled request propagates the cancellation instead of becoming an error result`() = runTest {
+        val http =
+            HttpClient(MockEngine { throw kotlinx.coroutines.CancellationException("worker stopped") }) {
+                install(ContentNegotiation) { json(appJson) }
+            }
+        val thrown = runCatching { fetchChallenges(http, "https://aurboda.net/api", "tok") }.exceptionOrNull()
+        assertTrue(thrown is kotlinx.coroutines.CancellationException)
     }
 
     @Test

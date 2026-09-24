@@ -14,7 +14,6 @@ import {
   validateAndUpdateSettings,
 } from './settings.ts'
 
-// Mock the db module
 vi.mock('../db', () => ({
   getGoals: vi.fn().mockResolvedValue([]),
   getOAuthToken: vi.fn(),
@@ -24,7 +23,6 @@ vi.mock('../db', () => ({
   upsertUserSettings: vi.fn(),
 }))
 
-// Mock the central-db module
 vi.mock('./central-db', () => ({
   getCentralDb: () => ({
     getLastFmApiKey: vi.fn().mockResolvedValue(null),
@@ -225,7 +223,23 @@ describe('validateAndUpdateSettings', () => {
 
     expect(result.success).toBe(true)
     expect(result.birth_date).toBe('1985-03-15')
-    expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', { birth_date: '1985-03-15' })
+    expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', { birth_date: '1985-03-15' }, [])
+  })
+
+  test('a null clears the stored key instead of being dropped (#1063)', async () => {
+    vi.mocked(db.getUserSettings).mockResolvedValueOnce({}).mockResolvedValueOnce({})
+    vi.mocked(db.upsertUserSettings).mockResolvedValue({})
+    vi.mocked(db.getOAuthToken).mockResolvedValue(null)
+
+    const result = await validateAndUpdateSettings('testuser', {
+      lastfm_username: 'bob',
+      timeline_show_replies: null,
+    })
+
+    expect(result.success).toBe(true)
+    expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', { lastfm_username: 'bob' }, [
+      'timeline_show_replies',
+    ])
   })
 
   test('updates HR zones with valid input', async () => {
@@ -274,7 +288,7 @@ describe('validateAndUpdateSettings', () => {
     const result = await validateAndUpdateSettings('testuser', { birth_date: null })
 
     expect(result.success).toBe(true)
-    expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', { birth_date: undefined })
+    expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', {}, ['birth_date'])
   })
 
   test('clears HR zones when set to null', async () => {
@@ -285,7 +299,7 @@ describe('validateAndUpdateSettings', () => {
     const result = await validateAndUpdateSettings('testuser', { hr_zone_start: null })
 
     expect(result.success).toBe(true)
-    expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', { hr_zone_start: undefined })
+    expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', {}, ['hr_zone_start'])
   })
 
   test('updates tag mappings with valid input', async () => {
@@ -301,7 +315,7 @@ describe('validateAndUpdateSettings', () => {
 
     expect(result.success).toBe(true)
     expect(result.tag_mappings).toEqual(tagMappings)
-    expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', { tag_mappings: tagMappings })
+    expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', { tag_mappings: tagMappings }, [])
   })
 
   test('clears tag mappings when set to null', async () => {
@@ -313,7 +327,7 @@ describe('validateAndUpdateSettings', () => {
     const result = await validateAndUpdateSettings('testuser', { tag_mappings: null })
 
     expect(result.success).toBe(true)
-    expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', { tag_mappings: undefined })
+    expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', {}, ['tag_mappings'])
   })
 
   test('updates item_icons with valid input', async () => {
@@ -326,7 +340,7 @@ describe('validateAndUpdateSettings', () => {
 
     expect(result.success).toBe(true)
     expect(result.item_icons).toEqual(icons)
-    expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', { item_icons: icons })
+    expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', { item_icons: icons }, [])
   })
 
   test('merges partial item_icons with existing icons', async () => {
@@ -343,9 +357,13 @@ describe('validateAndUpdateSettings', () => {
 
     expect(result.success).toBe(true)
     // Should merge new icon with existing ones, not replace
-    expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', {
-      item_icons: { Coffee: '☕', 'exercise:Running': '🏃', 'exercise:Yoga': '🧘' },
-    })
+    expect(db.upsertUserSettings).toHaveBeenCalledWith(
+      'testuser',
+      {
+        item_icons: { Coffee: '☕', 'exercise:Running': '🏃', 'exercise:Yoga': '🧘' },
+      },
+      [],
+    )
   })
 
   test('clears item_icons when set to null', async () => {
@@ -356,7 +374,7 @@ describe('validateAndUpdateSettings', () => {
     const result = await validateAndUpdateSettings('testuser', { item_icons: null })
 
     expect(result.success).toBe(true)
-    expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', { item_icons: undefined })
+    expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', {}, ['item_icons'])
   })
 })
 
@@ -574,17 +592,26 @@ describe('computeHrZoneSecs', () => {
     expect(result[5]).toBeGreaterThan(0)
   })
 
-  test('caps time gap at 5 seconds', () => {
+  test('counts a sample until the next one for gaps up to 60 seconds', () => {
+    const hrData: [Date, number][] = Array.from({ length: 11 }, (_, i) => [
+      new Date(Date.parse('2024-01-15T10:00:00Z') + i * 12_000),
+      130,
+    ])
+
+    const result = computeHrZoneSecs(hrData, defaultZones)
+
+    expect(result[3]).toBe(132)
+  })
+
+  test('caps time gap at 60 seconds', () => {
     const hrData: [Date, number][] = [
       [new Date('2024-01-15T10:00:00Z'), 95],
-      [new Date('2024-01-15T10:00:30Z'), 100], // 30 second gap
+      [new Date('2024-01-15T10:05:00Z'), 100],
     ]
 
     const result = computeHrZoneSecs(hrData, defaultZones)
 
-    // Total should be capped at 5 + last sample time (uses mean gap which is 5)
-    const total = Object.values(result).reduce((a, b) => a + b, 0)
-    expect(total).toBeLessThanOrEqual(10) // 5 sec + 5 sec max for last sample
+    expect(result[1]).toBe(120)
   })
 
   test('handles mixed zones correctly', () => {

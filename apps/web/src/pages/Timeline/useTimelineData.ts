@@ -1,4 +1,9 @@
-import { isLocationVisitActivity, isMusicScrobbleActivity, type ScreentimeCategory } from '@aurboda/api-spec'
+import {
+  isLocationVisitActivity,
+  isMusicScrobbleActivity,
+  type Note,
+  type ScreentimeCategory,
+} from '@aurboda/api-spec'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { addDays, format, subDays } from 'date-fns'
 import { useCallback, useMemo } from 'preact/hooks'
@@ -10,6 +15,7 @@ import {
   fetchActivities,
   fetchActivityTypeDefinitions,
   fetchBucketedMetrics,
+  fetchCommentsInRange,
   fetchMeals,
   fetchScreentimeCategories,
   fetchScreentimeBucketed,
@@ -35,6 +41,7 @@ import {
 } from './categorize'
 import { categorizeMusic } from './categorizeMusic'
 import { activityColors, getExerciseColor } from './colors'
+import { buildCommentItems } from './commentItems'
 import { parseBucketedData } from './drawActivitySparklines'
 import { getExerciseTypeName } from './formatting'
 import {
@@ -60,25 +67,22 @@ const ACTIVITY_CATEGORIES = new Set(['sleep_rest', 'exercise', 'meditation', 'we
 const TIMELINE_EXCLUDED_ACTIVITY_TYPES: string[] = []
 
 export interface TimelineData {
-  // Raw query results needed by rendering
   activities: Activity[]
   scrobbles: Scrobble[]
-  // Derived chart data
+  /** Comment thread roots anchored in the fetch window, replies nested. */
+  commentNotes: Note[]
   chartItems: ChartItem[]
   activityItems: ChartItem[]
   columnData: { column: Column; items: { item: ChartItem; lane: number }[]; laneCount: number }[]
   columns: Column[]
   sparklineBuckets: ReturnType<typeof parseBucketedData>
   horizontalMetricBuckets: ReturnType<typeof parseBucketedResponse>
-  // Query objects needed for horizontal mode
   trainingLoadQuery: ReturnType<typeof useQuery<Awaited<ReturnType<typeof fetchTrainingLoad>>>>
   screentimeBucketedQuery: ReturnType<typeof useQuery<Awaited<ReturnType<typeof fetchScreentimeBucketed>>>>
   screentimeCategoriesQuery: ReturnType<typeof useQuery<ScreentimeCategory[]>>
-  // Status
   isFetching: boolean
   isInitialLoad: boolean
   errorSources: string[]
-  // Misc
   hasLastFm: boolean
   /** Dynamic screentime sub-toggles to render in the legend. */
   screentimeSubEntries: ScreentimeSubEntry[]
@@ -110,8 +114,6 @@ export const useTimelineData = ({
   mergeGapMs,
   collapseDepth,
 }: UseTimelineDataOptions): TimelineData => {
-  // ── Data queries ───────────────────────────────────────────────────────────
-
   const { data: activityTypeDefs = [] } = useQuery({
     queryFn: fetchActivityTypeDefinitions,
     queryKey: ['activityTypeDefinitions'],
@@ -192,7 +194,18 @@ export const useTimelineData = ({
     staleTime: 5 * 60 * 1000,
   })
 
-  // ── Derived data ───────────────────────────────────────────────────────────
+  // Every comment thread root anchored in the visible window. The range read
+  // matches on overlap, so a span crossing an edge is already included and the
+  // window needs no padding. Roots arrive with their replies nested, so the
+  // comment panel needs no second fetch. Hiding the track skips the request,
+  // as the other tracks do.
+  const commentsQuery = useQuery({
+    enabled: !hiddenCategories.has('comments'),
+    placeholderData: keepPreviousData,
+    queryFn: () => fetchCommentsInRange(fetchStart, fetchEnd),
+    queryKey: ['timeline-comments', fromDateKey, toDateKey],
+    staleTime: 60 * 1000,
+  })
 
   const typeDefsMap = useMemo(
     () =>
@@ -403,8 +416,9 @@ export const useTimelineData = ({
     [secondaryActivities, activityItems],
   )
 
+  // Comments sit last so the 💬 column is the rightmost one in vertical mode.
   const allColumns: Column[] = useMemo(
-    () => (showMusicColumn ? [...BASE_COLUMNS, 'Music'] : BASE_COLUMNS),
+    () => [...BASE_COLUMNS, ...(showMusicColumn ? (['Music'] as Column[]) : []), 'Comments'],
     [showMusicColumn],
   )
 
@@ -412,6 +426,10 @@ export const useTimelineData = ({
     () => categorizeMeals(mealsQuery.data?.meals ?? [], itemIcons),
     [mealsQuery.data, itemIcons],
   )
+
+  const commentNotes = useMemo<Note[]>(() => commentsQuery.data ?? [], [commentsQuery.data])
+
+  const commentItems = useMemo(() => buildCommentItems(commentNotes), [commentNotes])
 
   const isItemHidden = useCallback(
     (item: ChartItem): boolean => {
@@ -442,6 +460,7 @@ export const useTimelineData = ({
       ),
       ...musicItems,
       ...mealItems,
+      ...commentItems,
     ],
     [
       activityItems,
@@ -455,6 +474,7 @@ export const useTimelineData = ({
       screentimeDerivedTypes,
       musicItems,
       mealItems,
+      commentItems,
     ],
   )
 
@@ -494,6 +514,7 @@ export const useTimelineData = ({
     chartItems,
     columnData,
     columns,
+    commentNotes,
     errorSources,
     hasLastFm,
     horizontalMetricBuckets,

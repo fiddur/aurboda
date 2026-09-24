@@ -1,5 +1,5 @@
 /**
- * Lazy retro-enrichment of home-timeline entries (#996).
+ * Lazy retro-enrichment of home-timeline entries.
  *
  * Structured enrichment normally happens on ingest, so entries received before
  * enrichment shipped — or whose ingest-time enrichment failed transiently —
@@ -25,7 +25,7 @@ const RETRO_BATCH_SIZE = 3
  * Transient failures allowed per entry before it is stamped out of the
  * candidate set anyway — the candidates are newest-first, so a permanently
  * unreachable peer would otherwise hold the head of the queue and starve every
- * older entry behind it (#1019 review).
+ * older entry behind it.
  */
 export const MAX_TRANSIENT_ATTEMPTS = 3
 
@@ -79,10 +79,79 @@ export const retroEnrichTimelineEntries = async (
       if (structured != null) enriched++
     } catch (error) {
       // Transient (peer blip / timeout / 5xx): keep the entry retryable, but
-      // bounded — a dead host must not hold the queue head forever (#1014).
+      // bounded — a dead host must not hold the queue head forever.
       console.warn(`⚠️ timeline retro-enrichment attempt failed for ${entry.object_uri}:`, error)
       await deps.recordTransientFailure(user, entry.id, MAX_TRANSIENT_ATTEMPTS)
     }
   }
   return enriched
+}
+
+/**
+ * Reply/Mention state parsed from a fetched AS2 object: the
+ * `inReplyTo` id and whether a `Mention` tag points at `myActorUri`. Exported
+ * pure for tests.
+ */
+export const parseReplyInfo = (
+  doc: unknown,
+  myActorUri: string,
+): { in_reply_to_uri: string | null; mentions_me: boolean } => {
+  if (typeof doc !== 'object' || doc == null || Array.isArray(doc)) {
+    return { in_reply_to_uri: null, mentions_me: false }
+  }
+  const rec = doc as Record<string, unknown>
+  const reply = rec.inReplyTo
+  const inReplyToUri =
+    typeof reply === 'string'
+      ? reply
+      : typeof reply === 'object' &&
+          reply != null &&
+          typeof (reply as Record<string, unknown>).id === 'string'
+        ? ((reply as Record<string, unknown>).id as string)
+        : null
+  const tags = Array.isArray(rec.tag) ? rec.tag : rec.tag == null ? [] : [rec.tag]
+  const mentionsMe = tags.some(
+    (t) =>
+      typeof t === 'object' &&
+      t != null &&
+      (t as Record<string, unknown>).type === 'Mention' &&
+      (t as Record<string, unknown>).href === myActorUri,
+  )
+  return { in_reply_to_uri: inReplyToUri, mentions_me: mentionsMe }
+}
+
+export interface ReplyBackfillDeps {
+  listUnchecked: (user: string, limit: number) => Promise<{ id: string; object_uri: string }[]>
+  saveReplyInfo: (user: string, id: string, inReplyToUri: string | null, mentionsMe: boolean) => Promise<void>
+  /** Stamp checked WITHOUT touching the stored reply state (failed fetch). */
+  markChecked: (user: string, id: string) => Promise<void>
+  /** SSRF-guarded ActivityPub fetch of the object, or null on any failure. */
+  fetchObject: (objectUri: string) => Promise<unknown | null>
+}
+
+/**
+ * Backfill reply/Mention state for entries ingested before it was tracked —
+ * so a legacy reply stops rendering as a top-level card once the setting hides
+ * replies. One attempt per entry, a small batch per timeline read, sequential
+ * like the enrichment pass. A fetch that yields no usable AS2 object (post
+ * gone, authorized-fetch instance rejecting our unsigned GET, host down, HTML
+ * body) only STAMPS the entry — a non-answer must never overwrite whatever
+ * reply state the row already carries.
+ */
+export const backfillReplyLinks = async (
+  user: string,
+  myActorUri: string,
+  deps: ReplyBackfillDeps,
+  batchSize: number = RETRO_BATCH_SIZE,
+): Promise<void> => {
+  const candidates = await deps.listUnchecked(user, batchSize)
+  for (const entry of candidates) {
+    const doc = await deps.fetchObject(entry.object_uri)
+    if (typeof doc !== 'object' || doc == null) {
+      await deps.markChecked(user, entry.id)
+      continue
+    }
+    const info = parseReplyInfo(doc, myActorUri)
+    await deps.saveReplyInfo(user, entry.id, info.in_reply_to_uri, info.mentions_me)
+  }
 }

@@ -111,7 +111,6 @@ describe('getChartData', () => {
     // Verify the SQL uses date_trunc with 'month'
     const call = vi.mocked(db.query).mock.calls[0]
     expect(call[2]![0]).toBe('month')
-    // Verify AVG aggregation is used for 'mean'
     expect(call[1]).toContain('AVG(value)')
   })
 

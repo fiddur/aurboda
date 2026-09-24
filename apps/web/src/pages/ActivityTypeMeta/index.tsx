@@ -1,7 +1,3 @@
-/**
- * Activity type meta page — overview of an activity type (e.g. "coffee", "strength_training").
- * Shows icon, display_name, category badge, trend chart, recent occurrences, and related links.
- */
 import type { DataFieldDefinition, DataSchemaDefinition } from '@aurboda/api-spec'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -700,7 +696,6 @@ export function ActivityTypeMeta() {
         <RecentOccurrences name={name} />
       </section>
 
-      {/* Rename & Merge (custom types only) */}
       {typeDef && !typeDef.is_builtin && (
         <>
           <RenameSection name={name} />

@@ -11,8 +11,10 @@ import type { Auth } from '../auth.ts'
 import type { GarminClient } from '../integrations/garmin/client.ts'
 import type { AutoshareDeps } from '../services/autoshare.ts'
 import type { CentralDb } from '../services/central-db.ts'
+import type { DiscoverChallenges } from '../services/challenge-discovery.ts'
 import type { DeductionEngineDeps } from '../services/deduction-engine.ts'
 import type { ActivityNotifier, DeductionQueue } from '../services/deduction-queue.ts'
+import type { ReactionActions } from '../services/feed-reactions.ts'
 import type { FollowerActions } from '../services/followers.ts'
 import type { FollowActions } from '../services/following.ts'
 import type { InvitationAuth } from '../services/invitation.ts'
@@ -85,6 +87,8 @@ interface RestRoutesDeps {
   webHost: string
   webIndexPath: string | undefined
   apiBaseUrl: string
+  /** Open challenges from followed peers (`GET /challenges/discover`). */
+  discoverChallenges: DiscoverChallenges
   garmin: GarminClient
   syncProvider: SyncProvider
   activityNotifier: ActivityNotifier
@@ -98,8 +102,12 @@ interface RestRoutesDeps {
   feedDeliver: FeedDeliver
   followActions: FollowActions
   followerActions: FollowerActions
+  /** Outbound like ⭐ / boost 🔄 toggles for the home timeline. */
+  reactionActions: ReactionActions
   timelineHub: TimelineHub
   retroEnrichTimeline: RetroEnrichTrigger
+  /** Fire-and-forget: federate an `Update{Person}` after an avatar change. */
+  onAvatarChanged: (user: string) => void
   /** Merge-group/window resolution behind the auto-share rule preview (#903). */
   autosharePreviewDeps: Pick<
     AutoshareDeps,
@@ -116,6 +124,7 @@ export const mountRestRouters = ({
   webHost,
   webIndexPath,
   apiBaseUrl,
+  discoverChallenges,
   garmin,
   syncProvider,
   activityNotifier,
@@ -125,6 +134,8 @@ export const mountRestRouters = ({
   feedDeliver,
   followActions,
   followerActions,
+  reactionActions,
+  onAvatarChanged,
   retroEnrichTimeline,
   timelineHub,
   ouraWebhookManager,
@@ -168,7 +179,7 @@ export const mountRestRouters = ({
   httpd.use(createRawRecordsRouter(authMiddleware))
   httpd.use('/dashboard', createDashboardRouter(authMiddleware))
   httpd.use('/shared-dashboards', createSharedDashboardsRouter(authMiddleware, webHost))
-  httpd.use('/profile', createProfileRouter(authMiddleware, webHost))
+  httpd.use('/profile', createProfileRouter(authMiddleware, webHost, onAvatarChanged))
   // Mount the following + followers routers before `/feed` so `/feed/following/*`
   // and `/feed/followers/*` (two path segments) resolve here and never touch the
   // feed router's `/:postId`.
@@ -176,9 +187,17 @@ export const mountRestRouters = ({
   httpd.use('/feed/followers', createFeedFollowersRouter(authMiddleware, followerActions))
   httpd.use(
     '/feed',
-    createFeedRouter(authMiddleware, feedDeliver, timelineHub, apiBaseUrl, retroEnrichTimeline, webHost),
+    createFeedRouter(
+      authMiddleware,
+      feedDeliver,
+      timelineHub,
+      apiBaseUrl,
+      retroEnrichTimeline,
+      webHost,
+      reactionActions,
+    ),
   )
-  httpd.use('/challenges', createChallengesRouter(authMiddleware, webHost, apiBaseUrl))
+  httpd.use('/challenges', createChallengesRouter(authMiddleware, webHost, apiBaseUrl, discoverChallenges))
   httpd.use(createChallengeDataRouter())
   // Public feed series must be mounted before the generic /public/:username/:slug
   // resolver so `series` is not matched as a share slug.

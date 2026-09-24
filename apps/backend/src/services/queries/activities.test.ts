@@ -3,12 +3,12 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 import * as db from '../../db/index.ts'
 import { queryActivities } from './activities.ts'
 
-// Mock the db module
 vi.mock('../../db', () => ({
   expandActivityTypes: vi.fn().mockImplementation((_user: string, types: string[]) => Promise.resolve(types)),
   getActivities: vi.fn(),
   getActivityTypeDefinitions: vi.fn().mockResolvedValue([]),
   getNotesByEntityIds: vi.fn(),
+  getRepliesForRootIds: vi.fn().mockResolvedValue(new Map()),
   getTimeSeries: vi.fn(),
   getTimeSeriesMultiMetric: vi.fn().mockResolvedValue({}),
   getUserSettings: vi.fn(),

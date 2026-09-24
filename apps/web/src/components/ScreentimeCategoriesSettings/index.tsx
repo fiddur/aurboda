@@ -13,11 +13,6 @@ import {
 } from '../../state/api'
 import './style.css'
 
-// ============================================================================
-// Helpers
-// ============================================================================
-
-/** Build an indented tree structure from flat categories. */
 interface TreeNode {
   category: ScreentimeCategory
   children: TreeNode[]
@@ -66,10 +61,6 @@ const flattenTree = (nodes: TreeNode[]): TreeNode[] => {
   return result
 }
 
-// ============================================================================
-// Category row (nav-only: click to edit, trash to delete)
-// ============================================================================
-
 function CategoryRow({ node, onDeleted }: { node: TreeNode; onDeleted: () => void }) {
   const cat = node.category
   const indent = node.depth * 24
@@ -115,10 +106,6 @@ function CategoryRow({ node, onDeleted }: { node: TreeNode; onDeleted: () => voi
     </div>
   )
 }
-
-// ============================================================================
-// Import / Defaults actions
-// ============================================================================
 
 function CategoryActions({ onUpdated }: { onUpdated: () => void }) {
   const [awUrl, setAwUrl] = useState('http://localhost:5600')
@@ -190,10 +177,6 @@ function CategoryActions({ onUpdated }: { onUpdated: () => void }) {
     </div>
   )
 }
-
-// ============================================================================
-// Main component
-// ============================================================================
 
 export function ScreentimeCategoriesSettings() {
   const queryClient = useQueryClient()

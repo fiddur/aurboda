@@ -1,13 +1,7 @@
-/**
- * Time series integration tests using testcontainers.
- *
- * Tests insertTimeSeries, getTimeSeries, and getTimeSeriesBucketed against a real
- * PostgreSQL instance.
- */
-
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
+import { query } from './connection.ts'
 import {
   deleteTimeSeriesBySource,
   deleteTimeSeriesMetric,
@@ -82,10 +76,38 @@ describe('Time Series Integration Tests', () => {
       expect(data[0][1]).toBe(76.0)
     })
 
+    test('stamps updated_at on insert and moves it only when the value changes', async () => {
+      const user = getTestUser()
+      const point = {
+        metric: 'steps',
+        source: 'health_connect_aggregate' as const,
+        time: new Date('2026-06-02T00:00:00Z'),
+      }
+      const readStamp = async () => {
+        const r = await query<{ updated_at: Date }>(
+          user,
+          `SELECT updated_at FROM time_series WHERE metric = 'steps'`,
+        )
+        return r.rows[0].updated_at
+      }
+
+      await insertTimeSeries(user, [{ ...point, value: 5000 }])
+      const first = await readStamp()
+      expect(Date.now() - first.getTime()).toBeLessThan(60_000)
+
+      await query(user, `UPDATE time_series SET updated_at = $1`, [new Date('2026-06-02T06:00:00Z')])
+      await insertTimeSeries(user, [{ ...point, value: 5000 }])
+      expect((await readStamp()).toISOString()).toBe('2026-06-02T06:00:00.000Z')
+
+      await insertTimeSeries(user, [{ ...point, value: 5100 }])
+      const bumped = await readStamp()
+      expect(bumped.getTime()).toBeGreaterThan(new Date('2026-06-02T06:00:00Z').getTime())
+      expect(Date.now() - bumped.getTime()).toBeLessThan(60_000)
+    })
+
     test('handles empty array gracefully', async () => {
       const user = getTestUser()
 
-      // Should not throw
       await insertTimeSeries(user, [])
 
       const data = await getTimeSeries(
@@ -223,10 +245,6 @@ describe('Time Series Integration Tests', () => {
     })
   })
 
-  // ==========================================================================
-  // Time Series With Source
-  // ==========================================================================
-
   describe('getTimeSeriesWithSource', () => {
     test('returns time, value, and source for each data point', async () => {
       const user = getTestUser()
@@ -281,10 +299,6 @@ describe('Time Series Integration Tests', () => {
       expect(data[0].value).toBe(8500)
     })
   })
-
-  // ==========================================================================
-  // Bucketed Time Series
-  // ==========================================================================
 
   describe('getTimeSeriesBucketed', () => {
     test('returns aggregated buckets for a single metric', async () => {
@@ -527,10 +541,6 @@ describe('Time Series Integration Tests', () => {
       expect(buckets[0].max).toBe(75)
     })
   })
-
-  // ==========================================================================
-  // Time Series Deletion
-  // ==========================================================================
 
   describe('deleteTimeSeriesPoint', () => {
     test('soft-deletes a measurement and returns true', async () => {

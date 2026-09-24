@@ -1,10 +1,5 @@
 import type { RequestHandler } from 'express'
 
-/**
- * Metrics route group.
- *
- * Handles: /metrics/*, /daily-summary, /period-summary
- */
 import {
   type AddCustomMetricBody,
   addCustomMetricBodySchema,
@@ -84,7 +79,6 @@ export const createMetricsRouter = (
 
       const customMetrics = await getCustomMetrics(user)
 
-      // Parse optional metrics and exclude lists
       const metrics = metricsParam ? metricsParam.split(',') : undefined
       const exclude = excludeParam ? excludeParam.split(',') : undefined
 

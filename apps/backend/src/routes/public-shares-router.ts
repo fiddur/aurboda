@@ -1,6 +1,4 @@
 /**
- * Public sharing routes (UNAUTHENTICATED).
- *
  * Handles `/public/:username/...` for both shared dashboards and challenges.
  * Never uses `req.user`; targets the owner's database directly by username
  * (validated against the same rules as signup). Dashboards return sanitized,
@@ -29,6 +27,7 @@ import {
   listPublicSharedDashboards,
   upsertChallengeMember,
 } from '../db/index.ts'
+import { toPublicChallengeListItem } from '../services/challenge-discovery.ts'
 import { fetchMemberData } from '../services/challenge-federation.ts'
 import { effectiveBucketSize, specToApi } from '../services/challenge-spec.ts'
 import { getChallengeStandings } from '../services/challenge-standings.ts'
@@ -75,11 +74,7 @@ export const createPublicSharesRouter = (webHost: string): TypedRouter => {
         ])
         res.setHeader('Cache-Control', 'public, max-age=60')
         res.json({
-          challenges: challenges.map((c) => ({
-            name: c.name,
-            share_url: buildShareUrl(webHost, username, c.slug),
-            slug: c.slug,
-          })),
+          challenges: challenges.map((c) => toPublicChallengeListItem(c, webHost, username)),
           dashboards: dashboards.map((r) => ({
             name: r.name,
             share_url: buildShareUrl(webHost, username, r.slug),
@@ -114,7 +109,15 @@ export const createPublicSharesRouter = (webHost: string): TypedRouter => {
         // standings reasonably fresh; the owner can force-refresh via the authed route.
         const members = await getChallengeStandings(username, challenge)
         res.setHeader('Cache-Control', 'public, max-age=60')
-        res.json({ members, success: true })
+        res.json({
+          effective_bucket_size: effectiveBucketSize(
+            challenge.spec.bucket_size,
+            challenge.start_ts,
+            challenge.end_ts,
+          ),
+          members,
+          success: true,
+        })
       } catch (error) {
         if (isMissingDatabase(error)) {
           return res.status(404).json({ error: 'Challenge not found', success: false })

@@ -1,10 +1,3 @@
-/**
- * Garmin Connect sync logic.
- *
- * Manages incremental sync, date range iteration, rate limiting, and sync state.
- * Follows the same patterns as oura-sync.ts.
- */
-
 import { addDays, addMinutes, isFuture, subDays } from 'date-fns'
 
 import type { SyncState } from '../../db/types.ts'
@@ -19,11 +12,6 @@ import {
 import { auditError, auditInfo } from '../../services/audit-log.ts'
 import { type GarminDataType, garminDataTypes, processActivityDetail, processGarminData } from './process.ts'
 
-// ============================================================================
-// Constants
-// ============================================================================
-
-/** Default number of days to fetch on first/full sync. */
 const DEFAULT_SYNC_HISTORY_DAYS = 90
 
 /** Overlap buffer for incremental sync to catch retroactive edits. */
@@ -31,10 +19,6 @@ const INCREMENTAL_SYNC_OVERLAP_DAYS = 2
 
 /** Delay between individual day-fetches to avoid rate limiting (ms). */
 const REQUEST_DELAY_MS = 100
-
-// ============================================================================
-// Types
-// ============================================================================
 
 export interface SyncResult {
   data_type: GarminDataType
@@ -44,10 +28,6 @@ export interface SyncResult {
   errors_by_day?: number
   retry_after?: Date
 }
-
-// ============================================================================
-// Rate limiting helpers
-// ============================================================================
 
 /** Exponential backoff schedule: 1, 5, 15, 60 minutes. */
 const BACKOFF_MINUTES = [1, 5, 15, 60]
@@ -68,11 +48,6 @@ export const isRateLimited = (syncState: SyncState | null): boolean => {
   return isFuture(syncState.retry_after)
 }
 
-// ============================================================================
-// Single data type sync
-// ============================================================================
-
-/** Iterate day-by-day over a date range, fetching and processing each day. */
 const syncDateRange = async (
   user: string,
   garmin: GarminClient,
@@ -103,7 +78,6 @@ export const syncGarminDataType = async (
   dataType: GarminDataType,
   options?: { fullResync?: boolean; startDate?: Date },
 ): Promise<SyncResult> => {
-  // Check existing sync state
   const syncState = await getSyncState(user, 'garmin', dataType)
   if (isRateLimited(syncState)) {
     return {
@@ -114,7 +88,6 @@ export const syncGarminDataType = async (
     }
   }
 
-  // Mark as syncing
   await upsertSyncState(user, {
     data_type: dataType,
     provider: 'garmin',
@@ -130,7 +103,6 @@ export const syncGarminDataType = async (
 
     const { totalRecords, dayErrors } = await syncDateRange(user, garmin, dataType, startDate, now)
 
-    // Mark as idle on success (with warning if some days had errors)
     const errorMessage = dayErrors > 0 ? `${dayErrors} day(s) had fetch errors` : undefined
     await upsertSyncState(user, {
       data_type: dataType,
@@ -150,7 +122,6 @@ export const syncGarminDataType = async (
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error)
 
-    // Check for rate limiting (429 or known patterns)
     const is429 = errorMessage.includes('429') || errorMessage.toLowerCase().includes('rate limit')
     if (is429) {
       const retryAfter = calculateRetryAfter()
@@ -164,7 +135,6 @@ export const syncGarminDataType = async (
       return { data_type: dataType, records_processed: 0, retry_after: retryAfter, status: 'rate_limited' }
     }
 
-    // Generic error
     await upsertSyncState(user, {
       data_type: dataType,
       error_message: errorMessage,
@@ -174,10 +144,6 @@ export const syncGarminDataType = async (
     return { data_type: dataType, error: errorMessage, records_processed: 0, status: 'error' }
   }
 }
-
-// ============================================================================
-// Sync all data types
-// ============================================================================
 
 export const syncAllGarminData = async (
   user: string,
@@ -206,7 +172,6 @@ export const syncAllGarminData = async (
       hitRateLimit = true
     }
 
-    // After syncing activities, fetch per-second detail data for new activities
     if (dataType === 'activities' && result.status === 'success' && !hitRateLimit) {
       await syncActivityDetails(user, garmin, { fullResync: options?.fullResync })
     }
@@ -214,10 +179,6 @@ export const syncAllGarminData = async (
 
   return results
 }
-
-// ============================================================================
-// Activity detail sync (per-second metrics)
-// ============================================================================
 
 /**
  * Fetch granular per-second metrics (stress, HR, respiration, body battery)
@@ -263,11 +224,6 @@ export const syncActivityDetails = async (
   }
 }
 
-// ============================================================================
-// Helpers
-// ============================================================================
-
-/** Fetch data for a single day + data type, then process it. */
 const fetchAndProcess = async (
   user: string,
   garmin: GarminClient,
@@ -289,7 +245,6 @@ const fetchAndProcess = async (
   }
 }
 
-/** Dispatch to the correct garmin client method based on data type. */
 const fetchDataType = async (
   garmin: GarminClient,
   user: string,
@@ -327,5 +282,4 @@ const fetchDataType = async (
 
 const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
 
-// Re-export for convenience
 export { garminDataTypes, type GarminDataType } from './process.ts'

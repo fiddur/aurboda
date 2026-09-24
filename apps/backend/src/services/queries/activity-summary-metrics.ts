@@ -1,6 +1,4 @@
 /**
- * Computes generic summary metrics for an activity.
- *
  * Generic over data source: any source that populates the underlying time-series
  * (Garmin, Strava, Health Connect, FIT upload, manual) produces these values.
  * Source-specific summary fields stored in `activity.data` (distance, calories,
@@ -12,7 +10,6 @@ import type { ActivitySummaryMetrics, MetricType } from '@aurboda/api-spec'
 
 type TimeSeriesPoint = [Date, number]
 
-/** Time-series metrics needed to compute summary fields. */
 export const SUMMARY_METRICS = [
   'heart_rate',
   'speed',
@@ -182,9 +179,6 @@ const computeBodyBatteryFromSeries = (
 }
 
 /**
- * Compute summary metrics for an activity.
- *
- * @param activity Activity record (start_time required, end_time optional)
  * @param series   Per-metric time-series. Caller should pre-filter to the
  *                 activity's time window or pass full series — this function
  *                 trims to [start_time, end_time].

@@ -1,14 +1,8 @@
-/**
- * Activity type definition schemas — defines custom and built-in activity types.
- */
 import { z } from 'zod'
 
 import { baseResponseSchema, createDataArrayResponseSchema, displayCategorySchema } from './common.ts'
 import { dataSchemaDefinitionSchema } from './data-schema.ts'
 
-/**
- * Activity type definition schema.
- */
 export const activityTypeDefinitionSchema = z
   .object({
     aliases: z
@@ -53,9 +47,6 @@ export const activityTypeDefinitionSchema = z
 
 export type ActivityTypeDefinition = z.infer<typeof activityTypeDefinitionSchema>
 
-/**
- * Add activity type definition request body.
- */
 export const addActivityTypeDefinitionBodySchema = z
   .object({
     aliases: z
@@ -91,9 +82,6 @@ export const addActivityTypeDefinitionBodySchema = z
 
 export type AddActivityTypeDefinitionBody = z.infer<typeof addActivityTypeDefinitionBodySchema>
 
-/**
- * Update activity type definition request body.
- */
 export const updateActivityTypeDefinitionBodySchema = z
   .object({
     aliases: z
@@ -124,18 +112,12 @@ export const updateActivityTypeDefinitionBodySchema = z
 
 export type UpdateActivityTypeDefinitionBody = z.infer<typeof updateActivityTypeDefinitionBodySchema>
 
-/**
- * Activity type definitions list response.
- */
 export const activityTypeDefinitionsResponseSchema = createDataArrayResponseSchema(
   activityTypeDefinitionSchema,
 ).meta({ id: 'ActivityTypeDefinitionsResponse' })
 
 export type ActivityTypeDefinitionsResponse = z.infer<typeof activityTypeDefinitionsResponseSchema>
 
-/**
- * Single activity type definition response (for add/update).
- */
 export const activityTypeDefinitionResponseSchema = baseResponseSchema
   .extend({
     data: activityTypeDefinitionSchema.optional(),
@@ -144,19 +126,12 @@ export const activityTypeDefinitionResponseSchema = baseResponseSchema
 
 export type ActivityTypeDefinitionResponse = z.infer<typeof activityTypeDefinitionResponseSchema>
 
-// =============================================================================
-// Rename Activity Type
-// =============================================================================
-
 const activityTypeNameSchema = z
   .string()
   .regex(/^[a-z][a-z0-9_]*$/)
   .meta({ description: 'Activity type name (snake_case)' })
 
-/**
- * Rename a custom activity type's snake_case identifier.
- * Updates all references (activities, deduction rules).
- */
+/** Updates all references (activities, deduction rules). */
 export const renameActivityTypeBodySchema = z
   .object({
     new_name: activityTypeNameSchema.meta({ description: 'New snake_case identifier for the activity type' }),
@@ -165,9 +140,6 @@ export const renameActivityTypeBodySchema = z
 
 export type RenameActivityTypeBody = z.infer<typeof renameActivityTypeBodySchema>
 
-/**
- * Rename activity type response.
- */
 export const renameActivityTypeResponseSchema = baseResponseSchema
   .extend({
     activities_updated: z
@@ -186,14 +158,7 @@ export const renameActivityTypeResponseSchema = baseResponseSchema
 
 export type RenameActivityTypeResponse = z.infer<typeof renameActivityTypeResponseSchema>
 
-// =============================================================================
-// Merge Activity Type
-// =============================================================================
-
-/**
- * Merge a custom activity type into another activity type (built-in or custom).
- * All activities are reassigned; aliases are merged; the source definition is deleted.
- */
+/** All activities are reassigned; aliases are merged; the source definition is deleted. */
 export const mergeActivityTypeBodySchema = z
   .object({
     source: activityTypeNameSchema.meta({ description: 'Custom activity type to merge away' }),
@@ -203,9 +168,6 @@ export const mergeActivityTypeBodySchema = z
 
 export type MergeActivityTypeBody = z.infer<typeof mergeActivityTypeBodySchema>
 
-/**
- * Merge activity type response.
- */
 export const mergeActivityTypeResponseSchema = baseResponseSchema
   .extend({
     activities_reassigned: z

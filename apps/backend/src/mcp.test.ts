@@ -8,7 +8,6 @@ import { createMcpRouter } from './mcp.ts'
 import * as mutations from './services/mutations.ts'
 import * as queries from './services/queries/index.ts'
 
-// Mock the services
 vi.mock('./services/queries/index', () => ({
   getDailySummary: vi.fn(),
   getPeriodSummary: vi.fn(),
@@ -23,15 +22,19 @@ vi.mock('./services/mutations', () => ({
   addActivity: vi.fn(),
   addCustomMetric: vi.fn(),
   addMetric: vi.fn(),
+  addNote: vi.fn(),
   addTag: vi.fn(),
   deleteActivity: vi.fn(),
   deleteCustomMetric: vi.fn(),
+  deleteNoteById: vi.fn(),
   getCustomMetrics: vi.fn().mockResolvedValue([]),
+  getNotesForEntity: vi.fn().mockResolvedValue([]),
+  getNotesInRange: vi.fn().mockResolvedValue([]),
   restoreActivity: vi.fn(),
   updateActivity: vi.fn(),
+  updateNote: vi.fn(),
 }))
 
-// Mock db for sync status and stored detected locations
 vi.mock('./db', () => ({
   activityTypeExists: vi.fn().mockResolvedValue(true),
   deleteActivityTypeDefinition: vi.fn().mockResolvedValue(false),
@@ -68,14 +71,17 @@ vi.mock('./db', () => ({
   insertDeductionRuleRun: vi.fn().mockResolvedValue(undefined),
   insertRawRecord: vi.fn().mockResolvedValue(undefined),
   insertTimeSeries: vi.fn().mockResolvedValue(undefined),
+  materializeSuperseded: vi.fn(),
+  softDeleteActivityByExternalId: vi.fn(),
   softDeleteSupersededLocations: vi.fn().mockResolvedValue(0),
   updateActivityTypeDefinition: vi.fn(),
   updateDeductionRule: vi.fn().mockResolvedValue(null),
   upsertSyncState: vi.fn().mockResolvedValue(undefined),
   upsertUserSettings: vi.fn(),
+  adoptLegacyActivity: vi.fn(),
+  findActivityByExternalId: vi.fn(),
 }))
 
-// Mock the sync modules
 vi.mock('./services/deduction-deps', () => ({
   createDefaultEngineDeps: vi.fn().mockReturnValue({
     deleteStaleRuleActivities: vi.fn().mockResolvedValue(0),
@@ -108,7 +114,6 @@ function createTestApp() {
   return app
 }
 
-// Helper to make MCP requests with proper headers
 function mcpPost(app: express.Express) {
   return request(app).post('/mcp').set('Accept', 'application/json, text/event-stream')
 }
@@ -117,7 +122,6 @@ function mcpDelete(app: express.Express) {
   return request(app).delete('/mcp').set('Accept', 'application/json, text/event-stream')
 }
 
-// Parse SSE response to extract JSON-RPC result
 function parseSSEResponse(text: string): unknown {
   const lines = text.split('\n')
   for (const line of lines) {
@@ -218,7 +222,6 @@ describe('MCP Server', () => {
           params: { arguments: args, name: toolName },
         })
 
-      // Parse SSE response
       const parsed = parseSSEResponse(response.text) as { result: { content: { text: string }[] } }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let toolResult: any = null
@@ -238,7 +241,6 @@ describe('MCP Server', () => {
       const app = createTestApp()
       const token = auth.createToken('testuser')
 
-      // Mock service response
       vi.mocked(queries.getPeriodSummary).mockResolvedValue({
         end: '2024-01-31T23:59:59.000Z',
         metrics: [
@@ -277,7 +279,6 @@ describe('MCP Server', () => {
       expect(result.metrics[0].unit).toBe('ms')
       expect(result.metrics[0].trend_per_day).toBe(5)
 
-      // Verify service was called with correct arguments
       expect(queries.getPeriodSummary).toHaveBeenCalledWith(
         'testuser',
         ['hrv_rmssd'],
@@ -1220,6 +1221,110 @@ describe('MCP Server', () => {
 
       expect(response.status).toBe(200)
       expect(resetSpy).not.toHaveBeenCalled()
+    })
+  })
+  describe('Tools: notes', () => {
+    async function callNoteTool(
+      app: express.Express,
+      token: string,
+      toolName: string,
+      args: Record<string, unknown>,
+    ) {
+      const response = await mcpPost(app)
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          id: 1,
+          jsonrpc: '2.0',
+          method: 'tools/call',
+          params: { arguments: args, name: toolName },
+        })
+      const parsed = parseSSEResponse(response.text) as { result: { content: { text: string }[] } }
+      return { response, toolResult: JSON.parse(parsed.result.content[0].text) }
+    }
+
+    test('registers the note tools including query_notes', async () => {
+      const app = createTestApp()
+      const token = auth.createToken('testuser')
+
+      const response = await mcpPost(app)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ id: 1, jsonrpc: '2.0', method: 'tools/list' })
+
+      const parsed = parseSSEResponse(response.text) as { result: { tools: { name: string }[] } }
+      const names = parsed.result.tools.map((t) => t.name)
+
+      expect(names).toContain('add_note')
+      expect(names).toContain('get_notes')
+      expect(names).toContain('query_notes')
+      expect(names).toContain('update_note')
+      expect(names).toContain('delete_note')
+    })
+
+    test('add_note accepts the time shape (no entity_id)', async () => {
+      const app = createTestApp()
+      const token = auth.createToken('testuser')
+
+      vi.mocked(mutations.addNote).mockResolvedValue({
+        data: {
+          content: 'Felt dizzy',
+          created_at: '2024-01-15T12:00:00.000Z',
+          entity_id: null,
+          entity_type: 'time',
+          id: 'note-1',
+          start_time: '2024-01-15T12:00:00.000Z',
+          updated_at: '2024-01-15T12:00:00.000Z',
+        },
+        success: true,
+      })
+
+      const { response, toolResult } = await callNoteTool(app, token, 'add_note', {
+        content: 'Felt dizzy',
+        entity_type: 'time',
+        start_time: '2024-01-15T12:00:00Z',
+      })
+
+      expect(response.status).toBe(200)
+      expect(toolResult.success).toBe(true)
+      expect(mutations.addNote).toHaveBeenCalledWith('testuser', {
+        content: 'Felt dizzy',
+        end_time: undefined,
+        entity_id: undefined,
+        entity_type: 'time',
+        start_time: '2024-01-15T12:00:00Z',
+      })
+    })
+
+    test('query_notes lists comments in a time range', async () => {
+      const app = createTestApp()
+      const token = auth.createToken('testuser')
+
+      vi.mocked(mutations.getNotesInRange).mockResolvedValue([
+        {
+          content: 'Felt dizzy',
+          created_at: '2024-01-15T12:00:00.000Z',
+          entity_id: null,
+          entity_type: 'time',
+          id: 'note-1',
+          replies: [],
+          start_time: '2024-01-15T12:00:00.000Z',
+          updated_at: '2024-01-15T12:00:00.000Z',
+        },
+      ])
+
+      const { response, toolResult } = await callNoteTool(app, token, 'query_notes', {
+        from: '2024-01-15T00:00:00Z',
+        to: '2024-01-15T23:59:59Z',
+        tz: 'UTC',
+      })
+
+      expect(response.status).toBe(200)
+      expect(toolResult.success).toBe(true)
+      expect(toolResult.data).toHaveLength(1)
+      expect(mutations.getNotesInRange).toHaveBeenCalledWith(
+        'testuser',
+        new Date('2024-01-15T00:00:00Z'),
+        new Date('2024-01-15T23:59:59Z'),
+      )
     })
   })
 })

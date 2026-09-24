@@ -1,7 +1,4 @@
 /**
- * EditableDashboard - the section/widget grid with optional inline editing,
- * shared by the home Dashboard and the owner's view of a shared dashboard.
- *
  * Controlled component: it renders `config` and calls `onChange(next)` for every
  * edit (add/remove/move widget, add/delete section). The parent owns
  * persistence (home dashboard vs. a shared dashboard) and the edit toggle.

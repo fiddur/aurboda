@@ -1,14 +1,39 @@
-/**
- * Pure utility functions for chart tooltip interactions.
- */
 import type { SleepStage } from './sleep-utils'
 
 import { STAGE_LABELS } from './sleep-utils'
 
+export const MAX_RIGHT_AXES = 2
+
 /**
- * Find the nearest data point to a given time using binary search.
- * Returns the [Date, number] tuple closest to `targetTime`, or undefined if data is empty.
+ * How many RIGHT y-axes the chart will draw for these overlays — the same
+ * axis-allocation walk `drawOverlays` performs: the first overlay takes the
+ * left axis (whether or not it shows one) unless a hypnogram already holds it,
+ * later overlays go right, and only `showAxis` overlays up to the cap actually
+ * draw an axis there.
  */
+export const countRightAxes = (hasHypnogram: boolean, overlays: { showAxis: boolean }[]): number => {
+  let rightAxisCount = 0
+  let leftUsed = false
+  for (const overlay of overlays) {
+    if (!leftUsed && !hasHypnogram) {
+      leftUsed = true
+    } else if (overlay.showAxis && rightAxisCount < MAX_RIGHT_AXES) {
+      rightAxisCount++
+    }
+  }
+  return rightAxisCount
+}
+
+/**
+ * The right chart margin for a given number of drawn right axes: axes sit
+ * 45px apart, the outermost needs ~20px more for its tick + unit labels, and
+ * an axis-less chart keeps only a small breathing edge. Reserving a fixed
+ * maximum instead squeezed the plot to half a phone card's width when only
+ * one metric was shown (the common feed-card case).
+ */
+export const chartRightMargin = (rightAxes: number): number =>
+  rightAxes === 0 ? 14 : rightAxes * 45 + 20
+
 export const findNearest = (data: [Date, number][], targetTime: Date): [Date, number] | undefined => {
   if (data.length === 0) return undefined
   if (data.length === 1) return data[0]
@@ -34,7 +59,6 @@ export const findNearest = (data: [Date, number][], targetTime: Date): [Date, nu
 
 /**
  * Interpolate a GPS position for a given time between sorted location points.
- * Uses binary search + linear interpolation between bracketing points.
  */
 export const interpolatePosition = (
   points: { lat: number; lon: number; time: Date }[],
@@ -45,14 +69,12 @@ export const interpolatePosition = (
 
   const t = targetTime.getTime()
 
-  // Clamp to first/last point
   if (t <= points[0].time.getTime()) return { lat: points[0].lat, lon: points[0].lon }
   if (t >= points[points.length - 1].time.getTime()) {
     const last = points[points.length - 1]
     return { lat: last.lat, lon: last.lon }
   }
 
-  // Binary search for bracketing interval
   let lo = 0
   let hi = points.length - 1
   while (lo < hi - 1) {
@@ -73,10 +95,6 @@ export const interpolatePosition = (
   }
 }
 
-/**
- * Find the sleep stage active at a given time.
- * Returns the stage label string, or undefined if no stage covers that time.
- */
 export const findStageAtTime = (stages: SleepStage[], time: Date): string | undefined => {
   const t = time.getTime()
   for (const stage of stages) {

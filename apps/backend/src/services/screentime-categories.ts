@@ -1,9 +1,4 @@
 /**
- * Screentime category service.
- *
- * Handles CRUD, category resolution (matching app/title against rules), and
- * bulk recategorization of productivity records when rules change.
- *
  * Resolution algorithm (matches ActivityWatch):
  * - Each category has a regex rule tested against both activity name and window title
  * - If multiple categories match, the deepest one (longest name path) wins
@@ -112,18 +107,11 @@ const propagateCategoryPath = async (
   }
 }
 
-// ============================================================================
-// Category Resolution
-// ============================================================================
-
 interface CompiledRule {
   category: ScreentimeCategory
   regex: RegExp
 }
 
-/**
- * Compile all regex-type categories into RegExp objects for matching.
- */
 export const compileRules = (categories: ScreentimeCategory[]): CompiledRule[] =>
   categories
     .filter((c) => c.rule_type === 'regex' && c.rule_regex)
@@ -133,11 +121,7 @@ export const compileRules = (categories: ScreentimeCategory[]): CompiledRule[] =
     }))
 
 /**
- * Resolve which category an activity/title belongs to.
  * Returns the deepest matching category's name path, or null if no match.
- *
- * Algorithm: test regex against both activity and title strings.
- * If multiple match, pick the deepest (longest name array).
  */
 export const resolveCategory = (
   activity: string,
@@ -150,7 +134,6 @@ export const resolveCategory = (
 
   if (matches.length === 0) return null
 
-  // Pick deepest (most specific) match
   let deepest = matches[0]
   for (let i = 1; i < matches.length; i++) {
     if (matches[i].category.name.length > deepest.category.name.length) {
@@ -169,13 +152,11 @@ export const getColorForCategory = (
   categoryPath: string[],
   allCategories: ScreentimeCategory[],
 ): string | undefined => {
-  // Try exact match first
   const exact = allCategories.find(
     (c) => c.name.length === categoryPath.length && c.name.every((n, i) => n === categoryPath[i]),
   )
   if (exact?.color) return exact.color
 
-  // Walk up parents
   for (let depth = categoryPath.length - 1; depth > 0; depth--) {
     const parentPath = categoryPath.slice(0, depth)
     const parent = allCategories.find(
@@ -210,16 +191,8 @@ export const getScoreForCategory = (
   return undefined
 }
 
-// ============================================================================
-// Recategorization
-// ============================================================================
-
 const BATCH_SIZE = 500
 
-/**
- * Recategorize all productivity records for a user.
- * Loads all records, resolves categories, and batch updates.
- */
 export const recategorizeAll = async (user: string): Promise<number> => {
   const categories = await getScreentimeCategories(user)
   const compiledRules = compileRules(categories)
@@ -256,10 +229,6 @@ export const categorizeRecords = (
   }
 }
 
-// ============================================================================
-// CRUD (thin wrappers around DB with recategorization triggers)
-// ============================================================================
-
 export const listCategories = async (user: string) => getScreentimeCategories(user)
 
 export const createCategory = async (user: string, input: ScreentimeCategoryInput) => {
@@ -278,7 +247,6 @@ export const createCategory = async (user: string, input: ScreentimeCategoryInpu
     auditError(user, 'data', 'Failed to mirror category to activity type', { error: String(err) })
   }
 
-  // Fire-and-forget recategorization (only if the new category has a rule)
   if (input.rule_type === 'regex' && input.rule_regex) {
     recategorizeAll(user).catch((err) => {
       auditError(user, 'data', 'Recategorization failed', { error: String(err) })
@@ -300,7 +268,6 @@ export const modifyCategory = async (user: string, id: string, input: Partial<Sc
 
   const result = await updateScreentimeCategory(user, id, input)
 
-  // Propagate rename / color change to existing data (#652).
   if (before && result) {
     if (input.name !== undefined && !sameNameArray(before.name, result.name)) {
       // Cascade the prefix shift to descendant rows. updateScreentimeCategory
@@ -308,8 +275,6 @@ export const modifyCategory = async (user: string, id: string, input: Partial<Sc
       // would be left starting with the old prefix and silently diverge.
       await cascadeNamePrefix(user, id, before.name, result.name)
 
-      // Propagate path on the renamed category itself, then on each
-      // descendant by computing its new name from the prefix swap.
       await propagateCategoryPath(user, result.activity_type_name, before.name, result.name)
       for (const desc of descendantsBefore) {
         const newDescName = [...result.name, ...desc.name.slice(before.name.length)]
@@ -378,8 +343,8 @@ export const upsertCategory = async (user: string, id: string, input: Screentime
     auditError(user, 'data', 'Failed to mirror category to activity type', { error: String(err) })
   }
 
-  // Propagate rename / color change to existing data (#652). `before` is null
-  // on the create branch of upsert; in that case there's nothing to propagate.
+  // `before` is null on the create branch of upsert; in that case there's
+  // nothing to propagate.
   if (before) {
     await propagateCategoryPath(user, result.activity_type_name, before.name, result.name)
     try {
@@ -390,7 +355,6 @@ export const upsertCategory = async (user: string, id: string, input: Screentime
     }
   }
 
-  // Recategorize if the category has a rule
   if (input.rule_type === 'regex' && input.rule_regex) {
     recategorizeAll(user).catch((err) => {
       auditError(user, 'data', 'Recategorization failed', { error: String(err) })
@@ -440,7 +404,7 @@ export const moveCategoryToParent = async (user: string, id: string, newParentId
         )
         for (const desc of descendants) await recomputeCategoryParentType(user, desc, after)
 
-        // Propagate path changes to existing screentime activities (#652).
+        // Propagate path changes to existing screentime activities.
         // The moved category's path always changes; descendants' paths shift
         // by the prefix delta. Match each old/new pair by id so we cover the
         // descendants whose name array was rewritten in DB.
@@ -466,17 +430,9 @@ export const moveCategoryToParent = async (user: string, id: string, newParentId
   return result
 }
 
-// ============================================================================
-// Import from ActivityWatch
-// ============================================================================
-
-/**
- * Convert ActivityWatch categories to our format.
- */
 export const convertAwCategories = (awCategories: AwCategory[]): CreateScreentimeCategoryBody[] =>
   awCategories
     .filter((c) => {
-      // Skip the "Uncategorized" meta-category
       return !(c.name.length === 1 && c.name[0] === 'Uncategorized')
     })
     .map((c, i) => ({
@@ -489,9 +445,6 @@ export const convertAwCategories = (awCategories: AwCategory[]): CreateScreentim
       sort_order: i,
     }))
 
-/**
- * Import categories from ActivityWatch, optionally replacing existing ones.
- */
 export const importFromActivityWatch = async (
   user: string,
   awCategories: AwCategory[],
@@ -516,7 +469,6 @@ export const importFromActivityWatch = async (
     })),
   )
 
-  // Mirror all freshly-inserted categories into activity types in depth order.
   try {
     await ensureAllCategoriesHaveTypes(user, result)
   } catch (err) {
@@ -526,7 +478,6 @@ export const importFromActivityWatch = async (
     })
   }
 
-  // Fire-and-forget recategorization
   recategorizeAll(user).catch((err) => {
     auditError(user, 'data', 'Recategorization after AW import failed', { error: String(err) })
   })
@@ -534,9 +485,6 @@ export const importFromActivityWatch = async (
   return result
 }
 
-/**
- * Fetch categories from an ActivityWatch server via its settings API.
- */
 export const fetchAwCategories = async (serverUrl: string): Promise<AwCategory[]> => {
   const url = `${serverUrl.replace(/\/+$/, '')}/api/0/settings`
   const response = await fetch(url)

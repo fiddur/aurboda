@@ -76,7 +76,6 @@ export function parseNativeAuth(raw: string | null | undefined): EmbedAuth | nul
   }
 }
 
-/** Read auth handed over by the native WebView bridge, if present. */
 export function readNativeAuth(): EmbedAuth | null {
   const bridge = window.AurbodaNative
   if (!bridge?.getAuth) return null

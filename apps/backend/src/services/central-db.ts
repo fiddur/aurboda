@@ -1,6 +1,4 @@
 /**
- * Central database service for server-wide settings and admin management.
- *
  * Uses the shared 'aurboda' database (same as pg-boss queue) for:
  * - Server-wide configuration (signup mode, etc.)
  * - Admin user list
@@ -28,14 +26,12 @@ import {
   type SharedNutrientRecommendationsApi,
 } from './central-nutrient-recommendations.ts'
 
-// ============================================================================
-// Types
-// ============================================================================
-
 export type SignupMode = 'open' | 'invite_only' | 'closed'
 
 export interface ServerSettings {
   audit_log_retention_days: number
+  gravl_client_id: string
+  gravl_client_secret: string
   lastfm_api_key: string
   oura_client_id: string
   oura_client_secret: string
@@ -164,19 +160,8 @@ export interface CentralDb
   getUsernameByWebAuthnUserHandle: (userHandle: string) => Promise<string | null>
 }
 
-// ============================================================================
-// Configuration
-// ============================================================================
-
 const DEFAULT_CENTRAL_DB = 'aurboda'
 
-// ============================================================================
-// Database helpers
-// ============================================================================
-
-/**
- * Get database connection parameters from environment.
- */
 const getDbParams = () => ({
   database: process.env.CENTRAL_DB || DEFAULT_CENTRAL_DB,
   host: process.env.PGHOST || 'localhost',
@@ -185,13 +170,9 @@ const getDbParams = () => ({
   user: process.env.PGUSER,
 })
 
-/**
- * Ensure the central database exists, creating it if necessary.
- */
 const ensureDatabase = async (): Promise<boolean> => {
   const params = getDbParams()
 
-  // First, try connecting directly to the target database (it might already exist)
   const targetClient = new pg.Client({ database: params.database })
 
   try {
@@ -202,7 +183,6 @@ const ensureDatabase = async (): Promise<boolean> => {
     await targetClient.end().catch(() => {})
   }
 
-  // Connect to postgres database to create the target database
   const postgresClient = new pg.Client({ database: 'postgres' })
 
   try {
@@ -217,10 +197,6 @@ const ensureDatabase = async (): Promise<boolean> => {
     await postgresClient.end()
   }
 }
-
-// ============================================================================
-// Schema initialization
-// ============================================================================
 
 const CREATE_SERVER_SETTINGS_TABLE = `
   CREATE TABLE IF NOT EXISTS server_settings (
@@ -311,13 +287,6 @@ const CREATE_WEBAUTHN_USER_HANDLES_TABLE = `
   )
 `
 
-// ============================================================================
-// Factory
-// ============================================================================
-
-/**
- * Create a central database service instance.
- */
 export const createCentralDb = (deps: CentralDbDeps): CentralDb => {
   const { getClient } = deps
 
@@ -461,7 +430,6 @@ export const createCentralDb = (deps: CentralDbDeps): CentralDb => {
       await client.query(CREATE_SHARED_NUTRIENT_RECOMMENDATIONS_TABLE)
       await seedSharedNutrientRecommendations(client)
 
-      // Set default signup_mode if not exists
       await client.query(
         `INSERT INTO server_settings (key, value)
          VALUES ('signup_mode', '"open"')
@@ -735,20 +703,12 @@ export const createCentralDb = (deps: CentralDbDeps): CentralDb => {
   }
 }
 
-// ============================================================================
-// Singleton instance for use in api.ts
-// ============================================================================
-
 let centralDbClient: pg.Client | null = null
 let centralDbInstance: CentralDb | null = null
 
-/**
- * Get or create the singleton central database client.
- */
 const getCentralDbClient = async (): Promise<pg.Client> => {
   if (centralDbClient) return centralDbClient
 
-  // Ensure database exists
   const dbReady = await ensureDatabase()
   if (!dbReady) {
     throw new Error('Failed to initialize central database')
@@ -761,7 +721,6 @@ const getCentralDbClient = async (): Promise<pg.Client> => {
 }
 
 /**
- * Get the singleton central database instance.
  * Call initializeCentralDb() before using other methods.
  */
 export const getCentralDb = (): CentralDb => {
@@ -772,7 +731,6 @@ export const getCentralDb = (): CentralDb => {
 }
 
 /**
- * Initialize the central database (create tables and default settings).
  * Should be called once at server startup.
  */
 export const initializeCentralDb = async (): Promise<void> => {
@@ -783,7 +741,6 @@ export const initializeCentralDb = async (): Promise<void> => {
   const allowSignupEnv = process.env.ALLOW_SIGNUP
   if (allowSignupEnv !== undefined) {
     const currentMode = await db.getSignupMode()
-    // Only migrate if still at default 'open' mode
     if (currentMode === 'open') {
       const newMode: SignupMode = allowSignupEnv === 'true' ? 'open' : 'closed'
       await db.setSignupMode(newMode)

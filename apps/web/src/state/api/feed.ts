@@ -2,6 +2,9 @@ import type {
   ArticleExportResponse,
   CreateArticleBody,
   FeedPost,
+  FeedPostReaction,
+  FeedPostReactionsResponse,
+  FeedPostRepliesResponse,
   FeedPostResponse,
   FeedPostsResponse,
   FollowActorResponse,
@@ -11,9 +14,13 @@ import type {
   FollowersResponse,
   FollowingActor,
   FollowingResponse,
+  ReplyToPostBody,
   ShareActivityBody,
   ShareChallengeBody,
   SharePreviewResponse,
+  TimelineEntry,
+  TimelineEntryResponse,
+  TimelineRepliesResponse,
   TimelineResponse,
   UpdateArticleBody,
   UpdateFeedPostBody,
@@ -27,7 +34,6 @@ import { parseTimelineEvents } from './timeline-sse'
 
 const authHeaders = () => ({ Authorization: `Bearer ${auth.value.token}` })
 
-/** Publish an activity to the user's federated feed. */
 export const shareActivity = async (activityId: string, body: ShareActivityBody): Promise<FeedPost> => {
   const response = await axios.post<FeedPostResponse>(
     `${API_URL}/feed/activities/${activityId}/share`,
@@ -39,7 +45,7 @@ export const shareActivity = async (activityId: string, body: ShareActivityBody)
 }
 
 /**
- * One keyset page of the user's own feed posts, newest-first (#1012). Pass the
+ * One keyset page of the user's own feed posts, newest-first. Pass the
  * previous page's `next_cursor` for the next page; null means the last page.
  */
 export const fetchFeed = async (cursor?: string): Promise<FeedPostsResponse> => {
@@ -51,7 +57,7 @@ export const fetchFeed = async (cursor?: string): Promise<FeedPostsResponse> => 
 }
 
 /**
- * Preview what sharing `activityId` with this selection would federate (#902):
+ * Preview what sharing `activityId` with this selection would federate:
  * the exact post HTML + resolved metric values. Creates nothing.
  */
 export const previewShare = async (
@@ -66,7 +72,6 @@ export const previewShare = async (
   return response.data
 }
 
-/** Share a challenge invitation (your note + the canonical link) to the feed (#994). */
 export const shareChallenge = async (body: ShareChallengeBody): Promise<FeedPost> => {
   const response = await axios.post<FeedPostResponse>(`${API_URL}/feed/challenges`, body, {
     headers: authHeaders(),
@@ -75,7 +80,6 @@ export const shareChallenge = async (body: ShareChallengeBody): Promise<FeedPost
   return response.data.post
 }
 
-/** Update a shared post's metric selection, series opt-in, or visibility. */
 export const updateFeedPost = async (postId: string, body: UpdateFeedPostBody): Promise<FeedPost> => {
   const response = await axios.patch<FeedPostResponse>(`${API_URL}/feed/${postId}`, body, {
     headers: authHeaders(),
@@ -84,7 +88,6 @@ export const updateFeedPost = async (postId: string, body: UpdateFeedPostBody): 
   return response.data.post
 }
 
-/** Publish a long-form article (title + prose + inline chart blocks) to the feed. */
 export const createArticle = async (body: CreateArticleBody): Promise<FeedPost> => {
   let response
   try {
@@ -92,15 +95,12 @@ export const createArticle = async (body: CreateArticleBody): Promise<FeedPost> 
       headers: authHeaders(),
     })
   } catch (error) {
-    // Surface the server's window-validation reason (e.g. "Chart block 1
-    // (heart_rate) has start on or after end.") instead of a generic HTTP string.
     throw new Error(apiErrorMessage(error, 'Couldn’t publish the article. Please try again.'))
   }
   if (!response.data.post) throw new Error('Create failed: no post returned')
   return response.data.post
 }
 
-/** Edit an article post (title, blocks, default window, visibility). */
 export const updateArticle = async (postId: string, body: UpdateArticleBody): Promise<FeedPost> => {
   let response
   try {
@@ -131,8 +131,6 @@ export const fetchArticleExport = async (postId: string): Promise<string> => {
       headers: authHeaders(),
     })
   } catch (error) {
-    // Surface the server's reason (e.g. "A followers-only article can't be
-    // exported…") so the user knows to make it public first.
     throw new Error(apiErrorMessage(error, 'Couldn’t export this article. Please try again.'))
   }
   if (!response.data.markdown) throw new Error('Export failed: no markdown returned')
@@ -147,7 +145,6 @@ export const fetchFollowing = async (): Promise<FollowingActor[]> => {
   return response.data.following
 }
 
-/** Pull the server's `{ error }` message off a failed request, or fall back to `fallback`. */
 const apiErrorMessage = (error: unknown, fallback: string): string => {
   if (axios.isAxiosError(error)) {
     const serverError = (error.response?.data as { error?: unknown } | undefined)?.error
@@ -166,8 +163,6 @@ export const followActor = async (handle: string): Promise<FollowingActor> => {
       { headers: authHeaders() },
     )
   } catch (error) {
-    // Surface the server's specific reason (e.g. "You can't follow yourself.",
-    // "Could not resolve an actor for …") instead of a generic message.
     throw new Error(apiErrorMessage(error, 'Couldn’t follow that handle. Check it and try again.'))
   }
   if (!response.data.actor) throw new Error('Follow failed: no actor returned')
@@ -190,7 +185,6 @@ export const updateFollowingNotify = async (id: string, notify_on_post: boolean)
   return response.data.actor
 }
 
-/** List the actors that follow the user, optionally filtered by acceptance state. */
 export const fetchFollowers = async (status: FollowersQuery['status'] = 'all'): Promise<FollowerActor[]> => {
   const response = await axios.get<FollowersResponse>(`${API_URL}/feed/followers`, {
     headers: authHeaders(),
@@ -226,6 +220,98 @@ export const fetchTimeline = async (cursor?: string): Promise<TimelineResponse> 
     params: cursor ? { cursor } : {},
   })
   return response.data
+}
+
+/**
+ * Fetch a live, bounded snapshot of one timeline post's remote reply thread.
+ * `partial: true` means the server's fetch budget ran out before the thread did.
+ */
+export const fetchTimelineReplies = async (entryId: string): Promise<TimelineRepliesResponse> => {
+  const response = await axios.get<TimelineRepliesResponse>(
+    `${API_URL}/feed/timeline/${encodeURIComponent(entryId)}/replies`,
+    { headers: authHeaders() },
+  )
+  return response.data
+}
+
+/**
+ * Toggle a like ⭐ or boost 🔄 on one home-timeline post and return the server's
+ * updated entry (the authoritative replacement for the caller's optimistic
+ * patch). All four are idempotent server-side.
+ */
+const toggleReaction = async (
+  entryId: string,
+  kind: 'boost' | 'like',
+  on: boolean,
+): Promise<TimelineEntry> => {
+  const url = `${API_URL}/feed/timeline/${encodeURIComponent(entryId)}/${kind}`
+  let response
+  try {
+    response = on
+      ? await axios.post<TimelineEntryResponse>(url, {}, { headers: authHeaders() })
+      : await axios.delete<TimelineEntryResponse>(url, { headers: authHeaders() })
+  } catch (error) {
+    throw new Error(apiErrorMessage(error, 'Couldn’t save that. Please try again.'))
+  }
+  if (!response.data.entry) throw new Error('No entry returned')
+  return response.data.entry
+}
+
+/** Favourite a home-timeline post (delivers an AS2 `Like` to its author). */
+export const likeTimelineEntry = (entryId: string): Promise<TimelineEntry> =>
+  toggleReaction(entryId, 'like', true)
+
+/** Remove your favourite (delivers an `Undo{Like}`). */
+export const unlikeTimelineEntry = (entryId: string): Promise<TimelineEntry> =>
+  toggleReaction(entryId, 'like', false)
+
+/** Boost a home-timeline post (delivers an AS2 `Announce` to your followers + its author). */
+export const boostTimelineEntry = (entryId: string): Promise<TimelineEntry> =>
+  toggleReaction(entryId, 'boost', true)
+
+/** Retract your boost (delivers an `Undo{Announce}`). */
+export const unboostTimelineEntry = (entryId: string): Promise<TimelineEntry> =>
+  toggleReaction(entryId, 'boost', false)
+
+/**
+ * Reply 🗨 to a home-timeline post. Publishes a reply post delivered to the
+ * user's followers AND the answered author's inbox; returns the created post.
+ */
+export const replyToTimelineEntry = async (entryId: string, body: ReplyToPostBody): Promise<FeedPost> => {
+  let response
+  try {
+    response = await axios.post<FeedPostResponse>(
+      `${API_URL}/feed/timeline/${encodeURIComponent(entryId)}/reply`,
+      body,
+      { headers: authHeaders() },
+    )
+  } catch (error) {
+    throw new Error(apiErrorMessage(error, 'Couldn’t post that reply. Please try again.'))
+  }
+  if (!response.data.post) throw new Error('Reply failed: no post returned')
+  return response.data.post
+}
+
+/**
+ * The comments this instance holds under one of YOUR posts (replies remote
+ * actors delivered to you) — full timeline entries, oldest first. No network
+ * fetch server-side.
+ */
+export const fetchFeedPostReplies = async (postId: string): Promise<TimelineEntry[]> => {
+  const response = await axios.get<FeedPostRepliesResponse>(
+    `${API_URL}/feed/${encodeURIComponent(postId)}/replies`,
+    { headers: authHeaders() },
+  )
+  return response.data.replies
+}
+
+/** Who favourited or boosted one of YOUR feed posts, newest first. */
+export const fetchFeedPostReactions = async (postId: string): Promise<FeedPostReaction[]> => {
+  const response = await axios.get<FeedPostReactionsResponse>(
+    `${API_URL}/feed/${encodeURIComponent(postId)}/reactions`,
+    { headers: authHeaders() },
+  )
+  return response.data.reactions
 }
 
 /**

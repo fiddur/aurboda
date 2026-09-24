@@ -1,5 +1,4 @@
 /**
- * Meal type meta page — overview and icon configuration for a meal type.
  * Icons are stored in user settings item_icons with "meal:" prefix.
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'

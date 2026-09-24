@@ -1,14 +1,15 @@
+import type { EntityType } from '@aurboda/api-spec'
+
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { format } from 'date-fns'
-import { useCallback, useState } from 'preact/hooks'
+import { useCallback } from 'preact/hooks'
 
-import type { EntityType } from './EntityActions'
+import { CommentThread } from '../../components/CommentThread'
+import { addEntityComment, addReply, deleteComment, fetchComments, updateComment } from '../../state/api'
 
-import { MarkdownEditor } from '../../components/MarkdownEditor/index.jsx'
-import { SaveCancelRow } from '../../components/SaveCancelRow'
-import { addNote, deleteNote, fetchNotes, type NoteData, updateNote } from '../../state/api'
-import { renderMarkdown } from '../../utils/markdown'
-
+/**
+ * The comment thread on one entity. Named `NotesSection` because the storage
+ * (and the API) still calls them notes — the UI word is "Comments".
+ */
 export const NotesSection = ({
   entityType,
   entityId,
@@ -19,128 +20,64 @@ export const NotesSection = ({
   allEntityIds?: string[]
 }) => {
   const queryClient = useQueryClient()
-  const [newNote, setNewNote] = useState('')
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const [editContent, setEditContent] = useState('')
 
-  // Fetch notes for all source entity IDs (merged activity) or just the one
+  // Fetch comments for all source entity IDs (merged activity) or just the one
   const idsToFetch = allEntityIds ?? [entityId]
-  const notesQuery = useQuery({
+  const commentsQuery = useQuery({
     queryFn: async () => {
-      const results = await Promise.all(idsToFetch.map((id) => fetchNotes(entityType, id)))
+      const results = await Promise.all(idsToFetch.map((id) => fetchComments(entityType, id)))
       return results
         .flat()
-        .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+        .sort((a, b) => new Date(a.created_at ?? 0).getTime() - new Date(b.created_at ?? 0).getTime())
     },
     queryKey: ['notes', entityType, ...idsToFetch],
     staleTime: 30_000,
   })
 
-  const invalidateNotes = useCallback(
+  const invalidateComments = useCallback(
     () => queryClient.invalidateQueries({ queryKey: ['notes', entityType, ...idsToFetch] }),
     [queryClient, entityType, ...idsToFetch],
   )
 
-  const addMutation = useMutation({
-    mutationFn: () => addNote(entityType, entityId, newNote),
-    onSuccess: () => {
-      setNewNote('')
-      invalidateNotes()
-    },
+  const addRootMutation = useMutation({
+    mutationFn: (content: string) => addEntityComment(entityType, entityId, content),
+    onSuccess: invalidateComments,
+  })
+
+  const addReplyMutation = useMutation({
+    mutationFn: ({ rootId, content }: { rootId: string; content: string }) => addReply(rootId, content),
+    onSuccess: invalidateComments,
   })
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, content }: { id: string; content: string }) => updateNote(id, content),
-    onSuccess: () => {
-      setEditingId(null)
-      invalidateNotes()
-    },
+    mutationFn: ({ id, content }: { id: string; content: string }) => updateComment(id, { content }),
+    onSuccess: invalidateComments,
   })
 
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => deleteNote(id),
-    onSuccess: invalidateNotes,
+    mutationFn: (id: string) => deleteComment(id),
+    onSuccess: invalidateComments,
   })
 
-  const handleAdd = useCallback(
-    (e: Event) => {
-      e.preventDefault()
-      if (!newNote.trim()) return
-      addMutation.mutate()
-    },
-    [newNote, addMutation],
-  )
-
-  const startEdit = useCallback((note: NoteData) => {
-    setEditingId(note.id)
-    setEditContent(note.content)
-  }, [])
-
-  const notes = notesQuery.data ?? []
+  const pending =
+    addRootMutation.isPending ||
+    addReplyMutation.isPending ||
+    updateMutation.isPending ||
+    deleteMutation.isPending
 
   return (
     <div class="notes-section">
-      <h3>Notes</h3>
+      <h3>Comments</h3>
 
-      {notesQuery.isLoading && <p class="notes-loading">Loading notes…</p>}
-
-      {notes.length > 0 && (
-        <div class="notes-list">
-          {notes.map((note) => (
-            <div key={note.id} class="note-item">
-              {editingId === note.id ? (
-                <div class="note-edit-form">
-                  <MarkdownEditor value={editContent} onChange={setEditContent} rows={3} />
-                  <SaveCancelRow
-                    onSave={() => {
-                      if (!editingId || !editContent.trim()) return
-                      updateMutation.mutate({ content: editContent, id: editingId })
-                    }}
-                    onCancel={() => setEditingId(null)}
-                    isPending={updateMutation.isPending}
-                  />
-                </div>
-              ) : (
-                <>
-                  <div
-                    class="note-content"
-                    dangerouslySetInnerHTML={{ __html: renderMarkdown(note.content) }}
-                  />
-                  <div class="note-footer">
-                    <span class="note-date">{format(new Date(note.created_at), 'yyyy-MM-dd HH:mm')}</span>
-                    <div class="note-actions">
-                      <button
-                        class="note-action-btn"
-                        onClick={() => startEdit(note)}
-                        title="Edit note"
-                        type="button"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        class="note-action-btn danger"
-                        onClick={() => deleteMutation.mutate(note.id)}
-                        title="Delete note"
-                        type="button"
-                        disabled={deleteMutation.isPending}
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-
-      <form onSubmit={handleAdd} class="note-add-form">
-        <MarkdownEditor value={newNote} onChange={setNewNote} placeholder="Add a note…" rows={3} />
-        <button type="submit" class="btn-primary" disabled={!newNote.trim() || addMutation.isPending}>
-          {addMutation.isPending ? 'Adding…' : 'Add Note'}
-        </button>
-      </form>
+      <CommentThread
+        comments={commentsQuery.data ?? []}
+        isLoading={commentsQuery.isLoading}
+        onAddRoot={(content) => addRootMutation.mutate(content)}
+        onAddReply={(rootId, content) => addReplyMutation.mutate({ content, rootId })}
+        onEdit={(id, content) => updateMutation.mutate({ content, id })}
+        onDelete={(id) => deleteMutation.mutate(id)}
+        pending={pending}
+      />
     </div>
   )
 }

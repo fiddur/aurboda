@@ -1,7 +1,3 @@
-/**
- * Metric meta page — overview of a metric type (e.g. "weight", "body_fat", or custom metrics).
- * Shows description, unit, trend chart, recent values, and edit for custom metrics.
- */
 import { metricUnits as builtinMetricUnits, validMetrics } from '@aurboda/api-spec'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useLocation, useRoute } from 'preact-iso'
@@ -32,17 +28,14 @@ const LOOKBACK_OPTIONS = [
   { label: 'All time', value: 3650 },
 ]
 
-/** Map metric name to human-readable display label. */
 const formatMetricLabel = (metric: string): string =>
   metric.replaceAll('_', ' ').replaceAll(/\b\w/g, (c) => c.toUpperCase())
 
-/** Format a value with appropriate precision. */
 const formatValue = (value: number): string => {
   if (Number.isInteger(value)) return String(value)
   return value.toFixed(2)
 }
 
-/** Format a data source name for display. */
 const formatSourceLabel = (source: string): string =>
   source.replaceAll('_', ' ').replaceAll(/\b\w/g, (c) => c.toUpperCase())
 
@@ -61,18 +54,15 @@ function SourceFilteredChart({ metric, unit, lookback }: { metric: string; unit:
   if (isLoading) return <p class="loading">Loading...</p>
   if (!data || data.length === 0) return <p class="metric-meta-empty">No data available</p>
 
-  // Extract unique sources
   const sources = [...new Set(data.map((d) => d.source))].sort()
 
   // Only show this section if there are multiple sources
   if (sources.length < 2) return null
 
-  // Filter data by selected source
   const filtered: MetricDataPointWithSource[] = selectedSource
     ? data.filter((d) => d.source === selectedSource)
     : data
 
-  // Convert to chart data format
   const chartData: { date: string; value: number }[] = filtered.map((d) => ({
     date: d.time.toISOString().split('T')[0],
     value: d.value,
@@ -322,7 +312,6 @@ function MergeMetricSection({
     },
   })
 
-  // Build list of target options: built-in metrics + other custom metrics
   const options = [
     ...validMetrics.filter((m) => m !== metricName).map((m) => ({ label: formatMetricLabel(m), value: m })),
     ...customMetrics
@@ -448,7 +437,6 @@ export function MetricMeta() {
 
   const [lookback, setLookback] = useState(90)
 
-  // Check if it's a custom metric
   const { data: customMetrics } = useQuery({
     queryFn: fetchCustomMetrics,
     queryKey: ['custom-metrics'],
@@ -460,7 +448,6 @@ export function MetricMeta() {
   const unit = customMetric?.unit ?? (builtinMetricUnits as Record<string, string>)[metricName] ?? ''
   const label = formatMetricLabel(metricName)
 
-  // Trend query
   const trendParams: FetchTrendParams = {
     aggregation: 'mean',
     display_period: 'daily',
@@ -495,7 +482,6 @@ export function MetricMeta() {
         unit={unit}
       />
 
-      {/* Trend */}
       <section class="metric-meta-section">
         <div class="metric-meta-section-header">
           <h2>Trend</h2>
@@ -544,13 +530,11 @@ export function MetricMeta() {
       {/* Source-filtered chart (only shown when multiple sources exist) */}
       <SourceFilteredChart metric={metricName} unit={unit} lookback={lookback} />
 
-      {/* Recent values */}
       <section class="metric-meta-section">
         <h2>Recent Values</h2>
         <RecentValues metric={metricName} unit={unit} />
       </section>
 
-      {/* Quick links */}
       <section class="metric-meta-section">
         <h2>Related</h2>
         <div class="metric-meta-links">

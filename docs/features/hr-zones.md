@@ -70,7 +70,7 @@ Zone minutes are computed on-the-fly from raw heart rate data during exercise --
 
 1. Takes all heart rate samples recorded during an exercise session.
 2. For each consecutive pair of samples, assigns the time between them to the zone matching the first sample's HR value.
-3. Gaps between samples are capped at 5 seconds to prevent sparse data (e.g., from Oura's 5-minute intervals) from inflating zone time.
+3. Gaps between samples are capped at 60 seconds, so a watch that samples every 10-15 seconds (e.g. Health Connect before the full Garmin sync) counts in full, while a dropout or sparse data (e.g. Oura's 5-minute intervals) does not stretch one reading into minutes of zone time.
 
 This means zone accuracy depends on the granularity of your HR data. A chest strap (1-second samples) gives near-perfect zone tracking; a wrist-based sensor with less frequent samples still works but with slightly less precision.
 

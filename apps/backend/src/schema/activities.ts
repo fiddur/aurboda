@@ -1,7 +1,3 @@
-/**
- * Activity-domain table SQL: activities + activity_type_definitions (with
- * built-in seed) + deduction rules + legacy tag tables.
- */
 export const activitiesTables: Record<string, string> = {
   // Unified activities table (covers all time-ranged events: sleep, exercise, tags, calendar, etc.)
   activities: `
@@ -86,7 +82,6 @@ export const activitiesTables: Record<string, string> = {
     END $$
   `,
 
-  // Activity type definitions (built-in + custom)
   activity_type_definitions: `
     CREATE TABLE IF NOT EXISTS activity_type_definitions (
       name              VARCHAR(100) PRIMARY KEY,

@@ -1,20 +1,12 @@
-/**
- * Baseline calculation for HRV and resting HR.
- */
-
 import type { BaselineResult } from './types.ts'
 
 import { getTimeSeriesStats } from '../../db/index.ts'
 import { queryMetrics } from '../queries/index.ts'
 
-/**
- * Get personal rolling baseline for HRV and resting HR.
- */
 // eslint-disable-next-line complexity -- TODO: refactor
 export async function getBaseline(user: string, referenceDate?: Date): Promise<BaselineResult> {
   const now = referenceDate ?? new Date()
 
-  // Calculate date ranges
   const end7day = new Date(now)
   end7day.setHours(23, 59, 59, 999)
   const start7day = new Date(now)
@@ -47,7 +39,6 @@ export async function getBaseline(user: string, referenceDate?: Date): Promise<B
     return raw && raw.count > 0 && raw.avg ? raw.avg : null
   }
 
-  // Fetch sleep HRV, resting HR, and stress stats in parallel
   const [
     hrvAvg7day,
     hrvAvg30day,
@@ -70,7 +61,6 @@ export async function getBaseline(user: string, referenceDate?: Date): Promise<B
     getTimeSeriesStats(user, ['stress_level'], prevStart30day, prevEnd30day),
   ])
 
-  // Calculate trends
   const hrvTrend =
     hrvAvg30day !== null && hrvAvgPrev30day !== null
       ? ((hrvAvg30day - hrvAvgPrev30day) / hrvAvgPrev30day) * 100

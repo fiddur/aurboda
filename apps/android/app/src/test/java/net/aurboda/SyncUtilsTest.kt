@@ -7,15 +7,11 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Unit tests for SyncUtils.
- *
  * Note: Testing the actual HTTP posting with generic types has Kotlin reflection issues
  * in unit tests. The chunking logic is tested via the list chunking behavior, and the
  * HTTP posting is covered by integration/manual testing.
  */
 class SyncUtilsTest {
-
-    // PostResult tests
 
     @Test
     fun `PostResult Success isSuccess returns true`() {
@@ -120,8 +116,6 @@ class SyncUtilsTest {
         assertEquals(listOf(3, 4), chunks[1])
         assertEquals(listOf(5), chunks[2])
     }
-
-    // PostResult equality and hashing
 
     @Test
     fun `PostResult Success equals another Success`() {

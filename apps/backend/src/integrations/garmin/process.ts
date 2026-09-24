@@ -1,12 +1,5 @@
-/**
- * Garmin data processing.
- *
- * Transforms raw Garmin API responses into normalized DB records:
- * raw_records + time_series + activities.
- */
-
-import type { IActivity } from '@flow-js/garmin-connect/dist/garmin/types/activity'
-import type { GarminNapDTO, SleepData } from '@flow-js/garmin-connect/dist/garmin/types/sleep'
+import type { IActivity } from '@fiddur/garmin-connect/dist/garmin/types/activity'
+import type { GarminNapDTO, SleepData } from '@fiddur/garmin-connect/dist/garmin/types/sleep'
 
 import type { Activity, Location, RawRecord, TimeSeriesPoint } from '../../db/types.ts'
 import type { ActivitySpan } from '../gps-precedence.ts'
@@ -24,6 +17,7 @@ import type {
 
 import {
   activityTypeExists,
+  adoptLegacyActivity,
   deleteGarminActivityWithWrongType,
   insertActivity,
   insertLocations,
@@ -32,11 +26,12 @@ import {
   softDeleteSupersededLocations,
 } from '../../db/index.ts'
 import { auditError, auditInfo, auditWarn } from '../../services/audit-log.ts'
+import {
+  GARMIN_HC_ORIGIN,
+  garminActivityExternalId,
+  garminSleepExternalId,
+} from '../../services/source-identity.ts'
 import { activityTrackSources, gpsPrecedenceSpan } from '../gps-precedence.ts'
-
-// ============================================================================
-// Types
-// ============================================================================
 
 export type GarminDataType =
   | 'dailySummary'
@@ -65,12 +60,9 @@ export const garminDataTypes: GarminDataType[] = [
   'intensityMinutes',
 ]
 
-// ============================================================================
-// Processing dependencies (for testability)
-// ============================================================================
-
 export interface GarminProcessDeps {
   activityTypeExists: typeof activityTypeExists
+  adoptLegacyActivity: typeof adoptLegacyActivity
   auditError: typeof auditError
   auditInfo: typeof auditInfo
   auditWarn: typeof auditWarn
@@ -94,6 +86,7 @@ export interface ProcessActivityDetailOptions {
 
 const defaultDeps: GarminProcessDeps = {
   activityTypeExists,
+  adoptLegacyActivity,
   auditError,
   auditInfo,
   auditWarn,
@@ -121,7 +114,6 @@ const garminTypeKeyOverrides: Record<string, string> = {
   treadmill_running: 'running_treadmill',
 }
 
-/** Activity type used when a Garmin typeKey resolves to no known definition. */
 const fallbackActivityType = 'other_workout'
 
 /**
@@ -174,10 +166,6 @@ const resolveActivityType = async (
   return resolved
 }
 
-// ============================================================================
-// Main dispatcher
-// ============================================================================
-
 export const processGarminData = async (
   user: string,
   dataType: GarminDataType,
@@ -212,10 +200,6 @@ export const processGarminData = async (
   }
 }
 
-// ============================================================================
-// Per-type processors
-// ============================================================================
-
 /** Parse a Garmin calendar date (YYYY-MM-DD) to a Date at noon UTC (avoids timezone issues). */
 const dateAt = (calendarDate: string, hour = 12): Date => {
   const [y, m, d] = calendarDate.split('-').map(Number)
@@ -230,9 +214,6 @@ const makeRaw = (recordType: string, externalId: string, recordedAt: Date, data:
   source: 'garmin',
 })
 
-// ---------------------------------------------------------------------------
-// Daily Summary
-// ---------------------------------------------------------------------------
 const processDailySummary = async (
   user: string,
   data: GarminDailySummary,
@@ -264,10 +245,6 @@ const processDailySummary = async (
   return 1
 }
 
-// ---------------------------------------------------------------------------
-// Heart Rate
-// ---------------------------------------------------------------------------
-
 /** Flatten a single HR entry (which may be nested) into [timestamp, value] pairs. */
 const flattenHrEntry = (entry: unknown[]): [number, number][] => {
   if (!Array.isArray(entry) || entry.length < 2) return []
@@ -298,9 +275,6 @@ const processHeartRate = async (user: string, data: unknown, deps: GarminProcess
   return points.length > 0 ? 1 : 0
 }
 
-// ---------------------------------------------------------------------------
-// HRV
-// ---------------------------------------------------------------------------
 const processHrv = async (user: string, data: GarminHrvData, deps: GarminProcessDeps): Promise<number> => {
   if (!data?.calendarDate) return 0
 
@@ -316,11 +290,11 @@ const processHrv = async (user: string, data: GarminHrvData, deps: GarminProcess
   return 1
 }
 
-// ---------------------------------------------------------------------------
-// Sleep
-// ---------------------------------------------------------------------------
-
-/** Build a sleep activity record from the daily sleep DTO. */
+/**
+ * Build a sleep activity record from the daily sleep DTO. Keyed by calendar
+ * date (`garmin-sleep-<date>`), the same id the Health Connect processor
+ * derives for a Garmin-written sleep session, so both paths share one row (#1080).
+ */
 const buildSleepActivity = (dto: SleepData['dailySleepDTO']): Activity | null => {
   const startTime = dto.sleepStartTimestampGMT ? new Date(dto.sleepStartTimestampGMT) : null
   const endTime = dto.sleepEndTimestampGMT ? new Date(dto.sleepEndTimestampGMT) : null
@@ -336,6 +310,7 @@ const buildSleepActivity = (dto: SleepData['dailySleepDTO']): Activity | null =>
       sleep_score: dto.sleepScores?.overall?.value,
     },
     end_time: endTime,
+    external_id: garminSleepExternalId(dto.calendarDate),
     source: 'garmin',
     start_time: startTime,
     title: 'Sleep',
@@ -353,7 +328,6 @@ const parseNapGmt = (ts: string | null | undefined): Date | null => {
   return Number.isNaN(d.getTime()) ? null : d
 }
 
-/** Build a nap activity from a Garmin dailyNapDTOS entry. */
 const buildNapActivity = (nap: GarminNapDTO): Activity | null => {
   const startTime = parseNapGmt(nap.napStartTimestampGMT)
   const endTime = parseNapGmt(nap.napEndTimestampGMT)
@@ -373,7 +347,6 @@ const buildNapActivity = (nap: GarminNapDTO): Activity | null => {
   }
 }
 
-/** Extract time series points from sleep data (score, HR, HRV, sleep HR samples). */
 const buildSleepTimeSeries = (data: SleepData, time: Date): TimeSeriesPoint[] => {
   const dto = data.dailySleepDTO
   const points: TimeSeriesPoint[] = []
@@ -424,7 +397,25 @@ const processSleep = async (user: string, data: SleepData, deps: GarminProcessDe
   await deps.insertRawRecord(user, makeRaw('garmin_sleep', `garmin-sleep-${dto.calendarDate}`, time, data))
 
   const activity = buildSleepActivity(dto)
-  if (activity) await deps.insertActivity(user, activity)
+  if (activity) {
+    // Claim the row written before sleep had an external id (same start), or
+    // the Health Connect copy of this night, so the upsert enriches it.
+    await deps.adoptLegacyActivity(user, { external_id: activity.external_id!, source: 'garmin' }, [
+      {
+        activity_type: 'sleep',
+        kind: 'source_type_start',
+        source: 'garmin',
+        start_time: activity.start_time,
+      },
+      {
+        activity_type: 'sleep',
+        kind: 'source_type_start',
+        source: 'health_connect',
+        start_time: activity.start_time,
+      },
+    ])
+    await deps.insertActivity(user, activity)
+  }
 
   for (const nap of dto.dailyNapDTOS ?? []) {
     const napActivity = buildNapActivity(nap)
@@ -436,9 +427,6 @@ const processSleep = async (user: string, data: SleepData, deps: GarminProcessDe
   return 1
 }
 
-// ---------------------------------------------------------------------------
-// Stress
-// ---------------------------------------------------------------------------
 const processStress = async (
   user: string,
   data: GarminStressData,
@@ -449,7 +437,6 @@ const processStress = async (
   const time = dateAt(data.calendarDate)
   await deps.insertRawRecord(user, makeRaw('garmin_stress', `garmin-stress-${data.calendarDate}`, time, data))
 
-  // Prefer granular time-series data from stressValuesArray
   const points: TimeSeriesPoint[] = (data.stressValuesArray ?? [])
     .filter(([ts, value]) => ts && value > 0)
     .map(([ts, value]) => ({
@@ -460,7 +447,6 @@ const processStress = async (
       value,
     }))
 
-  // Fall back to daily average if no granular data
   if (points.length === 0 && data.overallStressLevel > 0) {
     points.push({
       metric: 'stress_level',
@@ -475,9 +461,6 @@ const processStress = async (
   return 1
 }
 
-// ---------------------------------------------------------------------------
-// Body Battery
-// ---------------------------------------------------------------------------
 const processBodyBattery = async (
   user: string,
   data: GarminBodyBatteryData[],
@@ -494,7 +477,6 @@ const processBodyBattery = async (
 
     const points: TimeSeriesPoint[] = []
 
-    // Insert time-series points from the body battery values array
     if (day.bodyBatteryValuesArray?.length) {
       for (const [ts, value] of day.bodyBatteryValuesArray) {
         if (ts && value != null && value >= 0) {
@@ -503,7 +485,6 @@ const processBodyBattery = async (
       }
     }
 
-    // If no detailed data, use a daily snapshot from charged/drained
     if (points.length === 0 && day.charged > 0) {
       points.push({ metric: 'body_battery', source: 'garmin', time, unit: 'score', value: day.charged })
     }
@@ -514,16 +495,13 @@ const processBodyBattery = async (
   return count
 }
 
-// ---------------------------------------------------------------------------
-// Activities (exercise)
-// ---------------------------------------------------------------------------
 const processActivity = async (
   user: string,
   act: IActivity,
   deps: GarminProcessDeps,
   typeCache: Map<string, ResolvedActivityType>,
 ): Promise<void> => {
-  const externalId = `garmin-activity-${act.activityId}`
+  const externalId = garminActivityExternalId(act.activityId)
   const startTime = new Date(act.startTimeGMT || act.beginTimestamp)
   const durationMs = (act.duration || act.elapsedDuration || 0) * 1000
   const endTime = new Date(startTime.getTime() + durationMs)
@@ -534,8 +512,18 @@ const processActivity = async (
   const resolved = await resolveActivityType(user, activityTypeKey, deps, typeCache)
   const exerciseTitle = act.activityName || activityTypeKey
 
-  // Clean up any existing activity with a different type (handles re-sync after type mapping changes)
+  // Legacy rows (no external_id) with a different type are removed so a
+  // re-sync after a type-mapping change doesn't leave a duplicate; keyed rows
+  // are simply updated in place by the upsert below.
   await deps.deleteGarminActivityWithWrongType(user, act.activityId, resolved.activity_type)
+
+  // Claim the row this activity may already have — written by an older sync
+  // without an external id, or by Health Connect from the Garmin app — so the
+  // upsert enriches it instead of adding a second row (#1080).
+  await deps.adoptLegacyActivity(user, { external_id: externalId, source: 'garmin' }, [
+    { garmin_activity_id: act.activityId, kind: 'garmin_activity_id' },
+    { client_record_id: String(act.activityId), data_origin: GARMIN_HC_ORIGIN, kind: 'hc_client_record' },
+  ])
 
   const activity: Activity = {
     activity_type: resolved.activity_type,
@@ -551,13 +539,13 @@ const processActivity = async (
       vo2_max: act.vO2MaxValue,
     },
     end_time: endTime,
+    external_id: externalId,
     source: 'garmin',
     start_time: startTime,
     title: exerciseTitle,
   }
   await deps.insertActivity(user, activity)
 
-  // Time series from activity summary
   const points: TimeSeriesPoint[] = []
   if (act.vO2MaxValue > 0) {
     points.push({
@@ -600,9 +588,6 @@ const processActivities = async (
   return count
 }
 
-// ---------------------------------------------------------------------------
-// SpO2
-// ---------------------------------------------------------------------------
 const processSpo2 = async (user: string, data: GarminSpo2Data, deps: GarminProcessDeps): Promise<number> => {
   if (!data?.calendarDate) return 0
 
@@ -618,9 +603,6 @@ const processSpo2 = async (user: string, data: GarminSpo2Data, deps: GarminProce
   return 1
 }
 
-// ---------------------------------------------------------------------------
-// Respiration
-// ---------------------------------------------------------------------------
 const processRespiration = async (
   user: string,
   data: GarminRespirationData,
@@ -649,9 +631,6 @@ const processRespiration = async (
   return 1
 }
 
-// ---------------------------------------------------------------------------
-// Training Readiness
-// ---------------------------------------------------------------------------
 const processTrainingReadiness = async (
   user: string,
   data: GarminTrainingReadiness,
@@ -680,9 +659,6 @@ const processTrainingReadiness = async (
   return 1
 }
 
-// ---------------------------------------------------------------------------
-// Intensity Minutes
-// ---------------------------------------------------------------------------
 const processIntensityMinutes = async (
   user: string,
   data: GarminIntensityMinutes,
@@ -706,9 +682,7 @@ const processIntensityMinutes = async (
   return 1
 }
 
-// ---------------------------------------------------------------------------
-// Activity Detail (per-second metrics from /activity-service/activity/{id}/details)
-// ---------------------------------------------------------------------------
+// Per-second metrics come from /activity-service/activity/{id}/details.
 
 interface DetailMetricMapping {
   metric: string
@@ -719,7 +693,6 @@ interface DetailMetricMapping {
   transform?: (v: number) => number
 }
 
-/** Metrics to extract from activity detail, mapped to our metric names. */
 const DETAIL_METRIC_MAP: Record<string, DetailMetricMapping> = {
   directBodyBattery: { metric: 'body_battery', unit: 'score' },
   directCurrentStress: { metric: 'stress_level', unit: 'score' },
@@ -752,7 +725,6 @@ export const extractNumericValue = (value: unknown): number | null => {
   return null
 }
 
-/** Build a map of garminKey → metricsIndex from dynamic metricDescriptors. */
 const buildMetricIndexMap = (
   descriptors: GarminActivityDetailResponse['metricDescriptors'],
 ): Map<string, number> => {
@@ -763,7 +735,6 @@ const buildMetricIndexMap = (
   return map
 }
 
-/** Extract time series points from a single activity detail metrics entry. */
 const extractDetailPoints = (
   metrics: unknown[],
   time: Date,
@@ -782,7 +753,6 @@ const extractDetailPoints = (
   return points
 }
 
-/** Extract a GPS location point from a detail metrics entry. */
 const extractGpsPoint = (metrics: unknown[], time: Date, latIdx: number, lonIdx: number): Location | null => {
   const lat = extractNumericValue(metrics[latIdx])
   const lon = extractNumericValue(metrics[lonIdx])
@@ -814,7 +784,6 @@ const extractPolylineGps = (data: GarminActivityDetailResponse): Location[] => {
   return gpsPoints
 }
 
-/** Extract per-second metrics and GPS from activityDetailMetrics, with polyline fallback. */
 const extractMetricsAndGps = (
   data: GarminActivityDetailResponse,
 ): { gpsPoints: Location[]; points: TimeSeriesPoint[] } => {
@@ -846,7 +815,6 @@ const extractMetricsAndGps = (
     }
   }
 
-  // Fall back to polyline GPS if per-second metrics didn't include lat/lon
   if (gpsPoints.length === 0) {
     gpsPoints.push(...extractPolylineGps(data))
   }

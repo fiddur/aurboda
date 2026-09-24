@@ -39,12 +39,25 @@ A native background poller (`NotificationWorker`, a periodic WorkManager job)
 notifies the user when accounts they follow post to their home timeline. Each
 run fetches `/feed/following` and `/feed/timeline`, then the pure, unit-tested
 `decideNotifications` (`PostNotifications.kt`) picks which posts to notify: those
-newer than a stored high-water mark and from a followed actor whose server-side
-`notify_on_post` flag is on (toggled per-account on the web Feed page). The first
+newer than a stored high-water mark (judged by `received_at` — when the server
+stored the post — since `published_at` arrives out of order after federation
+retries), from a followed actor whose server-side `notify_on_post` flag is on
+(toggled per-account on the web Feed page), and not a reply to someone else —
+posts the user is **involved** in (a reply to their own post, a Mention of
+them) notify whoever wrote them (#1060). The first
 run only records the high-water mark, so enabling the feature doesn't dump the
 backlog. The user opts in with the **"Notify me about new posts"** switch on the
 Account screen, which requests `POST_NOTIFICATIONS` (Android 13+) and
-schedules/cancels the worker; tapping a notification opens the Feed tab.
+schedules/cancels the worker; tapping a notification opens the Feed tab. When
+the toggle is on but Android's app-level notification permission is off (the
+worker would silently skip posting), the Account screen shows a warning with a
+button into the system notification settings, re-checked on every resume.
+On launch, `AutoEnablePostNotifications` reconciles the Feed page's
+per-account bells with the device: if any bell is on and the user never made
+an explicit on/off choice, it requests the permission and starts the poller —
+so an active bell can't silently mean nothing. An explicit "off" is never
+overridden, and a denied request records "off" so the user isn't re-prompted
+every launch.
 
 ## Embedded web views
 
@@ -60,6 +73,21 @@ stays light: it is built against a day/night-themed context
 (`Theme.Aurboda.WebView`) with algorithmic darkening allowed, so the embedded web
 app's `prefers-color-scheme` resolves to dark when the system is dark and its own
 dark CSS applies (the page declares `color-scheme: light dark`).
+
+### Page height and `vh` units
+
+The WebView can resolve CSS viewport units (`100vh`, `40vh`) and the `%` height
+chain to 0 even when the view itself is sized correctly, collapsing full-height
+pages. `EmbeddedWebScreen` injects a viewport fix that pins `<html>` to
+`window.innerHeight` in px (re-applied on resize and page finish) so `body` and
+`#app` fill via `%`. Page CSS that must work embedded should therefore size from
+that flex chain (`%`, `flex`) rather than from `vh`: a `vh` cap on an
+`overflow: hidden` panel renders it empty in the app while looking fine in a
+desktop browser (the Places list did exactly this). A page that fills the shell
+(`height: 100%`, internal scrolling) must also not let its content size the
+shell: on narrow screens `.app-content` is `height: auto`, so a tall list would
+inflate it past the viewport and the page would scroll instead. `contain: size`
+on the page root prevents that (see the Places page).
 
 ### Soft keyboard
 
@@ -120,18 +148,50 @@ Two `AppWidgetProvider`s live in `widget/`:
   SharedPreferences (`ChallengeWidgetPrefs.kt`). Rendering — including the
   network fetch — runs in `ChallengeWidgetWorker` (WorkManager, unique
   `APPEND_OR_REPLACE`), enqueued by the provider's `onUpdate`/resize, the config
-  screen, and after every sync; the receiver itself never blocks. Data comes from
-  the user's own instance for the challenge itself (name, unit, window — so a
-  rename or a left challenge shows) and from the **hosting** instance's public
+  screen, and after every sync; the receiver itself never blocks. The worker
+  fetches the user's hosted + joined lists **once** per refresh and shares them
+  with every widget (`fetchChallengeWidgetLists`, #991); the challenge itself
+  (name, unit, window — so a rename or a left challenge shows) comes from those
+  lists, the standings from the **hosting** instance's public
   `GET /public/:username/:slug/standings` (discovered via `/.well-known/aurboda`
-  like a federated join, `ChallengeApi.kt`). The chart is a Canvas bitmap
+  like a federated join, `ChallengeApi.kt`). A cancelled worker propagates its
+  `CancellationException` out of the API helpers instead of turning it into an
+  error result. The chart is a Canvas bitmap
   (`ChallengeChart.kt`) — a widget can't host a WebView — with the same member
-  palette as the web page; the leaderboard rows are added with
+  palette as the web page; bucket ends come from the host's
+  `effective_bucket_size` on the standings response (calendar days/weeks/months
+  in the challenge zone, `bucketEndAt`), inferred from the data only for a host
+  that doesn't send it. The leaderboard rows are added with
   `RemoteViews.addView`, as many as fit for the launcher-reported size
-  (`planChallengeWidgetLayout`), always keeping the signed-in user's row. All
+  (`planChallengeWidgetLayout`), always keeping the signed-in user's row; when
+  that row was pulled up from below the cut on a widget too narrow for the rank
+  column, it alone keeps its rank, prefixed "…" (`rankCellText`, #992), so a
+  10th place never reads as 2nd. All
   the pure logic (series, rows, layout, texts) is in `ChallengeWidgetModel.kt`
-  and unit-tested. Tapping the widget deep-links to `/u/<owner>/<slug>` (or the
+  and unit-tested. Once the challenge has **ended** the widget shows the final
+  standings: a result banner above the chart — a big 🏆 "You won!" when the
+  signed-in user won (or tied for the win), 🥈 / 🥉 "You came 2nd/3rd" naming
+  the winner when they made the podium, otherwise "<winner> won" with where the
+  user finished (`challengeResultBanner`) — and medals in the rank column
+  (`rankLabel`; ranks are competition ranks, so equal totals share one). On a
+  2×2 cell the chart gives way to the banner + two rows
+  (`planChallengeWidgetLayout(showResult = true)` → `showChart = false`). The
+  widget flips to final standings as soon as `end_ts` passes, while the host's
+  feed announcement waits a grace period (6 h) for late syncs — so for those
+  hours the widget's podium is provisional and may differ from what is
+  eventually announced.
+  Tapping the widget deep-links to `/u/<owner>/<slug>` (or the
   absolute URL for a challenge on another instance) in the More tab.
+  **Moving on:** each refresh runs `widgetTarget` over the user's picks — a
+  running, upcoming or less-than-a-day-finished challenge is kept; a day after
+  the end (or at once when the challenge is gone from the lists) the widget
+  advances to the running pick ending soonest, else the soonest upcoming, and
+  rewrites its stored config; with nothing open it asks
+  `GET /challenges/discover` and renders the first result as a **suggestion**
+  ("Join a challenge?" + name, host, window; tap opens the challenge page, whose
+  Join button does the join), falling back to the finished challenge's final
+  standings when there is none, or to "No open challenges — tap to pick one"
+  (opens the picker) when there isn't even that.
 
 Widget taps and notification taps reach `MainActivity` as `EXTRA_OPEN_TAB` /
 `EXTRA_MORE_PATH` extras (`deepLinkFrom` in `AppState.kt`). On a cold start they

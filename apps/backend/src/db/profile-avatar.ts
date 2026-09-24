@@ -25,6 +25,17 @@ export const getProfileAvatar = async (user: string): Promise<ProfileAvatar | un
   }
 }
 
+/**
+ * The avatar's last-modified time WITHOUT loading the image bytes — it versions
+ * the actor document's icon URL, and runs on every actor fetch. `undefined` = no
+ * uploaded avatar (the identicon fallback).
+ */
+export const getProfileAvatarVersion = async (user: string): Promise<Date | undefined> => {
+  const result = await query(user, `SELECT updated_at FROM profile_avatar WHERE singleton`)
+  if (result.rows.length === 0) return undefined
+  return result.rows[0].updated_at as Date
+}
+
 export const upsertProfileAvatar = async (user: string, contentType: string, data: Buffer): Promise<void> => {
   await query(
     user,

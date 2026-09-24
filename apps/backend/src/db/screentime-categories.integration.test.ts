@@ -1,7 +1,3 @@
-/**
- * Screentime categories database integration tests using testcontainers.
- */
-
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import {
@@ -324,10 +320,6 @@ describe('Screentime Categories Integration Tests', () => {
     })
   })
 
-  // ========================================================================
-  // upsertScreentimeCategory
-  // ========================================================================
-
   describe('upsertScreentimeCategory', () => {
     test('creates a new category with specified UUID', async () => {
       const user = getTestUser()
@@ -372,10 +364,6 @@ describe('Screentime Categories Integration Tests', () => {
       expect(result.exclude_from_screentime).toBe(true)
     })
   })
-
-  // ========================================================================
-  // moveScreentimeCategory
-  // ========================================================================
 
   describe('moveScreentimeCategory', () => {
     test('moves a top-level category under a parent', async () => {

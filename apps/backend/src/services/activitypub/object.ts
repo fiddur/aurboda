@@ -14,7 +14,6 @@ import type { FeedVisibility } from '@aurboda/api-spec'
 /** The AS2 magic collection every public object is addressed to. */
 export const AS_PUBLIC = 'https://www.w3.org/ns/activitystreams#Public'
 
-/** A resolved scalar summary for one shared metric. */
 export interface ScalarMetric {
   /** Machine key, e.g. `heart_rate_avg`, `distance`, `hr_zone_minutes`. */
   key: string
@@ -107,7 +106,6 @@ export const formatActivityWindow = (
   return `${startLabel}–${endTime}`
 }
 
-/** Extra content parts beyond the title + scalars (all optional). */
 export interface FeedPostContentExtras {
   /** The author's personal message (plain text; linebreaks become `<br>`). */
   message?: string

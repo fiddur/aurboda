@@ -13,6 +13,7 @@ import type { ComponentChildren } from 'preact'
 import { formatDistanceToNow } from 'date-fns'
 
 import { API_URL } from '../../config'
+import { renderMarkdown } from '../../utils/markdown'
 import { formatEntryWindow } from './activity-stats'
 import { ActivityStatGrid } from './ActivityStatGrid'
 import { ArticleContent } from './ArticleContent'
@@ -80,6 +81,30 @@ const ActivityPostBody = ({ post }: { post: FeedPost }) => (
   </div>
 )
 
+/**
+ * Native body for a reply post: who it answers (linked to their actor page) and
+ * the author's own markdown — the same two pieces the federated Note carries,
+ * where the mention is a leading paragraph before the prose.
+ */
+const ReplyPostBody = ({ post }: { post: FeedPost }) => {
+  const who = post.in_reply_to_handle ?? post.in_reply_to_actor_uri
+  return (
+    <div class="feed-post-content">
+      <p class="feed-post-reply-marker">
+        ↩ replying to{' '}
+        {post.in_reply_to_actor_uri ? (
+          <a href={post.in_reply_to_actor_uri} target="_blank" rel="noopener noreferrer nofollow">
+            {who}
+          </a>
+        ) : (
+          (who ?? 'a post')
+        )}
+      </p>
+      {post.message && <div dangerouslySetInnerHTML={{ __html: renderMarkdown(post.message) }} />}
+    </div>
+  )
+}
+
 export const FeedPostCard = ({
   post,
   author,
@@ -112,13 +137,16 @@ export const FeedPostCard = ({
           via the shared sanitiser). An activity post with the full structured
           payload renders the SAME `TimelineStructured` component a subscribing
           Aurboda peer's home timeline uses (#1008) — interactive hover charts
-          included — so the owner sees exactly what a follower sees. Without it
-          (public profile), the stat-grid `ActivityPostBody`; older payloads
-          fall back to the server-built, HTML-escaped `content`. */}
+          included — so the owner and public-profile visitors see exactly what
+          a follower sees. Without it (a post whose structured resolve returned
+          nothing), the stat-grid `ActivityPostBody`; older payloads fall back
+          to the server-built, HTML-escaped `content`. */}
       {post.kind === 'article' && post.article ? (
         <ArticleContent article={post.article} />
       ) : post.kind === 'challenge' && post.challenge ? (
         <ChallengeShareContent challenge={post.challenge} message={post.message} />
+      ) : post.kind === 'reply' ? (
+        <ReplyPostBody post={post} />
       ) : post.structured ? (
         <TimelineStructured structured={post.structured} />
       ) : post.metrics ? (

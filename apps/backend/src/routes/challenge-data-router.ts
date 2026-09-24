@@ -1,8 +1,4 @@
 /**
- * Member challenge data endpoint (UNAUTHENTICATED, capability-token gated).
- *
- * Handles: GET /challenge-data/:username/:token
- *
  * Served by a member's own instance: returns only that member's series for the
  * one challenge the token belongs to (minimal projection — the host pulls this
  * to build standings). The username scopes which per-user database to read; the

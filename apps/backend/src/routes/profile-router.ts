@@ -1,13 +1,4 @@
-/**
- * Profile route group (owner-facing).
- *
- * Handles: /profile/*
- *
- * POST   /profile/avatar — upload/replace the profile avatar (authenticated)
- * DELETE /profile/avatar — remove it, reverting to the generated identicon
- *
- * The public read side lives in public-avatar-router (`/u/:username/avatar.png`).
- */
+/** The public read side lives in public-avatar-router (`/u/:username/avatar.png`). */
 import type { RequestHandler } from 'express'
 
 import multer from 'multer'
@@ -22,7 +13,16 @@ const upload = multer({
   storage: multer.memoryStorage(),
 })
 
-export const createProfileRouter = (authMiddleware: RequestHandler, webHost: string): TypedRouter => {
+export const createProfileRouter = (
+  authMiddleware: RequestHandler,
+  webHost: string,
+  /**
+   * Fire-and-forget: called after the avatar is uploaded/replaced/removed, so
+   * federation can deliver an `Update{Person}` to followers (remote servers
+   * cache the old avatar until told otherwise).
+   */
+  onAvatarChanged?: (user: string) => void,
+): TypedRouter => {
   const router = typedRouter()
 
   router.post<Record<string, never>, { success: boolean; url?: string; error?: string }>(
@@ -53,12 +53,15 @@ export const createProfileRouter = (authMiddleware: RequestHandler, webHost: str
       }
 
       await upsertProfileAvatar(user, processed.content_type, processed.data)
+      onAvatarChanged?.(user)
       res.json({ success: true, url: `${buildProfileUrl(webHost, user)}/avatar.png` })
     },
   )
 
   router.delete<Record<string, never>, { success: boolean }>('/avatar', authMiddleware, async (req, res) => {
-    await deleteProfileAvatar(req.user!)
+    // Only a delete that removed something changes the actor document, so a
+    // repeat DELETE doesn't fan an `Update{Person}` out to every follower.
+    if (await deleteProfileAvatar(req.user!)) onAvatarChanged?.(req.user!)
     res.json({ success: true })
   })
 

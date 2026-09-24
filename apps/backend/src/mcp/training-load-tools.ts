@@ -1,6 +1,3 @@
-/**
- * MCP training load tools.
- */
 import { getTrainingLoadInputSchema, tzSchema } from '@aurboda/api-spec'
 
 import { computeTrainingLoad, createTrainingLoadDeps } from '../services/training-load/index.ts'
@@ -9,7 +6,6 @@ import { jsonResponse, type McpServer, tzJsonResponse } from './helpers.ts'
 export const registerTrainingLoadTools = (server: McpServer, user: string) => {
   const deps = createTrainingLoadDeps()
 
-  // Tool: get_training_load
   server.tool(
     'get_training_load',
     `Compute training load using the Banister impulse-response model with hourly resolution.

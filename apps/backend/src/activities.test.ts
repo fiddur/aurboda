@@ -208,8 +208,6 @@ describe('mergeOverlappingActivities', () => {
     })
   })
 
-  // note: PR #2 moved notes to the notes table; merge no longer touches them
-
   test('keeps first source when merging', () => {
     const activities = [
       makeActivity({
@@ -499,8 +497,6 @@ describe('findMergedGroupForActivity', () => {
   test('real-world scenario: 4 activities with transitive chaining (same-type)', () => {
     // Simulates: Health Connect 10:27-11:37, Gravl 10:27-10:40, Polar 10:27-11:32, Manual 11:32-12:37
     // HC overlaps Gravl, HC overlaps Polar, Polar overlaps Manual
-    // HC does NOT directly overlap Manual (11:37 >= 11:32 — actually it does in this case)
-    // Let's make it so HC ends at 11:30 and Manual starts at 11:32 to be truly transitive
     const activities = [
       makeActivity({
         end_time: new Date('2024-01-15T10:40:00Z'),
@@ -539,10 +535,6 @@ describe('findMergedGroupForActivity', () => {
     expect(group.map((a) => a.id).sort()).toEqual(['gravl', 'hc', 'manual', 'polar'])
   })
 })
-
-// =============================================================================
-// Cross-source merge tests
-// =============================================================================
 
 describe('mergeOverlappingActivities with cross-source merge', () => {
   const makeActivity = (overrides: Partial<Activity>): Activity => ({

@@ -1,5 +1,4 @@
 /**
- * Shared save status indicator — shows saving/saved/error state.
  * Two variants: 'compact' (spinner/checkmark/!) and 'text' (readable messages).
  */
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
@@ -60,10 +59,6 @@ export function SaveStatusIndicator({ state, variant = 'text' }: SaveStatusIndic
   )
 }
 
-/**
- * Hook that manages SaveStatus state with optional auto-clear.
- * Replaces the copy-pasted useEffect timer pattern.
- */
 export function useSaveStatus(autoClearMs?: number): [SaveStatus, (s: SaveStatus) => void] {
   const [status, setStatusRaw] = useState<SaveStatus>({ status: 'idle' })
   const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)

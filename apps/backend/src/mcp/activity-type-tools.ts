@@ -1,6 +1,3 @@
-/**
- * MCP activity type definition management tools.
- */
 import {
   addActivityTypeDefinitionBodySchema,
   updateActivityTypeDefinitionBodySchema,

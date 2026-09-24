@@ -144,7 +144,6 @@
   }
 }
 
-/* Challenge-share preview card (#994): a bordered mini-render of the post. */
 .share-dialog-preview {
   border: 1px solid #e5e7eb;
   border-radius: 8px;

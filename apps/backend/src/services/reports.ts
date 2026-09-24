@@ -1,6 +1,4 @@
 /**
- * Reports service — CRUD operations for structured lab reports.
- *
  * Reports group related measurements (InBody scans, blood panels, etc.).
  * Entry values/units are stored in time_series (source='lab_report') as the single source of truth.
  * report_entries stores only lab-specific metadata (reference ranges, flags, etc.).
@@ -22,10 +20,6 @@ import {
   type Report,
   type ReportEntry,
 } from '../db/index.ts'
-
-// ============================================================================
-// Types
-// ============================================================================
 
 interface AddReportEntryInput {
   metric: string
@@ -98,13 +92,6 @@ interface LatestMetricResult {
   error?: string
 }
 
-// ============================================================================
-// Flag Auto-derivation
-// ============================================================================
-
-/**
- * Derive a flag from value vs reference range if not explicitly set.
- */
 const deriveFlag = (value: number, referenceLow?: number, referenceHigh?: number): ReportFlag | undefined => {
   if (referenceLow === undefined && referenceHigh === undefined) return undefined
 
@@ -123,10 +110,6 @@ const deriveFlag = (value: number, referenceLow?: number, referenceHigh?: number
   return 'normal'
 }
 
-// ============================================================================
-// Helpers
-// ============================================================================
-
 /** Extract metadata-only entries (no value/unit) for the DB layer. */
 const toDbEntries = (entries: AddReportEntryInput[]) =>
   entries.map((e) => ({
@@ -138,7 +121,6 @@ const toDbEntries = (entries: AddReportEntryInput[]) =>
     reference_low: e.reference_low,
   }))
 
-/** Build time_series points from entries + date. */
 const toTimeSeriesPoints = (entries: AddReportEntryInput[], time: Date) =>
   entries.map((entry) => ({
     metric: entry.metric,
@@ -148,7 +130,6 @@ const toTimeSeriesPoints = (entries: AddReportEntryInput[], time: Date) =>
     value: entry.value,
   }))
 
-/** Clean up all lab_report time_series entries for a given set of metrics/dates. */
 const cleanupTimeSeries = async (
   user: string,
   entryMetrics: Array<{ metric: string; report_date: Date }>,
@@ -160,10 +141,6 @@ const cleanupTimeSeries = async (
     ])
   }
 }
-
-// ============================================================================
-// Formatters
-// ============================================================================
 
 const formatEntry = (entry: ReportEntry): ReportEntryResponse => ({
   confidence: entry.confidence,
@@ -187,19 +164,12 @@ const formatReport = (report: Report): ReportResponse => ({
   report_type: report.report_type,
 })
 
-// ============================================================================
-// Service Functions
-// ============================================================================
-
 /**
- * Create a new report with entries.
  * Auto-derives flags from reference ranges if not set.
- * Writes entry values to time_series with source 'lab_report'.
  */
 export async function addReport(user: string, input: AddReportInput): Promise<ReportResult> {
   const reportDate = new Date(input.date)
 
-  // Process entries: auto-derive flags
   const entries = input.entries.map((e) => ({
     ...e,
     flag: e.flag ?? deriveFlag(e.value, e.reference_low, e.reference_high),
@@ -224,9 +194,6 @@ export async function addReport(user: string, input: AddReportInput): Promise<Re
   return { data: formatReport(report), success: true }
 }
 
-/**
- * Get a single report by ID.
- */
 export async function getReport(user: string, id: string): Promise<ReportResult> {
   const report = await dbGetReportById(user, id)
   if (!report) {
@@ -235,9 +202,6 @@ export async function getReport(user: string, id: string): Promise<ReportResult>
   return { data: formatReport(report), success: true }
 }
 
-/**
- * Query reports with optional filters.
- */
 export async function queryReports(
   user: string,
   filters: { report_type?: string; start?: string; end?: string },
@@ -252,31 +216,25 @@ export async function queryReports(
 }
 
 /**
- * Update a report's metadata and/or entries.
  * When entries are provided, they fully replace existing entries.
- * Maintains time_series consistency (cleanup old, insert new).
  */
 export async function updateReport(
   user: string,
   id: string,
   input: UpdateReportInput,
 ): Promise<ReportResult> {
-  // 1. Fetch existing report
   const existing = await dbGetReportById(user, id)
   if (!existing) {
     return { error: 'Report not found', success: false }
   }
 
-  // 2. Get old entry metrics for time_series cleanup
   const oldEntryMetrics = await getReportEntryMetrics(user, id)
 
-  // 3. Process new entries if provided: auto-derive flags
   const processedEntries = input.entries?.map((e) => ({
     ...e,
     flag: e.flag ?? deriveFlag(e.value, e.reference_low, e.reference_high),
   }))
 
-  // 4. Time_series maintenance: clean old, insert new.
   // Must happen BEFORE dbUpdateReport because it joins with time_series on read.
   await cleanupTimeSeries(user, oldEntryMetrics)
 
@@ -294,7 +252,6 @@ export async function updateReport(
     await insertTimeSeries(user, timeSeriesPoints)
   }
 
-  // 5. Build DB update input (entries without value/unit)
   const dbInput: Parameters<typeof dbUpdateReport>[2] = {}
   if (input.report_type !== undefined) dbInput.report_type = input.report_type
   if (input.date !== undefined) dbInput.report_date = new Date(input.date)
@@ -307,7 +264,6 @@ export async function updateReport(
     return { error: 'Report not found', success: false }
   }
 
-  // 6. Sync note times if date changed
   if (input.date && new Date(input.date).getTime() !== existing.report_date.getTime()) {
     await updateNoteTimesForEntity(user, 'report', id, new Date(input.date), undefined)
   }
@@ -322,7 +278,6 @@ export async function deleteReportById(
   user: string,
   id: string,
 ): Promise<{ success: boolean; error?: string }> {
-  // First, get the entry metrics so we can clean up time_series
   const entryMetrics = await getReportEntryMetrics(user, id)
 
   if (entryMetrics.length === 0) {
@@ -340,7 +295,6 @@ export async function deleteReportById(
     return { error: 'Report not found', success: false }
   }
 
-  // Clean up time_series data
   await cleanupTimeSeries(user, entryMetrics)
 
   return { success: true }

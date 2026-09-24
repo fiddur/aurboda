@@ -1,15 +1,20 @@
 /**
  * Challenges - manage challenges you host and ones you've joined.
  *
- * Create a competition on a metric or activity type over a date range (public or
- * unlisted), copy its link, delete it; join a challenge by URL (local or on
- * another Aurboda instance). Federation happens server-side.
+ * The list is grouped by time status — Ongoing first and most prominent, then
+ * Upcoming, with Ended tucked into a collapsed section — so what needs
+ * attention right now is unmissable. Create a competition on a metric or
+ * activity type over a date range (public or unlisted), copy its link, delete
+ * it; join a challenge by URL (local or on another Aurboda instance). Open
+ * challenges hosted by people you follow that you haven't joined are listed
+ * for one-click joining. Federation happens server-side.
  */
 import type {
   Challenge,
   ChallengeBucketSizeChoice,
   ChallengeParticipation,
   CreateChallengeBody,
+  DiscoveredChallenge,
   ShareVisibility,
 } from '@aurboda/api-spec'
 
@@ -23,11 +28,22 @@ import { SHARE_VISIBILITY_OPTIONS, VisibilitySelector } from '../../components/V
 import {
   createChallenge,
   deleteChallenge,
+  discoverChallenges,
   joinChallengeByUrl,
   leaveChallenge,
   listChallenges,
   listMyChallengeParticipations,
+  updateChallenge,
 } from '../../state/api'
+import {
+  type ChallengeItem,
+  challengeItemKey,
+  challengeRangeLabel,
+  challengeTimePhrase,
+  challengeTimeStatus,
+  discoveredHostLabel,
+  groupChallengeItems,
+} from './challenge-status'
 import {
   browserTz,
   dateToEndIso,
@@ -49,6 +65,7 @@ function CreateChallengeForm({ onCreated }: { onCreated: () => void }) {
   const [endDate, setEndDate] = useState(initialRange.end)
   const [bucketSize, setBucketSize] = useState<ChallengeBucketSizeChoice>('auto')
   const [visibility, setVisibility] = useState<ShareVisibility>('unlisted')
+  const [announceWinner, setAnnounceWinner] = useState(true)
 
   const createMutation = useMutation({
     mutationFn: (body: CreateChallengeBody) => createChallenge(body),
@@ -72,6 +89,7 @@ function CreateChallengeForm({ onCreated }: { onCreated: () => void }) {
     e.preventDefault()
     if (!canSubmit) return
     createMutation.mutate({
+      announce_winner: announceWinner,
       end_ts: dateToEndIso(endDate),
       name: name.trim(),
       spec: {
@@ -187,6 +205,18 @@ function CreateChallengeForm({ onCreated }: { onCreated: () => void }) {
         onChange={setVisibility}
       />
 
+      <label class="challenge-checkbox">
+        <input
+          type="checkbox"
+          checked={announceWinner}
+          onChange={(e) => setAnnounceWinner((e.target as HTMLInputElement).checked)}
+        />
+        <span>
+          Announce the winner to my feed when it ends
+          <small>Posts the final standings, tagging the winner. You can change this later.</small>
+        </span>
+      </label>
+
       <button type="submit" class="btn-primary" disabled={!canSubmit}>
         Create challenge
       </button>
@@ -194,7 +224,49 @@ function CreateChallengeForm({ onCreated }: { onCreated: () => void }) {
   )
 }
 
-function HostedRow({ challenge }: { challenge: Challenge }) {
+const ROLE_LABELS = { hosted: 'Hosted by you', joined: 'Joined', open: 'Open to join' } as const
+
+function RowMain({
+  endTs,
+  meta,
+  name,
+  now,
+  role,
+  startTs,
+  timezone,
+  url,
+}: {
+  endTs: string
+  meta: string
+  name: string
+  now: Date
+  role: 'hosted' | 'joined' | 'open'
+  startTs: string
+  timezone: string
+  url: string
+}) {
+  const status = challengeTimeStatus(startTs, endTs, now)
+  return (
+    <div class="challenge-row-main">
+      <div class="challenge-row-title">
+        <a class="challenge-row-name" href={url}>
+          {name}
+        </a>
+        <span class={`challenge-row-badge challenge-row-badge-${role}`}>{ROLE_LABELS[role]}</span>
+      </div>
+      <span class="challenge-row-meta">{meta}</span>
+      <span class="challenge-row-dates">
+        <span class={`challenge-row-phrase challenge-row-phrase-${status}`}>
+          {challengeTimePhrase(startTs, endTs, timezone, now)}
+        </span>
+        {' · '}
+        {challengeRangeLabel(startTs, endTs, timezone)}
+      </span>
+    </div>
+  )
+}
+
+function HostedRow({ challenge, now }: { challenge: Challenge; now: Date }) {
   const queryClient = useQueryClient()
   const [copied, setCopied] = useState(false)
   const [sharing, setSharing] = useState(false)
@@ -203,6 +275,12 @@ function HostedRow({ challenge }: { challenge: Challenge }) {
     onError: () => alert('Failed to delete the challenge.'),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['challenges'] }),
   })
+  const announce = useMutation({
+    mutationFn: (announce_winner: boolean) => updateChallenge(challenge.id, { announce_winner }),
+    onError: () => alert('Failed to update the challenge.'),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['challenges'] }),
+  })
+  const canToggleAnnounce = challenge.announcement_pending
 
   const copy = async () => {
     try {
@@ -218,14 +296,16 @@ function HostedRow({ challenge }: { challenge: Challenge }) {
 
   return (
     <li class="challenge-row">
-      <div class="challenge-row-main">
-        <a class="challenge-row-name" href={challenge.share_url}>
-          {challenge.name}
-        </a>
-        <span class="challenge-row-meta">
-          {challenge.spec.pattern} · {challenge.spec.aggregation} · {challenge.visibility}
-        </span>
-      </div>
+      <RowMain
+        endTs={challenge.end_ts}
+        meta={`${challenge.spec.pattern} · ${challenge.spec.aggregation} · ${challenge.visibility}`}
+        name={challenge.name}
+        now={now}
+        role="hosted"
+        startTs={challenge.start_ts}
+        timezone={challenge.timezone}
+        url={challenge.share_url}
+      />
       <div class="challenge-row-actions">
         <a class="btn-secondary" href={challenge.share_url}>
           View
@@ -239,6 +319,20 @@ function HostedRow({ challenge }: { challenge: Challenge }) {
         <button class="btn-danger" onClick={() => confirm(`Delete "${challenge.name}"?`) && del.mutate()}>
           Delete
         </button>
+        {canToggleAnnounce && (
+          <label
+            class="challenge-row-toggle"
+            title="Post the final standings to your feed when the challenge ends"
+          >
+            <input
+              type="checkbox"
+              checked={challenge.announce_winner}
+              disabled={announce.isPending}
+              onChange={(e) => announce.mutate((e.target as HTMLInputElement).checked)}
+            />
+            Announce winner
+          </label>
+        )}
       </div>
       {sharing && (
         <ShareChallengeDialog
@@ -252,7 +346,7 @@ function HostedRow({ challenge }: { challenge: Challenge }) {
   )
 }
 
-function JoinedRow({ participation }: { participation: ChallengeParticipation }) {
+function JoinedRow({ now, participation }: { now: Date; participation: ChallengeParticipation }) {
   const queryClient = useQueryClient()
   const [sharing, setSharing] = useState(false)
   const leave = useMutation({
@@ -263,12 +357,16 @@ function JoinedRow({ participation }: { participation: ChallengeParticipation })
 
   return (
     <li class="challenge-row">
-      <div class="challenge-row-main">
-        <a class="challenge-row-name" href={participation.challenge_url}>
-          {participation.name}
-        </a>
-        <span class="challenge-row-meta">{participation.host_identity}</span>
-      </div>
+      <RowMain
+        endTs={participation.end_ts}
+        meta={participation.host_identity}
+        name={participation.name}
+        now={now}
+        role="joined"
+        startTs={participation.start_ts}
+        timezone={participation.timezone}
+        url={participation.challenge_url}
+      />
       <div class="challenge-row-actions">
         <a class="btn-secondary" href={participation.challenge_url}>
           View
@@ -295,6 +393,94 @@ function JoinedRow({ participation }: { participation: ChallengeParticipation })
   )
 }
 
+function DiscoveredRow({
+  challenge,
+  joining,
+  now,
+  onJoin,
+}: {
+  challenge: DiscoveredChallenge
+  joining: boolean
+  now: Date
+  onJoin: (url: string) => void
+}) {
+  return (
+    <li class="challenge-row">
+      <RowMain
+        endTs={challenge.end_ts}
+        meta={`${discoveredHostLabel(challenge)} · ${challenge.spec.pattern} · ${challenge.spec.aggregation}`}
+        name={challenge.name}
+        now={now}
+        role="open"
+        startTs={challenge.start_ts}
+        timezone={challenge.timezone}
+        url={challenge.share_url}
+      />
+      <div class="challenge-row-actions">
+        <a class="btn-secondary" href={challenge.share_url}>
+          View
+        </a>
+        <button class="btn-primary" disabled={joining} onClick={() => onJoin(challenge.share_url)}>
+          Join
+        </button>
+      </div>
+    </li>
+  )
+}
+
+/**
+ * Open challenges hosted by people the user follows (on any Aurboda instance)
+ * that they haven't joined. Hidden while empty; a note says when some followed
+ * instance couldn't be asked, so an empty list isn't mistaken for "nothing on".
+ */
+function DiscoverSection({
+  joining,
+  now,
+  onJoin,
+}: {
+  joining: boolean
+  now: Date
+  onJoin: (url: string) => void
+}) {
+  const query = useQuery({ queryFn: discoverChallenges, queryKey: ['challengeDiscover'], staleTime: 300_000 })
+  const challenges = query.data?.challenges ?? []
+  const unreachable = query.data?.peers_unreachable ?? 0
+  if (challenges.length === 0 && unreachable === 0) return null
+  return (
+    <section class="challenge-group challenge-group-discover">
+      <h2>From people you follow</h2>
+      {challenges.length > 0 && (
+        <ul class="challenge-list">
+          {challenges.map((c) => (
+            <DiscoveredRow key={c.share_url} challenge={c} joining={joining} now={now} onJoin={onJoin} />
+          ))}
+        </ul>
+      )}
+      {unreachable > 0 && (
+        <p class="challenge-discover-note">
+          {unreachable === 1
+            ? "One instance you follow people on couldn't be reached — its challenges may be missing."
+            : `${unreachable} instances you follow people on couldn't be reached — their challenges may be missing.`}
+        </p>
+      )}
+    </section>
+  )
+}
+
+function ChallengeRows({ items, now }: { items: ChallengeItem[]; now: Date }) {
+  return (
+    <ul class="challenge-list">
+      {items.map((item) =>
+        item.kind === 'hosted' ? (
+          <HostedRow key={challengeItemKey(item)} challenge={item.challenge} now={now} />
+        ) : (
+          <JoinedRow key={challengeItemKey(item)} now={now} participation={item.participation} />
+        ),
+      )}
+    </ul>
+  )
+}
+
 export function Challenges() {
   const queryClient = useQueryClient()
   const [joinUrl, setJoinUrl] = useState('')
@@ -312,11 +498,15 @@ export function Challenges() {
     onSuccess: () => {
       setJoinUrl('')
       queryClient.invalidateQueries({ queryKey: ['challengeParticipations'] })
+      queryClient.invalidateQueries({ queryKey: ['challengeDiscover'] })
     },
   })
 
   const hosted = hostedQuery.data ?? []
   const joined = joinedQuery.data ?? []
+  const loading = hostedQuery.isLoading || joinedQuery.isLoading
+  const now = new Date()
+  const groups = groupChallengeItems(hosted, joined, now)
 
   return (
     <div class="challenges-page">
@@ -343,33 +533,44 @@ export function Challenges() {
         </button>
       </div>
 
-      <div class="challenges-columns">
-        <section>
-          <h2>Hosted by you</h2>
-          {hosted.length === 0 ? (
-            <p class="challenges-empty">You haven’t created any challenges yet.</p>
-          ) : (
-            <ul class="challenge-list">
-              {hosted.map((c) => (
-                <HostedRow key={c.id} challenge={c} />
-              ))}
-            </ul>
-          )}
-        </section>
+      <section class="challenge-group challenge-group-ongoing">
+        <h2>
+          <span class="challenge-ongoing-dot" aria-hidden="true" />
+          Ongoing
+          {groups.ongoing.length > 0 && <span class="challenge-group-count">{groups.ongoing.length}</span>}
+        </h2>
+        {groups.ongoing.length > 0 ? (
+          <ChallengeRows items={groups.ongoing} now={now} />
+        ) : (
+          <p class="challenges-empty">
+            {loading
+              ? 'Loading…'
+              : 'No ongoing challenges — join one by link above or create your own below.'}
+          </p>
+        )}
+      </section>
 
-        <section>
-          <h2>Joined</h2>
-          {joined.length === 0 ? (
-            <p class="challenges-empty">You haven’t joined any challenges yet.</p>
-          ) : (
-            <ul class="challenge-list">
-              {joined.map((p) => (
-                <JoinedRow key={p.id} participation={p} />
-              ))}
-            </ul>
-          )}
+      {groups.upcoming.length > 0 && (
+        <section class="challenge-group">
+          <h2>Upcoming</h2>
+          <ChallengeRows items={groups.upcoming} now={now} />
         </section>
-      </div>
+      )}
+
+      <DiscoverSection
+        joining={joinMutation.isPending}
+        now={now}
+        onJoin={(url) => joinMutation.mutate(url)}
+      />
+
+      {groups.ended.length > 0 && (
+        <details class="challenge-group challenge-group-ended">
+          <summary>
+            <h2>Ended ({groups.ended.length})</h2>
+          </summary>
+          <ChallengeRows items={groups.ended} now={now} />
+        </details>
+      )}
 
       <CreateChallengeForm onCreated={() => queryClient.invalidateQueries({ queryKey: ['challenges'] })} />
     </div>

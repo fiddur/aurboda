@@ -19,7 +19,6 @@ import {
 import { ExploreTab } from './Explore'
 import './style.css'
 
-// Period signal
 const periodDays = signal(30)
 
 // Which autonomic metric drives the productivity correlation. Not everyone has
@@ -39,13 +38,10 @@ const CONTEXT_METRIC_PHRASES: Record<HrvContextMetric, string> = {
   stress_level: 'stress level',
 }
 
-// Active tab
 const activeTab = signal<'hrv' | 'explore'>('hrv')
 
-// Selected activity for impact analysis
 const selectedActivity = signal<{ name: string; type: ActivityImpactType } | null>(null)
 
-// Impact timeline chart component
 function ImpactTimelineChart({
   data,
   baseline,
@@ -69,7 +65,6 @@ function ImpactTimelineChart({
     const innerWidth = width - margin.left - margin.right
     const innerHeight = height - margin.top - margin.bottom
 
-    // Data points
     const windows = ['before30min', 'before15min', 'during', 'after15min', 'after30min'] as const
     const labels = ['-30 min', '-15 min', 'During', '+15 min', '+30 min']
 
@@ -83,7 +78,6 @@ function ImpactTimelineChart({
       .append('g')
       .attr('transform', `translate(${margin.left},${margin.top})`)
 
-    // X scale
     const x = d3.scalePoint<number>().domain([0, 1, 2, 3, 4]).range([0, innerWidth])
 
     // HRV Y scale (left)
@@ -114,7 +108,6 @@ function ImpactTimelineChart({
       ])
       .range([innerHeight, 0])
 
-    // Baseline lines
     if (baseline?.hrv.avg30day !== null && baseline?.hrv.avg30day !== undefined) {
       g.append('line')
         .attr('x1', 0)
@@ -127,7 +120,6 @@ function ImpactTimelineChart({
         .attr('opacity', 0.5)
     }
 
-    // HRV line
     const hrvLine = d3
       .line<number | null>()
       .defined((d) => d !== null)
@@ -142,7 +134,6 @@ function ImpactTimelineChart({
       .attr('stroke-width', 2)
       .attr('d', hrvLine)
 
-    // HRV points
     hrvData.forEach((d, i) => {
       if (d !== null) {
         g.append('circle')
@@ -155,7 +146,6 @@ function ImpactTimelineChart({
       }
     })
 
-    // HR line
     const hrLine = d3
       .line<number | null>()
       .defined((d) => d !== null)
@@ -170,7 +160,6 @@ function ImpactTimelineChart({
       .attr('stroke-width', 2)
       .attr('d', hrLine)
 
-    // HR points
     hrData.forEach((d, i) => {
       if (d !== null) {
         g.append('circle')
@@ -183,7 +172,6 @@ function ImpactTimelineChart({
       }
     })
 
-    // Stress line
     if (stressFiltered.length > 0) {
       const stressLine = d3
         .line<number | null>()
@@ -199,7 +187,6 @@ function ImpactTimelineChart({
         .attr('stroke-width', 2)
         .attr('d', stressLine)
 
-      // Stress points
       stressData.forEach((d, i) => {
         if (d !== null) {
           g.append('circle')
@@ -222,14 +209,12 @@ function ImpactTimelineChart({
       .attr('fill', '#3b82f6')
       .attr('fill-opacity', 0.1)
 
-    // X axis
     g.append('g')
       .attr('transform', `translate(0,${innerHeight})`)
       .call(d3.axisBottom(x).tickFormat((_, i) => labels[i]))
       .selectAll('text')
       .attr('fill', 'currentColor')
 
-    // Y axes
     g.append('g').call(d3.axisLeft(yHrv).ticks(4)).selectAll('text').attr('fill', '#10b981')
 
     g.append('g')
@@ -238,7 +223,6 @@ function ImpactTimelineChart({
       .selectAll('text')
       .attr('fill', '#ef4444')
 
-    // Legend
     g.append('text')
       .attr('x', 10)
       .attr('y', -10)
@@ -284,7 +268,6 @@ const isActivitySelected = (
   type: ActivityImpactType,
 ): boolean => selected?.name === name && selected?.type === type
 
-// Correlation row component
 function CorrelationRow({
   name,
   stats,
@@ -326,21 +309,18 @@ function CorrelationRow({
 
 // eslint-disable-next-line complexity -- large render switching between HRV and explore tabs
 export function Correlations() {
-  // Fetch baseline
   const baselineQuery = useQuery({
     queryFn: () => fetchBaseline(),
     queryKey: ['baseline'],
     staleTime: 5 * 60 * 1000,
   })
 
-  // Fetch HRV-activities correlations
   const correlationsQuery = useQuery({
     queryFn: () => fetchHrvActivitiesCorrelation(periodDays.value, contextMetric.value),
     queryKey: ['hrvActivitiesCorrelation', periodDays.value, contextMetric.value],
     staleTime: 5 * 60 * 1000,
   })
 
-  // Fetch activity impact when an activity is selected
   const activityImpactQuery = useQuery({
     enabled: selectedActivity.value !== null,
     queryFn: () =>
@@ -420,7 +400,6 @@ export function Correlations() {
 
           {isLoading && <div class="loading">Analyzing correlations...</div>}
 
-          {/* Baseline overview */}
           {baseline && (
             <section class="baseline-section">
               <h2>Your Baseline</h2>
@@ -441,7 +420,6 @@ export function Correlations() {
             </section>
           )}
 
-          {/* Activity Impact Detail */}
           {activityImpact && (
             <section class="impact-section">
               <h2>
@@ -468,10 +446,8 @@ export function Correlations() {
             </section>
           )}
 
-          {/* Correlations tables */}
           {correlations && (
             <>
-              {/* Activities */}
               {correlations.correlations.activities.length > 0 && (
                 <section class="table-section">
                   <h2>Activities</h2>
@@ -512,7 +488,6 @@ export function Correlations() {
                 </section>
               )}
 
-              {/* Locations */}
               {correlations.correlations.locations.length > 0 && (
                 <section class="table-section">
                   <h2>Locations</h2>
@@ -549,7 +524,6 @@ export function Correlations() {
                 </section>
               )}
 
-              {/* Productivity categories */}
               {correlations.correlations.productivity.length > 0 && (
                 <section class="table-section">
                   <h2>Productivity Categories</h2>
@@ -594,11 +568,9 @@ export function Correlations() {
                 </section>
               )}
 
-              {/* Tags section removed — tags are now activities */}
             </>
           )}
 
-          {/* Info */}
           <section class="info-section">
             <h3>Understanding the data</h3>
             <ul>

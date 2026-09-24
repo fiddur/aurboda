@@ -230,11 +230,11 @@ fun BackgroundSyncStatusRow(status: BackgroundSyncStatus) {
 
 private fun SyncStageStatus.icon(): String =
   when (this) {
-    SyncStageStatus.Idle -> "…" // …
-    SyncStageStatus.Active -> "⟳" // ⟳
-    SyncStageStatus.Done -> "✅" // ✅
-    SyncStageStatus.Failed -> "⚠️" // ⚠️
-    SyncStageStatus.Skipped -> "➖" // ➖
+    SyncStageStatus.Idle -> "…"
+    SyncStageStatus.Active -> "⟳"
+    SyncStageStatus.Done -> "✅"
+    SyncStageStatus.Failed -> "⚠️"
+    SyncStageStatus.Skipped -> "➖"
   }
 
 @Composable

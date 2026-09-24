@@ -1,10 +1,5 @@
 import type { RequestHandler } from 'express'
 
-/**
- * Chart data route group.
- *
- * Handles: /chart-data
- */
 import { type ChartDataHttpQuery, chartDataHttpQuerySchema, type ChartDataResponse } from '@aurboda/api-spec'
 
 import { getChartData } from '../services/chart-data.ts'

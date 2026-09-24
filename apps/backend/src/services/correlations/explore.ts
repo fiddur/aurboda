@@ -94,7 +94,6 @@ export const getContinuousCorrelation = async (
   }
 }
 
-/** Map a trigger condition to a resolvable selector. */
 const triggerConditionToSelector = (cond: TriggerCondition): Selector => {
   switch (cond.type) {
     case 'nutrition':

@@ -1,6 +1,3 @@
-/**
- * Health Connect data processing and daily aggregates.
- */
 import { type DataSource, getExerciseTypeName, type MetricType } from '@aurboda/api-spec'
 
 import type { Activity, DailyAggregate, MealFoodItem, RawRecord, TimeSeriesPoint } from './types.ts'
@@ -16,11 +13,6 @@ import {
 /** Exercise type codes that remain as generic 'exercise' (UNKNOWN=0, OTHER_WORKOUT=2). */
 const GENERIC_EXERCISE_CODES = new Set([0, 2])
 
-/**
- * Resolve the activity_type for an ExerciseSessionRecord.
- * Maps the HC exerciseType integer to a specific type name (e.g., 'yoga', 'running').
- * Falls back to 'exercise' for unknown/other_workout types.
- */
 const resolveExerciseActivityType = (data: Record<string, unknown>): string => {
   const exerciseType = data.exerciseType as number | undefined
   if (exerciseType === undefined || GENERIC_EXERCISE_CODES.has(exerciseType)) return 'exercise'
@@ -39,7 +31,37 @@ const stripExerciseTypeFromData = (data: Record<string, unknown>): Record<string
   return rest
 }
 
-import { insertActivities, insertActivity } from './activities/index.ts'
+/**
+ * Claim a legacy row for a session that maps to a synced provider (#1080), so
+ * the insert that follows enriches it instead of adding a duplicate. Besides
+ * the identity's own matchers, an older `health_connect` row at exactly this
+ * type + start (HC re-sending a record from before re-sourcing existed) is
+ * adopted too.
+ */
+const adoptForIdentity = async (
+  user: string,
+  identity: SourceIdentity,
+  activityType: string,
+  startTime: Date,
+): Promise<void> => {
+  await adoptLegacyActivity(user, identity, [
+    ...identity.legacy,
+    {
+      activity_type: activityType,
+      kind: 'source_type_start',
+      source: 'health_connect',
+      start_time: startTime,
+    },
+  ])
+}
+
+import {
+  resolveHealthConnectIdentity,
+  type SourceArrival,
+  type SourceIdentity,
+  toArrival,
+} from '../services/source-identity.ts'
+import { adoptLegacyActivity, insertActivities, insertActivity } from './activities/index.ts'
 import { query } from './connection.ts'
 import { insertMeal } from './meals.ts'
 import { upsertSyncedNote } from './notes.ts'
@@ -47,16 +69,51 @@ import { insertRawRecord, insertRawRecords } from './raw-records.ts'
 import { insertTimeSeries } from './time-series.ts'
 
 /**
- * Process incoming Health Connect data and normalize into appropriate tables.
+ * Store one exercise / sleep record as an activity (single-record path).
+ * A session from an app we sync directly is stored under that provider's
+ * identity so its own sync enriches this row rather than duplicating it.
+ * Returns the arrival to enrich, if any.
  */
+const storeHealthConnectActivity = async (
+  user: string,
+  recordType: string,
+  data: Record<string, unknown>,
+): Promise<SourceArrival[]> => {
+  const baseActivityType = healthConnectActivityMapping[recordType]
+  if (!baseActivityType) return []
+
+  const activityType = baseActivityType === 'exercise' ? resolveExerciseActivityType(data) : baseActivityType
+  const startTime = new Date(data.startTime as string)
+  const endTime = data.endTime ? new Date(data.endTime as string) : undefined
+  const identity = resolveHealthConnectIdentity(recordType, data)
+  if (identity) await adoptForIdentity(user, identity, activityType, startTime)
+  const activityId = await insertActivity(user, {
+    activity_type: activityType,
+    data: { ...stripExerciseTypeFromData(data), ...identity?.data },
+    end_time: endTime,
+    external_id: identity?.external_id,
+    source: identity?.source ?? 'health_connect',
+    start_time: startTime,
+    title: data.title as string | undefined,
+  })
+  // HC sends `notes` as a single string. Persist it as a synced note row
+  // (source='health_connect') so it round-trips cleanly: outbound HC sync
+  // only includes user-authored (source IS NULL) notes, so this row never
+  // gets echoed back as user input.
+  const hcNotes = data.notes as string | undefined
+  if (activityId && hcNotes) {
+    await upsertSyncedNote(user, 'activity', activityId, 'health_connect', hcNotes, startTime, endTime)
+  }
+  return identity ? [toArrival(identity)] : []
+}
+
 export const processHealthConnectData = async (
   user: string,
   recordType: string,
   data: Record<string, unknown>,
-) => {
+): Promise<SourceArrival[]> => {
   const externalId = (data.metadata as Record<string, unknown>)?.id as string | undefined
 
-  // Always store raw record
   await insertRawRecord(user, {
     data,
     external_id: externalId,
@@ -65,7 +122,6 @@ export const processHealthConnectData = async (
     source: 'health_connect',
   })
 
-  // Normalize to time_series if applicable
   const metric = healthConnectMetricMapping[recordType]
   if (metric) {
     const points = extractTimeSeriesPoints(recordType, metric, data)
@@ -74,7 +130,6 @@ export const processHealthConnectData = async (
     }
   }
 
-  // Handle blood pressure specially (two metrics)
   if (recordType === 'BloodPressureRecord') {
     const time = new Date((data.time as string) || (data.startTime as string))
     await insertTimeSeries(user, [
@@ -93,36 +148,11 @@ export const processHealthConnectData = async (
     ])
   }
 
-  // Normalize NutritionRecord to meals
   if (recordType === 'NutritionRecord') {
     await processNutritionRecord(user, data)
   }
 
-  // Normalize to activities if applicable
-  const baseActivityType = healthConnectActivityMapping[recordType]
-  if (baseActivityType) {
-    // For exercise sessions, resolve the specific exercise type (yoga, running, etc.)
-    const activityType =
-      baseActivityType === 'exercise' ? resolveExerciseActivityType(data) : baseActivityType
-    const startTime = new Date(data.startTime as string)
-    const endTime = data.endTime ? new Date(data.endTime as string) : undefined
-    const activityId = await insertActivity(user, {
-      activity_type: activityType,
-      data: stripExerciseTypeFromData(data),
-      end_time: endTime,
-      source: 'health_connect',
-      start_time: startTime,
-      title: data.title as string | undefined,
-    })
-    // HC sends `notes` as a single string. Persist it as a synced note row
-    // (source='health_connect') so it round-trips cleanly: outbound HC sync
-    // only includes user-authored (source IS NULL) notes, so this row never
-    // gets echoed back as user input.
-    const hcNotes = data.notes as string | undefined
-    if (activityId && hcNotes) {
-      await upsertSyncedNote(user, 'activity', activityId, 'health_connect', hcNotes, startTime, endTime)
-    }
-  }
+  return storeHealthConnectActivity(user, recordType, data)
 }
 
 /**
@@ -140,13 +170,14 @@ export const processHealthConnectBatch = async (
   user: string,
   recordType: string,
   records: Record<string, unknown>[],
-) => {
-  if (records.length === 0) return
+): Promise<SourceArrival[]> => {
+  if (records.length === 0) return []
 
-  // Collect all inserts across the batch
   const rawRecords: RawRecord[] = []
   const allTimeSeriesPoints: TimeSeriesPoint[] = []
   const activities: Activity[] = []
+  /** Sessions that map to a synced provider (#1080): adopted before insert, reported after. */
+  const identified: { identity: SourceIdentity; activityType: string; startTime: Date }[] = []
   const activityNotes: {
     externalId: string | undefined
     activityType: string
@@ -167,14 +198,12 @@ export const processHealthConnectBatch = async (
       source: 'health_connect',
     })
 
-    // Collect time_series points
     const metric = healthConnectMetricMapping[recordType]
     if (metric) {
       const points = extractTimeSeriesPoints(recordType, metric, data)
       allTimeSeriesPoints.push(...points)
     }
 
-    // Collect blood pressure points
     if (recordType === 'BloodPressureRecord') {
       const time = new Date((data.time as string) || (data.startTime as string))
       allTimeSeriesPoints.push(
@@ -193,24 +222,24 @@ export const processHealthConnectBatch = async (
       )
     }
 
-    // Collect meals for individual insertion
     if (recordType === 'NutritionRecord') {
       mealRecords.push(data)
     }
 
-    // Collect activities
     const baseActivityType = healthConnectActivityMapping[recordType]
     if (baseActivityType) {
-      // For exercise sessions, resolve the specific exercise type (yoga, running, etc.)
       const resolvedType =
         baseActivityType === 'exercise' ? resolveExerciseActivityType(data) : baseActivityType
       const startTime = new Date(data.startTime as string)
       const endTime = data.endTime ? new Date(data.endTime as string) : undefined
+      const identity = resolveHealthConnectIdentity(recordType, data)
+      if (identity) identified.push({ activityType: resolvedType, identity, startTime })
       activities.push({
         activity_type: resolvedType,
-        data: stripExerciseTypeFromData(data),
+        data: { ...stripExerciseTypeFromData(data), ...identity?.data },
         end_time: endTime,
-        source: 'health_connect',
+        external_id: identity?.external_id,
+        source: identity?.source ?? 'health_connect',
         start_time: startTime,
         title: data.title as string | undefined,
       })
@@ -220,14 +249,13 @@ export const processHealthConnectBatch = async (
           activityType: resolvedType,
           content: noteContent,
           endTime,
-          externalId,
+          externalId: identity?.external_id,
           startTime,
         })
       }
     }
   }
 
-  // Bulk insert all collected data (one query per category)
   await insertRawRecords(user, rawRecords)
 
   if (allTimeSeriesPoints.length > 0) {
@@ -235,10 +263,14 @@ export const processHealthConnectBatch = async (
   }
 
   if (activities.length > 0) {
+    for (const { identity, activityType, startTime } of identified) {
+      await adoptForIdentity(user, identity, activityType, startTime)
+    }
     const inserted = await insertActivities(user, activities)
     // Persist notes for activities that carry them. Match on (external_id) for
-    // HC records (always present) and fall back to (type + start_time) just in
-    // case. upsertSyncedNote is idempotent so re-syncing the same HC record
+    // sessions stored under a provider identity and fall back to
+    // (type + start_time) for plain HC rows, which carry no external_id.
+    // upsertSyncedNote is idempotent so re-syncing the same HC record
     // updates the existing note in place.
     //
     // Soft-deleted-row caveat: insertActivities' upsert is gated by
@@ -276,11 +308,10 @@ export const processHealthConnectBatch = async (
   for (const data of mealRecords) {
     await processNutritionRecord(user, data)
   }
+
+  return identified.map(({ identity }) => toArrival(identity))
 }
 
-/**
- * Extract time series points from Health Connect record.
- */
 // eslint-disable-next-line complexity -- TODO: refactor
 function extractTimeSeriesPoints(
   recordType: string,
@@ -381,10 +412,6 @@ function extractTimeSeriesPoints(
   ]
 }
 
-// ============================================================================
-// NutritionRecord -> Meals
-// ============================================================================
-
 /**
  * Map Health Connect meal type enum to a readable string.
  * See: https://developer.android.com/reference/kotlin/androidx/health/connect/client/records/MealType
@@ -396,9 +423,6 @@ const HC_MEAL_TYPES: Record<number, string> = {
   4: 'snack',
 }
 
-/**
- * Process a Health Connect NutritionRecord into our meals table.
- */
 const processNutritionRecord = async (user: string, data: Record<string, unknown>) => {
   const startTime = data.startTime as string | undefined
   const mealType = data.mealType as number | undefined
@@ -418,20 +442,13 @@ const processNutritionRecord = async (user: string, data: Record<string, unknown
   })
 }
 
-// ============================================================================
-// Health Connect Record Deletion
-// ============================================================================
-
 /**
- * Delete Health Connect records by their external IDs.
- *
  * Removes the raw_record and cleans up corresponding time_series and activity entries.
  * Only deletes time_series entries with source='health_connect' (preserves aggregates).
  *
  * @returns Number of raw records actually deleted.
  */
 export const deleteHealthConnectRecords = async (user: string, externalIds: string[]): Promise<number> => {
-  // Batch-delete all raw records in one query, returning their data for cleanup
   const result = await query(
     user,
     `DELETE FROM raw_records
@@ -443,14 +460,12 @@ export const deleteHealthConnectRecords = async (user: string, externalIds: stri
   const deleted = result.rows.length
   if (deleted === 0) return 0
 
-  // Collect cleanup targets from the deleted records
   const timeSeriesDeletes: { time: Date; metric: string }[] = []
   const activityDeletes: { activityType: string; startTime: Date }[] = []
 
   for (const row of result.rows as { record_type: string; data: Record<string, unknown> }[]) {
     const { record_type: recordType, data } = row
 
-    // Collect time_series entries to clean up
     const metric = healthConnectMetricMapping[recordType]
     if (metric) {
       const points = extractTimeSeriesPoints(recordType, metric, data)
@@ -459,21 +474,18 @@ export const deleteHealthConnectRecords = async (user: string, externalIds: stri
       }
     }
 
-    // Collect blood pressure entries (two metrics per record)
     if (recordType === 'BloodPressureRecord') {
       const time = new Date((data.time as string) || (data.startTime as string))
       timeSeriesDeletes.push({ metric: 'blood_pressure_systolic', time })
       timeSeriesDeletes.push({ metric: 'blood_pressure_diastolic', time })
     }
 
-    // Collect activity entries to clean up
     const activityType = healthConnectActivityMapping[recordType]
     if (activityType && data.startTime) {
       activityDeletes.push({ activityType, startTime: new Date(data.startTime as string) })
     }
   }
 
-  // Batch-delete time_series entries using VALUES list
   if (timeSeriesDeletes.length > 0) {
     const params: unknown[] = []
     const conditions = timeSeriesDeletes.map((d, i) => {
@@ -489,7 +501,6 @@ export const deleteHealthConnectRecords = async (user: string, externalIds: stri
     )
   }
 
-  // Batch-delete activity entries using VALUES list
   if (activityDeletes.length > 0) {
     const params: unknown[] = []
     const conditions = activityDeletes.map((d, i) => {
@@ -507,10 +518,6 @@ export const deleteHealthConnectRecords = async (user: string, externalIds: stri
 
   return deleted
 }
-
-// ============================================================================
-// Daily Aggregates (Deduplicated cumulative metrics from Health Connect)
-// ============================================================================
 
 /**
  * Convert a date string (YYYY-MM-DD) to midnight in the given IANA timezone, returned as UTC.
@@ -542,9 +549,6 @@ export const localMidnightToUtc = (dateStr: string, timezone?: string): Date => 
       hour12: false,
     })
 
-    // Binary-search approach: start from UTC midnight of the target date,
-    // then adjust based on the timezone offset.
-    // A simpler approach: construct a date string with timezone and parse it.
     const utcGuess = new Date(Date.UTC(y, m - 1, d, 0, 0, 0))
 
     // Get what local time this UTC time corresponds to
@@ -578,9 +582,6 @@ export const localMidnightToUtc = (dateStr: string, timezone?: string): Date => 
 }
 
 /**
- * Process a daily aggregate from Health Connect.
- * Stores deduplicated daily totals for cumulative metrics.
- *
  * When timezone is provided, the aggregate is stored at local midnight
  * converted to UTC, ensuring correct day alignment for gap-fill.
  */
@@ -599,24 +600,24 @@ export const processDailyAggregate = async (
     return
   }
 
-  // Convert date to local midnight in the device's timezone (or UTC midnight if no timezone)
   const time = localMidnightToUtc(aggregate.date, aggregate.timezone)
 
   await query(
     user,
     `INSERT INTO time_series (time, metric, value, unit, source)
      VALUES ($1, $2, $3, $4, 'health_connect_aggregate')
-     ON CONFLICT (time, metric, source) DO UPDATE SET value = EXCLUDED.value`,
+     ON CONFLICT (time, metric, source) DO UPDATE SET
+       value = EXCLUDED.value,
+       updated_at = CASE
+         WHEN time_series.value IS DISTINCT FROM EXCLUDED.value THEN NOW()
+         ELSE time_series.updated_at
+       END`,
     [time, metric, aggregate.value, metricUnits[metric]],
   )
 
   return aggregate.timezone
 }
 
-/**
- * Get the aggregate value for a cumulative metric on a specific day.
- * Returns null if no aggregate exists.
- */
 export const getDailyAggregateValue = async (
   user: string,
   metric: MetricType,

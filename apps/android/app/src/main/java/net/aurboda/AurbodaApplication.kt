@@ -18,8 +18,7 @@ class AurbodaApplication : Application() {
 
     backgroundSyncStatus.value = loadBackgroundSyncStatus(this)
 
-    // Schedule background sync if it was previously enabled
-    // This ensures sync continues after app restarts, device reboots, etc.
+    // Keeps sync going across app restarts and device reboots.
     if (isBackgroundSyncEnabled(this)) {
       Log.d(TAG, "Background sync was previously enabled, scheduling worker")
       SyncWorker.schedule(this)

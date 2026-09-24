@@ -1,6 +1,4 @@
 /**
- * WebAuthn / passkey routes.
- *
  * Authentication endpoints (`/auth/options`, `/auth/verify`) are unauthenticated
  * — they replace the password check. All other endpoints require an existing
  * session (you must be logged in to manage your own passkeys).

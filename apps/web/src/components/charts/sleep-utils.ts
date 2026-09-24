@@ -1,6 +1,4 @@
 /**
- * Pure utility functions for sleep stage data parsing and display.
- *
  * Health Connect sleep stage values:
  *   1=Awake, 2=Sleeping/Unknown, 3=Out of bed, 4=Light, 5=Deep, 6=REM
  */
@@ -23,7 +21,6 @@ export const STAGE_LABELS: Record<number, string> = {
 /** Stages that count as actual sleep time. */
 const SLEEP_STAGES = new Set([2, 4, 5, 6])
 
-/** Colors for hypnogram bands. */
 export const STAGE_COLORS: Record<number, string> = {
   1: '#f59e0b', // Awake - amber
   2: '#94a3b8', // Sleeping/Unknown - slate gray
@@ -47,7 +44,6 @@ export const STAGE_Y_ORDER: Record<number, number> = {
   6: 1, // REM
 }
 
-/** Extract validated sleep stages from activity data. */
 export const parseSleepStages = (data: Record<string, unknown> | undefined): SleepStage[] => {
   if (!data) return []
   const stages = data.stages
@@ -64,7 +60,6 @@ export const parseSleepStages = (data: Record<string, unknown> | undefined): Sle
   )
 }
 
-/** Compute actual sleep minutes from parsed stages. */
 export const computeSleepMinutesFromStages = (stages: SleepStage[]): number => {
   let ms = 0
   for (const stage of stages) {
@@ -75,7 +70,6 @@ export const computeSleepMinutesFromStages = (stages: SleepStage[]): number => {
   return Math.round(ms / 60000)
 }
 
-/** Format minutes as "Xh Ym". */
 export const formatMinutesAsHM = (minutes: number): string => {
   const h = Math.floor(minutes / 60)
   const m = minutes % 60
@@ -83,7 +77,6 @@ export const formatMinutesAsHM = (minutes: number): string => {
   return m > 0 ? `${h}h ${m}m` : `${h}h`
 }
 
-/** Metric keys used for sleep detail. */
 export const SLEEP_METRICS = [
   'sleep_score',
   'sleep_efficiency',

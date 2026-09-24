@@ -7,7 +7,6 @@ import type { ActivityTypeDefinition } from './types'
 import { API_URL } from '../../config'
 import { auth } from '../auth'
 
-// Fetch activity type definitions (built-in + custom)
 export const fetchActivityTypeDefinitions = async (): Promise<ActivityTypeDefinition[]> => {
   const { token } = auth.value
   const response = await axios.get<{ success: boolean; data: ActivityTypeDefinition[] }>(
@@ -17,7 +16,6 @@ export const fetchActivityTypeDefinitions = async (): Promise<ActivityTypeDefini
   return response.data.data ?? []
 }
 
-// Add a custom activity type definition
 export const addActivityTypeDefinition = async (body: {
   name: string
   display_name: string
@@ -35,7 +33,6 @@ export const addActivityTypeDefinition = async (body: {
   return response.data.data
 }
 
-// Update activity type definition (show_on_timeline, color, icon, display_name, etc.)
 export const updateActivityTypeDefinition = async (
   name: string,
   body: Partial<{

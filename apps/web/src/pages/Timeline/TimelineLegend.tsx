@@ -5,6 +5,7 @@ import type { Orientation } from './types'
 
 import {
   activityColors,
+  COMMENT_COLOR,
   hrZoneColors,
   MUSIC_COLOR,
   placeColorPalette,
@@ -53,7 +54,6 @@ export const TimelineLegend: FunctionComponent<TimelineLegendProps> = ({
       </button>
       {!legendCollapsed && (
         <div class="timeline-legend" ref={legendRef}>
-          {/* ── Music (top-level) ── */}
           {hasLastFm && (
             <>
               <button
@@ -69,7 +69,6 @@ export const TimelineLegend: FunctionComponent<TimelineLegendProps> = ({
             </>
           )}
 
-          {/* ── Activity group ── */}
           <div class="legend-group">
             <button
               key="activity"
@@ -108,7 +107,6 @@ export const TimelineLegend: FunctionComponent<TimelineLegendProps> = ({
 
           <span class="legend-separator" />
 
-          {/* ── Metrics group ── */}
           <div class="legend-group">
             <button
               key="metrics"
@@ -146,7 +144,6 @@ export const TimelineLegend: FunctionComponent<TimelineLegendProps> = ({
 
           <span class="legend-separator" />
 
-          {/* ── Location (top-level) ── */}
           <button
             key="location"
             class={`legend-item${hiddenCategories.has('location') ? ' legend-item-hidden' : ''}`}
@@ -155,6 +152,17 @@ export const TimelineLegend: FunctionComponent<TimelineLegendProps> = ({
           >
             <span class="legend-dot" style={{ background: placeColorPalette[0]! }} />
             Location
+          </button>
+
+          <span class="legend-separator" />
+
+          <button
+            key="comments"
+            class={`legend-item${hiddenCategories.has('comments') ? ' legend-item-hidden' : ''}`}
+            onClick={() => toggleCategory('comments')}
+            type="button"
+          >
+            <span class="legend-dot" style={{ background: COMMENT_COLOR }} />💬 Comments
           </button>
         </div>
       )}

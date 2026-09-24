@@ -5,6 +5,8 @@ import type {
   OuraSyncStatusResponse,
   StravaSyncResponse,
   StravaSyncStatusResponse,
+  GravlSyncResponse,
+  GravlSyncStatusResponse,
 } from '@aurboda/api-spec'
 
 import axios from 'axios'
@@ -12,7 +14,6 @@ import axios from 'axios'
 import { API_URL } from '../../config'
 import { auth } from '../auth'
 
-// Check if ActivityWatch has ever pushed data (returns sync states per device)
 export const fetchActivityWatchStatus = async (): Promise<{ last_sync_time: string | null }[]> => {
   const { token } = auth.value
   const response = await axios.get<{
@@ -24,7 +25,6 @@ export const fetchActivityWatchStatus = async (): Promise<{ last_sync_time: stri
   return response.data.states ?? []
 }
 
-// Oura OAuth
 export const getOuraConnectUrl = async (): Promise<string> => {
   const { token } = auth.value
   const response = await axios.get<{ success: boolean; url: string }>(`${API_URL}/auth/oura/connect`, {
@@ -33,7 +33,6 @@ export const getOuraConnectUrl = async (): Promise<string> => {
   return response.data.url
 }
 
-// Trigger Oura sync
 export const syncOura = async (fullResync?: boolean): Promise<OuraSyncResponse> => {
   const { token } = auth.value
   const response = await axios.post<OuraSyncResponse>(
@@ -52,7 +51,6 @@ export const fetchOuraSyncStatus = async (): Promise<OuraSyncStatusResponse> => 
   return response.data
 }
 
-// Garmin Connect auth + sync
 export const connectGarmin = async (
   email: string,
   password: string,
@@ -104,7 +102,6 @@ export const fetchGarminSyncStatus = async (): Promise<GarminSyncStatusResponse>
   return response.data
 }
 
-// Strava OAuth + sync
 export const getStravaConnectUrl = async (): Promise<string> => {
   const { token } = auth.value
   const response = await axios.get<{ success: boolean; url: string }>(`${API_URL}/auth/strava/connect`, {
@@ -136,6 +133,42 @@ export const syncStrava = async (fullResync?: boolean): Promise<StravaSyncRespon
 export const fetchStravaSyncStatus = async (): Promise<StravaSyncStatusResponse> => {
   const { token } = auth.value
   const response = await axios.get<StravaSyncStatusResponse>(`${API_URL}/sync/strava/status`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  return response.data
+}
+
+export const getGravlConnectUrl = async (): Promise<string> => {
+  const { token } = auth.value
+  const response = await axios.get<{ success: boolean; url: string }>(`${API_URL}/auth/gravl/connect`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  return response.data.url
+}
+
+export const disconnectGravl = async (): Promise<{ success: boolean }> => {
+  const { token } = auth.value
+  const response = await axios.post(
+    `${API_URL}/auth/gravl/disconnect`,
+    {},
+    { headers: { Authorization: `Bearer ${token}` } },
+  )
+  return response.data
+}
+
+export const syncGravl = async (fullResync?: boolean): Promise<GravlSyncResponse> => {
+  const { token } = auth.value
+  const response = await axios.post<GravlSyncResponse>(
+    `${API_URL}/sync/gravl`,
+    { full_resync: fullResync },
+    { headers: { Authorization: `Bearer ${token}` } },
+  )
+  return response.data
+}
+
+export const fetchGravlSyncStatus = async (): Promise<GravlSyncStatusResponse> => {
+  const { token } = auth.value
+  const response = await axios.get<GravlSyncStatusResponse>(`${API_URL}/sync/gravl/status`, {
     headers: { Authorization: `Bearer ${token}` },
   })
   return response.data

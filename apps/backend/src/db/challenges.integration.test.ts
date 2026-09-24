@@ -1,8 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
-/**
- * Integration tests for challenges CRUD, members, and participations.
- */
 import type { ChallengeSpecFields } from './challenges.ts'
 
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
@@ -19,7 +16,10 @@ import {
   listChallengeMembers,
   listChallengeParticipations,
   listChallenges,
+  listChallengesAwaitingResult,
+  listLeftChallengeUrls,
   listPublicChallenges,
+  markChallengeResultPublished,
   removeChallengeMember,
   updateChallenge,
   updateChallengeMemberCache,
@@ -38,7 +38,8 @@ const spec: ChallengeSpecFields = {
   unit: 'steps',
 }
 
-const sampleInput = (name: string, isPublic = false) => ({
+const sampleInput = (name: string, isPublic = false, announceWinner = true) => ({
+  announce_winner: announceWinner,
   end_ts: new Date('2026-06-08T00:00:00Z'),
   is_public: isPublic,
   name,
@@ -68,6 +69,8 @@ describe('Challenges integration', () => {
     expect(created.join_token).toBeTruthy()
     expect(created.spec).toEqual(spec)
     expect(created.start_ts.toISOString()).toBe('2026-06-01T00:00:00.000Z')
+    expect(created.announce_winner).toBe(true)
+    expect(created.result_published_at).toBeNull()
 
     const bySlug = await getChallengeBySlug(user, created.slug)
     expect(bySlug?.id).toBe(created.id)
@@ -224,6 +227,49 @@ describe('Challenges integration', () => {
     expect(await deleteChallengeParticipation(user, p.id)).toBe(false)
   })
 
+  test('leaving tombstones the challenge url; rejoining clears it, leaving again re-records it', async () => {
+    const user = getTestUser()
+    const url = 'https://aurboda.net/u/alice/left-and-back'
+    const join = async () =>
+      createChallengeParticipation(user, {
+        challenge_url: url,
+        end_ts: new Date('2026-06-08T00:00:00Z'),
+        host_identity: 'https://aurboda.net/u/alice',
+        name: 'C',
+        spec,
+        start_ts: new Date('2026-06-01T00:00:00Z'),
+        timezone: 'UTC',
+      })
+
+    const first = await join()
+    expect(await listLeftChallengeUrls(user)).toEqual([])
+
+    expect(await deleteChallengeParticipation(user, first.id)).toBe(true)
+    expect(await listLeftChallengeUrls(user)).toEqual([url])
+
+    const second = await join()
+    expect(await listLeftChallengeUrls(user)).toEqual([])
+
+    expect(await deleteChallengeParticipation(user, second.id)).toBe(true)
+    expect(await listLeftChallengeUrls(user)).toEqual([url])
+  })
+
+  test('a rolled-back join (tombstone: false) leaves the challenge discoverable', async () => {
+    const user = getTestUser()
+    const p = await createChallengeParticipation(user, {
+      challenge_url: 'https://aurboda.net/u/alice/rejected-join',
+      end_ts: new Date('2026-06-08T00:00:00Z'),
+      host_identity: 'https://aurboda.net/u/alice',
+      name: 'C',
+      spec,
+      start_ts: new Date('2026-06-01T00:00:00Z'),
+      timezone: 'UTC',
+    })
+    expect(await deleteChallengeParticipation(user, p.id, { tombstone: false })).toBe(true)
+    expect(await listLeftChallengeUrls(user)).toEqual([])
+    expect(await deleteChallengeParticipation(user, p.id, { tombstone: false })).toBe(false)
+  })
+
   test('creates a participation with a data token and looks it up', async () => {
     const user = getTestUser()
     const p = await createChallengeParticipation(user, {
@@ -242,5 +288,46 @@ describe('Challenges integration', () => {
     expect(byToken?.id).toBe(p.id)
     expect(byToken?.spec).toEqual(spec)
     expect(await getParticipationByToken(user, 'missing')).toBeNull()
+  })
+
+  test('announce_winner is stored, patchable, and drives the pending-result list', async () => {
+    const user = getTestUser()
+    const quiet = await createChallenge(user, sampleInput('quiet', false, false))
+    expect(quiet.announce_winner).toBe(false)
+    const loud = await createChallenge(user, sampleInput('loud'))
+
+    // Both ended (2026-06-08) inside the window; only the announcing one is listed.
+    const window = {
+      endedAfter: new Date('2026-06-05T00:00:00Z'),
+      endedBefore: new Date('2026-06-09T00:00:00Z'),
+    }
+    expect((await listChallengesAwaitingResult(user, window)).map((c) => c.id)).toEqual([loud.id])
+    // Neither has ended before an earlier upper bound.
+    expect(
+      await listChallengesAwaitingResult(user, { ...window, endedBefore: new Date('2026-06-07T00:00:00Z') }),
+    ).toEqual([])
+    // Ended too long ago (before the lower bound): never announced retroactively.
+    expect(
+      await listChallengesAwaitingResult(user, { ...window, endedAfter: new Date('2026-06-08T00:00:00Z') }),
+    ).toEqual([])
+
+    const patched = await updateChallenge(user, quiet.id, { announce_winner: true })
+    expect(patched?.announce_winner).toBe(true)
+    expect((await listChallengesAwaitingResult(user, window)).map((c) => c.id).sort()).toEqual(
+      [loud.id, quiet.id].sort(),
+    )
+  })
+
+  test('markChallengeResultPublished claims once and drops the challenge from the pending list', async () => {
+    const user = getTestUser()
+    const c = await createChallenge(user, sampleInput('done'))
+    const window = {
+      endedAfter: new Date('2026-06-05T00:00:00Z'),
+      endedBefore: new Date('2026-06-09T00:00:00Z'),
+    }
+    expect(await markChallengeResultPublished(user, c.id)).toBe(true)
+    expect(await markChallengeResultPublished(user, c.id)).toBe(false)
+    expect((await getChallengeById(user, c.id))?.result_published_at).toBeInstanceOf(Date)
+    expect(await listChallengesAwaitingResult(user, window)).toEqual([])
   })
 })

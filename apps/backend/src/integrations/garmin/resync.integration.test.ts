@@ -1,8 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 /**
- * Integration test for Garmin activity detail resync flow.
- *
  * Tests processActivityDetail against a real PostgreSQL instance with PostGIS,
  * using a real (trimmed) Garmin API response as fixture.
  */
@@ -12,6 +10,7 @@ import type { GarminActivityDetailResponse } from './client.ts'
 
 import {
   activityTypeExists,
+  adoptLegacyActivity,
   getTimeSeries,
   insertLocations,
   insertRawRecord,
@@ -43,6 +42,7 @@ describe('Garmin resync integration', () => {
 
   const realDeps = {
     activityTypeExists,
+    adoptLegacyActivity,
     auditError,
     auditInfo,
     auditWarn,
@@ -60,16 +60,13 @@ describe('Garmin resync integration', () => {
 
     const points = await processActivityDetail(user, data, { deps: realDeps })
 
-    // Should have extracted per-second metrics (HR, speed, elevation, etc.)
     expect(points).toBeGreaterThan(0)
 
-    // Verify time series data was actually inserted into the DB
     const latIdx = data.metricDescriptors.findIndex((d) => d.key === 'directLatitude')
     const lonIdx = data.metricDescriptors.findIndex((d) => d.key === 'directLongitude')
     expect(latIdx).toBeGreaterThanOrEqual(0)
     expect(lonIdx).toBeGreaterThanOrEqual(0)
 
-    // Check heart rate time series was stored
     const firstMetrics = data.activityDetailMetrics[0].metrics
     const tsIdx = data.metricDescriptors.findIndex((d) => d.key === 'directTimestamp')
     const hrIdx = data.metricDescriptors.findIndex((d) => d.key === 'directHeartRate')
@@ -86,7 +83,6 @@ describe('Garmin resync integration', () => {
     const hrData = await getTimeSeries(user, 'heart_rate', new Date(firstTs - 1000), new Date(lastTs + 1000))
     expect(hrData.length).toBeGreaterThan(0)
 
-    // Verify the first HR value matches the fixture
     const expectedHr =
       typeof firstMetrics[hrIdx] === 'object'
         ? (firstMetrics[hrIdx] as { parsedValue: number }).parsedValue
@@ -107,7 +103,6 @@ describe('Garmin resync integration', () => {
     const latIdx = data.metricDescriptors.findIndex((d) => d.key === 'directLatitude')
     expect(latIdx).toBeGreaterThanOrEqual(0)
 
-    // Query locations from DB to verify GPS was inserted
     const { query } = await import('../../db/connection.ts')
     const result = await query(
       user,

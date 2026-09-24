@@ -230,8 +230,6 @@ describe('evaluateRule', () => {
     )
   })
 
-  // --- output_data tests ---
-
   test('merges output_data into created activity data', async () => {
     vi.mocked(deps.getActivities).mockResolvedValue([{ end: d(11), start: d(10) }])
 
@@ -250,8 +248,6 @@ describe('evaluateRule', () => {
       }),
     )
   })
-
-  // --- activity_data condition tests ---
 
   test('resolves activity_data condition with eq operator', async () => {
     const rule = makeRule({
@@ -299,8 +295,6 @@ describe('evaluateRule', () => {
     )
   })
 
-  // --- location condition tests ---
-
   test('resolves location condition', async () => {
     const rule = makeRule({
       conditions: [{ kind: 'location', location_name: 'Hokos' }],
@@ -312,8 +306,6 @@ describe('evaluateRule', () => {
     expect(affected_ids).toHaveLength(1)
     expect(deps.getLocationVisits).toHaveBeenCalledWith(user, 'Hokos', window)
   })
-
-  // --- enrich mode tests ---
 
   test('enrich mode calls enrichActivities instead of insertActivity', async () => {
     vi.mocked(deps.getActivities).mockResolvedValue([{ end: d(11), start: d(10) }])
@@ -337,8 +329,6 @@ describe('evaluateRule', () => {
     )
     expect(deps.insertActivity).not.toHaveBeenCalled()
   })
-
-  // --- dry-run tests ---
 
   test('dry-run in create mode returns count without creating', async () => {
     vi.mocked(deps.getActivities).mockResolvedValue([
@@ -368,8 +358,6 @@ describe('evaluateRule', () => {
     expect(affected_ids).toHaveLength(0)
     expect(deps.enrichActivities).not.toHaveBeenCalled()
   })
-
-  // --- scrobble condition tests ---
 
   test('resolves scrobble condition and creates activities', async () => {
     const rule = makeRule({

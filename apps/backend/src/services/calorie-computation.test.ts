@@ -53,7 +53,6 @@ describe('enqueueCalorieSync', () => {
     mockEnqueueOutboundSync.mockClear()
     mockEnqueueOutboundSync.mockRejectedValueOnce(new Error('db error'))
 
-    // Should not throw
     await expect(
       enqueueCalorieSync('test-user', [{ end_time: new Date(), kcal_active: 1, time: new Date() }]),
     ).resolves.toBeUndefined()

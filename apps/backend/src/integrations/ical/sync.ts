@@ -1,10 +1,3 @@
-/**
- * ICS calendar sync module.
- *
- * Parses ICS calendar data and stores events as tags + raw records.
- * Follows the same patterns as oura-sync and rescuetime-sync.
- */
-
 import type { CalendarSyncResult } from '@aurboda/api-spec'
 
 import ical from 'node-ical'
@@ -37,9 +30,6 @@ const defaultFetchIcs = async (url: string): Promise<string> => {
   return response.text()
 }
 
-/**
- * Parse VEVENT entries from ICS text into CalendarEvent objects.
- */
 export const parseICalEvents = (icsText: string): CalendarEvent[] => {
   const parsed = ical.sync.parseICS(icsText)
   const events: CalendarEvent[] = []
@@ -71,9 +61,6 @@ export const parseICalEvents = (icsText: string): CalendarEvent[] => {
   return events
 }
 
-/**
- * Sync a single calendar: fetch ICS, parse events, store as tags + raw records.
- */
 export const syncCalendar = async (
   user: string,
   calendar: CalendarConfig,
@@ -141,9 +128,6 @@ export const syncCalendar = async (
   }
 }
 
-/**
- * Sync all configured calendars for a user.
- */
 export const syncAllCalendars = async (
   user: string,
   calendars: CalendarConfig[],

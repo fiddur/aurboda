@@ -34,6 +34,10 @@ export interface ChallengeRecord {
   end_ts: Date
   timezone: string
   join_token: string
+  /** Post the final standings (winner tagged) to the host's feed when the window closes. */
+  announce_winner: boolean
+  /** When the completion sweep published (or deliberately skipped) the result; null while pending. */
+  result_published_at: Date | null
   created_at: Date
   updated_at: Date
 }
@@ -45,6 +49,7 @@ export interface ChallengeInput {
   start_ts: Date
   end_ts: Date
   timezone: string
+  announce_winner: boolean
 }
 
 export interface ChallengePatch {
@@ -54,6 +59,7 @@ export interface ChallengePatch {
   start_ts?: Date
   end_ts?: Date
   timezone?: string
+  announce_winner?: boolean
 }
 
 export interface ChallengeMemberRecord {
@@ -107,7 +113,7 @@ export interface ChallengeParticipationInput {
 }
 
 const CHALLENGE_COLUMNS =
-  'id, slug, name, is_public, source_type, pattern, activity_type_id, aggregation, unit, bucket_size, start_ts, end_ts, timezone, join_token, created_at, updated_at'
+  'id, slug, name, is_public, source_type, pattern, activity_type_id, aggregation, unit, bucket_size, start_ts, end_ts, timezone, join_token, announce_winner, result_published_at, created_at, updated_at'
 
 const MEMBER_COLUMNS =
   'id, challenge_id, identity_base_url, display_name, kind, local_user, data_endpoint_url, status, joined_at, last_fetched_at, data_last_updated, cached_total, cached_buckets, last_error'
@@ -130,6 +136,8 @@ interface ChallengeRow {
   end_ts: Date
   timezone: string
   join_token: string
+  announce_winner: boolean
+  result_published_at: Date | null
   created_at: Date
   updated_at: Date
 }
@@ -144,12 +152,14 @@ const toSpec = (row: ChallengeRow | ParticipationRow): ChallengeSpecFields => ({
 })
 
 const mapChallenge = (row: ChallengeRow): ChallengeRecord => ({
+  announce_winner: row.announce_winner,
   created_at: row.created_at,
   end_ts: row.end_ts,
   id: row.id,
   is_public: row.is_public,
   join_token: row.join_token,
   name: row.name,
+  result_published_at: row.result_published_at,
   slug: row.slug,
   spec: toSpec(row),
   start_ts: row.start_ts,
@@ -201,10 +211,6 @@ const randomToken = (bytes: number): string => randomBytes(bytes).toString('base
 const isUniqueViolation = (error: unknown): boolean =>
   error instanceof Error && (error as Error & { code?: string }).code === '23505'
 
-// ===========================================================================
-// Challenges (host)
-// ===========================================================================
-
 export const listChallenges = async (user: string): Promise<ChallengeRecord[]> => {
   const result = await query<ChallengeRow>(
     user,
@@ -254,8 +260,8 @@ export const createChallenge = async (user: string, input: ChallengeInput): Prom
       const result = await query<ChallengeRow>(
         user,
         `INSERT INTO challenges
-           (slug, name, is_public, source_type, pattern, activity_type_id, aggregation, unit, bucket_size, start_ts, end_ts, timezone, join_token)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+           (slug, name, is_public, source_type, pattern, activity_type_id, aggregation, unit, bucket_size, start_ts, end_ts, timezone, join_token, announce_winner)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
          RETURNING ${CHALLENGE_COLUMNS}`,
         [
           slug,
@@ -271,6 +277,7 @@ export const createChallenge = async (user: string, input: ChallengeInput): Prom
           input.end_ts,
           input.timezone,
           joinToken,
+          input.announce_winner,
         ],
       )
       return mapChallenge(result.rows[0])
@@ -299,6 +306,7 @@ export const updateChallenge = async (
   if (patch.start_ts !== undefined) set('start_ts', patch.start_ts)
   if (patch.end_ts !== undefined) set('end_ts', patch.end_ts)
   if (patch.timezone !== undefined) set('timezone', patch.timezone)
+  if (patch.announce_winner !== undefined) set('announce_winner', patch.announce_winner)
   if (patch.spec !== undefined) {
     set('source_type', patch.spec.source_type)
     set('pattern', patch.spec.pattern)
@@ -325,9 +333,43 @@ export const deleteChallenge = async (user: string, id: string): Promise<boolean
   return (result.rowCount ?? 0) > 0
 }
 
-// ===========================================================================
-// Members (host)
-// ===========================================================================
+/**
+ * Hosted challenges that want a winner announcement and haven't had one yet,
+ * whose window closed within `(endedAfter, endedBefore]` — the completion
+ * sweep's work list. The upper bound is the grace period; the lower bound is
+ * what keeps the sweep from ever announcing history: rows that pre-date the
+ * feature (the column backfills `announce_winner = true` onto every existing
+ * challenge) or that were skipped for days must never fan out as fresh news.
+ * Oldest end first so a backlog drains in order.
+ */
+export const listChallengesAwaitingResult = async (
+  user: string,
+  window: { endedAfter: Date; endedBefore: Date },
+): Promise<ChallengeRecord[]> => {
+  const result = await query<ChallengeRow>(
+    user,
+    `SELECT ${CHALLENGE_COLUMNS} FROM challenges
+     WHERE announce_winner = true AND result_published_at IS NULL
+       AND end_ts <= $1 AND end_ts > $2
+     ORDER BY end_ts ASC`,
+    [window.endedBefore, window.endedAfter],
+  )
+  return result.rows.map(mapChallenge)
+}
+
+/**
+ * Stamp a challenge's result as published (or deliberately skipped, e.g. nobody
+ * scored) so the sweep never announces it twice. Returns false if there was no
+ * such pending challenge — a concurrent sweep already claimed it.
+ */
+export const markChallengeResultPublished = async (user: string, id: string): Promise<boolean> => {
+  const result = await query(
+    user,
+    `UPDATE challenges SET result_published_at = NOW() WHERE id = $1 AND result_published_at IS NULL`,
+    [id],
+  )
+  return (result.rowCount ?? 0) > 0
+}
 
 export const listChallengeMembers = async (
   user: string,
@@ -430,10 +472,6 @@ export const updateChallengeMemberCache = async (
   )
 }
 
-// ===========================================================================
-// Participations (joiner)
-// ===========================================================================
-
 export const createChallengeParticipation = async (
   user: string,
   input: ChallengeParticipationInput,
@@ -441,7 +479,12 @@ export const createChallengeParticipation = async (
   const dataToken = randomToken(24)
   const result = await query<ParticipationRow>(
     user,
-    `INSERT INTO challenge_participations
+    // Joining clears any leave-tombstone for the same URL, so leave → rejoin →
+    // leave works and the second leave suppresses it again (#1093).
+    `WITH cleared AS (
+       DELETE FROM challenge_left WHERE challenge_url = $1
+     )
+     INSERT INTO challenge_participations
        (challenge_url, host_identity, name, source_type, pattern, activity_type_id, aggregation, unit, bucket_size, start_ts, end_ts, timezone, data_token)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
      RETURNING ${PARTICIPATION_COLUMNS}`,
@@ -508,7 +551,42 @@ export const getParticipationByUrl = async (
   return result.rows.length ? mapParticipation(result.rows[0]) : null
 }
 
-export const deleteChallengeParticipation = async (user: string, id: string): Promise<boolean> => {
-  const result = await query(user, `DELETE FROM challenge_participations WHERE id = $1`, [id])
-  return (result.rowCount ?? 0) > 0
+/**
+ * Leave a challenge: the participation row is hard-deleted and the challenge
+ * URL kept as a tombstone in `challenge_left`, so discovery never suggests
+ * again what the user deliberately walked away from (#1093). Written inside the
+ * delete statement, the way `deleteFeedPost` records an auto-share suppression.
+ *
+ * Pass `tombstone: false` for a delete that is *not* a leave — the rollback of
+ * a join the host rejected — which must leave the challenge discoverable.
+ */
+export const deleteChallengeParticipation = async (
+  user: string,
+  id: string,
+  options: { tombstone?: boolean } = {},
+): Promise<boolean> => {
+  if (options.tombstone === false) {
+    const result = await query(user, `DELETE FROM challenge_participations WHERE id = $1`, [id])
+    return (result.rowCount ?? 0) > 0
+  }
+  const result = await query<{ id: string }>(
+    user,
+    `WITH deleted AS (
+       DELETE FROM challenge_participations WHERE id = $1
+       RETURNING id, challenge_url
+     ), tomb AS (
+       INSERT INTO challenge_left (challenge_url)
+       SELECT challenge_url FROM deleted
+       ON CONFLICT (challenge_url) DO NOTHING
+     )
+     SELECT id FROM deleted`,
+    [id],
+  )
+  return result.rows.length > 0
+}
+
+/** Challenge URLs the user has left — discovery's "don't suggest this again" set. */
+export const listLeftChallengeUrls = async (user: string): Promise<string[]> => {
+  const result = await query<{ challenge_url: string }>(user, `SELECT challenge_url FROM challenge_left`)
+  return result.rows.map((row) => row.challenge_url)
 }

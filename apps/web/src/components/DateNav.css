@@ -50,7 +50,6 @@
   background: #f3f4f6;
 }
 
-/* Range mode label */
 .nav-range-label {
   cursor: default;
   display: flex;
@@ -88,7 +87,6 @@
   pointer-events: none;
 }
 
-/* Dark mode */
 @media (prefers-color-scheme: dark) {
   .date-nav .nav-btn {
     background: #374151;

@@ -58,7 +58,6 @@ export const useTimelineZoom = ({
   const onResetRef = useRef(onResetToToday)
   onResetRef.current = onResetToToday
 
-  // Clean up rAF on unmount
   useEffect(() => {
     return () => {
       cancelAnimationFrame(zoomRafRef.current)
@@ -144,8 +143,6 @@ export const useTimelineZoom = ({
 
     svg.on('dblclick.zoom', () => onResetRef.current())
   }, [svgRef, containerRef, drawRef])
-
-  // ── attachZoom — called by render functions after scaffold setup ──────────
 
   const attachZoom = useCallback(
     (baseScale: d3.ScaleTime<number, number>, viewStart: Date, viewEnd: Date, chartDimension: number) => {

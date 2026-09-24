@@ -31,7 +31,6 @@ export function Header() {
   const toggleDrawer = useCallback(() => setDrawerOpen((v) => !v), [])
   const closeDrawer = useCallback(() => setDrawerOpen(false), [])
 
-  // Close drawer on Escape
   useEffect(() => {
     if (!drawerOpen) return
     const handleKey = (e: KeyboardEvent) => {
@@ -41,14 +40,12 @@ export function Header() {
     return () => document.removeEventListener('keydown', handleKey)
   }, [drawerOpen])
 
-  // Close drawer on navigation
   useEffect(() => {
     setDrawerOpen(false)
   }, [url])
 
   return (
     <header>
-      {/* ── Mobile nav bar (hamburger) ───────────────────────── */}
       <nav class="nav-mobile">
         <a href="/" class={`nav-mobile-home${url === '/' ? ' active' : ''}`}>
           Home
@@ -65,10 +62,8 @@ export function Header() {
         </button>
       </nav>
 
-      {/* ── Drawer backdrop ──────────────────────────────────── */}
       {drawerOpen && <div class="drawer-backdrop" onClick={closeDrawer} />}
 
-      {/* ── Left drawer ─────────────────────────────────────── */}
       <nav class={`nav-drawer${drawerOpen ? ' open' : ''}`} aria-hidden={!drawerOpen}>
         <div class="drawer-header">
           <span class="drawer-title">Menu</span>
@@ -91,7 +86,6 @@ export function Header() {
                 {link.label}
               </a>
             ))}
-            {/* Sharing inline expand */}
             <button
               class={`drawer-section-toggle${sharingActive ? ' active' : ''}`}
               onClick={() => setSharingExpandedInDrawer((v) => !v)}
@@ -120,7 +114,6 @@ export function Header() {
                 {link.label}
               </a>
             ))}
-            {/* Data Sources inline expand */}
             <button
               class={`drawer-section-toggle${isDataSourcesActive ? ' active' : ''}`}
               onClick={() => setDsExpandedInDrawer((v) => !v)}

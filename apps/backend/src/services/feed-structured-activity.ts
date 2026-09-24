@@ -1,7 +1,4 @@
 /**
- * Assembly of an *activity* post's native structured payload
- * (`FeedStructuredActivity`) from its resolved pieces.
- *
  * A leaf module (no import back into `feed.ts`/`feed-structured.ts`) shared by
  * two producers so their payloads can never drift:
  *
@@ -9,7 +6,7 @@
  *   Aurboda peer fetches and renders in its home timeline, and
  * - the owner-facing feed serialisation (`feed.ts`) — so the author's own feed
  *   card renders the **identical** payload with the identical component
- *   (#1008: "my own feed should look like it would for another Aurboda
+ *   ("my own feed should look like it would for another Aurboda
  *   subscriber").
  */
 import {
@@ -106,7 +103,6 @@ export interface StructuredActivitySource {
   title?: string
 }
 
-/** Assemble the `FeedStructuredActivity` payload from its resolved pieces. */
 export const assembleStructuredActivity = (
   activity: StructuredActivitySource,
   scalars: ScalarMetric[],

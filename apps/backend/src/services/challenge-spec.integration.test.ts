@@ -7,6 +7,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import type { ChallengeSpecFields } from '../db/index.ts'
 
+import { query } from '../db/connection.ts'
 import { insertActivity, insertTimeSeries } from '../db/index.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import { resolveMemberSeries } from './challenge-spec.ts'
@@ -35,7 +36,7 @@ describe('resolveMemberSeries integration', () => {
     await cleanTestDb()
   })
 
-  test('metric: last_updated is the most recent contributing data point', async () => {
+  test('metric: last_updated is when the contributing data last changed', async () => {
     const user = getTestUser()
     await insertTimeSeries(user, [
       {
@@ -59,6 +60,67 @@ describe('resolveMemberSeries integration', () => {
       new Date('2026-06-03T00:00:00Z'),
     )
     expect(series.total).toBe(12000)
+    // Both points were written just now, so that — not their 2026 sample times — is the answer.
+    expect(Date.now() - new Date(series.last_updated!).getTime()).toBeLessThan(60_000)
+  })
+
+  test('metric: a daily aggregate rewritten in place moves last_updated off midnight', async () => {
+    const user = getTestUser()
+    const midnight = new Date('2026-06-02T00:00:00Z')
+    const point = { metric: 'steps', source: 'health_connect_aggregate', time: midnight } as const
+    await insertTimeSeries(user, [{ ...point, value: 5000 }])
+    // Pretend the morning sync happened hours ago.
+    await query(user, `UPDATE time_series SET updated_at = $1 WHERE metric = 'steps'`, [
+      new Date('2026-06-02T06:00:00Z'),
+    ])
+    const window = [new Date('2026-06-01T00:00:00Z'), new Date('2026-06-03T00:00:00Z')] as const
+    const spec: ChallengeSpecFields = {
+      activity_type_id: null,
+      aggregation: 'sum',
+      bucket_size: '1d',
+      pattern: 'steps',
+      source_type: 'metric',
+      unit: 'steps',
+    }
+
+    const before = await resolveMemberSeries(user, spec, ...window)
+    expect(before.last_updated).toBe('2026-06-02T06:00:00.000Z')
+
+    // The same total re-sent leaves it alone; a higher total moves it to now.
+    await insertTimeSeries(user, [{ ...point, value: 5000 }])
+    expect((await resolveMemberSeries(user, spec, ...window)).last_updated).toBe('2026-06-02T06:00:00.000Z')
+
+    await insertTimeSeries(user, [{ ...point, value: 8200 }])
+    const after = await resolveMemberSeries(user, spec, ...window)
+    expect(after.total).toBe(8200)
+    expect(Date.now() - new Date(after.last_updated!).getTime()).toBeLessThan(60_000)
+  })
+
+  test('metric: rows from before updated_at existed fall back to their own time', async () => {
+    const user = getTestUser()
+    await insertTimeSeries(user, [
+      {
+        metric: 'steps',
+        source: 'health_connect_aggregate',
+        time: new Date('2026-06-02T18:30:00Z'),
+        value: 7000,
+      },
+    ])
+    await query(user, `UPDATE time_series SET updated_at = NULL`)
+
+    const series = await resolveMemberSeries(
+      user,
+      {
+        activity_type_id: null,
+        aggregation: 'sum',
+        bucket_size: '1d',
+        pattern: 'steps',
+        source_type: 'metric',
+        unit: 'steps',
+      },
+      new Date('2026-06-01T00:00:00Z'),
+      new Date('2026-06-03T00:00:00Z'),
+    )
     expect(series.last_updated).toBe('2026-06-02T18:30:00.000Z')
   })
 
@@ -97,6 +159,13 @@ describe('resolveMemberSeries integration', () => {
         value: 5000,
       },
       { metric: 'steps', source: 'strava', time: new Date('2026-06-02T23:00:00Z'), value: 9999 },
+    ])
+    // Give the untrusted point the later change stamp, so only the filter can keep it out.
+    await query(user, `UPDATE time_series SET updated_at = $1 WHERE source = 'health_connect_aggregate'`, [
+      new Date('2026-06-01T06:00:00Z'),
+    ])
+    await query(user, `UPDATE time_series SET updated_at = $1 WHERE source = 'strava'`, [
+      new Date('2026-06-02T23:00:00Z'),
     ])
 
     const series = await resolveMemberSeries(

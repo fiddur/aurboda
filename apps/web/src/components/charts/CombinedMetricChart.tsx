@@ -1,15 +1,4 @@
 /**
- * D3-based combined multi-metric chart with toggleable overlays — the
- * presentational half of the activity detail chart, extracted (#1011) so the
- * feed's native post cards render the *same* chart from a structured payload's
- * inline series.
- *
- * Supports:
- * - Sleep hypnogram (colored bands by sleep stage)
- * - Line overlays for dense data, diamond dots for sparse data
- * - Per-metric toggle buttons with axis allocation (most recent toggles get axes)
- * - Hover tooltip with crosshair, surfaced via `onHoverTime` (drives the map)
- *
  * Data comes in via `series` — the caller owns fetching/derivation (the detail
  * page buckets the DB; a feed card maps the structured payload's samples).
  */
@@ -18,11 +7,16 @@ import * as d3 from 'd3'
 import { format } from 'date-fns'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 
-import { findNearest, findStageAtTime } from './chart-utils'
+import {
+  chartRightMargin,
+  countRightAxes,
+  findNearest,
+  findStageAtTime,
+  MAX_RIGHT_AXES,
+} from './chart-utils'
 import { STAGE_COLORS, STAGE_LABELS, STAGE_Y_ORDER, type SleepStage } from './sleep-utils'
 import './CombinedMetricChart.css'
 
-/** One drawable series: a metric key plus its `[time, value]` points. */
 export interface CombinedChartSeries {
   metric: string
   data: [Date, number][]
@@ -36,17 +30,19 @@ interface CombinedMetricChartProps {
   end: Date
   stages?: SleepStage[]
   defaultMetrics?: string[]
-  /** Show the loading hint in the toggle row (the caller is still fetching). */
   loading?: boolean
   onHoverTime?: (time: Date | null) => void
-  /** Notified with the metrics currently shown on the chart (for the share dialog). */
   onEnabledMetricsChange?: (metrics: string[]) => void
 }
 
 const CHART_HEIGHT = 260
-/** Exported so callers sizing their fetch to the drawable width use the same margins. */
-export const CHART_MARGIN = { bottom: 30, left: 50, right: 155, top: 10 }
-const MAX_RIGHT_AXES = 2
+/**
+ * Exported so callers sizing their fetch to the drawable width use the same
+ * margins. `right` is the MAXIMUM (two right axes drawn); the rendered chart
+ * reclaims unused axis space via `chartRightMargin`, so a fetch sized with
+ * this is at worst slightly coarser than the drawn width, never too fine.
+ */
+export const CHART_MARGIN = { bottom: 30, left: 50, right: chartRightMargin(MAX_RIGHT_AXES), top: 10 }
 const SPARSE_THRESHOLD = 10
 
 /** Hypnogram Y-axis labels in display order (top to bottom). */
@@ -56,7 +52,6 @@ const HYPNOGRAM_Y_VALUES = [0, 1, 2, 3]
 type GSelection = d3.Selection<SVGGElement, unknown, null, undefined>
 type TimeSeries = [Date, number][]
 
-/** Predefined color palette — well-known metrics get stable colors, rest cycle through. */
 const KNOWN_METRIC_COLORS: Record<string, string> = {
   body_battery: '#a855f7',
   heart_rate: '#ef4444',
@@ -79,7 +74,6 @@ const FALLBACK_COLORS = [
 const getMetricColor = (metric: string, fallbackIndex: number): string =>
   KNOWN_METRIC_COLORS[metric] ?? FALLBACK_COLORS[fallbackIndex % FALLBACK_COLORS.length]!
 
-/** Format snake_case metric name to Title Case label. */
 const formatMetricLabel = (metric: string): string =>
   metric.replaceAll('_', ' ').replaceAll(/\b\w/g, (c) => c.toUpperCase())
 
@@ -198,7 +192,6 @@ const drawLineOverlay = (
     .attr('d', line)
 }
 
-/** Draw sparse data as diamond markers instead of a line. */
 const drawDotOverlay = (
   g: GSelection,
   xScale: d3.ScaleTime<number, number>,
@@ -265,7 +258,6 @@ interface MetricOverlay {
   showAxis: boolean
 }
 
-/** Draw all dynamic metric overlays with axis allocation. */
 const drawOverlays = (
   g: GSelection,
   xScale: d3.ScaleTime<number, number>,
@@ -301,7 +293,6 @@ const drawOverlays = (
   }
 }
 
-/** Build tooltip text lines for the crosshair position. */
 const buildTooltipLines = (
   time: Date,
   overlays: MetricOverlay[],
@@ -326,7 +317,6 @@ const buildTooltipLines = (
   return lines
 }
 
-/** Render the full D3 chart (overlays + tooltip). Called from useEffect. */
 const renderChart = ({
   containerRef,
   hasHypnogram,
@@ -354,7 +344,11 @@ const renderChart = ({
   const svg = d3.select(svgRef.current)
   svg.selectAll('*').remove()
 
-  const innerWidth = containerWidth - CHART_MARGIN.left - CHART_MARGIN.right
+  // Reserve right margin only for the right axes actually drawn — a fixed
+  // maximum squeezed the plot to half a phone card's width in the common
+  // single-metric case.
+  const marginRight = chartRightMargin(countRightAxes(!!hasHypnogram, overlays))
+  const innerWidth = containerWidth - CHART_MARGIN.left - marginRight
   const innerHeight = CHART_HEIGHT - CHART_MARGIN.top - CHART_MARGIN.bottom
 
   svg.attr('width', containerWidth).attr('height', CHART_HEIGHT)
@@ -368,7 +362,9 @@ const renderChart = ({
     .call(
       d3
         .axisBottom(xScale)
-        .ticks(6)
+        // A "HH:mm" tick needs ~60px to stay legible; d3 treats this as a
+        // hint, so clamp instead of letting a narrow phone card overlap them.
+        .ticks(Math.max(3, Math.min(6, Math.floor(innerWidth / 60))))
         .tickFormat((d) => format(d as Date, 'HH:mm')),
     )
     .selectAll('text')
@@ -380,7 +376,6 @@ const renderChart = ({
 
   drawOverlays(g, xScale, innerWidth, innerHeight, !!hasHypnogram, overlays)
 
-  // Tooltip crosshair and interaction overlay
   const crosshair = g
     .append('line')
     .attr('y1', 0)
@@ -466,7 +461,6 @@ export const CombinedMetricChart = ({
 
   onHoverTimeRef.current = onHoverTime
 
-  // Re-render on container resize (no refetch involved — purely a redraw).
   const [containerWidth, setContainerWidth] = useState(0)
   useEffect(() => {
     const el = containerRef.current
@@ -485,7 +479,6 @@ export const CombinedMetricChart = ({
   // Track toggle order for axis priority (most recent gets axis)
   const [toggleOrder, setToggleOrder] = useState<string[]>([])
 
-  // When available metrics first load, initialize toggle order with defaultMetrics first, then rest
   const defaultsAppliedRef = useRef(false)
   useEffect(() => {
     if (availableMetrics.length > 0 && !defaultsAppliedRef.current) {
@@ -538,10 +531,9 @@ export const CombinedMetricChart = ({
   // the drawn content changes — NOT on every parent re-render. The chart's own
   // crosshair/tooltip are drawn by the mousemove handler, and `onHoverTime`
   // re-renders the parent per mousemove, so a fresh `overlays` identity here
-  // would wipe the crosshair right after every draw (#1014).
+  // would wipe the crosshair right after every draw.
   const overlays = useMemo(() => {
     const enabled = new Set(series.map((s) => s.metric).filter((m) => !disabledMetrics.has(m)))
-    // Which metrics get axes: the last MAX_RIGHT_AXES enabled in toggle order.
     const withAxes = new Set(toggleOrder.filter((m) => enabled.has(m)).slice(-MAX_RIGHT_AXES))
     const built: MetricOverlay[] = []
     for (const s of series) {

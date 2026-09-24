@@ -1,6 +1,3 @@
-/**
- * Location, Place, Named Location, and Detected Location CRUD operations.
- */
 import format from 'pg-format'
 
 import type {
@@ -16,10 +13,6 @@ import type {
 import { query } from './connection.ts'
 import { buildDynamicUpdate, type UpdateEntry } from './dynamic-update.ts'
 import { mapDetectedLocationRow, mapNamedLocationRow } from './row-mappers.ts'
-
-// ============================================================================
-// Raw Locations
-// ============================================================================
 
 export const insertLocation = async (user: string, location: Location) => {
   await query(
@@ -138,10 +131,6 @@ export const getLocations = async (user: string, start: Date, end: Date) => {
   return { locations, places }
 }
 
-// ============================================================================
-// Places (Geofences)
-// ============================================================================
-
 export const insertPlace = async (user: string, place: Place) => {
   await query(
     user,
@@ -226,10 +215,6 @@ export const deleteNamedLocation = async (user: string, id: string): Promise<boo
   const result = await query(user, `DELETE FROM named_locations WHERE id = $1`, [id])
   return (result.rowCount ?? 0) > 0
 }
-
-// ============================================================================
-// Detected Locations (clusters detected from GPS data)
-// ============================================================================
 
 export const insertDetectedLocation = async (
   user: string,
@@ -345,9 +330,6 @@ export const deleteDetectedLocation = async (user: string, id: string): Promise<
   return (result.rowCount ?? 0) > 0
 }
 
-/**
- * Get detected locations that need geocoding.
- */
 export const getDetectedLocationsNeedingGeocode = async (user: string): Promise<DetectedLocation[]> => {
   const result = await query(
     user,

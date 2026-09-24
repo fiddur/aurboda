@@ -1,8 +1,4 @@
 /**
- * Auto-share rule routes (#903), owner-facing.
- *
- * Handles: /autoshare-rules/*
- *
  * CRUD over the per-user rules that automatically publish settled activities to
  * the federated feed, plus a dry-run preview ("this rule would have matched N
  * activities in the last 30 days"). Rules are always created DISABLED; flipping

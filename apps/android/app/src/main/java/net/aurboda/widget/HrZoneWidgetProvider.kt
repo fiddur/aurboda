@@ -37,7 +37,6 @@ class HrZoneWidgetProvider : AppWidgetProvider() {
       val componentName = ComponentName(context, HrZoneWidgetProvider::class.java)
       val appWidgetIds = appWidgetManager.getAppWidgetIds(componentName)
 
-      // Notify the ListView adapter to refresh data
       @Suppress("DEPRECATION")
       appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetIds, R.id.goals_list)
     }
@@ -69,7 +68,6 @@ class HrZoneWidgetProvider : AppWidgetProvider() {
     views.setPendingIntentTemplate(R.id.goals_list, pendingIntent)
     views.setOnClickPendingIntent(R.id.widget_container, pendingIntent)
 
-    // Set up the RemoteViews adapter for the ListView
     val serviceIntent =
       Intent(context, GoalsWidgetService::class.java).apply {
         putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
@@ -79,12 +77,10 @@ class HrZoneWidgetProvider : AppWidgetProvider() {
     @Suppress("DEPRECATION")
     views.setRemoteAdapter(R.id.goals_list, serviceIntent)
 
-    // Set empty view
     views.setEmptyView(R.id.goals_list, R.id.empty_view)
 
     appWidgetManager.updateAppWidget(appWidgetId, views)
 
-    // Trigger data refresh
     @Suppress("DEPRECATION")
     appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetId, R.id.goals_list)
   }
@@ -93,7 +89,6 @@ class HrZoneWidgetProvider : AppWidgetProvider() {
     const val ACTION_UPDATE_WIDGETS = "net.aurboda.ACTION_UPDATE_HR_ZONE_WIDGETS"
 
     /**
-     * Trigger an update of all HR Zone widgets.
      * Call this after background sync completes.
      */
     fun triggerUpdate(context: Context) {

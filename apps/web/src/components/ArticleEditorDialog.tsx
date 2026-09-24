@@ -4,13 +4,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRef, useState } from 'preact/hooks'
 
 /**
- * Compose or edit a long-form **article** feed post: a title, an optional
- * article-level default time window, and an ordered list of prose / chart /
- * correlation blocks. Passing an existing `post` (kind `article`) switches to
- * edit mode (PATCH); otherwise it creates one (POST). Prose is written in the
- * shared MarkdownEditor; a chart block picks a metric and an optional window; a
- * correlation block picks a trigger + outcome selector — the same shapes Claude
- * drafts over MCP. Windowed blocks inherit the article default when left blank.
+ * Passing an existing `post` (kind `article`) switches to edit mode (PATCH);
+ * otherwise it creates one (POST). Windowed blocks inherit the article default
+ * when left blank.
  */
 import type { BlockDraft, ChartDraft, CorrelationDraft, ProseDraft } from './article-editor-body'
 
@@ -38,7 +34,6 @@ type BlockPatch = Partial<ChartDraft> & Partial<CorrelationDraft> & Partial<Pros
  */
 type KeyedBlock = { key: string; block: BlockDraft }
 
-/** The editable fields of a correlation block: trigger + outcome selectors, window, lag, caption. */
 const CorrelationBlockFields = ({
   block,
   selectors,
@@ -110,10 +105,6 @@ const CorrelationBlockFields = ({
   </div>
 )
 
-/**
- * One content block with its reorder / remove controls. Prose, chart, and
- * correlation blocks are all editable inline.
- */
 const ArticleBlockEditor = ({
   block,
   index,

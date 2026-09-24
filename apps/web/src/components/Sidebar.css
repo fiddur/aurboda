@@ -1,5 +1,3 @@
-/* ── Sidebar (desktop only) ────────────────────────────────── */
-
 .sidebar {
   width: 240px;
   background: #673ab8;
@@ -14,8 +12,6 @@
 .sidebar.collapsed {
   width: 56px;
 }
-
-/* ── Header with brand + toggle ───────────────────────────── */
 
 .sidebar-header {
   display: flex;
@@ -51,8 +47,6 @@
   color: #fff;
   background: rgba(255, 255, 255, 0.1);
 }
-
-/* ── Navigation links ─────────────────────────────────────── */
 
 .sidebar-nav {
   display: flex;
@@ -96,7 +90,6 @@
   text-overflow: ellipsis;
 }
 
-/* Hide labels when collapsed */
 .sidebar.collapsed .sidebar-label,
 .sidebar.collapsed .sidebar-brand,
 .sidebar.collapsed .sidebar-section-arrow {
@@ -119,8 +112,6 @@
 .sidebar.collapsed .sidebar-sub-links {
   display: none;
 }
-
-/* ── Data Sources expandable section ──────────────────────── */
 
 .sidebar-section-btn {
   display: flex;
@@ -167,15 +158,11 @@
   opacity: 0.9;
 }
 
-/* ── Footer section (user, settings, logout) ──────────────── */
-
 .sidebar-footer {
   margin-top: auto;
   border-top: 1px solid rgba(255, 255, 255, 0.15);
   padding: 0.5rem 0;
 }
-
-/* ── Hide on narrow screens ───────────────────────────────── */
 
 @media (max-width: 60em) {
   .sidebar {

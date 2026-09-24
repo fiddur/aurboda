@@ -1,6 +1,4 @@
 /**
- * Integration test for Garmin activity type resolution.
- *
  * Runs processGarminData against a real PostgreSQL instance so the
  * activities → activity_type_definitions foreign key is actually enforced:
  * an unmapped Garmin typeKey must degrade to a defined type instead of
@@ -11,6 +9,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 import { query } from '../../db/connection.ts'
 import {
   activityTypeExists,
+  adoptLegacyActivity,
   deleteGarminActivityWithWrongType,
   insertActivity,
   insertLocations,
@@ -26,6 +25,7 @@ const CONTAINER_TIMEOUT = 120_000
 
 const realDeps = {
   activityTypeExists,
+  adoptLegacyActivity,
   auditError,
   auditInfo,
   auditWarn,

@@ -1,6 +1,4 @@
 /**
- * oEmbed endpoint (UNAUTHENTICATED): `GET /oembed?url=<share url>&format=json`.
- *
  * Resolves a public share URL to an oEmbed `link` document (title + author +
  * OG-image thumbnail). Only public resources resolve; anything else 404s, so
  * nothing private is exposed. Discoverable via the `<link rel="alternate">`

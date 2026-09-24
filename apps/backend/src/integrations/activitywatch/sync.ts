@@ -1,6 +1,4 @@
 /**
- * ActivityWatch push sync service.
- *
  * ActivityWatch is a local desktop daemon — it cannot be pulled from a remote server.
  * Instead, a push agent on each device periodically sends batches of events to this endpoint.
  *
@@ -21,12 +19,8 @@ import { categorizeRecords, compileRules } from '../../services/screentime-categ
 import { ensureAllCategoriesHaveTypes } from '../../services/screentime-category-sync.ts'
 
 /**
- * Process a batch of ActivityWatch events from a push agent.
- *
- * @param user - The Aurboda username
  * @param events - ActivityWatch events from aw-watcher-window or aw-watcher-android
  * @param deviceName - Hostname or user-configured device name (empty string for single-device setup)
- * @param isMobile - Whether the events come from a mobile device (default false)
  */
 export const processActivityWatchEvents = async (
   user: string,
@@ -54,7 +48,6 @@ export const processActivityWatchEvents = async (
       }
     })
 
-    // Resolve categories if user has screentime rules configured
     const categories = await getScreentimeCategories(user)
     if (categories.length > 0) {
       const compiledRules = compileRules(categories)
@@ -74,7 +67,6 @@ export const processActivityWatchEvents = async (
       if (spans.length > 0) await insertActivities(user, spansToActivities(spans))
     }
 
-    // Track last push time per device in sync_state
     const dataType = deviceName ? `productivity:${deviceName}` : 'productivity'
     await upsertSyncState(user, {
       data_type: dataType,

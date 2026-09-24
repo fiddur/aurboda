@@ -1,6 +1,3 @@
-/**
- * Custom metric definitions CRUD operations.
- */
 import type { CustomMetricDefinition } from '@aurboda/api-spec'
 
 import { query } from './connection.ts'
@@ -105,9 +102,8 @@ export const deleteCustomMetricDefinition = async (user: string, name: string): 
 }
 
 /**
- * Merge a custom metric into another metric by reassigning all time_series rows.
- * Conflicting rows (same time + source in target) are soft-deleted.
- * The source custom metric definition is deleted.
+ * Conflicting rows (same time + source in target) are soft-deleted, and the
+ * source custom metric definition is deleted.
  */
 export const mergeCustomMetric = async (
   user: string,
@@ -115,7 +111,6 @@ export const mergeCustomMetric = async (
   targetName: string,
   targetUnit: string,
 ): Promise<{ rows_reassigned: number; rows_skipped: number }> => {
-  // Count rows that would conflict (same time + source already exists in target)
   const conflictResult = await query(
     user,
     `SELECT COUNT(*)::int AS count FROM time_series t1
@@ -129,7 +124,6 @@ export const mergeCustomMetric = async (
   )
   const rows_skipped = (conflictResult.rows[0]?.count as number) ?? 0
 
-  // Reassign non-conflicting rows to target metric with correct unit
   const updateResult = await query(
     user,
     `UPDATE time_series
@@ -144,22 +138,18 @@ export const mergeCustomMetric = async (
   )
   const rows_reassigned = updateResult.rowCount ?? 0
 
-  // Soft-delete any remaining source rows (the conflicts)
   if (rows_skipped > 0) {
     await query(user, `UPDATE time_series SET deleted_at = NOW() WHERE metric = $1 AND deleted_at IS NULL`, [
       sourceName,
     ])
   }
 
-  // Delete the source custom metric definition
   await query(user, `DELETE FROM custom_metrics WHERE name = $1`, [sourceName])
 
   return { rows_reassigned, rows_skipped }
 }
 
-/**
- * Bulk insert custom metric definitions (used during migration from settings JSONB).
- */
+/** Used during migration from settings JSONB. */
 export const bulkInsertCustomMetricDefinitions = async (
   user: string,
   definitions: CustomMetricDefinition[],

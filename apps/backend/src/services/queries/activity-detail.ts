@@ -41,10 +41,6 @@ export const parseMetricsParam = (raw: string | undefined): string[] | undefined
   return list.length > 0 ? list : undefined
 }
 
-/**
- * Compute hr_zone_secs, avg_hrv, and the generic summary metrics for an
- * activity's time range. Pulls all required time-series in parallel.
- */
 export const computeActivityDetailMetrics = async (
   user: string,
   activity: { start_time: Date; end_time?: Date; data?: Record<string, unknown> },

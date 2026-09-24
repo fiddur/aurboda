@@ -43,6 +43,7 @@ describe('getChallengeStandings integration', () => {
     ])
 
     const challenge = await createChallenge(user, {
+      announce_winner: true,
       end_ts: new Date('2026-06-03T00:00:00Z'),
       is_public: true,
       name: 'RHR sum',
@@ -91,10 +92,11 @@ describe('getChallengeStandings integration', () => {
     expect(standings.map((s) => s.display_name)).toEqual(['remote-bob', user])
     expect(standings[0].total).toBe(300)
     expect(standings[1].total).toBe(110)
-    // last_updated reflects each member's own latest data point, not the request time.
-    // Local: MAX(time) of their series (2026-06-02T08:00). Remote: the reported value.
+    // last_updated reflects when each member's own data last changed, not the
+    // request time. Remote: the reported value. Local: the points were written
+    // moments ago, so their `updated_at` — not the 2026 sample times — is it.
     expect(standings[0].last_updated).toBe(remoteReported)
-    expect(standings[1].last_updated).toBe('2026-06-02T08:00:00.000Z')
+    expect(Date.now() - new Date(standings[1].last_updated!).getTime()).toBeLessThan(60_000)
     // Minimal projection — only bucket_start + value per bucket.
     for (const s of standings) {
       for (const b of s.buckets) expect(Object.keys(b).sort()).toEqual(['bucket_start', 'value'])
@@ -113,6 +115,7 @@ describe('getChallengeStandings integration', () => {
   test('a remote member with no data reports last_updated=null (#843)', async () => {
     const user = getTestUser()
     const challenge = await createChallenge(user, {
+      announce_winner: true,
       end_ts: new Date('2026-06-03T00:00:00Z'),
       is_public: true,
       name: 'Steps',
@@ -153,6 +156,7 @@ describe('getChallengeStandings integration', () => {
   test('caches a failed remote fetch for the TTL (no per-call re-fetch storm)', async () => {
     const user = getTestUser()
     const challenge = await createChallenge(user, {
+      announce_winner: true,
       end_ts: new Date('2026-06-03T00:00:00Z'),
       is_public: true,
       name: 'Flaky',

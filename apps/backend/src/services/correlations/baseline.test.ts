@@ -4,7 +4,6 @@ import * as db from '../../db/index.ts'
 import * as queries from '../queries/index.ts'
 import { getBaseline } from './baseline.ts'
 
-// Mock db module
 vi.mock('../../db', () => ({
   getTimeSeriesStats: vi.fn(),
 }))
@@ -86,7 +85,6 @@ describe('getBaseline', () => {
       expect(metric).toBe('hrv_sleep')
     }
 
-    // Verify averages are computed correctly from the data points
     expect(result.hrv.avg7day).toBe(45.5) // (40 + 46 + 50.5) / 3
     expect(result.hrv.avg30day).toBe(44.2) // (42 + 46.4) / 2
     expect(result.resting_hr.avg7day).toBe(60.3)

@@ -1,14 +1,3 @@
-/**
- * Integration tests for persisted supersession (`superseded_by` column).
- *
- * Verifies that:
- *   1. Cross-source duplicates get marked correctly during sync.
- *   2. Chart/trend queries skip superseded rows.
- *   3. Materialization is idempotent.
- *   4. Backfill works for historical data.
- *   5. Restoring/deleting activities re-materializes correctly.
- */
-
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'

@@ -53,9 +53,6 @@ const mapRow = (row: Record<string, unknown>): FoodItemIngredientRow => ({
   updated_at: new Date(row.updated_at as string),
 })
 
-/**
- * Get all ingredients of one composite food, ordered by sort_order.
- */
 export const getIngredients = async (
   user: string,
   parentFoodItemId: string,

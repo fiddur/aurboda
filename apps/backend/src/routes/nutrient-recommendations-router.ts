@@ -1,10 +1,3 @@
-/**
- * REST routes for per-user nutrient recommendation overrides.
- *
- * GET    /                  → effective merged list (central NNR2023 + user)
- * PUT    /:nutrient_name    → upsert user override
- * DELETE /:nutrient_name    → revert to central default
- */
 import type { Response } from 'express'
 
 import {

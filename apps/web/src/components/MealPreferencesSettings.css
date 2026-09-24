@@ -15,8 +15,6 @@
   margin: 0 0 0.75rem;
 }
 
-/* Sensitivity area chips */
-
 .area-list {
   display: flex;
   flex-wrap: wrap;
@@ -50,8 +48,6 @@
 .chip-remove:hover {
   opacity: 1;
 }
-
-/* Add row */
 
 .add-row {
   display: flex;
@@ -88,8 +84,6 @@
 .add-row .btn-secondary:hover {
   background: #f3f4f6;
 }
-
-/* Slot rows */
 
 .slots-list {
   display: flex;
@@ -146,8 +140,6 @@
 .btn-danger-small:hover {
   background: #fef2f2;
 }
-
-/* Dark mode */
 
 @media (prefers-color-scheme: dark) {
   .meal-pref-subsection h3 {

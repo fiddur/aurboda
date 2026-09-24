@@ -72,6 +72,12 @@ A feed post has a **`kind`**:
   flow. Federates as a `Note` (Mastodon renders the link with the challenge page's
   existing OG preview card). Shared via `POST /feed/challenges` (and the
   `share_challenge` MCP tool) or the **Share to feed** button on the challenges page.
+  The host instance's automatic **completion post** (see
+  [challenges.md](challenges.md#completion--winner-announcement)) is the same kind
+  with a `result` payload in the `challenge` column — the final podium (ranks, names,
+  identities, totals) and member count — rendered natively as a podium on the card and
+  federated with a "has finished" heading, the winner as a Mastodon-style mention link,
+  and a `Mention` tag (plus `cc` + inbox delivery) per winner.
 
 An **`activity`** feed post references one of the user's activities and records the
 explicit metric selection that bounds what is shared:
@@ -217,10 +223,67 @@ and removes the row. Local follows use the exact same path (delivered to the loc
 over loopback), so there is no special-casing. Delivery is best-effort/synchronous, matching
 the rest of the feed — a failed `Follow` POST leaves the pending row so the user can retry.
 
+**Inbound `Update{Person}`** (#1057) — the mirror of the `Update{Person}` we deliver when our
+own profile changes. A remote actor renaming themselves (or changing their avatar) sends one to
+everyone who follows them, and nothing else ever re-reads a remote actor, so without it our
+cached handle / display name / avatar stay stale indefinitely. An `Update` whose object id
+**is** its actor id is the actor editing themselves — that equality is the same-actor rule, so
+an `Update{Person}` describing anybody else is ignored — and the new presentation is then
+fetched from that (signature-verified) actor id, never read off the embedded `Person`. Every
+cached copy is refreshed together: the `feed_follower` and `feed_following` rows, the author
+snapshot on their timeline entries, the "🔄 X boosted" line on cards they boosted, and their
+reactions on the owner's own posts. Presentation only — the cached inbox URIs never move.
+
 Each follow carries a **`notify_on_post`** flag (default `true`), toggled per-actor with the
 bell in the web Following panel (or the `set_following_notify` MCP tool / `PATCH
 /feed/following/:id`). It controls whether the Android app raises a notification for that
 actor's new home-timeline posts; muting is preserved across a re-follow.
+
+**Replies and mentions** (#1060): ingest stores a received Note's `inReplyTo` id as
+`timeline_entry.in_reply_to_uri` and whether it carries a `Mention` of the timeline owner as
+`mentions_me`. The timeline exposes both (plus `in_reply_to_mine`, true when the reply target
+is one of the reader's own posts) and filters by the **`timeline_show_replies`** user setting
+(toggle on the Feed page and in Settings): off (the default) hides only replies to posts that
+**aren't in the reader's timeline**. A reply to a post the timeline already holds — a followee
+continuing their own thread, or two followees talking to each other — stays visible, which is
+what Mastodon's home shows; so do posts the reader is **involved** in (replies to their own
+posts, Mentions of them), marked on the card, and boost cards of replies. The inbox admits an
+involvement Note **from any actor**, not only followees (a stranger's reply to your post, or a
+post mentioning you, is the Mastodon-style interaction; the author snapshot comes from the
+signature-verified sender) — everything else from non-followees is still dropped. The live
+"new post" ping applies the same filter (#1062): a reply the reader has chosen not to see
+never announces a card their timeline doesn't list. The Android notifier follows the same
+rule: top-level posts notify per the per-follow bell, involvement notifies regardless of who
+wrote it — deliberately including an account whose bell is explicitly OFF, since a reply to
+you or a mention of you is addressed to you, not merely published near you. Entries also
+expose **`received_at`** (when this instance stored the post) — the notifier's high-water
+mark, since `published_at` can arrive out of order after federation retries. Entries ingested
+before this shipped are **lazily backfilled**: each timeline read re-fetches a few unchecked
+objects (SSRF-guarded) and stamps their reply/Mention state.
+
+**Expanding a thread**: `GET /feed/timeline/:id/replies` (and the MCP `get_timeline_replies`
+tool) fetches a live, bounded snapshot of the post's remote `replies` collection — at most 20
+replies from at most 15 SSRF-guarded requests within a 12s budget, HTML sanitised
+server-side; `partial: true` marks a thread longer than the budget. Nothing is stored — the
+web's "Show replies" button on each timeline card renders it on demand.
+
+The snapshot also carries **`fetched`** (#1065): `false` means the origin's thread could not
+be read at all (the post never loaded, or it declared a `replies` collection we couldn't
+resolve). An empty list is then *unknown*, not *empty*, and the web says "Couldn't read the
+thread from `<host>`." instead of "No replies found" — a failed fetch that reads as an empty
+thread is a lie about someone else's conversation.
+
+The reader's **own replies** to the same object are merged into the snapshot (marked
+`mine: true`, matched on the reply's `object_uri`). The origin need not list our Note yet —
+Mastodon adds it only once it has processed the `Create`, and a followers-only thread may
+never expose it — and a thread that hides its own reader's reply reads as if it were never
+sent. A reply the origin *does* list is kept as the origin's copy (that is what everyone else
+sees) and only flagged `mine`; one it doesn't is appended in `published_at` order.
+
+**Marker composition** (#1066): the card's markers compose rather than exclude each other —
+`↩ replied to you` when the post answers one of yours, else `↩ a reply`, **plus** `@ mentioned
+you` whenever it also carries a Mention of you. (A reply to your own post already implies the
+mention, so that pair collapses to one marker.)
 
 The actor advertises a **following collection** (`/users/<username>/following`) listing only
 _accepted_ follows (a pending follow isn't a confirmed relationship yet). The followee's
@@ -284,14 +347,18 @@ shows its photos.
 A `Delete` removes the matching entry; unfollowing removes all of that actor's entries. The
 timeline is read back **newest-first**, keyset-paginated on `(published_at, id)` behind an
 opaque `next_cursor` — the same cursor style as the outbox — via `GET /feed/timeline` and the
-`list_timeline` MCP tool. Because the content was sanitised on ingest, the web client renders
-it directly.
+`list_timeline` MCP tool. The cursor carries the timestamp at Postgres' own **microsecond**
+precision (selected as text alongside the row), because the page predicate compares at that
+precision: a millisecond-rounded cursor made a row sharing that millisecond unreachable from
+every page (#1025). Cursors issued before that fix are still accepted, at their old precision.
+Because the content was sanitised on ingest, the web client renders it directly.
 
 Two ingest guards keep the timeline honest given `object_uri` is a **globally-unique** upsert
-key: the note's id must be on the **sender's host** and, when it declares `attributedTo`, must
-attribute to the sender (so an accepted followee can't overwrite another actor's post by
-colliding its id); and `published_at` is **clamped to "not in the future"** on ingest (it's the
-sort key, so a far-future timestamp would otherwise pin a post to the top).
+key: the note's id must be on the **sender's host** *and* it must declare `attributedTo` naming
+the sender (so an accepted followee can't overwrite another actor's post by colliding its id —
+a note with no `attributedTo` at all is refused too, since every real implementation sets it);
+and `published_at` is **clamped to "not in the future"** on ingest (it's the sort key, so a
+far-future timestamp would otherwise pin a post to the top).
 
 **Backfill on follow.** So the timeline isn't empty until a new followee next posts, accepting
 a follow triggers a one-off **backfill**: the followee's recent **public** posts are fetched
@@ -305,6 +372,146 @@ Backfill is **best-effort and bounded**: fire-and-forget (a slow or unreachable 
 blocks the follow), capped at the latest ~20 posts, and time-boxed. Backfilled posts are
 historical, so they don't trigger the live **"N new posts"** pill — they simply appear in the
 timeline on the next load, in their published order.
+
+### Likes and boosts
+
+Two Mastodon-style interactions, both over open ActivityPub vocabulary and both directions:
+a **like** ⭐ is an AS2 `Like` (Mastodon's "favourite"), a **boost** 🔄 an AS2 `Announce`
+("reblog"); each is retracted with an `Undo` of the same activity.
+
+**Outbound** (the user taps ⭐ / 🔄 on a home-timeline card). The local `feed_reaction` row is
+written first and is the source of both the card's state and the **activity id** we deliver
+(`/users/<user>/likes/<id>`, `/users/<user>/announces/<id>`, `#undo` appended for the
+retraction) — so an `Undo` always references exactly the activity that was sent. Those ids are
+never dereferenced by Mastodon, so a GET on one may 404. Addressing follows Mastodon:
+
+- a `Like` carries no `to`/`cc` and is delivered to the **post author's inbox only**;
+- an `Announce` is `to: Public`, `cc: [followers, author]` and is delivered to **followers and
+  the author as two independent sends**, so one dead inbox can't cancel the other.
+
+The author's inbox comes from the cached `feed_following` row when we follow them (no network);
+otherwise a bounded actor lookup, and a reaction we can't address fails with `502` rather than
+storing a row the card would lie about. Delivery itself is **best-effort** (like `Follow`): a
+failed POST is logged and the local state stands. Both toggles are **idempotent** — a second
+like is a local no-op with no second delivery, and un-reacting something you never reacted to
+changes nothing. Reacting to a **boost card** targets the *original* post, not the `Announce`.
+
+**Inbound.** A `Like`/`Announce` of one of **our own** posts is recorded in
+`feed_post_reaction` with a best-effort snapshot of the sender (handle / name / avatar), so the
+owner can see who reacted; it is open to any actor (Mastodon requires no follow to favourite),
+but strictly scoped to a post that is ours and still exists. That snapshot is **fetched from
+the sender's actor id** (see the rule below), so an unresolvable actor leaves a countable but
+anonymous reaction rather than an unverified byline. An `Undo` retracts it, scoped to the
+undoing actor; when the `Undo`'s inner object doesn't resolve, the remote activity's own id is
+matched instead.
+
+An `Announce` **by an accepted followee of a third party's post** becomes a **boost card** in
+the home timeline. A boost is its own row: `object_uri` is the *`Announce` activity id* (so two
+followees boosting one post give two cards, and a boost never collides with the original's own
+entry), `boost_of_uri` is the announced Note's id, `boosted_by_*` the followee, and
+`published_at` is the boost time — so the card sorts where Mastodon puts it. Everything else
+(author, content, images, structured payload) describes the **original** post, which is what
+renders, under a "🔄 X boosted" line. Guards: only an **accepted** followee can boost into the
+timeline; the announced object must resolve to a `Note` **on the same host as the announced
+id** and declare `attributedTo` (whose host must match the Note's, as for any ingest); and a
+post that is **already in the timeline directly** gets no boost card (Mastodon likewise hides a
+reblog of a post you already have).
+
+A boost card tracks the post it shows: the author's `Update{Note}` refreshes the **boost cards
+of that Note** as well as the direct entry (the card is keyed on the `Announce` id, so the
+ingest upsert alone would leave it showing pre-edit content), while its `published_at` stays at
+boost time so it doesn't jump on an edit. And a boost is never treated as a *reply*, even when
+the boosted Note is one: it stays visible with `timeline_show_replies` off (Mastodon shows
+reblogs of replies), and it is left out of an own post's comment list + `reply_count`, which
+would otherwise show the same comment twice under someone else's byline.
+
+**An object embedded in an activity is never used.** The announced `Note`, its author, and
+every actor whose name we store are always **dereferenced from their own ids**. This is the
+security of the whole feature, not an optimisation: an AS2 activity may inline its object, and
+a library will hand that inlined copy back without fetching anything — so a followee could
+deliver an `Announce` carrying a `Note` with any `id` and an `attributedTo` `Person` with any
+`preferredUsername` they chose, and every host/attribution check would be satisfied by data
+they wrote, storing forged content under a real person's byline. Fetching by id makes the
+claimed origin server the only thing that can describe its own posts and people (and the
+lookup refuses a document whose `@id` is cross-origin to the URL it came from). Mastodon sends
+a bare id for a boost anyway, so this is also the ordinary path.
+
+The rule covers **every inbound path that writes a byline** (#1103), each choosing what an
+unreadable actor document means: an inbound `Like`/`Announce` still records a countable but
+anonymous reaction; an inbound `Follow` still records the follow (the relationship is real)
+with unknown display fields, while its inbox — delivery addressing, not presentation — comes
+from the signature-verified sender as before; a **stranger's** reply/mention Note is dropped
+outright, since showing who replied is the entire point of admitting it; a boosted post's
+author, likewise, yields no card.
+
+`Undo{Announce}` removes the card, scoped to the booster; an author's `Delete` removes their
+post *and* every boost of it; unfollowing removes that actor's own posts and their boosts, but
+keeps other people's boosts of their posts (those are in the timeline on the booster's
+account).
+
+A `followers`-only post can't be boosted meaningfully — the `Announce` is public, but the
+object stays unreadable to anyone who doesn't already follow the author, so their servers show
+nothing.
+
+### Replies (comments)
+
+The third Mastodon-style interaction, also over open vocabulary. Replying 🗨 to a
+home-timeline card publishes a **feed post of kind `reply`** — replies are not a separate
+entity, so they reuse the whole feed machinery (visibility, delivery, editing, tombstoning,
+permalinks) rather than a parallel one.
+
+**Outbound.** `POST /feed/timeline/:id/reply` (MCP `reply_to_timeline_post`) takes
+`{ message, visibility }` and resolves the target itself from the addressed timeline entry:
+the object is `boost_of_uri ?? object_uri` (replying to a **boost card** answers the *original*
+post) and the author is the entry's `actor_uri` / `handle`. Nothing about the target is
+client-supplied, so a reply can never claim to answer a post the reader never received. The
+author's inbox resolves exactly as for a like — cached `feed_following` row, else a bounded
+actor lookup — and a reply we can't address fails with `502` **before** the row is written,
+so no post is left claiming to answer someone who was never told.
+
+`visibility` defaults to **`unlisted`**: Mastodon's convention is that a reply belongs to its
+thread rather than on public timelines. The author can still choose `public` or `followers`.
+
+The federated object is a `Note` at the post's canonical id
+(`/users/<user>/feed/<postId>`) with:
+
+- `inReplyTo` — the answered object's id;
+- `content` — the author as a leading mention paragraph
+  (`<span class="h-card"><a href="…" class="u-url mention">@user@host</a></span>`) followed by
+  the reply markdown rendered through the shared outbound sanitiser (the same `renderProse`
+  boundary as article prose and challenge notes);
+- `tag` — a `Mention` of the answered author, named by the `@user@host` snapshot taken at reply
+  time (derived from the actor URI when the entry never carried one);
+- `to`/`cc` — the visibility table, **plus the answered author in `cc`** so their server accepts
+  the reply even though they don't follow us.
+
+`Create`/`Update`/`Delete` wrap it exactly like every other post kind (`#create`,
+`#update-<epoch>`, `#delete` ids) and all three are fanned out to **followers and the answered
+author as two independent sends** — the same shape the challenge completion post uses, so one
+dead follower inbox can't cancel the notification that exists precisely for someone who
+doesn't follow us. The author actor is dereferenced from its id (`lookupObject`), never read
+off anything inline.
+
+Replies appear in the **outbox** like any post, but are **excluded from the public-profile
+post listing** (`GET /public/:username/posts`) — Mastodon's own default profile tab hides
+replies, and a bare comment lifted out of its thread reads as noise on a profile.
+
+**Own-post comments (inbound).** Nothing new is ingested: a reply to one of the owner's still
+existing posts is already admitted to the timeline from **any** actor (#1060, above), so the
+comments under a post are simply the `timeline_entry` rows whose `in_reply_to_uri` is that
+post's object id. `GET /feed/:postId/replies` (MCP `get_feed_post_replies`) returns them
+oldest-first as full `TimelineEntry`s — carrying the reader's own like/boost state and
+repliable in turn — with **no network fetch at all**. The owner's feed listing carries a
+`reply_count` per post from one batched count query per page (like the reaction counts beside
+it), so the web shows a `🗨 n` chip that expands the comments in place.
+
+**Web.** Each timeline card's action row gains a 🗨 button opening an inline composer
+(textarea capped at `feedPostMessageMaxLength`, a compact visibility selector defaulting to
+`unlisted`, Post / Cancel). Posting closes the composer, refetches an open thread snapshot, and
+leaves a "Reply posted ✓" note. The same action row serves the comment cards under an own post,
+so a comment can be favourited, boosted or replied to without leaving the post. A `reply` post
+on the owner's own feed renders with a `↩ replying to <handle>` line (linked to the author) and
+the message through the shared markdown renderer.
 
 ### Native charts from Aurboda peers (structured enrichment)
 
@@ -372,7 +579,9 @@ fire-and-forget pass that gives a small batch (3, newest first) of such Aurboda-
 one more attempt through the same enricher. A **definitive** outcome (payload stored, or a
 gone/unauthorized/malformed response) stamps `enrich_attempted_at` so the entry is never
 retried; a **transient** failure (network error, timeout) leaves it unstamped for a later
-read. At most one pass runs per user at a time, and a partial index keeps the drained-backlog
+read — up to `MAX_TRANSIENT_ATTEMPTS` (3): the third transient failure stamps the entry
+too, so a permanently unreachable peer can't hold the head of the newest-first queue
+(#1021). At most one pass runs per user at a time, and a partial index keeps the drained-backlog
 case free. An `Update` redelivery still re-enriches through the normal ingest path. The read
 itself is never delayed; entries that gain a payload render natively on the next load.
 
@@ -521,10 +730,13 @@ resolving.
   interactive combined chart and time-synced map exactly as a follower would, and can verify
   what they shared. The listing is **keyset-paginated** (20 per page, "Load more" — the same
   cursor style as the home timeline), so the inline payload weight stays bounded per request
-  however many posts exist (#1012). The public profile renders the lighter native **stat grid** (message +
-  activity date + typed scalars) without the series weight — and the MCP `list_feed` tool
-  likewise omits `structured` (an intentional payload-weight divergence from `GET /feed`,
-  not a capability gap: the underlying data is all reachable via the metric-query tools).
+  however many posts exist (#1012). The **public profile** (`/u/:username`) attaches the same
+  full structured payload per post (through the per-post LRU the structured endpoint shares),
+  and pages the same way — 20 per page with a "Load more" driven by `next_cursor` (#1055) — so
+  visitors see the identical native card and can reach every public post. The MCP `list_feed`
+  tool remains the one surface that omits `structured` (an intentional payload-weight divergence
+  from `GET /feed`, not a capability gap: the underlying data is all reachable via the
+  metric-query tools).
 - **New article** — the **Feed** page has a **New article** button that opens the article
   composer: a title, an optional default time window, and an ordered list of **prose**
   (markdown), **chart** (a metric + optional per-block window + caption), and **correlation**
@@ -581,6 +793,12 @@ Owner-facing (authenticated, scoped to the caller):
 | `DELETE /feed/followers/:id`       | Reject a request / remove a follower (sends `Reject`)                                                                   |
 | `GET /feed/timeline`               | My home timeline (posts from followees), newest-first, `?cursor=` to page                                               |
 | `GET /feed/timeline/stream`        | Server-Sent Events stream of live "new posts" pings (falls back to polling)                                             |
+| `POST/DELETE /feed/timeline/:id/like`  | Favourite ⭐ / un-favourite a timeline post (`Like` / `Undo{Like}`); idempotent, returns the updated entry           |
+| `POST/DELETE /feed/timeline/:id/boost` | Boost 🔄 / un-boost a timeline post (`Announce` / `Undo{Announce}`); idempotent, returns the updated entry           |
+| `GET /feed/timeline/:id/replies`   | Bounded snapshot of a timeline post's thread (origin's `replies` + my own replies merged); `fetched`/`partial`          |
+| `POST /feed/timeline/:id/reply`    | Reply 🗨 to a timeline post — publishes a `reply` post (`Create{Note inReplyTo}` + `Mention`); `visibility` defaults to `unlisted` |
+| `GET /feed/:postId/reactions`      | Who favourited or boosted one of MY posts (newest first, max 100)                                                       |
+| `GET /feed/:postId/replies`        | The comments received under one of MY posts (oldest first, max 100), as full timeline entries — no network fetch        |
 
 Public / federation (unauthenticated):
 
@@ -593,21 +811,31 @@ Public / federation (unauthenticated):
 | `GET /public/:username/feed/:postId/route.png`               | Rendered GPS route map for an opted-in post (`?token=` for followers-only)                                 |
 | `GET /public/:username/feed/:postId/blocks/:index/image.png` | Rendered PNG of an article's chart/correlation block (visibility-gated; `?token=` for followers-only)      |
 | `GET /public/:username/feed/:postId/blocks/:index/image.svg` | Same article block as crisp `image/svg+xml`                                                                |
-| `GET /public/:username/posts`                                | A user's public/unlisted posts (newest-first, latest page) for their profile feed                          |
+| `GET /public/:username/posts`                                | A user's public/unlisted posts (newest-first, keyset page of 20 + `next_cursor`) for their profile feed    |
 | `GET /.well-known/webfinger`                                 | Resolve `acct:<username>@<host>` → the actor                                                               |
 | `GET /.well-known/quantpub`                                  | QuantPub discovery document (FEP §4): product, versions, `api_base`                                        |
 | `GET /ns/quantpub`                                           | The published QuantPub JSON-LD `@context` document (`application/ld+json`)                                 |
-| `GET /users/:username`                                       | The actor document (`Person`)                                                                              |
+| `GET /.well-known/nodeinfo`                                  | NodeInfo JRD pointing at the 2.1 document (#1047)                                                          |
+| `GET /nodeinfo/2.1`                                          | NodeInfo 2.1: software `aurboda` + version, `activitypub` protocol (no usage stats — per-user DBs)         |
+| `GET /users/:username`                                       | The actor document (`Person`); a browser (`Accept: text/html`) is 302-redirected to `/u/:username`         |
 | `GET /users/:username/outbox`                                | Public + unlisted posts as `Create` activities                                                             |
 | `GET /users/:username/followers`                             | The actor's followers collection                                                                           |
 | `GET /users/:username/following`                             | The actor's following collection (accepted follows only)                                                   |
 | `GET /users/:username/feed/:postId`                          | A single post's `Note` — an activity share or an article (or `410` Tombstone once deleted)                 |
 | `POST /users/:username/inbox` (+ `/inbox`)                   | Inbound `Follow` / `Undo{Follow}` / `Accept` / `Reject` (HTTP-Signature verified)                          |
 
+The actor's `icon` URL carries the avatar's upload time as a `?v=` version, and an avatar
+upload/removal delivers an `Update{Person}` to accepted followers — remote servers (Mastodon
+et al.) cache a copied avatar and re-download it only on one of those two signals, so without
+them a changed avatar never propagates.
+
 The owner-facing capability is also available over MCP as `list_feed`, `share_activity`,
 `preview_activity_share`, `share_challenge`, `create_article`, `update_article`, `export_article_markdown`, `update_feed_post`,
 `delete_feed_post`, `list_following`, `follow_actor`, `unfollow_actor`, `list_followers`,
-`approve_follower`, `reject_follower`, and `list_timeline` — all backed by the same services as
+`approve_follower`, `reject_follower`, `list_timeline`, `like_timeline_post`,
+`unlike_timeline_post`, `boost_timeline_post`, `unboost_timeline_post`,
+`get_timeline_replies`, `reply_to_timeline_post`, `get_feed_post_replies`, and
+`list_feed_post_reactions` — all backed by the same services as
 the REST routes (`create_article` / `update_article` ↔ `POST /feed/articles` / `PATCH
 /feed/articles/:postId`; `export_article_markdown` ↔ `GET /feed/articles/:postId/export`), so an
 article can be drafted conversationally by Claude via the same tools. Manual follower approval is
@@ -617,11 +845,17 @@ toggled with the `manually_approve_followers` user setting (`get_user_settings` 
 ## Storage
 
 Feed posts live in the user's own database in the `feed_posts` table. A `kind` column
-discriminates an `activity` post from an `article` or `challenge` post; an article's
+discriminates an `activity` post from an `article`, `challenge` or `reply` post; an article's
 content (title + default window + ordered blocks) lives in a nullable `article` JSONB
 column, a challenge share's link payload (name + canonical URL + optional host identity)
 in a nullable `challenge` JSONB column, and in both cases the `activity_id`/metric
-columns stay empty. A nullable `message` column holds the author's
+columns stay empty. A **reply** post likewise carries no activity or metrics: three nullable
+columns hold what it answers — `in_reply_to_uri` (the AS2 object id), `in_reply_to_actor_uri`
+(the `Mention` href) and `in_reply_to_handle` (the `@user@host` snapshot naming that mention,
+taken at reply time like `timeline_entry.handle`) — with the reply text in `message`. All
+three are resolved server-side from the timeline entry being replied to, never client-supplied.
+A partial index on `(in_reply_to_uri, created_at)` backs the own-replies merge into a thread
+snapshot. A nullable `message` column holds the author's
 personal message (plain text; NULL when none was shared). `activity_id` is a
 **soft reference** (no foreign key): activities are soft-deleted and the series lookup
 re-checks `deleted_at` at query time, so a removed activity simply stops resolving rather
@@ -646,7 +880,22 @@ during enrichment — NULL for non-Aurboda posts. On a
 re-delivery whose enrichment failed, the upsert `COALESCE`s so the last-known `structured`
 is preserved rather than wiped. A nullable `images` JSONB column holds the delivered
 image attachments (`TimelineImage[]`: url + optional media type / alt / size), rendered as
-the fallback when a post has no native structured chart.
+the fallback when a post has no native structured chart. Four nullable columns
+(`boost_of_uri`, `boosted_by_actor_uri`, `boosted_by_handle`, `boosted_by_display_name`) turn
+a row into a **boost card** — see "Likes and boosts" above; they are NULL on a direct entry.
+A partial index on `(in_reply_to_uri, published_at, id)` backs the **own-post comments**
+listing and the batched per-page `reply_count`, so reading a feed page never scans the whole
+timeline.
+
+Reactions live in two tables, one per direction. `feed_reaction` holds the user's **own**
+outbound likes/boosts: a `UNIQUE (kind, object_uri)` row per reacted-to post whose `id` mints
+the delivered activity id (and its `#undo`), plus the post author's cached inbox so a
+retraction needs no actor re-resolve — the uniqueness is what makes liking idempotent.
+`feed_post_reaction` holds **inbound** reactions on the user's own posts, keyed
+`(post_id, kind, actor_uri)` so a redelivery refreshes the presentation snapshot rather than
+duplicating, with the remote activity's own id (`activity_uri`) so a bare-id `Undo` still
+matches, and an index on `(post_id, created_at DESC)`. `post_id` is a **soft reference** like
+`activity_id`, so `deleteFeedPost` drops the post's reactions in the same statement.
 
 ## Caveats & limitations
 
@@ -664,6 +913,21 @@ These are known and intentional for the current implementation:
   shared series those links can 404 until series authorization expands across a merge
   group (which needs the merge algorithm at query time — a planned follow-up); QuantPub
   consumers treat a failed series fetch as best-effort, so the post still renders.
+- **Reactions are `Like`/`Announce` only.** There is no `EmojiReact` (Misskey/Akkoma's
+  custom-emoji reactions), and likes/boosts are not listed in the actor's `outbox` or on the
+  public profile — they are a private-to-the-owner record plus the delivered activity.
+- **Remote cards carry no like/boost counts.** Mastodon does not push a post's totals to
+  subscribers, so a home-timeline card shows only *your own* reaction state. Counts appear on
+  the owner's own posts, from what was delivered to us.
+- **Boosts are not backfilled on follow.** The on-follow backfill reads the followee's outbox
+  for their own posts; their earlier boosts don't appear retroactively.
+- **You can only reply to a post this instance holds.** A reply targets a home-timeline entry
+  by its local id, so a reply that exists only inside a live thread snapshot fetched from a
+  remote origin has nothing to address — reply to the card instead. Serving a `replies`
+  collection on our own Notes (so other servers can walk our threads) is a follow-up.
+- **No reply editing from the web.** The API supports it (`PATCH /feed/:postId` federates an
+  `Update` to followers and the answered author), but the web card offers no editor — a reply
+  is short enough to delete and repost.
 - **Route maps have no privacy trimming.** The route is drawn over an OpenStreetMap
   basemap and shows the full track, so a public route map reveals the precise area
   (including start/end points, i.e. likely home/work); start-point and area masking are

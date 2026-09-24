@@ -122,7 +122,6 @@ const fakeCentral = (): CentralDb =>
 const buildApp = (centralDb: CentralDb) => {
   const app = express()
   app.use(express.json())
-  // Stub auth middleware: always authenticate as 'tester'.
   const auth = (req: express.Request, _res: express.Response, next: express.NextFunction) => {
     req.user = 'tester'
     next()

@@ -24,6 +24,7 @@ import { AndroidAppSource } from './pages/DataSources/AndroidAppSource.jsx'
 import { AurbodaSource } from './pages/DataSources/AurbodaSource.jsx'
 import { CalendarsSource } from './pages/DataSources/CalendarsSource.jsx'
 import { GarminSource } from './pages/DataSources/GarminSource.jsx'
+import { GravlSource } from './pages/DataSources/GravlSource.jsx'
 import { DataSources } from './pages/DataSources/index.jsx'
 import { LastFmSource } from './pages/DataSources/LastFmSource.jsx'
 import { OuraSource } from './pages/DataSources/OuraSource.jsx'
@@ -64,9 +65,6 @@ import { queryClient } from './state/queryClient.js'
 import './style.css'
 
 function AppShell() {
-  // Public sharing pages (/u/...) hide the nav for anonymous visitors (a clean,
-  // standalone page), but a logged-in user keeps their nav so they can navigate
-  // away without the browser back button. The footer renders on every page.
   const { path } = useLocation()
   // Embedded in the native app's WebView: the app supplies navigation, so hide
   // all web chrome (header, sidebar, footer) and just render page content.
@@ -116,6 +114,7 @@ function AppShell() {
             <Route path="/data-sources/oura" component={OuraSource} />
             <Route path="/data-sources/garmin" component={GarminSource} />
             <Route path="/data-sources/strava" component={StravaSource} />
+            <Route path="/data-sources/gravl" component={GravlSource} />
             <Route path="/data-sources/activitywatch-desktop" component={ActivityWatchDesktopSource} />
             <Route path="/data-sources/activitywatch-android" component={ActivityWatchAndroidSource} />
             <Route path="/data-sources/rescue-time" component={RescueTimeSource} />

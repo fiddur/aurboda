@@ -1,11 +1,4 @@
 /**
- * Sleep duration computation from stage data.
- *
- * Computes actual sleep time (excluding awake periods) from sleep stage data
- * stored in the activity's JSONB `data` field.
- */
-
-/**
  * Health Connect sleep stage values that count as actual sleep.
  * 1=Awake, 2=Sleeping, 3=Out of bed, 4=Light, 5=Deep, 6=REM
  */
@@ -18,20 +11,15 @@ interface SleepStage {
 }
 
 /**
- * Compute actual sleep minutes from activity data.
- *
  * Supports two formats:
  * - Health Connect: `data.stages` array with `{startTime, endTime, stage}` entries
  * - Oura: `data.total_sleep_duration` in seconds
  *
  * Health Connect stages take priority when both are present.
- *
- * @returns Actual sleep duration in minutes, or undefined if no stage data available.
  */
 export const computeSleepMinutes = (data: Record<string, unknown> | undefined): number | undefined => {
   if (!data) return undefined
 
-  // Health Connect stages format
   const stages = data.stages
   if (Array.isArray(stages)) {
     let ms = 0

@@ -1,10 +1,3 @@
-/**
- * Query services for health data.
- *
- * These functions contain the business logic for querying health data.
- * They are used by both the MCP tools and the REST API.
- */
-
 export {
   type ActivityResult,
   type ActivitySummary,

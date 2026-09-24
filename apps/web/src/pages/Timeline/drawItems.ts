@@ -18,10 +18,6 @@ export const getDetailUrl = (item: ChartItem): string | undefined =>
     ? `/detail/${item.entity_type}/${encodeURIComponent(item.entity_id)}`
     : undefined)
 
-/**
- * Render an emoji or image icon centered at (cx, cy).
- * Returns the created SVG element selection, or null if no icon was available.
- */
 export const drawItemIcon = (
   parent: SvgParent,
   icon: string | undefined,
@@ -68,9 +64,6 @@ export const drawItemIcon = (
   return null
 }
 
-/**
- * Attach mouseenter/mouseleave hover handlers that toggle opacity and show/hide tooltip.
- */
 export const attachHoverHandlers = (
   selection: SvgParent,
   item: ChartItem,
@@ -91,8 +84,40 @@ export const attachHoverHandlers = (
 }
 
 /**
- * Truncate a label to fit within a pixel width, assuming a fixed character width.
+ * How far the pointer may travel between press and release and still count as a
+ * click rather than a pan. The chart is drag-to-pan, so a press that starts on a
+ * comment bubble and ends 200px away must not open its panel.
  */
+export const CLICK_MOVE_TOLERANCE_PX = 4
+
+/**
+ * Make a drawn element open something on click (used by the comments track,
+ * which has no detail URL and so is never wrapped in an `<a>`). A no-op unless
+ * both a handler and a `comment_id` are present.
+ */
+export const attachItemClick = (
+  selection: SvgParent,
+  item: ChartItem,
+  onItemClick: ((item: ChartItem) => void) | undefined,
+): void => {
+  if (!onItemClick || !item.comment_id) return
+
+  let downX = 0
+  let downY = 0
+  selection
+    .attr('cursor', 'pointer')
+    .on('pointerdown', (event: PointerEvent) => {
+      downX = event.clientX
+      downY = event.clientY
+    })
+    .on('click', (event: MouseEvent) => {
+      if (Math.hypot(event.clientX - downX, event.clientY - downY) > CLICK_MOVE_TOLERANCE_PX) return
+      event.preventDefault()
+      event.stopPropagation()
+      onItemClick(item)
+    })
+}
+
 export const truncateLabel = (label: string, widthPx: number, charWidth = 6): string => {
   const maxChars = Math.floor(widthPx / charWidth)
   if (label.length <= maxChars) return label

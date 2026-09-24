@@ -8,11 +8,6 @@
  */
 import type { Activity, MergedActivity } from '../types.ts'
 
-// =============================================================================
-// Cross-source merge: collapse near-simultaneous activities from different
-// sync sources into a single activity using priority-based winner selection.
-// =============================================================================
-
 /** Max start_time difference (ms) for cross-source merge eligibility. */
 const CROSS_MERGE_THRESHOLD_MS = 120_000
 
@@ -21,6 +16,7 @@ export const CROSS_MERGE_SOURCES = new Set([
   'aurboda',
   'deduction-rule',
   'garmin',
+  'gravl',
   'health_connect',
   'manual',
   'oura',
@@ -37,6 +33,7 @@ const CROSS_MERGEABLE_CATEGORIES = new Set(['exercise', 'meditation', 'wellness'
  *   oura — activity detection is inferred from sensors, not explicit
  *   strava — explicit exercise entry, but usually downstream of Garmin
  *   garmin — raw device data, richest metrics
+ *   gravl — the user's own log of a strength session (sets), explicit like a manual entry
  *   deduction-rule / manual — explicit user intent
  *   aurboda — edited inside the app, most authoritative
  */
@@ -45,9 +42,10 @@ const SOURCE_PRIORITY: Record<string, number> = {
   oura: 2,
   strava: 3,
   garmin: 4,
-  'deduction-rule': 5,
-  manual: 6,
-  aurboda: 7,
+  gravl: 5,
+  'deduction-rule': 6,
+  manual: 7,
+  aurboda: 8,
 }
 
 const getEffectivePriority = (a: Activity): number => {
@@ -86,7 +84,6 @@ const isOverrideLinked = (a: Activity, b: Activity): boolean => {
   return false
 }
 
-/** Check if two activities are eligible for cross-source merge. */
 const isCrossMergePair = (a: Activity, b: Activity, categoryMap: Map<string, string>): boolean => {
   if (!CROSS_MERGE_SOURCES.has(b.source)) return false
   if (a.source === b.source) return false
@@ -99,7 +96,6 @@ const isCrossMergePair = (a: Activity, b: Activity, categoryMap: Map<string, str
   return !!catB && CROSS_MERGEABLE_CATEGORIES.has(catB)
 }
 
-/** Pick the override row that should be forced as winner, if any. */
 const pickOverrideWinner = (members: Activity[]): Activity | undefined => {
   const memberIds = new Set(members.map((m) => m.id).filter((id): id is string => !!id))
   const overrides = members.filter(
@@ -114,7 +110,6 @@ const pickOverrideWinner = (members: Activity[]): Activity | undefined => {
   return overrides.reduce((acc, o) => (o.start_time < acc.start_time ? o : acc))
 }
 
-/** Merge a group of activities into one, using priority-based winner selection. */
 // eslint-disable-next-line complexity -- single-pass winner selection + field blending; splitting hurts readability
 const mergeGroupByPriority = (members: Activity[]): MergedActivity => {
   // An aurboda override row referencing any group member must win regardless
@@ -159,13 +154,6 @@ const mergeGroupByPriority = (members: Activity[]): MergedActivity => {
   return winner
 }
 
-/**
- * Cross-source merge pass: merge near-simultaneous activities from different
- * sync sources that represent the same physical session.
- *
- * Winner is selected by source priority (aurboda > garmin > health_connect, etc.)
- * with a boost for _user_edited activities.
- */
 /**
  * Index override rows by target id to enable category-bypass and cross-window
  * pairing. Each target maps to the override that claims it; the
@@ -265,31 +253,10 @@ const mergeCrossSources = (activities: Activity[], categoryMap: Map<string, stri
   return result
 }
 
-// =============================================================================
-// Same-type merge + generic exercise absorption
-// =============================================================================
-
 /**
- * Merge overlapping activities of the same type, with optional cross-source deduplication.
- *
  * When the same activity is logged in multiple apps (e.g., Polar for HR data
  * and Gravl for workout details), this function merges them into a single
  * activity using the earliest start time and latest end time.
- *
- * Pipeline:
- * 1. Cross-source merge (when categoryMap provided): collapse near-simultaneous
- *    activities from different sync sources into one (priority-based winner).
- * 2. Same-type merge: group by activityType, merge overlapping within each group.
- * 3. Absorb generic exercises into overlapping specific activities.
- *
- * Merge rules (same-type pass):
- * - Activities are grouped by activityType
- * - Activities overlap if: a1.endTime >= a2.startTime (or a1 has no endTime and a2 starts during a1's day)
- * - Merged activity uses: earliest startTime, latest endTime
- * - First activity's source and id are kept
- * - First non-empty title is used
- * - Notes are concatenated with newline
- * - Data objects are merged (later values override earlier for same keys)
  *
  * @param categoryMap Optional map of activity_type -> display_category. When provided,
  *   enables cross-source merge for near-simultaneous activities from different sources.
@@ -301,10 +268,8 @@ export const mergeOverlappingActivities = (
 ): MergedActivity[] => {
   if (activities.length === 0) return []
 
-  // Pass 0: Cross-source merge (when category info is available)
   const input = categoryMap ? mergeCrossSources(activities, categoryMap) : activities
 
-  // Pass 1: Same-type merge — group by activity type
   const byType = new Map<string, Activity[]>()
   for (const a of input) {
     const group = byType.get(a.activity_type) ?? []
@@ -315,7 +280,6 @@ export const mergeOverlappingActivities = (
   const result: MergedActivity[] = []
 
   for (const [, typeActivities] of byType) {
-    // Sort by start time
     const sorted = [...typeActivities].sort((a, b) => a.start_time.getTime() - b.start_time.getTime())
 
     let current: MergedActivity = { ...sorted[0] }
@@ -328,7 +292,6 @@ export const mergeOverlappingActivities = (
 
       // Check if activities overlap or touch
       if (currentEnd >= nextStart) {
-        // Merge: extend end time if needed
         const nextEnd = next.end_time?.getTime()
         if (
           nextEnd !== undefined &&
@@ -337,22 +300,18 @@ export const mergeOverlappingActivities = (
           current.end_time = next.end_time
         }
 
-        // Use first non-empty title
         if (!current.title && next.title) {
           current.title = next.title
         }
 
-        // Merge data objects
         if (next.data) {
           current.data = { ...current.data, ...next.data }
         }
 
-        // Track source IDs
         if (next.id) {
           currentSourceIds.push(next.id)
         }
       } else {
-        // No overlap, save current and start new
         if (currentSourceIds.length > 1) {
           current.source_ids = currentSourceIds
         }
@@ -362,14 +321,12 @@ export const mergeOverlappingActivities = (
       }
     }
 
-    // Don't forget the last one
     if (currentSourceIds.length > 1) {
       current.source_ids = currentSourceIds
     }
     result.push(current)
   }
 
-  // Sort final result by start time
   result.sort((a, b) => a.start_time.getTime() - b.start_time.getTime())
 
   // Second pass: absorb generic exercises (other_workout, unknown, no subtype)
@@ -379,7 +336,6 @@ export const mergeOverlappingActivities = (
 
 const isGenericExercise = (a: MergedActivity): boolean => a.activity_type === 'exercise'
 
-/** Check if generic's duration overlaps >50% with another activity. */
 const findAbsorbingActivity = (
   gStart: number,
   gEnd: number,
@@ -397,11 +353,7 @@ const findAbsorbingActivity = (
   return undefined
 }
 
-/**
- * Absorb generic exercises into overlapping specific activities.
- * The specific activity's time range is extended to cover the generic's range.
- * Requires input sorted by start_time.
- */
+/** Requires input sorted by start_time. */
 const absorbGenericExercises = (sorted: MergedActivity[]): MergedActivity[] => {
   const absorbed = new Set<number>()
 
@@ -426,25 +378,16 @@ const absorbGenericExercises = (sorted: MergedActivity[]): MergedActivity[] => {
   return sorted.filter((_, i) => !absorbed.has(i))
 }
 
-/**
- * Given merged results and the original raw activities, find all raw activities
- * belonging to the same merge group as the given activity ID.
- *
- * Pure function — no DB access, easy to unit test.
- */
 export const findMergedGroupForActivity = (
   mergedResults: MergedActivity[],
   rawActivities: Activity[],
   activityId: string,
 ): Activity[] => {
-  // Find which merged result contains the target activity ID
   const mergedGroup = mergedResults.find((m) => m.id === activityId || m.source_ids?.includes(activityId))
   if (!mergedGroup) return []
 
-  // Collect all IDs in this merge group
   const groupIds = new Set(mergedGroup.source_ids ?? (mergedGroup.id ? [mergedGroup.id] : []))
 
-  // Return the raw activities that belong to this group, sorted by start_time
   return rawActivities
     .filter((a) => a.id !== undefined && groupIds.has(a.id))
     .sort((a, b) => a.start_time.getTime() - b.start_time.getTime())

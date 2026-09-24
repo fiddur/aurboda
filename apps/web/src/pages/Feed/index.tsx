@@ -20,6 +20,8 @@ import { FeedPostCard, type PostAuthor } from './FeedPostCard'
 import { FollowersPanel } from './FollowersPanel'
 import { FollowingPanel } from './FollowingPanel'
 import { HomeTimeline } from './HomeTimeline'
+import { PostReactionSummary } from './PostReactions'
+import { PostReplySummary } from './PostReplies'
 import './style.css'
 
 function OwnPostCard({ post, author }: { post: FeedPost; author: PostAuthor }) {
@@ -47,6 +49,8 @@ function OwnPostCard({ post, author }: { post: FeedPost; author: PostAuthor }) {
         author={author}
         footer={
           <>
+            <PostReactionSummary post={post} />
+            <PostReplySummary post={post} />
             {post.autoshare_rule_id && (
               <span class="feed-post-via-rule" title="Published automatically by an auto-share rule">
                 auto-shared

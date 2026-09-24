@@ -1,8 +1,3 @@
-/**
- * Audit log route group.
- *
- * Handles: /user/audit-log
- */
 import { type AuditLogQuery, auditLogQuerySchema, type AuditLogResponse } from '@aurboda/api-spec'
 
 import { getAuditLog } from '../services/audit-log.ts'

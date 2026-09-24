@@ -1,9 +1,4 @@
 /**
- * Publish an activity to the user's federated feed (or edit an existing feed
- * post). The user picks which scalar summaries to share, optionally opts into
- * sharing full high-resolution series (a separate, more-revealing choice), and
- * sets the audience.
- *
  * Passing `post` switches the dialog to edit mode (PATCH); otherwise it shares
  * the activity (POST). Only the metric keys the backend can resolve are offered
  * — unavailable ones are silently dropped server-side, so the same set is safe
@@ -126,7 +121,6 @@ export function ShareActivityDialog({
   onShared,
 }: Props) {
   const queryClient = useQueryClient()
-  // Create mode mirrors the chart's shown metrics; edit mode uses the post's saved selection.
   const defaults = defaultsFromChart(chartMetrics)
   const mirroredFromChart = !post && (chartMetrics?.length ?? 0) > 0
   const [summary, setSummary] = useState<Set<string>>(
@@ -141,7 +135,6 @@ export function ShareActivityDialog({
   )
   const [visibility, setVisibility] = useState<FeedVisibility>(post?.visibility ?? 'public')
   const [includeMap, setIncludeMap] = useState(post?.include_map ?? false)
-  // Edit mode shows the stored message; create mode prefills (see `defaultMessage`).
   const [message, setMessage] = useState(post ? (post.message ?? '') : (defaultMessage ?? ''))
   const { summaryOptions, seriesOptions, canChart, canMap } = useShareableMetricOptions(
     activityStart,
@@ -171,7 +164,7 @@ export function ShareActivityDialog({
       visibility,
     })
 
-  // Live preview (#902): the server resolves the EXACT federated content for
+  // Live preview: the server resolves the EXACT federated content for
   // the current selection (same code path as delivery), debounced so typing in
   // the message doesn't fire a request per keystroke. Keyed on the serialised
   // body — identical selections hit the react-query cache.
@@ -200,6 +193,11 @@ export function ShareActivityDialog({
       onClose()
     },
   })
+
+  const previewImages = [
+    ...(canMap && includeMap ? ['the route-map image'] : []),
+    ...(canChart && series.has('heart_rate') ? ['the heart-rate chart image'] : []),
+  ]
 
   return (
     <div class="share-dialog-backdrop" onClick={onClose}>
@@ -300,12 +298,11 @@ export function ShareActivityDialog({
           <legend>Preview</legend>
           <p class="share-dialog-note">
             Exactly what a follower on Mastodon sees
-            {canMap && includeMap ? ' — plus the route-map image' : ''}
-            {canChart && series.has('heart_rate') ? ' and the heart-rate chart image' : ''}.
+            {previewImages.length > 0 ? ` — plus ${previewImages.join(' and ')}` : ''}.
           </p>
           {previewContent ? (
             // Server-built, HTML-escaped content of the user's OWN data — the
-            // same trusted string the owner feed card renders (#902).
+            // same trusted string the owner feed card renders.
             <div class="share-dialog-preview" dangerouslySetInnerHTML={{ __html: previewContent }} />
           ) : (
             <p class="share-dialog-note">{previewQuery.isError ? 'Preview unavailable.' : 'Loading…'}</p>

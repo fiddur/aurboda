@@ -1,9 +1,4 @@
-/**
- * Shared type definitions for all db modules.
- *
- * Interfaces and type aliases extracted from the monolithic db.ts.
- * These are imported by both domain modules and row-mappers to avoid circular dependencies.
- */
+/** Imported by both domain modules and row-mappers to avoid circular dependencies. */
 import type {
   ActivityType,
   BiologicalSex,
@@ -19,9 +14,20 @@ import type {
   TrainingLoadSettings,
 } from '@aurboda/api-spec'
 
-// ============================================================================
-// Raw Records
-// ============================================================================
+/**
+ * A remote actor's cached presentation snapshot (handle / display name /
+ * avatar). Several feed tables keep one, and an inbound `Update{Person}`
+ * refreshes them together (#1057).
+ *
+ * Declared here rather than imported from the ActivityPub service that produces
+ * it (`ActorPresentation`, the same three fields): the db layer never imports
+ * from services.
+ */
+export interface CachedActorPresentation {
+  handle: string | null
+  display_name: string | null
+  avatar_url: string | null
+}
 
 export interface RawRecord {
   id?: string
@@ -31,10 +37,6 @@ export interface RawRecord {
   recorded_at: Date
   data: Record<string, unknown>
 }
-
-// ============================================================================
-// Time Series
-// ============================================================================
 
 export interface TimeSeriesPoint {
   time: Date
@@ -73,10 +75,6 @@ export interface BucketedMetricData {
   last_time: Date
 }
 
-// ============================================================================
-// Activities
-// ============================================================================
-
 export interface Activity {
   id?: string
   source: DataSource
@@ -104,6 +102,19 @@ export interface Activity {
   override_target_ids?: string[]
 }
 
+/**
+ * How to find an activity row written before external ids existed, so it can
+ * be claimed for a `(source, external_id)` identity instead of duplicated
+ * (#1080). Every matcher implies `external_id IS NULL AND deleted_at IS NULL`.
+ */
+export type LegacyMatch =
+  /** A `garmin` row keyed only by `data.garmin_activity_id`. */
+  | { kind: 'garmin_activity_id'; garmin_activity_id: number }
+  /** A `health_connect` row whose HC metadata names this origin + client record. */
+  | { kind: 'hc_client_record'; data_origin: string; client_record_id: string }
+  /** A row of the given source at exactly this type + start (HC re-sending an older record). */
+  | { kind: 'source_type_start'; source: string; activity_type: string; start_time: Date }
+
 export interface MergedActivity extends Activity {
   source_ids?: string[] // only set when 2+ activities were merged
 }
@@ -115,10 +126,6 @@ export interface ActivityUpdate {
   title?: string
   data?: Record<string, unknown>
 }
-
-// ============================================================================
-// Locations
-// ============================================================================
 
 export interface Location {
   id?: string
@@ -200,10 +207,6 @@ export interface DetectedLocationUpdate {
   geocode_status?: GeocodeStatus
 }
 
-// ============================================================================
-// Productivity
-// ============================================================================
-
 export interface ProductivityRecord {
   id?: string
   source?: DataSource
@@ -219,10 +222,6 @@ export interface ProductivityRecord {
   resolved_category?: string[]
   deleted_at?: Date
 }
-
-// ============================================================================
-// Screentime Categories
-// ============================================================================
 
 export interface ScreentimeCategory {
   id: string
@@ -253,16 +252,17 @@ export interface ScreentimeCategoryInput {
   sort_order?: number
 }
 
-// ============================================================================
-// Notes
-// ============================================================================
-
 export type { EntityType }
 
 export interface Note {
   id: string
   entity_type: EntityType
-  entity_id: string
+  /**
+   * The entity this note hangs off. Null for an `entity_type = 'time'` note,
+   * which is anchored to a moment rather than an entity. For a reply
+   * (`entity_type = 'note'`) it is the id of the root comment.
+   */
+  entity_id: string | null
   content: string
   /** Data source that created this note (e.g. 'oura'). Null for user-created notes. */
   source?: DataSource
@@ -273,10 +273,6 @@ export interface Note {
   created_at: Date
   updated_at: Date
 }
-
-// ============================================================================
-// Lab Results
-// ============================================================================
 
 export interface LabResult {
   id?: string
@@ -291,10 +287,6 @@ export interface LabResult {
   lab_name?: string
   notes?: string
 }
-
-// ============================================================================
-// Reports (structured lab results)
-// ============================================================================
 
 export type ReportConfidence = Confidence
 export type { ReportFlag }
@@ -321,10 +313,6 @@ export interface Report {
   created_at: Date
   entries: ReportEntry[]
 }
-
-// ============================================================================
-// Meals
-// ============================================================================
 
 export type NutrientValue = number | { value: number; unit: string }
 export type Micros = Record<string, NutrientValue>
@@ -367,10 +355,6 @@ export interface Meal {
   sensitivities?: string[]
   created_at: Date
 }
-
-// ============================================================================
-// Food Items (canonical library)
-// ============================================================================
 
 export interface FoodItemEntity {
   id: string
@@ -421,10 +405,6 @@ export interface MealFoodItemLink {
   [nutrient: string]: string | number | boolean | Date | undefined
 }
 
-// ============================================================================
-// OAuth
-// ============================================================================
-
 export interface OAuthToken {
   provider: string
   access_token: string
@@ -432,10 +412,6 @@ export interface OAuthToken {
   expires_at?: Date
   scopes?: string[]
 }
-
-// ============================================================================
-// Sync State
-// ============================================================================
 
 export type { SyncStatus }
 
@@ -451,20 +427,12 @@ export interface SyncState {
   updated_at?: Date
 }
 
-// ============================================================================
-// Health Connect
-// ============================================================================
-
 export interface DailyAggregate {
   date: string // "2024-01-15"
   metric: string // "steps", "distance", etc.
   value: number
   data_origins: string[] // Contributing app package names
 }
-
-// ============================================================================
-// User Settings
-// ============================================================================
 
 export interface CalendarConfig {
   name: string
@@ -474,13 +442,14 @@ export interface CalendarConfig {
 export interface UserSettings {
   birth_date?: string // YYYY-MM-DD
   calendars?: CalendarConfig[] // Calendar ICS URL configurations
-  dashboard?: DashboardConfig // Custom dashboard configuration
+  dashboard?: DashboardConfig
   device_timezone?: string // IANA timezone from the Android device (e.g. "Europe/Stockholm")
   hr_zone_start?: { 1: number; 2: number; 3: number; 4: number; 5: number }
   lastfm_username?: string // Last.fm username for scrobble sync
   manually_approve_followers?: boolean // Hold incoming follows for manual approval (locked account)
   rescue_time_key?: string // RescueTime API key (personal token)
   sex?: BiologicalSex // Biological sex for calorie calculation
+  timeline_show_replies?: boolean // Show followed actors' replies to posts outside your timeline as own cards
   item_icons?: Record<string, string> // Unified icon mappings for all timeline items (tags, activities, exercise types)
   tag_icons?: Record<string, string> // Deprecated: tag-only icons (migrated to item_icons)
   food_sensitivity_map?: Record<string, string[]> // Food item name -> sensitivity areas
@@ -489,11 +458,16 @@ export interface UserSettings {
   tag_mappings?: Record<string, string> // Tag name mappings from UUIDs to display names
   training_load?: TrainingLoadSettings // Training load (Banister model) parameters
   garmin_disabled_data_types?: GarminDataType[] // Garmin data types to skip during sync
+  gravl_api_token?: string // Gravl personal access token (used when no OAuth grant exists)
+  sync_intervals?: SyncIntervals // Per-provider background poll intervals in minutes, `default` as fallback
 }
 
-// ============================================================================
-// MCP Sessions
-// ============================================================================
+/**
+ * Background sync poll intervals in minutes, keyed by provider
+ * (`gravl`, `garmin`, `oura`, `rescuetime`, `lastfm`, `calendar`) with
+ * `default` as the fallback for providers without an explicit entry.
+ */
+export type SyncIntervals = Partial<Record<string, number>>
 
 export interface McpSessionRecord {
   session_id: string

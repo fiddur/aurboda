@@ -1,29 +1,29 @@
 /**
- * Feed route group (owner-facing).
- *
- * Handles: /feed/*
- *
- * Publish an activity to the user's federated feed with an explicit metric
- * selection, and manage the resulting posts. Consistent with the other
- * owner-facing routers, the acting user comes from `req.user` (not the path);
- * the public read surface lives in `feed-public-router.ts`.
+ * The acting user comes from `req.user` (not the path), like the other
+ * owner-facing routers; the public read surface lives in `feed-public-router.ts`.
  */
 import {
   type ArticleExportResponse,
   type BaseResponse,
   type CreateArticleBody,
   createArticleBodySchema,
+  type FeedPostReactionsResponse,
+  type FeedPostRepliesResponse,
   type FeedPostResponse,
   type FeedPostsQuery,
   feedPostsQuerySchema,
   type FeedPostsResponse,
+  type ReplyToPostBody,
+  replyToPostBodySchema,
   type ShareActivityBody,
   shareActivityBodySchema,
   type SharePreviewResponse,
   type ShareChallengeBody,
   shareChallengeBodySchema,
+  type TimelineEntryResponse,
   type TimelineQuery,
   timelineQuerySchema,
+  type TimelineRepliesResponse,
   type TimelineResponse,
   type UpdateArticleBody,
   updateArticleBodySchema,
@@ -32,6 +32,8 @@ import {
 } from '@aurboda/api-spec'
 
 import type { Activity, FeedPostRecord } from '../db/index.ts'
+import type { ResolvedInbox } from '../services/activitypub/deliver.ts'
+import type { ReactionActions, ReactionResult } from '../services/feed-reactions.ts'
 import type { TimelineHub } from '../services/timeline-hub.ts'
 import type { RetroEnrichTrigger } from '../services/timeline-retro-enrich.ts'
 
@@ -42,12 +44,16 @@ import {
   deleteFeedPost,
   getActivityById,
   getFeedPostById,
+  getTimelineEntryById,
+  listFeedPostReactions,
   updateFeedPost,
 } from '../db/index.ts'
 import { isPubliclyVisible } from '../services/activitypub/object.ts'
+import { REPLIES_TIMEOUT_MS } from '../services/activitypub/remote-replies.ts'
 import { buildArticleMarkdown, renderableArticleBlocks } from '../services/article-export.ts'
 import { buildArticleContent, mergeArticleContent } from '../services/article.ts'
 import { resolveChallengeShare } from '../services/challenge-share.ts'
+import { MAX_POST_REACTIONS, serializeFeedPostReaction } from '../services/feed-reactions.ts'
 import {
   getFeedPage,
   normalizeFeedMessage,
@@ -55,7 +61,9 @@ import {
   serializeFeedPost,
 } from '../services/feed.ts'
 import { getSettings } from '../services/settings.ts'
-import { getTimelinePage } from '../services/timeline.ts'
+import { getThreadSnapshot, listOwnPostReplies, MAX_POST_REPLIES } from '../services/timeline-replies.ts'
+import { getTimelinePage, reactionTarget } from '../services/timeline.ts'
+import { withTimeout } from '../services/with-timeout.ts'
 import { type AnyMiddleware, type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody, validateQuery } from '../validation.ts'
 
@@ -76,15 +84,30 @@ export interface FeedDeliver {
   created: (user: string, post: FeedPostRecord, activity: Activity) => void
   updated: (user: string, post: FeedPostRecord) => void
   deleted: (user: string, post: FeedPostRecord) => void
-  /** Fan a freshly-published article out to followers (no linked activity). */
   createdArticle: (user: string, post: FeedPostRecord) => void
-  /** Federate an article edit as an `Update` so followers replace the stored object. */
   updatedArticle: (user: string, post: FeedPostRecord) => void
-  /** Fan a freshly-shared challenge invitation out to followers (#994). */
   createdChallenge: (user: string, post: FeedPostRecord) => void
-  /** Federate a challenge-share edit as an `Update`. */
   updatedChallenge: (user: string, post: FeedPostRecord) => void
+  /**
+   * Fan a fresh reply out to followers AND the inbox of the author it answers —
+   * `authorInbox` being the one the reply handler already resolved (#1108).
+   */
+  createdReply: (user: string, post: FeedPostRecord, authorInbox?: ResolvedInbox) => void
+  /** Federate a reply edit as an `Update`, to the same recipients. */
+  updatedReply: (user: string, post: FeedPostRecord) => void
 }
+
+/** RFC 4122 canonical form — timeline entry ids are UUIDs. */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/**
+ * Map a reaction toggle's outcome to its HTTP status + body. Pure, so the four
+ * toggle routes below stay one-liners that differ only in which action they call.
+ */
+const reactionResponse = (result: ReactionResult): { status: number; body: TimelineEntryResponse } =>
+  result.ok
+    ? { body: { entry: result.entry, success: true }, status: 200 }
+    : { body: { error: result.error, success: false }, status: result.status }
 
 export const createFeedRouter = (
   authMiddleware: AnyMiddleware,
@@ -94,6 +117,8 @@ export const createFeedRouter = (
   retroEnrichTimeline?: RetroEnrichTrigger,
   /** Canonical web origin, to build a shared challenge's public URL (#994). */
   webHost?: string,
+  /** Outbound like ⭐ / boost 🔄 / reply 🗨 actions; absent → those routes answer 503. */
+  reactions?: ReactionActions,
 ): TypedRouter => {
   const router = typedRouter()
 
@@ -106,6 +131,7 @@ export const createFeedRouter = (
       const settings = await getSettings(user).catch(() => null)
       const { next_cursor, posts } = await getFeedPage(user, req.query.limit, req.query.cursor, {
         includeStructured: true,
+        origin: webHost,
         settings,
       })
       res.json({ next_cursor, posts, success: true })
@@ -167,9 +193,146 @@ export const createFeedRouter = (
     validateQuery(timelineQuerySchema),
     async (req, res) => {
       const user = req.user!
-      const { entries, next_cursor } = await getTimelinePage(user, req.query.limit, req.query.cursor)
+      const { entries, next_cursor } = await getTimelinePage(user, req.query.limit, req.query.cursor, {
+        origin: webHost,
+      })
       retroEnrichTimeline?.(user)
       res.json({ entries, next_cursor, success: true })
+    },
+  )
+
+  // Live snapshot of a timeline post's reply thread (#1060), with the reader's
+  // OWN replies to the same object merged in. Nothing is stored; `no-store`
+  // because the origin's thread changes under us. Bounded fetch budget inside,
+  // plus a hard timeout so a slow origin can't pin the request. `fetched: false`
+  // says the origin's thread couldn't be read at all — an empty list then means
+  // "unknown", not "no replies" (#1065).
+  router.get<{ id: string }, TimelineRepliesResponse>(
+    '/timeline/:id/replies',
+    authMiddleware,
+    async (req, res) => {
+      const user = req.user!
+      const notFound = { error: 'Not found', fetched: false, partial: false, replies: [], success: false }
+      if (!UUID_RE.test(req.params.id)) return res.status(404).json(notFound)
+      const entry = await getTimelineEntryById(user, req.params.id)
+      if (entry == null) return res.status(404).json(notFound)
+      if (!webHost) {
+        return res.status(503).json({ ...notFound, error: 'Replies are not available' })
+      }
+      // A boost card stands for the ORIGINAL Note, so its thread is the
+      // original's — the same target a like or a reply resolves.
+      const snapshot = await withTimeout(
+        getThreadSnapshot(user, webHost, reactionTarget(entry)),
+        REPLIES_TIMEOUT_MS,
+      ).catch(() => ({ fetched: false, partial: true, replies: [] }))
+      res.setHeader('Cache-Control', 'no-store')
+      res.json({ ...snapshot, success: true })
+    },
+  )
+
+  // Reply 🗨 to one home-timeline post, addressed by the entry's LOCAL id (what
+  // the card has). Publishes a `reply` feed post and delivers its
+  // `Create{Note inReplyTo}` to followers AND the answered author's inbox.
+  // Registered before the generic `/:postId` routes.
+  router.post<{ id: string }, FeedPostResponse, ReplyToPostBody>(
+    '/timeline/:id/reply',
+    authMiddleware,
+    validateBody(replyToPostBodySchema),
+    async (req, res) => {
+      if (!reactions) return res.status(503).json({ error: 'Replies are not available', success: false })
+      if (!UUID_RE.test(req.params.id)) return res.status(404).json({ error: 'Not found', success: false })
+      const result = await reactions.reply(req.user!, req.params.id, req.body)
+      if (!result.ok) return res.status(result.status).json({ error: result.error, success: false })
+      res.json({ post: result.post, success: true })
+    },
+  )
+
+  // Like ⭐ / boost 🔄 one home-timeline post, addressed by the entry's LOCAL id
+  // (what the card has). All four are idempotent: a repeat POST returns the entry
+  // unchanged and delivers nothing, a DELETE of a reaction that isn't there is a
+  // no-op. Registered before the generic `/:postId` routes.
+  router.post<{ id: string }, TimelineEntryResponse>(
+    '/timeline/:id/like',
+    authMiddleware,
+    async (req, res) => {
+      if (!reactions) return res.status(503).json({ error: 'Reactions are not available', success: false })
+      if (!UUID_RE.test(req.params.id)) return res.status(404).json({ error: 'Not found', success: false })
+      const { body, status } = reactionResponse(await reactions.like(req.user!, req.params.id))
+      res.status(status).json(body)
+    },
+  )
+
+  router.delete<{ id: string }, TimelineEntryResponse>(
+    '/timeline/:id/like',
+    authMiddleware,
+    async (req, res) => {
+      if (!reactions) return res.status(503).json({ error: 'Reactions are not available', success: false })
+      if (!UUID_RE.test(req.params.id)) return res.status(404).json({ error: 'Not found', success: false })
+      const { body, status } = reactionResponse(await reactions.unlike(req.user!, req.params.id))
+      res.status(status).json(body)
+    },
+  )
+
+  router.post<{ id: string }, TimelineEntryResponse>(
+    '/timeline/:id/boost',
+    authMiddleware,
+    async (req, res) => {
+      if (!reactions) return res.status(503).json({ error: 'Reactions are not available', success: false })
+      if (!UUID_RE.test(req.params.id)) return res.status(404).json({ error: 'Not found', success: false })
+      const { body, status } = reactionResponse(await reactions.boost(req.user!, req.params.id))
+      res.status(status).json(body)
+    },
+  )
+
+  router.delete<{ id: string }, TimelineEntryResponse>(
+    '/timeline/:id/boost',
+    authMiddleware,
+    async (req, res) => {
+      if (!reactions) return res.status(503).json({ error: 'Reactions are not available', success: false })
+      if (!UUID_RE.test(req.params.id)) return res.status(404).json({ error: 'Not found', success: false })
+      const { body, status } = reactionResponse(await reactions.unboost(req.user!, req.params.id))
+      res.status(status).json(body)
+    },
+  )
+
+  // Who liked / boosted one of the owner's OWN posts (newest first). Registered
+  // before the generic `/:postId` routes so `reactions` is never read as a verb
+  // on a post id.
+  router.get<{ postId: string }, FeedPostReactionsResponse>(
+    '/:postId/reactions',
+    authMiddleware,
+    async (req, res) => {
+      const user = req.user!
+      if (!UUID_RE.test(req.params.postId)) {
+        return res.status(404).json({ error: 'Feed post not found', reactions: [], success: false })
+      }
+      if ((await getFeedPostById(user, req.params.postId)) == null) {
+        return res.status(404).json({ error: 'Feed post not found', reactions: [], success: false })
+      }
+      const rows = await listFeedPostReactions(user, req.params.postId, MAX_POST_REACTIONS)
+      res.json({ reactions: rows.map(serializeFeedPostReaction), success: true })
+    },
+  )
+
+  // The comments under one of the owner's OWN posts: the replies this instance
+  // already holds as timeline entries (any actor's Note answering an existing
+  // own post is admitted on ingest — #1060), oldest first. No network.
+  router.get<{ postId: string }, FeedPostRepliesResponse>(
+    '/:postId/replies',
+    authMiddleware,
+    async (req, res) => {
+      const user = req.user!
+      if (!UUID_RE.test(req.params.postId)) {
+        return res.status(404).json({ error: 'Feed post not found', replies: [], success: false })
+      }
+      if (!webHost) {
+        return res.status(503).json({ error: 'Replies are not available', replies: [], success: false })
+      }
+      if ((await getFeedPostById(user, req.params.postId)) == null) {
+        return res.status(404).json({ error: 'Feed post not found', replies: [], success: false })
+      }
+      const replies = await listOwnPostReplies(user, webHost, req.params.postId, MAX_POST_REPLIES)
+      res.json({ replies, success: true })
     },
   )
 
@@ -352,6 +515,7 @@ export const createFeedRouter = (
       // activity, so it must go through the article path — `updated` would no-op.
       if (record.kind === 'article') deliver?.updatedArticle(user, record)
       else if (record.kind === 'challenge') deliver?.updatedChallenge(user, record)
+      else if (record.kind === 'reply') deliver?.updatedReply(user, record)
       else deliver?.updated(user, record)
       res.json({ post: await serializeFeedPost(user, record, { includeStructured: true }), success: true })
     },

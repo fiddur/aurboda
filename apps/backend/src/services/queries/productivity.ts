@@ -1,7 +1,3 @@
-/**
- * Productivity query functions.
- */
-
 import type { CategoryInfo, ProductivityResult, SyncProvider } from './types.ts'
 
 import { getProductivity, type ProductivityRecord, type ScreentimeCategory } from '../../db/index.ts'
@@ -16,7 +12,6 @@ import { getCommentsMap } from './types.ts'
  */
 export const MERGE_GAP_MS = 2 * 60 * 1000
 
-/** Internal type that tracks source IDs through the merge pipeline. */
 type MergeRecord = ProductivityRecord & { source_ids: string[] }
 
 /**
@@ -38,7 +33,6 @@ export function mergeProductivitySpans(
 ): (ProductivityRecord & { source_ids: string[] })[] {
   if (records.length === 0) return []
 
-  // --- Phase 1: sequential merge (same as before) ---
   const phase1: MergeRecord[] = [{ ...records[0]!, source_ids: records[0]!.id ? [records[0]!.id] : [] }]
 
   for (let i = 1; i < records.length; i++) {
@@ -59,7 +53,6 @@ export function mergeProductivitySpans(
     }
   }
 
-  // --- Phase 2: interleave merge ---
   // Walk forward; for each span check whether the most-recent span of the same
   // activity ended within MERGE_GAP_MS. If so, extend that earlier span and
   // drop the current one from the output.
@@ -76,7 +69,6 @@ export function mergeProductivitySpans(
       const gap = span.start_time.getTime() - prev.end_time.getTime()
 
       if (gap >= 0 && gap <= MERGE_GAP_MS) {
-        // Extend the earlier span; add this span's duration and source IDs
         prev.end_time = span.end_time
         prev.duration_sec += span.duration_sec
         prev.source_ids.push(...span.source_ids)
@@ -87,7 +79,6 @@ export function mergeProductivitySpans(
       }
     }
 
-    // No mergeable predecessor — emit as a new span
     lastIndexFor.set(key, phase2.length)
     phase2.push({ ...span })
   }
@@ -97,7 +88,6 @@ export function mergeProductivitySpans(
   return phase2.sort((a, b) => a.start_time.getTime() - b.start_time.getTime())
 }
 
-/** Internal type for category-merged spans. */
 interface CategoryMergedSpan {
   start: Date
   end: Date
@@ -106,15 +96,11 @@ interface CategoryMergedSpan {
 }
 
 /**
- * Group key for category merging. Returns the full resolved_category path joined
  * by ' > ', or empty string for uncategorized records.
  */
 export const categoryGroupKey = (r: ProductivityRecord): string =>
   r.resolved_category && r.resolved_category.length > 0 ? r.resolved_category.join(' > ') : ''
 
-/**
- * Merge adjacent records sharing the same category group key within a gap tolerance.
- */
 export const mergeAdjacentByCategory = (
   records: MergeRecord[],
   gapMs: number,
@@ -202,7 +188,6 @@ export const promoteOverlappingSubcategories = (
 }
 
 /**
- * Merge app-level records by resolved category and promote overlapping subcategories.
  * Returns one ProductivityResult per category span (with category_id),
  * plus a normalized categories map for the frontend to resolve IDs to metadata.
  * Excluded and uncategorized records are dropped.
@@ -233,7 +218,6 @@ export function mergeByCategorySpans(
     return undefined
   }
 
-  // Filter out excluded and uncategorized records
   const categorized = records.filter((r) => {
     const key = categoryGroupKey(r)
     if (key === '') return false
@@ -245,7 +229,6 @@ export function mergeByCategorySpans(
     return true
   })
 
-  // Group by category key and merge adjacent within gap
   const byKey = new Map<string, MergeRecord[]>()
   for (const record of categorized) {
     const key = categoryGroupKey(record)
@@ -259,10 +242,8 @@ export function mergeByCategorySpans(
     categorySpans.push(...mergeAdjacentByCategory(recs, gapMs, key))
   }
 
-  // Promote overlapping subcategories to parent level
   const promoted = promoteOverlappingSubcategories(categorySpans, gapMs)
 
-  // Build the normalized categories map and results
   const categoriesMap: Record<string, CategoryInfo> = {}
 
   const results = promoted.map((span) => {
@@ -293,7 +274,6 @@ export function mergeByCategorySpans(
 }
 
 /**
- * Query productivity data for a time range.
  * Merges consecutive spans for the same activity to reduce visual clutter.
  * @param sync Optional sync provider to auto-refresh stale data before querying
  * @param mergeBy When 'category', merges by resolved_category with overlap promotion
@@ -315,14 +295,12 @@ export async function queryProductivity(
   const productivity = await getProductivity(user, start, end)
   const merged = mergeProductivitySpans(productivity)
 
-  // When merge_by=category, do category-level merge + overlap promotion on the server
   if (mergeBy === 'category') {
     const categories = await getScreentimeCategories(user)
     const { categoriesMap, results } = mergeByCategorySpans(merged, mergeGapMs ?? MERGE_GAP_MS, categories)
     return { categories: categoriesMap, data: results }
   }
 
-  // Default: return app-level merged records
   const allIds = merged.flatMap((p) => (p.source_ids.length > 0 ? p.source_ids : p.id ? [p.id] : []))
   const commentsMap = await getCommentsMap(user, 'productivity', allIds)
   return {
@@ -347,9 +325,6 @@ export async function queryProductivity(
   }
 }
 
-/**
- * Assemble raw bucketed productivity rows into screentime buckets with category breakdown.
- */
 export const assembleScreentimeBuckets = (
   rows: Array<{
     bucket_start: Date

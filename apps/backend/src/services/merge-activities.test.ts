@@ -57,8 +57,6 @@ describe('buildMergedActivityData', () => {
     expect(result.title).toBe('Combined Run')
   })
 
-  // note: PR #2 moved notes to the notes table; merge no longer touches them
-
   test('merges data objects with later overriding earlier', () => {
     const activities = [
       makeActivity({ id: 'a1', data: { exerciseType: 57, garmin_activity_id: '111' } }),
@@ -151,13 +149,11 @@ describe('mergeActivities', () => {
     expect(result.end_time).toBe('2026-04-02T11:00:00.000Z')
     expect(result.id).toBeDefined()
 
-    // Should insert one new activity
     expect(deps.insertNewActivity).toHaveBeenCalledOnce()
     const inserted = deps.insertNewActivity.mock.calls[0][1]
     expect(inserted.source).toBe('aurboda')
     expect(inserted.data.merged_from).toHaveLength(2)
 
-    // Should delete both originals
     expect(deps.deleteActivity).toHaveBeenCalledTimes(2)
   })
 

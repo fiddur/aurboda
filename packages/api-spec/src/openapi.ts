@@ -1,9 +1,4 @@
-/**
- * OpenAPI document generator.
- *
- * This script generates an OpenAPI 3.1 specification from Zod schemas.
- * Run with: pnpm generate:openapi
- */
+/** Generates the OpenAPI 3.1 specification from the Zod schemas: pnpm generate:openapi */
 
 import * as fs from 'node:fs'
 import * as yaml from 'yaml'
@@ -15,11 +10,11 @@ import { loginBodySchema, loginResponseSchema } from './schemas/admin.ts'
 import {
   challengeParticipationsResponseSchema,
   challengesResponseSchema,
+  discoverChallengesResponseSchema,
   challengeStandingsResponseSchema,
   wellKnownAurbodaSchema,
   wellKnownQuantpubSchema,
 } from './schemas/challenges.ts'
-// Import all schemas
 import { dateOnlySchema, iso8601DateTimeSchema, metricTypeSchema } from './schemas/common.ts'
 import { dailySummaryResponseSchema } from './schemas/daily-summary.ts'
 import { goalsProgressResponseSchema } from './schemas/goals.ts'
@@ -50,6 +45,9 @@ import {
   healthConnectDeletionsBodySchema,
   healthConnectSyncBodySchema,
   syncOuraBodySchema,
+  syncGravlBodySchema,
+  gravlSyncResponseSchema,
+  gravlSyncStatusResponseSchema,
   syncRescueTimeBodySchema,
   syncResponseSchema,
   syncStatusResponseSchema,
@@ -70,7 +68,6 @@ import {
   webauthnUpdateCredentialBodySchema,
 } from './schemas/webauthn.ts'
 
-// Error response
 const errorResponseSchema = z
   .object({
     error: z.string(),
@@ -78,16 +75,11 @@ const errorResponseSchema = z
   })
   .meta({ id: 'ErrorResponse' })
 
-// Delete response
 const deleteResponseSchema = z
   .object({
     success: z.boolean(),
   })
   .meta({ id: 'DeleteResponse' })
-
-// ============================================================================
-// Generate OpenAPI document
-// ============================================================================
 
 const openApiDocument = createDocument({
   components: {
@@ -120,7 +112,6 @@ const openApiDocument = createDocument({
   },
   openapi: '3.1.0',
   paths: {
-    // --- Challenges ---
     '/challenges': {
       get: {
         description: 'List the challenges hosted by the authenticated user.',
@@ -132,6 +123,21 @@ const openApiDocument = createDocument({
         },
         security: [{ bearerAuth: [] }],
         summary: 'List my challenges',
+        tags: ['Challenges'],
+      },
+    },
+    '/challenges/discover': {
+      get: {
+        description:
+          'Open challenges hosted by people the authenticated user follows (on this or any Aurboda instance) that they have not joined: ongoing first, then upcoming; ended challenges are never listed.',
+        responses: {
+          200: {
+            content: { 'application/json': { schema: discoverChallengesResponseSchema } },
+            description: 'Successful response',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Discover challenges from people I follow',
         tags: ['Challenges'],
       },
     },
@@ -173,7 +179,6 @@ const openApiDocument = createDocument({
         tags: ['Challenges'],
       },
     },
-    // --- Activities ---
     '/activities': {
       get: {
         description: 'Get activities (sleep, exercise, meditation, nap) for a time range.',
@@ -200,7 +205,6 @@ const openApiDocument = createDocument({
       },
     },
 
-    // --- Daily Summary ---
     '/daily-summary': {
       get: {
         description:
@@ -230,7 +234,6 @@ const openApiDocument = createDocument({
       },
     },
 
-    // --- Goals ---
     '/goals/progress': {
       get: {
         description:
@@ -249,7 +252,6 @@ const openApiDocument = createDocument({
       },
     },
 
-    // --- Locations ---
     '/locations': {
       get: {
         description: 'Get place visits for a time range.',
@@ -435,7 +437,6 @@ const openApiDocument = createDocument({
       },
     },
 
-    // --- Login ---
     '/login': {
       post: {
         description: 'Authenticate with username and password to receive access and refresh tokens.',
@@ -479,7 +480,6 @@ const openApiDocument = createDocument({
         tags: ['Metrics'],
       },
     },
-    // --- Metrics ---
     '/metrics/{metric}': {
       get: {
         description:
@@ -515,7 +515,6 @@ const openApiDocument = createDocument({
       },
     },
 
-    // --- Period Summary ---
     '/period-summary': {
       get: {
         description:
@@ -547,7 +546,6 @@ const openApiDocument = createDocument({
       },
     },
 
-    // --- Productivity ---
     '/productivity': {
       get: {
         description: 'Get RescueTime productivity data for a time range.',
@@ -602,7 +600,6 @@ const openApiDocument = createDocument({
       },
     },
 
-    // --- Sync: Health Connect ---
     '/sync/daily-aggregates': {
       post: {
         description: 'Upload daily aggregate data from Health Connect (steps, distance, calories, floors).',
@@ -672,7 +669,6 @@ const openApiDocument = createDocument({
       },
     },
 
-    // --- Sync: Outbound (backend -> Health Connect) ---
     '/sync/outbound': {
       get: {
         description:
@@ -736,7 +732,42 @@ const openApiDocument = createDocument({
       },
     },
 
-    // --- Sync ---
+    '/sync/gravl': {
+      post: {
+        description:
+          'Sync strength workouts from Gravl (gravl.ai): exercises with per-set weight, reps, RPE and set type. A workout that already reached Aurboda through Health Connect is enriched in place; otherwise a strength_training activity is created. Requires a Gravl OAuth connection or a personal token in user settings.',
+        requestBody: {
+          content: { 'application/json': { schema: syncGravlBodySchema } },
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: gravlSyncResponseSchema } },
+            description: 'Sync result',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Gravl integration unavailable',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Sync Gravl workouts',
+        tags: ['Sync'],
+      },
+    },
+    '/sync/gravl/status': {
+      get: {
+        description: 'Current Gravl sync state: last sync time, status, error and rate-limit hold.',
+        responses: {
+          200: {
+            content: { 'application/json': { schema: gravlSyncStatusResponseSchema } },
+            description: 'Successful response',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get Gravl sync status',
+        tags: ['Sync'],
+      },
+    },
 
     '/sync/status': {
       get: {
@@ -763,7 +794,6 @@ const openApiDocument = createDocument({
       },
     },
 
-    // --- WebAuthn / Passkey ---
     '/webauthn/auth/options': {
       post: {
         description:
@@ -936,7 +966,6 @@ const openApiDocument = createDocument({
       },
     },
 
-    // --- User Settings ---
     '/user/settings': {
       get: {
         description:
@@ -1000,7 +1029,6 @@ const openApiDocument = createDocument({
   ],
 })
 
-// Write to file
 fs.mkdirSync('./generated', { recursive: true })
 fs.writeFileSync('./generated/openapi.yaml', yaml.stringify(openApiDocument))
 fs.writeFileSync('./generated/openapi.json', JSON.stringify(openApiDocument, null, 2))

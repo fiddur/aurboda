@@ -39,13 +39,11 @@ const recomputeChunk = async (
   hrRest: number,
   settings: ResolvedTrainingLoadSettings,
 ): Promise<TimeSeriesPoint[]> => {
-  // Fetch exercises and hourly calorie sums for this chunk
   const [exercises, hourlyCalories] = await Promise.all([
     deps.getExercises(user, chunkStart, chunkEnd),
     deps.getHourlyCalorieSums(user, chunkStart, chunkEnd),
   ])
 
-  // For each exercise, fetch HR samples just for that session window
   const training = new Map<string, number>()
   for (const ex of exercises) {
     const sessionEnd = ex.end_time ?? new Date(ex.start_time.getTime() + MS_PER_HOUR)
@@ -53,14 +51,12 @@ const recomputeChunk = async (
     processExercise(ex, hrSamples, hrMax, hrRest, settings.k_factor, training)
   }
 
-  // Build activity impulse map from pre-bucketed hourly calorie sums
   const activity = new Map<string, number>()
   for (const [time, kcalSum] of hourlyCalories) {
     const hourIso = floorToHour(time).toISOString()
     activity.set(hourIso, (activity.get(hourIso) ?? 0) + kcalSum * settings.activity_impulse_scale)
   }
 
-  // Build time series points
   const points: TimeSeriesPoint[] = []
 
   for (const [hourIso, value] of training) {
@@ -97,8 +93,6 @@ const recomputeChunk = async (
 /**
  * Recompute hourly impulse buckets for a user from `fromHour` to the last completed hour.
  *
- * Processes in chunks of RECOMPUTE_CHUNK_MS to keep memory bounded.
- * For each chunk: fetches exercises, HR per-exercise, hourly calorie sums.
  * Skips the current (incomplete) hour.
  */
 export const recomputeImpulseBuckets = async (
@@ -108,10 +102,8 @@ export const recomputeImpulseBuckets = async (
 ): Promise<{ hours_computed: number }> => {
   const currentHour = getCurrentHourStart()
 
-  // Don't recompute if fromHour is in the future or the current hour
   if (fromHour >= currentHour) return { hours_computed: 0 }
 
-  // Fetch user settings and latest resting HR in parallel.
   // Use cached observed_hr_max to avoid the expensive 1-year scan.
   const [userSettings, latestRestingHr] = await Promise.all([
     deps.getUserSettings(user),
@@ -131,7 +123,6 @@ export const recomputeImpulseBuckets = async (
     deps.deleteImpulseBuckets(user, 'activity_impulse', 'aurboda', fromHour, currentHour),
   ])
 
-  // Process in chunks
   let allPoints: TimeSeriesPoint[] = []
   let chunkStart = fromHour
 
@@ -148,10 +139,8 @@ export const recomputeImpulseBuckets = async (
     chunkStart = chunkEnd
   }
 
-  // Clear the watermark
   await deps.updateTrainingLoadSettings(user, { impulse_watermark: undefined })
 
-  // Count distinct hours
   const hours = new Set(allPoints.map((p) => p.time.toISOString()))
   return { hours_computed: hours.size }
 }

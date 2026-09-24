@@ -1,10 +1,6 @@
 import type { RequestHandler } from 'express'
 
 /**
- * Challenges route group (owner + joiner facing).
- *
- * Handles: /challenges/*
- *
  * Hosts create/manage challenges (members live in the host's DB); any user joins
  * by URL (local shortcut when the host is this instance, else federated). The
  * host is always a member of their own challenge.
@@ -19,11 +15,14 @@ import {
   type ChallengeStandingsResponse,
   type CreateChallengeBody,
   createChallengeBodySchema,
+  type DiscoverChallengesResponse,
   type JoinChallengeBody,
   joinChallengeBodySchema,
   type UpdateChallengeBody,
   updateChallengeBodySchema,
 } from '@aurboda/api-spec'
+
+import type { DiscoverChallenges } from '../services/challenge-discovery.ts'
 
 import {
   type ChallengeParticipationRecord,
@@ -40,7 +39,8 @@ import {
   upsertChallengeMember,
 } from '../db/index.ts'
 import { JoinChallengeError, joinChallenge } from '../services/challenge-federation.ts'
-import { specToApi } from '../services/challenge-spec.ts'
+import { announcementPending } from '../services/challenge-results.ts'
+import { effectiveBucketSize, specToApi } from '../services/challenge-spec.ts'
 import { getChallengeStandings } from '../services/challenge-standings.ts'
 import { buildProfileUrl, buildShareUrl } from '../services/share-urls.ts'
 import { isPublicToVisibility, visibilityToIsPublic } from '../services/visibility.ts'
@@ -61,10 +61,13 @@ const serializeParticipation = (p: ChallengeParticipationRecord) => ({
 })
 
 const serialize = (record: ChallengeRecord, webHost: string, username: string): Challenge => ({
+  announce_winner: record.announce_winner,
+  announcement_pending: announcementPending(record, new Date()),
   created_at: record.created_at.toISOString(),
   end_ts: record.end_ts.toISOString(),
   id: record.id,
   name: record.name,
+  result_published_at: record.result_published_at?.toISOString() ?? null,
   share_url: buildShareUrl(webHost, username, record.slug),
   slug: record.slug,
   spec: specToApi(record.spec),
@@ -78,6 +81,7 @@ export const createChallengesRouter = (
   authMiddleware: RequestHandler,
   webHost: string,
   apiBaseUrl: string,
+  discoverChallenges: DiscoverChallenges,
 ): TypedRouter => {
   const router = typedRouter()
 
@@ -94,6 +98,7 @@ export const createChallengesRouter = (
     async (req, res) => {
       const user = req.user!
       const record = await createChallenge(user, {
+        announce_winner: req.body.announce_winner,
         end_ts: new Date(req.body.end_ts),
         is_public: visibilityToIsPublic(req.body.visibility),
         name: req.body.name,
@@ -119,6 +124,16 @@ export const createChallengesRouter = (
     },
   )
 
+  // Before `/:id`, or "discover" would be looked up as a challenge id.
+  router.get<Record<string, never>, DiscoverChallengesResponse>(
+    '/discover',
+    authMiddleware,
+    async (req, res) => {
+      const result = await discoverChallenges(req.user!)
+      res.json({ ...result, success: true })
+    },
+  )
+
   router.get<{ id: string }, ChallengeResponse>('/:id', authMiddleware, async (req, res) => {
     const user = req.user!
     const record = await getChallengeById(user, req.params.id)
@@ -134,6 +149,7 @@ export const createChallengesRouter = (
       const user = req.user!
       const b = req.body
       const record = await updateChallenge(user, req.params.id, {
+        announce_winner: b.announce_winner,
         end_ts: b.end_ts ? new Date(b.end_ts) : undefined,
         is_public: b.visibility === undefined ? undefined : visibilityToIsPublic(b.visibility),
         name: b.name,
@@ -170,7 +186,11 @@ export const createChallengesRouter = (
       const record = await getChallengeById(user, req.params.id)
       if (!record) return res.status(404).json({ error: 'Challenge not found', success: false })
       const members = await getChallengeStandings(user, record, { refresh: req.query.refresh === '1' })
-      res.json({ members, success: true })
+      res.json({
+        effective_bucket_size: effectiveBucketSize(record.spec.bucket_size, record.start_ts, record.end_ts),
+        members,
+        success: true,
+      })
     },
   )
 
@@ -199,7 +219,7 @@ export const createChallengesRouter = (
     },
   )
 
-  // --- Participations (challenges I joined) ---
+  // Participations: challenges this user joined.
 
   router.get<Record<string, never>, ChallengeParticipationsResponse>(
     '/participations/mine',

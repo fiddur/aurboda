@@ -1,6 +1,4 @@
 /**
- * FIT file parser — extracts activity data from ANT+ FIT files.
- *
  * Supports files from QZ, Garmin, Polar, Suunto, and other devices that
  * produce standard FIT output.
  */
@@ -64,7 +62,6 @@ type FitRecord = Record<string, unknown>
 
 const timeSeriesMetrics = ['heart_rate', 'power', 'cadence', 'speed'] as const
 
-/** Extract time series data points from FIT record messages. */
 const extractTimeSeries = (records: FitRecord[]): FitActivity['timeSeries'] => {
   const timeSeries: FitActivity['timeSeries'] = []
 
@@ -83,7 +80,6 @@ const extractTimeSeries = (records: FitRecord[]): FitActivity['timeSeries'] => {
 }
 
 /**
- * Compute end time from session data.
  * Prefers start + elapsed duration (some exporters set timestamp = start_time).
  * Falls back to session timestamp, then last record timestamp.
  */

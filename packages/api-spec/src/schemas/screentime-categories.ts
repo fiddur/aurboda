@@ -12,17 +12,11 @@ import { z } from 'zod'
 
 import { baseResponseSchema, createDataArrayResponseSchema, createDataResponseSchema } from './common.ts'
 
-/**
- * Rule type for screentime categories.
- */
 export const screentimeRuleTypeSchema = z.enum(['regex', 'none']).meta({
   description: 'Rule type: regex for pattern matching, none for grouping-only categories',
   id: 'ScreentimeRuleType',
 })
 
-/**
- * Full screentime category record.
- */
 export const screentimeCategorySchema = z
   .object({
     activity_type_name: z.string().optional().meta({
@@ -62,9 +56,6 @@ export const screentimeCategorySchema = z
 
 export type ScreentimeCategory = z.infer<typeof screentimeCategorySchema>
 
-/**
- * Body for creating a screentime category.
- */
 export const createScreentimeCategoryBodySchema = z
   .object({
     color: z.string().optional().meta({ description: 'Hex color (e.g. "#22c55e")' }),
@@ -92,9 +83,6 @@ export const createScreentimeCategoryBodySchema = z
 
 export type CreateScreentimeCategoryBody = z.infer<typeof createScreentimeCategoryBodySchema>
 
-/**
- * Body for updating a screentime category.
- */
 export const updateScreentimeCategoryBodySchema = z
   .object({
     color: z.string().optional().meta({ description: 'Hex color' }),
@@ -113,18 +101,12 @@ export const updateScreentimeCategoryBodySchema = z
 
 export type UpdateScreentimeCategoryBody = z.infer<typeof updateScreentimeCategoryBodySchema>
 
-/**
- * Response for a list of screentime categories.
- */
 export const screentimeCategoryListResponseSchema = createDataArrayResponseSchema(
   screentimeCategorySchema,
 ).meta({ id: 'ScreentimeCategoryListResponse' })
 
 export type ScreentimeCategoryListResponse = z.infer<typeof screentimeCategoryListResponseSchema>
 
-/**
- * Response for a single screentime category.
- */
 export const screentimeCategoryResponseSchema = createDataResponseSchema(screentimeCategorySchema).meta({
   id: 'ScreentimeCategoryResponse',
 })
@@ -151,9 +133,6 @@ export const awCategorySchema = z.object({
 
 export type AwCategory = z.infer<typeof awCategorySchema>
 
-/**
- * Body for importing categories from ActivityWatch.
- */
 export const importAwCategoriesBodySchema = z
   .object({
     categories: z.array(awCategorySchema).optional().meta({
@@ -171,9 +150,6 @@ export const importAwCategoriesBodySchema = z
 
 export type ImportAwCategoriesBody = z.infer<typeof importAwCategoriesBodySchema>
 
-/**
- * Move category body schema.
- */
 export const moveScreentimeCategoryBodySchema = z
   .object({
     new_parent_id: z
@@ -186,9 +162,6 @@ export const moveScreentimeCategoryBodySchema = z
 
 export type MoveScreentimeCategoryBody = z.infer<typeof moveScreentimeCategoryBodySchema>
 
-/**
- * Delete screentime category response.
- */
 export const deleteScreentimeCategoryResponseSchema = baseResponseSchema
   .extend({
     deleted: z.number().int().optional().meta({ description: 'Number of categories deleted' }),
@@ -197,9 +170,6 @@ export const deleteScreentimeCategoryResponseSchema = baseResponseSchema
 
 export type DeleteScreentimeCategoryResponse = z.infer<typeof deleteScreentimeCategoryResponseSchema>
 
-/**
- * Move screentime category response.
- */
 export const moveScreentimeCategoryResponseSchema = baseResponseSchema
   .extend({
     updated: z.number().int().meta({ description: 'Number of categories updated' }),
@@ -208,9 +178,6 @@ export const moveScreentimeCategoryResponseSchema = baseResponseSchema
 
 export type MoveScreentimeCategoryResponse = z.infer<typeof moveScreentimeCategoryResponseSchema>
 
-/**
- * Recategorize screentime response.
- */
 export const recategorizeScreentimeResponseSchema = baseResponseSchema
   .extend({
     records_updated: z.number().int().optional().meta({ description: 'Number of records recategorized' }),
@@ -219,18 +186,13 @@ export const recategorizeScreentimeResponseSchema = baseResponseSchema
 
 export type RecategorizeScreentimeResponse = z.infer<typeof recategorizeScreentimeResponseSchema>
 
-/**
- * Default screentime categories response.
- */
 export const screentimeCategoryDefaultsResponseSchema = createDataArrayResponseSchema(
   createScreentimeCategoryBodySchema,
 ).meta({ id: 'ScreentimeCategoryDefaultsResponse' })
 
 export type ScreentimeCategoryDefaultsResponse = z.infer<typeof screentimeCategoryDefaultsResponseSchema>
 
-/**
- * Default categories (matching ActivityWatch defaults) that can be suggested to users.
- */
+/** Matching the ActivityWatch defaults. */
 export const defaultScreentimeCategories: CreateScreentimeCategoryBody[] = [
   {
     color: '#22c55e',

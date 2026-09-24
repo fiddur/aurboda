@@ -1,10 +1,3 @@
-/**
- * Chart data service — bucketed aggregation of activity types, metrics,
- * and productivity categories.
- *
- * Returns time-bucketed data for bar chart visualizations.
- */
-
 import type { ChartDataBreakdownBucket, ChartDataBucket, ChartDataSourceType } from '@aurboda/api-spec'
 
 import { expandActivityTypes, getSourceFilter, getTimeSeries, query } from '../db/index.ts'
@@ -18,8 +11,6 @@ const bucketToTrunc: Record<string, string> = {
 }
 
 /**
- * Build a SQL expression for bucketing a timestamp column.
- *
  * For sub-day buckets (15m, 1h) we use PG 14+ `date_bin` which requires an
  * origin timestamp.  For day/week/month we keep the simpler `date_trunc`.
  *
@@ -69,7 +60,6 @@ export interface ChartDataInput {
   tag_definition_id?: string
 }
 
-/** Query bucketed activity counts by activity_type name (formerly tag_definition_id). */
 const queryActivitiesByType = async (
   user: string,
   activityType: string,
@@ -98,7 +88,6 @@ const queryActivitiesByType = async (
   }))
 }
 
-/** Query bucketed activity counts by activity_type regex pattern. */
 const queryActivitiesByTypePattern = async (
   user: string,
   pattern: string,
@@ -126,7 +115,6 @@ const queryActivitiesByTypePattern = async (
   }))
 }
 
-/** Query bucketed metric data with the specified aggregation. */
 const queryMetricBuckets = async (
   user: string,
   metric: string,
@@ -240,12 +228,10 @@ const queryHrZoneBuckets = async (
 }
 
 /**
- * Query bucketed productivity category hours.
- *
  * Reads from the `activities` table (activity_type='screentime') so a
  * prefix match on data->>'category_path' walks the category hierarchy
  * (e.g. categoryPath='Work' matches 'Work', 'Work > Programming', etc.).
- * Activities are derived from productivity records during sync (#648) and
+ * Activities are derived from productivity records during sync and
  * historical data is filled in by a one-shot backfill.
  */
 const queryProductivityCategoryBuckets = async (
@@ -280,7 +266,6 @@ const queryProductivityCategoryBuckets = async (
   }))
 }
 
-/** Query bucketed activity type hours. */
 const queryActivityTypeBuckets = async (
   user: string,
   pattern: string,
@@ -315,7 +300,6 @@ const queryActivityTypeBuckets = async (
 }
 
 /**
- * Query activity type data broken down by one or more data fields.
  * Multiple fields produce compound series keys like "spanda / external_monitor".
  */
 const queryActivityTypeBreakdown = async (
@@ -339,7 +323,6 @@ const queryActivityTypeBreakdown = async (
       ? 'count(*)'
       : "SUM(EXTRACT(EPOCH FROM (COALESCE(end_time, start_time + interval '1 hour') - start_time))) / 3600.0"
 
-  // Build SELECT and GROUP BY for each breakdown field
   const fieldSelects = fields.map((f, i) => `COALESCE(data->>'${f}', '(none)') AS field_${i}`)
   const fieldGroupBys = fields.map((_, i) => `field_${i}`)
 
@@ -358,7 +341,6 @@ const queryActivityTypeBreakdown = async (
     [...bucket.params, types, start, end],
   )
 
-  // Pivot rows into breakdown buckets with compound series keys
   const seriesSet = new Set<string>()
   const bucketMap = new Map<string, Record<string, number>>()
   for (const row of result.rows) {
@@ -400,9 +382,6 @@ const queryMetricSource = async (
   return queryMetricBuckets(user, metric, start, end, bucketSize, aggregation)
 }
 
-/**
- * Get bucketed chart data for the given source type and parameters.
- */
 export const getChartData = async (
   user: string,
   input: ChartDataInput,
@@ -414,7 +393,6 @@ export const getChartData = async (
   const { activity_type_id, aggregation, bucket_size, end, pattern, source_type, start, tag_definition_id } =
     input
 
-  // Breakdown mode for activity types
   if (
     source_type === 'activity_type' &&
     pattern &&

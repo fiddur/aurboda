@@ -21,6 +21,7 @@ const mockDeps: GarminProcessDeps = {
   auditError: vi.fn(),
   auditInfo: vi.fn(),
   auditWarn: vi.fn(),
+  adoptLegacyActivity: vi.fn().mockResolvedValue(null),
   deleteGarminActivityWithWrongType: vi.fn().mockResolvedValue(null),
   insertActivity: vi.fn().mockResolvedValue(undefined),
   insertLocations: vi.fn().mockResolvedValue(undefined),
@@ -42,10 +43,6 @@ describe('processGarminData', () => {
     vi.clearAllMocks()
   })
 
-  // ==========================================================================
-  // Null / undefined guard
-  // ==========================================================================
-
   test('returns 0 for null data', async () => {
     expect(await processGarminData(user, 'dailySummary', null, mockDeps)).toBe(0)
     expect(mockDeps.insertRawRecord).not.toHaveBeenCalled()
@@ -55,10 +52,6 @@ describe('processGarminData', () => {
     expect(await processGarminData(user, 'heartRate', undefined, mockDeps)).toBe(0)
     expect(mockDeps.insertRawRecord).not.toHaveBeenCalled()
   })
-
-  // ==========================================================================
-  // Daily Summary
-  // ==========================================================================
 
   describe('dailySummary', () => {
     const makeSummary = (overrides: Record<string, unknown> = {}) => ({
@@ -180,10 +173,6 @@ describe('processGarminData', () => {
     })
   })
 
-  // ==========================================================================
-  // Heart Rate
-  // ==========================================================================
-
   describe('heartRate', () => {
     test('inserts raw record with correct fields', async () => {
       const data = {
@@ -262,10 +251,6 @@ describe('processGarminData', () => {
     })
   })
 
-  // ==========================================================================
-  // HRV
-  // ==========================================================================
-
   describe('hrv', () => {
     test('inserts raw record with correct fields', async () => {
       const data = { calendarDate: '2025-01-15', lastNightAvg: 42, weeklyAvg: 40 }
@@ -311,10 +296,6 @@ describe('processGarminData', () => {
     })
   })
 
-  // ==========================================================================
-  // Sleep
-  // ==========================================================================
-
   describe('sleep', () => {
     const makeSleepData = (overrides: Record<string, unknown> = {}) => ({
       avgOvernightHrv: 45,
@@ -358,6 +339,7 @@ describe('processGarminData', () => {
           sleep_score: 82,
         },
         end_time: new Date(1736924400000),
+        external_id: 'garmin-sleep-2025-01-15',
         source: 'garmin',
         start_time: new Date(1736899200000),
         title: 'Sleep',
@@ -584,10 +566,6 @@ describe('processGarminData', () => {
     })
   })
 
-  // ==========================================================================
-  // Stress
-  // ==========================================================================
-
   describe('stress', () => {
     test('inserts raw record with correct fields', async () => {
       const data = { calendarDate: '2025-01-15', overallStressLevel: 38, stressValuesArray: null }
@@ -675,10 +653,6 @@ describe('processGarminData', () => {
       ).toBe(1)
     })
   })
-
-  // ==========================================================================
-  // Body Battery
-  // ==========================================================================
 
   describe('bodyBattery', () => {
     test('inserts raw record per day', async () => {
@@ -786,10 +760,6 @@ describe('processGarminData', () => {
     })
   })
 
-  // ==========================================================================
-  // Activities (exercise)
-  // ==========================================================================
-
   describe('activities', () => {
     const makeActivity = (overrides: Record<string, unknown> = {}) => ({
       activityId: 12345,
@@ -840,6 +810,7 @@ describe('processGarminData', () => {
           vo2_max: 48.5,
         },
         end_time: endTime,
+        external_id: 'garmin-activity-12345',
         source: 'garmin',
         start_time: startTime,
         title: 'Morning Run',
@@ -1075,16 +1046,11 @@ describe('processGarminData', () => {
       )
 
       expect(mockDeps.deleteGarminActivityWithWrongType).toHaveBeenCalledWith(user, 12345, 'meditation')
-      // Verify delete is called before insert
       const deleteOrder = vi.mocked(mockDeps.deleteGarminActivityWithWrongType).mock.invocationCallOrder[0]
       const insertOrder = vi.mocked(mockDeps.insertActivity).mock.invocationCallOrder[0]
       expect(deleteOrder).toBeLessThan(insertOrder!)
     })
   })
-
-  // ==========================================================================
-  // SpO2
-  // ==========================================================================
 
   describe('spo2', () => {
     test('inserts raw record with correct fields', async () => {
@@ -1130,10 +1096,6 @@ describe('processGarminData', () => {
       ).toBe(1)
     })
   })
-
-  // ==========================================================================
-  // Respiration
-  // ==========================================================================
 
   describe('respiration', () => {
     test('inserts raw record with correct fields', async () => {
@@ -1192,10 +1154,6 @@ describe('processGarminData', () => {
       ).toBe(1)
     })
   })
-
-  // ==========================================================================
-  // Training Readiness
-  // ==========================================================================
 
   describe('trainingReadiness', () => {
     test('inserts raw record with correct fields', async () => {
@@ -1260,10 +1218,6 @@ describe('processGarminData', () => {
       ).toBe(1)
     })
   })
-
-  // ==========================================================================
-  // Intensity Minutes
-  // ==========================================================================
 
   describe('intensityMinutes', () => {
     test('inserts raw record with correct fields', async () => {
@@ -1363,10 +1317,6 @@ describe('processGarminData', () => {
   })
 })
 
-// ============================================================================
-// processActivityDetail
-// ============================================================================
-
 describe('processActivityDetail', () => {
   const user = 'testuser'
 
@@ -1408,7 +1358,6 @@ describe('processActivityDetail', () => {
     // 3 entries × 4 metrics = 12 points
     expect(points).toHaveLength(12)
 
-    // Check first entry
     const t1 = new Date(1700000001000)
     expect(points).toEqual(
       expect.arrayContaining([
@@ -1839,10 +1788,6 @@ describe('processActivityDetail', () => {
     ])
   })
 })
-
-// ============================================================================
-// extractNumericValue
-// ============================================================================
 
 describe('extractNumericValue', () => {
   test('returns plain numbers as-is', () => {

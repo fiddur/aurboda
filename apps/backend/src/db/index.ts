@@ -1,14 +1,8 @@
-/**
- * Barrel re-export for all database modules.
- *
- * All consumers can continue importing from './db.ts' or '../db' unchanged.
- */
-
-// Types (interfaces & type aliases)
 export type {
   Activity,
   ActivityUpdate,
   BucketedMetricData,
+  CachedActorPresentation,
   CalendarConfig,
   DailyAggregate,
   DailyMetricAggregate,
@@ -46,20 +40,22 @@ export type {
   UserSettings,
 } from './types.ts'
 
-// Connection & schema management
 export {
   _setClientForUser,
   dropUserDb,
   getDbForUser,
   initializeSchema,
+  isInvalidPasswordError,
+  listUserNames,
   loginToUserDb,
   makeNewUserDb,
+  migrateAllUsers,
   migrateSchema,
+  migrateSchemaIfNeeded,
   query,
   schemaInitialized,
 } from './connection.ts'
 
-// Raw records
 export {
   getAllScrobbles,
   getScrobbles,
@@ -70,7 +66,6 @@ export {
   type ScrobbleRecord,
 } from './raw-records.ts'
 
-// Time series
 export {
   deleteTimeSeriesBySource,
   deleteTimeSeriesMetric,
@@ -89,7 +84,6 @@ export {
   insertTimeSeries,
 } from './time-series.ts'
 
-// Deduction Rules
 export {
   deleteDeductionRule,
   deleteRuleActivities,
@@ -103,7 +97,6 @@ export {
   updateDeductionRule,
 } from './deduction-rules.ts'
 
-// Activity Type Definitions
 export {
   activityTypeExists,
   deleteActivityTypeDefinition,
@@ -122,12 +115,14 @@ export {
   updateActivityTypeDefinition,
 } from './activity-type-definitions.ts'
 
-// Activities
 export {
+  adoptLegacyActivity,
   checkActivityConflict,
   deleteActivity,
   deleteGarminActivityWithWrongType,
   softDeleteActivityByExternalId,
+  findActivityByExternalId,
+  findDeletedActivityByExternalId,
   findMergeableActivity,
   findMergedGroupForActivity,
   getActivities,
@@ -162,7 +157,6 @@ export {
   updateScreentimeActivityCategoryPath,
 } from './activities/index.ts'
 
-// Locations
 export {
   deleteDetectedLocation,
   deleteNamedLocation,
@@ -183,7 +177,6 @@ export {
   updateNamedLocation,
 } from './locations.ts'
 
-// Productivity
 export {
   batchUpdateResolvedCategory,
   deleteProductivityRecord,
@@ -197,7 +190,6 @@ export {
   restoreProductivityRecord,
 } from './productivity.ts'
 
-// Screentime categories
 export {
   bulkInsertScreentimeCategories,
   deleteAllScreentimeCategories,
@@ -210,23 +202,25 @@ export {
   upsertScreentimeCategory,
 } from './screentime-categories.ts'
 
-// Notes
 export {
   deleteNote,
+  deleteNotesForEntity,
   getNoteById,
+  getNoteRoot,
   getNotesByEntityIds,
   getNotesForEntity,
   getNotesForTimeRange,
+  getRepliesForRootIds,
   getUserNotesJoined,
   insertNote,
+  type NoteFieldUpdates,
   reanchorNotes,
   replaceUserNotes,
-  updateNote,
+  updateNoteFields,
   updateNoteTimesForEntity,
   upsertSyncedNote,
 } from './notes.ts'
 
-// Shared dashboards
 export {
   createSharedDashboard,
   deleteSharedDashboard,
@@ -240,7 +234,6 @@ export {
   updateSharedDashboard,
 } from './shared-dashboards.ts'
 
-// Challenges
 export {
   type ChallengeInput,
   type ChallengeMemberInput,
@@ -263,20 +256,20 @@ export {
   listChallengeMembers,
   listChallengeParticipations,
   listChallenges,
+  listChallengesAwaitingResult,
+  listLeftChallengeUrls,
   listPublicChallenges,
+  markChallengeResultPublished,
   removeChallengeMember,
   updateChallenge,
   updateChallengeMemberCache,
   upsertChallengeMember,
 } from './challenges.ts'
 
-// PostgreSQL error predicates
 export { isMissingDatabase } from './pg-errors.ts'
 
-// Feed actor (ActivityPub keypair)
 export { type ActorKeyPair, getOrCreateActorKeyPair } from './feed-actor.ts'
 
-// Feed followers (remote ActivityPub actors following a user)
 export {
   countFeedFollowers,
   type FeedFollowerInput,
@@ -287,10 +280,10 @@ export {
   removeFeedFollower,
   removeFeedFollowerById,
   setFeedFollowerAccepted,
+  updateFeedFollowerPresentation,
   upsertFeedFollower,
 } from './feed-follower.ts'
 
-// Feed following (actors this user follows)
 export {
   countAcceptedFeedFollowing,
   type FeedFollowingInput,
@@ -303,26 +296,60 @@ export {
   removeFeedFollowing,
   removeFeedFollowingByActor,
   updateFeedFollowingNotify,
+  updateFeedFollowingPresentation,
   upsertFeedFollowing,
 } from './feed-following.ts'
 
-// Home timeline (posts received from followed actors)
 export {
+  countFeedPostReactions,
+  type FeedPostReactionCount,
+  type FeedPostReactionInput,
+  type FeedPostReactionRecord,
+  type FeedReactionInput,
+  type FeedReactionRecord,
+  type FeedReactionState,
+  getFeedReaction,
+  insertFeedReaction,
+  listFeedPostReactions,
+  listFeedReactionsForObjects,
+  removeFeedPostReaction,
+  removeFeedPostReactionByActivity,
+  removeFeedReaction,
+  updateFeedPostReactionPresentation,
+  upsertFeedPostReaction,
+} from './feed-reactions.ts'
+
+export {
+  type BoostedCopyFields,
+  countTimelineRepliesTo,
+  deleteBoostEntry,
   deleteTimelineEntriesByActor,
   deleteTimelineEntryByUri,
+  getTimelineEntryById,
+  getTimelineEntryByObjectUri,
+  hasCachedActorPresentation,
+  isTimelineEntryVisible,
+  listReplyUncheckedEntries,
   listTimelineEntries,
+  listTimelineRepliesTo,
   listUnenrichedAurbodaEntries,
   markEnrichTransientFailure,
+  markTimelineEntryReplyChecked,
+  refreshBoostedCopies,
+  setTimelineEntryReplyInfo,
   setTimelineEntryStructured,
   type TimelineCursor,
   type TimelineEntryInput,
   type TimelineEntryRecord,
+  type TimelinePageRow,
+  type TimelineReplyCount,
+  type TimelineReplyFilter,
   type UnenrichedTimelineEntry,
+  updateTimelineActorPresentation,
   upsertTimelineEntry,
 } from './timeline.ts'
 export { emitTimelineNotify, openTimelineChannel } from './timeline-notify.ts'
 
-// Feed posts
 export {
   type ArticlePostInput,
   countPublicFeedPosts,
@@ -330,9 +357,11 @@ export {
   createArticlePost,
   createChallengePost,
   createFeedPost,
+  createReplyPost,
   deleteFeedPost,
   type FeedPostCursor,
   type FeedPostInput,
+  type FeedPostPageRow,
   type FeedPostPatch,
   type FeedPostRecord,
   findCoveringSharedSeriesWindow,
@@ -341,11 +370,14 @@ export {
   listFeedPostIdsByActivityIds,
   listFeedPosts,
   listPublicFeedPosts,
+  listPublicFeedPostsKeyset,
   listPublicFeedPostsPage,
+  listReplyPostsTo,
+  type PublicFeedPageOpts,
+  type ReplyPostInput,
   updateFeedPost,
 } from './feed.ts'
 
-// Auto-share rules (#903)
 export {
   type AutoshareCandidate,
   type AutoshareRuleInput,
@@ -362,7 +394,6 @@ export {
   updateAutoshareRule,
 } from './autoshare-rules.ts'
 
-// Food Items
 export {
   deleteFoodItem,
   findOrCreateFoodItem,
@@ -384,7 +415,6 @@ export {
   setMealFoodItems,
 } from './meal-food-items.ts'
 
-// Sensitivity flags + food-item junction
 export {
   deleteFoodItemSensitivities,
   deleteSensitivityFlag,
@@ -402,7 +432,6 @@ export {
   updateSensitivityFlag,
 } from './sensitivities.ts'
 
-// Food item ingredients (composite/recipe support)
 export {
   clearIngredients,
   findCompositeParentsOfIngredient,
@@ -413,7 +442,6 @@ export {
   setIngredients,
 } from './food-item-ingredients.ts'
 
-// Food item portions (additional sizings)
 export {
   deleteFoodItemPortion,
   deletePortionsForFoodItem,
@@ -427,7 +455,6 @@ export {
   updateFoodItemPortion,
 } from './food-item-portions.ts'
 
-// Meals
 export {
   type DailyNutrientTotal,
   deleteMeal,
@@ -450,10 +477,8 @@ export {
   updateMeal,
 } from './meals.ts'
 
-// Lab results (legacy)
 export { getLabResults, insertLabResult } from './lab-results.ts'
 
-// Reports (structured lab results)
 export {
   deleteReport,
   getLatestMetricValue,
@@ -464,13 +489,10 @@ export {
   updateReport,
 } from './reports.ts'
 
-// OAuth
 export { getOAuthToken, upsertOAuthToken } from './oauth.ts'
 
-// Sync state
 export { getAllSyncStates, getSyncState, resetSyncState, upsertSyncState } from './sync-state.ts'
 
-// Health Connect
 export {
   deleteHealthConnectRecords,
   getDailyAggregateValue,
@@ -479,7 +501,6 @@ export {
   processHealthConnectData,
 } from './health-connect.ts'
 
-// Outbound sync queue
 export {
   ackOutboundSync,
   enqueueOutboundSync,
@@ -496,18 +517,16 @@ export {
   type PendingOutboundSyncResult,
 } from './outbound-sync.ts'
 
-// Uploaded icons
 export { deleteIcon, getIcon, insertIcon } from './icons.ts'
 
-// Profile avatar
 export {
   deleteProfileAvatar,
   getProfileAvatar,
+  getProfileAvatarVersion,
   type ProfileAvatar,
   upsertProfileAvatar,
 } from './profile-avatar.ts'
 
-// Shared food-item overrides (per-user customizations layered onto central rows)
 export {
   clearSharedFoodItemOverride,
   getSharedFoodItemOverride,
@@ -517,7 +536,6 @@ export {
   type SharedFoodItemOverrideInput,
 } from './shared-food-item-overrides.ts'
 
-// Per-user nutrient recommendation overrides
 export {
   clearUserNutrientRecommendation,
   getUserNutrientRecommendation,
@@ -527,13 +545,10 @@ export {
   type UserNutrientRecommendationRow,
 } from './user-nutrient-recommendations.ts'
 
-// Settings
 export { getUserSettings, upsertUserSettings } from './settings.ts'
 
-// Goals
 export { deleteGoal, getGoals, insertGoal, replaceGoals } from './goals.ts'
 
-// Custom metric definitions
 export {
   bulkInsertCustomMetricDefinitions,
   deleteCustomMetricDefinition,
@@ -544,7 +559,6 @@ export {
   updateCustomMetricDefinition,
 } from './custom-metrics.ts'
 
-// MCP sessions
 export {
   deleteExpiredMcpSessions,
   deleteMcpSession,
@@ -554,7 +568,6 @@ export {
   touchMcpSession,
 } from './mcp-sessions.ts'
 
-// Audit log
 export {
   cleanupAuditLog,
   insertAuditLog,
@@ -563,7 +576,6 @@ export {
   type AuditLogRow,
 } from './audit-log.ts'
 
-// WebAuthn / passkey credentials
 export {
   deleteWebAuthnCredential,
   getWebAuthnCredentialById,
@@ -574,7 +586,6 @@ export {
   type WebAuthnCredentialRow,
 } from './webauthn.ts'
 
-// Row mappers (re-export for consumers that need them directly)
 export {
   mapActivityRow,
   mapDetectedLocationRow,

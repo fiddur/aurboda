@@ -112,8 +112,6 @@ export const deleteSensitivityFlag = async (user: string, id: string): Promise<b
   return (result.rowCount ?? 0) > 0
 }
 
-// ── Junction ────────────────────────────────────────────────────────────────
-
 export interface FoodItemSensitivityRow {
   food_item_id: string
   sensitivity_flag_id: string
@@ -202,7 +200,6 @@ export const setFoodItemSensitivities = async (
   }
 }
 
-/** Drop every junction row pointing at this food item. */
 export const deleteFoodItemSensitivities = async (user: string, foodItemId: string): Promise<void> => {
   await query(user, 'DELETE FROM food_item_sensitivities WHERE food_item_id = $1', [foodItemId])
 }

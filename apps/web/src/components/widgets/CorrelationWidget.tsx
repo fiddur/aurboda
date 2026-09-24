@@ -1,6 +1,4 @@
 /**
- * CorrelationWidget - Displays activity impact on HRV.
- *
  * Split into a presentational `CorrelationView` and a fetching container.
  */
 
@@ -12,7 +10,6 @@ import { useEffect, useRef } from 'preact/hooks'
 
 import { fetchActivityImpact } from '../../state/api'
 
-// Phase data for the chart
 interface PhaseData {
   phase: string
   avgHrv: number | null

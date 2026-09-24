@@ -19,9 +19,21 @@
  */
 import type { FeedPost } from '@aurboda/api-spec'
 
-import type { Activity, FeedPostCursor, FeedPostRecord } from '../db/index.ts'
+import type {
+  Activity,
+  FeedPostCursor,
+  FeedPostPageRow,
+  FeedPostReactionCount,
+  FeedPostRecord,
+  TimelineReplyCount,
+} from '../db/index.ts'
 
-import { getActivityById, listFeedPosts } from '../db/index.ts'
+import {
+  countFeedPostReactions,
+  countTimelineRepliesTo,
+  getActivityById,
+  listFeedPosts,
+} from '../db/index.ts'
 import { resolveActivityScalars } from './activitypub/feed-activity.ts'
 import { feedPostContent, formatActivityWindow } from './activitypub/object.ts'
 import {
@@ -32,14 +44,16 @@ import {
 import { decodeKeysetCursor, encodeKeysetCursor } from './keyset-cursor.ts'
 import { resolveActivityWindow } from './queries/index.ts'
 import { getSettings } from './settings.ts'
+import { withReplyCounts } from './timeline-replies.ts'
 
-/** Options for `serializeFeedPost`. */
 export interface SerializeFeedPostOpts {
   /**
    * Attach the FULL structured payload (typed metrics + inline series + route),
    * assembled by the same helper the public structured endpoint uses, so the
-   * author's own card renders exactly what a subscribing peer renders (#1008).
-   * Off by default: the public profile listing and MCP tools skip the weight.
+   * author's own card renders exactly what a subscribing peer renders.
+   * Off by default: MCP listing tools skip the weight, and the public profile
+   * listing attaches structured through its shared per-post LRU instead of
+   * this opt-in.
    */
   includeStructured?: boolean
   /**
@@ -155,6 +169,21 @@ const resolveActivityPresentation = async (
 }
 
 /**
+ * What a `reply` post answers — the target object, its author, and the handle
+ * snapshot naming the federated `Mention`. Every other kind exposes none of it.
+ */
+const replyTargetFields = (
+  record: FeedPostRecord,
+): Pick<FeedPost, 'in_reply_to_actor_uri' | 'in_reply_to_handle' | 'in_reply_to_uri'> =>
+  record.kind === 'reply'
+    ? {
+        in_reply_to_actor_uri: record.in_reply_to_actor_uri ?? undefined,
+        in_reply_to_handle: record.in_reply_to_handle ?? undefined,
+        in_reply_to_uri: record.in_reply_to_uri ?? undefined,
+      }
+    : {}
+
+/**
  * Serialise a stored feed post for the owner-facing REST/MCP surface, enriching
  * it with the shared activity's title/type, the **merged-span** window, and the
  * exact `content` HTML the post federates with — all resolved at query time. A
@@ -193,6 +222,7 @@ export const serializeFeedPost = async (
     include_chart: record.include_chart,
     include_map: record.include_map,
     included_metrics: record.included_metrics,
+    ...replyTargetFields(record),
     kind: record.kind,
     message: record.message ?? undefined,
     metrics,
@@ -208,11 +238,49 @@ export type FeedPostsFetcher = (
   user: string,
   limit: number,
   before?: FeedPostCursor,
-) => Promise<FeedPostRecord[]>
+) => Promise<FeedPostPageRow[]>
+
+/** Batched like/boost tallies for a page of posts — the second DB dependency of `getFeedPage`. */
+export type FeedReactionCountsFetcher = (user: string, postIds: string[]) => Promise<FeedPostReactionCount[]>
+
+/** Batched reply tallies for a page of posts, keyed by each post's object URI. */
+export type FeedReplyCountsFetcher = (user: string, objectUris: string[]) => Promise<TimelineReplyCount[]>
+
+export interface FeedPageOpts extends SerializeFeedPostOpts {
+  /**
+   * Web origin. Present, each post's `reply_count` is looked up by its object
+   * URI (one grouped query per page); absent, the page carries no reply counts.
+   */
+  origin?: string
+}
+
+/**
+ * Attach `like_count` / `boost_count` to a page of serialised posts from ONE
+ * grouped count query. Best-effort: the counts are decoration, so a failed
+ * lookup leaves the page uncounted rather than failing the listing.
+ */
+const withReactionCounts = async (
+  user: string,
+  posts: FeedPost[],
+  fetchCounts: FeedReactionCountsFetcher,
+): Promise<FeedPost[]> => {
+  if (posts.length === 0) return posts
+  const rows = await fetchCounts(
+    user,
+    posts.map((post) => post.id),
+  ).catch(() => [])
+  const tally = new Map<string, number>()
+  for (const row of rows) tally.set(`${row.kind}:${row.post_id}`, row.count)
+  return posts.map((post) => ({
+    ...post,
+    boost_count: tally.get(`announce:${post.id}`) ?? 0,
+    like_count: tally.get(`like:${post.id}`) ?? 0,
+  }))
+}
 
 /**
  * One keyset page of the owner's feed (newest first) plus the cursor for the
- * next page — null when there are no more (#1012). Shared by the REST `GET
+ * next page — null when there are no more. Shared by the REST `GET
  * /feed` route and the MCP `list_feed` tool (parity), like `getTimelinePage`
  * for the home timeline: fetch `limit + 1` rows to detect a next page without a
  * second query, serialise the page, and encode the last row's `(created_at,
@@ -223,22 +291,27 @@ export const getFeedPage = async (
   user: string,
   limit: number,
   cursor: string | undefined,
-  opts: SerializeFeedPostOpts = {},
+  opts: FeedPageOpts = {},
   fetchPosts: FeedPostsFetcher = listFeedPosts,
+  fetchReactionCounts: FeedReactionCountsFetcher = countFeedPostReactions,
+  fetchReplyCounts: FeedReplyCountsFetcher = countTimelineRepliesTo,
 ): Promise<{ posts: FeedPost[]; next_cursor: string | null }> => {
   const decoded = decodeKeysetCursor(cursor)
   const rows = await fetchPosts(user, limit + 1, decoded && { created_at: decoded.ts, id: decoded.id })
   const hasMore = rows.length > limit
   const page = hasMore ? rows.slice(0, limit) : rows
   const last = page[page.length - 1]
+  const posts = await Promise.all(page.map((record) => serializeFeedPost(user, record, opts)))
+  const counted = await withReactionCounts(user, posts, fetchReactionCounts)
   return {
-    next_cursor: hasMore && last ? encodeKeysetCursor(last.created_at, last.id) : null,
-    posts: await Promise.all(page.map((record) => serializeFeedPost(user, record, opts))),
+    next_cursor: hasMore && last ? encodeKeysetCursor(last.cursor_ts, last.id) : null,
+    posts:
+      opts.origin == null ? counted : await withReplyCounts(user, opts.origin, counted, fetchReplyCounts),
   }
 }
 
 /**
- * Resolve what a share of `activity` with `selection` WOULD federate (#902):
+ * Resolve what a share of `activity` with `selection` WOULD federate:
  * the exact `content` HTML (via the same `feedPostContent` used for delivery
  * and the owner card) and the typed scalars — without creating a post. Backs
  * the Share dialog's live preview, so what the user sees before clicking

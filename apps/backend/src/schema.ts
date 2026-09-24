@@ -1,12 +1,12 @@
 /**
- * Database schema definitions for Aurboda.
- *
  * Per-domain table SQL lives in `schema/`; this file assembles the full
  * `createTableStatements` map and the dependency-respecting
  * `tableCreationOrder` array consumed by db/connection.ts and migrate.ts.
  *
  * See docs/data-storage.md for design decisions and data flow documentation.
  */
+
+import { createHash } from 'node:crypto'
 
 import { activitiesTables } from './schema/activities.ts'
 import { locationsTables } from './schema/locations.ts'
@@ -17,7 +17,6 @@ import { reportsTables } from './schema/reports.ts'
 import { socialTables } from './schema/social.ts'
 import { systemTables } from './schema/system.ts'
 
-// Re-export common types from shared api-spec package
 export {
   aurbodaOnlyMetrics,
   aurbodaOnlySources,
@@ -73,6 +72,7 @@ export const tableCreationOrder = [
   'raw_records_indexes',
   'time_series',
   'time_series_indexes',
+  'time_series_updated_at',
   'activity_type_definitions',
   'activity_type_definitions_indexes',
   'activity_type_definitions_seed',
@@ -133,23 +133,30 @@ export const tableCreationOrder = [
   'audit_log',
   'audit_log_indexes',
   'notes',
+  'notes_entity_nullable',
+  'notes_shape_check',
   'notes_indexes',
   'shared_dashboards',
   'shared_dashboards_indexes',
   'challenges',
   'challenges_indexes',
+  'challenges_result_columns',
   'challenge_members',
   'challenge_members_indexes',
   'challenge_participations',
   'challenge_participations_indexes',
+  'challenge_left',
   'feed_posts',
   'feed_posts_article_columns',
   'feed_posts_message_column',
   'feed_posts_challenge_column',
   'feed_posts_autoshare_column',
+  'feed_posts_reply_columns',
   'autoshare_rules',
   'autoshare_suppressions',
   'feed_posts_indexes',
+  'feed_posts_keyset_index',
+  'feed_posts_reply_indexes',
   'feed_tombstone',
   'feed_actor',
   'feed_follower',
@@ -161,8 +168,19 @@ export const tableCreationOrder = [
   'timeline_entry_images',
   'timeline_entry_enrich_attempted',
   'timeline_entry_enrich_attempts',
+  'timeline_entry_reply',
+  'timeline_entry_mentions',
+  'timeline_entry_reply_checked',
+  'timeline_entry_reply_checked_backstamp',
+  'timeline_entry_boost',
   'timeline_entry_indexes',
   'timeline_entry_unenriched_indexes',
+  'timeline_entry_reply_target_indexes',
+  'timeline_entry_reply_unchecked_indexes',
+  'timeline_entry_boost_indexes',
+  'feed_reaction',
+  'feed_post_reaction',
+  'feed_post_reaction_indexes',
   'profile_avatar',
   'mcp_sessions',
   'mcp_sessions_indexes',
@@ -185,3 +203,37 @@ export {
   isHealthConnectSyncableMetric,
   metricToHealthConnectType,
 } from './schema-health-connect.ts'
+
+/**
+ * Bump when the imperative parts of `migrateSchema` change — the backfills and
+ * data fixes that are not expressed in `createTableStatements`. DDL changes are
+ * picked up automatically by the fingerprint below.
+ */
+export const MIGRATION_REVISION = 1
+
+/**
+ * Hash the inputs a migration is derived from. Split out from
+ * `schemaFingerprint` so a test can prove the revision participates without
+ * pinning the real schema's hash.
+ * @internal Exported for testing.
+ */
+export const _hashSchema = (revision: number, statements: [string, string][]): string =>
+  createHash('sha256')
+    .update(JSON.stringify([revision, statements]))
+    .digest('hex')
+    .slice(0, 16)
+
+/**
+ * Identifies the schema this build expects: a hash over every DDL statement in
+ * creation order plus `MIGRATION_REVISION`. A user's database records the
+ * fingerprint it was last migrated to, so `migrateSchema` can skip its ~130
+ * statements when there is nothing to do (#1125).
+ *
+ * A function rather than a module-level constant: cheap, called rarely, and no
+ * module state to go stale.
+ */
+export const schemaFingerprint = (): string =>
+  _hashSchema(
+    MIGRATION_REVISION,
+    tableCreationOrder.map((key) => [key, createTableStatements[key]]),
+  )

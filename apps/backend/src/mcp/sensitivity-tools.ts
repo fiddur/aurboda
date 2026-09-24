@@ -1,7 +1,4 @@
 /**
- * MCP tools for managing user-defined sensitivity flags + assigning them
- * to food items.
- *
  * The set/clear assignment tool is the user-visible answer to issue #704:
  * works for per-user food items AND central library entries (a user can
  * tag the LSV "Hushållsost" as `dairy`), via the soft-pointer junction.

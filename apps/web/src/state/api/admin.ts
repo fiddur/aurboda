@@ -8,6 +8,8 @@ export type SignupMode = 'open' | 'invite_only' | 'closed'
 export interface AdminSettings {
   signup_mode: SignupMode
   admin_count: number
+  gravl_client_id_set: boolean
+  gravl_client_secret_set: boolean
   lastfm_api_key_set: boolean
   oura_client_id_set: boolean
   oura_client_secret_set: boolean
@@ -24,7 +26,6 @@ export interface InvitationResult {
   expires_at: Date
 }
 
-// Fetch admin settings
 export const fetchAdminSettings = async (): Promise<AdminSettings> => {
   const { token } = auth.value
   const response = await axios.get<{ success: boolean } & AdminSettings>(`${API_URL}/admin/settings`, {
@@ -33,6 +34,8 @@ export const fetchAdminSettings = async (): Promise<AdminSettings> => {
 
   return {
     admin_count: response.data.admin_count,
+    gravl_client_id_set: response.data.gravl_client_id_set,
+    gravl_client_secret_set: response.data.gravl_client_secret_set,
     lastfm_api_key_set: response.data.lastfm_api_key_set,
     oura_client_id_set: response.data.oura_client_id_set,
     oura_client_secret_set: response.data.oura_client_secret_set,
@@ -45,9 +48,10 @@ export const fetchAdminSettings = async (): Promise<AdminSettings> => {
   }
 }
 
-// Update admin settings
 export const updateAdminSettings = async (params: {
   signup_mode?: SignupMode
+  gravl_client_id?: string | null
+  gravl_client_secret?: string | null
   lastfm_api_key?: string | null
   oura_client_id?: string | null
   oura_client_secret?: string | null
@@ -67,6 +71,8 @@ export const updateAdminSettings = async (params: {
 
   return {
     admin_count: response.data.admin_count,
+    gravl_client_id_set: response.data.gravl_client_id_set,
+    gravl_client_secret_set: response.data.gravl_client_secret_set,
     lastfm_api_key_set: response.data.lastfm_api_key_set,
     oura_client_id_set: response.data.oura_client_id_set,
     oura_client_secret_set: response.data.oura_client_secret_set,
@@ -79,7 +85,6 @@ export const updateAdminSettings = async (params: {
   }
 }
 
-// Generate invitation
 export const generateInvitation = async (expiryHours?: number): Promise<InvitationResult> => {
   const { token } = auth.value
   const response = await axios.post<{

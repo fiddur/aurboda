@@ -1,4 +1,5 @@
 .challenges-page {
+  box-sizing: border-box;
   max-width: 900px;
   margin: 0 auto;
   padding: 1.5rem;
@@ -23,16 +24,51 @@
   font-size: 0.9rem;
 }
 
-.challenges-columns {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1.5rem;
+/* Time-status groups: Ongoing (prominent) → Upcoming → Ended (collapsed) */
+.challenge-group {
+  margin-bottom: 1.5rem;
 }
 
-@media (max-width: 48em) {
-  .challenges-columns {
-    grid-template-columns: 1fr;
-  }
+.challenge-group h2 {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 0.6rem;
+}
+
+.challenge-group-count {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #047857;
+  background: #d1fae5;
+  border-radius: 999px;
+  padding: 0.1rem 0.55rem;
+}
+
+.challenge-ongoing-dot {
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+  background: #10b981;
+}
+
+.challenge-group-ongoing .challenge-row {
+  border-left: 3px solid #10b981;
+}
+
+.challenge-group-ended summary {
+  cursor: pointer;
+}
+
+.challenge-group-ended summary h2 {
+  display: inline-flex;
+  margin: 0 0 0.4rem;
+  color: #6b7280;
+  font-size: 1.1rem;
+}
+
+.challenge-group-ended .challenge-row {
+  opacity: 0.75;
 }
 
 .challenges-empty,
@@ -79,14 +115,88 @@
   color: #6b7280;
 }
 
+.challenge-row-title {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.challenge-row-badge {
+  font-size: 0.7rem;
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 0.05rem 0.5rem;
+  white-space: nowrap;
+}
+
+.challenge-row-badge-hosted {
+  color: #6d28d9;
+  background: #ede9fe;
+}
+
+.challenge-row-badge-joined {
+  color: #1d4ed8;
+  background: #dbeafe;
+}
+
+.challenge-row-dates {
+  font-size: 0.8rem;
+  color: #6b7280;
+}
+
+.challenge-row-phrase {
+  font-weight: 600;
+}
+
+.challenge-row-phrase-ongoing {
+  color: #047857;
+}
+
+.challenge-row-phrase-upcoming {
+  color: #1d4ed8;
+}
+
 .challenge-row-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.4rem;
 }
 
+.challenge-row-toggle {
+  min-width: 0;
+}
+
+/* Open challenges from people you follow (discovery) */
+.challenge-row-badge-open {
+  color: #92400e;
+  background: #fef3c7;
+}
+
+.challenge-discover-note {
+  font-size: 0.8rem;
+  color: #6b7280;
+  margin: 0.25rem 0 0;
+}
+
 .challenge-row-actions .btn-danger,
+.challenge-row-actions .btn-primary,
 .challenge-create .btn-primary {
   cursor: pointer;
+}
+
+/* Join is the only .btn-primary outside the create form, so it takes whichever
+   global .btn-primary the bundle ends up with — a borderless box that also
+   carries `align-self: flex-start`, which is why it sat 11 px shorter than, and
+   top-aligned against, the View link beside it. Give it the row's own
+   button box (same as .btn-danger below) and let it stretch to the row like
+   every other action, whatever the globals say. */
+.challenge-row-actions .btn-primary {
+  align-self: stretch;
+  padding: 0.375rem 0.75rem;
+  font-size: 0.875rem;
+  border: 1px solid transparent;
+  border-radius: 6px;
 }
 
 .challenge-row-actions .btn-danger {
@@ -98,7 +208,6 @@
   font-size: 0.875rem;
 }
 
-/* Create form */
 .challenge-create {
   margin-top: 2rem;
   padding: 1.25rem;
@@ -127,6 +236,31 @@
   font-size: 0.9rem;
 }
 
+.challenge-create .challenge-checkbox {
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.challenge-create .challenge-checkbox input {
+  margin-top: 0.2rem;
+}
+
+.challenge-create .challenge-checkbox small {
+  display: block;
+  color: #6b7280;
+  font-size: 0.75rem;
+}
+
+.challenge-row-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  color: #374151;
+  cursor: pointer;
+}
+
 .challenge-create-row {
   display: flex;
   gap: 0.75rem;
@@ -141,7 +275,6 @@
   gap: 0.5rem;
 }
 
-/* Public challenge view */
 .public-challenge .challenge-view-actions {
   display: flex;
   align-items: center;
@@ -156,6 +289,15 @@
 
 .challenge-race-chart {
   margin-bottom: 1.5rem;
+}
+
+.challenge-final {
+  margin: 0.75rem 0 0.25rem;
+  font-weight: 600;
+}
+
+.challenge-leaderboard .challenge-winner td {
+  font-weight: 600;
 }
 
 .challenge-leaderboard {
@@ -199,7 +341,51 @@
   .challenges-empty,
   .challenge-view-meta,
   .public-muted,
-  .challenge-row-meta {
+  .challenge-row-meta,
+  .challenge-row-dates,
+  /* The note explaining an incomplete discovery list is the one thing that must
+     stay readable when peers are missing — #6b7280 on the dark page is ~3.6:1. */
+  .challenge-discover-note {
+    color: #9ca3af;
+  }
+
+  .challenge-group-count {
+    color: #6ee7b7;
+    background: #064e3b;
+  }
+
+  .challenge-row-badge-hosted {
+    color: #c4b5fd;
+    background: #3b2a63;
+  }
+
+  .challenge-row-badge-joined {
+    color: #93c5fd;
+    background: #1e3a5f;
+  }
+
+  .challenge-row-badge-open {
+    color: #fcd34d;
+    background: #5a3a0a;
+  }
+
+  .challenge-row-phrase-ongoing {
+    color: #34d399;
+  }
+
+  .challenge-row-phrase-upcoming {
+    color: #60a5fa;
+  }
+
+  .challenge-group-ended summary h2 {
+    color: #9ca3af;
+  }
+
+  .challenge-row-toggle {
+    color: #d1d5db;
+  }
+
+  .challenge-create .challenge-checkbox small {
     color: #9ca3af;
   }
 
