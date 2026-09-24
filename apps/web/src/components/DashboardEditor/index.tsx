@@ -13,6 +13,16 @@ interface DashboardEditorProps {
   onClose: () => void
 }
 
+const metricCardUnits: Record<string, string> = {
+  body_fat: '%',
+  hrv_30day: 'ms',
+  hrv_7day: 'ms',
+  rhr_30day: 'bpm',
+  rhr_7day: 'bpm',
+  weight: 'kg',
+  zone2_weekly: 'min',
+}
+
 const generateWidgetId = () => `widget-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
 
 interface WidgetTemplate {
@@ -175,6 +185,7 @@ export function DashboardEditor({ sectionType, onAddWidget, onClose }: Dashboard
                 onChange={(metric) => {
                   updateConfig('metric', metric)
                   updateConfig('title', getMetricDisplayName(metric))
+                  updateConfig('unit', metricCardUnits[metric] ?? '')
                 }}
               />
             </div>

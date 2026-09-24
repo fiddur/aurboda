@@ -4,7 +4,7 @@
  * payload. The public shared-dashboard renderer reuses `MetricCardView`.
  */
 
-import type { MetricCardConfig, MetricCardData } from '@aurboda/api-spec'
+import { metricCardLookbackDays, type MetricCardConfig, type MetricCardData } from '@aurboda/api-spec'
 
 import { useQuery } from '@tanstack/react-query'
 import { endOfDay, startOfDay, subDays } from 'date-fns'
@@ -74,8 +74,7 @@ const computeDisplay = (
         dynamicSubtitle: max !== null ? `Max: ${Math.round(max).toLocaleString()}` : undefined,
       }
     case 'zone2_weekly':
-      // Preserve the original numeric formatting (`.toFixed(1)`, e.g. "5.0").
-      return { display: value !== null ? Math.round((value * 7) / 60).toFixed(1) : null }
+      return { display: value !== null ? Math.round(value / 60).toString() : null }
     default:
       return {
         display: value !== null ? value.toFixed(1) : null,
@@ -136,12 +135,12 @@ export function MetricCardWidget({ config }: MetricCardWidgetProps) {
   })
 
   const end = endOfDay(new Date())
-  const start30days = startOfDay(subDays(new Date(), 30))
+  const start = startOfDay(subDays(new Date(), metricCardLookbackDays(metric) - 1))
   const apiMetric = metricToApiMetric[metric] ?? metric
 
   const periodSummaryQuery = useQuery({
     enabled: !isBaseline,
-    queryFn: () => fetchPeriodSummary(start30days, end, [apiMetric]),
+    queryFn: () => fetchPeriodSummary(start, end, [apiMetric]),
     queryKey: ['periodSummary', metric],
     staleTime: 5 * 60 * 1000,
   })

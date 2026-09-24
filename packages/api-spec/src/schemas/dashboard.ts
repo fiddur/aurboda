@@ -35,6 +35,13 @@ export const builtinDashboardMetrics = [
 
 export type BuiltinDashboardMetric = (typeof builtinDashboardMetrics)[number]
 
+/**
+ * Days a metric card summarises. HR zone metrics come back from the period
+ * summary as one total for the whole window rather than a daily average, so
+ * `zone2_weekly` asks for exactly the week it shows.
+ */
+export const metricCardLookbackDays = (metric: string): number => (metric === 'zone2_weekly' ? 7 : 30)
+
 /** Any non-empty string, so custom metrics work too. */
 export const dashboardMetricSchema = z.string().min(1).meta({
   description: 'Metric name (built-in or custom)',
