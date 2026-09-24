@@ -7,6 +7,7 @@ import type { GravlWorkoutDetail, GravlWorkoutSummary } from './types.ts'
 vi.mock('../../db/index.ts', () => ({
   adoptLegacyActivity: vi.fn(),
   findActivityByExternalId: vi.fn(),
+  findDeletedActivityByExternalId: vi.fn(),
   getAllSyncStates: vi.fn(),
   getSyncState: vi.fn(),
   insertActivity: vi.fn(),
@@ -70,6 +71,7 @@ const makeDeps = (
   const deps: GravlSyncDeps = {
     auditError: vi.fn(),
     auditInfo: vi.fn(),
+    findDeletedActivityByExternalId: vi.fn().mockResolvedValue(null),
     getSyncState: vi.fn().mockResolvedValue(state),
     now: () => NOW,
     processWorkout: vi.fn(async (_user, detail) => outcomes[detail.id] ?? 'created'),
@@ -209,6 +211,7 @@ describe('syncGravlWorkouts', () => {
 describe('enrichGravlWorkout', () => {
   const enrichDeps = (state: SyncState | null, processWorkout = vi.fn().mockResolvedValue('enriched')) => ({
     auditInfo: vi.fn(),
+    findDeletedActivityByExternalId: vi.fn().mockResolvedValue(null),
     getSyncState: vi.fn().mockResolvedValue(state),
     processWorkout,
   })
@@ -248,6 +251,25 @@ describe('enrichGravlWorkout', () => {
     vi.useRealTimers()
     expect(client.getWorkout).not.toHaveBeenCalled()
     expect(deps.auditInfo).toHaveBeenCalled()
+  })
+
+  it('skips a re-delivered workout whose copy is already tombstoned, without spending a request', async () => {
+    const client = makeClient()
+    const deps = enrichDeps(null)
+    deps.findDeletedActivityByExternalId.mockResolvedValue({ id: 'act-1' })
+    expect(await enrichGravlWorkout('alice', client, 'a', deps)).toBe('skipped')
+    expect(deps.findDeletedActivityByExternalId).toHaveBeenCalledWith('alice', 'gravl', 'gravl-workout-a')
+    expect(client.getAccessToken).not.toHaveBeenCalled()
+    expect(client.getWorkout).not.toHaveBeenCalled()
+    expect(deps.processWorkout).not.toHaveBeenCalled()
+  })
+
+  it('fetches the detail as usual when no tombstone exists', async () => {
+    const client = makeClient()
+    const deps = enrichDeps(null)
+    expect(await enrichGravlWorkout('alice', client, 'a', deps)).toBe('enriched')
+    expect(client.getWorkout).toHaveBeenCalledWith('gat', 'a')
+    expect(deps.processWorkout).toHaveBeenCalledWith('alice', expect.objectContaining({ id: 'a' }))
   })
 })
 

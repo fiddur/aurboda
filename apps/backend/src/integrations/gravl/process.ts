@@ -58,6 +58,7 @@ export interface GravlSetRecord {
 
 export interface GravlProcessDeps {
   adoptLegacyActivity: typeof adoptLegacyActivity
+  auditInfo: typeof auditInfo
   findActivityByExternalId: typeof findActivityByExternalId
   insertActivity: typeof insertActivity
   insertRawRecord: typeof insertRawRecord
@@ -68,6 +69,7 @@ export interface GravlProcessDeps {
 
 const defaultDeps: GravlProcessDeps = {
   adoptLegacyActivity,
+  auditInfo,
   findActivityByExternalId,
   insertActivity,
   insertRawRecord,
@@ -80,8 +82,6 @@ const defaultDeps: GravlProcessDeps = {
 export const isExternalWorkout = (workout: { type: string }): boolean =>
   workout.type.toLowerCase() === 'external'
 
-// Compared lowercased: the API serialises these enums in lower camelCase
-// while Gravl's docs spell them in PascalCase.
 const setKind = (setType: GravlSet['setType']): GravlSetKind => {
   switch (setType.toLowerCase()) {
     case 'warmup':
@@ -216,7 +216,7 @@ export const removeExternalGravlWorkout = async (
 
   await deps.softDeleteActivityByExternalId(user, 'gravl', externalId)
   await deps.materializeSuperseded(user, existing.start_time)
-  auditInfo(user, 'sync', 'Removed Health Connect copy of external Gravl workout', {
+  deps.auditInfo(user, 'sync', 'Removed Health Connect copy of external Gravl workout', {
     activity_id: existing.id,
     workout_id: workoutId.toLowerCase(),
   })

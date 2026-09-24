@@ -86,7 +86,7 @@ Removals are reported in the audit log only; they do not change the three counte
 
 ### Triggered by Health Connect
 
-When the Android app uploads a Gravl session, the backend enqueues an enrichment job for that workout id. A minute later (retried with backoff if Gravl is still saving) the sets are attached — minute-scale latency instead of waiting for the poll. See [Health Connect → Source identity](./health-connect.md#source-identity).
+When the Android app uploads a Gravl session, the backend enqueues an enrichment job for that workout id. A minute later (retried with backoff if Gravl is still saving) the sets are attached — minute-scale latency instead of waiting for the poll. See [Health Connect → Source identity](./health-connect.md#source-identity). Once a copy has been removed as an `External` round-trip, a later Health Connect re-delivery of the same session is dropped on the tombstone without spending a Gravl API request.
 
 ### Background polling
 

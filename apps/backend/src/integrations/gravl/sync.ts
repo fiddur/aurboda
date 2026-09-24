@@ -23,8 +23,14 @@ import type { GravlClient } from './client.ts'
 import type { GravlProcessOutcome } from './process.ts'
 import type { GravlWorkoutDetail } from './types.ts'
 
-import { getAllSyncStates, getSyncState, upsertSyncState } from '../../db/index.ts'
+import {
+  findDeletedActivityByExternalId,
+  getAllSyncStates,
+  getSyncState,
+  upsertSyncState,
+} from '../../db/index.ts'
 import { auditError, auditInfo } from '../../services/audit-log.ts'
+import { gravlWorkoutExternalId } from '../../services/source-identity.ts'
 import { isGravlAuthFailure, isGravlRateLimit } from './client.ts'
 import { isExternalWorkout, processGravlWorkout, removeExternalGravlWorkout } from './process.ts'
 
@@ -42,6 +48,7 @@ const RATE_LIMIT_FALLBACK_MINUTES = 5
 export interface GravlSyncDeps {
   auditError: typeof auditError
   auditInfo: typeof auditInfo
+  findDeletedActivityByExternalId: typeof findDeletedActivityByExternalId
   getSyncState: typeof getSyncState
   now: () => Date
   processWorkout: (user: string, detail: GravlWorkoutDetail) => Promise<GravlProcessOutcome>
@@ -52,6 +59,7 @@ export interface GravlSyncDeps {
 const defaultDeps = (): GravlSyncDeps => ({
   auditError,
   auditInfo,
+  findDeletedActivityByExternalId,
   getSyncState,
   now: () => new Date(),
   processWorkout: (user, detail) => processGravlWorkout(user, detail),
@@ -177,18 +185,27 @@ export const syncGravlWorkouts = async (
  * Fetch and store one workout by id — the enrichment path taken when Health
  * Connect delivers a Gravl session (#1080). Throws on API failure so the
  * queue can retry; returns 'removed' when the workout turned out to be an
- * external round-trip whose copy we dropped, and 'skipped' while a rate-limit
- * hold is in force (the next poll re-covers the workout).
+ * external round-trip whose copy we dropped, and 'skipped' either while a
+ * rate-limit hold is in force (the next poll re-covers the workout) or when the
+ * copy is already tombstoned.
  */
 export const enrichGravlWorkout = async (
   user: string,
   client: GravlClient,
   workoutId: string,
-  deps: Pick<GravlSyncDeps, 'auditInfo' | 'getSyncState' | 'processWorkout'> = defaultDeps(),
+  deps: Pick<
+    GravlSyncDeps,
+    'auditInfo' | 'findDeletedActivityByExternalId' | 'getSyncState' | 'processWorkout'
+  > = defaultDeps(),
 ): Promise<GravlProcessOutcome> => {
   const state = await deps.getSyncState(user, GRAVL_PROVIDER, GRAVL_DATA_TYPE)
   if (isRateLimited(state)) {
     deps.auditInfo(user, 'sync', 'Gravl enrichment skipped - rate limited', { workout_id: workoutId })
+    return 'skipped'
+  }
+  // The copy was already removed as an external round-trip, and the tombstone
+  // blocks re-insert, so the detail request would buy nothing.
+  if (await deps.findDeletedActivityByExternalId(user, 'gravl', gravlWorkoutExternalId(workoutId))) {
     return 'skipped'
   }
   const token = await client.getAccessToken(user)

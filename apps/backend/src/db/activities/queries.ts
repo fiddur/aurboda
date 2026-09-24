@@ -201,6 +201,27 @@ export const findActivityByExternalId = async (
 }
 
 /**
+ * The tombstone lookup: the soft-deleted activity for a provider identity, if any.
+ * Callers use it to tell "we deliberately removed this" from "we have never seen
+ * this" — `findActivityByExternalId` returns null for both.
+ */
+export const findDeletedActivityByExternalId = async (
+  user: string,
+  source: string,
+  externalId: string,
+): Promise<Activity | null> => {
+  const result = await query(
+    user,
+    `SELECT ${ACTIVITY_COLUMNS_ALIAS}
+     FROM activities a
+     WHERE a.source = $1 AND a.external_id = $2 AND a.deleted_at IS NOT NULL
+     LIMIT 1`,
+    [source, externalId],
+  )
+  return result.rows.length > 0 ? mapActivityRow(result.rows[0]) : null
+}
+
+/**
  * Get activities that have a garmin_activity_id but haven't had their
  * per-second detail data synced yet. Includes merged activities (source may be
  * 'health_connect' or 'aurboda' after merging).

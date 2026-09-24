@@ -30,6 +30,7 @@ export {
 export {
   checkActivityConflict,
   findActivityByExternalId,
+  findDeletedActivityByExternalId,
   findMergeableActivity,
   getActivities,
   getActivitiesByCategory,
