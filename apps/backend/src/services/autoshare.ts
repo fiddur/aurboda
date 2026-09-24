@@ -1,5 +1,5 @@
 /**
- * Auto-share rule evaluation (#903): when activities in a mutation window have
+ * Auto-share rule evaluation: when activities in a mutation window have
  * SETTLED (the queue delays evaluation past the merge/enrich/re-sync churn),
  * publish the ones matching an enabled rule to the federated feed — exactly as
  * a manual share with the rule's template would.
@@ -170,7 +170,6 @@ export const evaluateAutoshareWindow = async (
   return created
 }
 
-/** How far back the preview samples. */
 export const PREVIEW_SAMPLE_DAYS = 30
 
 /**

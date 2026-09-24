@@ -1,6 +1,4 @@
 /**
- * Oura webhook lifecycle manager.
- *
  * Encapsulates the enable/disable/shutdown logic so it can be called
  * both at startup (from api.ts) and at runtime (from admin settings).
  *
@@ -74,7 +72,6 @@ export const createOuraWebhookManager = (deps: OuraWebhookManagerDeps): OuraWebh
       await disable()
     }
 
-    // Get or generate verification token
     let verificationToken = await deps.centralDb.getServerSetting('oura_webhook_verification_token')
     if (!verificationToken) {
       verificationToken = randomBytes(32).toString('hex')
@@ -91,14 +88,12 @@ export const createOuraWebhookManager = (deps: OuraWebhookManagerDeps): OuraWebh
       verificationToken,
     })
 
-    // Create webhook router
     webhookRouter = createOuraWebhookRouter({
       getUsernameByOuraUserId: (ouraUserId) => deps.centralDb.getUsernameByOuraUserId(ouraUserId),
       syncOuraDataTypeForUser: deps.syncOuraDataTypeForUser,
       verificationToken,
     })
 
-    // Create subscription service
     webhookService = createOuraWebhookService({
       createSubscription: (dataType, eventType) => webhookApi.createSubscription(dataType, eventType),
       deleteLocalSubscription: (id) => deps.centralDb.deleteOuraWebhookSubscription(id),
@@ -131,7 +126,6 @@ export const createOuraWebhookManager = (deps: OuraWebhookManagerDeps): OuraWebh
       webhookService.stopRenewalTimer()
     }
 
-    // Clean up remote subscriptions and local tracking
     try {
       await deps.centralDb.deleteAllOuraWebhookSubscriptions()
     } catch (error) {

@@ -201,10 +201,7 @@ function GravlSyncSection({
         if (result?.status === 'success') {
           setSyncStatus('done')
           setSyncMessage(
-            `${result.workouts_processed} workout(s): ${result.activities_enriched} enriched, ${result.activities_created} created` +
-              (result.activities_retracted > 0
-                ? `, ${result.activities_retracted} stale import(s) removed`
-                : ''),
+            `${result.workouts_processed} workout(s): ${result.activities_enriched} enriched, ${result.activities_created} created`,
           )
           await queryClient.invalidateQueries()
         } else {

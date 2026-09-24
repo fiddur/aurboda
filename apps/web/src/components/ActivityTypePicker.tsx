@@ -24,7 +24,6 @@ const toSnakeCase = (s: string): string =>
     .replaceAll(/^_|_$/g, '')
     .replaceAll(/_+/g, '_') || ''
 
-/** Render dropdown list items. */
 function DropdownItems({
   flatList,
   isNewType,

@@ -1,14 +1,4 @@
-/**
- * Outbound sync queue operations.
- *
- * Manages the queue of changes that need to be pushed to Health Connect
- * from the Android app.
- */
 import { query } from './connection.ts'
-
-// ============================================================================
-// Types
-// ============================================================================
 
 export type OutboundSyncOperation = 'insert' | 'update' | 'delete'
 export type OutboundSyncStatus = 'pending' | 'synced' | 'failed'
@@ -36,13 +26,7 @@ export interface EnqueueOutboundSyncInput {
   payload: Record<string, unknown>
 }
 
-// ============================================================================
-// Queue Operations
-// ============================================================================
-
 /**
- * Add an entry to the outbound sync queue.
- *
  * Dedup behaviour by `(entity_type, entity_id)`:
  * - `update` / `delete`: supersede (mark synced) any prior pending entries,
  *   then enqueue this one.
@@ -60,7 +44,6 @@ export interface EnqueueOutboundSyncInput {
  * and switch the INSERT to `ON CONFLICT … DO UPDATE`.
  */
 export const enqueueOutboundSync = async (user: string, input: EnqueueOutboundSyncInput): Promise<string> => {
-  // For update/delete: supersede any pending entries for the same entity
   if (input.operation === 'update' || input.operation === 'delete') {
     await query(
       user,
@@ -71,8 +54,6 @@ export const enqueueOutboundSync = async (user: string, input: EnqueueOutboundSy
     )
   }
 
-  // For insert: if a pending insert for the same entity already exists,
-  // update its payload (latest value wins) and return the existing id.
   if (input.operation === 'insert') {
     const existing = await query(
       user,
@@ -99,8 +80,6 @@ export const enqueueOutboundSync = async (user: string, input: EnqueueOutboundSy
 }
 
 /**
- * Get pending outbound sync entries.
- *
  * Ordered newest-first so recent user actions (exercises, weight entries) are
  * synced immediately instead of being starved by bulk historical data.
  *
@@ -125,7 +104,6 @@ export const getPendingOutboundSync = async (
     [],
   )
 
-  // Get total pending count and entries in a single round-trip
   const countResult = await query(
     user,
     `SELECT COUNT(*)::int AS total FROM outbound_sync_queue WHERE status = 'pending'`,
@@ -152,10 +130,6 @@ export const getPendingOutboundSync = async (
   }
 }
 
-/**
- * Acknowledge that an outbound sync entry was successfully written to Health Connect.
- * Updates the status and stores the HC-assigned record ID.
- */
 export const ackOutboundSync = async (user: string, id: string, hcRecordId?: string): Promise<boolean> => {
   const result = await query(
     user,
@@ -168,9 +142,6 @@ export const ackOutboundSync = async (user: string, id: string, hcRecordId?: str
   return (result.rowCount ?? 0) > 0
 }
 
-/**
- * Mark an outbound sync entry as failed.
- */
 export const failOutboundSync = async (user: string, id: string): Promise<boolean> => {
   const result = await query(
     user,
@@ -183,10 +154,7 @@ export const failOutboundSync = async (user: string, id: string): Promise<boolea
   return (result.rowCount ?? 0) > 0
 }
 
-/**
- * Find the HC record ID for an entity that was previously synced to Health Connect.
- * Used when deleting/updating an entity that may have a corresponding HC record.
- */
+/** Used when deleting/updating an entity that may have a corresponding HC record. */
 export const findHcRecordId = async (
   user: string,
   entityType: string,
@@ -204,18 +172,8 @@ export const findHcRecordId = async (
   return result.rows[0]?.hc_record_id as string | undefined
 }
 
-// ============================================================================
-// Failure Reporting & Retry
-// ============================================================================
-
 const MAX_RETRIES = 5
 
-/**
- * Report a sync failure for an outbound sync entry.
- *
- * Increments fail_count and stores the failure reason. If fail_count reaches
- * MAX_RETRIES, marks the entry as 'failed'. Otherwise keeps it 'pending' for retry.
- */
 export const reportSyncFailure = async (
   user: string,
   id: string,
@@ -240,11 +198,6 @@ export const reportSyncFailure = async (
   return { fail_count, retrying: fail_count < MAX_RETRIES }
 }
 
-/**
- * Re-queue a failed or synced outbound sync entry for retry.
- *
- * Resets the entry back to 'pending' with fail_count = 0 and clears fail_reason.
- */
 export const requeueOutboundSync = async (user: string, id: string): Promise<boolean> => {
   const result = await query(
     user,
@@ -257,11 +210,6 @@ export const requeueOutboundSync = async (user: string, id: string): Promise<boo
   return (result.rowCount ?? 0) > 0
 }
 
-/**
- * Get outbound sync history including completed and failed entries.
- *
- * Returns ALL entries regardless of status, ordered by created_at DESC.
- */
 export const getOutboundSyncHistory = async (user: string, limit = 50): Promise<OutboundSyncEntry[]> => {
   const result = await query(
     user,
@@ -275,10 +223,6 @@ export const getOutboundSyncHistory = async (user: string, limit = 50): Promise<
 
   return result.rows.map(mapOutboundSyncRow)
 }
-
-// ============================================================================
-// Row Mapper
-// ============================================================================
 
 const mapOutboundSyncRow = (row: Record<string, unknown>): OutboundSyncEntry => ({
   created_at: new Date(row.created_at as string),

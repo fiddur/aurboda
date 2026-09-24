@@ -1,7 +1,4 @@
 /**
- * Render feed-post attachment images (a metric line chart and a GPS route map)
- * as PNGs, from raw series / coordinate data.
- *
  * The chart SVG is built by the shared `buildChartSvg` renderer (so the feed PNG
  * and the crisp `image/svg+xml` path stay one implementation) and rasterized here
  * with `sharp`. The route map
@@ -54,12 +51,6 @@ const mapWithConcurrency = async <T, R>(
 
 const svgToPng = (svg: string): Promise<Buffer> => sharp(Buffer.from(svg)).png().toBuffer()
 
-/**
- * A metric line chart (e.g. heart rate) rasterized to PNG for the feed
- * attachment. The SVG itself is built by the shared `buildChartSvg` renderer (so
- * the `image/svg+xml` and PNG paths stay one implementation); this only adds the
- * `sharp` rasterization.
- */
 export const renderChartPng = (
   series: [Date, number][],
   opts: { color?: string; label?: string } = {},

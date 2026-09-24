@@ -1,6 +1,4 @@
 /**
- * MCP shared dashboard tools.
- *
  * CRUD for the user's published dashboards (the same capability as the
  * `/shared-dashboards` REST endpoints). Public viewing is web-only and has no
  * MCP tool. Responses include the `slug` so a URL can be constructed; the

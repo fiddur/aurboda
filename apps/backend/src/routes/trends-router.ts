@@ -1,10 +1,5 @@
 import type { RequestHandler } from 'express'
 
-/**
- * Trends route group.
- *
- * Handles: /trends
- */
 import { type TrendQuery, trendQuerySchema, type TrendResponse } from '@aurboda/api-spec'
 
 import { getCustomMetrics } from '../services/mutations.ts'
@@ -38,7 +33,6 @@ export const createTrendsRouter = (authMiddleware: RequestHandler): TypedRouter 
         : undefined
       const user = req.user!
 
-      // Require pattern or tag_definition_id
       if (!pattern && !tag_definition_id) {
         return res
           .status(400)

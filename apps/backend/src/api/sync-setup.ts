@@ -69,7 +69,6 @@ export const mountSyncRouter = ({
   sourceEnrichQueue,
   activityNotifier,
 }: SyncSetupDeps): void => {
-  // Transform SyncState to ProviderSyncStatus format (undefined -> null)
   const transformSyncStates = async (user: string, provider: string) => {
     const states = await getAllSyncStates(user, provider)
     return states.map((s) => ({

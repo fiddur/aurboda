@@ -1,5 +1,4 @@
 /**
- * Deduction Rule detail/edit page.
  * Handles both editing existing rules and creating new ones (/deduction-rules/new).
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -22,10 +21,6 @@ import {
 } from '../../state/api'
 import { auth } from '../../state/auth'
 import './style.css'
-
-// ============================================================================
-// Field components
-// ============================================================================
 
 function TextField({
   label,
@@ -130,10 +125,6 @@ function OutputDataEditor({
   )
 }
 
-// ============================================================================
-// Unified rule form
-// ============================================================================
-
 interface RuleFormFields {
   conditions: DeductionRuleCondition[]
   enabled: boolean
@@ -208,8 +199,6 @@ function RuleForm({ id, rule }: { id?: string; rule?: DeductionRule }) {
     }
   }, [rule])
 
-  // ── Mutations ──
-
   const updateMutation = useMutation({
     mutationFn: (body: Parameters<typeof updateDeductionRule>[1]) => updateDeductionRule(id!, body),
     onMutate: () => setSaveStatus({ status: 'saving' }),
@@ -241,8 +230,6 @@ function RuleForm({ id, rule }: { id?: string; rule?: DeductionRule }) {
     onSuccess: (result) => setPreviewResult(result),
   })
 
-  // ── Field helpers ──
-
   const autoSave = useCallback(
     (body: Parameters<typeof updateDeductionRule>[1]) => {
       if (!isNew) updateMutation.mutate(body)
@@ -265,8 +252,6 @@ function RuleForm({ id, rule }: { id?: string; rule?: DeductionRule }) {
   }, [fields.conditions, autoSave])
 
   const canSubmit = Boolean(fields.name && fields.outputType)
-
-  // ── Render ──
 
   return (
     <div class="data-sources-page">
@@ -450,10 +435,6 @@ function RuleForm({ id, rule }: { id?: string; rule?: DeductionRule }) {
     </div>
   )
 }
-
-// ============================================================================
-// Main export — fetches data for edit, dispatches to RuleForm
-// ============================================================================
 
 function EditRuleLoader({ id }: { id: string }) {
   const { data: rule, isLoading } = useQuery({

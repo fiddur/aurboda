@@ -26,7 +26,6 @@ export interface InvitationResult {
   expires_at: Date
 }
 
-// Fetch admin settings
 export const fetchAdminSettings = async (): Promise<AdminSettings> => {
   const { token } = auth.value
   const response = await axios.get<{ success: boolean } & AdminSettings>(`${API_URL}/admin/settings`, {
@@ -49,7 +48,6 @@ export const fetchAdminSettings = async (): Promise<AdminSettings> => {
   }
 }
 
-// Update admin settings
 export const updateAdminSettings = async (params: {
   signup_mode?: SignupMode
   gravl_client_id?: string | null
@@ -87,7 +85,6 @@ export const updateAdminSettings = async (params: {
   }
 }
 
-// Generate invitation
 export const generateInvitation = async (expiryHours?: number): Promise<InvitationResult> => {
   const { token } = auth.value
   const response = await axios.post<{

@@ -2,6 +2,11 @@
   display: flex;
   flex-direction: column;
   height: 100%;
+  /* Size containment keeps the page from contributing its content height to
+     the shell: on narrow screens .app-content is height: auto, so without it a
+     long list inflates the shell past the viewport, the document scrolls and
+     the map ends up filling the screen with no way to scroll back past it. */
+  contain: size;
   padding: 1rem;
 }
 
@@ -46,7 +51,6 @@
   font-size: 0.9rem;
 }
 
-/* Main content split layout */
 .places-content {
   display: flex;
   flex: 1;
@@ -55,7 +59,6 @@
   overflow: hidden;
 }
 
-/* Places list panel */
 .places-list {
   display: flex;
   flex-direction: column;
@@ -82,7 +85,6 @@
   background: #f9fafb;
 }
 
-/* Place item */
 .place-item {
   padding: 0.75rem;
   margin-bottom: 0.25rem;
@@ -132,7 +134,6 @@
   margin-top: 0.25rem;
 }
 
-/* Transit item */
 .transit-item {
   border-left: 2px dashed #d1d5db;
   margin-left: 0.5rem;
@@ -141,7 +142,6 @@
   font-size: 0.9em;
 }
 
-/* Map container */
 .map-container {
   flex: 1;
   min-width: 300px;
@@ -159,13 +159,11 @@
   color: #9ca3af;
 }
 
-/* Leaflet map overrides */
 .map-container .leaflet-container {
   height: 100%;
   width: 100%;
 }
 
-/* Naming modal */
 .modal-overlay {
   position: fixed;
   top: 0;
@@ -295,7 +293,6 @@
   cursor: not-allowed;
 }
 
-/* Loading and error states */
 .loading,
 .error {
   text-align: center;
@@ -307,7 +304,6 @@
   color: #dc2626;
 }
 
-/* Dark mode */
 @media (prefers-color-scheme: dark) {
   .places-header h1 {
     color: #f3f4f6;
@@ -378,7 +374,6 @@
   }
 }
 
-/* Responsive */
 @media (max-width: 768px) {
   .places-page {
     padding: 0.5rem;
@@ -395,7 +390,9 @@
 
   .places-list {
     width: 100%;
-    max-height: 40vh;
+    /* Not vh: the Android WebView resolves viewport units to 0, which would
+       collapse the list behind overflow: hidden (see EmbeddedWebScreen.kt). */
+    max-height: 40%;
     flex-shrink: 0;
   }
 

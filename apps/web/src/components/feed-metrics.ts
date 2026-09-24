@@ -31,7 +31,6 @@ export const SERIES_METRICS: { key: MetricType; label: string }[] = [
   { key: 'stress_level', label: 'Stress' },
 ]
 
-/** Fallback default summary selection when the activity's chart metrics aren't known. */
 export const DEFAULT_SUMMARY = ['duration', 'distance', 'heart_rate_avg', 'heart_rate_max', 'calories']
 
 /**
@@ -121,8 +120,6 @@ export const buildShareBody = (sel: ShareSelection): ShareActivityBody => ({
   visibility: sel.visibility,
 })
 
-/** Human label for a stored `included_metrics` key (falls back to the raw key). */
 export const summaryLabel = (key: string): string => SUMMARY_METRICS.find((m) => m.key === key)?.label ?? key
 
-/** Human label for a stored `series_metrics` key (falls back to the raw key). */
 export const seriesLabel = (key: string): string => SERIES_METRICS.find((m) => m.key === key)?.label ?? key

@@ -54,7 +54,6 @@ export const feedStructuredMetricSchema = z
 
 export type FeedStructuredMetric = z.infer<typeof feedStructuredMetricSchema>
 
-/** One shared high-resolution series: a metric plus its bucketed samples over the activity window. */
 export const feedStructuredSeriesSchema = z
   .object({
     bucket: z.string().meta({ description: 'Effective bucket granularity (e.g. `5s`)' }),
@@ -128,10 +127,6 @@ export const feedStructuredActivitySchema = feedStructuredSchema
 
 export type FeedStructuredActivity = z.infer<typeof feedStructuredActivitySchema>
 
-// =============================================================================
-// Article structured enrichment (FeedStructuredArticle)
-// =============================================================================
-
 /**
  * A resolved prose block: the author's raw markdown, unmodified. Rendered
  * through the receiver's own sanitising markdown renderer (the same `#910`
@@ -199,7 +194,6 @@ export type FeedStructuredArticleCorrelationBlock = z.infer<
   typeof feedStructuredArticleCorrelationBlockSchema
 >
 
-/** One resolved article content block (prose, chart, or correlation). */
 export const feedStructuredArticleBlockSchema = z
   .discriminatedUnion('type', [
     feedStructuredArticleProseBlockSchema,

@@ -1,6 +1,4 @@
 /**
- * Central nutrient recommendation defaults (NNR2023 seed).
- *
  * Lives in the central database — every user starts from the same curated
  * Nordic Nutrition Recommendations baseline. Per-user customization happens
  * via `user_nutrient_recommendations` in each user's own DB; this module

@@ -1,10 +1,5 @@
 import type { RequestHandler } from 'express'
 
-/**
- * Settings and goals route group.
- *
- * Handles: /user/settings, /goals/progress
- */
 import {
   type GoalsProgressResponse,
   type UpdateSettingsInput,

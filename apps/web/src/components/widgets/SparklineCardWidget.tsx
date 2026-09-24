@@ -1,6 +1,4 @@
 /**
- * SparklineCardWidget - Displays a metric value with a small sparkline chart.
- *
  * Split into a presentational `SparklineCardView` and a fetching container.
  */
 
@@ -24,7 +22,6 @@ import {
 import { SparklineChart } from '../SparklineChart'
 import { TrendIndicator } from './TrendIndicator'
 
-// Map metric names to display titles
 const metricTitles: Record<string, string> = {
   hrv_rmssd: 'HRV',
   hrv_sleep: 'HRV (Sleep)',
@@ -34,7 +31,6 @@ const metricTitles: Record<string, string> = {
   steps: 'Steps',
 }
 
-// Map metric names to API fetch functions
 const metricFetchers: Record<string, (start: Date, end: Date) => Promise<[Date, number][]>> = {
   hrv_rmssd: fetchHrv,
   hrv_sleep: fetchHrvSleep,
@@ -44,7 +40,6 @@ const metricFetchers: Record<string, (start: Date, end: Date) => Promise<[Date, 
   steps: fetchSteps,
 }
 
-// Map widget metric to API metric name for period summary
 const metricToApiMetric: Record<string, string> = {
   hrv_rmssd: 'hrv_rmssd',
   hrv_sleep: 'hrv_sleep',

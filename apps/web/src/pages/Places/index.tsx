@@ -115,7 +115,6 @@ export const Places = () => {
     }
   }, [placesQuery.data])
 
-  // Initialize Leaflet map
   useEffect(() => {
     if (!mapRef.current || leafletMapRef.current) return
 
@@ -132,14 +131,12 @@ export const Places = () => {
 
     leafletMapRef.current = map
 
-    // Cleanup on unmount
     return () => {
       map.remove()
       leafletMapRef.current = null
     }
   }, [])
 
-  // Update map when selected place changes
   useEffect(() => {
     const map = leafletMapRef.current
     if (!map) return
@@ -147,23 +144,19 @@ export const Places = () => {
     if (selectedPlace && 'lat' in selectedPlace && selectedPlace.lat && selectedPlace.lon) {
       const latLng: L.LatLngExpression = [selectedPlace.lat, selectedPlace.lon]
 
-      // Remove existing marker
       if (markerRef.current) {
         markerRef.current.remove()
       }
 
-      // Add new marker
       const marker = L.marker(latLng).addTo(map)
       const popupContent = 'name' in selectedPlace ? selectedPlace.name : 'Selected Location'
       marker.bindPopup(popupContent).openPopup()
       markerRef.current = marker
 
-      // Center map on the marker
       map.setView(latLng, 15)
     }
   }, [selectedPlace])
 
-  // Resize map when container size changes
   useEffect(() => {
     const map = leafletMapRef.current
     if (!map) return
@@ -203,7 +196,6 @@ export const Places = () => {
 
   const handlePlaceClick = (place: PlaceVisit) => {
     setSelectedPlace(place)
-    // Edit existing named location
     if (place.source === 'named') {
       const named = namedQuery.data?.find((nl) => nl.name === place.name)
       if (named?.id && place.lat && place.lon) {
@@ -213,7 +205,6 @@ export const Places = () => {
       }
       return
     }
-    // Open naming modal for unnamed locations (detected or unknown) with valid coordinates
     if ((place.source === 'detected' || place.source === 'unknown') && place.lat && place.lon) {
       setNamingLocation({ address: place.address, lat: place.lat, lon: place.lon })
       setNameInput(place.address || '')
@@ -232,7 +223,6 @@ export const Places = () => {
       return
     }
 
-    // Use appropriate mutation based on whether it's a detected location
     const placeSource = selectedPlace && 'source' in selectedPlace ? selectedPlace.source : null
     if (placeSource === 'detected') {
       promoteMutation.mutate(
@@ -255,7 +245,6 @@ export const Places = () => {
         },
       )
     } else {
-      // For unknown locations, create a new named location directly
       addNamedMutation.mutate({
         auto_create_activity: autoCreateActivity,
         lat: namingLocation.lat,
@@ -271,7 +260,6 @@ export const Places = () => {
     setAutoCreateActivity(false)
   }
 
-  // Handle escape key to close modal
   useEffect(() => {
     if (!namingLocation) return
 
@@ -395,7 +383,6 @@ export const Places = () => {
         </div>
       </div>
 
-      {/* Naming / Edit Modal */}
       {namingLocation && (
         <div class="modal-overlay" onClick={closeModal}>
           <div class="modal-content" onClick={(e) => e.stopPropagation()}>

@@ -1,6 +1,4 @@
 /**
- * Chart exploration page — configurable trend + bar chart with URL-driven state.
- *
  * Reads/writes config via query params so charts are shareable/bookmarkable:
  *   /chart?source_type=activity_type&pattern=coffee&lookback_days=90&display_period=monthly&half_life_days=15
  *   /chart?source_type=metric&pattern=weight&lookback_days=180&aggregation=mean
@@ -94,7 +92,6 @@ interface ChartState {
   activity_type_id: string
 }
 
-/** Parse URL query params into chart config state. */
 function parseQuery(query: Record<string, string>): ChartState {
   return {
     aggregation: (query.aggregation ?? 'count') as 'count' | 'mean' | 'sum',
@@ -151,7 +148,6 @@ function lookbackToRange(lookbackDays: number): { start: string; end: string } {
   return { end: end.toISOString(), start: start.toISOString() }
 }
 
-/** Simple category picker for screentime categories. */
 function CategoryPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const { data: categories = [] } = useQuery({
     queryFn: fetchScreentimeCategories,
@@ -415,7 +411,6 @@ function TrendDisplay({ params }: { params: FetchTrendParams }) {
   )
 }
 
-/** Compute the end of a bucket given its start and size. */
 const computeBucketEnd = (start: Date, bucketSize: string): Date => {
   const end = new Date(start)
   switch (bucketSize) {
@@ -444,7 +439,6 @@ const computeBucketEnd = (start: Date, bucketSize: string): Date => {
   return end
 }
 
-/** Build a /data URL for a bar click. */
 const buildBarDataHref = (
   info: BarClickInfo,
   pattern: string,
@@ -540,7 +534,6 @@ function BarDisplay({ params }: { params: FetchChartDataParams }) {
   )
 }
 
-/** Generate unique ID for widgets and sections. */
 const generateId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
 
 /**
@@ -624,7 +617,6 @@ function BreakdownMaskPicker({
   )
 }
 
-/** Modal for adding the current chart to a dashboard section. */
 function AddToDashboardModal({ state, onClose }: { state: ChartState; onClose: () => void }) {
   const queryClient = useQueryClient()
   const [title, setTitle] = useState('')

@@ -250,6 +250,49 @@ CREATE INDEX idx_lab_results_category ON lab_results (test_category, test_date D
 - `inflammation` - CRP, ESR
 - `hormones` - Testosterone, cortisol, estrogen
 
+#### `notes` - Comments on Anything
+
+Free-text comments with a polymorphic reference. One table carries all three
+shapes, and `(entity_type, entity_id)` is what distinguishes them. See
+[Comments](features/comments.md) for the feature-level description.
+
+```sql
+CREATE TABLE notes (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    entity_type     VARCHAR(50) NOT NULL,  -- 'activity' | 'productivity' | 'metric' | 'report' | 'meal' | 'note' | 'time'
+    entity_id       TEXT,                  -- NULL only for entity_type = 'time'
+    content         TEXT NOT NULL,
+    source          VARCHAR(50),           -- NULL for user-typed; set for synced comments ('health_connect', 'oura', …)
+    start_time      TIMESTAMPTZ,
+    end_time        TIMESTAMPTZ,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT notes_shape_check CHECK (
+        (entity_type = 'time' AND entity_id IS NULL AND start_time IS NOT NULL)
+        OR (entity_type <> 'time' AND entity_id IS NOT NULL)
+    )
+);
+```
+
+**The three shapes:**
+
+- **On an entity** -- `entity_type` names a real entity and `entity_id` points at
+  it (a UUID, or for metrics the composite key `<iso_time>|<metric>|<source>`).
+  `start_time`/`end_time` are a *cache* of the parent's timing so comments can be
+  queried by time range; they are rewritten whenever the parent moves and are not
+  editable directly.
+- **On a moment** -- `entity_type = 'time'`, `entity_id IS NULL`. `start_time` is
+  required and `end_time` optional; both are user input and editable.
+- **A reply** -- `entity_type = 'note'`, `entity_id` is the root comment's id. It
+  inherits the root's times, so the whole thread sits at one point in time, while
+  its own `created_at` records when it was written. Threads are exactly one level
+  deep: replying to a reply re-anchors to that reply's root.
+
+Replies are never top-level -- `getNotesForTimeRange` and the Health Connect
+notes join both filter `entity_type <> 'note'`. Deleting a thread root deletes
+its replies (done explicitly; there is no FK).
+
 #### `oauth_tokens` - API Credentials
 
 Secure storage for third-party API tokens.
@@ -429,6 +472,59 @@ Support manual data entry with `source = 'manual'` for:
 - Blood pressure readings
 - Lab results
 - Activity logs
+
+## When migrations run
+
+Each user has their own database, so schema changes are applied per user. The
+full `migrateSchema` sweep is roughly 130 statements including full-table
+rewrites of `activities`, `tags`, `food_items` and `user_settings` — minutes on
+a database with years of data — so it is gated by a schema fingerprint and runs
+only when there is something to do (#1125).
+
+- **At signup.** `makeNewUserDb` runs `initializeSchema`, which creates every
+  table from `createTableStatements`.
+- **Just after the server starts listening**, in the background: a
+  `postListenCallbacks` task runs `migrateAllUsers`, which visits every
+  `aurboda_*` database sequentially. This is where a deploy's migrations
+  normally land, before any user asks for anything. One user's broken database
+  is logged and skipped rather than stopping the sweep.
+- **On a user's first authenticated request per server process.** The auth
+  middleware awaits `migrateSchemaIfNeeded` once per user, so no request runs
+  against stale schema. Gated by the fingerprint, so it is normally a single
+  `SELECT` — and after a deploy the background sweep has usually already done
+  the work.
+- **On a schema error.** `query(user, …)` catches PostgreSQL schema errors
+  (missing table or column, and NOT NULL violations from a column that has
+  become nullable), runs a **forced** full sweep once per user via
+  `_runMigrationOnce`, and retries the statement. This is the correctness
+  safety net.
+- **Never at login.** `/login` only authenticates. It used to sweep the schema
+  on every login, which grew with the data until it exceeded the reverse
+  proxy's timeout and every login failed as "Unauthorized" with nothing in the
+  logs (#1123).
+
+### The schema fingerprint
+
+`schemaFingerprint()` (in `apps/backend/src/schema.ts`) is a SHA-256 over every
+DDL statement in `tableCreationOrder`, in order, plus `MIGRATION_REVISION`. A
+successful sweep appends a `schema@<fingerprint>` row to the user's
+`schema_migrations` table; `migrateSchema` returns immediately when that row is
+already present. The rows are append-only, so what is left behind reads as the
+database's migration history.
+
+Two halves, because migrations have two kinds of content:
+
+- **DDL is covered automatically.** Any change to a statement in
+  `createTableStatements`, or to the order they run in, changes the hash. It
+  cannot be forgotten.
+- **`MIGRATION_REVISION` covers the rest** — the imperative backfills and data
+  fixes inside `migrateSchema` that are not expressed as DDL. Bump it when you
+  add or change one, or the sweep will be skipped on databases that already
+  record the current fingerprint.
+
+A sweep that throws records nothing, so it is retried. And the lazy path
+deliberately ignores the fingerprint: a schema error proves something is
+missing, which means the recorded fingerprint is wrong and must not be trusted.
 
 ## Migration Notes
 

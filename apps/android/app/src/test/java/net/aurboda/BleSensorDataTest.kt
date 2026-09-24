@@ -12,15 +12,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.Instant
 
-/**
- * Tests for BLE sensor data classes.
- * These tests verify the data structures used for sensor readings.
- */
 class BleSensorDataTest {
-
-    // ========================================================================
-    // SensorType Tests
-    // ========================================================================
 
     @Test
     fun `SensorType has HEART_RATE value`() {
@@ -45,10 +37,6 @@ class BleSensorDataTest {
         val type = SensorType.valueOf("RUNNING_SPEED_CADENCE")
         assertEquals(SensorType.RUNNING_SPEED_CADENCE, type)
     }
-
-    // ========================================================================
-    // HeartRateSample Tests
-    // ========================================================================
 
     @Test
     fun `HeartRateSample stores basic heart rate`() {
@@ -109,10 +97,6 @@ class BleSensorDataTest {
         assertEquals(40, sample.bpm)
     }
 
-    // ========================================================================
-    // CadenceSample Tests
-    // ========================================================================
-
     @Test
     fun `CadenceSample stores cadence without speed`() {
         val timestamp = Instant.now()
@@ -150,10 +134,6 @@ class BleSensorDataTest {
         assertEquals(sample1, sample2)
         assertNotEquals(sample1, sample3)
     }
-
-    // ========================================================================
-    // DiscoveredDevice Tests
-    // ========================================================================
 
     @Test
     fun `DiscoveredDevice stores all fields`() {
@@ -214,10 +194,6 @@ class BleSensorDataTest {
 
         assertTrue(closeDevice.rssi > farDevice.rssi)
     }
-
-    // ========================================================================
-    // ConnectedDevice Tests
-    // ========================================================================
 
     @Test
     fun `ConnectedDevice stores all fields`() {

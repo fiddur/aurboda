@@ -37,7 +37,6 @@ function AttributionLink({ username }: { username: string }) {
   )
 }
 
-/** Owner view: live, editable dashboard backed by the authed shared-dashboard API. */
 function OwnerSharedDashboard({ username, slug }: { username: string; slug: string }) {
   const queryClient = useQueryClient()
   const [isEditing, setIsEditing] = useState(false)
@@ -115,7 +114,6 @@ function OwnerSharedDashboard({ username, slug }: { username: string; slug: stri
   )
 }
 
-/** Read-only dashboard rendered from already-fetched server data. */
 function ReadOnlyDashboard({
   username,
   name,

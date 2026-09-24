@@ -1,6 +1,4 @@
 /**
- * Social / sharing table SQL.
- *
  * `shared_dashboards` holds a user's published dashboards. It lives in the
  * user's own database (the config is the user's data); the `slug` is globally
  * disambiguated by the `username` in the public URL, so per-DB uniqueness is
@@ -104,6 +102,17 @@ export const socialTables: Record<string, string> = {
     CREATE INDEX IF NOT EXISTS idx_challenge_participations_url ON challenge_participations (challenge_url)
   `,
 
+  // Challenges the user LEFT (#1093). Leaving hard-deletes the participation
+  // row, so the "don't suggest this again" fact needs its own record to survive
+  // the delete — discovery excludes these the way it excludes joined ones.
+  // Keyed by the canonical challenge URL; joining again clears the row.
+  challenge_left: `
+    CREATE TABLE IF NOT EXISTS challenge_left (
+      challenge_url  TEXT PRIMARY KEY,
+      left_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `,
+
   // Federated feed posts: activities the user published to their public feed.
   // `included_metrics` is the shared scalar-summary set; `series_metrics` is the
   // explicit high-resolution opt-in that authorizes the public `/series`
@@ -140,7 +149,6 @@ export const socialTables: Record<string, string> = {
       updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `,
-  // Additive columns for feed_posts tables created before the article kind (all idempotent).
   feed_posts_article_columns: `
     ALTER TABLE feed_posts ADD COLUMN IF NOT EXISTS kind VARCHAR(12) NOT NULL DEFAULT 'activity';
     ALTER TABLE feed_posts ADD COLUMN IF NOT EXISTS article JSONB;
@@ -159,6 +167,22 @@ export const socialTables: Record<string, string> = {
   // (manual or auto) is never auto-shared again. Additive (idempotent).
   feed_posts_autoshare_column: `
     ALTER TABLE feed_posts ADD COLUMN IF NOT EXISTS autoshare_rule_id UUID;
+  `,
+  // Reply posts (kind = 'reply'): what this post answers. The target object id
+  // and its author's actor URI come from the timeline entry being replied to
+  // (never client-supplied); the handle is the `@user@host` snapshot naming the
+  // federated `Mention`, same snapshot rule as timeline_entry.handle. Additive
+  // for pre-existing tables (idempotent).
+  feed_posts_reply_columns: `
+    ALTER TABLE feed_posts ADD COLUMN IF NOT EXISTS in_reply_to_uri TEXT;
+    ALTER TABLE feed_posts ADD COLUMN IF NOT EXISTS in_reply_to_actor_uri TEXT;
+    ALTER TABLE feed_posts ADD COLUMN IF NOT EXISTS in_reply_to_handle TEXT;
+  `,
+  // The owner's own replies to one target, for the thread-snapshot merge.
+  feed_posts_reply_indexes: `
+    CREATE INDEX IF NOT EXISTS idx_feed_posts_in_reply_to
+      ON feed_posts (in_reply_to_uri, created_at)
+      WHERE in_reply_to_uri IS NOT NULL
   `,
 
   // Activities whose feed post the user DELETED (#903): auto-share must never
@@ -205,6 +229,13 @@ export const socialTables: Record<string, string> = {
   feed_posts_indexes: `
     CREATE INDEX IF NOT EXISTS idx_feed_posts_created ON feed_posts (created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_feed_posts_series ON feed_posts USING GIN (series_metrics)
+  `,
+  // The keyset page predicate is row-wise (`(created_at, id) < (…)`), which
+  // needs a multicolumn index in the SAME order to seek instead of scanning
+  // `idx_feed_posts_created` and filtering (#1023). The timeline has the
+  // equivalent one on `(published_at DESC, id DESC)`.
+  feed_posts_keyset_index: `
+    CREATE INDEX IF NOT EXISTS idx_feed_posts_created_id ON feed_posts (created_at DESC, id DESC)
   `,
 
   // Tombstones for deleted public/unlisted feed posts. A post row is hard-deleted
@@ -260,7 +291,6 @@ export const socialTables: Record<string, string> = {
       created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `,
-  // Additive migrations for pre-existing feed_follower tables (all idempotent).
   feed_follower_columns: `
     ALTER TABLE feed_follower ADD COLUMN IF NOT EXISTS id UUID NOT NULL DEFAULT gen_random_uuid();
     ALTER TABLE feed_follower ADD COLUMN IF NOT EXISTS handle TEXT;
@@ -293,7 +323,6 @@ export const socialTables: Record<string, string> = {
       created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `,
-  // Additive migration for pre-existing feed_following tables (idempotent).
   feed_following_notify: `
     ALTER TABLE feed_following ADD COLUMN IF NOT EXISTS notify_on_post BOOLEAN NOT NULL DEFAULT true
   `,
@@ -332,7 +361,6 @@ export const socialTables: Record<string, string> = {
       enrich_attempts SMALLINT NOT NULL DEFAULT 0
     )
   `,
-  // Additive columns for DBs created before the structured-timeline / media features.
   timeline_entry_structured: `
     ALTER TABLE timeline_entry ADD COLUMN IF NOT EXISTS structured JSONB
   `,
@@ -369,6 +397,18 @@ export const socialTables: Record<string, string> = {
     UPDATE timeline_entry SET reply_checked_at = NOW()
     WHERE reply_checked_at IS NULL AND in_reply_to_uri IS NOT NULL
   `,
+  // A boost card: an `Announce` by a followee of a THIRD-PARTY post. The row's
+  // author/content/images/structured columns describe the ORIGINAL post (so the
+  // card renders it), `object_uri` is the *Announce activity* id (globally
+  // unique, so two followees boosting the same post give two cards and a boost
+  // never collides with a direct entry), `boost_of_uri` the announced Note's id,
+  // and `boosted_by_*` the followee who boosted. NULL on a direct entry.
+  timeline_entry_boost: `
+    ALTER TABLE timeline_entry ADD COLUMN IF NOT EXISTS boost_of_uri TEXT;
+    ALTER TABLE timeline_entry ADD COLUMN IF NOT EXISTS boosted_by_actor_uri TEXT;
+    ALTER TABLE timeline_entry ADD COLUMN IF NOT EXISTS boosted_by_handle TEXT;
+    ALTER TABLE timeline_entry ADD COLUMN IF NOT EXISTS boosted_by_display_name TEXT;
+  `,
   // Timeline ordering / keyset pagination is by (published_at DESC, id DESC).
   timeline_entry_indexes: `
     CREATE INDEX IF NOT EXISTS idx_timeline_entry_published
@@ -381,6 +421,76 @@ export const socialTables: Record<string, string> = {
     CREATE INDEX IF NOT EXISTS idx_timeline_entry_unenriched
       ON timeline_entry (published_at DESC, id DESC)
       WHERE structured IS NULL AND enrich_attempted_at IS NULL
+  `,
+  // Comments under the owner's own posts: both the per-post listing and the
+  // batched count for a feed page filter on the reply target, so give them a
+  // partial index instead of a scan of the whole timeline per feed read.
+  timeline_entry_reply_target_indexes: `
+    CREATE INDEX IF NOT EXISTS idx_timeline_entry_in_reply_to
+      ON timeline_entry (in_reply_to_uri, published_at, id)
+      WHERE in_reply_to_uri IS NOT NULL
+  `,
+  // Partial index for the lazy reply/Mention backfill's candidate query
+  // (#1062), like the retro-enrichment one above: once the legacy backlog
+  // drains it is empty, so the no-work case on a timeline read stays cheap.
+  timeline_entry_reply_unchecked_indexes: `
+    CREATE INDEX IF NOT EXISTS idx_timeline_entry_reply_unchecked
+      ON timeline_entry (received_at DESC)
+      WHERE reply_checked_at IS NULL
+  `,
+  // A boost card is found by the Note it announces, not by its own object id:
+  // an author's `Delete` / `Update` of a post has to reach every boost of it,
+  // and `object_uri = $1 OR boost_of_uri = $1` can't use the object_uri unique
+  // index (#1105).
+  timeline_entry_boost_indexes: `
+    CREATE INDEX IF NOT EXISTS idx_timeline_entry_boost_of
+      ON timeline_entry (boost_of_uri)
+      WHERE boost_of_uri IS NOT NULL
+  `,
+
+  // The user's OWN outbound reactions: a `Like` (favourite) or `Announce`
+  // (boost) they sent for a post — remote or local. `id` mints the AS2 activity
+  // id (`{origin}/users/{user}/{likes,announces}/{id}`, `#undo` for the
+  // retraction), so an `Undo` always references exactly the activity that was
+  // delivered. The reacted-to Note's author + their inbox are cached so the Undo
+  // needs no actor re-resolve. UNIQUE (kind, object_uri) makes reacting
+  // idempotent — a second Like of the same post is a no-op, never a second
+  // delivery.
+  feed_reaction: `
+    CREATE TABLE IF NOT EXISTS feed_reaction (
+      id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      kind             VARCHAR(8) NOT NULL,
+      object_uri       TEXT NOT NULL,
+      actor_uri        TEXT NOT NULL,
+      inbox_uri        TEXT NOT NULL,
+      shared_inbox_uri TEXT,
+      created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (kind, object_uri)
+    )
+  `,
+
+  // Inbound reactions on the user's OWN feed posts: who liked / boosted each
+  // post. `post_id` is a soft reference to feed_posts (like `activity_id` —
+  // deleting a post drops these rows in the same statement). `activity_uri` is
+  // the remote Like/Announce's own id, so an `Undo` carrying only a bare
+  // activity URI still matches. One row per (post, kind, actor) — a redelivered
+  // Like refreshes the presentation snapshot instead of duplicating.
+  feed_post_reaction: `
+    CREATE TABLE IF NOT EXISTS feed_post_reaction (
+      post_id       UUID NOT NULL,
+      kind          VARCHAR(8) NOT NULL,
+      actor_uri     TEXT NOT NULL,
+      activity_uri  TEXT,
+      handle        TEXT,
+      display_name  TEXT,
+      avatar_url    TEXT,
+      created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (post_id, kind, actor_uri)
+    )
+  `,
+  feed_post_reaction_indexes: `
+    CREATE INDEX IF NOT EXISTS idx_feed_post_reaction_post
+      ON feed_post_reaction (post_id, created_at DESC)
   `,
 
   // The user's public profile avatar. One per user (the profile owner), so a

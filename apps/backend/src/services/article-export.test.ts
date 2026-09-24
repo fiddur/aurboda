@@ -54,7 +54,7 @@ describe('buildArticleMarkdown', () => {
     ])
     expect(md).toContain(`(${base}/blocks/0/image.png?v=${V})`)
     expect(md).toContain('steps')
-    // The label's `_` is markdown-escaped (#975), so the metric still reads through.
+    // The label's `_` is markdown-escaped, so the metric still reads through.
     expect(md).toContain('sleep\\_score')
   })
 

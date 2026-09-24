@@ -1,11 +1,8 @@
 /**
- * Gravl sync orchestration (#1042).
- *
  * One sync-state row, `provider = 'gravl'`, `data_type = 'workouts'`. Each run
- * lists workouts in a window, drops the `External` round-trips and empty
- * workouts (retracting any row an earlier run imported for them), fetches
- * every real workout's detail (the list has no sets) and hands it to the
- * processor.
+ * lists workouts in a window, removes our Health Connect copy of the `External`
+ * round-trips, fetches every real workout's detail (the list has no sets) and
+ * hands it to the processor.
  *
  * Windows: 90 days on the first run or a full resync; otherwise from two days
  * before the last successful sync, because Gravl workouts get edited after the
@@ -26,10 +23,16 @@ import type { GravlClient } from './client.ts'
 import type { GravlProcessOutcome } from './process.ts'
 import type { GravlWorkoutDetail } from './types.ts'
 
-import { getAllSyncStates, getSyncState, upsertSyncState } from '../../db/index.ts'
+import {
+  findDeletedActivityByExternalId,
+  getAllSyncStates,
+  getSyncState,
+  upsertSyncState,
+} from '../../db/index.ts'
 import { auditError, auditInfo } from '../../services/audit-log.ts'
+import { gravlWorkoutExternalId } from '../../services/source-identity.ts'
 import { isGravlAuthFailure, isGravlRateLimit } from './client.ts'
-import { isStrengthWorkout, processGravlWorkout, retractGravlNonWorkout } from './process.ts'
+import { isExternalWorkout, processGravlWorkout, removeExternalGravlWorkout } from './process.ts'
 
 export const GRAVL_PROVIDER = 'gravl'
 export const GRAVL_DATA_TYPE = 'workouts'
@@ -45,21 +48,22 @@ const RATE_LIMIT_FALLBACK_MINUTES = 5
 export interface GravlSyncDeps {
   auditError: typeof auditError
   auditInfo: typeof auditInfo
+  findDeletedActivityByExternalId: typeof findDeletedActivityByExternalId
   getSyncState: typeof getSyncState
   now: () => Date
   processWorkout: (user: string, detail: GravlWorkoutDetail) => Promise<GravlProcessOutcome>
-  /** Undo an earlier import of a workout the sync now rejects; true when a row was soft-deleted. */
-  retractWorkout: (user: string, workoutId: string) => Promise<boolean>
+  removeExternalWorkout: (user: string, workoutId: string) => Promise<'removed' | 'skipped'>
   upsertSyncState: typeof upsertSyncState
 }
 
 const defaultDeps = (): GravlSyncDeps => ({
   auditError,
   auditInfo,
+  findDeletedActivityByExternalId,
   getSyncState,
   now: () => new Date(),
   processWorkout: (user, detail) => processGravlWorkout(user, detail),
-  retractWorkout: (user, workoutId) => retractGravlNonWorkout(user, workoutId),
+  removeExternalWorkout: (user, workoutId) => removeExternalGravlWorkout(user, workoutId),
   upsertSyncState,
 })
 
@@ -71,36 +75,24 @@ export const calculateRetryAfter = (now: Date, retryAfterSeconds?: number): Date
     ? addSeconds(now, retryAfterSeconds)
     : addMinutes(now, RATE_LIMIT_FALLBACK_MINUTES)
 
-const emptyCounts = () => ({
-  activities_created: 0,
-  activities_enriched: 0,
-  activities_retracted: 0,
-  workouts_processed: 0,
-})
+const emptyCounts = () => ({ activities_created: 0, activities_enriched: 0, workouts_processed: 0 })
 
 type SyncCounts = ReturnType<typeof emptyCounts>
 
 const countOutcome = (counts: SyncCounts, outcome: GravlProcessOutcome): void => {
-  if (outcome === 'skipped') return
-  if (outcome === 'retracted') {
-    counts.activities_retracted++
-    return
-  }
+  if (outcome === 'skipped' || outcome === 'removed') return
   counts.workouts_processed++
   if (outcome === 'enriched') counts.activities_enriched++
   else if (outcome === 'created') counts.activities_created++
 }
 
-/**
- * Page through the window, fetching detail for every real workout and
- * retracting stale imports of the rest. Throws on API failure.
- */
+/** Page through the window, fetching detail for every real workout. Throws on API failure. */
 const processWindow = async (
   user: string,
   client: GravlClient,
   token: string,
   window: { start: Date; end: Date },
-  deps: Pick<GravlSyncDeps, 'processWorkout' | 'retractWorkout'>,
+  deps: Pick<GravlSyncDeps, 'processWorkout' | 'removeExternalWorkout'>,
   counts: SyncCounts,
 ): Promise<void> => {
   let page = 1
@@ -108,8 +100,8 @@ const processWindow = async (
   while (hasNext) {
     const listed = await client.listWorkouts(token, { endDate: window.end, page, startDate: window.start })
     for (const summary of listed.items) {
-      if (!isStrengthWorkout(summary)) {
-        if (await deps.retractWorkout(user, summary.id)) counts.activities_retracted++
+      if (isExternalWorkout(summary)) {
+        await deps.removeExternalWorkout(user, summary.id)
         continue
       }
       const detail = await client.getWorkout(token, summary.id)
@@ -192,18 +184,28 @@ export const syncGravlWorkouts = async (
 /**
  * Fetch and store one workout by id — the enrichment path taken when Health
  * Connect delivers a Gravl session (#1080). Throws on API failure so the
- * queue can retry; returns 'skipped' for external round-trips and while a
- * rate-limit hold is in force (the next poll re-covers the workout).
+ * queue can retry; returns 'removed' when the workout turned out to be an
+ * external round-trip whose copy we dropped, and 'skipped' either while a
+ * rate-limit hold is in force (the next poll re-covers the workout) or when the
+ * copy is already tombstoned.
  */
 export const enrichGravlWorkout = async (
   user: string,
   client: GravlClient,
   workoutId: string,
-  deps: Pick<GravlSyncDeps, 'auditInfo' | 'getSyncState' | 'processWorkout'> = defaultDeps(),
+  deps: Pick<
+    GravlSyncDeps,
+    'auditInfo' | 'findDeletedActivityByExternalId' | 'getSyncState' | 'processWorkout'
+  > = defaultDeps(),
 ): Promise<GravlProcessOutcome> => {
   const state = await deps.getSyncState(user, GRAVL_PROVIDER, GRAVL_DATA_TYPE)
   if (isRateLimited(state)) {
     deps.auditInfo(user, 'sync', 'Gravl enrichment skipped - rate limited', { workout_id: workoutId })
+    return 'skipped'
+  }
+  // The copy was already removed as an external round-trip, and the tombstone
+  // blocks re-insert, so the detail request would buy nothing.
+  if (await deps.findDeletedActivityByExternalId(user, 'gravl', gravlWorkoutExternalId(workoutId))) {
     return 'skipped'
   }
   const token = await client.getAccessToken(user)

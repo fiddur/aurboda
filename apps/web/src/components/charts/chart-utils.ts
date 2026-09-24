@@ -1,11 +1,7 @@
-/**
- * Pure utility functions for chart tooltip interactions.
- */
 import type { SleepStage } from './sleep-utils'
 
 import { STAGE_LABELS } from './sleep-utils'
 
-/** Right y-axes the chart can draw (mirrors CombinedMetricChart's cap). */
 export const MAX_RIGHT_AXES = 2
 
 /**
@@ -38,10 +34,6 @@ export const countRightAxes = (hasHypnogram: boolean, overlays: { showAxis: bool
 export const chartRightMargin = (rightAxes: number): number =>
   rightAxes === 0 ? 14 : rightAxes * 45 + 20
 
-/**
- * Find the nearest data point to a given time using binary search.
- * Returns the [Date, number] tuple closest to `targetTime`, or undefined if data is empty.
- */
 export const findNearest = (data: [Date, number][], targetTime: Date): [Date, number] | undefined => {
   if (data.length === 0) return undefined
   if (data.length === 1) return data[0]
@@ -67,7 +59,6 @@ export const findNearest = (data: [Date, number][], targetTime: Date): [Date, nu
 
 /**
  * Interpolate a GPS position for a given time between sorted location points.
- * Uses binary search + linear interpolation between bracketing points.
  */
 export const interpolatePosition = (
   points: { lat: number; lon: number; time: Date }[],
@@ -78,14 +69,12 @@ export const interpolatePosition = (
 
   const t = targetTime.getTime()
 
-  // Clamp to first/last point
   if (t <= points[0].time.getTime()) return { lat: points[0].lat, lon: points[0].lon }
   if (t >= points[points.length - 1].time.getTime()) {
     const last = points[points.length - 1]
     return { lat: last.lat, lon: last.lon }
   }
 
-  // Binary search for bracketing interval
   let lo = 0
   let hi = points.length - 1
   while (lo < hi - 1) {
@@ -106,10 +95,6 @@ export const interpolatePosition = (
   }
 }
 
-/**
- * Find the sleep stage active at a given time.
- * Returns the stage label string, or undefined if no stage covers that time.
- */
 export const findStageAtTime = (stages: SleepStage[], time: Date): string | undefined => {
   const t = time.getTime()
   for (const stage of stages) {

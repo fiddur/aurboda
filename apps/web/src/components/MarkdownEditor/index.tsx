@@ -1,6 +1,3 @@
-/**
- * Reusable Markdown editor with Write / Preview tabs.
- */
 import { useCallback, useState } from 'preact/hooks'
 
 import { renderMarkdown } from '../../utils/markdown'

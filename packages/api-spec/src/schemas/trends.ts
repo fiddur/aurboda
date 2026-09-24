@@ -9,9 +9,6 @@ import { z } from 'zod'
 
 import { baseResponseSchema } from './common.ts'
 
-/**
- * Source type for trend calculation.
- */
 export const trendSourceTypeSchema = z
   .enum(['tag', 'metric', 'productivity_category', 'activity_type'])
   .meta({
@@ -23,9 +20,6 @@ export const trendSourceTypeSchema = z
 
 export type TrendSourceType = z.infer<typeof trendSourceTypeSchema>
 
-/**
- * Display period for normalizing trend values.
- */
 export const trendDisplayPeriodSchema = z.enum(['daily', 'weekly', 'monthly']).meta({
   description: 'Period for displaying trend value',
   example: 'monthly',
@@ -43,9 +37,6 @@ export const displayPeriodMultipliers: Record<TrendDisplayPeriod, number> = {
   weekly: 7,
 }
 
-/**
- * Half-life presets for common use cases.
- */
 export const halfLifePresets = {
   /** 7 days - responds to changes within a week */
   quick: 7,
@@ -55,9 +46,6 @@ export const halfLifePresets = {
   stable: 30,
 } as const
 
-/**
- * Schema for querying a trend value.
- */
 export const getTrendQuerySchema = z
   .object({
     aggregation: z
@@ -101,9 +89,6 @@ export const getTrendQuerySchema = z
 
 export type GetTrendQuery = z.infer<typeof getTrendQuerySchema>
 
-/**
- * A single data point in the trend history.
- */
 export const trendHistoryPointSchema = z
   .object({
     date: z.string().meta({ description: 'Date in YYYY-MM-DD format' }),
@@ -113,9 +98,6 @@ export const trendHistoryPointSchema = z
 
 export type TrendHistoryPoint = z.infer<typeof trendHistoryPointSchema>
 
-/**
- * Result of a trend query.
- */
 export const trendResultSchema = z
   .object({
     aggregation: z.enum(['count', 'sum', 'mean']).meta({ description: 'Aggregation method used' }),
@@ -140,9 +122,6 @@ export const trendResultSchema = z
 
 export type TrendResult = z.infer<typeof trendResultSchema>
 
-/**
- * Response schema for trend query.
- */
 export const trendResponseSchema = baseResponseSchema
   .extend({
     data: trendResultSchema.optional(),
@@ -151,10 +130,7 @@ export const trendResponseSchema = baseResponseSchema
 
 export type TrendResponse = z.infer<typeof trendResponseSchema>
 
-/**
- * Query parameters for GET /trends endpoint.
- * Numeric fields are strings here (as Express passes them) and parsed in the handler.
- */
+/** Numeric fields are strings here (as Express passes them) and parsed in the handler. */
 export const trendQuerySchema = z
   .object({
     aggregation: z.enum(['count', 'sum', 'mean']).optional(),

@@ -1,5 +1,3 @@
-/* ── Timeline page layout ──────────────────────────────────────── */
-
 .timeline-view {
   display: flex;
   flex-direction: column;
@@ -25,8 +23,6 @@
   }
 }
 
-/* ── Controls bar ─────────────────────────────────────────────── */
-
 .timeline-controls {
   display: flex;
   flex-wrap: wrap;
@@ -40,7 +36,6 @@
   flex-shrink: 0;
 }
 
-/* Navigation buttons */
 .timeline-nav {
   display: flex;
   align-items: center;
@@ -117,7 +112,6 @@
   line-height: 0;
 }
 
-/* Date label */
 .timeline-date-label {
   font-size: 0.875rem;
   color: #374151;
@@ -125,7 +119,6 @@
   white-space: nowrap;
 }
 
-/* Orientation + fullscreen toggle group */
 .timeline-orientation-toggle {
   display: flex;
   align-items: center;
@@ -137,8 +130,6 @@
   font-size: 1rem;
   padding: 0.2rem 0.4rem !important;
 }
-
-/* ── Legend ────────────────────────────────────────────────────── */
 
 .timeline-legend-wrapper {
   display: flex;
@@ -220,8 +211,6 @@
   align-self: center;
 }
 
-/* ── Legend groups (Activity / Metrics) ────────────────────────── */
-
 .timeline-legend .legend-group {
   display: flex;
   align-items: center;
@@ -246,8 +235,6 @@
 .timeline-legend .legend-sub-item--disabled {
   opacity: 0.35;
 }
-
-/* ── Overlap warnings ──────────────────────────────────────────── */
 
 .timeline-overlap-warnings {
   margin-bottom: 0.375rem;
@@ -278,8 +265,6 @@
 .timeline-overlap-warnings li {
   margin-bottom: 0.25rem;
 }
-
-/* ── Chart container — fills remaining space ─────────────────── */
 
 .timeline-chart-container {
   position: relative;
@@ -313,8 +298,6 @@
   cursor: pointer;
 }
 
-/* ── Column headers ────────────────────────────────────────────── */
-
 .timeline-column-headers {
   display: flex;
   font-size: 0.75rem;
@@ -327,8 +310,6 @@
   border-bottom: 1px solid #e5e7eb;
   flex-shrink: 0;
 }
-
-/* ── Tooltip ───────────────────────────────────────────────────── */
 
 .timeline-tooltip {
   position: absolute;
@@ -389,8 +370,6 @@
   height: 100%;
 }
 
-/* ── Help text ─────────────────────────────────────────────────── */
-
 .timeline-help {
   font-size: 0.75rem;
   color: #9ca3af;
@@ -398,8 +377,6 @@
   text-align: center;
   flex-shrink: 0;
 }
-
-/* ── Loading / error states ────────────────────────────────────── */
 
 .timeline-view .loading,
 .timeline-view .error {
@@ -411,8 +388,6 @@
 .timeline-view .error {
   color: #dc2626;
 }
-
-/* ── Dark mode ─────────────────────────────────────────────────── */
 
 @media (prefers-color-scheme: dark) {
   .timeline-controls {

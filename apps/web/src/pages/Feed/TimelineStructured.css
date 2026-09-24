@@ -6,7 +6,7 @@
 }
 
 /* The flex gap spaces the blocks; default <p> margins would double it and make
-   the title spacing differ from the FeedPostCard fallback body (#1001). */
+   the title spacing differ from the FeedPostCard fallback body. */
 .timeline-structured p {
   margin: 0;
 }

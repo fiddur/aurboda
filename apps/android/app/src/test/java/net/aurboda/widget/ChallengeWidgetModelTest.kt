@@ -73,8 +73,6 @@ class ChallengeWidgetModelTest {
         total = buckets.sumOf { it.second },
     )
 
-    // --- URLs -------------------------------------------------------------
-
     @Test
     fun `parseChallengeUrl splits base, username and slug`() {
         val parsed = parseChallengeUrl("https://aurboda.net/u/fiddur/august-steppers")
@@ -112,8 +110,6 @@ class ChallengeWidgetModelTest {
         assertEquals("https://aurboda.net/u/fiddur/x", challengeDeepLinkPath(null, "https://aurboda.net/u/fiddur/x"))
     }
 
-    // --- Picks + summary --------------------------------------------------
-
     @Test
     fun `challengePicks lists hosted first, then active joined only`() {
         val picks =
@@ -140,8 +136,6 @@ class ChallengeWidgetModelTest {
         assertEquals(parseInstantMillis("2026-07-31T22:00:00.000Z"), s.startMillis)
         assertEquals(parseInstantMillis("2026-08-31T22:00:00.000Z"), s.endMillis)
     }
-
-    // --- Moving on once a challenge is over ------------------------------
 
     private fun pick(name: String, startTs: String, endTs: String, url: String = "https://aurboda.net/u/me/$name") =
         challengePicks(listOf(hosted(name, url).copy(startTs = startTs, endTs = endTs)), emptyList()).single()
@@ -211,8 +205,6 @@ class ChallengeWidgetModelTest {
         assertEquals("October steps\nby Alice\n\nTap to see and join", challengeSuggestionText("October steps", "Alice"))
     }
 
-    // --- Series -----------------------------------------------------------
-
     @Test
     fun `inferBucketMillis is the smallest gap between bucket starts, defaulting to a day`() {
         val daily =
@@ -270,8 +262,6 @@ class ChallengeWidgetModelTest {
         assertEquals(start + DAY_MILLIS, bucketEndFunction(ChallengeEffectiveBucketSize._1d, "UTC", listOf(hourly))(start))
     }
 
-    // --- Leaderboard ------------------------------------------------------
-
     @Test
     fun `leaderboard ranks active members with the web palette and marks the signed-in user`() {
         val rows =
@@ -323,8 +313,6 @@ class ChallengeWidgetModelTest {
         assertEquals(listOf(null, null, null), meOnTop.map { rankCellText(it, showRank = false, ended = false, substituted = false) })
     }
 
-    // --- Layout + text ----------------------------------------------------
-
     @Test
     fun `planChallengeWidgetLayout gives a 2x2 cell two rows and a small chart, and grows with height`() {
         val small = planChallengeWidgetLayout(widthDp = 110f, heightDp = 110f, memberCount = 5)
@@ -367,8 +355,6 @@ class ChallengeWidgetModelTest {
         // An unknown zone must not throw.
         assertFalse(challengeDateRange("2026-07-31T22:00:00Z", "2026-08-31T22:00:00Z", "Not/AZone", Locale.ENGLISH).isEmpty())
     }
-
-    // --- Final standings ----------------------------------------------------
 
     private fun row(rank: Int, name: String, total: Double, isMe: Boolean = false) =
         LeaderboardRow(rank = rank, name = name, color = challengeMemberColor(rank - 1), total = total, isMe = isMe)

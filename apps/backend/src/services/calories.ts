@@ -86,7 +86,6 @@ export interface ZoneMetsCaloriesParams {
   hr_samples: [Date, number][]
   /** BMR in kcal/day (lab measurement preferred; Mifflin-St Jeor fallback). */
   bmr_kcal_per_day: number
-  /** Zone-METs context (resting HR, zone thresholds, observed max). */
   zone_context: ZoneMetsContext
 }
 
@@ -99,7 +98,6 @@ export interface ZoneMetsCaloriePoint {
   kcal_total: number
   /** Active kcal this minute (kcal_total - BMR/min). Zero at and below rest. */
   kcal_active: number
-  /** METs value used. */
   mets: number
 }
 

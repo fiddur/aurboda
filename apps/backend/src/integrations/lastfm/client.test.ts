@@ -1,7 +1,3 @@
-/**
- * Last.fm API client tests.
- */
-
 import axios from 'axios'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 

@@ -78,7 +78,6 @@
   margin-bottom: 0.5rem;
 }
 
-/* Inline checkbox + label row (e.g. the manual-follower-approval toggle). */
 .checkbox-field {
   display: flex;
   align-items: center;
@@ -321,7 +320,6 @@
   background: #f5f5f5;
 }
 
-/* Custom metrics */
 .custom-metrics-list {
   display: flex;
   flex-direction: column;

@@ -1,6 +1,3 @@
-/**
- * MCP location management tools.
- */
 import {
   addNamedLocationBodySchema,
   promoteDetectedLocationBodySchema,
@@ -21,7 +18,6 @@ import {
 import { errorResponse, jsonResponse, type McpServer, tzJsonResponse } from './helpers.ts'
 
 export const registerLocationTools = (server: McpServer, user: string) => {
-  // Tool: get_named_locations
   server.tool(
     'get_named_locations',
     'List all named locations. These are user-defined places with names and coordinates.',
@@ -32,7 +28,6 @@ export const registerLocationTools = (server: McpServer, user: string) => {
     },
   )
 
-  // Tool: get_detected_locations
   server.tool(
     'get_detected_locations',
     'Get frequently visited locations that are not yet named. Detects places where user spent 60+ minutes. Returns coordinates, visit count, and total time spent.',
@@ -52,7 +47,6 @@ export const registerLocationTools = (server: McpServer, user: string) => {
     },
   )
 
-  // Tool: get_stored_detected_locations
   server.tool(
     'get_stored_detected_locations',
     'Get stored detected locations with geocoded addresses. These are locations that have been previously detected and stored in the database.',
@@ -63,7 +57,6 @@ export const registerLocationTools = (server: McpServer, user: string) => {
     },
   )
 
-  // Tool: add_named_location
   server.tool(
     'add_named_location',
     'Create a named location. Use this to save a frequently visited place with a name.',
@@ -74,7 +67,6 @@ export const registerLocationTools = (server: McpServer, user: string) => {
     },
   )
 
-  // Tool: update_named_location
   server.tool(
     'update_named_location',
     'Update an existing named location. Can change name, coordinates, or radius.',
@@ -102,7 +94,6 @@ export const registerLocationTools = (server: McpServer, user: string) => {
     },
   )
 
-  // Tool: delete_named_location
   server.tool(
     'delete_named_location',
     'Delete a named location by its ID.',
@@ -118,7 +109,6 @@ export const registerLocationTools = (server: McpServer, user: string) => {
     },
   )
 
-  // Tool: promote_detected_location
   server.tool(
     'promote_detected_location',
     'Create a named location from detected coordinates. Use after get_detected_locations to save a frequently visited place.',

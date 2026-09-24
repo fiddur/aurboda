@@ -1,6 +1,4 @@
 /**
- * Cross-instance challenge federation — server-to-server HTTP.
- *
  * The first real cross-instance traffic in Aurboda. A joining instance fetches
  * the challenge spec from the host, creates a local participation backing a
  * capability data endpoint, and registers itself back to the host. The host
@@ -47,6 +45,30 @@ export class JoinChallengeError extends Error {
 const trimSlashes = (s: string): string => s.replace(/\/+$/, '')
 const joinUrl = (base: string, path: string): string => `${trimSlashes(base)}/${path.replace(/^\/+/, '')}`
 
+/**
+ * The one spelling of a public challenge link we store and compare by: no query
+ * string or fragment (a pasted `?embed=1` link is the same challenge), no
+ * trailing slashes, scheme and host lowercased, default port dropped. Null for
+ * anything that isn't an http(s) URL.
+ *
+ * Everything that keys off a challenge URL — the joined-participation row, the
+ * left-tombstone, discovery's "already mine" set — runs through this, so the
+ * same challenge pasted two ways is still one challenge. Rows written before
+ * this existed are not migrated; readers canonicalise what they load.
+ */
+export const canonicalChallengeUrl = (url: string): string | null => {
+  let parsed: URL
+  try {
+    parsed = new URL(url)
+  } catch {
+    return null
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null
+  parsed.search = ''
+  parsed.hash = ''
+  return trimSlashes(parsed.toString())
+}
+
 export interface ParsedChallengeUrl {
   base: string
   username: string
@@ -67,7 +89,6 @@ export const parseChallengeUrl = (url: string): ParsedChallengeUrl | null => {
   return { base, slug, username }
 }
 
-/** Discover an instance's federation metadata from its base URL. */
 export const discoverInstance = async (base: string): Promise<WellKnownAurboda> => {
   const res = await safeFetchGet(joinUrl(base, '.well-known/aurboda'))
   const wellKnown = wellKnownAurbodaSchema.parse(res.data)
@@ -93,7 +114,6 @@ export const fetchChallengeSpec = async (
   return parsed.data.challenge
 }
 
-/** Register a member back to the host instance. */
 export const registerMemberWithHost = async (
   apiBase: string,
   username: string,
@@ -173,8 +193,10 @@ export const joinRemoteChallenge = async ({
       join_token: spec.join_token,
     })
   } catch (error) {
-    // Roll back the local participation if the host wouldn't accept us.
-    await deleteChallengeParticipation(user, participation.id).catch(() => {})
+    // Roll back the local participation if the host wouldn't accept us. This is
+    // a failed join, not a leave: no tombstone, or discovery would stop
+    // offering a challenge the user never got into.
+    await deleteChallengeParticipation(user, participation.id, { tombstone: false }).catch(() => {})
     throw error
   }
 
@@ -199,15 +221,17 @@ export const joinChallenge = async ({
   webHost,
   apiBaseUrl,
 }: JoinChallengeDeps): Promise<ChallengeParticipationRecord> => {
-  const parsed = parseChallengeUrl(challengeUrl)
+  // Canonicalise before parsing: a pasted link may carry `?embed=1`, which
+  // would otherwise end up glued to the slug.
+  const normalizedUrl = canonicalChallengeUrl(challengeUrl)
+  const parsed = normalizedUrl === null ? null : parseChallengeUrl(normalizedUrl)
   // Validate the username at this username→DB boundary, matching every other one.
-  if (!parsed || !isValidUsername(parsed.username)) {
+  if (normalizedUrl === null || !parsed || !isValidUsername(parsed.username)) {
     throw new JoinChallengeError('Not a valid challenge URL', 'invalid_url')
   }
 
   // Idempotent: joining the same challenge again returns the existing record
   // instead of creating a duplicate participation (with a second data token).
-  const normalizedUrl = trimSlashes(challengeUrl)
   const existing = await getParticipationByUrl(user, normalizedUrl).catch(() => null)
   if (existing) return existing
 

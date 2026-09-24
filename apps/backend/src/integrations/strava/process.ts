@@ -1,8 +1,3 @@
-/**
- * Strava data processing — transforms Strava API responses into
- * raw_records, activities, time_series, and locations.
- */
-
 import type {
   insertActivity,
   insertLocations,
@@ -40,9 +35,6 @@ const makeRaw = (recordType: string, externalId: string, recordedAt: Date, data:
   source: 'strava',
 })
 
-/**
- * Process a Strava activity (detail + optional streams) into the database.
- */
 export const processStravaActivity = async (
   user: string,
   activity: StravaDetailedActivity,
@@ -55,10 +47,8 @@ export const processStravaActivity = async (
   const mappedType = mapStravaSportType(activity.sport_type)
   const activityType = await deps.resolveOrCreateActivityType(user, mappedType, 'exercise')
 
-  // Raw record
   await deps.insertRawRecord(user, makeRaw('strava_activity', externalId, startTime, activity))
 
-  // Activity
   const activityRecord: Activity = {
     activity_type: activityType,
     data: {
@@ -86,7 +76,6 @@ export const processStravaActivity = async (
 
   let pointCount = 0
 
-  // Process streams (per-second HR, cadence, power, altitude, GPS)
   if (streams) {
     const timeStream = streams.time
     if (timeStream) {

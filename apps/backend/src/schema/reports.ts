@@ -1,6 +1,6 @@
 /**
- * Lab + report table SQL. The legacy `lab_results` flat table is kept for
- * historical data; new entries land in `reports` + `report_entries`.
+ * The legacy `lab_results` flat table is kept for historical data; new entries
+ * land in `reports` + `report_entries`.
  */
 export const reportsTables: Record<string, string> = {
   // Lab results / blood work (legacy flat table — superseded by reports + report_entries)

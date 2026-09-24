@@ -1,6 +1,4 @@
 /**
- * Convert categorized productivity records into screentime activities.
- *
  * We mirror the frontend `productivityMerge.ts` contract: adjacent records of
  * the same resolved category within MERGE_GAP_MS collapse into a single span.
  * Each span becomes an activity whose `activity_type` is the category's
@@ -119,8 +117,6 @@ export const buildScreentimeActivitySpans = (
 }
 
 /**
- * Convert spans to Activity records for bulk insert.
- *
  * external_id is deterministic: `${source}_${startEpoch}_${activity_type}`.
  * The activity_type slug replaced the joined category path in the v2 format
  * because slugs are stable across category renames (a renamed category keeps

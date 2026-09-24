@@ -1,6 +1,4 @@
 /**
- * Trends service for calculating time-weighted averages using Exponential Moving Average (EMA).
- *
  * EMA gives more weight to recent data while still smoothing over a configurable period.
  * The half-life parameter controls how quickly the weight decays - after half-life days,
  * an event's weight drops to 50%.
@@ -39,8 +37,6 @@ export interface GetTrendInput {
 }
 
 /**
- * Calculate the EMA-weighted trend for a metric.
- *
  * For metrics, we use the mean value per day weighted by EMA.
  */
 const calculateMetricTrend = async (
@@ -113,8 +109,6 @@ const calculateMetricTrend = async (
 }
 
 /**
- * Calculate the EMA-weighted trend for time spent in a productivity category.
- *
  * Aggregates daily total duration (in hours) of productivity records whose
  * resolved_category path starts with the given category path, then applies EMA.
  * Pattern is the category path joined by ' > ', e.g. "Work > Programming".
@@ -188,9 +182,6 @@ const calculateProductivityCategoryTrend = async (
 }
 
 /**
- * Calculate the EMA-weighted trend for an activity type.
- *
- * Queries the activities table for activities matching the given activity_type.
  * Sums duration in hours per day, then applies EMA weighting.
  * Pattern is the activity type name (e.g. "yoga", "running", "coffee").
  */
@@ -263,8 +254,6 @@ const calculateActivityTypeTrend = async (
 }
 
 /**
- * Calculate the EMA-weighted trend for activity type count (for count-based types like tags).
- *
  * Counts occurrences per day instead of summing duration.
  */
 const calculateActivityTypeCountTrend = async (
@@ -377,7 +366,6 @@ const computeEma = (
 }
 
 /**
- * Calculate EMA-weighted trend for an activity type broken down by one or more data fields.
  * Groups daily values by breakdown field, then computes EMA independently per series.
  */
 const calculateActivityTypeBreakdownTrend = async (
@@ -417,7 +405,6 @@ const calculateActivityTypeBreakdownTrend = async (
     [pattern, warmupDays],
   )
 
-  // Build per-series daily values
   const seriesDaily = new Map<string, Map<string, number>>()
   for (const row of result.rows) {
     const keyParts = breakdownFields.map((_, i) => row[`field_${i}`] as string)
@@ -429,7 +416,6 @@ const calculateActivityTypeBreakdownTrend = async (
     seriesDaily.get(seriesKey)!.set(day, value)
   }
 
-  // Generate full date range including warmup period
   const warmupCount = 3 * halfLifeDays
   const days: string[] = []
   const now = new Date()
@@ -440,7 +426,6 @@ const calculateActivityTypeBreakdownTrend = async (
     days.push(date.toISOString().split('T')[0])
   }
 
-  // Compute EMA per series — warmup period is excluded from output
   const displayStartIdx = warmupCount
   const series = [...seriesDaily.keys()].sort()
   const histories: Record<string, TrendHistoryPoint[]> = {}
@@ -457,7 +442,6 @@ const displayUnits: Record<TrendDisplayPeriod, string> = {
   weekly: 'per week',
 }
 
-/** Build the activity_type trend result, with optional breakdown. */
 const getActivityTypeTrend = async (
   user: string,
   input: GetTrendInput & { aggregation: 'count' | 'mean' | 'sum' },
@@ -513,9 +497,6 @@ const getActivityTypeTrend = async (
   }
 }
 
-/**
- * Get the trend for a tag pattern, metric, productivity category, or activity type.
- */
 export const getTrend = async (user: string, input: GetTrendInput): Promise<TrendResult> => {
   const {
     aggregation = 'count',
@@ -570,7 +551,6 @@ export const getTrend = async (user: string, input: GetTrendInput): Promise<Tren
       source_type: sourceType,
     }
   } else {
-    // Metric source
     const metricAggregation = aggregation === 'count' ? 'mean' : aggregation
 
     const { currentValue, history } = await calculateMetricTrend(

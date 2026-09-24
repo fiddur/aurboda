@@ -1,7 +1,3 @@
-/**
- * User settings schemas.
- */
-
 import { z } from 'zod'
 
 import { baseResponseSchema, hrZoneSourceSchema } from './common.ts'
@@ -10,12 +6,8 @@ import { goalsSchema } from './goals.ts'
 import { garminDataTypeSchema } from './sync.ts'
 import { trainingLoadSettingsSchema } from './training-load.ts'
 
-// Shared HR zone threshold field
 const hrZoneThresholdSchema = z.number().int().positive()
 
-/**
- * HR zone thresholds (zone 1-5 start values in bpm).
- */
 export const hrZoneThresholdsSchema = z
   .object({
     1: hrZoneThresholdSchema.meta({ description: 'Zone 1 threshold (bpm)', example: 90 }),
@@ -31,12 +23,8 @@ export const hrZoneThresholdsSchema = z
 
 export type HrZoneThresholds = z.infer<typeof hrZoneThresholdsSchema>
 
-// Shared HR zone seconds field
 const hrZoneSecsValueSchema = z.number()
 
-/**
- * HR zone seconds (time spent in each zone).
- */
 export const hrZoneSecsSchema = z
   .object({
     0: hrZoneSecsValueSchema.meta({ description: 'Seconds below zone 1' }),
@@ -50,9 +38,6 @@ export const hrZoneSecsSchema = z
 
 export type HrZoneSecs = z.infer<typeof hrZoneSecsSchema>
 
-/**
- * Biological sex schema (used for calorie calculation formulas).
- */
 export const biologicalSexSchema = z.enum(['male', 'female']).meta({
   description: 'Biological sex (used for calorie calculation formulas)',
   example: 'male',
@@ -61,34 +46,24 @@ export const biologicalSexSchema = z.enum(['male', 'female']).meta({
 
 export type BiologicalSex = z.infer<typeof biologicalSexSchema>
 
-/**
- * Birth date schema (YYYY-MM-DD format).
- */
 export const birthDateSchema = z.iso.date().meta({
   description: 'Birth date in YYYY-MM-DD format',
   example: '1985-06-15',
 })
 
-/**
- * RescueTime API key schema.
- */
 export const rescueTimeKeySchema = z.string().min(1, 'RescueTime API key cannot be empty').meta({
   description: 'RescueTime API key (personal token)',
 })
 
-/**
- * Gravl personal access token schema.
- */
 export const gravlApiTokenSchema = z.string().min(1, 'Gravl API token cannot be empty').meta({
   description: 'Gravl personal access token (gat_…), used when no OAuth grant exists',
 })
 
-/**
- * Background sync poll intervals, minutes per provider.
- */
 export const syncIntervalsSchema = z
   .record(
-    z.string().meta({ description: 'Provider name (gravl, garmin, oura, rescuetime, lastfm, calendar) or "default"' }),
+    z.string().meta({
+      description: 'Provider name (gravl, garmin, oura, rescuetime, lastfm, calendar) or "default"',
+    }),
     z.number().int().min(5).max(1440).meta({ description: 'Poll interval in minutes (5–1440)' }),
   )
   .meta({
@@ -99,33 +74,22 @@ export const syncIntervalsSchema = z
 
 export type SyncIntervals = z.infer<typeof syncIntervalsSchema>
 
-/**
- * Last.fm username schema.
- */
 export const lastFmUsernameSchema = z.string().min(1, 'Last.fm username cannot be empty').meta({
   description: 'Last.fm username for scrobble sync',
 })
 
-/**
- * Tag mappings schema (UUID -> display name).
- */
 export const tagMappingsSchema = z.record(z.string(), z.string()).meta({
   description: 'Tag mappings from Oura tag_type_code UUIDs to display names',
   id: 'TagMappings',
 })
 
-/**
- * Tag icons schema (tag key or display name -> emoji/URL).
- * @deprecated Use itemIconsSchema instead.
- */
+/** @deprecated Use itemIconsSchema instead. */
 export const tagIconsSchema = z.record(z.string(), z.string()).meta({
   description: 'Tag icon mappings (tag key or display name -> emoji character or image URL)',
   id: 'TagIcons',
 })
 
 /**
- * Item icons schema — unified icon mappings for all timeline items.
- *
  * Keys use a prefix convention:
  * - Tag names or tag_keys: "Coffee", "meditation" (no prefix, backwards-compatible with tag_icons)
  * - Activity types: "activity:sleep", "activity:nap", "activity:meditation"
@@ -140,9 +104,6 @@ export const itemIconsSchema = z.record(z.string(), z.string()).meta({
   id: 'ItemIcons',
 })
 
-/**
- * Calendar config schema (name + ICS URL pair).
- */
 export const calendarConfigSchema = z
   .object({
     name: z.string().min(1).meta({ description: 'Display name for the calendar' }),
@@ -152,9 +113,6 @@ export const calendarConfigSchema = z
 
 export type CalendarConfig = z.infer<typeof calendarConfigSchema>
 
-/**
- * Calendars schema (array of calendar configs).
- */
 export const calendarsSchema = z.array(calendarConfigSchema).meta({
   description: 'Calendar ICS URL configurations',
   id: 'Calendars',
@@ -162,9 +120,6 @@ export const calendarsSchema = z.array(calendarConfigSchema).meta({
 
 export type TagMappings = z.infer<typeof tagMappingsSchema>
 
-/**
- * A configured meal slot for quick-logging.
- */
 export const mealSlotSchema = z
   .object({
     default_hour: z.number().int().min(0).max(23).meta({ description: 'Default hour of day (0-23)' }),
@@ -174,24 +129,17 @@ export const mealSlotSchema = z
 
 export type MealSlot = z.infer<typeof mealSlotSchema>
 
-/**
- * Array of configured meal slots.
- */
 export const mealSlotsSchema = z.array(mealSlotSchema).meta({
   id: 'MealSlots',
   description: 'Configured meal slots for quick-logging',
 })
 
-/**
- * Sensitivity areas for meal tracking.
- */
 export const sensitivityAreasSchema = z.array(z.string().min(1)).meta({
   id: 'SensitivityAreas',
   description: 'Sensitivity areas to track in meals (e.g., "gluten", "dairy", "red_meat")',
 })
 
 /**
- * Food-to-sensitivity mapping.
  * Maps exact food item names to sensitivity areas they contain.
  * E.g., { "Toasted rye bread": ["gluten"], "Milk": ["dairy"] }
  */
@@ -200,9 +148,6 @@ export const foodSensitivityMapSchema = z.record(z.string(), z.array(z.string())
   description: 'Mapping from food item names to sensitivity areas they contain',
 })
 
-/**
- * Update settings input schema.
- */
 export const updateSettingsInputSchema = z
   .object({
     birth_date: birthDateSchema.nullable().optional().meta({
@@ -240,10 +185,6 @@ export const updateSettingsInputSchema = z
     rescue_time_key: rescueTimeKeySchema.nullable().optional().meta({
       description: 'RescueTime API key (set to null to clear)',
     }),
-    timeline_show_replies: z.boolean().nullable().optional().meta({
-      description:
-        'When true, replies from followed actors to OTHER people show as their own home-timeline cards; when false (default), only their top-level posts and replies to your own posts appear (set to null to reset to the default).',
-    }),
     sensitivity_areas: sensitivityAreasSchema.nullable().optional().meta({
       description: 'Sensitivity areas to track in meals (set to null to clear)',
     }),
@@ -256,6 +197,10 @@ export const updateSettingsInputSchema = z
     tag_mappings: tagMappingsSchema.nullable().optional().meta({
       description: 'Tag name mappings (set to null to clear all)',
     }),
+    timeline_show_replies: z.boolean().nullable().optional().meta({
+      description:
+        "When true, followed actors' replies show as their own home-timeline cards whatever they answer; when false (default), replies to posts that aren't in your timeline are hidden — replies to your own posts, posts mentioning you, and replies within a thread you already see always appear (set to null to reset to the default).",
+    }),
     training_load: trainingLoadSettingsSchema.nullable().optional().meta({
       description: 'Training load (Banister model) parameters (set to null to reset to defaults)',
     }),
@@ -263,19 +208,18 @@ export const updateSettingsInputSchema = z
       description: 'Garmin data types to skip during sync (set to null to clear, enabling all)',
     }),
     gravl_api_token: gravlApiTokenSchema.nullable().optional().meta({
-      description: 'Gravl personal access token (set to null to clear). Ignored for sync while an OAuth grant exists.',
+      description:
+        'Gravl personal access token (set to null to clear). Ignored for sync while an OAuth grant exists.',
     }),
     sync_intervals: syncIntervalsSchema.nullable().optional().meta({
-      description: 'Background sync poll intervals in minutes per provider (set to null to reset to server defaults)',
+      description:
+        'Background sync poll intervals in minutes per provider (set to null to reset to server defaults)',
     }),
   })
   .meta({ id: 'UpdateSettingsInput' })
 
 export type UpdateSettingsInput = z.infer<typeof updateSettingsInputSchema>
 
-/**
- * User settings response schema.
- */
 export const userSettingsResponseSchema = baseResponseSchema
   .extend({
     birth_date: z.string().nullable().default(null).meta({ description: 'Birth date in YYYY-MM-DD format' }),
@@ -322,20 +266,13 @@ export const userSettingsResponseSchema = baseResponseSchema
       .default(false)
       .meta({ description: 'Whether Oura OAuth is configured on server' }),
     oura_connected: z.boolean().default(false).meta({ description: 'Whether Oura is connected via OAuth' }),
-    gravl_configured: z
-      .boolean()
-      .default(false)
-      .meta({ description: 'Whether a Gravl OAuth app is configured on the server (enables "Connect Gravl")' }),
-    gravl_connection: z
-      .enum(['oauth', 'token'])
-      .nullable()
-      .default(null)
-      .meta({ description: 'How Gravl is connected: an OAuth grant, a personal token, or null when not connected' }),
-    rescue_time_key: z.string().nullable().default(null).meta({ description: 'RescueTime API key' }),
-    timeline_show_replies: z.boolean().default(false).meta({
-      description:
-        "Whether followed actors' replies to other people show as their own home-timeline cards (replies to your own posts always show)",
+    gravl_configured: z.boolean().default(false).meta({
+      description: 'Whether a Gravl OAuth app is configured on the server (enables "Connect Gravl")',
     }),
+    gravl_connection: z.enum(['oauth', 'token']).nullable().default(null).meta({
+      description: 'How Gravl is connected: an OAuth grant, a personal token, or null when not connected',
+    }),
+    rescue_time_key: z.string().nullable().default(null).meta({ description: 'RescueTime API key' }),
     strava_connected: z
       .boolean()
       .default(false)
@@ -360,6 +297,10 @@ export const userSettingsResponseSchema = baseResponseSchema
     tag_mappings: tagMappingsSchema
       .default({})
       .meta({ description: 'Tag name mappings from UUIDs to display names' }),
+    timeline_show_replies: z.boolean().default(false).meta({
+      description:
+        "Whether followed actors' replies to posts that aren't in your timeline show as their own home-timeline cards (replies to you, mentions of you, and replies within a thread you already see always show)",
+    }),
     training_load: trainingLoadSettingsSchema
       .nullable()
       .default(null)

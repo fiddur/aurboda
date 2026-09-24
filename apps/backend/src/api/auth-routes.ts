@@ -1,5 +1,4 @@
 /**
- * Auth-related HTTP routes: /version, /status, /signup, /login, /auth/token.
  * These stay close to server setup (vs being moved into a Router) because they
  * directly use the central DB, user DB connection, and the Auth instance.
  */
@@ -18,14 +17,8 @@ import type { CentralDb } from '../services/central-db.ts'
 import type { InvitationAuth } from '../services/invitation.ts'
 import type { AnyMiddleware } from '../typed-router.ts'
 
-import {
-  initializeSchema,
-  loginToUserDb,
-  makeNewUserDb,
-  migrateSchema,
-  query,
-  schemaInitialized,
-} from '../db/index.ts'
+import { isInvalidPasswordError, loginToUserDb, makeNewUserDb, query } from '../db/index.ts'
+import { httpError } from '../http-error.ts'
 import { pruneAuditLog } from '../services/audit-log.ts'
 
 interface AuthRoutesDeps {
@@ -102,7 +95,6 @@ export const registerAuthRoutes = ({
 
     const { username: user, password, invitation } = req.body
 
-    // In invite_only mode, require valid invitation token
     if (signupMode === 'invite_only') {
       if (!invitation || typeof invitation !== 'string') {
         res.status(403).json({
@@ -127,7 +119,6 @@ export const registerAuthRoutes = ({
       return
     }
 
-    // Validate username format (alphanumeric, lowercase, no special chars for PostgreSQL role)
     if (!USERNAME_REGEX.test(user)) {
       res.status(400).json({
         error:
@@ -142,7 +133,6 @@ export const registerAuthRoutes = ({
       return
     }
 
-    // Check if user already exists
     const existingUser = await query(userDb, 'SELECT usename FROM pg_user WHERE usename=$1', [user])
     if (existingUser.rowCount && existingUser.rowCount > 0) {
       res.status(409).json({ error: 'Username already exists', success: false })
@@ -153,7 +143,6 @@ export const registerAuthRoutes = ({
       await makeNewUserDb(userDb, user, password)
       const token = auth.createToken(user)
 
-      // First user becomes admin automatically
       const adminCount = await centralDb.getAdminCount()
       let isAdmin = false
       if (adminCount === 0) {
@@ -171,28 +160,34 @@ export const registerAuthRoutes = ({
 
   httpd.post<Record<string, never>, LoginResponse>('/login', async (req, res, next) => {
     const { username: user, password } = req.body
-    if (!user) return next(unauthorized)
+    // An empty password must be rejected here, not passed down: `pg` treats
+    // '' as unset and falls back to the service role's PGPASSWORD from the
+    // environment, so the connection attempt would not be this user's at all.
+    if (!user || typeof user !== 'string' || !password || typeof password !== 'string') {
+      return next(unauthorized)
+    }
 
-    // Check if user exists as a PSQL user role
     const userRows = await query(userDb, 'SELECT usename FROM pg_user WHERE usename=$1', [user])
-    if (userRows.rowCount === 1) {
-      try {
-        await loginToUserDb(user, password)
-        // Ensure schema is initialized and migrated
-        if (!(await schemaInitialized(user))) {
-          await initializeSchema(user)
-        } else {
-          await migrateSchema(user)
-        }
-      } catch {
-        return next(unauthorized)
-      }
-    } else return next(unauthorized)
+    if (userRows.rowCount !== 1) return next(unauthorized)
 
+    // Only a password Postgres itself rejects is a failed login; anything else
+    // is a server fault. Those are logged here and answered 503, because the
+    // central handler replies with `err.message` and a pg failure's message
+    // names internal hosts, database names and connection limits.
+    try {
+      await loginToUserDb(user, password)
+    } catch (err) {
+      if (isInvalidPasswordError(err)) return next(unauthorized)
+      console.error(`Login for ${user} failed to reach the database (not a bad password):`, err)
+      return next(httpError(503, 'Service unavailable'))
+    }
+
+    // No schema work here. Login only authenticates: the deploy-time sweep and
+    // the auth middleware migrate, and `query()` repairs drift lazily when a
+    // statement hits a schema error (#1125).
     const token = auth.createToken(user)
     const isAdmin = await centralDb.isAdmin(user)
 
-    // Prune old audit log entries in the background
     centralDb
       .getAuditLogRetentionDays()
       .then((days) => pruneAuditLog(user, days))

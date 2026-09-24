@@ -1,14 +1,6 @@
-/**
- * Audit log schemas for user-specific event logging.
- */
-
 import { z } from 'zod'
 
 import { baseResponseSchema, iso8601DateTimeSchema } from './common.ts'
-
-// ============================================================================
-// Log levels and categories
-// ============================================================================
 
 export const auditLogLevelSchema = z.enum(['info', 'warn', 'error']).meta({
   description: 'Severity level of the audit log entry',
@@ -26,10 +18,6 @@ export const auditLogCategorySchema = z
 
 export type AuditLogCategory = z.infer<typeof auditLogCategorySchema>
 
-// ============================================================================
-// Audit log entry
-// ============================================================================
-
 export const auditLogEntrySchema = z
   .object({
     id: z.string().uuid().meta({ description: 'Log entry ID' }),
@@ -42,10 +30,6 @@ export const auditLogEntrySchema = z
   .meta({ id: 'AuditLogEntry' })
 
 export type AuditLogEntry = z.infer<typeof auditLogEntrySchema>
-
-// ============================================================================
-// Query parameters
-// ============================================================================
 
 export const auditLogQuerySchema = z
   .object({
@@ -69,10 +53,6 @@ export const auditLogQuerySchema = z
   .meta({ id: 'AuditLogQuery' })
 
 export type AuditLogQuery = z.infer<typeof auditLogQuerySchema>
-
-// ============================================================================
-// Response
-// ============================================================================
 
 export const auditLogResponseSchema = baseResponseSchema
   .extend({

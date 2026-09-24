@@ -20,7 +20,7 @@ import net.aurboda.resolveApiBase
 
 private const val TAG = "ChallengeWidgetData"
 
-/** The signed-in user's own challenges — the same for every widget, so fetched once per refresh (#991). */
+/** The signed-in user's own challenges — the same for every widget, so fetched once per refresh. */
 data class ChallengeWidgetLists(val hosted: List<Challenge>, val joined: List<ChallengeParticipation>)
 
 /** Hosted list + participations from the user's own instance, concurrently. */

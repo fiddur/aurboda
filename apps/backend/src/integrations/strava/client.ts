@@ -1,9 +1,4 @@
 /**
- * Strava API client — OAuth2 authentication + API methods.
- *
- * Follows the oura/client.ts pattern: factory function returning methods
- * for OAuth redirect, callback, token refresh, and API calls.
- *
  * All API methods return { data, headers } so the queue processor can
  * read rate limit headers (X-ReadRateLimit-Usage).
  */
@@ -153,7 +148,6 @@ export const stravaClient = (
         return token.access_token
       }
 
-      // Refresh the token
       const { clientId, clientSecret } = await getCredentials()
       const response = await axios.post<StravaTokenResponse>(STRAVA_TOKEN_URL, {
         client_id: clientId,
@@ -192,7 +186,6 @@ export const stravaClient = (
       return apiGet('/athlete', token)
     },
 
-    // Returns the OAuth authorize URL as JSON (called with authMiddleware, uses req.user)
     async getAuthorizeUrl(req: Request, res: Response) {
       const user = req.user
       if (!user) {

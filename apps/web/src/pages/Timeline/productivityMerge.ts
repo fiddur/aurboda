@@ -1,6 +1,4 @@
 /**
- * Merge adjacent/overlapping productivity records into continuous spans.
- *
  * Records sharing the same resolved_category (or both uncategorized) are merged
  * when they overlap or are within a short gap. This prevents dozens of tiny
  * window-level ActivityWatch records from creating a mess of lanes on the timeline.
@@ -12,14 +10,11 @@
 import type { ProductivityRecord } from '../../state/api'
 
 /**
- * Group key for merging productivity records.
- * Records with the same category path are merged together.
  * Uncategorized records share a common empty-string key.
  */
 export const productivityGroupKey = (p: ProductivityRecord): string =>
   p.resolved_category && p.resolved_category.length > 0 ? p.resolved_category.join(' > ') : ''
 
-/** Default gap threshold for merging adjacent same-category records (2 minutes). */
 export const MERGE_GAP_MS = 2 * 60 * 1000
 
 export interface MergedProductivitySpan {
@@ -93,12 +88,10 @@ export const promoteOverlappingSubcategories = (
     for (let i = 1; i < childSpans.length; i++) {
       const next = childSpans[i]!
       if (next.start.getTime() <= currentEnd.getTime() + gapMs) {
-        // Overlapping/adjacent — merge
         if (next.groupKey !== currentKey) multipleSubcats = true
         if (next.end > currentEnd) currentEnd = next.end
         currentRecords.push(...next.records)
       } else {
-        // Emit current span
         result.push({
           end: currentEnd,
           groupKey: multipleSubcats ? parent : currentKey,
@@ -124,11 +117,6 @@ export const promoteOverlappingSubcategories = (
 }
 
 /**
- * Merge adjacent/overlapping productivity records that share the same category.
- * Adjacent records within the merge gap are merged into a single span.
- *
- * @param mergeGapMs - Gap threshold in ms; records within this gap are merged (default 2 min).
- *
  * Uncategorized records that overlap with categorized spans are excluded to avoid
  * giant background blobs covering the entire day on the timeline.
  */
@@ -138,7 +126,6 @@ export const mergeProductivitySpans = (
 ): MergedProductivitySpan[] => {
   if (productivity.length === 0) return []
 
-  // Sort by start time
   const sorted = [...productivity].sort((a, b) => a.start_time.getTime() - b.start_time.getTime())
 
   // Phase 1: Build categorized spans — group by key, merge adjacent within gap

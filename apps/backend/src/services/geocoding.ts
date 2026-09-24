@@ -1,14 +1,3 @@
-/**
- * Geocoding service using Nominatim OpenStreetMap API.
- *
- * Handles reverse geocoding (coordinates -> address) with proper
- * rate limiting and address formatting.
- */
-
-// ============================================================================
-// Types
-// ============================================================================
-
 export interface NominatimAddress {
   house_number?: string
   road?: string
@@ -49,25 +38,15 @@ export type GeocodingError =
   | { type: 'http'; status: number; statusText: string }
   | { type: 'no_results' }
 
-// ============================================================================
-// Configuration
-// ============================================================================
-
 const DEFAULT_NOMINATIM_URL = 'https://nominatim.openstreetmap.org'
 const USER_AGENT = 'Aurboda/1.0 (https://aurboda.net)'
 
-// ============================================================================
-// Address Formatting (pure functions, testable)
-// ============================================================================
-
 /**
- * Format a Nominatim address into a short, human-readable string.
  * Prioritizes street address, falls back to neighborhood/suburb.
  */
 export const formatAddress = (address: NominatimAddress): string => {
   const parts: string[] = []
 
-  // Primary location: street address or POI
   if (address.road) {
     if (address.house_number) {
       parts.push(`${address.road} ${address.house_number}`)
@@ -80,13 +59,11 @@ export const formatAddress = (address: NominatimAddress): string => {
     parts.push(address.suburb)
   }
 
-  // Secondary location: city/town/village
   const locality = address.city || address.town || address.village || address.hamlet || address.municipality
   if (locality && !parts.includes(locality)) {
     parts.push(locality)
   }
 
-  // If we still have nothing, use county or country
   if (parts.length === 0) {
     if (address.county) {
       parts.push(address.county)
@@ -98,14 +75,9 @@ export const formatAddress = (address: NominatimAddress): string => {
   return parts.join(', ')
 }
 
-/**
- * Format a Nominatim address into a longer display name.
- * Includes more detail than the short address.
- */
 export const formatDisplayName = (address: NominatimAddress): string => {
   const parts: string[] = []
 
-  // Street address
   if (address.road) {
     if (address.house_number) {
       parts.push(`${address.road} ${address.house_number}`)
@@ -114,30 +86,23 @@ export const formatDisplayName = (address: NominatimAddress): string => {
     }
   }
 
-  // Neighborhood/suburb
   if (address.neighbourhood) {
     parts.push(address.neighbourhood)
   } else if (address.suburb) {
     parts.push(address.suburb)
   }
 
-  // City
   const locality = address.city || address.town || address.village || address.hamlet || address.municipality
   if (locality) {
     parts.push(locality)
   }
 
-  // Country (if international context useful)
   if (address.country && parts.length < 3) {
     parts.push(address.country)
   }
 
   return parts.join(', ')
 }
-
-// ============================================================================
-// Nominatim API Client
-// ============================================================================
 
 export interface ReverseGeocodeOptions {
   nominatimUrl?: string
@@ -149,16 +114,8 @@ export type ReverseGeocodeResult =
   | { success: false; error: GeocodingError }
 
 /**
- * Reverse geocode coordinates to an address using Nominatim.
- *
  * Note: Nominatim requires max 1 request per second.
  * This function does not implement rate limiting - use geocode-queue for that.
- *
- * Returns a discriminated union to distinguish between:
- * - Success with data
- * - Network errors (connection failed, timeout)
- * - HTTP errors (rate limited, server error)
- * - No results (valid response but no address found)
  */
 export const reverseGeocode = async (
   lat: number,

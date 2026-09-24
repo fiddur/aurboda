@@ -18,10 +18,6 @@ import { chartDataBucketSchema } from './chart-data.ts'
 import { baseResponseSchema } from './common.ts'
 import { shareVisibilitySchema } from './visibility.ts'
 
-// =============================================================================
-// Measurement spec
-// =============================================================================
-
 /** What a challenge measures. v1: one built-in metric or activity type, summed. */
 export const challengeSourceTypeSchema = z.enum(['metric', 'activity_type']).meta({
   description: 'Whether the challenge measures a metric or an activity type',
@@ -56,7 +52,7 @@ export type ChallengeBucketSizeChoice = z.infer<typeof challengeBucketSizeSchema
  */
 /**
  * Shared by `ChallengeStanding.last_updated` and `ChallengeDataResponse.last_updated`
- * (one member's own report of the same value), so the two cannot drift (#1090).
+ * (one member's own report of the same value), so the two cannot drift.
  */
 const lastUpdatedDescription =
   "When this member's contributing data last changed: the newest point's value-change time (daily aggregates like steps are rewritten in place all day), falling back to the point's own timestamp for data stored before that was tracked; null if they have no data yet"
@@ -87,10 +83,6 @@ export const challengeSpecSchema = z
   .meta({ id: 'ChallengeSpec' })
 
 export type ChallengeSpec = z.infer<typeof challengeSpecSchema>
-
-// =============================================================================
-// Owner-facing challenge + CRUD
-// =============================================================================
 
 export const challengeNameSchema = z.string().min(1).max(120).meta({ description: 'Challenge name' })
 
@@ -177,10 +169,6 @@ export const challengesResponseSchema = baseResponseSchema
 
 export type ChallengesResponse = z.infer<typeof challengesResponseSchema>
 
-// =============================================================================
-// Members + standings
-// =============================================================================
-
 /** A member as listed publicly (no secret data-endpoint URL). */
 export const challengeMemberSchema = z
   .object({
@@ -191,7 +179,6 @@ export const challengeMemberSchema = z
 
 export type ChallengeMember = z.infer<typeof challengeMemberSchema>
 
-/** A member's standing: their cumulative series + total. */
 export const challengeStandingSchema = z
   .object({
     buckets: z.array(chartDataBucketSchema).meta({ description: 'Per-bucket values over the window' }),
@@ -218,11 +205,6 @@ export const challengeStandingsResponseSchema = baseResponseSchema
 
 export type ChallengeStandingsResponse = z.infer<typeof challengeStandingsResponseSchema>
 
-// =============================================================================
-// Final result (published to the host's feed when the window closes)
-// =============================================================================
-
-/** One podium line of a finished challenge. */
 export const challengeResultEntrySchema = z
   .object({
     display_name: z
@@ -275,10 +257,6 @@ export const registerChallengeMemberBodySchema = z
 
 export type RegisterChallengeMemberBody = z.infer<typeof registerChallengeMemberBodySchema>
 
-// =============================================================================
-// Public challenge (spec fetched by joining instances + viewers)
-// =============================================================================
-
 export const publicChallengeSchema = z
   .object({
     effective_bucket_size: challengeEffectiveBucketSizeSchema.optional().meta({
@@ -312,10 +290,6 @@ export const publicChallengeResponseSchema = baseResponseSchema
 
 export type PublicChallengeResponse = z.infer<typeof publicChallengeResponseSchema>
 
-// =============================================================================
-// Member data endpoint (served by the member's own instance)
-// =============================================================================
-
 export const challengeDataResponseSchema = baseResponseSchema
   .extend({
     buckets: z.array(chartDataBucketSchema).optional(),
@@ -327,10 +301,6 @@ export const challengeDataResponseSchema = baseResponseSchema
   .meta({ id: 'ChallengeDataResponse' })
 
 export type ChallengeDataResponse = z.infer<typeof challengeDataResponseSchema>
-
-// =============================================================================
-// Participations (the joining user's own record)
-// =============================================================================
 
 export const challengeParticipationSchema = z
   .object({
@@ -361,7 +331,6 @@ export const challengeParticipationResponseSchema = baseResponseSchema
 
 export type ChallengeParticipationResponse = z.infer<typeof challengeParticipationResponseSchema>
 
-/** Members list (owner-facing management). */
 export const challengeMembersResponseSchema = baseResponseSchema
   .extend({
     members: z.array(
@@ -380,10 +349,6 @@ export const joinChallengeBodySchema = z
   .meta({ id: 'JoinChallengeBody' })
 
 export type JoinChallengeBody = z.infer<typeof joinChallengeBodySchema>
-
-// =============================================================================
-// Discovery: open challenges from people you follow
-// =============================================================================
 
 export const discoveredChallengeSchema = z
   .object({
@@ -432,10 +397,6 @@ export const discoverChallengesResponseSchema = baseResponseSchema
   .meta({ id: 'DiscoverChallengesResponse' })
 
 export type DiscoverChallengesResponse = z.infer<typeof discoverChallengesResponseSchema>
-
-// =============================================================================
-// Federation discovery
-// =============================================================================
 
 export const wellKnownAurbodaSchema = z
   .object({

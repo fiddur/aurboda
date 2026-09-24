@@ -7,6 +7,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
  * (`resolveActivityWindow` → `getOverlappingActivities`) actually runs.
  */
 import { deleteActivity, insertActivity } from '../db/activities/index.ts'
+import { query } from '../db/connection.ts'
 import { createFeedPost, type FeedPostInput } from '../db/feed.ts'
 import { insertLocations } from '../db/locations.ts'
 import { insertTimeSeries } from '../db/time-series.ts'
@@ -128,13 +129,12 @@ describe('feed service', () => {
       expect(dto.activity_type).toBe('exercise')
       expect(dto.activity_start_time).toBe(ANCHOR_START.toISOString())
       expect(dto.activity_end_time).toBe(MERGED_END.toISOString())
-      // Rendered `content` HTML (as federated) with the title headline (#884 §1).
+      // Rendered `content` HTML (as federated) with the title headline.
       expect(dto.content).toContain('<strong>Merged run</strong>')
-      // The activity-date line is part of the federated content (#998).
+      // The activity-date line is part of the federated content.
       expect(dto.content).toMatch(/<p>\w{3}, \d+ \w{3} \d{4}/)
-      // Typed resolved scalars back the web's native stat grid (#997).
+      // Typed resolved scalars back the web's native stat grid.
       expect(dto.metrics).toEqual([expect.objectContaining({ key: 'duration', value: expect.any(Number) })])
-      // Base fields still present.
       expect(dto.included_metrics).toEqual(['duration'])
       expect(dto.visibility).toBe('public')
     })
@@ -176,7 +176,7 @@ describe('feed service', () => {
     test('structured payload matches the public structured endpoint exactly, series and route included (#1001 parity)', async () => {
       const user = getTestUser()
       const anchorId = await insertAnchor(user)
-      // Real data behind both the opted-in series and the route (#1011).
+      // Real data behind both the opted-in series and the route.
       await insertTimeSeries(user, [
         { metric: 'heart_rate', source: 'garmin', time: new Date('2026-07-01T08:05:00Z'), value: 140 },
         { metric: 'heart_rate', source: 'garmin', time: new Date('2026-07-01T08:10:00Z'), value: 150 },
@@ -198,7 +198,7 @@ describe('feed service', () => {
         expect.objectContaining({ metric: 'heart_rate', samples: expect.any(Array) }),
       ])
       expect(dto.structured.series[0]?.samples.length).toBeGreaterThan(0)
-      // The route rides along under the include_map opt-in, endpoints intact (#1011).
+      // The route rides along under the include_map opt-in, endpoints intact.
       expect(dto.structured.route).toEqual([
         { lat: 59.33, lon: 18.06, t: '2026-07-01T08:05:00.000Z' },
         { lat: 59.34, lon: 18.07, t: '2026-07-01T08:15:00.000Z' },
@@ -259,7 +259,7 @@ describe('feed service', () => {
       expect(page2.next_cursor).toBeNull()
     })
 
-    test('an exactly-full page ends with a cursor whose next page is empty and final', async () => {
+    test('an exactly-full page carries no cursor (nothing follows it)', async () => {
       const user = getTestUser()
       await createFeedPost(user, postInput(null))
       await createFeedPost(user, postInput(null))
@@ -268,6 +268,26 @@ describe('feed service', () => {
       expect(page1.posts).toHaveLength(2)
       // 2 rows for limit 2: no extra row was fetched, so no next page.
       expect(page1.next_cursor).toBeNull()
+    })
+
+    test('walks past posts sharing a millisecond instead of dropping one (#1025)', async () => {
+      const user = getTestUser()
+      const a = await createFeedPost(user, postInput(null))
+      const b = await createFeedPost(user, postInput(null))
+      await query(user, 'UPDATE feed_posts SET created_at = $1::timestamptz WHERE id = $2', [
+        '2026-08-20 09:00:00.500700+00',
+        a.id,
+      ])
+      await query(user, 'UPDATE feed_posts SET created_at = $1::timestamptz WHERE id = $2', [
+        '2026-08-20 09:00:00.500200+00',
+        b.id,
+      ])
+
+      const page1 = await getFeedPage(user, 1, undefined)
+      expect(page1.posts.map((p) => p.id)).toEqual([a.id])
+      const page2 = await getFeedPage(user, 1, page1.next_cursor ?? undefined)
+      // With a ms-truncated cursor `b` fell into the gap and no page ever showed it.
+      expect(page2.posts.map((p) => p.id)).toEqual([b.id])
     })
 
     test('a malformed cursor falls back to the first page (never a 500)', async () => {

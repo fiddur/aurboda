@@ -9,12 +9,26 @@ The MCP server exposes 60+ tools covering all of Aurboda's functionality. Tool d
 Key areas covered by MCP tools:
 
 - **Querying** -- daily summaries, metrics, activities, tags, meals, reports, correlations, trends, chart data
-- **Tracking** -- add/update/delete activities, tags, metrics, meals, notes
+- **Tracking** -- add/update/delete activities, tags, metrics, meals, comments
 - **Activity types** -- manage custom activity type definitions
 - **Deduction rules** -- create rules that auto-generate activities from data conditions
 - **Screentime** -- manage category rules and recategorize
 - **Sync** -- trigger data syncs from Garmin, Oura, Last.fm, RescueTime, calendars
 - **Settings** -- user preferences, HR zones, training load configuration
+
+### Comment tools
+
+Comments (stored as "notes") hang off anything, or off a bare point in time, and
+can be threaded one level deep. See [Comments](features/comments.md) for the data
+model.
+
+| Tool          | What it does                                                                                                                                                                                                                                     |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `add_note`    | Add a comment in one of three shapes: on an entity (`entity_type` + `entity_id`), a reply (`entity_type: "note"`, `entity_id` = the comment's id), or about a moment (`entity_type: "time"`, no `entity_id`, `start_time` required, `end_time` optional) |
+| `get_notes`   | All comments on one entity, each with its thread nested in `replies` (oldest first)                                                                                                                                                              |
+| `query_notes` | Every comment anchored in a `from`/`to` time range -- threads nested, replies never listed separately                                                                                                                                             |
+| `update_note` | Change a comment's content; `start_time`/`end_time` only on a `time` comment, and moving one moves its whole thread                                                                                                                               |
+| `delete_note` | Delete a comment; deleting a thread root deletes its replies too                                                                                                                                                                                  |
 
 ## Endpoint
 
@@ -130,6 +144,8 @@ Once connected, you can ask Claude questions like:
 - "Log that I just had a coffee"
 - "Record my weight as 75.5 kg"
 - "I meditated for 30 minutes starting at 2pm - add that as a tag"
+- "Note that I felt dizzy around 11:40 this morning"
+- "What did I comment on yesterday?"
 
 ## Error Handling
 

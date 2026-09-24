@@ -7,9 +7,6 @@ import { builtinDashboardMetrics, metricLabels } from '@aurboda/api-spec'
  */
 export { getMetricDisplayName, metricLabels } from '@aurboda/api-spec'
 
-/**
- * Built-in dashboard metrics with their display names.
- */
 export const builtinDashboardMetricOptions = builtinDashboardMetrics.map((m) => ({
   label: metricLabels[m] ?? m,
   value: m,

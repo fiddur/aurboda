@@ -88,7 +88,6 @@ export function Help() {
   const end = endOfDay(new Date())
   const start7days = startOfDay(subDays(new Date(), 7))
 
-  // Fetch user settings to check configuration status
   const settingsQuery = useQuery({
     enabled: !!isLoggedIn,
     queryFn: fetchUserSettings,
@@ -104,7 +103,6 @@ export function Help() {
     staleTime: 5 * 60 * 1000,
   })
 
-  // Fetch sleep data
   const sleepQuery = useQuery({
     enabled: !!isLoggedIn,
     queryFn: () => fetchActivities(start7days, end, ['sleep']),
@@ -112,7 +110,6 @@ export function Help() {
     staleTime: 5 * 60 * 1000,
   })
 
-  // Fetch exercise data
   const exerciseQuery = useQuery({
     enabled: !!isLoggedIn,
     queryFn: () => fetchActivities(start7days, end, ['exercise']),

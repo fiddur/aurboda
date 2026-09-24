@@ -1,8 +1,4 @@
 /**
- * Correlation analysis services for health data.
- *
- * Provides statistical analysis of correlations between HRV/HR and various
- * activity sources (RescueTime, locations, activities).
  * Note: 'tag' type is kept as backward-compat alias for 'activity_type'.
  */
 

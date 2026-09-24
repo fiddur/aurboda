@@ -1,6 +1,3 @@
-/**
- * Compact playlist card showing Last.fm scrobbles during an activity's time range.
- */
 import { useQuery } from '@tanstack/react-query'
 import { format } from 'date-fns'
 

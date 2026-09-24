@@ -1,5 +1,5 @@
 /**
- * Source enrichment queue (#1080).
+ * Source enrichment queue.
  *
  * When a Health Connect batch delivers a session that belongs to a provider
  * we sync directly, the upload route enqueues one job per session here. The
@@ -21,7 +21,6 @@ import { auditError, auditInfo } from './audit-log.ts'
 
 const QUEUE_NAME = 'source-enrich'
 
-/** Seconds to wait before the first attempt. */
 export const ENRICH_DELAY_SECONDS = 60
 const RETRY_LIMIT = 3
 const RETRY_DELAY_SECONDS = 120

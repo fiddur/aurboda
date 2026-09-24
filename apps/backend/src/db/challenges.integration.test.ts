@@ -1,8 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
-/**
- * Integration tests for challenges CRUD, members, and participations.
- */
 import type { ChallengeSpecFields } from './challenges.ts'
 
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
@@ -20,6 +17,7 @@ import {
   listChallengeParticipations,
   listChallenges,
   listChallengesAwaitingResult,
+  listLeftChallengeUrls,
   listPublicChallenges,
   markChallengeResultPublished,
   removeChallengeMember,
@@ -227,6 +225,49 @@ describe('Challenges integration', () => {
     expect(await deleteChallengeParticipation(user, p.id)).toBe(true)
     expect(await getParticipationByUrl(user, url)).toBeNull()
     expect(await deleteChallengeParticipation(user, p.id)).toBe(false)
+  })
+
+  test('leaving tombstones the challenge url; rejoining clears it, leaving again re-records it', async () => {
+    const user = getTestUser()
+    const url = 'https://aurboda.net/u/alice/left-and-back'
+    const join = async () =>
+      createChallengeParticipation(user, {
+        challenge_url: url,
+        end_ts: new Date('2026-06-08T00:00:00Z'),
+        host_identity: 'https://aurboda.net/u/alice',
+        name: 'C',
+        spec,
+        start_ts: new Date('2026-06-01T00:00:00Z'),
+        timezone: 'UTC',
+      })
+
+    const first = await join()
+    expect(await listLeftChallengeUrls(user)).toEqual([])
+
+    expect(await deleteChallengeParticipation(user, first.id)).toBe(true)
+    expect(await listLeftChallengeUrls(user)).toEqual([url])
+
+    const second = await join()
+    expect(await listLeftChallengeUrls(user)).toEqual([])
+
+    expect(await deleteChallengeParticipation(user, second.id)).toBe(true)
+    expect(await listLeftChallengeUrls(user)).toEqual([url])
+  })
+
+  test('a rolled-back join (tombstone: false) leaves the challenge discoverable', async () => {
+    const user = getTestUser()
+    const p = await createChallengeParticipation(user, {
+      challenge_url: 'https://aurboda.net/u/alice/rejected-join',
+      end_ts: new Date('2026-06-08T00:00:00Z'),
+      host_identity: 'https://aurboda.net/u/alice',
+      name: 'C',
+      spec,
+      start_ts: new Date('2026-06-01T00:00:00Z'),
+      timezone: 'UTC',
+    })
+    expect(await deleteChallengeParticipation(user, p.id, { tombstone: false })).toBe(true)
+    expect(await listLeftChallengeUrls(user)).toEqual([])
+    expect(await deleteChallengeParticipation(user, p.id, { tombstone: false })).toBe(false)
   })
 
   test('creates a participation with a data token and looks it up', async () => {

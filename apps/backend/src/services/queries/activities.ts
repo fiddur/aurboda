@@ -1,7 +1,3 @@
-/**
- * Activity query functions.
- */
-
 import type { ActivityType } from '../../schema.ts'
 import type { ActivityResult, CommentSummary, SyncProvider } from './types.ts'
 
@@ -76,7 +72,6 @@ function hrZonesForActivity(
   return hrWindow.length > 0 ? computeHrZoneSecs(hrWindow, ctx.hrZones) : undefined
 }
 
-/** Enrich a raw activity record into an ActivityResult with computed fields. */
 function enrichActivity(
   a: Awaited<ReturnType<typeof getActivities>>[number],
   ctx: EnrichmentContext,
@@ -115,7 +110,6 @@ function enrichActivity(
 }
 
 /**
- * Query activities for a time range.
  * @param sync Optional sync provider to auto-refresh stale data before querying
  */
 export async function queryActivities(

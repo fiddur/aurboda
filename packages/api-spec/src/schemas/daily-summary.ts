@@ -1,7 +1,3 @@
-/**
- * Daily summary schemas.
- */
-
 import { z } from 'zod'
 
 import {
@@ -18,9 +14,6 @@ import {
 import { commentSchema, noteSchema } from './notes.ts'
 import { hrZoneSecsSchema } from './settings.ts'
 
-/**
- * Heart rate stats schema.
- */
 export const heartRateStatsSchema = z
   .object({
     avg: z.number().meta({ description: 'Average heart rate', example: 72 }),
@@ -75,9 +68,6 @@ export const sleepStageSummarySchema = z
 
 export type SleepStageSummary = z.infer<typeof sleepStageSummarySchema>
 
-/**
- * Sleep session summary schema — extends session summary with sleep-specific fields.
- */
 export const sleepSessionSummarySchema = z
   .object({
     duration: durationMinutesSchema.optional(),
@@ -104,10 +94,7 @@ export const sleepSessionSummarySchema = z
 
 export type SleepSessionSummary = z.infer<typeof sleepSessionSummarySchema>
 
-/**
- * Activity summary schema — unified activity in the daily timeline.
- * Covers exercises, meditations, tags, screen time categories, and all other activities.
- */
+/** Covers exercises, meditations, tags, screen time categories, and every other activity. */
 export const activitySummarySchema = z
   .object({
     activity_type: z
@@ -139,9 +126,6 @@ export const activitySummarySchema = z
 
 export type ActivitySummary = z.infer<typeof activitySummarySchema>
 
-/**
- * Place summary schema.
- */
 export const placeSummarySchema = z
   .object({
     address: addressSchema.optional(),
@@ -158,9 +142,6 @@ export const placeSummarySchema = z
 
 export type PlaceSummary = z.infer<typeof placeSummarySchema>
 
-/**
- * Productivity summary schema.
- */
 export const screentimeCategorySummarySchema = z
   .object({
     duration_sec: z.number().meta({ description: 'Total time in this category in seconds' }),
@@ -187,9 +168,7 @@ export const productivitySummarySchema = z
 
 export type ProductivitySummary = z.infer<typeof productivitySummarySchema>
 
-/**
- * Scores schema — source-agnostic daily scores (sleep, readiness, etc.).
- */
+/** Source-agnostic daily scores (sleep, readiness, etc.). */
 export const scoresSchema = z
   .object({
     cardiovascular_age: z.number().nullable().meta({ description: 'Cardiovascular age estimate' }),
@@ -203,16 +182,22 @@ export const scoresSchema = z
 
 export type Scores = z.infer<typeof scoresSchema>
 
-/**
- * Meal summary schema — lightweight meal info for daily summary.
- */
 export const mealSummarySchema = z
   .object({
     calories: z.number().optional().meta({ description: 'Total energy in kcal' }),
     carbs: z.number().optional().meta({ description: 'Total carbohydrates in grams' }),
+    comments: z.array(commentSchema).optional().meta({
+      description:
+        'All comments attached to this meal. User-typed comments carry no `source`; synced ones carry their origin. Each comment carries its own thread in `replies`.',
+    }),
     fat: z.number().optional().meta({ description: 'Total fat in grams' }),
     fiber: z.number().optional().meta({ description: 'Total dietary fiber in grams' }),
     food_items: z.array(z.string()).optional().meta({ description: 'Food item names included in this meal' }),
+    id: z
+      .string()
+      .uuid()
+      .optional()
+      .meta({ description: 'Meal ID — use it to attach a comment (`entity_type: "meal"`)' }),
     meal_type: z
       .string()
       .optional()
@@ -225,9 +210,6 @@ export const mealSummarySchema = z
 
 export type MealSummary = z.infer<typeof mealSummarySchema>
 
-/**
- * A single metric data point logged on the day, with optional note.
- */
 export const dailySummaryMetricEntrySchema = z
   .object({
     notes: z.string().optional().meta({ description: 'Verbatim note(s) attached to this measurement' }),
@@ -239,9 +221,6 @@ export const dailySummaryMetricEntrySchema = z
 
 export type DailySummaryMetricEntry = z.infer<typeof dailySummaryMetricEntrySchema>
 
-/**
- * Aggregated stats for a metric measured on a given day, plus the raw entries.
- */
 export const dailySummaryMetricStatsSchema = z
   .object({
     avg: z.number().meta({ description: 'Mean of values logged on this day' }),
@@ -274,9 +253,6 @@ export const dailySummaryMetricLatestSchema = z
 
 export type DailySummaryMetricLatest = z.infer<typeof dailySummaryMetricLatestSchema>
 
-/**
- * Daily summary result schema.
- */
 export const dailySummaryResultSchema = z
   .object({
     activities: z.array(activitySummarySchema).meta({
@@ -320,18 +296,12 @@ export const dailySummaryResultSchema = z
 
 export type DailySummaryResult = z.infer<typeof dailySummaryResultSchema>
 
-/**
- * Daily summary response schema (API wrapper).
- */
 export const dailySummaryResponseSchema = createDataResponseSchema(dailySummaryResultSchema).meta({
   id: 'DailySummaryResponse',
 })
 
 export type DailySummaryResponse = z.infer<typeof dailySummaryResponseSchema>
 
-/**
- * Daily summary query schema.
- */
 export const dailySummaryQuerySchema = z
   .object({
     date: dateOnlySchema.meta({ description: 'Date in YYYY-MM-DD format' }),

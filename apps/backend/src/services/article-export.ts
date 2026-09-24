@@ -1,6 +1,6 @@
 /**
- * Reddit/markdown export (C4): a paste-ready markdown rendering of an article —
- * title, prose, and one image link per chart/correlation block (via the C1
+ * Reddit/markdown export: a paste-ready markdown rendering of an article —
+ * title, prose, and one image link per chart/correlation block (via the
  * `blocks/:index/image.png` endpoint) — for pasting into a text-only
  * destination like r/QuantifiedSelf, where the author adds their own write-up
  * around the linked charts. Reuses the exact same block-image URL the AS2
@@ -25,7 +25,7 @@ import { articleBlockImageUrl, articleBlockLabel, blockWindow, isZeroDurationBuc
  * Collapse newlines (markdown alt/caption text is a single line) and escape
  * `[`/`]` (an unbalanced bracket breaks the `![alt](url)` syntax) plus `*`/`_`
  * (which would open or close an emphasis span inside the italic caption line —
- * `5*3 sets` is a plausible caption, #975).
+ * `5*3 sets` is a plausible caption).
  */
 const inlineText = (text: string): string =>
   text
@@ -55,7 +55,7 @@ const realDeps: BlockImageDataDeps = {
  * actually render — the same static window checks as `resolveArticleBlock` and
  * the same data checks as `renderArticleBlockImage` (chart: ≥ 2 points over a
  * non-zero bucket; correlation: n ≥ 3), via the same shared data fetchers, so
- * the export can't link an image that will 404 (#974).
+ * the export can't link an image that will 404.
  */
 export const renderableArticleBlocks = async (
   user: string,

@@ -1,26 +1,46 @@
-/**
- * Database connection management and schema initialization.
- */
 import { NUTRIENT_FIELD_NAMES } from '@aurboda/api-spec'
 import { Client, type QueryResultRow } from 'pg'
 import format from 'pg-format'
 
-import { createTableStatements, tableCreationOrder } from '../schema.ts'
+import { createTableStatements, schemaFingerprint, tableCreationOrder } from '../schema.ts'
 
 const dbByUser: Record<string, Client> = {}
 
 const userDbName = (user: string) => `aurboda_${user}`
 
 /**
- * Inject a database client for a user. Used for testing with testcontainers.
- * @internal
+ * How long to wait for a Postgres connection before giving up. `pg` defaults
+ * to waiting forever, so an unreachable or saturated server would leave a
+ * caller hanging until the OS TCP timeout — minutes.
  */
+const CONNECT_TIMEOUT_MS = 10_000
+
+/**
+ * Postgres SQLSTATEs that mean "the credentials are wrong", as opposed to
+ * "the database could not be reached": 28P01 invalid_password and 28000
+ * invalid_authorization_specification. Anything else is a server-side fault
+ * and must not be reported to the caller as a bad password.
+ */
+const INVALID_CREDENTIAL_CODES = new Set(['28000', '28P01'])
+
+/**
+ * True when Postgres rejected the credentials themselves. Prefers the
+ * SQLSTATE; falls back to the message because some drivers and the OwnTracks
+ * path surface only `password authentication failed for user "…"`.
+ */
+export const isInvalidPasswordError = (error: unknown): boolean => {
+  if (!(error instanceof Error)) return false
+  const code = (error as Error & { code?: string }).code
+  if (code) return INVALID_CREDENTIAL_CODES.has(code)
+  return error.message.includes('authentication failed')
+}
+
+/** @internal Exported for testing with testcontainers. */
 export const _setClientForUser = (user: string, client: Client) => {
   dbByUser[user] = client
 }
 
 /**
- * Check if an error is a PostgreSQL schema error that migration can fix.
  * Includes missing tables/columns and NOT NULL violations (from columns
  * that became nullable but the migration hasn't run yet).
  * @internal Exported for testing.
@@ -32,25 +52,82 @@ export const _isSchemaError = (error: unknown): boolean => {
   return code === '42P01' || code === '42703' || code === '23502'
 }
 
-const migrationInProgress: Record<string, Promise<void> | undefined> = {}
+const migrationInProgress: Record<string, { forced: boolean; promise: Promise<void> } | undefined> = {}
 
 /**
  * Run migration for a user, coalescing concurrent calls.
- * If a migration is already in progress for the user, returns the existing promise.
+ *
+ * The default migration FORCES a full sweep, ignoring the schema fingerprint:
+ * this is the lazy repair path, reached from `query` when a statement hit a
+ * schema error. The error proves something is missing, so the recorded
+ * fingerprint has to be treated as a lie.
+ *
+ * Coalescing accounts for that difference. A forced caller joins an in-flight
+ * forced run, but must NOT join an in-flight gated one: the gated run may
+ * decide to skip on a fingerprint the forced caller already knows is wrong,
+ * and the statement waiting on it would then fail anyway. So it waits for the
+ * gated run to settle and sweeps for real afterwards.
+ *
  * @internal Exported for testing — pass a custom migrate function in tests.
  */
 export const _runMigrationOnce = (
   user: string,
-  migrate: (user: string) => Promise<void> = migrateSchema,
+  migrate: (user: string) => Promise<void> = (u) => migrateSchema(u, { force: true }),
+  forced = true,
 ): Promise<void> => {
   const existing = migrationInProgress[user]
-  if (existing) return existing
+  if (existing && (existing.forced || !forced)) return existing.promise
 
-  const promise = migrate(user).finally(() => {
-    delete migrationInProgress[user]
+  // Only the chained case defers: with nothing in flight, `migrate` is invoked
+  // synchronously, as callers of this function have always been able to assume.
+  const swept = existing ? existing.promise.catch(() => {}).then(() => migrate(user)) : migrate(user)
+  const promise: Promise<void> = swept.finally(() => {
+    // Only clear our own entry: a forced run chained behind this one has
+    // already replaced it.
+    if (migrationInProgress[user]?.promise === promise) delete migrationInProgress[user]
   })
-  migrationInProgress[user] = promise
+  migrationInProgress[user] = { forced, promise }
   return promise
+}
+
+/**
+ * Migrate a user only when this build's schema fingerprint is not already
+ * recorded in their database, coalescing concurrent callers. Normally one
+ * `SELECT` — the entry point for the deploy-time sweep and for the auth
+ * middleware, neither of which has evidence that anything is missing.
+ */
+export const migrateSchemaIfNeeded = (user: string): Promise<void> =>
+  _runMigrationOnce(user, (u) => migrateSchema(u), false)
+
+/**
+ * Sweep every user's database, so a deploy's migrations land in the background
+ * rather than on whoever makes the first authenticated request.
+ *
+ * Sequential on purpose: a parallel sweep opens a connection per user at once.
+ * One user's broken database is logged and skipped rather than stopping the rest.
+ */
+export const migrateAllUsers = async (
+  adminClient: Client,
+): Promise<{ failed: number; migrated: number; skipped: number }> => {
+  const users = await listUserNames(adminClient)
+  const summary = { failed: 0, migrated: 0, skipped: 0 }
+
+  for (const user of users) {
+    try {
+      // Classify before migrating, so the deploy log says how many databases
+      // this build actually changed. One extra cheap marker read per user, in
+      // a background task that visits each user once.
+      const alreadyCurrent = await schemaUpToDate(await getDbForUser(user), schemaFingerprint())
+      await migrateSchemaIfNeeded(user)
+      if (alreadyCurrent) summary.skipped += 1
+      else summary.migrated += 1
+    } catch (error) {
+      summary.failed += 1
+      console.error(`⚠️ Schema migration failed for ${user}:`, error)
+    }
+  }
+
+  return summary
 }
 
 export const query = async <T extends QueryResultRow = QueryResultRow>(
@@ -65,7 +142,6 @@ export const query = async <T extends QueryResultRow = QueryResultRow>(
   try {
     return await db.query<T>(queryStr, params)
   } catch (error) {
-    // Only retry with migration when called with a username (not a Client directly)
     if (typeof dbOrUser === 'string' && _isSchemaError(error)) {
       console.info(`Schema error for user ${dbOrUser}, running migration and retrying: ${error}`)
       await _runMigrationOnce(dbOrUser, migrate)
@@ -75,18 +151,38 @@ export const query = async <T extends QueryResultRow = QueryResultRow>(
   }
 }
 
+/**
+ * Authenticate a user by connecting to their database as that Postgres role.
+ * Throws when the connection fails; `isInvalidPasswordError` separates a wrong
+ * password from an unreachable database.
+ *
+ * This ALWAYS opens a connection, even when `dbByUser` already holds a client
+ * for the user. A cached client proves nothing about the password: it is
+ * normally filled by `getDbForUser`, which connects as the service role and
+ * does `SET ROLE`, so any token-authenticated request (a sync push, an MCP
+ * call) warms it.
+ */
 export const loginToUserDb = async (user: string, password: string) => {
-  // Check if we already have a connection for this user
-  const existing = dbByUser[user]
-  if (existing) {
-    // Already connected - auth is handled by tokens, no need to re-verify password
-    // This avoids storing passwords in memory while maintaining security via token auth
-    return
+  const client = new Client({
+    connectionTimeoutMillis: CONNECT_TIMEOUT_MS,
+    database: userDbName(user),
+    password,
+    user,
+  })
+
+  try {
+    await client.connect()
+  } catch (error) {
+    await client.end().catch(() => {})
+    throw error
   }
 
-  const database = userDbName(user)
-  const client = new Client({ database, password, user })
-  await client.connect()
+  // Keep the freshly authenticated client only when nothing is cached yet;
+  // otherwise the cached one stays and this one was purely a password check.
+  if (dbByUser[user]) {
+    await client.end().catch(() => {})
+    return
+  }
   dbByUser[user] = client
 }
 
@@ -132,7 +228,6 @@ export const dropUserDb = async (adminClient: Client, user: string) => {
     } catch {}
     delete dbByUser[user]
   }
-  // Also drop any other open connections to the per-user DB.
   await query(
     adminClient,
     format(
@@ -162,18 +257,14 @@ export const listUserNames = async (client: Client): Promise<string[]> => {
 
 export const getDbForUser = async (user: string) => {
   if (dbByUser[user]) return dbByUser[user]
-  const client = new Client({ database: userDbName(user) })
+  const client = new Client({ connectionTimeoutMillis: CONNECT_TIMEOUT_MS, database: userDbName(user) })
   await client.connect()
   await query(client, format('SET ROLE %L', user))
   dbByUser[user] = client
   return client
 }
 
-/**
- * Initialize the database schema for a user.
- * Creates all tables and indexes if they don't exist.
- * Note: PostGIS extension is created in makeNewUserDb before this is called.
- */
+/** PostGIS extension is created in makeNewUserDb before this is called. */
 export const initializeSchema = async (user: string) => {
   const db = await getDbForUser(user)
 
@@ -214,7 +305,6 @@ const backfillTagKeysFromMappings = async (db: Client, existingTableNames: Set<s
   }
 }
 
-/** Add an alias to an existing definition, or create a new one and link tags. */
 const backfillCreateOrLinkDefinition = async (
   db: Client,
   createdByLowerName: Map<string, string>,
@@ -251,7 +341,6 @@ const backfillCreateOrLinkDefinition = async (
   await query(db, linkQuery, linkParams(defId))
 }
 
-/** Read tag_mappings and item_icons from user_settings. */
 const readTagSettingsForBackfill = async (
   db: Client,
   existingTableNames: Set<string>,
@@ -266,7 +355,6 @@ const readTagSettingsForBackfill = async (
   }
 }
 
-/** Backfill definitions from tag_mappings entries. */
 const backfillFromMappings = async (
   db: Client,
   createdByLowerName: Map<string, string>,
@@ -288,7 +376,6 @@ const backfillFromMappings = async (
   }
 }
 
-/** Backfill definitions from unmapped Oura tags. */
 const backfillFromOuraTags = async (
   db: Client,
   createdByLowerName: Map<string, string>,
@@ -317,7 +404,6 @@ const backfillFromOuraTags = async (
   }
 }
 
-/** Backfill definitions from manual/aurboda tags without tag_key. */
 const backfillFromManualTags = async (
   db: Client,
   createdByLowerName: Map<string, string>,
@@ -344,10 +430,6 @@ const backfillFromManualTags = async (
   }
 }
 
-/**
- * Backfill tag_definitions from existing tag data and user_settings tag_mappings.
- * Idempotent: skips if definitions already exist.
- */
 const backfillTagDefinitions = async (db: Client, existingTableNames: Set<string>) => {
   if (!existingTableNames.has('tag_definitions') && !existingTableNames.has('tags')) return
 
@@ -362,7 +444,6 @@ const backfillTagDefinitions = async (db: Client, existingTableNames: Set<string
   await backfillFromManualTags(db, createdByLowerName, itemIcons)
 }
 
-/** Add tag_definition_id FK column to tags table if not present. */
 const migrateTagDefinitionFk = async (db: Client) => {
   await query(db, `ALTER TABLE tags ADD COLUMN IF NOT EXISTS tag_definition_id UUID`)
   await query(
@@ -415,10 +496,10 @@ const ensureFlagsInTable = async (db: Client, names: Iterable<string>): Promise<
   let sortOrder = 0
   for (const name of names) {
     // INSERT … ON CONFLICT DO NOTHING returns no row when the conflict path
-    // is taken, so look up the existing id with a fallback SELECT. The
-    // earlier "DO UPDATE SET name = EXCLUDED.name" trick worked but was a
-    // no-op write that confused readers and silently swallowed `sort_order`
-    // on re-runs after a partial failure.
+    // is taken, so look up the existing id with a fallback SELECT. A
+    // "DO UPDATE SET name = EXCLUDED.name" trick avoids the SELECT but is a
+    // no-op write that silently swallows `sort_order` on re-runs after a
+    // partial failure.
     const inserted = await query(
       db,
       `INSERT INTO sensitivity_flags (name, sort_order) VALUES ($1, $2)
@@ -483,40 +564,29 @@ const backfillSensitivityFlags = async (db: Client) => {
   await backfillFoodItemSensitivities(db, legacy.map, flagIdByName)
 }
 
-/**
- * Convert a display string to snake_case identifier.
- * "Coffee" → "coffee", "Hot Bath" → "hot_bath", "[Work] Meeting" → "work_meeting"
- */
+/** "Coffee" → "coffee", "Hot Bath" → "hot_bath", "[Work] Meeting" → "work_meeting" */
 const toSnakeCase = (s: string): string =>
   s
-    .replaceAll(/[[\]()]/g, '') // remove brackets/parens
+    .replaceAll(/[[\]()]/g, '')
     .trim()
     .toLowerCase()
-    .replaceAll(/[^a-z0-9]+/g, '_') // non-alphanumeric → underscore
-    .replaceAll(/^_|_$/g, '') // trim leading/trailing underscores
-    .replaceAll(/_+/g, '_') || // collapse multiple underscores
-  'unknown'
+    .replaceAll(/[^a-z0-9]+/g, '_')
+    .replaceAll(/^_|_$/g, '')
+    .replaceAll(/_+/g, '_') || 'unknown'
 
-/**
- * Migrate tags into activities and tag_definitions into activity_type_definitions.
- * Idempotent: checks if migration already happened.
- */
+/** Migrate tags into activities and tag_definitions into activity_type_definitions. */
 const migrateTagsToActivities = async (db: Client, existingTableNames: Set<string>) => {
   if (!existingTableNames.has('tags')) return
 
-  // Check if migration already happened (tags table is empty or activities already have external_id data)
   const tagCount = await query(db, `SELECT count(*) FROM tags WHERE deleted_at IS NULL`)
   if (parseInt(tagCount.rows[0].count, 10) === 0) return
 
-  // Check if we already migrated (any activity has external_id)
   const migratedCheck = await query(db, `SELECT 1 FROM activities WHERE external_id IS NOT NULL LIMIT 1`)
   if (migratedCheck.rows.length > 0) return
 
   console.info('  🔄 Migrating tags into activities...')
 
-  // Step 1: Merge tag_definitions into activity_type_definitions
   if (existingTableNames.has('tag_definitions') && existingTableNames.has('activity_type_definitions')) {
-    // For each tag definition, create or update an activity_type_definition
     const defs = await query(db, `SELECT id, name, icon, aliases, show_on_timeline FROM tag_definitions`)
     for (const def of defs.rows) {
       const name = toSnakeCase(def.name as string)
@@ -542,8 +612,6 @@ const migrateTagsToActivities = async (db: Client, existingTableNames: Set<strin
     }
   }
 
-  // Step 2: Flatten exercise subtypes in existing activities
-  // exercise + exerciseTypeName → the exercise type directly
   await query(
     db,
     `UPDATE activities
@@ -553,7 +621,6 @@ const migrateTagsToActivities = async (db: Client, existingTableNames: Set<strin
        AND data->>'exerciseTypeName' != ''`,
   )
 
-  // Step 3: Insert tags as activities
   // Use tag_definition name (snake_cased) as activity_type, or the tag text itself
   await query(
     db,
@@ -583,7 +650,6 @@ const migrateTagsToActivities = async (db: Client, existingTableNames: Set<strin
      ON CONFLICT DO NOTHING`,
   )
 
-  // Step 4: Update notes entity_type from 'tag' to 'activity'
   if (existingTableNames.has('notes')) {
     await query(db, `UPDATE notes SET entity_type = 'activity' WHERE entity_type = 'tag'`)
   }
@@ -592,15 +658,49 @@ const migrateTagsToActivities = async (db: Client, existingTableNames: Set<strin
 }
 
 /**
- * Run database migrations for a user.
- * Checks which tables exist and creates missing ones.
+ * The ledger of applied migrations. Idempotent, and needed before anything
+ * reads it — `schemaUpToDate` runs on databases that predate the table.
+ */
+export const ensureSchemaMigrationsTable = async (db: Client) => {
+  await query(
+    db,
+    `CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`,
+  )
+}
+
+export const schemaUpToDate = async (db: Client, fingerprint: string): Promise<boolean> => {
+  await ensureSchemaMigrationsTable(db)
+  const result = await query(db, `SELECT 1 FROM schema_migrations WHERE name = $1`, [`schema@${fingerprint}`])
+  return result.rowCount !== 0
+}
+
+/** Append-only: the rows left behind read as the database's migration history. */
+export const recordSchemaFingerprint = async (db: Client, fingerprint: string) => {
+  await ensureSchemaMigrationsTable(db)
+  await query(db, `INSERT INTO schema_migrations (name) VALUES ($1) ON CONFLICT DO NOTHING`, [
+    `schema@${fingerprint}`,
+  ])
+}
+
+/**
+ * Returns immediately when the database already records this build's schema
+ * fingerprint, because the sweep below is ~130 statements including full-table
+ * rewrites of `activities`, `tags`, `food_items` and `user_settings` — minutes
+ * on a database with years of data (#1125). Pass `{ force: true }` to sweep
+ * regardless: a caller that has already seen a schema error knows the
+ * fingerprint is wrong.
  */
 // eslint-disable-next-line complexity -- migration functions inherently have many conditional branches
-export const migrateSchema = async (user: string) => {
+export const migrateSchema = async (user: string, opts?: { force?: boolean }) => {
   const db = await getDbForUser(user)
   const database = `aurboda_${user}`
+  const fingerprint = schemaFingerprint()
 
-  // Check which tables exist
+  if (!opts?.force && (await schemaUpToDate(db, fingerprint))) {
+    console.info(`Schema for ${user} already at ${fingerprint}, skipping migration`)
+    return
+  }
+
   const existingTables = await query(
     db,
     `SELECT table_name FROM information_schema.tables WHERE table_catalog = $1 AND table_schema = 'public'`,
@@ -649,7 +749,6 @@ export const migrateSchema = async (user: string) => {
           .replaceAll(/^_|_$/g, '')
           .replaceAll(/_+/g, '_') || 'unknown'
 
-      // Ensure the activity type definition exists
       await query(
         db,
         `INSERT INTO activity_type_definitions (name, display_name, display_category)
@@ -765,10 +864,7 @@ export const migrateSchema = async (user: string) => {
     // don't scan activities twice on every connection. Also gated on the
     // legacy column's presence — the INSERT SQL references `overrides_id`
     // so it can't be parsed on post-#735 DBs.
-    await query(
-      db,
-      `CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`,
-    )
+    await ensureSchemaMigrationsTable(db)
     const migrationApplied = await query(
       db,
       `SELECT 1 FROM schema_migrations WHERE name = 'backfill_user_edited_to_overrides'`,
@@ -799,9 +895,7 @@ export const migrateSchema = async (user: string) => {
         `INSERT INTO schema_migrations (name) VALUES ('backfill_user_edited_to_overrides') ON CONFLICT DO NOTHING`,
       )
     }
-    // Widen activity_type from VARCHAR(50) to VARCHAR(100) for longer type names
     await query(db, `ALTER TABLE activities ALTER COLUMN activity_type TYPE VARCHAR(100)`)
-    // Replace old unique constraint and non-unique index with partial unique indexes
     await query(db, `ALTER TABLE activities DROP CONSTRAINT IF EXISTS unique_activity`)
     // Drop old non-unique idx_activities_type_time so we can recreate as UNIQUE with WHERE clause
     await query(db, `DROP INDEX IF EXISTS idx_activities_type_time`)
@@ -1177,9 +1271,7 @@ export const migrateSchema = async (user: string) => {
   if (existingTableNames.has('meal_food_items')) {
     await query(db, `ALTER TABLE meal_food_items ADD COLUMN IF NOT EXISTS food_item_name VARCHAR(255)`)
     await query(db, `ALTER TABLE meal_food_items ADD COLUMN IF NOT EXISTS food_item_icon TEXT`)
-    // Drop the FK if it still exists.
     await query(db, `ALTER TABLE meal_food_items DROP CONSTRAINT IF EXISTS meal_food_items_food_item_id_fkey`)
-    // Mirror the nutrient columns onto the snapshot table.
     for (const field of NUTRIENT_FIELD_NAMES) {
       await query(db, `ALTER TABLE meal_food_items ADD COLUMN IF NOT EXISTS ${field} DOUBLE PRECISION`)
     }
@@ -1192,10 +1284,10 @@ export const migrateSchema = async (user: string) => {
     // while the new instance is migrating, since the column would briefly
     // be in JUNCTION_COLUMNS but absent from the table.
     await query(db, `ALTER TABLE meal_food_items DROP COLUMN IF EXISTS sensitivities`)
-    // PR2 of the food-portions feature: per-row pointer at the portion the
-    // user selected, plus the count they logged. Both are nullable so
-    // legacy rows (logged before portions existed) keep working — meals.ts
-    // falls back to (quantity, unit) when food_item_portion_id is NULL.
+    // Per-row pointer at the portion the user selected, plus the count they
+    // logged. Both are nullable so legacy rows (logged before portions
+    // existed) keep working — meals.ts falls back to (quantity, unit) when
+    // food_item_portion_id is NULL.
     await query(db, `ALTER TABLE meal_food_items ADD COLUMN IF NOT EXISTS food_item_portion_id UUID`)
     await query(db, `ALTER TABLE meal_food_items ADD COLUMN IF NOT EXISTS portion_count DOUBLE PRECISION`)
   }
@@ -1234,15 +1326,10 @@ export const migrateSchema = async (user: string) => {
     await query(db, `DROP TABLE IF EXISTS import_jobs`)
   }
 
-  // Migrate source columns to support 'aurboda' (rename 'manual' -> 'aurboda' for new data)
-  // Note: existing 'manual' data is preserved; new entries use 'aurboda'
-
   // Create missing tables and indexes (columns now exist for index creation)
   for (const key of tableCreationOrder) {
     const tableName = key.replace('_indexes', '')
     if (!existingTableNames.has(tableName) || key.endsWith('_indexes')) {
-      // Always run index creation (IF NOT EXISTS handles duplicates)
-      // Create tables only if they don't exist
       await query(db, createTableStatements[key])
     }
   }
@@ -1256,7 +1343,6 @@ export const migrateSchema = async (user: string) => {
   // to be redone manually via the MCP tool because central isn't queried here).
   await backfillSensitivityFlags(db)
 
-  // Backfill tag_key for existing Oura tags
   if (existingTableNames.has('tags')) {
     // Tags that still have programmatic names (UUID/tag_*) get tag_key = tag
     await query(
@@ -1271,14 +1357,11 @@ export const migrateSchema = async (user: string) => {
     await backfillTagKeysFromMappings(db, existingTableNames)
   }
 
-  // Backfill tag_definitions from existing tags and tag_mappings
   await backfillTagDefinitions(db, existingTableNames)
 
-  // Migrate tags into activities and tag_definitions into activity_type_definitions
   await migrateTagsToActivities(db, existingTableNames)
 
   // Migrate generic 'exercise' activities to their specific type.
-  // (idempotent — only updates activities that still have the generic type)
   // Must run BEFORE the definition backfill so new exercise types get definitions created.
   if (existingTableNames.has('activities')) {
     // Step 1: Migrate activities that have activity_type_key in data (legacy path)
@@ -1361,7 +1444,7 @@ export const migrateSchema = async (user: string) => {
     }
   }
 
-  // Step 3: Align Garmin typeKey names with HC exercise type names.
+  // Align Garmin typeKey names with HC exercise type names.
   // Garmin uses modifier_noun (e.g., treadmill_running), HC uses noun_modifier (running_treadmill).
   if (existingTableNames.has('activities')) {
     const garminNameAliases: [string, string][] = [
@@ -1425,7 +1508,6 @@ export const migrateSchema = async (user: string) => {
     )
   }
 
-  // Migrate goals and custom_metrics from user_settings JSONB to their own tables
   await migrateGoalsAndCustomMetrics(db, existingTableNames)
 
   // Add trend goal columns to goals table
@@ -1469,7 +1551,6 @@ export const migrateSchema = async (user: string) => {
     )
   }
 
-  // Add foreign key constraints (idempotent)
   if (existingTableNames.has('activities') && existingTableNames.has('activity_type_definitions')) {
     await query(
       db,
@@ -1490,12 +1571,11 @@ export const migrateSchema = async (user: string) => {
        END $$`,
     )
   }
+
+  // Last, and only on success: a sweep that threw must run again next time.
+  await recordSchemaFingerprint(db, fingerprint)
 }
 
-/**
- * Migrate goals from user_settings JSONB into the goals table.
- * Only runs if the JSONB contains goals and the table is empty.
- */
 const migrateGoalsFromSettings = async (
   db: Client,
   settings: Record<string, unknown>,
@@ -1520,10 +1600,6 @@ const migrateGoalsFromSettings = async (
   await query(db, `UPDATE user_settings SET settings = settings - 'goals', updated_at = NOW()`)
 }
 
-/**
- * Migrate custom_metrics from user_settings JSONB into the custom_metrics table.
- * Only runs if the JSONB contains custom_metrics and the table is empty.
- */
 const migrateCustomMetricsFromSettings = async (
   db: Client,
   settings: Record<string, unknown>,
@@ -1552,9 +1628,6 @@ const migrateCustomMetricsFromSettings = async (
   await query(db, `UPDATE user_settings SET settings = settings - 'custom_metrics', updated_at = NOW()`)
 }
 
-/**
- * Migrate goals and custom_metrics from user_settings JSONB into their own tables.
- */
 const migrateGoalsAndCustomMetrics = async (db: Client, existingTableNames: Set<string>) => {
   if (!existingTableNames.has('user_settings')) return
 
@@ -1566,9 +1639,6 @@ const migrateGoalsAndCustomMetrics = async (db: Client, existingTableNames: Set<
   await migrateCustomMetricsFromSettings(db, settings, existingTableNames)
 }
 
-/**
- * Check if schema is initialized (has required tables).
- */
 export const schemaInitialized = async (user: string) => {
   const database = userDbName(user)
   const db = await getDbForUser(user)

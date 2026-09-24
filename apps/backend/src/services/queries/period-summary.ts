@@ -1,7 +1,3 @@
-/**
- * Period summary query function.
- */
-
 import type { PeriodMetricStats, PeriodSummaryResult } from './types.ts'
 
 import { getDailyAggregates, getTimeSeries, getTimeSeriesStats } from '../../db/index.ts'
@@ -25,10 +21,6 @@ export const emptyPeriodMetricStats = (metric: string): PeriodMetricStats => ({
   unit: metricUnits[metric as MetricType] ?? 'ms',
 })
 
-/**
- * Compute HR zone stats for period summary.
- * Returns PeriodMetricStats for each requested HR zone metric.
- */
 async function computeHrZoneStats(
   user: string,
   hrZoneMetrics: MetricType[],
@@ -37,16 +29,13 @@ async function computeHrZoneStats(
 ): Promise<PeriodMetricStats[]> {
   if (hrZoneMetrics.length === 0) return []
 
-  // Get heart rate data and user's HR zones
   const [hrData, { zones: hrZones }] = await Promise.all([
     getTimeSeries(user, 'heart_rate', start, end),
     getEffectiveHrZones(user),
   ])
 
-  // Compute total time in each zone
   const zoneSecs = computeHrZoneSecs(hrData, hrZones)
 
-  // Build stats for each requested HR zone metric
   return hrZoneMetrics.map((metric) => {
     const zoneIndex = parseInt(metric.replace('hr_zone_', '').replace('_sec', ''), 10) as
       | 0
@@ -92,7 +81,6 @@ async function getClassifiedHrvData(
 }
 
 /**
- * Compute period summary stats for contextual HRV metrics (hrv_sleep, hrv_activity, hrv_awake).
  * These are computed by filtering hrv_rmssd data by overlapping sleep/activity windows.
  */
 async function computeContextualHrvStats(
@@ -105,7 +93,6 @@ async function computeContextualHrvStats(
 ): Promise<PeriodMetricStats[]> {
   if (metrics.length === 0) return []
 
-  // Fetch current and previous period data in parallel
   const [currentData, previousData] = await Promise.all([
     getClassifiedHrvData(user, start, end),
     getClassifiedHrvData(user, prevStart, prevEnd),
@@ -131,7 +118,6 @@ async function computeContextualHrvStats(
     const variance = nums.reduce((sum, v) => sum + (v - avg) ** 2, 0) / nums.length
     const stddev = Math.sqrt(variance)
 
-    // Previous period comparison
     let changeFromPrevious: number | null = null
     if (prevValues.length > 0) {
       const prevNums = prevValues.map(([, v]) => v)
@@ -141,7 +127,6 @@ async function computeContextualHrvStats(
       }
     }
 
-    // Outliers
     const outlierThreshold = stddev * 2
     const outliers: { type: 'high' | 'low'; value: number }[] = []
     if (stddev > 0) {
@@ -166,16 +151,12 @@ async function computeContextualHrvStats(
   })
 }
 
-/**
- * Get aggregated statistics for a time period.
- */
 export async function getPeriodSummary(
   user: string,
   metrics: string[],
   start: Date,
   end: Date,
 ): Promise<PeriodSummaryResult> {
-  // Separate special metric types from regular metrics
   const regularMetrics = metrics.filter(
     (m) => !isHrZoneMetric(m as MetricType) && !isContextualHrvMetric(m as MetricType),
   )
@@ -189,7 +170,6 @@ export async function getPeriodSummary(
   const prevStart = new Date(start.getTime() - periodMs)
   const prevEnd = new Date(start.getTime() - 1)
 
-  // Fetch current and previous period stats in parallel (for regular metrics)
   const [currentStats, previousStats, dailyAggregates, hrZoneStats, contextualHrvStats] = await Promise.all([
     getTimeSeriesStats(user, regularMetrics, start, end),
     getTimeSeriesStats(user, regularMetrics, prevStart, prevEnd),
@@ -205,7 +185,6 @@ export async function getPeriodSummary(
   const prevStatsMap = new Map(previousStats.map((s) => [s.metric, s]))
   const dailyByMetric = Map.groupBy(dailyAggregates, (d) => d.metric)
 
-  // Build response with trends and completeness for regular metrics
   const metricsWithTrends: PeriodMetricStats[] = currentStats.map((stat) => {
     const prevStat = prevStatsMap.get(stat.metric)
     const dailyData = dailyByMetric.get(stat.metric) ?? []
@@ -227,7 +206,6 @@ export async function getPeriodSummary(
       }
     }
 
-    // Calculate change from previous period
     let changeFromPrevious: number | null = null
     if (prevStat && prevStat.avg !== 0) {
       changeFromPrevious = ((stat.avg - prevStat.avg) / prevStat.avg) * 100
@@ -283,7 +261,6 @@ export async function getPeriodSummary(
     })
   }
 
-  // Add HR zone stats and contextual HRV stats
   metricsWithTrends.push(...hrZoneStats, ...contextualHrvStats)
 
   return {

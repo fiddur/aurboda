@@ -27,14 +27,12 @@ import kotlin.reflect.KClass
 
 private const val TAG = "DailyAggregateSync"
 
-/** Describes a cumulative metric that can be aggregated from Health Connect. */
 data class AggregatableMetric(
   val aggregateMetric: AggregateMetric<*>,
   val dailyMetric: DailyAggregate.Metric,
   val recordClass: KClass<out Record>,
 )
 
-/** All cumulative metrics we aggregate from Health Connect. */
 val allAggregatableMetrics: List<AggregatableMetric> =
   listOf(
     AggregatableMetric(StepsRecord.COUNT_TOTAL, DailyAggregate.Metric.steps, StepsRecord::class),
@@ -49,7 +47,6 @@ val allAggregatableMetrics: List<AggregatableMetric> =
   )
 
 /**
- * Fetch daily aggregates for cumulative metrics using Health Connect's aggregate() API.
  * Only fetches for metrics whose record classes are in [grantedTypes].
  */
 suspend fun fetchDailyAggregates(
@@ -81,7 +78,6 @@ suspend fun fetchDailyAggregates(
           )
         val result = healthConnectClient.aggregate(request)
 
-        // Extract value based on metric type
         val value: Double? =
           when (metric) {
             StepsRecord.COUNT_TOTAL -> result[StepsRecord.COUNT_TOTAL]?.toDouble()
@@ -121,7 +117,6 @@ suspend fun fetchDailyAggregates(
 }
 
 /**
- * Send daily aggregates to the backend.
  * @return true if successful (including when there's nothing to send), false on failure.
  */
 suspend fun sendDailyAggregates(

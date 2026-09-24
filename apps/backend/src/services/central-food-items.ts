@@ -1,6 +1,4 @@
 /**
- * Central (shared) food-item library.
- *
  * Lives in the central database — every user sees the same canonical
  * reference data (Livsmedelsverket today, possibly USDA / OpenFoodFacts /
  * barcode-scanned products later). User-private items continue to live in

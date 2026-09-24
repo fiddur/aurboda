@@ -1,6 +1,4 @@
 /**
- * Shared pg-boss instance for PostgreSQL-backed job queues.
- *
  * All job queues (geocoding, deduction evaluation, etc.) share a single
  * pg-boss instance connected to the shared 'aurboda' database.
  */
@@ -8,13 +6,8 @@
 import pg from 'pg'
 import * as PgBossModule from 'pg-boss'
 
-// Re-export the PgBoss type for consumers
 export type PgBoss = InstanceType<typeof PgBossModule.PgBoss>
 export type { Job } from 'pg-boss'
-
-// ============================================================================
-// Configuration
-// ============================================================================
 
 const DEFAULT_DB = 'aurboda'
 
@@ -38,9 +31,6 @@ const buildConnectionString = (database?: string): string | null => {
   return `postgresql://${params.user}:${params.password}@${params.host}:${params.port}/${db}`
 }
 
-/**
- * Ensure the shared database exists, creating it if necessary.
- */
 const ensureDatabase = async (): Promise<boolean> => {
   const params = getDbParams()
 
@@ -67,13 +57,7 @@ const ensureDatabase = async (): Promise<boolean> => {
   }
 }
 
-// ============================================================================
-// Factory
-// ============================================================================
-
 /**
- * Create and start a shared pg-boss instance.
- *
  * Returns null if the database is not available or credentials are missing.
  */
 /* v8 ignore start -- requires real PostgreSQL */

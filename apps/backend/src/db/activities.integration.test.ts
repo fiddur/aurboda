@@ -7,6 +7,7 @@ import {
   deleteActivity,
   deleteGarminActivityWithWrongType,
   findActivityByExternalId,
+  findDeletedActivityByExternalId,
   getActivities,
   getActivityById,
   getActivitiesNeedingDetail,
@@ -18,6 +19,7 @@ import {
   insertActivity,
   insertOverride,
   markActivityDetailSynced,
+  softDeleteActivityByExternalId,
   updateActivity,
 } from './activities/index.ts'
 
@@ -1084,7 +1086,12 @@ describe('Activities Integration Tests', () => {
         title: 'Strength',
       })
 
-      const rows = await getActivities(user, 'strength_training', new Date('2026-09-03'), new Date('2026-09-04'))
+      const rows = await getActivities(
+        user,
+        'strength_training',
+        new Date('2026-09-03'),
+        new Date('2026-09-04'),
+      )
       expect(rows).toHaveLength(1)
       expect(rows[0].id).toBe(legacyId)
       expect(rows[0].external_id).toBe('garmin-activity-24218667980')
@@ -1103,11 +1110,13 @@ describe('Activities Integration Tests', () => {
         start_time: start,
       })
 
-      const adopted = await adoptLegacyActivity(
-        user,
-        { external_id: 'gravl-workout-abc', source: 'gravl' },
-        [{ client_record_id: 'gravl-session-abc', data_origin: 'com.liteup.getgains', kind: 'hc_client_record' }],
-      )
+      const adopted = await adoptLegacyActivity(user, { external_id: 'gravl-workout-abc', source: 'gravl' }, [
+        {
+          client_record_id: 'gravl-session-abc',
+          data_origin: 'com.liteup.getgains',
+          kind: 'hc_client_record',
+        },
+      ])
       expect(adopted).toBe(legacyId)
       const row = await getActivityById(user, legacyId!)
       expect(row?.source).toBe('gravl')
@@ -1140,7 +1149,11 @@ describe('Activities Integration Tests', () => {
       expect(
         await adoptLegacyActivity(user, identity, [
           { garmin_activity_id: 1, kind: 'garmin_activity_id' },
-          { client_record_id: '1', data_origin: 'com.garmin.android.apps.connectmobile', kind: 'hc_client_record' },
+          {
+            client_record_id: '1',
+            data_origin: 'com.garmin.android.apps.connectmobile',
+            kind: 'hc_client_record',
+          },
         ]),
       ).toBe(hcId)
 
@@ -1199,6 +1212,63 @@ describe('Activities Integration Tests', () => {
       expect(await findActivityByExternalId(user, 'garmin', 'gravl-workout-abc')).toBeNull()
       await deleteActivity(user, id!)
       expect(await findActivityByExternalId(user, 'gravl', 'gravl-workout-abc')).toBeNull()
+    })
+  })
+
+  describe('softDeleteActivityByExternalId', () => {
+    test('leaves a tombstone a re-delivered record cannot resurrect', async () => {
+      const user = getTestUser()
+      const id = await insertActivity(user, {
+        activity_type: 'strength_training',
+        data: { set_count: 3 },
+        external_id: 'gravl-workout-tombstone',
+        source: 'gravl',
+        start_time: new Date('2026-09-04T05:16:21Z'),
+        title: 'External round-trip',
+      })
+
+      expect(await softDeleteActivityByExternalId(user, 'gravl', 'gravl-workout-tombstone')).toBe(true)
+      expect(await findActivityByExternalId(user, 'gravl', 'gravl-workout-tombstone')).toBeNull()
+      expect(await softDeleteActivityByExternalId(user, 'gravl', 'gravl-workout-tombstone')).toBe(false)
+
+      await insertActivity(user, {
+        activity_type: 'exercise',
+        external_id: 'gravl-workout-tombstone',
+        source: 'gravl',
+        start_time: new Date('2026-09-04T05:16:21Z'),
+        title: 'Re-delivered',
+      })
+
+      expect(await findActivityByExternalId(user, 'gravl', 'gravl-workout-tombstone')).toBeNull()
+      expect(await getActivityById(user, id)).toBeNull()
+
+      const tombstone = await getActivityById(user, id, true)
+      expect(tombstone).toMatchObject({ activity_type: 'strength_training', title: 'External round-trip' })
+      expect(tombstone?.deleted_at).toBeInstanceOf(Date)
+    })
+  })
+
+  describe('findDeletedActivityByExternalId', () => {
+    test('finds only a tombstoned row, telling a removal apart from a never-seen record', async () => {
+      const user = getTestUser()
+      const id = await insertActivity(user, {
+        activity_type: 'strength_training',
+        external_id: 'gravl-workout-deleted-lookup',
+        source: 'gravl',
+        start_time: new Date('2026-09-05T05:16:21Z'),
+        title: 'External round-trip',
+      })
+
+      expect(await findDeletedActivityByExternalId(user, 'gravl', 'gravl-workout-deleted-lookup')).toBeNull()
+
+      expect(await softDeleteActivityByExternalId(user, 'gravl', 'gravl-workout-deleted-lookup')).toBe(true)
+
+      const tombstone = await findDeletedActivityByExternalId(user, 'gravl', 'gravl-workout-deleted-lookup')
+      expect(tombstone?.id).toBe(id)
+      expect(tombstone?.deleted_at).toBeInstanceOf(Date)
+
+      expect(await findDeletedActivityByExternalId(user, 'garmin', 'gravl-workout-deleted-lookup')).toBeNull()
+      expect(await findDeletedActivityByExternalId(user, 'gravl', 'gravl-workout-never-seen')).toBeNull()
     })
   })
 })

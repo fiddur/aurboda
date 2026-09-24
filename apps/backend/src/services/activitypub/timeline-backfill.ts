@@ -1,6 +1,4 @@
 /**
- * Home-timeline backfill on follow (#884).
- *
  * When a follow WE sent becomes accepted, fetch the followee's recent PUBLIC
  * posts from their ActivityPub outbox and ingest them into the follower's home
  * timeline — so the timeline isn't empty until the followee next posts. The
@@ -127,8 +125,9 @@ export const createTimelineBackfiller = (
   const deps: BackfillDeps = {
     fetchRecentNotes: (actorUri, limit) => fetchRecentOutboxNotes(federation, origin, actorUri, limit),
     getFollowee: getFeedFollowingByActor,
-    ingestNote: (user, note, followee) =>
-      ingestNoteForRecipient(user, note, followee, enrich, undefined, origin),
+    ingestNote: async (user, note, followee) => {
+      await ingestNoteForRecipient(user, note, followee, enrich, origin)
+    },
   }
   return (user, actorUri) => {
     void withTimeout(backfillFolloweeTimeline(deps, user, actorUri), BACKFILL_TIMEOUT_MS)

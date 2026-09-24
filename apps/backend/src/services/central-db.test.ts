@@ -4,7 +4,6 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 import { createCentralDb, type CentralDb, type SignupMode } from './central-db.ts'
 
-// Mock pg.Client
 vi.mock('pg', () => {
   const mockQuery = vi.fn()
   const MockClient = vi.fn(() => ({

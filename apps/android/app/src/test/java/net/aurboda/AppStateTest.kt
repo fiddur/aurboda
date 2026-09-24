@@ -4,7 +4,6 @@ import org.junit.Test
 import org.junit.Assert.*
 
 /**
- * Unit tests for AppState enums and related logic.
  * Note: Full AppState tests with Compose state and Context
  * require instrumented tests (androidTest) or Compose testing libraries.
  */

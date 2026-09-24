@@ -1,6 +1,5 @@
 import type {
   CreateSharedDashboardBody,
-  FeedPost,
   FeedPostsResponse,
   PublicProfileResponse,
   SharedDashboard,
@@ -15,10 +14,6 @@ import { API_URL } from '../../config'
 import { auth } from '../auth'
 
 const authHeaders = () => ({ Authorization: `Bearer ${auth.value.token}` })
-
-// ===========================================================================
-// Owner-facing CRUD (authenticated)
-// ===========================================================================
 
 export const listSharedDashboards = async (): Promise<SharedDashboard[]> => {
   const response = await axios.get<SharedDashboardsResponse>(`${API_URL}/shared-dashboards`, {
@@ -50,10 +45,6 @@ export const deleteSharedDashboard = async (id: string): Promise<void> => {
   await axios.delete(`${API_URL}/shared-dashboards/${id}`, { headers: authHeaders() })
 }
 
-// ===========================================================================
-// Public viewing (unauthenticated — no Authorization header)
-// ===========================================================================
-
 export const fetchPublicProfile = async (username: string): Promise<PublicProfileResponse> => {
   const response = await axios.get<PublicProfileResponse>(
     `${API_URL}/public/${encodeURIComponent(username)}/dashboards`,
@@ -61,10 +52,14 @@ export const fetchPublicProfile = async (username: string): Promise<PublicProfil
   return response.data
 }
 
-/** A user's public/unlisted feed posts (newest-first) for their profile page. */
-export const fetchPublicPosts = async (username: string): Promise<FeedPost[]> => {
+/**
+ * One keyset page of a user's public/unlisted feed posts (newest-first) for
+ * their profile page. Pass the previous page's `next_cursor` for the next one.
+ */
+export const fetchPublicPosts = async (username: string, cursor?: string): Promise<FeedPostsResponse> => {
   const response = await axios.get<FeedPostsResponse>(
     `${API_URL}/public/${encodeURIComponent(username)}/posts`,
+    { params: cursor == null ? {} : { cursor } },
   )
-  return response.data.posts
+  return response.data
 }

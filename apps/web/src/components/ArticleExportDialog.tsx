@@ -1,5 +1,5 @@
 /**
- * Reddit/markdown export (C4): fetch an article's paste-ready markdown (title +
+ * Reddit/markdown export: fetch an article's paste-ready markdown (title +
  * prose + one image link per chart/correlation block) and let the user copy it
  * for pasting into a text-only destination like r/QuantifiedSelf, adding their
  * own write-up around the linked charts.

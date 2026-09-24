@@ -1,10 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
-/**
- * Integration tests for the auto-share rule store (#903) and the feed-post
- * dedupe lookup, against a real database.
- */
 import { insertActivity } from './activities/index.ts'
 import {
   type AutoshareRuleInput,

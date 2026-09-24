@@ -1,8 +1,4 @@
-/**
- * Activities route group.
- *
- * Handles: /activities/*. Productivity routes live in productivity-router.ts.
- */
+/** Productivity routes live in productivity-router.ts. */
 import {
   type ActivitiesQuery,
   activitiesQuerySchema,
@@ -64,7 +60,6 @@ import { validateBody, validateQuery } from '../validation.ts'
 
 type ActivityRow = Awaited<ReturnType<typeof getActivityById>> & {}
 
-/** Build the merged activity detail response. */
 const buildMergedResponse = async (
   user: string,
   activity: NonNullable<ActivityRow>,
@@ -168,7 +163,6 @@ export const createActivitiesRouter = (
       // When no types specified, query all activity types (not just those with definitions)
       let types = typesParam ? typesParam.split(',') : await getAllActivityTypeNames(user)
 
-      // Filter out excluded types when specified
       if (excludeTypesParam) {
         const excludeSet = new Set(excludeTypesParam.split(','))
         types = types.filter((t) => !excludeSet.has(t))
@@ -288,7 +282,6 @@ export const createActivitiesRouter = (
         return
       }
 
-      // Insert time series data (heart rate, power, cadence, speed)
       if (fitAct.timeSeries.length > 0 && result.id) {
         const points: TimeSeriesPoint[] = fitAct.timeSeries.map((ts) => ({
           metric: ts.metric,
@@ -459,16 +452,13 @@ export const createActivitiesRouter = (
       return res.status(404).json({ error: 'Activity not found', success: false })
     }
 
-    // Compute HR zones, avg HRV, and summary metrics for any activity with a time range
     const activityMetrics = await computeActivityDetailMetrics(user, activity)
 
-    // For merged: prefix, fetch overlapping activities and return merged view
     if (isMerged && !activity.deleted_at) {
       const data = await buildMergedResponse(user, activity, activityMetrics)
       return res.json({ data, success: true })
     }
 
-    // Resolve referenced deduction rules from activity data
     const referencedRules: Record<string, string> = {}
     const activityData = activity.data
     if (activityData) {
@@ -487,7 +477,6 @@ export const createActivitiesRouter = (
     // notes textarea reflect the real note (#794).
     const commentsMap = await getCommentsMap(user, 'activity', [realId])
 
-    // Plain UUID: return raw single activity (no overlap lookup)
     res.json({
       data: {
         ...activityMetrics,
@@ -583,7 +572,6 @@ export const createActivitiesRouter = (
         return
       }
 
-      // Look for garmin_activity_id in this activity and its overlapping (merged) sources
       const getData = (a: { data?: Record<string, unknown> }): number | undefined => {
         const garminId = a.data?.garmin_activity_id
         return typeof garminId === 'number' ? garminId : undefined

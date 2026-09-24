@@ -77,7 +77,6 @@ export function FoodItemAutocomplete({
     return () => clearTimeout(debounceRef.current)
   }, [value, hasFocus, onCreate])
 
-  // Close on click outside
   useEffect(() => {
     if (!open) return
     const handler = (e: MouseEvent) => {

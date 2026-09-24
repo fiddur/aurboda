@@ -37,6 +37,9 @@ Each meal has:
 - `meal flags[]` -- tagged meal flags
 - `notes`
 
+A meal can also carry [comments](./comments.md) -- threaded remarks anchored to
+the meal's time, surfaced as `comments` on the meal in the daily summary.
+
 ### Micronutrient Format
 
 Micronutrients use structured `{ value, unit }` objects for explicit unit tracking:

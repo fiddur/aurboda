@@ -1,8 +1,6 @@
 import type { ArticleContent, ChallengeShare, FeedPostKind, FeedVisibility } from '@aurboda/api-spec'
 
 /**
- * Feed posts — activities a user published to their federated feed.
- *
  * Posts live in the user's own database. Each records the explicit metric
  * selection that bounds what leaves the instance: `included_metrics` (scalar
  * summaries) and `series_metrics` (high-resolution opt-in). The latter is the
@@ -30,6 +28,12 @@ export interface FeedPostRecord {
   challenge: ChallengeShare | null
   /** The author's personal message (plain text), or null when none was shared. */
   message: string | null
+  /** The replied-to object id; null unless kind = 'reply'. */
+  in_reply_to_uri: string | null
+  /** The replied-to post author's actor URI; null unless kind = 'reply'. */
+  in_reply_to_actor_uri: string | null
+  /** The replied-to author's `@user@host` at reply time (names the `Mention`). */
+  in_reply_to_handle: string | null
   /** The auto-share rule that created this post (#903), or null for manual posts. */
   autoshare_rule_id: string | null
   /** Unguessable capability token for `followers`-only image URLs (see schema). */
@@ -64,6 +68,23 @@ export interface ChallengePostInput {
   message?: string | null
 }
 
+/**
+ * Input for a `reply` post: the reply text plus what it answers. Every target
+ * field is resolved server-side from the timeline entry being replied to, so a
+ * stored reply can never claim a target the reader never received.
+ */
+export interface ReplyPostInput {
+  visibility: FeedVisibility
+  /** The reply text (markdown). Non-blank — validated at the request boundary. */
+  message: string
+  /** The replied-to object's canonical AS2 id. */
+  in_reply_to_uri: string
+  /** The replied-to post author's actor URI (the `Mention` href). */
+  in_reply_to_actor_uri: string
+  /** The replied-to author's `@user@host` at reply time (the `Mention` name), if known. */
+  in_reply_to_handle?: string | null
+}
+
 export interface FeedPostPatch {
   included_metrics?: string[]
   series_metrics?: string[]
@@ -77,7 +98,7 @@ export interface FeedPostPatch {
 }
 
 const FEED_POST_COLUMNS =
-  'id, kind, activity_id, included_metrics, series_metrics, visibility, include_map, include_chart, article, challenge, message, autoshare_rule_id, image_token, created_at, updated_at'
+  'id, kind, activity_id, included_metrics, series_metrics, visibility, include_map, include_chart, article, challenge, message, in_reply_to_uri, in_reply_to_actor_uri, in_reply_to_handle, autoshare_rule_id, image_token, created_at, updated_at'
 
 interface FeedPostRow {
   id: string
@@ -92,6 +113,9 @@ interface FeedPostRow {
   article: ArticleContent | null
   challenge: ChallengeShare | null
   message: string | null
+  in_reply_to_uri: string | null
+  in_reply_to_actor_uri: string | null
+  in_reply_to_handle: string | null
   autoshare_rule_id: string | null
   image_token: string
   created_at: Date
@@ -156,32 +180,84 @@ export const createChallengePost = async (
   return mapFeedPost(result.rows[0])
 }
 
+/**
+ * Create a `reply` post: the reply text plus the resolved target (object id,
+ * author actor URI, author handle snapshot). No activity anchor and no shared
+ * metrics — a reply is a comment, not a data share.
+ */
+export const createReplyPost = async (user: string, input: ReplyPostInput): Promise<FeedPostRecord> => {
+  const result = await query<FeedPostRow>(
+    user,
+    `INSERT INTO feed_posts (kind, visibility, message, in_reply_to_uri, in_reply_to_actor_uri, in_reply_to_handle)
+     VALUES ('reply', $1, $2, $3, $4, $5)
+     RETURNING ${FEED_POST_COLUMNS}`,
+    [
+      input.visibility,
+      input.message,
+      input.in_reply_to_uri,
+      input.in_reply_to_actor_uri,
+      input.in_reply_to_handle ?? null,
+    ],
+  )
+  return mapFeedPost(result.rows[0])
+}
+
+/**
+ * The user's OWN replies to one object, oldest first — merged into the live
+ * thread snapshot of a timeline card so a reply shows immediately, whether or
+ * not the origin's `replies` collection lists it yet.
+ */
+export const listReplyPostsTo = async (user: string, objectUri: string): Promise<FeedPostRecord[]> => {
+  const result = await query<FeedPostRow>(
+    user,
+    `SELECT ${FEED_POST_COLUMNS} FROM feed_posts
+      WHERE kind = 'reply' AND in_reply_to_uri = $1
+      ORDER BY created_at ASC, id ASC`,
+    [objectUri],
+  )
+  return result.rows.map(mapFeedPost)
+}
+
 /** Keyset position in the owner's feed: the previous page's last `(created_at, id)`. */
 export interface FeedPostCursor {
-  created_at: Date
+  /** `created_at` as Postgres text (µs precision) — see `cursor_ts`. */
+  created_at: string
   id: string
 }
+
+/**
+ * A listing row plus the exact keyset position it sits at: `created_at` rendered
+ * by Postgres itself, at the microsecond precision the page predicate compares
+ * at. `pg` parses `timestamptz` into a ms-only JS `Date`, so the record's own
+ * `created_at` cannot address a row inside its millisecond (#1025). Cursor use
+ * only — never serialised onto a DTO.
+ */
+export interface FeedPostPageRow extends FeedPostRecord {
+  cursor_ts: string
+}
+
+const mapFeedPostPageRow = (row: FeedPostRow & { cursor_ts: string }): FeedPostPageRow => ({ ...row })
 
 /**
  * A keyset page of the owner's feed posts, newest-first (#1012). The `id`
  * tiebreaker keeps ordering deterministic when two posts share a `created_at`
  * (microsecond collision on rapid inserts); pass the previous page's last
- * `(created_at, id)` as `before` for the next page.
+ * `(cursor_ts, id)` as `before` for the next page.
  */
 export const listFeedPosts = async (
   user: string,
   limit: number,
   before?: FeedPostCursor,
-): Promise<FeedPostRecord[]> => {
-  const result = await query<FeedPostRow>(
+): Promise<FeedPostPageRow[]> => {
+  const result = await query<FeedPostRow & { cursor_ts: string }>(
     user,
-    `SELECT ${FEED_POST_COLUMNS} FROM feed_posts
+    `SELECT ${FEED_POST_COLUMNS}, created_at::text AS cursor_ts FROM feed_posts
      WHERE ($1::timestamptz IS NULL OR (created_at, id) < ($1::timestamptz, $2::uuid))
      ORDER BY created_at DESC, id DESC
      LIMIT $3`,
     [before?.created_at ?? null, before?.id ?? null, limit],
   )
-  return result.rows.map(mapFeedPost)
+  return result.rows.map(mapFeedPostPageRow)
 }
 
 /**
@@ -200,6 +276,16 @@ export const listPublicFeedPosts = async (user: string): Promise<FeedPostRecord[
   return result.rows.map(mapFeedPost)
 }
 
+export interface PublicFeedPageOpts {
+  /**
+   * Whether `reply` posts are listed. The ActivityPub outbox lists everything
+   * the actor published (default), while the public profile's post tab hides
+   * replies — Mastodon's own default profile tab does the same, and a bare
+   * comment out of its thread reads as noise.
+   */
+  includeReplies?: boolean
+}
+
 /**
  * One page of public outbox posts, newest-first, for the cursor-paginated
  * ActivityPub outbox. `limit`/`offset` are clamped by the caller.
@@ -208,19 +294,45 @@ export const listPublicFeedPostsPage = async (
   user: string,
   limit: number,
   offset: number,
+  opts: PublicFeedPageOpts = {},
 ): Promise<FeedPostRecord[]> => {
   const result = await query<FeedPostRow>(
     user,
     `SELECT ${FEED_POST_COLUMNS} FROM feed_posts
       WHERE visibility IN ('public', 'unlisted')
+        AND ($3::boolean OR kind <> 'reply')
       ORDER BY created_at DESC, id DESC
       LIMIT $1 OFFSET $2`,
-    [limit, offset],
+    [limit, offset, opts.includeReplies ?? true],
   )
   return result.rows.map(mapFeedPost)
 }
 
-/** Total number of posts on the public outbox (see `listPublicFeedPosts`). */
+/**
+ * A keyset page of the posts a profile lists publicly, newest-first (#1055) —
+ * the same `(created_at, id)` pagination the owner's `/feed` uses, so posts past
+ * the first page stay reachable from `/u/:username`. `opts.includeReplies`
+ * behaves as in {@link listPublicFeedPostsPage}.
+ */
+export const listPublicFeedPostsKeyset = async (
+  user: string,
+  limit: number,
+  before?: FeedPostCursor,
+  opts: PublicFeedPageOpts = {},
+): Promise<FeedPostPageRow[]> => {
+  const result = await query<FeedPostRow & { cursor_ts: string }>(
+    user,
+    `SELECT ${FEED_POST_COLUMNS}, created_at::text AS cursor_ts FROM feed_posts
+      WHERE visibility IN ('public', 'unlisted')
+        AND ($4::boolean OR kind <> 'reply')
+        AND ($1::timestamptz IS NULL OR (created_at, id) < ($1::timestamptz, $2::uuid))
+      ORDER BY created_at DESC, id DESC
+      LIMIT $3`,
+    [before?.created_at ?? null, before?.id ?? null, limit, opts.includeReplies ?? true],
+  )
+  return result.rows.map(mapFeedPostPageRow)
+}
+
 export const countPublicFeedPosts = async (user: string): Promise<number> => {
   const result = await query<{ count: number }>(
     user,
@@ -276,6 +388,9 @@ export const updateFeedPost = async (
  * the tombstone insert commit together. `followers`-only posts leave no tombstone
  * — their id never resolved publicly, so a 410 would leak that a post existed.
  * Idempotent via `ON CONFLICT` (re-deleting a since-recreated id is a no-op).
+ *
+ * The post's inbound like/boost records go with it: `feed_post_reaction.post_id`
+ * is a soft reference (like `activity_id`), so nothing cascades on its own.
  */
 export const deleteFeedPost = async (user: string, id: string): Promise<boolean> => {
   const result = await query<{ id: string }>(
@@ -283,6 +398,8 @@ export const deleteFeedPost = async (user: string, id: string): Promise<boolean>
     `WITH deleted AS (
        DELETE FROM feed_posts WHERE id = $1
        RETURNING id, visibility, activity_id
+     ), reactions AS (
+       DELETE FROM feed_post_reaction WHERE post_id IN (SELECT id FROM deleted)
      ), tomb AS (
        INSERT INTO feed_tombstone (post_id)
        SELECT id FROM deleted WHERE visibility IN ('public', 'unlisted')

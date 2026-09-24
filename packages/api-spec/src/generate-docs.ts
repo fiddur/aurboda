@@ -26,7 +26,6 @@ const END = '<!-- END:data-sources -->'
 /** Escape pipes so cell content can't break the markdown table. */
 const cell = (value: string): string => value.replaceAll('|', '\\|')
 
-/** Render the source name, linked to its docs page if `docLinkBase` is given. */
 function sourceCell(source: DataSourceInfo, docLinkBase: string | null): string {
   if (docLinkBase && source.doc) {
     return `[**${cell(source.name)}**](${docLinkBase}${source.doc})`
@@ -43,7 +42,6 @@ function markdownTable(rows: string[][]): string {
   return `${header}\n${sep}\n${body}`
 }
 
-/** README table: Source | What it provides | How, with docs linked as `docs/<slug>`. */
 function readmeTable(): string {
   const rows = [['Source', 'What it provides', 'How']]
   for (const s of dataSources) {
@@ -52,7 +50,6 @@ function readmeTable(): string {
   return markdownTable(rows)
 }
 
-/** docs/data-sources.md table: adds Admin/User setup, docs linked as `./<slug>`. */
 function dataSourcesDocTable(): string {
   const rows = [['Source', 'Data Types', 'Sync Method', 'Admin Setup', 'User Setup']]
   for (const s of dataSources) {

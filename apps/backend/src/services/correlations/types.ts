@@ -1,12 +1,7 @@
-/**
- * Type definitions for correlation analysis services.
- */
-
 import type { HrvContextMetric } from '@aurboda/api-spec'
 
 import type { LagExposureResult } from './event-outcome.ts'
 
-/** HRV statistics for a context/activity */
 export interface HrvStats {
   mean_hrv: number | null
   stddev_hrv: number | null
@@ -18,14 +13,12 @@ export interface HrvStats {
   sample_count: number
 }
 
-/** HRV stats with baseline comparison */
 export interface HrvStatsWithDelta extends HrvStats {
   hrv_delta_from_baseline: number | null
   hr_delta_from_baseline: number | null
   stress_delta_from_baseline: number | null
 }
 
-/** Baseline statistics result */
 export interface BaselineResult {
   hrv: {
     avg7day: number | null
@@ -48,32 +41,27 @@ export interface BaselineResult {
   }
 }
 
-/** Correlation by productivity category */
 export interface ProductivityCorrelation extends HrvStatsWithDelta {
   category: string
   /** Pearson correlation between productivity score and HRV (-1 to 1) */
   correlation_coefficient: number | null
 }
 
-/** Correlation by location */
 export interface LocationCorrelation extends HrvStatsWithDelta {
   location_name: string
   visit_count: number
 }
 
-/** Correlation by activity type */
 export interface ActivityCorrelation extends HrvStatsWithDelta {
   activity_type: string
   occurrences: number
   avg_duration_min?: number
 }
 
-/** Movement state correlation */
 export interface MovementCorrelation extends HrvStatsWithDelta {
   state: 'sedentary' | 'walking' | 'post_exercise_30min'
 }
 
-/** Full HRV-activities correlation result */
 export interface HrvActivitiesResult {
   period: {
     start: string
@@ -90,14 +78,12 @@ export interface HrvActivitiesResult {
   }
 }
 
-/** Time window stats for activity impact */
 export interface TimeWindowStats {
   mean: number | null
   stddev: number | null
   sample_count: number
 }
 
-/** Activity impact timeline result */
 export interface ActivityImpactResult {
   activity: string
   activity_type: 'productivity_category' | 'productivity_app' | 'location' | 'tag' | 'activity_type'
@@ -126,14 +112,12 @@ export interface ActivityImpactResult {
   }
 }
 
-/** Lag window result for event probability */
 export interface LagWindowResult {
   probability: number
   relative_risk: number
   occurrences: number
 }
 
-/** Event probability result */
 export interface EventProbabilityResult {
   trigger: {
     type: 'activity' | 'tag'
@@ -163,10 +147,6 @@ export interface EventProbabilityResult {
   }
 }
 
-// ============================================================================
-// Generic Correlation Types
-// ============================================================================
-
 /** Nutrient keys with authoritative per-day meal totals. */
 export type NutrientKey = 'calories' | 'protein' | 'carbs' | 'fat' | 'fiber'
 
@@ -176,7 +156,6 @@ export interface ThresholdSpec {
   value: number
 }
 
-/** Trigger condition for generic correlation */
 export interface TriggerCondition {
   type: 'activity' | 'tag' | 'productivity_category' | 'productivity_app' | 'nutrition'
   /** Pattern to match (omitted for nutrition triggers). */
@@ -194,13 +173,11 @@ export interface TriggerCondition {
   window_days?: number
 }
 
-/** Tag outcome configuration */
 export interface TagOutcome {
   type: 'tag'
   pattern: string
 }
 
-/** Metric outcome configuration */
 export interface MetricOutcome {
   type: 'metric'
   /** Metric name (validated at API level) */
@@ -209,7 +186,6 @@ export interface MetricOutcome {
   aggregation?: 'mean' | 'min' | 'max' | 'last'
 }
 
-/** Productivity outcome configuration */
 export interface ProductivityOutcome {
   type: 'productivity'
   /** Category to measure time in */
@@ -234,14 +210,12 @@ export interface EventOutcomeConfig {
 
 export type OutcomeConfig = TagOutcome | MetricOutcome | ProductivityOutcome | EventOutcomeConfig
 
-/** Result for tag outcomes in lag windows */
 export interface TagLagResult {
   probability: number
   relative_risk: number
   occurrences: number
 }
 
-/** Result for metric outcomes in lag windows */
 export interface MetricLagResult {
   mean: number | null
   stddev: number | null
@@ -249,7 +223,6 @@ export interface MetricLagResult {
   delta_from_baseline: number | null
 }
 
-/** Result for productivity outcomes in lag windows */
 export interface ProductivityLagResult {
   total_minutes: number
   avg_minutes_per_day: number
@@ -258,20 +231,17 @@ export interface ProductivityLagResult {
 
 export type LagResult = TagLagResult | MetricLagResult | ProductivityLagResult
 
-/** Baseline stats for metric outcomes */
 export interface MetricBaseline {
   mean: number | null
   stddev: number | null
   sample_count: number
 }
 
-/** Baseline stats for productivity outcomes */
 export interface ProductivityBaseline {
   avg_minutes_per_day: number
   total_minutes: number
 }
 
-/** Baseline stats for tag outcomes */
 export interface TagBaseline {
   probability: number
   description: string
@@ -300,7 +270,6 @@ export interface EventOutcomeBlock {
   per_lag: LagExposureResult[]
 }
 
-/** Generic correlation result */
 export interface GenericCorrelationResult {
   triggers: TriggerCondition[]
   outcome: OutcomeConfig

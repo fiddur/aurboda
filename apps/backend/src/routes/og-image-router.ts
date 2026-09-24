@@ -1,6 +1,4 @@
 /**
- * Dynamic Open Graph image endpoints (UNAUTHENTICATED).
- *
  * Serves `/u/:username[/:slug]/opengraph-image.png` — a 1200×630 branded card
  * rendered per resource. Mounted BEFORE the share-html router so these specific
  * routes win over the generic `/u/:username/:slug` HTML route.

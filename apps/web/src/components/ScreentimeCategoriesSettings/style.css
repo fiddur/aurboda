@@ -1,4 +1,3 @@
-/* Screentime Categories Settings — Navigation list */
 .sc-container {
   display: flex;
   flex-direction: column;
@@ -108,7 +107,6 @@
   cursor: not-allowed;
 }
 
-/* Actions section (import, defaults) */
 .sc-actions-section {
   border-top: 1px solid #e5e7eb;
   padding-top: 1rem;
@@ -154,7 +152,6 @@
   margin-top: 0.5rem;
 }
 
-/* Dark mode */
 @media (prefers-color-scheme: dark) {
   .sc-list {
     border-color: #333;

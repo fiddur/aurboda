@@ -1,6 +1,4 @@
 /**
- * Gravl workout → activity mapping (#1042).
- *
  * A Gravl workout becomes a `strength_training` activity keyed by
  * `gravl-workout-<uuid>` — the same identity the Health Connect processor
  * derives from Gravl's `clientRecordId` (#1080). So when the session already
@@ -13,25 +11,25 @@
  * A human-readable rendering also goes into a synced note so the detail is
  * visible before the UI can render set arrays.
  *
- * Only workouts logged in Gravl itself with at least one exercise are
- * imported (`isStrengthWorkout`). Gravl also lists every session it read from
- * Health Connect as an `External` workout; importing those would give each
- * watch activity an empty strength_training twin that outranks the original
- * in the cross-source merge.
+ * A workout the Gravl app itself imported from another app (`type: 'external'`)
+ * is a round-trip: Gravl writes it back into Health Connect under its own
+ * `clientRecordId`, so it first lands here as a `gravl` strength session that
+ * outranks the original. Those copies are removed rather than ignored.
  */
 
 import type { Activity, RawRecord } from '../../db/types.ts'
-import type { GravlSet, GravlWorkoutDetail, GravlWorkoutExercise, GravlWorkoutSummary } from './types.ts'
+import type { GravlSet, GravlWorkoutDetail, GravlWorkoutExercise } from './types.ts'
 
 import {
   adoptLegacyActivity,
-  deleteActivity,
   findActivityByExternalId,
   insertActivity,
   insertRawRecord,
   materializeSuperseded,
+  softDeleteActivityByExternalId,
 } from '../../db/index.ts'
 import { upsertSyncedNote } from '../../db/notes.ts'
+import { auditInfo } from '../../services/audit-log.ts'
 import { GRAVL_HC_ORIGIN, gravlWorkoutExternalId } from '../../services/source-identity.ts'
 
 /** Gravl reports every set weight in pounds regardless of the user's unit preference. */
@@ -60,50 +58,32 @@ export interface GravlSetRecord {
 
 export interface GravlProcessDeps {
   adoptLegacyActivity: typeof adoptLegacyActivity
-  deleteActivity: typeof deleteActivity
+  auditInfo: typeof auditInfo
   findActivityByExternalId: typeof findActivityByExternalId
   insertActivity: typeof insertActivity
   insertRawRecord: typeof insertRawRecord
   materializeSuperseded: typeof materializeSuperseded
+  softDeleteActivityByExternalId: typeof softDeleteActivityByExternalId
   upsertSyncedNote: typeof upsertSyncedNote
 }
 
 const defaultDeps: GravlProcessDeps = {
   adoptLegacyActivity,
-  deleteActivity,
+  auditInfo,
   findActivityByExternalId,
   insertActivity,
   insertRawRecord,
   materializeSuperseded,
+  softDeleteActivityByExternalId,
   upsertSyncedNote,
 }
 
-/**
- * Gravl's OpenAPI spec declares its enums in PascalCase (`External`,
- * `DropSet`) but the live API serializes them lowercase (`external`,
- * `dropset`), so every enum comparison goes through this.
- */
-const enumValue = (value: string): string => value.toLowerCase()
-
 /** Health Connect sessions round-tripped into Gravl from other apps carry no sets and must not be imported. */
-export const isExternalWorkout = (workout: Pick<GravlWorkoutSummary, 'type'>): boolean =>
-  enumValue(workout.type) === 'external'
-
-/**
- * A workout worth importing: logged in Gravl itself and holding at least one
- * exercise with a set. Anything else — an External round-trip of a watch
- * session, or a workout started and abandoned — carries nothing Aurboda does
- * not already have, and importing it would override the original's type.
- */
-export const isStrengthWorkout = (workout: GravlWorkoutSummary | GravlWorkoutDetail): boolean => {
-  if (isExternalWorkout(workout)) return false
-  return 'exercises' in workout
-    ? workout.exercises.some((exercise) => exercise.sets.length > 0)
-    : workout.exerciseCount > 0
-}
+export const isExternalWorkout = (workout: { type: string }): boolean =>
+  workout.type.toLowerCase() === 'external'
 
 const setKind = (setType: GravlSet['setType']): GravlSetKind => {
-  switch (enumValue(setType)) {
+  switch (setType.toLowerCase()) {
     case 'warmup':
       return 'warmup'
     case 'dropset':
@@ -193,7 +173,7 @@ export const buildGravlActivity = (detail: GravlWorkoutDetail): Activity => {
       set_count: sets.length,
       sets,
       volume_kg: positive(detail.volume) === null ? 0 : lbToKg(detail.volume),
-      workout_type: enumValue(detail.type),
+      workout_type: detail.type,
     },
     end_time: new Date(detail.endDate),
     external_id: gravlWorkoutExternalId(detail.id),
@@ -214,46 +194,33 @@ export const buildGravlRawRecord = (detail: GravlWorkoutDetail): RawRecord => ({
 /**
  * `enriched`: a row that reached us another way (Health Connect) gained its
  * sets; `updated`: a row Gravl itself wrote earlier was re-processed;
- * `created`: nothing existed for the workout; `skipped`: not a strength
- * workout (External round-trip or no exercises) and nothing to undo;
- * `retracted`: not a strength workout, and the empty row an earlier run
- * imported for it was soft-deleted.
+ * `created`: nothing existed for the workout; `removed`: an External
+ * round-trip whose Health Connect copy was removed; `skipped`: an External
+ * round-trip with no live row.
  */
-export type GravlProcessOutcome = 'enriched' | 'updated' | 'created' | 'skipped' | 'retracted'
+export type GravlProcessOutcome = 'enriched' | 'updated' | 'created' | 'removed' | 'skipped'
 
 /**
- * The footprint of the import itself: a row whose `data.sets` it wrote and
- * left empty. A Health Connect session stored under the Gravl identity has
- * no `sets` key until enriched, and an enriched row has a non-empty one.
+ * Drop our own copy of a session Gravl merely re-exported. The soft delete is a
+ * tombstone: `insertActivity` only updates rows with `deleted_at IS NULL`, so a
+ * re-delivered Health Connect record neither resurrects nor updates it.
  */
-const isImportedWithoutSets = (activity: Activity): boolean => {
-  const sets = activity.data?.sets
-  return Array.isArray(sets) && sets.length === 0
-}
-
-/**
- * Soft-delete the activity an earlier run imported for a workout that
- * `isStrengthWorkout` rejects. Until 2026-09-09 the External check compared
- * PascalCase against Gravl's lowercase JSON, so every watch session Gravl had
- * read from Health Connect came back as an empty `strength_training` row that
- * outranked the Garmin original in the cross-source merge. Only rows the
- * import wrote (an empty `data.sets`) are touched, and supersession is
- * recomputed so the original resurfaces. Returns true when a row was
- * retracted.
- */
-export const retractGravlNonWorkout = async (
+export const removeExternalGravlWorkout = async (
   user: string,
   workoutId: string,
-  deps: Pick<
-    GravlProcessDeps,
-    'deleteActivity' | 'findActivityByExternalId' | 'materializeSuperseded'
-  > = defaultDeps,
-): Promise<boolean> => {
-  const existing = await deps.findActivityByExternalId(user, 'gravl', gravlWorkoutExternalId(workoutId))
-  if (!existing?.id || !isImportedWithoutSets(existing)) return false
-  const deleted = await deps.deleteActivity(user, existing.id)
-  if (deleted) await deps.materializeSuperseded(user, existing.start_time)
-  return deleted
+  deps: GravlProcessDeps = defaultDeps,
+): Promise<'removed' | 'skipped'> => {
+  const externalId = gravlWorkoutExternalId(workoutId)
+  const existing = await deps.findActivityByExternalId(user, 'gravl', externalId)
+  if (!existing) return 'skipped'
+
+  await deps.softDeleteActivityByExternalId(user, 'gravl', externalId)
+  await deps.materializeSuperseded(user, existing.start_time)
+  deps.auditInfo(user, 'sync', 'Removed Health Connect copy of external Gravl workout', {
+    activity_id: existing.id,
+    workout_id: workoutId.toLowerCase(),
+  })
+  return 'removed'
 }
 
 /**
@@ -267,9 +234,7 @@ export const processGravlWorkout = async (
   detail: GravlWorkoutDetail,
   deps: GravlProcessDeps = defaultDeps,
 ): Promise<GravlProcessOutcome> => {
-  if (!isStrengthWorkout(detail)) {
-    return (await retractGravlNonWorkout(user, detail.id, deps)) ? 'retracted' : 'skipped'
-  }
+  if (isExternalWorkout(detail)) return removeExternalGravlWorkout(user, detail.id, deps)
 
   const activity = buildGravlActivity(detail)
   const externalId = activity.external_id!

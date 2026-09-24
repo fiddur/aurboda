@@ -1,12 +1,3 @@
-/**
- * Sync provider factory for auto-syncing external data sources.
- *
- * This module creates SyncProvider instances that can be passed to query
- * functions to enable automatic data refresh before queries.
- */
-
-import type { GravlSyncResult } from '@aurboda/api-spec'
-
 import { isBefore, subDays, subMinutes } from 'date-fns'
 
 import type { SyncIntervals, SyncState } from '../db/types.ts'
@@ -43,11 +34,6 @@ import {
 import { auditError, auditInfo, auditWarn } from './audit-log.ts'
 import { getSettings } from './settings.ts'
 
-/** A Gravl run that stored, enriched or retracted activities — the deduction hook should re-run over its window. */
-const gravlChangedActivities = (result: GravlSyncResult): boolean =>
-  result.status === 'success' && (result.workouts_processed > 0 || result.activities_retracted > 0)
-
-/** Default sync threshold - sync if last sync was more than 30 minutes ago */
 export const DEFAULT_SYNC_THRESHOLD_MINUTES = 30
 
 /** Providers a user can set a poll interval for (`user_settings.sync_intervals`). */
@@ -99,10 +85,6 @@ export interface SyncProviderConfig {
   syncThresholdMinutes?: number
 }
 
-/**
- * Create a sync provider with the given configuration.
- * The provider can be passed to query functions to enable auto-sync.
- */
 export function createSyncProvider(config: SyncProviderConfig): SyncProvider {
   const fallbackThreshold = config.syncThresholdMinutes ?? DEFAULT_SYNC_THRESHOLD_MINUTES
   const thresholdFor = (intervals: SyncIntervals | undefined, provider: SchedulableProvider): number =>
@@ -151,7 +133,6 @@ export function createSyncProvider(config: SyncProviderConfig): SyncProvider {
       if (!config.garmin) return
 
       try {
-        // Check if this data type is disabled in user settings
         const settings = await getSettings(user)
         if (settings.garmin_disabled_data_types?.includes(dataType as GarminDataType)) return
 
@@ -207,7 +188,7 @@ export function createSyncProvider(config: SyncProviderConfig): SyncProvider {
         auditInfo(user, 'sync', 'Auto-syncing Gravl workouts')
         const windowStart = syncState?.last_sync_time ?? subDays(now, GRAVL_HISTORY_DAYS)
         const result = await syncGravlWorkouts(user, config.gravl)
-        if (gravlChangedActivities(result)) {
+        if (result.status === 'success' && result.workouts_processed > 0) {
           config.onActivitySynced?.(user, '*', windowStart, now)
         }
       } catch (error) {
@@ -253,7 +234,6 @@ export function createSyncProvider(config: SyncProviderConfig): SyncProvider {
         const ouraDataType: OuraDataType = dataType
         const syncState = await getSyncState(user, 'oura', ouraDataType)
 
-        // Skip if rate limited
         if (isOuraRateLimited(syncState)) {
           auditWarn(user, 'sync', `Oura ${dataType} sync skipped - rate limited`, {
             retry_after: syncState?.retry_after?.toISOString(),
@@ -261,11 +241,10 @@ export function createSyncProvider(config: SyncProviderConfig): SyncProvider {
           return
         }
 
-        // Check if sync is needed (never synced or older than threshold)
         const settings = await getSettings(user)
         const thresholdTime = subMinutes(new Date(), thresholdFor(settings.sync_intervals, 'oura'))
         if (syncState?.last_sync_time && isBefore(thresholdTime, syncState.last_sync_time)) {
-          return // Recently synced, no need to sync again
+          return
         }
 
         auditInfo(user, 'sync', `Auto-syncing Oura ${dataType}`)

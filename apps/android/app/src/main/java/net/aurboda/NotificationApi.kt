@@ -15,11 +15,9 @@ import io.ktor.http.HttpStatusCode
  */
 private const val TAG = "NotificationApi"
 
-/** GET {apiUrl}/feed/timeline — newest home-timeline posts. */
 suspend fun fetchTimelinePage(httpClient: HttpClient, apiUrl: String, authToken: String): TimelinePage? =
     getJson(httpClient, "$apiUrl/feed/timeline", authToken)
 
-/** GET {apiUrl}/feed/following — the actors this user follows (with notify flags). */
 suspend fun fetchFollowingList(httpClient: HttpClient, apiUrl: String, authToken: String): FollowingList? =
     getJson(httpClient, "$apiUrl/feed/following", authToken)
 

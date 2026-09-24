@@ -6,16 +6,18 @@ import type { GravlWorkoutDetail, GravlWorkoutSummary } from './types.ts'
 
 vi.mock('../../db/index.ts', () => ({
   adoptLegacyActivity: vi.fn(),
-  deleteActivity: vi.fn(),
   findActivityByExternalId: vi.fn(),
+  findDeletedActivityByExternalId: vi.fn(),
   getAllSyncStates: vi.fn(),
   getSyncState: vi.fn(),
   insertActivity: vi.fn(),
   insertRawRecord: vi.fn(),
   materializeSuperseded: vi.fn(),
+  softDeleteActivityByExternalId: vi.fn(),
   upsertSyncState: vi.fn(),
 }))
 vi.mock('../../db/notes.ts', () => ({ upsertSyncedNote: vi.fn() }))
+vi.mock('../../services/audit-log.ts', () => ({ auditError: vi.fn(), auditInfo: vi.fn() }))
 vi.mock('../../services/settings.ts', () => ({ getSettings: vi.fn() }))
 
 import { GravlApiError } from './client.ts'
@@ -29,7 +31,7 @@ import {
 
 const NOW = new Date('2026-09-03T10:00:00Z')
 
-const summary = (id: string, type: GravlWorkoutSummary['type'] = 'Today'): GravlWorkoutSummary => ({
+const summary = (id: string, type: GravlWorkoutSummary['type'] = 'today'): GravlWorkoutSummary => ({
   calories: 0,
   durationMinutes: 30,
   endDate: '2026-09-02T06:30:00Z',
@@ -58,37 +60,29 @@ const makeClient = (overrides: Partial<GravlClient> = {}): GravlClient =>
   ({
     getAccessToken: vi.fn().mockResolvedValue('gat'),
     getWorkout: vi.fn(async (_token: string, id: string) => detailOf(id)),
-    listWorkouts: vi
-      .fn()
-      .mockResolvedValue(
-        page([
-          summary('a'),
-          summary('ext', 'external'),
-          { ...summary('empty'), exerciseCount: 0 },
-          summary('b'),
-        ]),
-      ),
+    listWorkouts: vi.fn().mockResolvedValue(page([summary('a'), summary('ext', 'external'), summary('b')])),
     ...overrides,
   }) as unknown as GravlClient
 
 const makeDeps = (
   state: SyncState | null,
-  outcomes: Record<string, 'enriched' | 'updated' | 'created' | 'skipped'> = {},
+  outcomes: Record<string, 'enriched' | 'updated' | 'created' | 'removed' | 'skipped'> = {},
 ) => {
   const deps: GravlSyncDeps = {
     auditError: vi.fn(),
     auditInfo: vi.fn(),
+    findDeletedActivityByExternalId: vi.fn().mockResolvedValue(null),
     getSyncState: vi.fn().mockResolvedValue(state),
     now: () => NOW,
     processWorkout: vi.fn(async (_user, detail) => outcomes[detail.id] ?? 'created'),
-    retractWorkout: vi.fn(async (_user, workoutId) => workoutId === 'ext'),
+    removeExternalWorkout: vi.fn().mockResolvedValue('removed'),
     upsertSyncState: vi.fn(),
   }
   return deps
 }
 
 describe('syncGravlWorkouts', () => {
-  it('lists the first-sync window, skips external and empty workouts, fetches detail and counts outcomes', async () => {
+  it('lists the first-sync window, removes external copies, fetches detail and counts outcomes', async () => {
     const client = makeClient()
     const deps = makeDeps(null, { a: 'enriched', b: 'created' })
 
@@ -97,13 +91,9 @@ describe('syncGravlWorkouts', () => {
     expect(result).toEqual({
       activities_created: 1,
       activities_enriched: 1,
-      activities_retracted: 1,
       status: 'success',
       workouts_processed: 2,
     })
-    expect(deps.retractWorkout).toHaveBeenCalledWith('alice', 'ext')
-    expect(deps.retractWorkout).toHaveBeenCalledWith('alice', 'empty')
-    expect(deps.retractWorkout).toHaveBeenCalledTimes(2)
     expect(client.listWorkouts).toHaveBeenCalledWith('gat', {
       endDate: NOW,
       page: 1,
@@ -111,7 +101,7 @@ describe('syncGravlWorkouts', () => {
     })
     expect(client.getWorkout).toHaveBeenCalledTimes(2)
     expect(client.getWorkout).not.toHaveBeenCalledWith('gat', 'ext')
-    expect(client.getWorkout).not.toHaveBeenCalledWith('gat', 'empty')
+    expect(deps.removeExternalWorkout).toHaveBeenCalledWith('alice', 'ext')
     expect(deps.upsertSyncState).toHaveBeenLastCalledWith('alice', {
       data_type: 'workouts',
       error_message: undefined,
@@ -221,6 +211,7 @@ describe('syncGravlWorkouts', () => {
 describe('enrichGravlWorkout', () => {
   const enrichDeps = (state: SyncState | null, processWorkout = vi.fn().mockResolvedValue('enriched')) => ({
     auditInfo: vi.fn(),
+    findDeletedActivityByExternalId: vi.fn().mockResolvedValue(null),
     getSyncState: vi.fn().mockResolvedValue(state),
     processWorkout,
   })
@@ -231,6 +222,12 @@ describe('enrichGravlWorkout', () => {
     expect(await enrichGravlWorkout('alice', client, 'a', deps)).toBe('enriched')
     expect(client.getWorkout).toHaveBeenCalledWith('gat', 'a')
     expect(deps.processWorkout).toHaveBeenCalledWith('alice', expect.objectContaining({ id: 'a' }))
+  })
+
+  it('reports a removed external round-trip', async () => {
+    const client = makeClient()
+    const deps = enrichDeps(null, vi.fn().mockResolvedValue('removed'))
+    expect(await enrichGravlWorkout('alice', client, 'a', deps)).toBe('removed')
   })
 
   it('propagates API failures so the queue can retry', async () => {
@@ -254,6 +251,25 @@ describe('enrichGravlWorkout', () => {
     vi.useRealTimers()
     expect(client.getWorkout).not.toHaveBeenCalled()
     expect(deps.auditInfo).toHaveBeenCalled()
+  })
+
+  it('skips a re-delivered workout whose copy is already tombstoned, without spending a request', async () => {
+    const client = makeClient()
+    const deps = enrichDeps(null)
+    deps.findDeletedActivityByExternalId.mockResolvedValue({ id: 'act-1' })
+    expect(await enrichGravlWorkout('alice', client, 'a', deps)).toBe('skipped')
+    expect(deps.findDeletedActivityByExternalId).toHaveBeenCalledWith('alice', 'gravl', 'gravl-workout-a')
+    expect(client.getAccessToken).not.toHaveBeenCalled()
+    expect(client.getWorkout).not.toHaveBeenCalled()
+    expect(deps.processWorkout).not.toHaveBeenCalled()
+  })
+
+  it('fetches the detail as usual when no tombstone exists', async () => {
+    const client = makeClient()
+    const deps = enrichDeps(null)
+    expect(await enrichGravlWorkout('alice', client, 'a', deps)).toBe('enriched')
+    expect(client.getWorkout).toHaveBeenCalledWith('gat', 'a')
+    expect(deps.processWorkout).toHaveBeenCalledWith('alice', expect.objectContaining({ id: 'a' }))
   })
 })
 

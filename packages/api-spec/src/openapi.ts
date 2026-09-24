@@ -1,9 +1,4 @@
-/**
- * OpenAPI document generator.
- *
- * This script generates an OpenAPI 3.1 specification from Zod schemas.
- * Run with: pnpm generate:openapi
- */
+/** Generates the OpenAPI 3.1 specification from the Zod schemas: pnpm generate:openapi */
 
 import * as fs from 'node:fs'
 import * as yaml from 'yaml'
@@ -20,7 +15,6 @@ import {
   wellKnownAurbodaSchema,
   wellKnownQuantpubSchema,
 } from './schemas/challenges.ts'
-// Import all schemas
 import { dateOnlySchema, iso8601DateTimeSchema, metricTypeSchema } from './schemas/common.ts'
 import { dailySummaryResponseSchema } from './schemas/daily-summary.ts'
 import { goalsProgressResponseSchema } from './schemas/goals.ts'
@@ -74,7 +68,6 @@ import {
   webauthnUpdateCredentialBodySchema,
 } from './schemas/webauthn.ts'
 
-// Error response
 const errorResponseSchema = z
   .object({
     error: z.string(),
@@ -82,16 +75,11 @@ const errorResponseSchema = z
   })
   .meta({ id: 'ErrorResponse' })
 
-// Delete response
 const deleteResponseSchema = z
   .object({
     success: z.boolean(),
   })
   .meta({ id: 'DeleteResponse' })
-
-// ============================================================================
-// Generate OpenAPI document
-// ============================================================================
 
 const openApiDocument = createDocument({
   components: {
@@ -124,7 +112,6 @@ const openApiDocument = createDocument({
   },
   openapi: '3.1.0',
   paths: {
-    // --- Challenges ---
     '/challenges': {
       get: {
         description: 'List the challenges hosted by the authenticated user.',
@@ -192,7 +179,6 @@ const openApiDocument = createDocument({
         tags: ['Challenges'],
       },
     },
-    // --- Activities ---
     '/activities': {
       get: {
         description: 'Get activities (sleep, exercise, meditation, nap) for a time range.',
@@ -219,7 +205,6 @@ const openApiDocument = createDocument({
       },
     },
 
-    // --- Daily Summary ---
     '/daily-summary': {
       get: {
         description:
@@ -249,7 +234,6 @@ const openApiDocument = createDocument({
       },
     },
 
-    // --- Goals ---
     '/goals/progress': {
       get: {
         description:
@@ -268,7 +252,6 @@ const openApiDocument = createDocument({
       },
     },
 
-    // --- Locations ---
     '/locations': {
       get: {
         description: 'Get place visits for a time range.',
@@ -454,7 +437,6 @@ const openApiDocument = createDocument({
       },
     },
 
-    // --- Login ---
     '/login': {
       post: {
         description: 'Authenticate with username and password to receive access and refresh tokens.',
@@ -498,7 +480,6 @@ const openApiDocument = createDocument({
         tags: ['Metrics'],
       },
     },
-    // --- Metrics ---
     '/metrics/{metric}': {
       get: {
         description:
@@ -534,7 +515,6 @@ const openApiDocument = createDocument({
       },
     },
 
-    // --- Period Summary ---
     '/period-summary': {
       get: {
         description:
@@ -566,7 +546,6 @@ const openApiDocument = createDocument({
       },
     },
 
-    // --- Productivity ---
     '/productivity': {
       get: {
         description: 'Get RescueTime productivity data for a time range.',
@@ -621,7 +600,6 @@ const openApiDocument = createDocument({
       },
     },
 
-    // --- Sync: Health Connect ---
     '/sync/daily-aggregates': {
       post: {
         description: 'Upload daily aggregate data from Health Connect (steps, distance, calories, floors).',
@@ -691,7 +669,6 @@ const openApiDocument = createDocument({
       },
     },
 
-    // --- Sync: Outbound (backend -> Health Connect) ---
     '/sync/outbound': {
       get: {
         description:
@@ -792,8 +769,6 @@ const openApiDocument = createDocument({
       },
     },
 
-    // --- Sync ---
-
     '/sync/status': {
       get: {
         description:
@@ -819,7 +794,6 @@ const openApiDocument = createDocument({
       },
     },
 
-    // --- WebAuthn / Passkey ---
     '/webauthn/auth/options': {
       post: {
         description:
@@ -992,7 +966,6 @@ const openApiDocument = createDocument({
       },
     },
 
-    // --- User Settings ---
     '/user/settings': {
       get: {
         description:
@@ -1056,7 +1029,6 @@ const openApiDocument = createDocument({
   ],
 })
 
-// Write to file
 fs.mkdirSync('./generated', { recursive: true })
 fs.writeFileSync('./generated/openapi.yaml', yaml.stringify(openApiDocument))
 fs.writeFileSync('./generated/openapi.json', JSON.stringify(openApiDocument, null, 2))

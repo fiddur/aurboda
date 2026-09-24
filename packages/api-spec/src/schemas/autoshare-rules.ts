@@ -1,5 +1,5 @@
 /**
- * Auto-share rules (#903): "share runs longer than 15 minutes automatically."
+ * Auto-share rules: "share runs longer than 15 minutes automatically."
  *
  * A rule combines a **predicate** over a settled activity (type set, min/max
  * duration, min distance, source) with a **share template** — exactly the
@@ -13,7 +13,6 @@ import { z } from 'zod'
 import { baseResponseSchema, iso8601DateTimeSchema, metricTypeSchema } from './common.ts'
 import { feedPostMessageMaxLength, feedVisibilitySchema } from './feed.ts'
 
-/** A scalar-summary metric key (e.g. `duration`, `distance`, `heart_rate_avg`). */
 const scalarMetricKeySchema = z.string().min(1).max(64)
 
 /** The predicate + share-template fields shared by the rule, its add body, and its preview body. */
@@ -67,7 +66,6 @@ const autoshareRuleFields = {
   visibility: feedVisibilitySchema.default('followers'),
 }
 
-/** An auto-share rule as stored. */
 export const autoshareRuleSchema = z
   .object({
     ...autoshareRuleFields,
@@ -118,7 +116,6 @@ export const updateAutoshareRuleBodySchema = z
 
 export type UpdateAutoshareRuleBody = z.infer<typeof updateAutoshareRuleBodySchema>
 
-/** Response wrapping the user's auto-share rules. */
 export const autoshareRulesResponseSchema = baseResponseSchema
   .extend({
     post_counts: z.record(z.string(), z.number().int()).optional().meta({
@@ -130,7 +127,6 @@ export const autoshareRulesResponseSchema = baseResponseSchema
 
 export type AutoshareRulesResponse = z.infer<typeof autoshareRulesResponseSchema>
 
-/** Response wrapping a single auto-share rule. */
 export const autoshareRuleResponseSchema = baseResponseSchema
   .extend({ rule: autoshareRuleSchema.optional() })
   .meta({ id: 'AutoshareRuleResponse' })

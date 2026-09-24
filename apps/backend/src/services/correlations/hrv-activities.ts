@@ -1,7 +1,3 @@
-/**
- * HRV-activities correlation analysis.
- */
-
 import type { HrvContextMetric } from '@aurboda/api-spec'
 
 import type { SyncProvider } from '../queries/index.ts'
@@ -17,9 +13,6 @@ import { getPlaceVisits } from '../locations.ts'
 import { triggerCorrelationSyncs } from './background-sync.ts'
 import { addBaselineDelta, calculateHrvStats, getDataInRange, pearsonCorrelation } from './utils.ts'
 
-/**
- * Get HRV/HR correlations with different activity types.
- */
 // eslint-disable-next-line complexity -- TODO: refactor
 export async function getHrvActivitiesCorrelation(
   user: string,
@@ -38,7 +31,6 @@ export async function getHrvActivitiesCorrelation(
   // background-sync.ts). Data is fresh for the next request.
   triggerCorrelationSyncs(sync, user)
 
-  // Fetch all data in parallel
   const [hrvData, hrData, stressData, productivity, locations, activities] = await Promise.all([
     getTimeSeries(user, 'hrv_rmssd', start, end),
     getTimeSeries(user, 'heart_rate', start, end),
@@ -53,14 +45,12 @@ export async function getHrvActivitiesCorrelation(
   const contextData =
     contextMetric === 'heart_rate' ? hrData : contextMetric === 'stress_level' ? stressData : hrvData
 
-  // Calculate baseline stats
   const baselineHrvValues = hrvData.map(([, v]) => v)
   const baselineHrValues = hrData.map(([, v]) => v)
   const baselineStressValues = stressData.map(([, v]) => v)
   const totalMinutes = periodDays * 24 * 60
   const baseline = calculateHrvStats(baselineHrvValues, baselineHrValues, totalMinutes, baselineStressValues)
 
-  // === Productivity correlations by category ===
   const productivityByCategory = new Map<
     string,
     {
@@ -124,10 +114,8 @@ export async function getHrvActivitiesCorrelation(
     })
   }
 
-  // Sort by sample minutes descending
   productivityCorrelations.sort((a, b) => b.sample_minutes - a.sample_minutes)
 
-  // === Location correlations ===
   const locationByName = new Map<
     string,
     { hrvValues: number[]; hrValues: number[]; stressValues: number[]; minutes: number; visits: number }
@@ -166,7 +154,7 @@ export async function getHrvActivitiesCorrelation(
 
   locationCorrelations.sort((a, b) => b.sample_minutes - a.sample_minutes)
 
-  // === Activity correlations (unified — includes former tags) ===
+  // Activity correlations are unified: they include what used to be tags.
   const activityByType = new Map<
     string,
     {

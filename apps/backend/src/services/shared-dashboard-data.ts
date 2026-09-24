@@ -18,7 +18,7 @@ import type {
   WidgetDataMap,
 } from '@aurboda/api-spec'
 
-import { hrZoneMetrics, isExerciseActivityType } from '@aurboda/api-spec'
+import { hrZoneMetrics, isExerciseActivityType, metricCardLookbackDays } from '@aurboda/api-spec'
 
 import { getAllActivityTypeNames } from '../db/index.ts'
 import { maskBreakdownNames } from './breakdown-mask.ts'
@@ -66,7 +66,7 @@ const resolveMetricCard = async (
   }
 
   const apiMetric = metricToApiMetric[metric] ?? metric
-  const { end, start } = lookbackRange(30)
+  const { end, start } = lookbackRange(metricCardLookbackDays(metric))
   const summary = await getPeriodSummary(user, [apiMetric], start, end)
   const stats = summary.metrics.find((m) => m.metric === apiMetric)
   const hasData = stats !== undefined && stats.count > 0

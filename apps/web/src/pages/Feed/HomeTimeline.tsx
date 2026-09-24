@@ -15,9 +15,14 @@ import { useState } from 'preact/hooks'
 
 import { fetchTimeline, fetchTimelineReplies, fetchUserSettings, updateUserSettings } from '../../state/api'
 import { ActorName } from './ActorName'
+import { originHost } from './entry-markers'
 import { timelineImageVisible } from './timeline-structured'
+import { TimelineActions, TIMELINE_KEY } from './TimelineActions'
+import { TimelineEntryHead } from './TimelineEntryHead'
 import { TimelineStructured } from './TimelineStructured'
 import { useTimelineLive } from './useTimelineLive'
+
+const repliesKey = (entryId: string) => ['feed', 'timeline', entryId, 'replies'] as const
 
 /** De-duplicate entries by `object_uri`, keeping the first (newest) occurrence. */
 const dedupByUri = (list: TimelineEntry[]): TimelineEntry[] => {
@@ -32,54 +37,23 @@ const dedupByUri = (list: TimelineEntry[]): TimelineEntry[] => {
   return out
 }
 
-/**
- * A fallback avatar (a neutral silhouette) for actors without an icon. Colours use
- * raw `#` — `encodeURIComponent` percent-encodes them exactly once (writing `%23`
- * here too would double-encode to `%2523` and render the fills black).
- */
-const FALLBACK_AVATAR =
-  'data:image/svg+xml;utf8,' +
-  encodeURIComponent(
-    '<svg xmlns="http://www.w3.org/2000/svg" width="44" height="44" viewBox="0 0 44 44"><rect width="44" height="44" rx="22" fill="#cbd5e1"/><circle cx="22" cy="17" r="8" fill="#fff"/><path d="M8 40c0-8 6-12 14-12s14 4 14 12" fill="#fff"/></svg>',
-  )
-
 function TimelineCard({ entry }: { entry: TimelineEntry }) {
-  const when = formatDistanceToNow(new Date(entry.published_at), { addSuffix: true })
-  const name = entry.display_name ?? entry.handle ?? entry.actor_uri
+  const queryClient = useQueryClient()
+  const booster = entry.boosted_by
   return (
     <article class="feed-post">
-      <header class="feed-post-head">
-        <img
-          class="feed-post-avatar"
-          src={entry.avatar_url ?? FALLBACK_AVATAR}
-          alt=""
-          width={44}
-          height={44}
-          loading="lazy"
-        />
-        <div class="feed-post-ident">
-          <span class="feed-post-name">
-            <ActorName name={name} actorUri={entry.actor_uri} />
-          </span>
-          <span class="feed-post-handle">
-            {entry.handle && <>{entry.handle} · </>}
-            {entry.url ? (
-              <a href={entry.url} target="_blank" rel="noopener noreferrer nofollow">
-                <time title={new Date(entry.published_at).toLocaleString()}>{when}</time>
-              </a>
-            ) : (
-              <time title={new Date(entry.published_at).toLocaleString()}>{when}</time>
-            )}
-          </span>
-          {entry.in_reply_to_uri != null ? (
-            <span class="feed-post-reply-marker">
-              ↩ {entry.in_reply_to_mine ? 'replied to you' : 'a reply'}
-            </span>
-          ) : entry.mentions_me ? (
-            <span class="feed-post-reply-marker">@ mentioned you</span>
-          ) : null}
-        </div>
-      </header>
+      {/* Mastodon's "🔄 X boosted" line: the card below is the ORIGINAL post. */}
+      {booster && (
+        <p class="feed-post-boost-marker">
+          🔄{' '}
+          <ActorName
+            name={booster.display_name ?? booster.handle ?? booster.actor_uri}
+            actorUri={booster.actor_uri}
+          />{' '}
+          boosted
+        </p>
+      )}
+      <TimelineEntryHead entry={entry} />
 
       {/* Sanitised server-side on ingest (timeline-ingest.ts) — safe to render.
           Suppressed whenever the post has a native structured render (below),
@@ -109,22 +83,31 @@ function TimelineCard({ entry }: { entry: TimelineEntry }) {
           />
         ))}
 
-      <TimelineReplies entryId={entry.id} />
+      <TimelineActions
+        entry={entry}
+        // A published reply belongs in the thread below — refetch it if the
+        // reader has it open (an inactive query is left alone).
+        onReplied={() => void queryClient.invalidateQueries({ queryKey: repliesKey(entry.id) })}
+      />
+
+      <TimelineReplies entry={entry} />
     </article>
   )
 }
 
 /**
- * Expandable live snapshot of the post's remote reply thread — fetched from the
- * origin only when the reader asks (a bounded, best-effort walk of the AS2
- * `replies` collection; `partial` marks a thread longer than the budget).
+ * Expandable snapshot of the post's reply thread — fetched from the origin only
+ * when the reader asks (a bounded, best-effort walk of the AS2 `replies`
+ * collection), with the reader's OWN replies merged in. `partial` marks a thread
+ * longer than the budget; `fetched: false` means the origin's thread couldn't be
+ * read at all, which must NOT read as "no replies" (#1065).
  */
-function TimelineReplies({ entryId }: { entryId: string }) {
+function TimelineReplies({ entry }: { entry: TimelineEntry }) {
   const [expanded, setExpanded] = useState(false)
   const query = useQuery({
     enabled: expanded,
-    queryFn: () => fetchTimelineReplies(entryId),
-    queryKey: ['feed', 'timeline', entryId, 'replies'],
+    queryFn: () => fetchTimelineReplies(entry.id),
+    queryKey: repliesKey(entry.id),
     retry: false,
     staleTime: 60 * 1000,
   })
@@ -140,34 +123,45 @@ function TimelineReplies({ entryId }: { entryId: string }) {
   if (query.isError || !query.data?.success) {
     return <p class="feed-post-replies-status">Couldn't fetch replies from the origin.</p>
   }
-  const { partial, replies } = query.data
+  const { fetched, partial, replies } = query.data
+  const host = originHost(entry.boost_of_uri ?? entry.object_uri)
   return (
     <div class="feed-post-replies">
-      {replies.length === 0 ? (
-        <p class="feed-post-replies-status">No replies found on the origin.</p>
-      ) : (
-        replies.map((reply, i) => (
-          <div key={reply.url ?? i} class="feed-post-reply">
-            <span class="feed-post-reply-author">
-              {reply.display_name ?? reply.handle ?? reply.actor_uri ?? 'unknown'}
-              {reply.handle && reply.display_name ? ` ${reply.handle}` : ''}
-              {reply.url && (
-                <>
-                  {' · '}
-                  <a href={reply.url} target="_blank" rel="noopener noreferrer nofollow">
-                    {reply.published_at
-                      ? formatDistanceToNow(new Date(reply.published_at), { addSuffix: true })
-                      : 'link'}
-                  </a>
-                </>
-              )}
-            </span>
-            {/* Sanitised server-side (remote-replies.ts) — safe to render. */}
-            <div class="feed-post-reply-content" dangerouslySetInnerHTML={{ __html: reply.content }} />
-          </div>
-        ))
+      {replies.length === 0 &&
+        (fetched ? (
+          <p class="feed-post-replies-status">No replies found on the origin.</p>
+        ) : (
+          <p class="feed-post-replies-status">Couldn't read the thread from {host}.</p>
+        ))}
+      {replies.map((reply, i) => (
+        <div key={reply.object_uri ?? reply.url ?? i} class="feed-post-reply">
+          <span class="feed-post-reply-author">
+            {reply.display_name ?? reply.handle ?? reply.actor_uri ?? 'unknown'}
+            {reply.handle && reply.display_name ? ` ${reply.handle}` : ''}
+            {reply.mine && <span class="feed-post-reply-mine">you</span>}
+            {reply.url && (
+              <>
+                {' · '}
+                <a href={reply.url} target="_blank" rel="noopener noreferrer nofollow">
+                  {reply.published_at
+                    ? formatDistanceToNow(new Date(reply.published_at), { addSuffix: true })
+                    : 'link'}
+                </a>
+              </>
+            )}
+          </span>
+          {/* Sanitised server-side (remote-replies.ts) — safe to render. */}
+          <div class="feed-post-reply-content" dangerouslySetInnerHTML={{ __html: reply.content }} />
+        </div>
+      ))}
+      {/* A thread we couldn't read is not a short one — say so even when our own
+          replies are the only thing showing. */}
+      {replies.length > 0 && !fetched && (
+        <p class="feed-post-replies-status">Couldn't read the thread from {host}.</p>
       )}
-      {partial && <p class="feed-post-replies-status">Thread may be longer — see the original post.</p>}
+      {partial && fetched && (
+        <p class="feed-post-replies-status">Thread may be longer — see the original post.</p>
+      )}
     </div>
   )
 }
@@ -188,7 +182,10 @@ function ShowRepliesToggle() {
     mutationFn: (show: boolean) => updateUserSettings({ timeline_show_replies: show }),
     onSuccess: (result) => {
       queryClient.setQueryData(['userSettings'], result)
-      void queryClient.invalidateQueries({ queryKey: ['feed', 'timeline'] })
+      // `exact`: the timeline pages themselves must refetch, but the expanded
+      // reply threads under TIMELINE_KEY must not — each is a live fetch of a
+      // remote origin's `replies` collection (#1062).
+      void queryClient.invalidateQueries({ exact: true, queryKey: ['feed', 'timeline'] })
     },
   })
   const show = mutation.isPending
@@ -202,7 +199,7 @@ function ShowRepliesToggle() {
         disabled={settingsQuery.isLoading || mutation.isPending}
         onChange={(e) => mutation.mutate((e.target as HTMLInputElement).checked)}
       />
-      <span>Show replies to others (replies to you always show)</span>
+      <span>Show replies to posts that aren’t in your timeline</span>
     </label>
   )
 }
@@ -218,7 +215,7 @@ export function HomeTimeline() {
     getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
     initialPageParam: undefined,
     queryFn: ({ pageParam }) => fetchTimeline(pageParam),
-    queryKey: ['feed', 'timeline'],
+    queryKey: TIMELINE_KEY,
   })
 
   const entries = data?.pages.flatMap((page) => page.entries) ?? []

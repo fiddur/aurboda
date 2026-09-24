@@ -1,7 +1,3 @@
-/**
- * Reusable sparkline chart using D3.
- * Renders a small area + line chart with a dot on the latest point.
- */
 import * as d3 from 'd3'
 import { useEffect, useRef } from 'preact/hooks'
 
@@ -49,7 +45,6 @@ export function SparklineChart({
 
     const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`)
 
-    // Area fill
     const area = d3
       .area<[Date, number]>()
       .x((d) => x(d[0]))
@@ -59,7 +54,6 @@ export function SparklineChart({
 
     g.append('path').datum(data).attr('fill', color).attr('fill-opacity', 0.15).attr('d', area)
 
-    // Line
     g.append('path')
       .datum(data)
       .attr('fill', 'none')
@@ -67,7 +61,6 @@ export function SparklineChart({
       .attr('stroke-width', 1.5)
       .attr('d', line)
 
-    // Latest point dot
     const latest = data[data.length - 1]
     g.append('circle').attr('cx', x(latest[0])).attr('cy', y(latest[1])).attr('r', 3).attr('fill', color)
   }, [data, color, width, height])

@@ -1,15 +1,9 @@
 /**
- * Invitation token service for invite-only signup mode.
- *
  * Uses AES-256-GCM encryption (same pattern as auth.ts) to create secure,
  * time-limited invitation tokens.
  */
 
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto'
-
-// ============================================================================
-// Types
-// ============================================================================
 
 export interface InvitationPayload {
   type: 'invitation'
@@ -29,22 +23,8 @@ export interface InvitationAuth {
   getTokenExpiry: (token: string) => Date | null
 }
 
-// ============================================================================
-// Constants
-// ============================================================================
-
 const DEFAULT_EXPIRY_HOURS = 168 // 7 days
 
-// ============================================================================
-// Factory
-// ============================================================================
-
-/**
- * Create an invitation auth service.
- *
- * @param sessionSalt - The 32-byte session secret (same as used for auth tokens)
- * @returns InvitationAuth instance
- */
 export const createInvitationAuth = (sessionSalt: string): InvitationAuth => {
   if (!sessionSalt || Buffer.from(sessionSalt).length !== 32) {
     throw new Error('SESSION_SECRET must be set and be exactly 32 bytes (256 bits)')

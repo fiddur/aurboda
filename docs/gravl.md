@@ -4,11 +4,11 @@
 
 ## Data Synced
 
-| Gravl Data     | Stored As                                                                                                | Notes                                                                  |
-| -------------- | -------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| Workouts       | `strength_training` activity, source `gravl`                                                             | Keyed by `gravl-workout-<uuid>`; title is the workout name             |
-| Sets           | `data.sets` array on the activity + a note                                                               | One entry per set with the exercise repeated (the shape #1044 defines) |
-| Workout totals | `data.volume_kg`, `data.calories`, `data.personal_record_count`, `data.set_count`, `data.exercise_count` |                                                                        |
+| Gravl Data     | Stored As                                     | Notes                                                                          |
+| -------------- | --------------------------------------------- | ------------------------------------------------------------------------------ |
+| Workouts       | `strength_training` activity, source `gravl`  | Keyed by `gravl-workout-<uuid>`; title is the workout name                     |
+| Sets           | `data.sets` array on the activity + a note    | One entry per set with the exercise repeated (the shape #1044 defines)         |
+| Workout totals | `data.volume_kg`, `data.calories`, `data.personal_record_count`, `data.set_count`, `data.exercise_count` | |
 
 Every workout is also preserved as raw JSON in the `raw_records` table (`record_type = 'gravl_workout'`).
 
@@ -38,11 +38,8 @@ A synced note (`source = 'gravl'`) renders the same data as text — `Bench Pres
 
 ### What is deliberately not imported
 
-- **`External` workouts.** These are Health Connect sessions round-tripped _into_ Gravl from other apps (Garmin, Polar, …). They carry no exercise data, and importing them would give every watch session an empty `strength_training` twin — one that outranks the Garmin original in the cross-source merge, so a rest or meditation session would surface as strength training.
-- **Workouts without a logged set.** A workout started and abandoned in Gravl carries nothing Aurboda does not already have. Only workouts with at least one exercise holding a set are imported.
-
-Gravl's OpenAPI spec spells its enums in PascalCase (`External`, `DropSet`) while the live API serializes them lowercase (`external`, `dropset`); the sync compares case-insensitively. Until 2026-09-09 it did not, and every watch session Gravl had read from Health Connect was imported as an empty strength session (with every set typed `normal`). The sync retracts those rows as it meets them again: a workout it now rejects whose activity row carries an empty `sets` array is soft-deleted and supersession is recomputed, so the original resurfaces. The incremental window only re-covers the last two days, so run one full resync (`POST /api/sync/gravl` with `full_resync: true`, or `sync_gravl(full_resync: true)`) to clean the whole history; the result reports the number as `activities_retracted`.
-
+- **`External` workouts** (`type: "external"` in the API, which spells its enums in lower camelCase). These are Health Connect sessions round-tripped _into_ Gravl from other apps (Garmin, Polar, …). They carry no exercise data, and importing them would give every watch session a third copy.
+  The Gravl app also writes them _back_ into Health Connect as strength-training sessions under its own `gravl-session-<uuid>` id, so they first land here as a `gravl` activity (see [Enrich, don't duplicate](#enrich-dont-duplicate)). As soon as the Gravl API reports the workout as `External` — the enrichment job a minute after the Health Connect upload, or the next poll — that copy is soft-deleted and the original session (the Garmin activity, or the other app's Health Connect row) is the one shown again. The soft delete is a tombstone: a re-delivered Health Connect record does not resurrect it.
 - Heart rate, GPS and per-set notes are not in the Gravl API; HR and location come from the watch (Garmin / Health Connect) on the same activity.
 - Personal records, body measurements, templates and splits — see the follow-ups in [#1042](https://github.com/fiddur/aurboda/issues/1042).
 
@@ -81,13 +78,15 @@ Then **Sync Now**, or wait for the background poll.
 - **Status:** `GET /api/sync/gravl/status`, `get_sync_status(provider: "gravl")`
 - **Reset:** `DELETE /api/sync/gravl/state`
 
-A run lists workouts in a window, drops `External` and set-less ones (retracting any stale import of them), fetches each real workout's detail (the list has no sets) and stores it. The window is 90 days on the first run or a full resync, otherwise from **two days before the last successful sync** — Gravl workouts get edited after the fact, and re-processing is idempotent.
+A run lists workouts in a window, removes Aurboda's own copy of the `External` ones, fetches each real workout's detail (the list has no sets) and stores it. The window is 90 days on the first run or a full resync, otherwise from **two days before the last successful sync** — Gravl workouts get edited after the fact, and re-processing is idempotent.
+
+Removals are reported in the audit log only; they do not change the three counters. Copies stored before this cleanup existed are cleared by the normal window as long as they fall inside it (two days before the last sync); older ones need a full resync — `POST /api/sync/gravl` with `"full_resync": true` (90 days, or from `start_date`).
 
 **Rate limits:** 100 requests per 15 minutes per app + user. A run costs one list page plus one detail request per workout. On a 429 the sync state records Gravl's `Retry-After` (or a 5-minute hold when the header is missing); later runs and Health Connect-triggered enrichments are skipped until it passes, and `last_sync_time` is not advanced so the same window is re-covered.
 
 ### Triggered by Health Connect
 
-When the Android app uploads a Gravl session, the backend enqueues an enrichment job for that workout id. A minute later (retried with backoff if Gravl is still saving) the sets are attached — minute-scale latency instead of waiting for the poll. See [Health Connect → Source identity](./health-connect.md#source-identity).
+When the Android app uploads a Gravl session, the backend enqueues an enrichment job for that workout id. A minute later (retried with backoff if Gravl is still saving) the sets are attached — minute-scale latency instead of waiting for the poll. See [Health Connect → Source identity](./health-connect.md#source-identity). Once a copy has been removed as an `External` round-trip, a later Health Connect re-delivery of the same session is dropped on the tombstone without spending a Gravl API request.
 
 ### Background polling
 

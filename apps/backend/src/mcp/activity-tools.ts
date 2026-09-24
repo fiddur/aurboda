@@ -1,6 +1,3 @@
-/**
- * MCP activity management tools.
- */
 import {
   addActivityBodySchema,
   deleteActivityParamsSchema,
@@ -25,7 +22,6 @@ export const registerActivityTools = (
   user: string,
   onActivityMutated?: ActivityNotifier,
 ) => {
-  // Tool: add_activity
   server.tool(
     'add_activity',
     'Add an activity session (exercise type like yoga/running/weightlifting, meditation, nap, rest, …). Pass the specific activity_type directly; structured fields go in `data`.',
@@ -58,7 +54,6 @@ export const registerActivityTools = (
     },
   )
 
-  // Tool: delete_activity
   server.tool(
     'delete_activity',
     'Delete an activity by its ID. Returns success if the activity was found and deleted.',
@@ -69,7 +64,6 @@ export const registerActivityTools = (
     },
   )
 
-  // Tool: restore_activity
   server.tool(
     'restore_activity',
     'Restore a soft-deleted activity by its ID.',
@@ -80,7 +74,6 @@ export const registerActivityTools = (
     },
   )
 
-  // Tool: update_activity
   server.tool(
     'update_activity',
     'Update an existing activity. Can modify activity_type, start_time, end_time, title, notes, and data. Only provided fields will be updated. Validates that end_time is after start_time (considering both new and existing values).',
@@ -112,7 +105,6 @@ export const registerActivityTools = (
     },
   )
 
-  // Tool: merge_activities
   server.tool(
     'merge_activities',
     'Permanently merge 2+ activities of the same type into one. Creates a new merged activity spanning the full time range and soft-deletes the originals. Useful for fixing split activities (e.g., a run that got recorded as two separate activities).',

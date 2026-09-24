@@ -1,10 +1,3 @@
-/**
- * RescueTime data sync module.
- *
- * Handles fetching data from RescueTime API and storing it in the database.
- * Supports incremental sync with rate limit handling.
- */
-
 import { addMinutes, isBefore, isFuture, subDays } from 'date-fns'
 
 import type { ProductivityRecord } from '../../db/types.ts'
@@ -28,23 +21,16 @@ const DEFAULT_SYNC_HISTORY_DAYS = 30
 /** Backoff intervals for rate limiting (in minutes) */
 const RATE_LIMIT_BACKOFF = [1, 5, 15, 60]
 
-/**
- * Calculate retry time based on exponential backoff.
- */
 export const calculateRetryAfter = (attemptCount = 0): Date => {
   const backoffIndex = Math.min(attemptCount, RATE_LIMIT_BACKOFF.length - 1)
   return addMinutes(new Date(), RATE_LIMIT_BACKOFF[backoffIndex])
 }
 
-/**
- * Check if RescueTime is currently rate limited.
- */
 export const isRateLimited = (syncState: SyncState | null): boolean => {
   if (!syncState?.retry_after) return false
   return syncState.status === 'rate_limited' && isFuture(syncState.retry_after)
 }
 
-/** Result of a sync operation */
 export interface SyncResult {
   records_processed: number
   status: 'success' | 'skipped' | 'error' | 'rate_limited'
@@ -52,9 +38,6 @@ export interface SyncResult {
   retry_after?: Date
 }
 
-/**
- * Sync RescueTime productivity data.
- */
 export const syncRescueTimeData = async (
   user: string,
   apiKey: string,
@@ -62,10 +45,8 @@ export const syncRescueTimeData = async (
 ): Promise<SyncResult> => {
   const dataType = 'productivity'
 
-  // Check current sync state
   const syncState = await getSyncState(user, 'rescuetime', dataType)
 
-  // Skip if rate limited
   if (isRateLimited(syncState)) {
     return {
       records_processed: 0,
@@ -74,7 +55,6 @@ export const syncRescueTimeData = async (
     }
   }
 
-  // Determine date range
   const end = new Date()
   let start: Date
 
@@ -84,7 +64,6 @@ export const syncRescueTimeData = async (
     start = syncState.last_sync_time
   }
 
-  // Mark as syncing
   await upsertSyncState(user, {
     data_type: dataType,
     provider: 'rescuetime',
@@ -96,7 +75,6 @@ export const syncRescueTimeData = async (
     const client = rescuetimeClient(apiKey)
     const data = await client.getIntervalData(start, end)
 
-    // Store the data
     const productivityRecords: ProductivityRecord[] = data.map((r) => ({
       activity: r.activity,
       category: r.category,
@@ -108,7 +86,6 @@ export const syncRescueTimeData = async (
       start_time: r.startTime,
     }))
 
-    // Resolve categories if user has screentime rules configured
     if (productivityRecords.length > 0) {
       const categories = await getScreentimeCategories(user)
       if (categories.length > 0) {
@@ -129,7 +106,6 @@ export const syncRescueTimeData = async (
       }
     }
 
-    // Update sync state on success
     await upsertSyncState(user, {
       data_type: dataType,
       last_sync_time: end,
@@ -144,7 +120,6 @@ export const syncRescueTimeData = async (
   } catch (error: unknown) {
     const axiosError = error as { response?: { status?: number } }
 
-    // Handle rate limiting (RescueTime uses 429)
     if (axiosError.response?.status === 429) {
       const retryAfter = calculateRetryAfter()
       await upsertSyncState(user, {
@@ -162,7 +137,6 @@ export const syncRescueTimeData = async (
       }
     }
 
-    // Handle other errors
     const errorMessage = error instanceof Error ? error.message : 'Unknown error'
     await upsertSyncState(user, {
       data_type: dataType,
@@ -179,9 +153,6 @@ export const syncRescueTimeData = async (
   }
 }
 
-/**
- * Check if RescueTime sync is needed based on last sync time.
- */
 export const needsSync = (syncState: SyncState | null, thresholdMinutes: number): boolean => {
   if (!syncState?.last_sync_time) return true
   const threshold = addMinutes(syncState.last_sync_time, thresholdMinutes)

@@ -15,7 +15,6 @@ import { API_URL } from '../../config'
 import { auth } from '../auth'
 import { browserTz } from './client'
 
-// Fetch heart rate data for the specified date range
 export const fetchHeartRate = async (start: Date, end: Date): Promise<[Date, number][]> => {
   const { token } = auth.value
   const params: QueryMetricsQuery = {
@@ -30,7 +29,6 @@ export const fetchHeartRate = async (start: Date, end: Date): Promise<[Date, num
   return (response.data.data ?? []).map(({ time, value }) => [new Date(time), value])
 }
 
-// Fetch HRV (RMSSD) data for the specified date range
 export const fetchHrv = async (start: Date, end: Date): Promise<[Date, number][]> => {
   const { token } = auth.value
   const params: QueryMetricsQuery = {
@@ -45,7 +43,6 @@ export const fetchHrv = async (start: Date, end: Date): Promise<[Date, number][]
   return (response.data.data ?? []).map(({ time, value }) => [new Date(time), value])
 }
 
-// Fetch stress level data for the specified date range
 export const fetchStress = async (start: Date, end: Date): Promise<[Date, number][]> => {
   const { token } = auth.value
   const params: QueryMetricsQuery = {
@@ -60,7 +57,6 @@ export const fetchStress = async (start: Date, end: Date): Promise<[Date, number
   return (response.data.data ?? []).map(({ time, value }) => [new Date(time), value])
 }
 
-// Fetch HRV sleep (contextual: only during sleep) for the specified date range
 export const fetchHrvSleep = async (start: Date, end: Date): Promise<[Date, number][]> => {
   const { token } = auth.value
   const params: QueryMetricsQuery = {
@@ -77,7 +73,6 @@ export const fetchHrvSleep = async (start: Date, end: Date): Promise<[Date, numb
 
 export { periodStatsValue } from './periodSummary'
 
-// Fetch period summary for specified metrics
 export const fetchPeriodSummary = async (
   start: Date,
   end: Date,
@@ -121,7 +116,6 @@ export const fetchBucketedMetrics = async (
   return response.data
 }
 
-// Fetch sleep metrics time series
 export const fetchSleepScores = async (start: Date, end: Date): Promise<[Date, number][]> => {
   const { token } = auth.value
   const params: QueryMetricsQuery = {
@@ -136,7 +130,6 @@ export const fetchSleepScores = async (start: Date, end: Date): Promise<[Date, n
   return (response.data.data ?? []).map(({ time, value }) => [new Date(time), value])
 }
 
-// Fetch readiness scores time series
 export const fetchReadinessScores = async (start: Date, end: Date): Promise<[Date, number][]> => {
   const { token } = auth.value
   const params: QueryMetricsQuery = {
@@ -151,7 +144,6 @@ export const fetchReadinessScores = async (start: Date, end: Date): Promise<[Dat
   return (response.data.data ?? []).map(({ time, value }) => [new Date(time), value])
 }
 
-// Fetch resting heart rate time series
 export const fetchRestingHeartRate = async (start: Date, end: Date): Promise<[Date, number][]> => {
   const { token } = auth.value
   const params: QueryMetricsQuery = {
@@ -166,7 +158,6 @@ export const fetchRestingHeartRate = async (start: Date, end: Date): Promise<[Da
   return (response.data.data ?? []).map(({ time, value }) => [new Date(time), value])
 }
 
-// Fetch steps time series
 export const fetchSteps = async (start: Date, end: Date): Promise<[Date, number][]> => {
   const { token } = auth.value
   const params: QueryMetricsQuery = {
@@ -200,7 +191,6 @@ export const fetchMetricTimeSeries = async (
   return (response.data.data ?? []).map(({ time, value }) => [new Date(time), value])
 }
 
-/** Metric data point with source info for linking to detail views. */
 export interface MetricDataPointWithSource {
   time: Date
   value: number
@@ -208,7 +198,6 @@ export interface MetricDataPointWithSource {
   metric: string
 }
 
-/** Fetch time series data for a metric including source (for entity linking). */
 export const fetchMetricTimeSeriesWithSource = async (
   metric: string,
   start: Date,

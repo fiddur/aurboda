@@ -34,10 +34,6 @@ const OPERATOR_LABELS: Record<string, string> = {
   not_exists: 'not exists',
 }
 
-// ============================================================================
-// Condition body renderers (extracted to reduce complexity)
-// ============================================================================
-
 function ActivityTypeSelect({
   condition,
   onChange,
@@ -241,10 +237,6 @@ function ScrobbleBody({
   )
 }
 
-// ============================================================================
-// Single condition card
-// ============================================================================
-
 const KIND_DEFAULTS: Record<string, Partial<DeductionRuleCondition>> = {
   activity: { activity_type: '' },
   activity_data: { activity_type: '', field: '', operator: 'eq', value: '' },
@@ -386,10 +378,6 @@ function ConditionCard({
     </div>
   )
 }
-
-// ============================================================================
-// Main component
-// ============================================================================
 
 export function ConditionBuilder({
   conditions,

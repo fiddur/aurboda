@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 import * as db from '../../db/index.ts'
 import { getPeriodSummary } from './period-summary.ts'
 
-// Mock the db module
 vi.mock('../../db', () => ({
   getActivities: vi.fn(),
   getDailyAggregates: vi.fn(),
@@ -160,7 +159,6 @@ describe('getPeriodSummary', () => {
     vi.mocked(db.getDailyAggregates).mockResolvedValue([])
     vi.mocked(db.getUserSettings).mockResolvedValue(null) // Use default HR zones
 
-    // Mock heart rate data with samples in different zones
     // Default zones with age ~40 (max HR 180): 1=90, 2=108, 3=126, 4=144, 5=162
     vi.mocked(db.getTimeSeries).mockResolvedValue([
       [new Date('2024-01-15T10:00:00Z'), 70], // Zone 0 (below 90)

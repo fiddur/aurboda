@@ -1,8 +1,6 @@
 /**
  * Training load schemas for the Banister impulse-response model.
  *
- * PLAN:
- * ─────────────────────────────────────────────────────────────────────────────
  * Storage:
  *   Two metrics in time_series:
  *   - `training_impulse` — TRIMP from exercise sessions (HR-based or duration fallback)
@@ -30,20 +28,12 @@
  *   - Blue bars: activity impulse
  *   - Decaying grey area: accumulated past load (CTL curve)
  *   - Horizontal zone bands: Undertrained / Balanced / Strained / Very Strained
- * ─────────────────────────────────────────────────────────────────────────────
  */
 
 import { z } from 'zod'
 
 import { baseResponseSchema } from './common.ts'
 
-// ============================================================================
-// Training Load Settings
-// ============================================================================
-
-/**
- * Training load configuration stored in user settings.
- */
 export const trainingLoadSettingsSchema = z
   .object({
     activity_impulse_scale: z.number().positive().optional().meta({
@@ -86,17 +76,7 @@ export const trainingLoadSettingsSchema = z
 
 export type TrainingLoadSettings = z.infer<typeof trainingLoadSettingsSchema>
 
-// ============================================================================
-// Query / Response
-// ============================================================================
-
-/**
- * Query parameters for the training load endpoint.
- */
-/**
- * Valid bucket sizes for training load aggregation.
- * Default is '1h' (hourly). Larger buckets reduce payload size for long ranges.
- */
+/** Larger buckets reduce payload size for long ranges. */
 export const trainingLoadBucketSizes = ['1h', '1d', '1w'] as const
 export type TrainingLoadBucketSize = (typeof trainingLoadBucketSizes)[number]
 
@@ -147,9 +127,6 @@ export const getTrainingLoadInputSchema = z
 
 export type GetTrainingLoadInput = z.infer<typeof getTrainingLoadInputSchema>
 
-/**
- * A single workout's TRIMP score.
- */
 export const workoutTrimpSchema = z
   .object({
     activity_id: z
@@ -190,10 +167,6 @@ export const trainingLoadPointSchema = z
 
 export type TrainingLoadPoint = z.infer<typeof trainingLoadPointSchema>
 
-// ============================================================================
-// Recovery Zones
-// ============================================================================
-
 /**
  * Recovery zone thresholds. Boundaries for the horizontal zone bands.
  * Zone is determined by the combined load (ATL + residual CTL contribution).
@@ -212,13 +185,6 @@ export const recoveryZonesSchema = z
 
 export type RecoveryZones = z.infer<typeof recoveryZonesSchema>
 
-// ============================================================================
-// Full Result
-// ============================================================================
-
-/**
- * Full training load response.
- */
 export const trainingLoadResultSchema = z
   .object({
     bootstrapping: z
@@ -237,9 +203,6 @@ export const trainingLoadResultSchema = z
 
 export type TrainingLoadResult = z.infer<typeof trainingLoadResultSchema>
 
-/**
- * Response schema for training load endpoint.
- */
 export const trainingLoadResponseSchema = baseResponseSchema
   .extend({
     data: trainingLoadResultSchema.optional(),

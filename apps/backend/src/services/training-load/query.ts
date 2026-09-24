@@ -29,9 +29,6 @@ import { recomputeImpulseBuckets } from './recompute.ts'
 
 type TrainingLoadBucketSize = (typeof trainingLoadBucketSizes)[number]
 
-/**
- * Compute the current incomplete hour on-the-fly and merge into impulse maps.
- */
 const mergeLiveHourImpulses = async (
   deps: TrainingLoadDeps,
   user: string,
@@ -73,9 +70,6 @@ const mergeLiveHourImpulses = async (
   }
 }
 
-/**
- * Build the workout list for the response (exercise sessions with TRIMP scores).
- */
 const buildWorkoutList = async (
   deps: TrainingLoadDeps,
   user: string,
@@ -106,16 +100,6 @@ const buildWorkoutList = async (
   return workoutList
 }
 
-/**
- * Compute training load time series for a user and date range.
- *
- * 1. Check if impulse buckets need recomputation (watermark)
- * 2. Fetch pre-computed hourly impulse buckets
- * 3. Compute current incomplete hour from raw data
- * 4. Run hourly Banister EMA → ATL, CTL, TSB
- * 5. Optionally aggregate into larger buckets (daily/weekly)
- * 6. Compute recovery zones
- */
 export const computeTrainingLoad = async (
   deps: TrainingLoadDeps,
   user: string,
@@ -124,7 +108,6 @@ export const computeTrainingLoad = async (
   bucketSize: TrainingLoadBucketSize = '1h',
   tz: string = 'UTC',
 ): Promise<TrainingLoadResult> => {
-  // Gather settings and latest resting HR in parallel.
   const [userSettings, latestRestingHr] = await Promise.all([
     deps.getUserSettings(user),
     deps.getLatestRestingHr(user),
@@ -148,14 +131,12 @@ export const computeTrainingLoad = async (
   const currentHour = getCurrentHourStart()
   const effectiveEnd = end > currentHour ? currentHour : floorToHour(end)
 
-  // Check watermark — if dirty, recompute before querying
   const watermark = userSettings.training_load?.impulse_watermark
   if (watermark) {
     const fromHour = floorToHour(new Date(watermark))
     await recomputeImpulseBuckets(deps, user, fromHour)
   }
 
-  // Fetch pre-computed impulse buckets for the extended range
   let [trainingBuckets, activityBuckets] = await Promise.all([
     deps.getImpulseBuckets(user, 'training_impulse', extendedStartHour, effectiveEnd),
     deps.getImpulseBuckets(user, 'activity_impulse', extendedStartHour, effectiveEnd),
@@ -171,7 +152,6 @@ export const computeTrainingLoad = async (
     ])
   }
 
-  // Build maps from stored buckets
   const trainingImpulses = new Map<string, number>()
   for (const [time, value] of trainingBuckets) {
     trainingImpulses.set(floorToHour(time).toISOString(), value)
@@ -182,7 +162,6 @@ export const computeTrainingLoad = async (
     activityImpulses.set(floorToHour(time).toISOString(), value)
   }
 
-  // Compute current incomplete hour on-the-fly
   await mergeLiveHourImpulses(
     deps,
     user,
@@ -195,7 +174,6 @@ export const computeTrainingLoad = async (
     activityImpulses,
   )
 
-  // Run hourly Banister EMA
   const allPoints = computeHourlyLoadSeries({
     activityImpulses,
     end: effectiveEnd,
@@ -205,16 +183,13 @@ export const computeTrainingLoad = async (
     trainingImpulses,
   })
 
-  // Filter to requested range, then aggregate if needed
   const startIso = floorToHour(start).toISOString()
   const endIso = effectiveEnd.toISOString()
   const hourlyPoints = allPoints.filter((p) => p.time >= startIso && p.time <= endIso)
   const points = aggregateTrainingLoadPoints(hourlyPoints, bucketSize, tz)
 
-  // Await the workout list (started earlier, runs in parallel)
   const workoutList = await workoutListPromise
 
-  // Determine bootstrapping status
   const totalHours = allPoints.length
   const bootstrapping = totalHours < BOOTSTRAPPING_DAYS * HOURS_PER_DAY
 

@@ -1,17 +1,3 @@
-/**
- * Express server entry point.
- *
- * Setup is split across helpers in `api/`:
- *   - middleware.ts  — audit log, auth, admin
- *   - auth-routes.ts — /version, /status, /signup, /login, /auth/token
- *   - oauth-routes.ts — Garmin / Strava / Oura connect+disconnect
- *   - sync-setup.ts  — `/sync` router wiring
- *   - webhooks-setup.ts — Strava + Oura push integrations
- *   - rest-routes.ts — per-domain REST router mounts
- *
- * This file orchestrates: clients, queues, central DB, auth, error handler,
- * server lifecycle.
- */
 import { integrateFederation } from '@fedify/express'
 import cors from 'cors'
 import express, { json, type NextFunction, type Request, type Response } from 'express'
@@ -51,6 +37,7 @@ import {
   loginToUserDb,
   markChallengeResultPublished,
   markEnrichTransientFailure,
+  migrateAllUsers,
   openTimelineChannel,
   resolveOrCreateActivityType,
   markTimelineEntryReplyChecked,
@@ -80,9 +67,12 @@ import {
   deliverFeedChallengeUpdate,
   deliverFeedDelete,
   deliverFeedPost,
+  deliverFeedReplyPost,
+  deliverFeedReplyUpdate,
   deliverFeedUpdate,
   toDeliverableArticle,
   toDeliverableChallenge,
+  toDeliverableReply,
 } from './services/activitypub/deliver.ts'
 import { createFeedFederation, deliverActorUpdate } from './services/activitypub/federation.ts'
 import { createTimelineBackfiller } from './services/activitypub/timeline-backfill.ts'
@@ -107,6 +97,7 @@ import {
 } from './services/deduction-queue.ts'
 import { createDetectionTrigger, type DetectionTrigger } from './services/detection-trigger.ts'
 import { runDetectionForUser } from './services/detection-worker.ts'
+import { createReactionActions } from './services/feed-reactions.ts'
 import { expandFeedActivityWindow, resolveFeedActivity } from './services/feed.ts'
 import {
   approveFollower,
@@ -132,9 +123,9 @@ import {
   type RetroEnrichTrigger,
   retroEnrichTimelineEntries,
 } from './services/timeline-retro-enrich.ts'
+import { ownActorUri } from './services/timeline.ts'
 import { createWebAuthnService } from './services/webauthn.ts'
 
-/** Grace period for in-flight requests before sockets are forced closed. */
 const SHUTDOWN_DRAIN_MS = 3000
 
 declare global {
@@ -155,10 +146,8 @@ const main = async () => {
   const auth = createAuth(sessionSecret)
   const invitationAuth = createInvitationAuth(sessionSecret)
 
-  // Callbacks to run after httpd.listen() — for tasks that need the server to be reachable
   const postListenCallbacks: Array<() => Promise<void>> = []
 
-  // Initialize central database (server settings, admins)
   await initializeCentralDb()
   const centralDb = getCentralDb()
 
@@ -210,7 +199,6 @@ const main = async () => {
     version: process.env.BUILD_SHA ?? 'dev',
   }
 
-  // Migrate legacy OURA_CLIENT/OURA_SECRET env vars into server_settings if DB empty
   const envOuraClientId = process.env.OURA_CLIENT
   const envOuraClientSecret = process.env.OURA_SECRET
   if (envOuraClientId || envOuraClientSecret) {
@@ -244,10 +232,10 @@ const main = async () => {
     onUserAuthenticated: (ouraUserId, username) => centralDb.upsertOuraUserMapping(ouraUserId, username),
   })
 
-  // Create Garmin client (no server-side credentials needed - uses per-user session tokens)
+  // No server-side credentials: the client uses per-user session tokens.
   const garmin = garminClient()
 
-  // Create Strava client with dynamic credentials (reads from DB on each request)
+  // Credentials are read from the DB on each request, not captured at startup.
   const getStravaCredentials = async () => {
     const clientId = await centralDb.getServerSetting('strava_client_id')
     const clientSecret = await centralDb.getServerSetting('strava_client_secret')
@@ -337,7 +325,6 @@ const main = async () => {
     console.warn('⚠️ Calorie queue disabled - HR ingestion will fire-and-forget computation')
   }
 
-  // Initialize Strava queue (uses shared boss + strava client)
   let stravaQueue: StravaQueue | null = null
   if (boss) {
     try {
@@ -374,6 +361,15 @@ const main = async () => {
 
   const userDb = new Client({ database: 'postgres' })
   await userDb.connect()
+
+  // Land this deploy's schema changes in the background, so no user's first
+  // authenticated request pays for the sweep (#1125). Gated per user by the
+  // schema fingerprint, so a deploy that changed no DDL only reads one marker
+  // row per user.
+  postListenCallbacks.push(async () => {
+    const { migrated, skipped, failed } = await migrateAllUsers(userDb)
+    console.info(`🗃️ Schema sweep done: ${migrated} migrated, ${skipped} already current, ${failed} failed`)
+  })
 
   // CORS must come first for preflight requests
   httpd.use(cors({ origin: true }))
@@ -428,7 +424,7 @@ const main = async () => {
     // Reply/Mention backfill for entries ingested before #1060 tracked them —
     // re-fetches a few objects per read so legacy replies stop rendering as
     // top-level cards.
-    const replyPass = backfillReplyLinks(user, `${webHost.replace(/\/+$/, '')}/users/${user}`, {
+    const replyPass = backfillReplyLinks(user, ownActorUri(webHost, user), {
       fetchObject: async (objectUri) =>
         (
           await safeFetchGet(objectUri, {
@@ -503,6 +499,22 @@ const main = async () => {
         void deliverFeedChallengeUpdate(feedDeps, user, challenge).catch(
           onDeliverError('update', user, post.id),
         )
+      }
+    },
+    // A reply federates like a challenge share — a self-contained Note — but
+    // additionally to the inbox of the author it answers, who need not follow us.
+    createdReply: (user, post, authorInbox) => {
+      const reply = toDeliverableReply(post)
+      if (reply) {
+        void deliverFeedReplyPost(feedDeps, user, reply, authorInbox).catch(
+          onDeliverError('create', user, post.id),
+        )
+      }
+    },
+    updatedReply: (user, post) => {
+      const reply = toDeliverableReply(post)
+      if (reply) {
+        void deliverFeedReplyUpdate(feedDeps, user, reply).catch(onDeliverError('update', user, post.id))
       }
     },
   }
@@ -596,6 +608,7 @@ const main = async () => {
     follow: (user, handle) => followActor(feedDeps, user, handle),
     unfollow: (user, id) => unfollowActor(feedDeps, user, id),
   }
+  const reactionActions = createReactionActions(feedDeps, feedDeliver)
   // The follower-management operations (approve/reject a follow request), sharing
   // the same federation + origin. Approve returns the serialised follower.
   const followerActions: FollowerActions = {
@@ -628,6 +641,7 @@ const main = async () => {
       gravl,
       onActivityMutated: activityNotifier,
       oura,
+      reactionActions,
       retroEnrichTimeline,
       stravaQueue: stravaQueue ?? undefined,
       sync: syncProvider,
@@ -656,17 +670,22 @@ const main = async () => {
 
   // Browser-facing actor URLs (#1047): Fedify answers 406 to `Accept: text/html`
   // via the same next() fall-through, and this redirects humans to /u/:username.
-  httpd.use(createActorHtmlRouter({ origin: webHost }))
+  // An account is one with a per-user database — the same existence test the
+  // background sweeps use — so an unknown actor keeps its 404 (#1051).
+  httpd.use(
+    createActorHtmlRouter({
+      origin: webHost,
+      userExists: async (username) => (await listUserNames(userDb)).includes(username),
+    }),
+  )
 
   httpd.use(json({ limit: '10mb' }))
 
-  // Audit-log middleware: records non-GET requests with response status / body
   httpd.use(createAuditLogMiddleware(auth))
 
   const authMiddleware = createAuthMiddleware(auth, unauthorized)
   const adminMiddleware = createAdminMiddleware(centralDb, unauthorized, forbidden)
 
-  // Auth-related routes (version, status, signup, login, /auth/token)
   registerAuthRoutes({
     httpd,
     auth,
@@ -677,7 +696,6 @@ const main = async () => {
     unauthorized,
   })
 
-  // /sync router (cross-provider sync orchestration)
   mountSyncRouter({
     httpd,
     authMiddleware,
@@ -691,7 +709,6 @@ const main = async () => {
     activityNotifier,
   })
 
-  // Per-provider OAuth/connect endpoints
   registerOAuthRoutes({
     httpd,
     authMiddleware,
@@ -702,7 +719,6 @@ const main = async () => {
     strava,
   })
 
-  // Strava webhook push integration
   if (stravaQueue) {
     const ensureStravaWebhook = setupStravaWebhook({
       httpd,
@@ -715,7 +731,6 @@ const main = async () => {
     postListenCallbacks.push(ensureStravaWebhook)
   }
 
-  // Oura webhook push integration (admin-configurable via Web UI)
   const ouraWebhookManager = await setupOuraWebhook({
     httpd,
     apiBaseUrl,
@@ -724,7 +739,6 @@ const main = async () => {
     getOuraCredentials,
   })
 
-  // Initialize geocode queue (uses shared boss)
   let geocodeQueue: Awaited<ReturnType<typeof createGeocodeQueue>> | null = null
   if (boss) {
     try {
@@ -759,7 +773,6 @@ const main = async () => {
     }),
   )
 
-  // Per-domain REST routers
   mountRestRouters({
     activityNotifier,
     autosharePreviewDeps: autoshareDeps,
@@ -785,6 +798,7 @@ const main = async () => {
       )
     },
     ouraWebhookManager,
+    reactionActions,
     retroEnrichTimeline,
     syncProvider,
     timelineHub,
@@ -799,7 +813,6 @@ const main = async () => {
   // error middleware. No-op if Sentry was not initialized.
   Sentry.setupExpressErrorHandler(httpd)
 
-  // Centralized error handler
   httpd.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
     const status = isHttpError(err) ? err.status : 500
     if (status >= 500) console.error(err)
@@ -814,7 +827,6 @@ const main = async () => {
     res.status(status).json({ success: false, error: err.message })
   })
 
-  // Server startup
   const port = Number(process.env.PORT ?? 80)
   const server = httpd.listen(port, () => {
     console.info(`> Running on localhost:${port}`)
@@ -826,7 +838,6 @@ const main = async () => {
     }
   })
 
-  // Graceful shutdown
   const shutdown = async () => {
     console.info('Shutting down...')
     detectionTrigger.clearPendingDetections()

@@ -1,7 +1,3 @@
-/**
- * Shared component that renders activity title, time, duration, and notes
- * in either read mode (plain text) or edit mode (input fields).
- */
 import { ActivityTypePicker } from '../../components/ActivityTypePicker'
 import { IconPreview } from '../../components/IconPreview'
 import { MarkdownEditor } from '../../components/MarkdownEditor/index.jsx'
@@ -25,7 +21,6 @@ interface EditableActivityFieldsProps {
   durationLabel?: string
   /** Icon (emoji or URL) to display next to the title. */
   icon?: string
-  /** Optional link URL for the title. */
   titleHref?: string
 }
 

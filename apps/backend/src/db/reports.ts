@@ -1,6 +1,4 @@
 /**
- * Reports CRUD operations.
- *
  * Reports group related lab measurements (InBody, blood panels, etc.) with entries.
  * Entry values/units live in the time_series table (source='lab_report');
  * report_entries stores only lab-specific metadata (reference ranges, flags, etc.).
@@ -84,11 +82,7 @@ const insertEntryMetadata = async (
   )
 }
 
-/**
- * Insert a report with all its entries in a single operation.
- * Returns the full report with generated IDs.
- * Note: caller is responsible for inserting corresponding time_series data.
- */
+/** Note: caller is responsible for inserting corresponding time_series data. */
 export const insertReport = async (user: string, input: InsertReportInput): Promise<Report> => {
   const reportResult = await query(
     user,
@@ -107,9 +101,6 @@ export const insertReport = async (user: string, input: InsertReportInput): Prom
   return mapReportRow(reportRow, entries)
 }
 
-/**
- * Get a single report by ID with all its entries.
- */
 export const getReportById = async (user: string, id: string): Promise<Report | null> => {
   const reportResult = await query(user, `SELECT ${REPORT_COLUMNS} FROM reports WHERE id = $1`, [id])
 
@@ -127,9 +118,6 @@ interface QueryReportsFilter {
   end?: Date
 }
 
-/**
- * Query reports with optional filters. Returns reports with their entries.
- */
 export const getReports = async (user: string, filter: QueryReportsFilter): Promise<Report[]> => {
   let sql = `SELECT ${REPORT_COLUMNS} FROM reports WHERE 1=1`
   const params: unknown[] = []
@@ -177,7 +165,6 @@ export const getReports = async (user: string, filter: QueryReportsFilter): Prom
     ),
   )
 
-  // Group entries by report_id
   const entriesByReport = new Map<string, ReportEntry[]>()
   for (const row of entriesResult.rows) {
     const entry = mapReportEntryRow(row)
@@ -189,10 +176,7 @@ export const getReports = async (user: string, filter: QueryReportsFilter): Prom
   return reportResult.rows.map((row) => mapReportRow(row, entriesByReport.get(row.id as string) ?? []))
 }
 
-/**
- * Delete a report and all its entries (CASCADE handles entries).
- * Returns true if the report was found and deleted.
- */
+/** CASCADE removes the entries. */
 export const deleteReport = async (user: string, id: string): Promise<boolean> => {
   const result = await query(user, `DELETE FROM reports WHERE id = $1`, [id])
   return (result.rowCount ?? 0) > 0
@@ -248,10 +232,6 @@ export const getLatestMetricValue = async (
   }
 }
 
-// ============================================================================
-// Update Report
-// ============================================================================
-
 interface UpdateReportInput {
   report_type?: string
   report_date?: Date
@@ -267,17 +247,12 @@ interface UpdateReportInput {
   }>
 }
 
-/**
- * Update a report's metadata and/or replace its entries.
- * Returns the updated report, or null if not found.
- * Note: caller is responsible for updating corresponding time_series data.
- */
+/** Note: caller is responsible for updating corresponding time_series data. */
 export const updateReport = async (
   user: string,
   id: string,
   input: UpdateReportInput,
 ): Promise<Report | null> => {
-  // Build dynamic UPDATE for metadata fields
   const setClauses: string[] = []
   const params: unknown[] = []
   let paramIdx = 1
@@ -299,7 +274,6 @@ export const updateReport = async (
     params.push(input.notes)
   }
 
-  // Update metadata if any fields changed
   if (setClauses.length > 0) {
     const updateResult = await query(
       user,
@@ -309,7 +283,6 @@ export const updateReport = async (
     if (updateResult.rows.length === 0) return null
   }
 
-  // Replace entries if provided
   if (input.entries !== undefined) {
     // Verify report exists if we didn't do an update above
     if (setClauses.length === 0) {
@@ -321,6 +294,5 @@ export const updateReport = async (
     await insertEntryMetadata(user, id, input.entries)
   }
 
-  // Return the full updated report
   return getReportById(user, id)
 }

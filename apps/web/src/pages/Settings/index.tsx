@@ -24,19 +24,16 @@ export function Settings() {
     queryKey: ['userSettings'],
   })
 
-  // Form state
   const [birthDate, setBirthDate] = useState<string>('')
   const [sex, setSex] = useState<BiologicalSex | null>(null)
   const [hrZones, setHrZones] = useState<HrZoneThresholds | null>(null)
   const [manualApproval, setManualApproval] = useState(false)
   const [showReplies, setShowReplies] = useState(false)
 
-  // Save status for each section
   const [personalInfoStatus, setPersonalInfoStatus] = useState<SaveStatus>({ status: 'idle' })
   const [hrZonesStatus, setHrZonesStatus] = useState<SaveStatus>({ status: 'idle' })
   const [followersStatus, setFollowersStatus] = useState<SaveStatus>({ status: 'idle' })
 
-  // Initialize form when data loads
   const initializeForm = () => {
     setBirthDate(userSettings?.birth_date ?? '')
     setSex(userSettings?.sex ?? null)
@@ -45,14 +42,12 @@ export function Settings() {
     setShowReplies(userSettings?.timeline_show_replies ?? false)
   }
 
-  // Track if form has been initialized
   const [initialized, setInitialized] = useState(false)
   if (userSettings && !initialized) {
     initializeForm()
     setInitialized(true)
   }
 
-  // Generic save function for a section
   const saveSection = useCallback(
     async (params: UpdateSettingsInput, setStatus: (s: SaveStatus) => void) => {
       setStatus({ status: 'saving' })
@@ -79,7 +74,6 @@ export function Settings() {
     const serverValue = userSettings?.birth_date ?? ''
     if (birthDate === serverValue) return
 
-    // Validate format if not empty
     if (birthDate && !/^\d{4}-\d{2}-\d{2}$/.test(birthDate)) {
       setPersonalInfoStatus({ error: 'Invalid date format', status: 'error' })
       return
@@ -108,7 +102,6 @@ export function Settings() {
 
     if (JSON.stringify(currentZones) === JSON.stringify(serverZones)) return
 
-    // Validate zones
     const validation = validateHrZoneThresholds(currentZones)
     if (!validation.valid) {
       setHrZonesStatus({ error: validation.error, status: 'error' })
@@ -248,9 +241,9 @@ export function Settings() {
             <span>Show replies in your timeline</span>
           </label>
           <p class="field-description">
-            When on, replies that people you follow write to <em>other</em> people show as their own
-            timeline cards. When off (the default), you see their top-level posts only — replies to your
-            own posts always show either way.
+            When on, every reply the people you follow write shows as its own timeline card. When off (the
+            default), replies to posts that aren’t in your timeline are hidden — replies to your own posts,
+            posts mentioning you, and replies within a thread you already see always show.
           </p>
         </div>
       </SettingsSection>

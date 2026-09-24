@@ -1,6 +1,4 @@
 /**
- * BarChartWidget - Displays bucketed bar chart visualization on the dashboard.
- *
  * Split into a presentational `BarChartView` and a fetching container. The view
  * links to the full chart page only when an `href` is supplied (home dashboard).
  */

@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest'
 
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
-import { query } from './connection.ts'
 import { getActivityById, insertActivity } from './activities/index.ts'
+import { query } from './connection.ts'
 import {
   deleteHealthConnectRecords,
   getDailyAggregateValue,
@@ -56,7 +56,6 @@ describe('Health Connect Integration Tests', () => {
       expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Invalid metric in daily aggregate'))
       consoleSpy.mockRestore()
 
-      // Should not have stored anything
       const result = await getDailyAggregateValue(user, 'steps', new Date('2024-01-15'))
       expect(result).toBeNull()
     })
@@ -89,7 +88,6 @@ describe('Health Connect Integration Tests', () => {
         })
       }
 
-      // Verify all were stored
       for (const metric of cumulativeMetrics) {
         const result = await getDailyAggregateValue(user, metric as 'steps', new Date('2024-01-15'))
         expect(result).toBe(100)
@@ -145,14 +143,12 @@ describe('Health Connect Integration Tests', () => {
     test('deletes raw record and time_series for a weight record', async () => {
       const user = getTestUser()
 
-      // Insert a weight record via processHealthConnectData
       await processHealthConnectData(user, 'WeightRecord', {
         metadata: { id: 'weight-record-1' },
         time: '2024-01-15T08:00:00Z',
         weightInKilograms: 75.5,
       })
 
-      // Verify data exists
       const rawBefore = await query(user, `SELECT * FROM raw_records WHERE external_id = 'weight-record-1'`)
       expect(rawBefore.rows).toHaveLength(1)
 
@@ -165,15 +161,12 @@ describe('Health Connect Integration Tests', () => {
       expect(tsBefore).toHaveLength(1)
       expect(tsBefore[0][1]).toBe(75.5)
 
-      // Delete the record
       const deleted = await deleteHealthConnectRecords(user, ['weight-record-1'])
       expect(deleted).toBe(1)
 
-      // Verify raw record is gone
       const rawAfter = await query(user, `SELECT * FROM raw_records WHERE external_id = 'weight-record-1'`)
       expect(rawAfter.rows).toHaveLength(0)
 
-      // Verify time_series entry is gone
       const tsAfter = await getTimeSeries(
         user,
         'weight',
@@ -193,14 +186,12 @@ describe('Health Connect Integration Tests', () => {
         title: 'Morning Run',
       })
 
-      // Verify activity exists
       const activitiesBefore = await query(user, `SELECT * FROM activities WHERE source = 'health_connect'`)
       expect(activitiesBefore.rows).toHaveLength(1)
 
       const deleted = await deleteHealthConnectRecords(user, ['exercise-1'])
       expect(deleted).toBe(1)
 
-      // Verify activity is gone
       const activitiesAfter = await query(user, `SELECT * FROM activities WHERE source = 'health_connect'`)
       expect(activitiesAfter.rows).toHaveLength(0)
     })
@@ -235,7 +226,6 @@ describe('Health Connect Integration Tests', () => {
     test('deletes raw record for steps but preserves aggregate time_series', async () => {
       const user = getTestUser()
 
-      // Insert raw steps record
       await processHealthConnectData(user, 'StepsRecord', {
         count: 500,
         metadata: { id: 'steps-1' },
@@ -250,11 +240,9 @@ describe('Health Connect Integration Tests', () => {
         value: 10000,
       })
 
-      // Delete the raw record
       const deleted = await deleteHealthConnectRecords(user, ['steps-1'])
       expect(deleted).toBe(1)
 
-      // Aggregate should still exist
       const aggregate = await getDailyAggregateValue(user, 'steps', new Date('2024-01-15'))
       expect(aggregate).toBe(10000)
     })

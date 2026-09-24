@@ -1,10 +1,6 @@
 import type { RequestHandler } from 'express'
 
 /**
- * Shared dashboards route group (owner-facing CRUD).
- *
- * Handles: /shared-dashboards/*
- *
  * Each shared dashboard is an independently-editable copy of a DashboardConfig
  * that the owner publishes under their public namespace. Responses include the
  * absolute share URL built from the configured public base URL.

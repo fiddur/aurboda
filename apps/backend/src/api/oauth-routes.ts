@@ -1,8 +1,3 @@
-/**
- * Per-provider OAuth/auth endpoints: Oura connect+callback, Garmin login/MFA/disconnect,
- * Strava connect+callback+disconnect, Gravl connect+callback+disconnect. Uses each integration's client + the central DB
- * for credential mapping cleanup.
- */
 import type { Express } from 'express'
 
 import type { GarminClient } from '../integrations/garmin/client.ts'
@@ -36,7 +31,6 @@ export const registerOAuthRoutes = ({
   oura,
   strava,
 }: OAuthRoutesDeps): void => {
-  // Oura
   httpd.get('/auth/oura/connect', authMiddleware, oura.getAuthorizeUrl)
   httpd.get('/auth/ouracb', oura.authCb)
 
@@ -101,7 +95,6 @@ export const registerOAuthRoutes = ({
   httpd.post('/auth/strava/disconnect', authMiddleware, async (req, res) => {
     const user = req.user!
     try {
-      // Clear tokens and athlete mapping
       await upsertOAuthToken(user, { access_token: '', provider: 'strava' })
       await centralDb.deleteStravaAthleteMappingByUsername(user)
       res.json({ success: true })

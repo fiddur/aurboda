@@ -1,8 +1,4 @@
 /**
- * `410 Gone` Tombstone for deleted feed-post objects (UNAUTHENTICATED).
- *
- * Handles: GET /users/:username/feed/:postId
- *
  * A shared post's object row is hard-deleted on unshare, so Fedify's object
  * dispatcher returns `null` and `@fedify/express` falls through (`next()`). This
  * router — mounted right AFTER `integrateFederation` — catches that fall-through:

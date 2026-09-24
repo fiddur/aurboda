@@ -1,24 +1,17 @@
 /**
- * Garmin Connect API client.
- *
- * Wraps @flow-js/garmin-connect for authenticated data fetching.
  * Uses custom GET requests for endpoints not covered by the library.
  *
  * Auth is via username/password login → OAuth tokens persisted as a serialized
  * blob in oauth_tokens. Credentials are never stored.
  */
 
-import type { IGarminTokens } from '@flow-js/garmin-connect'
+import type { IGarminTokens } from '@fiddur/garmin-connect'
 
-import garminConnectPkg from '@flow-js/garmin-connect'
+import garminConnectPkg from '@fiddur/garmin-connect'
 const { GarminConnect } = garminConnectPkg
 
 import { getOAuthToken, upsertOAuthToken } from '../../db/index.ts'
 import { auditError, auditInfo } from '../../services/audit-log.ts'
-
-// ============================================================================
-// Types for Garmin API responses (from custom GET endpoints)
-// ============================================================================
 
 /** Daily stress response from /wellness-service/wellness/dailyStress/{date} */
 export interface GarminStressData {
@@ -155,10 +148,6 @@ export interface GarminDailySummary {
   lowestSpo2: number
 }
 
-// ============================================================================
-// Login result types
-// ============================================================================
-
 export interface GarminLoginSuccess {
   success: true
   tokens: IGarminTokens
@@ -169,10 +158,6 @@ export interface GarminMfaRequired {
 }
 
 export type LoginResult = GarminLoginSuccess | GarminMfaRequired
-
-// ============================================================================
-// Client factory
-// ============================================================================
 
 export interface GarminClientDeps {
   getOAuthToken: typeof getOAuthToken
@@ -187,17 +172,12 @@ const defaultDeps: GarminClientDeps = { getOAuthToken, upsertOAuthToken }
  * Entries are cleaned up on completion, timeout, or disconnect.
  */
 const pendingMfaSessions = new Map<string, { gc: InstanceType<typeof GarminConnect>; createdAt: number }>()
+const MFA_SESSION_TTL_MS = 5 * 60 * 1000
 
-/** Max time (ms) a pending MFA session is kept before being discarded. */
-const MFA_SESSION_TTL_MS = 5 * 60 * 1000 // 5 minutes
-
-/**
- * Creates a Garmin Connect API client.
- * Does NOT require any server-side credentials (unlike Oura which needs client/secret).
- */
 /** Base URL for Garmin Connect API — gc.get() needs full URLs, not relative paths. */
 const GC_API = 'https://connectapi.garmin.com'
 
+/** Requires no server-side credentials, unlike Oura which needs a client id/secret. */
 export const garminClient = (deps: GarminClientDeps = defaultDeps) => {
   /**
    * Restore a GarminConnect instance from stored tokens for a user.
@@ -213,7 +193,6 @@ export const garminClient = (deps: GarminClientDeps = defaultDeps) => {
     return gc
   }
 
-  /** Persist the current GarminConnect session tokens for a user. */
   const saveSession = async (user: string, gc: InstanceType<typeof GarminConnect>): Promise<void> => {
     const tokens = gc.exportToken()
     await deps.upsertOAuthToken(user, {
@@ -226,9 +205,6 @@ export const garminClient = (deps: GarminClientDeps = defaultDeps) => {
   const fmt = (d: Date): string => d.toISOString().slice(0, 10)
 
   return {
-    /**
-     * Disconnect Garmin by removing stored tokens.
-     */
     async disconnect(user: string): Promise<void> {
       // We just remove the OAuth token; there's no server-side session to revoke
       // since we're scraping rather than using an official OAuth flow.
@@ -262,10 +238,6 @@ export const garminClient = (deps: GarminClientDeps = defaultDeps) => {
       return result
     },
 
-    // ========================================================================
-    // Data fetching methods — each restores session, fetches, and returns data
-    // ========================================================================
-
     async getDailySummary(user: string, date: Date): Promise<GarminDailySummary> {
       const gc = await restoreSession(user)
       const profile = await gc.getUserProfile()
@@ -273,7 +245,7 @@ export const garminClient = (deps: GarminClientDeps = defaultDeps) => {
       const result = await gc.get<GarminDailySummary>(
         `${GC_API}/usersummary-service/usersummary/daily/${profile.displayName}?calendarDate=${fmt(date)}`,
       )
-      await saveSession(user, gc) // persist any refreshed tokens
+      await saveSession(user, gc)
       return result
     },
 
@@ -349,14 +321,12 @@ export const garminClient = (deps: GarminClientDeps = defaultDeps) => {
       return result
     },
     /**
-     * Login with Garmin credentials. Returns tokens on success or indicates MFA required.
      * Credentials are used only for this call and never stored.
      *
      * When MFA is required, the GarminConnect instance is kept alive in
      * `pendingMfaSessions` so that `verifyMfa()` can complete the flow.
      */
     async login(user: string, email: string, password: string): Promise<LoginResult> {
-      // Clean up any stale pending session for this user
       pendingMfaSessions.delete(user)
 
       auditInfo(user, 'auth', 'Garmin login attempt', { email })
@@ -378,7 +348,6 @@ export const garminClient = (deps: GarminClientDeps = defaultDeps) => {
         return { success: true, tokens }
       }
 
-      // MFA required — park the instance for verifyMfa()
       pendingMfaSessions.set(user, { gc, createdAt: Date.now() })
 
       // Schedule cleanup so we don't leak memory if verifyMfa() is never called
@@ -394,9 +363,6 @@ export const garminClient = (deps: GarminClientDeps = defaultDeps) => {
 
     /**
      * Complete MFA verification after login() returned { mfa_required: true }.
-     *
-     * @param user     Aurboda user id
-     * @param mfaCode  The code from the user's email/SMS
      */
     async verifyMfa(user: string, mfaCode: string): Promise<GarminLoginSuccess> {
       auditInfo(user, 'auth', 'Garmin MFA verify')

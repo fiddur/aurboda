@@ -1,4 +1,4 @@
-import type { FeedStructuredPost } from '@aurboda/api-spec'
+import type { FeedReactionKind, FeedStructuredPost } from '@aurboda/api-spec'
 import type { Actor } from '@fedify/fedify/vocab'
 
 import {
@@ -10,10 +10,13 @@ import {
 } from '@fedify/fedify'
 import {
   Accept,
+  Announce,
   Create,
   Delete,
   Follow,
   Image,
+  Like,
+  isActor,
   Note,
   Person,
   Reject,
@@ -22,53 +25,49 @@ import {
 } from '@fedify/fedify/vocab'
 
 /**
- * The Fedify `Federation` object for the activity feed.
- *
  * Single actor per user: the actor identifier IS the username, and the actor
  * lives at `<host>/users/<username>` — a dedicated prefix that never collides
- * with the SPA's human-facing `/u/<username>` profile/dashboard pages. It wires:
- *
- * - actor document (`Person`) with the user's published RSA public key,
- * - WebFinger (`acct:<user>@<host>` → the actor), via `mapHandle`,
- * - key-pairs dispatcher backed by the per-user `feed_actor` keypair,
- * - inbound inbox: `Follow` → persist follower + (unless the user requires
- *   manual approval) `Accept`; `Undo{Follow}` → drop the follower; `Accept`/
- *   `Reject` → resolve a Follow WE sent (mark the `feed_following` row accepted,
- *   or drop it); `Create`/`Update` of a `Note` from an *accepted followee* →
- *   ingest into the home timeline (sanitised); `Delete` → drop the received
- *   post. Fedify verifies the HTTP Signature first.
- * - followers + following collections (the latter lists this user's *accepted*
- *   follows), both backed by Postgres.
- *
- * Delivery is synchronous (no message queue — see `createFeedFederation`); a
- * persistent Postgres queue for retried, durable delivery is a later slice.
+ * with the SPA's human-facing `/u/<username>` profile/dashboard pages.
  */
 import { isValidUsername } from '../../api/auth-routes.ts'
 import {
   countAcceptedFeedFollowing,
   countFeedFollowers,
   countPublicFeedPosts,
+  deleteBoostEntry,
   deleteTimelineEntryByUri,
   getFeedFollowerByActor,
   getFeedFollowingByActor,
   getFeedPostById,
   getOrCreateActorKeyPair,
   getProfileAvatarVersion,
+  getTimelineEntryByObjectUri,
   getUserSettings,
+  hasCachedActorPresentation,
   isMissingDatabase,
+  isTimelineEntryVisible,
   listAcceptedFeedFollowing,
   listFeedFollowers,
   listPublicFeedPostsPage,
   markFeedFollowingAccepted,
+  refreshBoostedCopies,
   removeFeedFollower,
   removeFeedFollowingByActor,
+  removeFeedPostReaction,
+  removeFeedPostReactionByActivity,
+  updateFeedFollowerPresentation,
+  updateFeedFollowingPresentation,
+  updateFeedPostReactionPresentation,
+  updateTimelineActorPresentation,
   upsertFeedFollower,
+  upsertFeedPostReaction,
   upsertTimelineEntry,
 } from '../../db/index.ts'
 import { resolveFeedActivity } from '../feed.ts'
 import { buildProfileUrl } from '../share-urls.ts'
-import { ownObjectPrefix } from '../timeline.ts'
-import { extractActorPresentation } from './actor-presentation.ts'
+import { ownActorUri, ownObjectPrefix } from '../timeline.ts'
+import { withTimeout } from '../with-timeout.ts'
+import { type ActorPresentation, extractActorPresentation } from './actor-presentation.ts'
 import {
   buildArticleNote,
   buildArticleNoteCreate,
@@ -76,20 +75,24 @@ import {
   buildChallengeNoteCreate,
   buildFeedCreate,
   buildFeedNote,
+  buildReplyNote,
+  buildReplyNoteCreate,
   toDeliverableArticle,
   toDeliverableChallenge,
+  toDeliverableReply,
 } from './deliver.ts'
 import { toCryptoKeyPair } from './keys.ts'
 import { AS_PUBLIC, isPubliclyVisible } from './object.ts'
+import { temporalInstantToDate } from './temporal-interop.ts'
 import { capabilityTokenFrom, createAurbodaEnricher } from './timeline-enrich.ts'
 import {
   extractNoteImages,
   noteMentionsActor,
   noteToTimelineInput,
   type TimelineAuthor,
+  type TimelineBoostSource,
 } from './timeline-ingest.ts'
 
-/** Posts per outbox page (cursor pagination). */
 const OUTBOX_PAGE_SIZE = 20
 
 /** RFC 4122 canonical form — guards `getFeedPostById` from a non-UUID `postId`
@@ -118,6 +121,33 @@ const localFollowerIdentifier = async (
   return recipient != null && isValidUsername(recipient) ? recipient : null
 }
 
+const ACTOR_LOOKUP_TIMEOUT_MS = 5_000
+
+const NO_PRESENTATION: ActorPresentation = { avatar_url: null, display_name: null, handle: null }
+
+/**
+ * A sending actor's presentation snapshot (handle / display name / avatar),
+ * **fetched from their id** — null when that id doesn't answer with that very
+ * actor.
+ *
+ * Never read off an actor inlined in the delivered activity. An embedded actor
+ * is attacker-controlled: any `preferredUsername`/`name` can ride along under a
+ * valid id, and every snapshot we store becomes a byline someone reads. Fetching
+ * by id makes the claimed actor's own server the only thing that can describe
+ * them, and the returned document must still carry exactly that id
+ * (`lookupObject` also refuses a cross-origin `@id`). Each caller decides what a
+ * null means: a countable-but-anonymous reaction, a follow with no display
+ * fields, or dropping the activity outright.
+ */
+const fetchActorPresentation = async (
+  ctx: InboxContext<void>,
+  actorId: URL,
+): Promise<ActorPresentation | null> => {
+  const actor = await withTimeout(ctx.lookupObject(actorId), ACTOR_LOOKUP_TIMEOUT_MS).catch(() => null)
+  if (!isActor(actor) || actor.id?.href !== actorId.href) return null
+  return await extractActorPresentation(actor)
+}
+
 /**
  * Persist an inbound follower and decide whether to accept it now. Auto-accepts
  * unless the target user requires manual approval — but an already *accepted*
@@ -126,8 +156,17 @@ const localFollowerIdentifier = async (
  * and the Follow's id (echoed in a deferred Accept/Reject). Returns the acceptance
  * decision, or null if the target user's DB doesn't exist (a Follow to a
  * nonexistent actor — ignore it) or the sender lacks an id/inbox.
+ *
+ * The presentation is fetched from the follower's actor **id**
+ * (`fetchActorPresentation`), never read off the actor inlined in the Follow —
+ * that snapshot is the byline of the approval UI and the followers list. An
+ * unreadable actor document still records the follow (the relationship is real,
+ * and losing it would be worse than an unnamed row); only the display fields
+ * stay unknown. The inbox URIs still come from the actor Fedify resolved for the
+ * signature-verified sender: that is delivery addressing, not presentation.
  */
 const recordInboundFollow = async (
+  ctx: InboxContext<void>,
   user: string,
   sender: Actor,
   followActivityUri: string | null,
@@ -137,7 +176,7 @@ const recordInboundFollow = async (
     const settings = await getUserSettings(user)
     const existing = await getFeedFollowerByActor(user, sender.id.href)
     const accepted = existing?.accepted === true || settings?.manually_approve_followers !== true
-    const presentation = await extractActorPresentation(sender)
+    const presentation = (await fetchActorPresentation(ctx, sender.id)) ?? NO_PRESENTATION
     await upsertFeedFollower(user, {
       accepted,
       actor_uri: sender.id.href,
@@ -156,67 +195,384 @@ const recordInboundFollow = async (
 }
 
 /**
+ * Whether a just-stored entry is one the reader would actually SEE, under their
+ * own `timeline_show_replies` setting — the gate on the live "new post" ping
+ * (#1062). Without it a hidden reply pings the web/app to reveal a card that
+ * their timeline doesn't list. Best-effort: an unreadable setting falls back to
+ * the default (replies to posts outside the timeline hidden), exactly as the
+ * page read does.
+ */
+const isVisibleToReader = async (user: string, entryId: string, origin: string): Promise<boolean> => {
+  const settings = await getUserSettings(user).catch(() => null)
+  return isTimelineEntryVisible(user, entryId, {
+    own_object_prefix: ownObjectPrefix(origin, user),
+    show_replies: settings?.timeline_show_replies === true,
+  })
+}
+
+/**
  * Ingest one `Note` from an accepted followee into `user`'s home timeline: map it
  * to a timeline entry (author from the cached `feed_following` row, content
  * sanitised), capture its image attachments, best-effort fetch the native Aurboda
  * structured chart, and upsert keyed on the Note's id (so a redelivery or edit
- * replaces in place). `onNewEntry` fires only for a genuinely new row — the
- * on-follow backfill omits it, since its historical posts aren't "new".
+ * replaces in place). `onNewEntry` fires only for a genuinely new row the reader
+ * would see — the on-follow backfill omits it, since its historical posts aren't
+ * "new".
  *
  * Shared by inbound `Create`/`Update` delivery and the backfill, so both build a
- * timeline entry identically.
+ * timeline entry identically. Returns whether the Note was stored at all (it is
+ * dropped when it fails `noteToTimelineInput`'s authority check).
  */
 export const ingestNoteForRecipient = async (
   user: string,
   note: Note,
   author: TimelineAuthor,
   enrich: (objectUri: string, token?: string) => Promise<FeedStructuredPost | null>,
+  /** Web origin — the recipient's own actor URI (Mention detection) and post prefix. */
+  origin: string,
   onNewEntry?: (user: string) => void,
-  /** Web origin — enables Mention detection against the recipient's actor URI (#1060). */
-  origin?: string,
-): Promise<void> => {
-  const input = noteToTimelineInput(note, author)
-  if (input == null) return
+  /** When set, the row becomes a BOOST card of `note` (an `Announce` by a followee). */
+  boost?: TimelineBoostSource,
+): Promise<boolean> => {
+  const input = noteToTimelineInput(note, author, Date.now(), boost)
+  if (input == null) return false
   // Capture the Note's image attachments (rendered chart / route map, or a
   // Mastodon photo) so the timeline can show them when there's no native chart.
   const images = await extractNoteImages(note)
   // A Mention of the recipient keeps the post visible + notifying whatever the
   // reply setting says (Mastodon-style involvement).
-  const mentionsMe =
-    origin == null ? false : await noteMentionsActor(note, `${origin.replace(/\/+$/, '')}/users/${user}`)
+  const mentionsMe = await noteMentionsActor(note, ownActorUri(origin, user))
   // Best-effort: fetch the native structured payload if this is an Aurboda post
   // (null otherwise). A followers-only post authorizes the fetch with the same
   // capability token embedded in its delivered image URL. Stored on the entry so
-  // the web can render a native chart in place of the image.
-  const structured = await enrich(input.object_uri, capabilityTokenFrom(images))
-  const { inserted } = await upsertTimelineEntry(user, {
+  // the web can render a native chart in place of the image. Keyed on the NOTE's
+  // id — on a boost card `object_uri` is the Announce id, which no peer serves.
+  const structured = await enrich(input.boost_of_uri ?? input.object_uri, capabilityTokenFrom(images))
+  const { id, inserted } = await upsertTimelineEntry(user, {
     ...input,
     images,
     mentions_me: mentionsMe,
     structured,
   })
-  if (inserted) onNewEntry?.(user)
+  if (inserted && onNewEntry != null && (await isVisibleToReader(user, id, origin))) onNewEntry(user)
+  return true
+}
+
+/** How long to wait for a boosted Note (usually a bare id Mastodon expects us to fetch). */
+const BOOST_OBJECT_TIMEOUT_MS = 10_000
+
+/**
+ * The local feed-post id an inbound `Like`/`Announce` targets, or null when its
+ * object isn't one of the recipient's OWN post Notes. The `identifier === me`
+ * check is the authorization: a reaction addressed to someone else's post (or to
+ * a non-post URL on this host) must never touch this user's records.
+ */
+const ownTargetPostId = (ctx: InboxContext<void>, objectId: URL | null, me: string): string | null => {
+  if (objectId == null) return null
+  const parsed = ctx.parseUri(objectId)
+  if (parsed?.type !== 'object' || parsed.class !== Note) return null
+  const identifier = parsed.values.identifier
+  const postId = parsed.values.postId
+  if (identifier !== me || !isValidUsername(identifier) || postId == null || !UUID_RE.test(postId)) {
+    return null
+  }
+  return postId
 }
 
 /**
- * Ingest a `Create`/`Update` of a `Note` into the recipient's home timeline.
- * Two admissible senders (anything else is dropped, so a stranger can't inject
- * arbitrary posts into our timeline by delivering to the inbox):
+ * Record an inbound `Like`/`Announce` of one of the recipient's OWN posts, so
+ * the owner can see who favourited / boosted it. Open to any sender (Mastodon
+ * doesn't require a follow to favourite), but strictly scoped to a post that is
+ * ours and still exists.
  *
- * - an *accepted* followee — any of their Notes;
- * - **any actor whose Note is a reply to one of the recipient's own, still
- *   existing posts** (#1060) — the Mastodon-style mention interaction, so a
- *   stranger's "replied to you" shows up (and notifies) like it would there.
- *   The author snapshot comes from the signature-verified sender actor.
- *
- * Best-effort: unresolvable objects and non-Notes are ignored, and a missing DB
- * never 500s (which would invite retries).
+ * The presentation snapshot is fetched from the sender's actor **id** (see
+ * `fetchActorPresentation`). Best-effort — an unresolvable actor still leaves a
+ * countable reaction, just an anonymous one.
  */
+const recordOwnPostReaction = async (
+  ctx: InboxContext<void>,
+  activity: Announce | Like,
+  kind: FeedReactionKind,
+): Promise<void> => {
+  const me = ctx.recipient
+  if (me == null || !isValidUsername(me) || activity.actorId == null) return
+  const postId = ownTargetPostId(ctx, activity.objectId, me)
+  if (postId == null) return
+  try {
+    if ((await getFeedPostById(me, postId)) == null) return
+    const presentation = (await fetchActorPresentation(ctx, activity.actorId)) ?? NO_PRESENTATION
+    await upsertFeedPostReaction(me, {
+      activity_uri: activity.id?.href ?? null,
+      actor_uri: activity.actorId.href,
+      avatar_url: presentation.avatar_url,
+      display_name: presentation.display_name,
+      handle: presentation.handle,
+      kind,
+      post_id: postId,
+    })
+  } catch (error) {
+    if (isMissingDatabase(error)) return
+    throw error
+  }
+}
+
+/**
+ * The boosted Note's author, for the boost card's snapshot: the cached
+ * `feed_following` row when we already follow them (no network), else the actor
+ * document **fetched from the attribution id**.
+ *
+ * Never `note.getAttribution()`: Fedify returns an actor inlined in the Note
+ * without fetching anything, so a hostile booster could embed a `Person` with
+ * any `preferredUsername`/`name` under a real person's id and we would store a
+ * forged byline — hence `fetchActorPresentation`. An author we can't verify means
+ * no boost card at all: showing someone's post under an unverified name is worse
+ * than not showing it.
+ */
+const resolveBoostAuthor = async (
+  ctx: InboxContext<void>,
+  me: string,
+  attributionId: URL,
+): Promise<TimelineAuthor | null> => {
+  const followed = await getFeedFollowingByActor(me, attributionId.href)
+  if (followed != null) return followed
+  const presentation = await fetchActorPresentation(ctx, attributionId)
+  return presentation == null ? null : { ...presentation, actor_uri: attributionId.href }
+}
+
+interface AnnouncedNote {
+  note: Note
+  /** The announced Note's own id — the boost card's `boost_of_uri`. */
+  uri: string
+  attributionId: URL
+}
+
+/**
+ * The Note an `Announce` points at, **always fetched from `announce.objectId`**
+ * — an object embedded in the activity body is ignored outright.
+ *
+ * That is the whole security of a boost card. `announce.getObject()` hands back
+ * an inlined object without any fetch, so a followee could deliver an `Announce`
+ * carrying a `Note` with any `id` and `attributedTo` they chose, and every
+ * downstream check (id host, attribution host, author id) would be satisfied by
+ * data they wrote — storing forged content under a real person's handle.
+ * Dereferencing by id makes the claimed origin server the only source of the
+ * post's content and byline. Mastodon sends a bare id anyway, so this is also
+ * the normal path.
+ *
+ * Two further rejections: the fetched object must be a `Note` whose id is on the
+ * **same host as the announced id** (a redirect can't swap in a document from
+ * somewhere else — `lookupObject` refuses a cross-origin `@id` too), and it must
+ * declare `attributedTo` (there is no other honest source for the author).
+ */
+const resolveAnnouncedNote = async (
+  ctx: InboxContext<void>,
+  objectId: URL,
+): Promise<AnnouncedNote | null> => {
+  const note = await withTimeout(ctx.lookupObject(objectId), BOOST_OBJECT_TIMEOUT_MS).catch(() => null)
+  if (!(note instanceof Note) || note.id == null || note.id.host !== objectId.host) return null
+  const attributionId = note.attributionIds[0]
+  return attributionId == null ? null : { attributionId, note, uri: note.id.href }
+}
+
+interface ValidatedAnnounce {
+  actorId: URL
+  /** The `Announce`'s own id — the boost card's `object_uri`. */
+  announceUri: string
+  objectId: URL
+}
+
+/**
+ * The `Announce`'s own identity, or null when it can't back a boost card.
+ *
+ * Beyond the ids simply being present, the activity id must be **on the
+ * booster's host**: it becomes the card's `object_uri`, which is the GLOBAL
+ * upsert key, so it needs the same origin check `noteToTimelineInput` applies
+ * to a direct Note's id. Without it an accepted followee could announce a real
+ * third-party post under an id equal to another followee's existing entry and
+ * overwrite that entry with a boost card of their choosing (then evict it with
+ * an `Undo{Announce}`, since the row would name them as the booster). Mastodon
+ * mints `…/statuses/<n>/activity` on the actor's own host.
+ */
+const validateAnnounce = (announce: Announce): ValidatedAnnounce | null => {
+  const { actorId, id, objectId } = announce
+  if (actorId == null || id == null || objectId == null) return null
+  return id.host === actorId.host ? { actorId, announceUri: id.href, objectId } : null
+}
+
+/**
+ * A followee boosted somebody else's post → a **boost card** in our timeline
+ * (Mastodon's "🔄 X boosted"). The card is its own row keyed on the `Announce`
+ * id, describing the ORIGINAL post and author, with the booster in
+ * `boosted_by_*` — see `TimelineBoostSource`.
+ *
+ * Guards, in order: the `Announce` must be self-consistent (see
+ * `validateAnnounce` — its id is the card's upsert key); only an **accepted
+ * followee** can boost into our timeline; the announced Note and its author are
+ * **fetched from their own ids**, never taken from the activity body (see
+ * `resolveAnnouncedNote`); the Note must be on the same host as the announced id
+ * and declare `attributedTo`; and a post ALREADY in this timeline directly gets
+ * no boost card (Mastodon hides a reblog of a post you have).
+ */
+const ingestBoostedNote = async (
+  ctx: InboxContext<void>,
+  announce: Announce,
+  origin: string,
+  onNewEntry?: (user: string) => void,
+  enrich: (objectUri: string, token?: string) => Promise<FeedStructuredPost | null> = async () => null,
+): Promise<void> => {
+  const me = ctx.recipient
+  const valid = validateAnnounce(announce)
+  if (me == null || !isValidUsername(me) || valid == null) return
+  try {
+    const booster = await getFeedFollowingByActor(me, valid.actorId.href)
+    if (booster == null || !booster.accepted) return
+    const announced = await resolveAnnouncedNote(ctx, valid.objectId)
+    if (announced == null) return
+    if ((await getTimelineEntryByObjectUri(me, announced.uri)) != null) return
+    const author = await resolveBoostAuthor(ctx, me, announced.attributionId)
+    if (author == null) return
+    await ingestNoteForRecipient(me, announced.note, author, enrich, origin, onNewEntry, {
+      actor_uri: booster.actor_uri,
+      announce_uri: valid.announceUri,
+      display_name: booster.display_name,
+      handle: booster.handle,
+      published_at: announce.published == null ? new Date() : temporalInstantToDate(announce.published),
+    })
+  } catch (error) {
+    if (isMissingDatabase(error)) return
+    throw error
+  }
+}
+
+/**
+ * Retract an inbound reaction whose inner `Like`/`Announce` resolved: drop the
+ * `feed_post_reaction` row when it targeted one of OUR posts, and — for an
+ * `Announce` — the boost card that Announce put in our timeline. Both deletes
+ * are scoped to `undo.actorId`, so a signed Undo only ever removes its own
+ * actor's reaction.
+ */
+const undoInboundReaction = async (
+  ctx: InboxContext<void>,
+  undo: Undo,
+  inner: Announce | Like,
+  kind: FeedReactionKind,
+): Promise<void> => {
+  const me = ctx.recipient
+  if (me == null || !isValidUsername(me) || undo.actorId == null) return
+  const postId = ownTargetPostId(ctx, inner.objectId, me)
+  if (postId != null) await removeFeedPostReaction(me, postId, kind, undo.actorId.href)
+  if (kind !== 'announce') return
+  const announceUri = inner.id?.href ?? undo.objectId?.href
+  if (announceUri != null) await deleteBoostEntry(me, announceUri, undo.actorId.href)
+}
+
+/**
+ * Fallback retraction for an `Undo` whose inner object didn't resolve (a bare
+ * activity URI the remote 404s after undoing): match on the activity id we
+ * recorded. Scoped to the undoing actor, like every other retraction, and only
+ * reached when there IS an `objectId` and nothing resolved from it.
+ */
+const undoReactionByActivityId = async (ctx: InboxContext<void>, undo: Undo): Promise<void> => {
+  const me = ctx.recipient
+  if (me == null || !isValidUsername(me) || undo.actorId == null || undo.objectId == null) return
+  await removeFeedPostReactionByActivity(me, undo.objectId.href, undo.actorId.href)
+  await deleteBoostEntry(me, undo.objectId.href, undo.actorId.href)
+}
+
+/**
+ * Inbound `Follow` — someone asks to follow one of our actors: record them (see
+ * `recordInboundFollow`) and answer with an `Accept` unless the owner approves
+ * followers by hand. Exported like the other `handleInbound*` entry points so
+ * the inbox behaviour is testable without forging an HTTP signature.
+ *
+ * The actor Fedify resolves here supplies the delivery addressing only (the
+ * inbox we send the `Accept` to, and the inbox we cache); the follower's
+ * PRESENTATION is fetched from their id inside `recordInboundFollow`.
+ */
+export const handleInboundFollow = async (ctx: InboxContext<void>, follow: Follow): Promise<void> => {
+  if (follow.objectId == null) return
+  const target = ctx.parseUri(follow.objectId)
+  if (target?.type !== 'actor' || !isValidUsername(target.identifier)) return
+
+  const sender = await follow.getActor(ctx)
+  if (sender?.id == null || sender.inboxId == null) return
+
+  const accepted = await recordInboundFollow(ctx, target.identifier, sender, follow.id?.href ?? null)
+  // In manual-approval mode a new/pending follow gets no Accept yet — the
+  // owner approves it later (which sends the Accept). `null` means no such
+  // user (missing DB). Only an accepted follow is answered now, so the remote
+  // server marks it established.
+  if (accepted !== true) return
+  await ctx.sendActivity(
+    { identifier: target.identifier },
+    sender,
+    new Accept({ actor: follow.objectId, object: follow }),
+  )
+}
+
+/**
+ * Inbound `Like` — someone favourited one of our posts. Exported (like the
+ * `Announce`/`Undo` entry points below) so the inbox behaviour is testable
+ * without forging an HTTP signature: the listener is a one-line delegation.
+ */
+export const handleInboundLike = (ctx: InboxContext<void>, like: Like): Promise<void> =>
+  recordOwnPostReaction(ctx, like, 'like')
+
+/**
+ * Inbound `Announce`. Two distinct meanings share the type: a boost of one of
+ * OUR posts is a reaction to record (from anyone — a boost needs no follow); a
+ * boost of a THIRD-PARTY post by an accepted followee is a boost card for our
+ * timeline. Our own post never becomes a timeline entry of our own.
+ */
+export const handleInboundAnnounce = async (
+  ctx: InboxContext<void>,
+  announce: Announce,
+  origin: string,
+  onNewEntry?: (user: string) => void,
+  enrich?: (objectUri: string, token?: string) => Promise<FeedStructuredPost | null>,
+): Promise<void> => {
+  const me = ctx.recipient
+  if (me == null || !isValidUsername(me)) return
+  if (ownTargetPostId(ctx, announce.objectId, me) != null) {
+    return await recordOwnPostReaction(ctx, announce, 'announce')
+  }
+  await ingestBoostedNote(ctx, announce, origin, onNewEntry, enrich)
+}
+
+/**
+ * Inbound `Undo` of a Follow (drop the follower), a Like or an Announce (retract
+ * the reaction, and for an Announce the boost card it created).
+ *
+ * `suppressError` so an unresolvable inner object (a bare activity URI the
+ * remote 404s after undoing) yields null and falls back to matching on that id,
+ * rather than throwing a 500 that invites retries. Mastodon embeds the full
+ * activity, so the common case resolves.
+ */
+export const handleInboundUndo = async (ctx: InboxContext<void>, undo: Undo): Promise<void> => {
+  if (undo.actorId == null) return
+  const object = await undo.getObject({ suppressError: true })
+  try {
+    if (object instanceof Like) return await undoInboundReaction(ctx, undo, object, 'like')
+    if (object instanceof Announce) return await undoInboundReaction(ctx, undo, object, 'announce')
+    // Only an inner object that did NOT resolve falls back to matching on the
+    // bare activity id. An `Undo` of anything else that resolved — an
+    // `Undo{Block}`, say — retracts nothing of ours, so it issues no deletes.
+    if (object == null) return await undoReactionByActivityId(ctx, undo)
+    if (!(object instanceof Follow) || object.objectId == null) return
+    const target = ctx.parseUri(object.objectId)
+    if (target?.type !== 'actor' || !isValidUsername(target.identifier)) return
+    await removeFeedFollower(target.identifier, undo.actorId.href)
+  } catch (error) {
+    if (isMissingDatabase(error)) return
+    throw error
+  }
+}
+
 /**
  * The stranger branch of {@link ingestFeedActivity}: admit a non-followee's
  * Note only when the recipient is INVOLVED — it replies to one of their own,
  * still existing posts, or Mentions them. The author snapshot comes from the
- * signature-verified sender actor.
+ * signature-verified sender actor. Returns whether the Note was admitted.
  */
 const ingestStrangerInvolvement = async (
   ctx: InboxContext<void>,
@@ -226,36 +582,35 @@ const ingestStrangerInvolvement = async (
   origin: string,
   enrich: (objectUri: string, token?: string) => Promise<FeedStructuredPost | null>,
   onNewEntry?: (user: string) => void,
-): Promise<void> => {
-  if (activity.actorId == null) return
+): Promise<boolean> => {
+  if (activity.actorId == null) return false
   const target = object.replyTargetIds[0]?.href
   const prefix = ownObjectPrefix(origin, me)
   const postId = target?.startsWith(prefix) ? target.slice(prefix.length) : null
   const isReplyToOwnPost =
     postId != null && UUID_RE.test(postId) && (await getFeedPostById(me, postId)) != null
   if (!isReplyToOwnPost) {
-    const myActor = `${origin.replace(/\/+$/, '')}/users/${me}`
-    if (!(await noteMentionsActor(object, myActor))) return
+    const myActor = ownActorUri(origin, me)
+    if (!(await noteMentionsActor(object, myActor))) return false
   }
-  // Require EXPLICIT attribution to the signing actor. `noteToTimelineInput`'s
-  // attribution check is conditional (a Note without `attributedTo` passes on
-  // host match alone) — written for accepted followees; for a stranger that
-  // would let anyone on a followee's host claim an existing entry's object_uri
-  // and overwrite it via the upsert. Every real implementation sets
-  // `attributedTo`, so requiring it costs nothing.
-  if (!object.attributionIds.some((uri) => uri.href === activity.actorId?.href)) return
-  // Fedify verified the HTTP signature as `activity.actorId`; fetch that actor
-  // for the presentation snapshot (handle / name / avatar).
-  const sender = await activity.getActor(ctx)
-  if (sender?.id == null || sender.id.href !== activity.actorId.href) return
-  const presentation = await extractActorPresentation(sender)
-  await ingestNoteForRecipient(
+  // Require EXPLICIT attribution to the signing actor BEFORE the actor fetch —
+  // `noteToTimelineInput` enforces the same rule (#1018), but only after we'd
+  // have paid a network round-trip for a Note we were always going to drop.
+  if (!object.attributionIds.some((uri) => uri.href === activity.actorId?.href)) return false
+  // Fedify verified the HTTP signature as `activity.actorId`; the byline comes
+  // from THAT id's own actor document, never from an actor inlined in the
+  // activity (see `fetchActorPresentation`). An unreadable actor drops the Note:
+  // this whole branch exists to show who a stranger is, and an anonymous
+  // stranger card in the timeline is worse than no card.
+  const presentation = await fetchActorPresentation(ctx, activity.actorId)
+  if (presentation == null) return false
+  return await ingestNoteForRecipient(
     me,
     object,
     { ...presentation, actor_uri: activity.actorId.href },
     enrich,
-    onNewEntry,
     origin,
+    onNewEntry,
   )
 }
 
@@ -278,14 +633,111 @@ const ingestFeedActivity = async (
     const follow = await getFeedFollowingByActor(me, activity.actorId.href)
     const object = await activity.getObject({ suppressError: true })
     if (!(object instanceof Note)) return
-    if (follow != null && follow.accepted) {
-      return await ingestNoteForRecipient(me, object, follow, enrich, onNewEntry, origin)
-    }
-    await ingestStrangerInvolvement(ctx, activity, object, me, origin, enrich, onNewEntry)
+    const admitted =
+      follow != null && follow.accepted
+        ? await ingestNoteForRecipient(me, object, follow, enrich, origin, onNewEntry)
+        : await ingestStrangerInvolvement(ctx, activity, object, me, origin, enrich, onNewEntry)
+    // Only an edit we actually took carries outward: a dropped Note (host or
+    // attribution mismatch, uninvolved stranger) has no card of ours to update.
+    if (admitted && activity instanceof Update) await refreshBoostCardsOfNote(me, object)
+  } catch (error) {
+    // A missing DB is not an error worth a 500: that would invite redelivery retries.
+    if (isMissingDatabase(error)) return
+    throw error
+  }
+}
+
+/**
+ * Carry an author's edit over to the BOOST cards of that Note — see
+ * `refreshBoostedCopies` for why an edit reaches them at all.
+ *
+ * The refreshed fields are read back from the direct entry the edit just wrote,
+ * so a boost card can never show anything the direct card doesn't (including a
+ * dropped attachment); nothing happens when the Note isn't stored directly at
+ * all. `Create` never needs it — a brand-new Note has no boosts yet.
+ */
+const refreshBoostCardsOfNote = async (user: string, note: Note): Promise<void> => {
+  if (note.id == null) return
+  const stored = await getTimelineEntryByObjectUri(user, note.id.href)
+  if (stored != null) await refreshBoostedCopies(user, note.id.href, stored)
+}
+
+/**
+ * Refresh every cached copy of a remote actor's presentation after an inbound
+ * `Update{Person}` (#1057) — the mirror of the `Update{Person}` we deliver on a
+ * profile change. Without it our snapshots of a followee's handle / display name
+ * / avatar stay stale forever, since nothing else ever re-reads a remote actor.
+ *
+ * The new presentation is fetched from `update.actorId` (`fetchActorPresentation`
+ * — the embedded `Person` is only ever the claim, never the source), and every
+ * row updated is keyed on that same signature-verified actor URI, so an actor
+ * can only ever rewrite their own byline. Best-effort: an unreadable actor
+ * document leaves the snapshots as they were.
+ */
+const refreshRemoteActorPresentation = async (ctx: InboxContext<void>, update: Update): Promise<void> => {
+  const me = ctx.recipient
+  if (me == null || !isValidUsername(me) || update.actorId == null) return
+  const actorUri = update.actorId.href
+  try {
+    // Nothing of ours mentions them: skip the outbound actor fetch (and the four
+    // no-op UPDATEs). Any signed actor can deliver an `Update{Person}`, so
+    // without this gate a stranger can make us dereference their document at
+    // will (#1111).
+    if (!(await hasCachedActorPresentation(me, actorUri))) return
   } catch (error) {
     if (isMissingDatabase(error)) return
     throw error
   }
+  const presentation = await fetchActorPresentation(ctx, update.actorId)
+  if (presentation == null) return
+  try {
+    await updateFeedFollowerPresentation(me, actorUri, presentation)
+    await updateFeedFollowingPresentation(me, actorUri, presentation)
+    await updateTimelineActorPresentation(me, actorUri, presentation)
+    await updateFeedPostReactionPresentation(me, actorUri, presentation)
+  } catch (error) {
+    if (isMissingDatabase(error)) return
+    throw error
+  }
+}
+
+/**
+ * Whether an `Update` is a remote actor editing THEMSELVES: its object id is its
+ * actor id. That equality IS the same-actor rule, decided on ids alone — the
+ * embedded `Person` is never read, and a bare-id object works the same way. An
+ * `Update{Person}` naming a different actor is somebody describing someone else,
+ * and is ignored (it falls through to the Note ingest, which drops a non-Note).
+ */
+const isSelfActorUpdate = (update: Update): boolean =>
+  update.actorId != null && update.objectId?.href === update.actorId.href
+
+/**
+ * Inbound `Create` of a `Note`. Exported like the other `handleInbound*` entry
+ * points so the inbox behaviour is testable without forging an HTTP signature.
+ */
+export const handleInboundCreate = (
+  ctx: InboxContext<void>,
+  create: Create,
+  origin: string,
+  onNewEntry?: (user: string) => void,
+  enrich?: (objectUri: string, token?: string) => Promise<FeedStructuredPost | null>,
+): Promise<void> => ingestFeedActivity(ctx, create, origin, onNewEntry, enrich)
+
+/**
+ * Inbound `Update`. Two meanings share the type: an actor editing **themselves**
+ * refreshes our cached copies of their presentation (#1057); anything else is an
+ * edited `Note` and re-runs the ingest (which upserts in place, and now also
+ * refreshes the boost cards of that Note).
+ */
+export const handleInboundUpdate = async (
+  ctx: InboxContext<void>,
+  update: Update,
+  origin: string,
+  onNewEntry?: (user: string) => void,
+  enrich?: (objectUri: string, token?: string) => Promise<FeedStructuredPost | null>,
+): Promise<void> => {
+  if (isSelfActorUpdate(update)) return await refreshRemoteActorPresentation(ctx, update)
+  await ingestFeedActivity(ctx, update, origin, onNewEntry, enrich)
 }
 
 /**
@@ -314,10 +766,6 @@ export const buildActorPerson = async (
   // Mastodon et al. show a follow *request* and hold the follow pending
   // (matching our own inbox behaviour of deferring the Accept).
   const settings = await getUserSettings(identifier)
-  // Avatar served on the web host; always resolves (identicon fallback), so
-  // remote servers always have an actor icon to show. No `?v=` while the
-  // deterministic identicon is in use — the transition to a first upload
-  // changes the URL by adding one.
   const avatarVersion = await getProfileAvatarVersion(identifier)
   const iconUrl = new URL(`${buildProfileUrl(origin, identifier)}/avatar.png`)
   if (avatarVersion) iconUrl.searchParams.set('v', String(avatarVersion.getTime()))
@@ -434,43 +882,8 @@ export const createFeedFederation = (
   // sending actor. Unregistered activity types are silently ignored.
   federation
     .setInboxListeners('/users/{identifier}/inbox', '/inbox')
-    .on(Follow, async (ctx, follow) => {
-      // The Follow must target one of our actors.
-      if (follow.objectId == null) return
-      const target = ctx.parseUri(follow.objectId)
-      if (target?.type !== 'actor' || !isValidUsername(target.identifier)) return
-
-      const sender = await follow.getActor(ctx)
-      if (sender?.id == null || sender.inboxId == null) return
-
-      const accepted = await recordInboundFollow(target.identifier, sender, follow.id?.href ?? null)
-      // In manual-approval mode a new/pending follow gets no Accept yet — the
-      // owner approves it later (which sends the Accept). `null` means no such
-      // user (missing DB). Only an accepted follow is answered now, so the remote
-      // server marks it established.
-      if (accepted !== true) return
-      await ctx.sendActivity(
-        { identifier: target.identifier },
-        sender,
-        new Accept({ actor: follow.objectId, object: follow }),
-      )
-    })
-    .on(Undo, async (ctx, undo) => {
-      // Undo{Follow} — drop the follower. `suppressError` so an unresolvable
-      // inner object (e.g. a bare Follow URI the remote 404s after unfollowing)
-      // yields null and is ignored, rather than throwing a 500 that invites
-      // retries. Mastodon embeds the full Follow, so the common case resolves.
-      const object = await undo.getObject({ suppressError: true })
-      if (!(object instanceof Follow) || object.objectId == null || undo.actorId == null) return
-      const target = ctx.parseUri(object.objectId)
-      if (target?.type !== 'actor' || !isValidUsername(target.identifier)) return
-      try {
-        await removeFeedFollower(target.identifier, undo.actorId.href)
-      } catch (error) {
-        if (isMissingDatabase(error)) return
-        throw error
-      }
-    })
+    .on(Follow, handleInboundFollow)
+    .on(Undo, handleInboundUndo)
     .on(Accept, async (ctx, accept) => {
       // Accept of a Follow WE sent — the followee's server confirms the follow.
       // `accept.actorId` is the followee we followed, matching the `actor_uri` of
@@ -505,9 +918,12 @@ export const createFeedFederation = (
     // timeline. Update reuses the same upsert (keyed on the Note's object id), so
     // an edit replaces the stored copy. Accepted followees are ingested in full;
     // the only stranger Note admitted is a reply to one of the recipient's own
-    // posts (see ingestFeedActivity).
-    .on(Create, (ctx, create) => ingestFeedActivity(ctx, create, origin, onNewTimelineEntry, enrich))
-    .on(Update, (ctx, update) => ingestFeedActivity(ctx, update, origin, onNewTimelineEntry, enrich))
+    // posts (see ingestFeedActivity). An Update of the SENDING ACTOR instead
+    // refreshes our cached copies of their presentation (#1057).
+    .on(Create, (ctx, create) => handleInboundCreate(ctx, create, origin, onNewTimelineEntry, enrich))
+    .on(Update, (ctx, update) => handleInboundUpdate(ctx, update, origin, onNewTimelineEntry, enrich))
+    .on(Like, handleInboundLike)
+    .on(Announce, (ctx, announce) => handleInboundAnnounce(ctx, announce, origin, onNewTimelineEntry, enrich))
     .on(Delete, async (ctx, del) => {
       // Delete of a post we received → drop it from the timeline. `del.objectId`
       // is the removed object's id (a Tombstone or bare id); we key on it, but
@@ -548,6 +964,8 @@ export const createFeedFederation = (
       if (article != null) return buildArticleNote(ctx, identifier, article, apiBaseUrl)
       const challenge = toDeliverableChallenge(post)
       if (challenge != null) return buildChallengeNote(ctx, identifier, challenge)
+      const reply = toDeliverableReply(post)
+      if (reply != null) return buildReplyNote(ctx, identifier, reply)
       if (post.activity_id == null) return null
       // Resolve the merged-span activity so the served Note matches what the user
       // shared (and what we delivered), not just the anchor sub-activity (#881).
@@ -588,6 +1006,8 @@ export const createFeedFederation = (
             if (article != null) return buildArticleNoteCreate(ctx, identifier, article, apiBaseUrl)
             const challenge = toDeliverableChallenge(post)
             if (challenge != null) return buildChallengeNoteCreate(ctx, identifier, challenge)
+            const reply = toDeliverableReply(post)
+            if (reply != null) return buildReplyNoteCreate(ctx, identifier, reply)
             if (post.activity_id == null) return null
             const activity = await resolveFeedActivity(identifier, post.activity_id)
             return activity == null ? null : buildFeedCreate(ctx, identifier, post, activity, apiBaseUrl)

@@ -1,12 +1,10 @@
 /**
- * MetricCardWidget - Displays a single metric value with optional trend indicator.
- *
  * Split into a presentational `MetricCardView` (renders from a resolved data
  * payload) and a `MetricCardWidget` container that fetches and maps to that
  * payload. The public shared-dashboard renderer reuses `MetricCardView`.
  */
 
-import type { MetricCardConfig, MetricCardData } from '@aurboda/api-spec'
+import { metricCardLookbackDays, type MetricCardConfig, type MetricCardData } from '@aurboda/api-spec'
 
 import { useQuery } from '@tanstack/react-query'
 import { endOfDay, startOfDay, subDays } from 'date-fns'
@@ -27,7 +25,6 @@ type BaselineMetric = (typeof baselineMetrics)[number]
 const isBaselineMetric = (metric: string): metric is BaselineMetric =>
   baselineMetrics.includes(metric as BaselineMetric)
 
-// Map widget metric names to API metric names
 const metricToApiMetric: Record<string, string> = {
   body_fat: 'body_fat',
   readiness_score: 'readiness_score',
@@ -63,7 +60,6 @@ const periodToData = (stats: PeriodMetricStats | undefined): MetricCardData => (
   value: stats ? periodStatsValue(stats, 'avg') : null,
 })
 
-/** Compute the display string + dynamic subtitle for a metric card. */
 const computeDisplay = (
   metric: string,
   data: MetricCardData | null,
@@ -78,8 +74,7 @@ const computeDisplay = (
         dynamicSubtitle: max !== null ? `Max: ${Math.round(max).toLocaleString()}` : undefined,
       }
     case 'zone2_weekly':
-      // Preserve the original numeric formatting (`.toFixed(1)`, e.g. "5.0").
-      return { display: value !== null ? Math.round((value * 7) / 60).toFixed(1) : null }
+      return { display: value !== null ? Math.round(value / 60).toString() : null }
     default:
       return {
         display: value !== null ? value.toFixed(1) : null,
@@ -91,7 +86,6 @@ const computeDisplay = (
 interface MetricCardViewProps {
   config: MetricCardConfig
   data: MetricCardData | null
-  /** When true, render the loading placeholder instead of the value. */
   loading?: boolean
 }
 
@@ -141,12 +135,12 @@ export function MetricCardWidget({ config }: MetricCardWidgetProps) {
   })
 
   const end = endOfDay(new Date())
-  const start30days = startOfDay(subDays(new Date(), 30))
+  const start = startOfDay(subDays(new Date(), metricCardLookbackDays(metric) - 1))
   const apiMetric = metricToApiMetric[metric] ?? metric
 
   const periodSummaryQuery = useQuery({
     enabled: !isBaseline,
-    queryFn: () => fetchPeriodSummary(start30days, end, [apiMetric]),
+    queryFn: () => fetchPeriodSummary(start, end, [apiMetric]),
     queryKey: ['periodSummary', metric],
     staleTime: 5 * 60 * 1000,
   })

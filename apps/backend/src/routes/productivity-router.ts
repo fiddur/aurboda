@@ -1,11 +1,6 @@
 /**
- * Productivity (RescueTime / ActivityWatch screentime) route group.
- *
- * Handles: /productivity, /productivity/bucketed, /productivity/apps,
- *          /productivity/:id, /productivity/:id/restore.
- *
  * Productivity records are conceptually screentime spans rather than activities,
- * so they live in their own router (extracted from activities-router.ts).
+ * so they live in their own router.
  */
 import {
   type DistinctAppsResponse,

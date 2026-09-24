@@ -1,11 +1,9 @@
 /**
- * Default emoji icons for timeline items.
  * Activity and exercise type icons are managed via activity type definitions (/activity-types).
  *
  * Keys use a prefix convention to avoid collision with tag names.
  */
 export const DEFAULT_ITEM_ICONS: Record<string, string> = {
-  // Meal types
   'meal:breakfast': '🍳',
   'meal:lunch': '🍽️',
   'meal:dinner': '🍽️',
@@ -14,10 +12,6 @@ export const DEFAULT_ITEM_ICONS: Record<string, string> = {
   'meal:default': '🍽️',
 }
 
-/**
- * Resolve an icon for a timeline item key.
- * Checks user overrides first, then falls back to defaults.
- */
 export const resolveItemIcon = (key: string, userIcons: Record<string, string>): string | undefined => {
   if (userIcons[key] !== undefined) {
     // Empty string means user explicitly cleared the icon
@@ -40,7 +34,6 @@ export const resolveItemIcon = (key: string, userIcons: Record<string, string>):
 }
 
 /**
- * Common word → emoji lookup for auto-suggesting tag icons.
  * Kept intentionally small — covers the most common life-logging tags.
  */
 const WORD_TO_EMOJI: Record<string, string> = {
@@ -162,22 +155,14 @@ const WORD_TO_EMOJI: Record<string, string> = {
   yoga: '🧘',
 }
 
-/**
- * Look up a suggested emoji for a tag name.
- * Tries exact match first, then lowercased, then individual words.
- * Returns undefined if no match found.
- */
 export const suggestEmoji = (tagName: string): string | undefined => {
   const lower = tagName.toLowerCase().trim()
 
-  // Exact match
   if (WORD_TO_EMOJI[lower]) return WORD_TO_EMOJI[lower]
 
-  // Try with underscores replaced by nothing
   const noUnderscores = lower.replaceAll('_', '')
   if (WORD_TO_EMOJI[noUnderscores]) return WORD_TO_EMOJI[noUnderscores]
 
-  // Try each word individually
   const words = lower.split(/[\s_-]+/)
   for (const word of words) {
     if (WORD_TO_EMOJI[word]) return WORD_TO_EMOJI[word]
@@ -186,9 +171,6 @@ export const suggestEmoji = (tagName: string): string | undefined => {
   return undefined
 }
 
-/**
- * Check if a string is a single emoji character (or emoji sequence).
- */
 export const isEmoji = (str: string): boolean => {
   // Match emoji sequences including ZWJ sequences and skin tone modifiers.
   // An "emoji atom" is an emoji character optionally followed by a skin tone modifier.
@@ -198,9 +180,6 @@ export const isEmoji = (str: string): boolean => {
   return emojiRegex.test(str.trim())
 }
 
-/**
- * Check if a string looks like a URL (for custom icon images).
- */
 export const isUrl = (str: string): boolean => {
   try {
     const url = new URL(str)
@@ -210,7 +189,4 @@ export const isUrl = (str: string): boolean => {
   }
 }
 
-/**
- * Check if a string is a path to an uploaded icon.
- */
 export const isIconPath = (str: string): boolean => str.startsWith('/api/icons/')

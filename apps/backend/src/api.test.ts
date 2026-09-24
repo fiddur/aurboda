@@ -4,7 +4,6 @@ import { describe, expect, test } from 'vitest'
 import { z } from 'zod'
 
 /**
- * Create a validation middleware for query parameters using a Zod schema.
  * This is extracted from api.ts for testing purposes.
  */
 const validateQuery =

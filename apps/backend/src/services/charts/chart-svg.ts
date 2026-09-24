@@ -1,7 +1,4 @@
 /**
- * The shared server-side chart renderer: a metric time series → a self-contained
- * SVG **string**.
- *
  * This is deliberately sharp-free — it builds only the SVG markup, so it is a
  * pure, synchronous function that unit tests can assert on directly (the string),
  * not just on an opaque rasterized PNG. Two very different consumers need the same

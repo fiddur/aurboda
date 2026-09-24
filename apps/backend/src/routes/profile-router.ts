@@ -1,13 +1,4 @@
-/**
- * Profile route group (owner-facing).
- *
- * Handles: /profile/*
- *
- * POST   /profile/avatar — upload/replace the profile avatar (authenticated)
- * DELETE /profile/avatar — remove it, reverting to the generated identicon
- *
- * The public read side lives in public-avatar-router (`/u/:username/avatar.png`).
- */
+/** The public read side lives in public-avatar-router (`/u/:username/avatar.png`). */
 import type { RequestHandler } from 'express'
 
 import multer from 'multer'
@@ -68,8 +59,9 @@ export const createProfileRouter = (
   )
 
   router.delete<Record<string, never>, { success: boolean }>('/avatar', authMiddleware, async (req, res) => {
-    await deleteProfileAvatar(req.user!)
-    onAvatarChanged?.(req.user!)
+    // Only a delete that removed something changes the actor document, so a
+    // repeat DELETE doesn't fan an `Update{Person}` out to every follower.
+    if (await deleteProfileAvatar(req.user!)) onAvatarChanged?.(req.user!)
     res.json({ success: true })
   })
 

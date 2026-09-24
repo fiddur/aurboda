@@ -1,7 +1,3 @@
-/**
- * Productivity database integration tests using testcontainers.
- */
-
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import type { ProductivityRecord } from '../db/types.ts'
@@ -43,10 +39,6 @@ describe('Productivity Integration Tests', () => {
   beforeEach(async () => {
     await cleanTestDb()
   })
-
-  // ==========================================================================
-  // insertProductivity
-  // ==========================================================================
 
   describe('insertProductivity', () => {
     test('inserts records and retrieves them', async () => {
@@ -197,10 +189,6 @@ describe('Productivity Integration Tests', () => {
     })
   })
 
-  // ==========================================================================
-  // batchUpdateResolvedCategory
-  // ==========================================================================
-
   describe('batchUpdateResolvedCategory', () => {
     test('updates resolved_category for existing records', async () => {
       const user = getTestUser()
@@ -330,10 +318,6 @@ describe('Productivity Integration Tests', () => {
     })
   })
 
-  // ==========================================================================
-  // getAllProductivityForCategorization
-  // ==========================================================================
-
   describe('getAllProductivityForCategorization', () => {
     test('returns only id, activity, and title', async () => {
       const user = getTestUser()
@@ -361,10 +345,6 @@ describe('Productivity Integration Tests', () => {
       expect(forCategorization).toHaveLength(0)
     })
   })
-
-  // ==========================================================================
-  // getDistinctApps
-  // ==========================================================================
 
   describe('getDistinctApps', () => {
     test('returns distinct apps with categories, titles, and stats', async () => {
@@ -492,10 +472,6 @@ describe('Productivity Integration Tests', () => {
     })
   })
 
-  // ==========================================================================
-  // getProductivityBucketed
-  // ==========================================================================
-
   describe('getProductivityBucketed', () => {
     test('buckets records by hour with category breakdown', async () => {
       const user = getTestUser()
@@ -609,10 +585,6 @@ describe('Productivity Integration Tests', () => {
       expect(rows).toHaveLength(0)
     })
   })
-
-  // ==========================================================================
-  // deleteProductivityRecord / restoreProductivityRecord
-  // ==========================================================================
 
   describe('deleteProductivityRecord', () => {
     test('soft-deletes a record', async () => {

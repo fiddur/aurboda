@@ -32,9 +32,6 @@ export interface ParsedDuration {
   value: number
 }
 
-/**
- * Parse duration string to milliseconds and components.
- */
 export const parseDuration = (duration: string): ParsedDuration => {
   const match = duration.match(/^(\d+)([smhdwM])$/)
   if (!match) throw new Error(`Invalid duration: ${duration}`)
@@ -62,11 +59,6 @@ export const parseDuration = (duration: string): ParsedDuration => {
 export const isCalendarBasedUnit = (unit: DurationUnit): boolean =>
   unit === 'd' || unit === 'w' || unit === 'M'
 
-// ── Metric goal (windowed sum) ───────────────────────────────────────────────
-
-/**
- * Metric goal: track a predefined metric's sum within a rolling window.
- */
 export const metricGoalSchema = z
   .object({
     goal_type: z.literal('metric').default('metric').meta({ description: 'Goal type discriminant' }),
@@ -86,11 +78,6 @@ export const metricGoalSchema = z
 
 export type MetricGoal = z.infer<typeof metricGoalSchema>
 
-// ── Trend goal (EMA target) ─────────────────────────────────────────────────
-
-/**
- * Trend goal: track an EMA trend value against a min/max target.
- */
 export const trendGoalSchema = z
   .object({
     aggregation: z
@@ -118,20 +105,12 @@ export const trendGoalSchema = z
 
 export type TrendGoal = z.infer<typeof trendGoalSchema>
 
-// ── Union ────────────────────────────────────────────────────────────────────
-
-/**
- * Goal schema - discriminated union of metric and trend goals.
- */
 export const goalSchema = z.discriminatedUnion('goal_type', [metricGoalSchema, trendGoalSchema]).meta({
   id: 'Goal',
 })
 
 export type Goal = z.infer<typeof goalSchema>
 
-/**
- * Goals array schema.
- */
 export const goalsSchema = z.array(goalSchema).meta({
   description: 'List of goals',
   id: 'Goals',
@@ -167,11 +146,6 @@ export const defaultGoals: Goal[] = [
   },
 ]
 
-// ── Progress schemas ─────────────────────────────────────────────────────────
-
-/**
- * Metric goal progress - includes current windowed sum and losing-tomorrow.
- */
 export const metricGoalProgressSchema = z
   .object({
     current: z.number().meta({ description: 'Current value within the window' }),
@@ -190,9 +164,6 @@ export const metricGoalProgressSchema = z
 
 export type MetricGoalProgress = z.infer<typeof metricGoalProgressSchema>
 
-/**
- * Trend goal progress - current EMA value compared to target.
- */
 export const trendGoalProgressSchema = z
   .object({
     current: z.number().meta({ description: 'Current EMA trend value' }),
@@ -209,18 +180,12 @@ export const trendGoalProgressSchema = z
 
 export type TrendGoalProgress = z.infer<typeof trendGoalProgressSchema>
 
-/**
- * Goal progress - discriminated union of metric and trend progress.
- */
 export const goalProgressSchema = z
   .discriminatedUnion('goal_type', [metricGoalProgressSchema, trendGoalProgressSchema])
   .meta({ id: 'GoalProgress' })
 
 export type GoalProgress = z.infer<typeof goalProgressSchema>
 
-/**
- * Goals progress response schema.
- */
 export const goalsProgressResponseSchema = baseResponseSchema
   .extend({
     goals: z.array(goalProgressSchema).meta({ description: 'Progress for all goals' }),
@@ -229,12 +194,7 @@ export const goalsProgressResponseSchema = baseResponseSchema
 
 export type GoalsProgressResponse = z.infer<typeof goalsProgressResponseSchema>
 
-// ── Widget-friendly flat progress ────────────────────────────────────────────
-
-/**
- * Simplified goal progress for widgets (Android, etc.).
- * Flat structure — no discriminated union, works with simple Kotlin data classes.
- */
+/** Flat structure — no discriminated union, so simple Kotlin data classes work. */
 export const widgetGoalProgressSchema = z
   .object({
     current: z.number().meta({ description: 'Current progress value' }),

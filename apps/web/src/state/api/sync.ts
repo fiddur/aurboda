@@ -14,7 +14,6 @@ import axios from 'axios'
 import { API_URL } from '../../config'
 import { auth } from '../auth'
 
-// Check if ActivityWatch has ever pushed data (returns sync states per device)
 export const fetchActivityWatchStatus = async (): Promise<{ last_sync_time: string | null }[]> => {
   const { token } = auth.value
   const response = await axios.get<{
@@ -26,7 +25,6 @@ export const fetchActivityWatchStatus = async (): Promise<{ last_sync_time: stri
   return response.data.states ?? []
 }
 
-// Oura OAuth
 export const getOuraConnectUrl = async (): Promise<string> => {
   const { token } = auth.value
   const response = await axios.get<{ success: boolean; url: string }>(`${API_URL}/auth/oura/connect`, {
@@ -35,7 +33,6 @@ export const getOuraConnectUrl = async (): Promise<string> => {
   return response.data.url
 }
 
-// Trigger Oura sync
 export const syncOura = async (fullResync?: boolean): Promise<OuraSyncResponse> => {
   const { token } = auth.value
   const response = await axios.post<OuraSyncResponse>(
@@ -54,7 +51,6 @@ export const fetchOuraSyncStatus = async (): Promise<OuraSyncStatusResponse> => 
   return response.data
 }
 
-// Garmin Connect auth + sync
 export const connectGarmin = async (
   email: string,
   password: string,
@@ -106,7 +102,6 @@ export const fetchGarminSyncStatus = async (): Promise<GarminSyncStatusResponse>
   return response.data
 }
 
-// Strava OAuth + sync
 export const getStravaConnectUrl = async (): Promise<string> => {
   const { token } = auth.value
   const response = await axios.get<{ success: boolean; url: string }>(`${API_URL}/auth/strava/connect`, {
@@ -143,7 +138,6 @@ export const fetchStravaSyncStatus = async (): Promise<StravaSyncStatusResponse>
   return response.data
 }
 
-// Gravl OAuth + sync (#1042)
 export const getGravlConnectUrl = async (): Promise<string> => {
   const { token } = auth.value
   const response = await axios.get<{ success: boolean; url: string }>(`${API_URL}/auth/gravl/connect`, {

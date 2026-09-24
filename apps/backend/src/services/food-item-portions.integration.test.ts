@@ -1,6 +1,4 @@
 /**
- * Integration tests for the food-item portions service layer.
- *
  * Covers the food-existence check (per-user OR central), the
  * default-portion-must-belong-to-this-food guard, and the cross-food
  * resilience of update/delete.

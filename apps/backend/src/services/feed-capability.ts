@@ -1,8 +1,6 @@
 import type { FeedVisibility } from '@aurboda/api-spec'
 
 /**
- * Capability-token authorization for a shared post's data endpoints.
- *
  * `public`/`unlisted` posts are always served. A `followers`-only post is served
  * only when the request carries the post's unguessable `image_token` (`?token=…`),
  * which is embedded solely in the Note delivered to followers. Shared by the media

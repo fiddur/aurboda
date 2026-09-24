@@ -1,7 +1,3 @@
-/**
- * Validation middleware for Express routes using Zod schemas.
- */
-
 import type { RequestHandler } from 'express'
 import type { ParamsDictionary } from 'express-serve-static-core'
 import type { z } from 'zod'
@@ -9,7 +5,6 @@ import type { z } from 'zod'
 import { auditWarn } from './services/audit-log.ts'
 
 /**
- * Create a validation middleware for request body using a Zod schema.
  * Returns 400 with detailed validation errors on failure.
  * Logs to audit log for authenticated users.
  *
@@ -39,7 +34,6 @@ export const validateBody =
     }
 
 /**
- * Create a validation middleware for query parameters using a Zod schema.
  * Returns 400 with detailed validation errors on failure.
  * Logs to audit log for authenticated users.
  *

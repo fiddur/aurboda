@@ -9,7 +9,9 @@ import type { ChartItem, Orientation } from './types'
 import { aggregateBucketsAligned } from '../../utils/chart'
 import { packLanes } from '../../utils/lanePacking'
 import { computeBarLayout, type BarSlot } from './barLayout'
+import { CommentPanel, type CommentPanelState } from './CommentPanel'
 import { drawActivitySparklines } from './drawActivitySparklines'
+import { COMMENTS_TRACK_HEIGHT, drawCommentsTrack } from './drawCommentsTrack'
 import { attachHoverHandlers, clampLabelLayout, drawItemIcon, getDetailUrl, truncateLabel } from './drawItems'
 import { computeYScales, drawMetricsTrack, HR_COLOR, HRV_COLOR } from './drawMetricsTrack'
 import {
@@ -23,20 +25,19 @@ import { drawScreentimeBars } from './drawScreentimeTrack'
 import { drawTrainingLoadTrack } from './drawTrainingLoadTrack'
 import { drawColumnItems, drawHorizontalNowLine, drawNowLine } from './drawVerticalHelpers'
 import { findOverlappingScrobbles } from './findOverlappingScrobbles'
+import { TimelineContextMenu } from './TimelineContextMenu'
 import { TimelineControls } from './TimelineControls'
 import { TimelineLegend } from './TimelineLegend'
 import { buildTooltipHtml } from './tooltipBuilder'
+import { useTimelineContextMenu } from './useTimelineContextMenu'
 import { useTimelineData } from './useTimelineData'
 import { _initialHash, useTimelineNavigation } from './useTimelineNavigation'
 import { HORIZONTAL_MARGIN, useTimelineZoom, VERTICAL_MARGIN } from './useTimelineZoom'
 import { buildViewHash, getDefaultOrientation } from './viewHash'
 import './style.css'
 
-// ── Main Timeline component ───────────────────────────────────────────────────
-
 // eslint-disable-next-line complexity -- D3 visualization component
 export const Timeline = () => {
-  // ── Orientation state ──────────────────────────────────────────────────────
   // Declared before the navigation hook so we can derive the time-axis pixel
   // dimension (#658 pixel-aware collapse depth) from the current orientation.
   const [orientation, setOrientation] = useState<Orientation>(
@@ -46,7 +47,6 @@ export const Timeline = () => {
   const orientationRef = useRef(orientation)
   orientationRef.current = orientation
 
-  // ── Container size state ──────────────────────────────────────────────────
   // Lifted from the existing ResizeObserver below so the navigation hook can
   // compute pixels-per-hour for hierarchy collapse (#658). Initial 0 yields
   // depth=0 ("show everything distinct") until the first measurement lands.
@@ -65,7 +65,6 @@ export const Timeline = () => {
     return Math.max(0, inner)
   }, [orientation, containerSize])
 
-  // ── Navigation hook ──────────────────────────────────────────────────────
   const nav = useTimelineNavigation({ timeAxisPixels })
   const {
     effectiveViewStart,
@@ -102,7 +101,6 @@ export const Timeline = () => {
     }
   }, [])
 
-  // Escape key exits fullscreen
   useEffect(() => {
     if (!isFullscreen) return
     const handleKey = (e: KeyboardEvent) => {
@@ -112,14 +110,12 @@ export const Timeline = () => {
     return () => document.removeEventListener('keydown', handleKey)
   }, [isFullscreen])
 
-  // ── Toggle state ──────────────────────────────────────────────────────────
   const [hiddenCategories, setHiddenCategories] = useState<Set<LegendCategory>>(
     () => new Set(_initialHash.hide),
   )
   const hiddenCategoriesRef = useRef<Set<LegendCategory>>(hiddenCategories)
   hiddenCategoriesRef.current = hiddenCategories
 
-  // ── Data hook ─────────────────────────────────────────────────────────────
   const data = useTimelineData({
     barBucketSize,
     bucketSize,
@@ -137,6 +133,7 @@ export const Timeline = () => {
     chartItems,
     columnData,
     columns,
+    commentNotes,
     sparklineBuckets,
     horizontalMetricBuckets,
     scrobbles,
@@ -175,7 +172,18 @@ export const Timeline = () => {
     })
   }, [])
 
-  // ── Refs ───────────────────────────────────────────────────────────────────
+  // `chartItems` has already dropped hidden categories, so an empty list means
+  // either the track is toggled off or the window holds no comments — both of
+  // which mean "reserve no lane for it".
+  const [commentPanel, setCommentPanel] = useState<CommentPanelState | null>(null)
+
+  const commentItems = useMemo(() => chartItems.filter((i) => i.column === 'Comments'), [chartItems])
+  const showCommentsTrack = commentItems.length > 0
+
+  const handleCommentClick = useCallback((item: ChartItem) => {
+    if (!item.comment_id) return
+    setCommentPanel({ kind: 'thread', rootId: item.comment_id })
+  }, [])
 
   const containerRef = useRef<HTMLDivElement>(null)
   const svgRef = useRef<SVGSVGElement>(null)
@@ -190,15 +198,11 @@ export const Timeline = () => {
   /** Tracks the fetch range the base scale was built for. */
   const scaffoldFetchKeyRef = useRef<string>('')
 
-  // ── Derived layout data ───────────────────────────────────────────────────
-
   const todayKey = format(new Date(), 'yyyy-MM-dd')
   const baseScaleDomain = useMemo(
     () => [startOfDay(new Date(todayKey)), endOfDay(new Date(todayKey))] as [Date, Date],
     [todayKey],
   )
-
-  // ── Zoom hook ──────────────────────────────────────────────────────────────
 
   const { currentScaleRef, attachZoom } = useTimelineZoom({
     containerRef,
@@ -209,7 +213,9 @@ export const Timeline = () => {
     svgRef,
   })
 
-  // ── showTooltip / hideTooltip (shared) ────────────────────────────────────
+  // Reads the live zoom scale from the ref, so the picked moment always matches
+  // what the user is looking at.
+  const contextMenu = useTimelineContextMenu({ containerRef, currentScaleRef, orientationRef })
 
   const showTooltip = useCallback(
     (event: MouseEvent, item: ChartItem) => {
@@ -256,7 +262,6 @@ export const Timeline = () => {
     [],
   )
 
-  // ── Chart rendering ─────────────────────────────────────────────────────────
   // Scaffold refs: SVG groups that persist across data changes.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   type SvgGroup = d3.Selection<any, unknown, null, undefined>
@@ -267,7 +272,6 @@ export const Timeline = () => {
   // Resize counter — incremented by ResizeObserver to trigger the render effect.
   const [resizeKey, setResizeKey] = useState(0)
 
-  // ── Resize observer ─────────────────────────────────────────────────────────
   useEffect(() => {
     let resizeRaf = 0
     let lastW = 0
@@ -306,7 +310,6 @@ export const Timeline = () => {
     }
   }, [])
 
-  // ── Unified render effect ─────────────────────────────────────────────────
   // Separated into scaffold setup (rare) and draw (every data/zoom change).
 
   // eslint-disable-next-line complexity -- D3 visualization with scaffold + draw separation
@@ -321,7 +324,7 @@ export const Timeline = () => {
     // affect lane positions, labels, and Y-axes). Track this so we rebuild when they change.
     const layoutKey =
       orientation === 'horizontal'
-        ? `${scrobbles.length > 0 && !hiddenCategories.has('music')}_${!hiddenCategories.has('activity')}_${!hiddenCategories.has('metrics')}_${!hiddenCategories.has('location')}`
+        ? `${scrobbles.length > 0 && !hiddenCategories.has('music')}_${!hiddenCategories.has('activity')}_${!hiddenCategories.has('metrics')}_${!hiddenCategories.has('location')}_${showCommentsTrack}`
         : ''
 
     // The base scale domain must match the fetch range (horizontal) or today (vertical).
@@ -329,7 +332,6 @@ export const Timeline = () => {
     // the scaffold must rebuild so the D3 zoom transform stays in sync with the base scale.
     const fetchKey = `${fromDate.value}_${toDate.value}`
 
-    // Check if scaffold needs rebuild
     const needsSetup =
       scaffoldOrientationRef.current !== orientation ||
       !dims ||
@@ -338,7 +340,6 @@ export const Timeline = () => {
       scaffoldLayoutKeyRef.current !== layoutKey ||
       scaffoldFetchKeyRef.current !== fetchKey
 
-    // ── SCAFFOLD SETUP (only when needed) ──────────────────────────────────
     if (needsSetup) {
       const svg = d3.select(svgRef.current)
       svg.selectAll('*').remove()
@@ -376,15 +377,18 @@ export const Timeline = () => {
         const showMetricsTrackS = !hiddenCategories.has('metrics')
         const showLocationTrackS = !hiddenCategories.has('location')
 
+        const commentsTrackHeight = showCommentsTrack ? COMMENTS_TRACK_HEIGHT : 0
         const musicTrackHeight = showMusicTrackS ? MUSIC_STAFF_HEIGHT : 0
         const locationTrackHeight = showLocationTrackS ? LOCATION_TRACK_HEIGHT : 0
-        const remainingHeight = chartHeight - musicTrackHeight - locationTrackHeight
+        const remainingHeight = chartHeight - commentsTrackHeight - musicTrackHeight - locationTrackHeight
         const dynamicTrackCount = [showActivityTrackS, showMetricsTrackS].filter(Boolean).length
         const dynamicTrackHeight = dynamicTrackCount > 0 ? remainingHeight / dynamicTrackCount : 0
         const activityTrackHeightS = showActivityTrackS ? Math.max(40, dynamicTrackHeight) : 0
         const metricsTrackHeightS = showMetricsTrackS ? Math.max(40, dynamicTrackHeight) : 0
 
         let nextY = 0
+        const trackCommentsS = nextY
+        nextY += commentsTrackHeight
         const trackMusicS = nextY
         nextY += musicTrackHeight
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -409,9 +413,9 @@ export const Timeline = () => {
           .attr('class', 'chart-outer')
           .attr('transform', `translate(${margin.left},${margin.top})`)
 
-        // Static lane separators
         const separatorYs: number[] = []
-        if (showMusicTrackS && musicTrackHeight > 0) separatorYs.push(musicTrackHeight)
+        if (showCommentsTrack && commentsTrackHeight > 0) separatorYs.push(commentsTrackHeight)
+        if (showMusicTrackS && musicTrackHeight > 0) separatorYs.push(trackMusicS + musicTrackHeight)
         if (showActivityTrackS && showMetricsTrackS) separatorYs.push(trackMetricsS)
         if (showLocationTrackS && locationTrackHeight > 0) separatorYs.push(trackPlacesS)
         for (const sy of separatorYs) {
@@ -425,8 +429,10 @@ export const Timeline = () => {
             .attr('stroke-opacity', 0.2)
         }
 
-        // Static lane labels
         const laneLabels: { label: string; y: number; height: number }[] = [
+          ...(showCommentsTrack
+            ? [{ height: commentsTrackHeight, label: 'Comments', y: trackCommentsS }]
+            : []),
           ...(showMusicTrackS ? [{ height: musicTrackHeight, label: 'Music', y: trackMusicS }] : []),
           ...(showActivityTrackS
             ? [{ height: activityTrackHeightS, label: 'Activity', y: _trackActivityS }]
@@ -448,14 +454,12 @@ export const Timeline = () => {
             .text(label)
         }
 
-        // X-axis group
         const xAxisGroup = outerG
           .append('g')
           .attr('class', 'h-x-axis')
           .attr('transform', `translate(0,${chartHeight})`)
         hAxisGroupRef.current = xAxisGroup
 
-        // Clipped content group
         const clipped = outerG.append('g').attr('clip-path', 'url(#h-chart-clip)')
         const chartGroup = clipped.append('g').attr('class', 'h-content')
 
@@ -463,7 +467,6 @@ export const Timeline = () => {
         scaffoldChartGroupRef.current = chartGroup
         scaffoldDefsRef.current = defs
 
-        // Static Y-axes for metrics
         const metricBuckets = horizontalMetricBuckets
         const metricsTrackBottom = trackMetricsS + metricsTrackHeightS
         const barBucketMs =
@@ -506,7 +509,6 @@ export const Timeline = () => {
       scaffoldFetchKeyRef.current = fetchKey
     }
 
-    // ── CREATE DRAW FUNCTION (always — captures latest data) ────────────────
     const chartGroup = scaffoldChartGroupRef.current
     const g = scaffoldGroupRef.current
     const defs = scaffoldDefsRef.current
@@ -622,6 +624,7 @@ export const Timeline = () => {
           currentYScale,
           showTooltip,
           hideTooltip,
+          handleCommentClick,
         )
 
         const showSparkHR = !hiddenCategories.has('hr')
@@ -658,7 +661,6 @@ export const Timeline = () => {
         drawNowLine(chartGroup, chartWidth, currentYScale)
       }
     } else {
-      // ── Horizontal draw function ──────────────────────────────────────────
       const margin = HORIZONTAL_MARGIN
       const chartWidth = containerWidth - margin.left - margin.right
       const chartHeight = Math.max(150, containerHeight - margin.top - margin.bottom)
@@ -671,15 +673,18 @@ export const Timeline = () => {
       const showMetricsTrackH = !hiddenCategories.has('metrics')
       const showLocationTrack = !hiddenCategories.has('location')
 
+      const commentsTrackHeight = showCommentsTrack ? COMMENTS_TRACK_HEIGHT : 0
       const musicTrackHeight = showMusicTrack ? MUSIC_STAFF_HEIGHT : 0
       const locationTrackHeight = showLocationTrack ? LOCATION_TRACK_HEIGHT : 0
-      const remainingHeight = chartHeight - musicTrackHeight - locationTrackHeight
+      const remainingHeight = chartHeight - commentsTrackHeight - musicTrackHeight - locationTrackHeight
       const dynamicTrackCount = [showActivityTrack, showMetricsTrackH].filter(Boolean).length
       const dynamicTrackHeight = dynamicTrackCount > 0 ? remainingHeight / dynamicTrackCount : 0
       const activityTrackHeight = showActivityTrack ? Math.max(40, dynamicTrackHeight) : 0
       const metricsTrackHeight = showMetricsTrackH ? Math.max(40, dynamicTrackHeight) : 0
 
       let nextY = 0
+      const trackComments = nextY
+      nextY += commentsTrackHeight
       const trackMusic = nextY
       nextY += musicTrackHeight
       const trackActivity = nextY
@@ -778,6 +783,18 @@ export const Timeline = () => {
             .attr('stroke-opacity', 0.3)
             .attr('stroke-width', 1.5)
             .attr('stroke-dasharray', '6,3')
+        }
+
+        if (showCommentsTrack) {
+          drawCommentsTrack({
+            chartGroup,
+            hideTooltip,
+            items: commentItems.filter(isInViewport),
+            onItemClick: handleCommentClick,
+            showTooltip,
+            trackY: trackComments,
+            xScale: currentXScale,
+          })
         }
 
         if (showMusicTrack) {
@@ -1017,7 +1034,6 @@ export const Timeline = () => {
       }
     }
 
-    // ── CALL DRAW with current view position ────────────────────────────────
     const chartDimension =
       orientation === 'vertical'
         ? Math.max(200, containerHeight - VERTICAL_MARGIN.top - VERTICAL_MARGIN.bottom)
@@ -1034,6 +1050,9 @@ export const Timeline = () => {
     chartItems,
     columnData,
     columns,
+    commentItems,
+    showCommentsTrack,
+    handleCommentClick,
     effectiveViewEnd,
     effectiveViewStart,
     sparklineBuckets,
@@ -1050,8 +1069,6 @@ export const Timeline = () => {
     barBucketSize,
     attachZoom,
   ])
-
-  // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
     <div class={`timeline-view${isFullscreen ? ' timeline-fullscreen' : ''}`}>
@@ -1077,26 +1094,6 @@ export const Timeline = () => {
         screentimeSubEntries={screentimeSubEntries}
       />
 
-      {/* Overlap warnings UI temporarily disabled — will be redesigned
-      {overlapWarnings.length > 0 && (
-        <div class="timeline-overlap-warnings">
-          <details>
-            <summary>
-              {overlapWarnings.length} overlap{overlapWarnings.length > 1 ? 's' : ''} detected
-            </summary>
-            <ul>
-              {overlapWarnings.map((w, i) => (
-                <li key={i}>
-                  <strong>{w.item1Label}</strong> ({w.item1Time}) overlaps with{' '}
-                  <strong>{w.item2Label}</strong> ({w.item2Time}) by {w.overlapMinutes}min
-                </li>
-              ))}
-            </ul>
-          </details>
-        </div>
-      )}
-      */}
-
       {errorSources.length > 0 && (
         <div class="error">Failed to load {errorSources.join(', ')} — showing available data</div>
       )}
@@ -1111,15 +1108,38 @@ export const Timeline = () => {
         </div>
       )}
 
-      <div class="timeline-chart-container" ref={containerRef} onPointerDown={hideTooltip}>
+      <div
+        class="timeline-chart-container"
+        ref={containerRef}
+        onContextMenu={contextMenu.onContextMenu}
+        onPointerDown={(e) => {
+          hideTooltip()
+          contextMenu.onPointerDown(e)
+        }}
+        onPointerMove={contextMenu.onPointerMove}
+        onPointerUp={contextMenu.cancelLongPress}
+        onPointerCancel={contextMenu.cancelLongPress}
+        onPointerLeave={contextMenu.cancelLongPress}
+      >
         <svg ref={svgRef} />
         {isInitialLoad && <div class="timeline-chart-loading">Loading…</div>}
         <div class="timeline-tooltip" ref={tooltipRef} style={{ display: 'none' }} />
+        {contextMenu.menu && (
+          <TimelineContextMenu
+            x={contextMenu.menu.x}
+            y={contextMenu.menu.y}
+            at={contextMenu.menu.at}
+            onAddComment={(at) => setCommentPanel({ at, kind: 'new' })}
+            onClose={contextMenu.close}
+          />
+        )}
       </div>
+
+      {commentPanel && (
+        <CommentPanel state={commentPanel} roots={commentNotes} onClose={() => setCommentPanel(null)} />
+      )}
 
       <p class="timeline-help">Scroll to zoom · Drag to pan · Double-click to reset</p>
     </div>
   )
 }
-
-/* D3 drawing helpers extracted to drawVerticalHelpers.ts */

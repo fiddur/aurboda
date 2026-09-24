@@ -1,11 +1,9 @@
 /**
- * Meal-domain table SQL: meals, meal log completion, food items, meal-food
- * junction. Food items are normalized; meal_food_items snapshots nutrient
- * values at insertion time so changes to the canonical food don't
- * retroactively alter past meals.
+ * Food items are normalized; meal_food_items snapshots nutrient values at
+ * insertion time so changes to the canonical food don't retroactively alter
+ * past meals.
  */
 export const mealsTables: Record<string, string> = {
-  // Meal/nutrition data
   meals: `
     CREATE TABLE IF NOT EXISTS meals (
       id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -26,7 +24,6 @@ export const mealsTables: Record<string, string> = {
     )
   `,
 
-  // Meal log completion flag per day
   meal_log_completed: `
     CREATE TABLE IF NOT EXISTS meal_log_completed (
       date            DATE PRIMARY KEY,

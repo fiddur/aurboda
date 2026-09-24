@@ -1,10 +1,5 @@
 import type { RequestHandler } from 'express'
 
-/**
- * Activity type definitions route group.
- *
- * Handles: /activity-types/*
- */
 import {
   type ActivityTypeDefinitionResponse,
   type ActivityTypeDefinitionsResponse,
