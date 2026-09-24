@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import type { GravlWorkoutDetail } from './types.ts'
+import type { GravlWorkoutDetail, GravlWorkoutSummary } from './types.ts'
 
 vi.mock('../../db/index.ts', () => ({
   adoptLegacyActivity: vi.fn(),
@@ -19,8 +19,10 @@ import {
   formatGravlSetsNote,
   type GravlProcessDeps,
   isExternalWorkout,
+  isStrengthWorkout,
   lbToKg,
   processGravlWorkout,
+  retractEmptyGravlImport,
 } from './process.ts'
 
 const WORKOUT_ID = '97248067-7947-4715-8FC9-d0048369a0d0'
@@ -162,6 +164,51 @@ describe('processGravlWorkout', () => {
     expect(deps.adoptLegacyActivity).not.toHaveBeenCalled()
   })
 
+  it('skips a workout with no logged set', async () => {
+    const deps = makeDeps(null)
+    expect(await processGravlWorkout('alice', detail({ exercises: [] }), deps)).toBe('skipped')
+    expect(deps.insertRawRecord).not.toHaveBeenCalled()
+    expect(deps.insertActivity).not.toHaveBeenCalled()
+    expect(deps.softDeleteActivityByExternalId).not.toHaveBeenCalled()
+  })
+
+  it('retracts the empty row an earlier run imported for a set-less workout', async () => {
+    const startTime = new Date('2026-09-08T09:04:51+02:00')
+    const deps = makeDeps({ data: { sets: [], workout_type: 'today' }, id: 'act-9', start_time: startTime })
+    expect(await processGravlWorkout('alice', detail({ exercises: [] }), deps)).toBe('removed')
+    expect(deps.softDeleteActivityByExternalId).toHaveBeenCalledWith(
+      'alice',
+      'gravl',
+      'gravl-workout-97248067-7947-4715-8fc9-d0048369a0d0',
+    )
+    expect(deps.materializeSuperseded).toHaveBeenCalledWith('alice', startTime)
+    expect(deps.auditInfo).toHaveBeenCalledWith(
+      'alice',
+      'sync',
+      expect.stringContaining('set-less'),
+      expect.objectContaining({
+        activity_id: 'act-9',
+        workout_id: '97248067-7947-4715-8fc9-d0048369a0d0',
+      }),
+    )
+    expect(deps.insertRawRecord).not.toHaveBeenCalled()
+    expect(deps.insertActivity).not.toHaveBeenCalled()
+  })
+
+  it('leaves a Health Connect session stored under the Gravl identity alone', async () => {
+    const deps = makeDeps({ data: { gravl_workout_id: 'x', metadata: {} }, id: 'act-hc' })
+    expect(await processGravlWorkout('alice', detail({ exercises: [] }), deps)).toBe('skipped')
+    expect(deps.softDeleteActivityByExternalId).not.toHaveBeenCalled()
+    expect(deps.insertActivity).not.toHaveBeenCalled()
+  })
+
+  it('leaves a row that already carries sets alone', async () => {
+    const deps = makeDeps({ data: { sets: [{ exercise: 'Bench Press' }] }, id: 'act-full' })
+    expect(await retractEmptyGravlImport('alice', WORKOUT_ID, deps)).toBe('skipped')
+    expect(deps.softDeleteActivityByExternalId).not.toHaveBeenCalled()
+    expect(deps.materializeSuperseded).not.toHaveBeenCalled()
+  })
+
   it('claims the Health Connect copy by Gravl’s clientRecordId, then upserts and writes the note', async () => {
     const deps = makeDeps({ id: 'act-1' })
     expect(await processGravlWorkout('alice', detail(), deps)).toBe('enriched')
@@ -211,5 +258,41 @@ describe('processGravlWorkout', () => {
     expect(isExternalWorkout({ type: 'external' })).toBe(true)
     expect(isExternalWorkout({ type: 'External' })).toBe(true)
     expect(isExternalWorkout({ type: 'newSaved' })).toBe(false)
+  })
+})
+
+describe('isStrengthWorkout', () => {
+  const summary: GravlWorkoutSummary = {
+    calories: 210,
+    durationMinutes: 29,
+    endDate: '2026-09-03T05:45:12Z',
+    exerciseCount: 2,
+    id: WORKOUT_ID,
+    name: 'Push day',
+    notes: null,
+    personalRecordCount: 1,
+    startDate: '2026-09-03T05:16:12Z',
+    type: 'today',
+    volume: 3527.396,
+  }
+
+  it('accepts a Gravl-logged workout with sets, by summary or detail', () => {
+    expect(isStrengthWorkout(summary)).toBe(true)
+    expect(isStrengthWorkout(detail())).toBe(true)
+  })
+
+  it('rejects external round-trips regardless of exercise count, whatever the casing', () => {
+    expect(isStrengthWorkout({ ...summary, type: 'external' })).toBe(false)
+    expect(isStrengthWorkout(detail({ type: 'External' as GravlWorkoutDetail['type'] }))).toBe(false)
+  })
+
+  it('rejects workouts without a logged set', () => {
+    expect(isStrengthWorkout({ ...summary, exerciseCount: 0 })).toBe(false)
+    expect(isStrengthWorkout(detail({ exercises: [] }))).toBe(false)
+    expect(
+      isStrengthWorkout(
+        detail({ exercises: [{ exerciseId: 1, exerciseName: 'Squat', sets: [], supersetId: null }] }),
+      ),
+    ).toBe(false)
   })
 })

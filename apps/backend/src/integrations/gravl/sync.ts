@@ -1,8 +1,8 @@
 /**
  * One sync-state row, `provider = 'gravl'`, `data_type = 'workouts'`. Each run
  * lists workouts in a window, removes our Health Connect copy of the `External`
- * round-trips, fetches every real workout's detail (the list has no sets) and
- * hands it to the processor.
+ * round-trips and the empty import of set-less workouts, fetches every real
+ * workout's detail (the list has no sets) and hands it to the processor.
  *
  * Windows: 90 days on the first run or a full resync; otherwise from two days
  * before the last successful sync, because Gravl workouts get edited after the
@@ -32,7 +32,13 @@ import {
 import { auditError, auditInfo } from '../../services/audit-log.ts'
 import { gravlWorkoutExternalId } from '../../services/source-identity.ts'
 import { isGravlAuthFailure, isGravlRateLimit } from './client.ts'
-import { isExternalWorkout, processGravlWorkout, removeExternalGravlWorkout } from './process.ts'
+import {
+  isExternalWorkout,
+  isStrengthWorkout,
+  processGravlWorkout,
+  removeExternalGravlWorkout,
+  retractEmptyGravlImport,
+} from './process.ts'
 
 export const GRAVL_PROVIDER = 'gravl'
 export const GRAVL_DATA_TYPE = 'workouts'
@@ -53,6 +59,7 @@ export interface GravlSyncDeps {
   now: () => Date
   processWorkout: (user: string, detail: GravlWorkoutDetail) => Promise<GravlProcessOutcome>
   removeExternalWorkout: (user: string, workoutId: string) => Promise<'removed' | 'skipped'>
+  retractEmptyImport: (user: string, workoutId: string) => Promise<'removed' | 'skipped'>
   upsertSyncState: typeof upsertSyncState
 }
 
@@ -64,6 +71,7 @@ const defaultDeps = (): GravlSyncDeps => ({
   now: () => new Date(),
   processWorkout: (user, detail) => processGravlWorkout(user, detail),
   removeExternalWorkout: (user, workoutId) => removeExternalGravlWorkout(user, workoutId),
+  retractEmptyImport: (user, workoutId) => retractEmptyGravlImport(user, workoutId),
   upsertSyncState,
 })
 
@@ -92,7 +100,7 @@ const processWindow = async (
   client: GravlClient,
   token: string,
   window: { start: Date; end: Date },
-  deps: Pick<GravlSyncDeps, 'processWorkout' | 'removeExternalWorkout'>,
+  deps: Pick<GravlSyncDeps, 'processWorkout' | 'removeExternalWorkout' | 'retractEmptyImport'>,
   counts: SyncCounts,
 ): Promise<void> => {
   let page = 1
@@ -102,6 +110,10 @@ const processWindow = async (
     for (const summary of listed.items) {
       if (isExternalWorkout(summary)) {
         await deps.removeExternalWorkout(user, summary.id)
+        continue
+      }
+      if (!isStrengthWorkout(summary)) {
+        await deps.retractEmptyImport(user, summary.id)
         continue
       }
       const detail = await client.getWorkout(token, summary.id)
@@ -185,9 +197,9 @@ export const syncGravlWorkouts = async (
  * Fetch and store one workout by id — the enrichment path taken when Health
  * Connect delivers a Gravl session (#1080). Throws on API failure so the
  * queue can retry; returns 'removed' when the workout turned out to be an
- * external round-trip whose copy we dropped, and 'skipped' either while a
- * rate-limit hold is in force (the next poll re-covers the workout) or when the
- * copy is already tombstoned.
+ * external round-trip or set-less and our row for it was dropped, and 'skipped'
+ * either while a rate-limit hold is in force (the next poll re-covers the
+ * workout) or when the row is already tombstoned.
  */
 export const enrichGravlWorkout = async (
   user: string,
@@ -203,8 +215,8 @@ export const enrichGravlWorkout = async (
     deps.auditInfo(user, 'sync', 'Gravl enrichment skipped - rate limited', { workout_id: workoutId })
     return 'skipped'
   }
-  // The copy was already removed as an external round-trip, and the tombstone
-  // blocks re-insert, so the detail request would buy nothing.
+  // The row was already removed (an external round-trip or an empty import),
+  // and the tombstone blocks re-insert, so the detail request would buy nothing.
   if (await deps.findDeletedActivityByExternalId(user, 'gravl', gravlWorkoutExternalId(workoutId))) {
     return 'skipped'
   }
