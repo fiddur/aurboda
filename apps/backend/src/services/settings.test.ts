@@ -592,17 +592,26 @@ describe('computeHrZoneSecs', () => {
     expect(result[5]).toBeGreaterThan(0)
   })
 
-  test('caps time gap at 5 seconds', () => {
+  test('counts a sample until the next one for gaps up to 60 seconds', () => {
+    const hrData: [Date, number][] = Array.from({ length: 11 }, (_, i) => [
+      new Date(Date.parse('2024-01-15T10:00:00Z') + i * 12_000),
+      130,
+    ])
+
+    const result = computeHrZoneSecs(hrData, defaultZones)
+
+    expect(result[3]).toBe(132)
+  })
+
+  test('caps time gap at 60 seconds', () => {
     const hrData: [Date, number][] = [
       [new Date('2024-01-15T10:00:00Z'), 95],
-      [new Date('2024-01-15T10:00:30Z'), 100], // 30 second gap
+      [new Date('2024-01-15T10:05:00Z'), 100],
     ]
 
     const result = computeHrZoneSecs(hrData, defaultZones)
 
-    // Total should be capped at 5 + last sample time (uses mean gap which is 5)
-    const total = Object.values(result).reduce((a, b) => a + b, 0)
-    expect(total).toBeLessThanOrEqual(10) // 5 sec + 5 sec max for last sample
+    expect(result[1]).toBe(120)
   })
 
   test('handles mixed zones correctly', () => {

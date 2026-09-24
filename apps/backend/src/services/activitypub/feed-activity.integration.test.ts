@@ -27,9 +27,8 @@ describe('resolveActivityScalars', () => {
 
   test('aggregates window metrics into the selected scalar summaries', async () => {
     const user = getTestUser()
-    // Only heart_rate is stored; HR-zone seconds are computed from it. Real
-    // devices sample densely — computeHrZoneSecs caps gaps at 5s — so insert a
-    // 5s cadence for ~5 min at 150 bpm.
+    // Only heart_rate is stored; HR-zone seconds are computed from it, so
+    // insert a 5s cadence for ~5 min at 150 bpm.
     await insertTimeSeries(
       user,
       Array.from({ length: 60 }, (_, i) => ({
