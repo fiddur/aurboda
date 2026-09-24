@@ -1,0 +1,8 @@
+<settings xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://developer.garmin.com/downloads/connect-iq/resources.xsd">
+    <setting propertyKey="@Properties.api_url" title="@Strings.ApiUrlTitle">
+        <settingConfig type="url" required="true" />
+    </setting>
+    <setting propertyKey="@Properties.api_token" title="@Strings.ApiTokenTitle">
+        <settingConfig type="password" />
+    </setting>
+</settings>

@@ -1,0 +1,21 @@
+<strings xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://developer.garmin.com/downloads/connect-iq/resources.xsd">
+    <string id="AppName">Aurboda</string>
+    <string id="ApiUrlTitle">API URL</string>
+    <string id="ApiTokenTitle">API token</string>
+    <string id="Fetching">Fetching types...</string>
+    <string id="NotConfigured">Open on phone: set API URL and token</string>
+    <string id="NoTypes">No watch types set up in Aurboda</string>
+    <string id="BadToken">Bad token</string>
+    <string id="PhoneNotConnected">Phone not connected</string>
+    <string id="TooManyTypes">Too many types</string>
+    <string id="BadResponse">Unexpected response</string>
+    <string id="RequestFailed">Request failed</string>
+    <string id="RetryHint">Start: retry</string>
+    <string id="RefreshTypes">Refresh types</string>
+    <string id="Stopped">Stopped</string>
+    <string id="Save">Save</string>
+    <string id="Discard">Discard</string>
+    <string id="Resume">Resume</string>
+    <string id="HeartRate">HR</string>
+    <string id="Stress">Stress</string>
+</strings>

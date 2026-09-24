@@ -13,6 +13,7 @@
     "test:android": "cd apps/android && ./gradlew test",
     "build": "pnpm --filter aurboda-web build && pnpm build:android",
     "build:android": "cd apps/android && ./gradlew assembleDebug",
+    "build:garmin": "apps/garmin/build.sh",
     "check": "pnpm --filter aurboda-backend check && pnpm --filter aurboda-web check && pnpm --filter @aurboda/api-spec check",
     "fix": "oxfmt . && oxlint --fix"
   },
