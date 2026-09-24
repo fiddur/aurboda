@@ -2,6 +2,10 @@
 
 Status: draft for discussion. Nothing here is implemented yet.
 
+The app is for any Aurboda user, on any Aurboda server: nothing about a particular user's
+types, server or watch is baked in. The user points the app at their server, and everything
+else it shows comes from their own account.
+
 ## Problem
 
 Activities that have no Garmin sport (sex, and any custom Aurboda activity type) can only be
@@ -40,22 +44,27 @@ stress at sample granularity into Aurboda.
 
 ## Decisions
 
-### 1. How the Aurboda activity type travels: session name, then developer field
+### 1. The title carries the Aurboda type; the Garmin sport is a per-type fallback
 
-The app sets `createSession({ :name => <aurboda type name>, :sport, :subSport })`. Garmin
-Connect shows a Connect IQ session's name as the activity name, and the importer already
-stores `activityName` as the title. `resolveActivityType` gets a new first step: if the
-activity name (lowercased) equals an `activity_type_definitions.name` or one of its
-`aliases`, use that type. This is enough for phase 1 and needs no new plumbing.
+The app sets `createSession({ :name => <aurboda type>, :sport, :subSport })`. Garmin Connect
+shows a Connect IQ session's name as the activity name, and the importer already stores
+`activityName` as the title. `resolveActivityType` gets a new first step: if the activity
+name, lowercased, equals an `activity_type_definitions` `name`, `display_name` or one of its
+`aliases`, that type wins over the Garmin `typeKey`. Definitions are per user, so the match
+is always against the user's own types. A Garmin-native activity titled "Running" resolves
+to the same type either way, so the step is harmless for activities the app did not record.
 
 Fallback if spike S1 shows Garmin Connect does not preserve the session name: write the
 type as a FIT session-level developer field (`FitContributor`, `MESG_TYPE_SESSION`) and read
 it from the activity summary JSON.
 
-The Garmin sport/sub-sport is chosen per type so Garmin Connect's own stats stay sensible:
-yoga → training/yoga (10/43), meditation → meditation (67), strength → training/strength
-(10/20), everything else → generic. The mapping lives on the server (Decision 3), not in the
-watch, so a new type never needs an app release.
+The Garmin sport/sub-sport recorded for a type is the user's choice, per type: "log sex as
+Yoga" keeps Garmin Connect's history continuous with how it was logged before. Aurboda
+supplies a default where a Garmin sport already maps onto the type (yoga → training/yoga
+10/43, meditation → 67, strength → training/strength 10/20, the reverse of
+`garminTypeKeyOverrides` and the built-in names) and generic (0/0) otherwise; the user can
+change it. The choice is stored on the type definition (Decision 3), so the watch never
+holds a sport table and a new type never needs an app release.
 
 ### 2. Samples: HR natively, stress (and later HRV) as developer fields
 
@@ -72,27 +81,48 @@ watch, so a new type never needs an app release.
 - HRV (phase 3): `Sensor.registerSensorDataListener` with `heartBeatIntervals` at 1 s, RMSSD
   over a rolling window, written as a developer field and mapped to a `hrv_rmssd` series.
 
-### 3. Configuration lives in Aurboda, the watch only fetches it
+### 3. The watch pulls the user's types from Aurboda and the selection is made on the watch
 
-- `activity_type_definitions` gets two optional fields in `packages/api-spec`:
-  `show_on_watch: boolean` and `fit_sport: { sport: number, sub_sport?: number }`. Both go
-  through the existing `add_activity_type` / `update_activity_type` MCP tools and REST routes
-  (parity is free because the schema is shared).
-- New read endpoint `GET /api/activity-types/watch` (MCP: `list_watch_activity_types`) returns
-  `[{ name, display_name, fit_sport }]` for the enabled types, ordered as the user wants, small
-  enough for `makeWebRequest`'s response cap. The web `ActivityTypes` settings page gets a
-  "show on watch" toggle and an order. The Android app embeds that page, so no native work.
-- The watch fetches this list on app start when the phone is reachable, caches it in
-  `Application.Storage`, and works from the cache when offline. The API token is an app
-  setting (Garmin Connect app → Aurboda app → Settings). The token is non-expiring and
-  unscoped today; a scoped watch token is a follow-up issue, not a blocker.
+Connect IQ has two places for configuration, and they suit different things:
+
+- **App settings** (the settings page in the Garmin Connect phone app, declared statically in
+  `resources/settings/`) hold what has to be typed: the Aurboda server URL (default
+  `https://aurboda.net`) and the API token from "Generate API Token". A static page cannot
+  show a list fetched from a server, so the type selection cannot live there.
+- **On-watch menus** can. The app fetches the user's activity types from Aurboda
+  (`makeWebRequest` through the phone) and shows them in a checkbox menu
+  (`WatchUi.CheckboxMenu`, API 3.4+). The checked set is the picker for starting a session.
+
+Concretely:
+
+- `activity_type_definitions` gets one optional field in `packages/api-spec`,
+  `fit_sport: { sport: number, sub_sport?: number }`, editable through the existing
+  `update_activity_type` MCP tool and REST route and on the web `ActivityTypes` settings
+  page (a sport picker with Garmin's names). The Android app embeds that page, so no native
+  work. The web page is where the fallback sport is chosen; a picker per type on a watch
+  screen is possible later, but a phone or browser is the better place for a one-time choice.
+- The existing `GET /api/activity-types` (MCP `list_activity_types`) already returns every
+  definition. The watch calls it with the token and keeps `name`, `display_name` and
+  `fit_sport`. If the full list is too big for `makeWebRequest`'s response cap for users with
+  many types, add a `fields` query parameter rather than a separate endpoint.
+- The selection (which types the watch shows, and their order) is stored on the watch in
+  `Application.Storage`, together with the cached list. Nothing on the server records what
+  a watch shows, so a second watch or a reinstall means selecting again. That is the
+  simplest generic design; a server-side `show_on_watch` can come later if syncing the
+  selection across devices turns out to matter.
+- The list is refreshed on demand from the menu ("Refresh types") and on app start when the
+  phone is reachable; without the phone the app runs from the cache. First run without a
+  cache and without the phone shows a message rather than an empty picker.
+- The token is non-expiring and unscoped today; a scoped, revocable watch token is a
+  follow-up issue, not a blocker.
 
 ### 4. Not a Meditate fork, no profiles, no interval alerts
 
 Meditate's SDK ceiling (4.1.5, type checker off) and its profile model are what we want to
 leave behind. The app is written fresh against the current SDK with the type checker on,
-borrowing Meditate's stress and HRV approach as reference. Interval buzzing, target
-durations and breathing guidance are out of scope until someone wants them.
+borrowing Meditate's stress and HRV approach as reference. It starts with only what will be
+used: pick a type, start, stop, save. Interval buzzing, target durations and breathing
+guidance are out of scope until someone wants them.
 
 ### 5. Repo layout and build
 
@@ -108,9 +138,11 @@ durations and breathing guidance are out of scope until someone wants them.
 
 ## Spikes before phase 1
 
-- **S1** Record a session from a throwaway Connect IQ app with `:name => "sex"` and sport
-  generic. Confirm the name is what Garmin Connect returns as `activityName`, and check what
-  `resolveActivityType` currently does with the resulting `typeKey`.
+- **S1** Record a session from a throwaway Connect IQ app with `:name => "Sex"` and sport
+  training/yoga. Confirm the name is what Garmin Connect returns as `activityName` (and that
+  Connect does not rename it after the sport), and note the `typeKey` it reports.
+- **S0** Confirm `makeWebRequest` from the watch reaches the user's Aurboda with a bearer
+  header and receives `GET /api/activity-types` within the response size cap.
 - **S2** In the same session, write one record-level developer field. Confirm it shows up in
   the details endpoint as `connectIQDeveloperField-NN` with the expected number.
 - **S3** On the target watch, check that `ActivityMonitor.getInfo().stressScore` is non-null
@@ -120,19 +152,20 @@ durations and breathing guidance are out of scope until someone wants them.
 
 ### Phase 1: log an Aurboda type from the wrist
 
-- `apps/garmin` skeleton, one device, manual list of types from an app-settings string
-  (`sex,yoga,meditation`), a type picker, start/stop, session save.
-- Backend: name/alias step in `resolveActivityType`, with tests in `process.test.ts`.
-- Done when a session started as "sex" lands in Aurboda as a `sex` activity with an HR series,
-  through the normal Garmin sync, with no manual re-typing.
+- `apps/garmin` skeleton, one device. App settings for server URL and token. Fetch the
+  user's types, checkbox menu to select which to show, cached in Storage, a picker, start,
+  stop, save. Sport from `fit_sport`, generic when unset.
+- api-spec: `fit_sport` on activity type definitions, `pnpm generate` for the Kotlin models;
+  the web `ActivityTypes` page gets the sport picker.
+- Backend: name/alias step in `resolveActivityType`, with tests in `process.test.ts`, and
+  defaults for `fit_sport` on built-in types.
+- Done when a session started as "Sex" (recorded as Yoga) lands in Aurboda as a `sex`
+  activity with an HR series, through the normal Garmin sync, with no manual re-typing.
 
-### Phase 2: stress, and configuration from the server
+### Phase 2: stress
 
 - Developer field for stress; `DETAIL_METRIC_MAP` gated entries; tests with a fixture from S2.
-- `show_on_watch` and `fit_sport` on activity type definitions; the watch list endpoint and
-  MCP tool; the web toggle; `pnpm generate` for the Kotlin models.
-- Watch fetches and caches the list; app-settings token.
-- Docs: `docs/garmin-watch-app.md` (what is recorded, field numbers, setup), a row in
+- Docs: `docs/garmin-watch-app.md` (setup, what is recorded, field numbers), a row in
   `docs/data-sources.md`, a paragraph in `docs/garmin.md`.
 
 ### Phase 3: session feedback and HRV
@@ -155,9 +188,10 @@ replacing the Garmin Connect import with direct upload from the watch.
 
 ## Open questions
 
-- Which watch model, and its Connect IQ API level (decides `minApiLevel` and whether the live
-  stress score exists).
-- Should "sex" show in Garmin Connect as "Other" (sport generic), or as Yoga for continuity
-  with past logging? Generic is the proposal.
+- Which watch model to start with, and its Connect IQ API level (decides `minApiLevel`,
+  whether `CheckboxMenu` and the live stress score exist).
 - Sideload only for now, or aim for the store from the start (store needs the full
-  `products` list and a review round).
+  `products` list and a review round). Generic for any user argues for the store eventually.
+- Session names: Garmin suggests at most 15 characters. Use `display_name` for readability
+  in Connect and match on it, or `name` for safety? Proposal: `display_name`, truncated,
+  with `name` as the match fallback.
