@@ -55,42 +55,45 @@ session, and gets HR and stress at sample granularity into Aurboda.
 A new user setting, `garmin_watch_types`, is an ordered list:
 
 ```
-{ activity_type: string, session_name: string, fit_sport: number, fit_sub_sport: number }
+{ activity_type: string, code: number, session_name: string, fit_sport: number, fit_sub_sport: number }
 ```
 
 - `activity_type` is the Aurboda type to log.
-- `session_name` is what the watch passes as `:name` to `createSession` and what Garmin
-  Connect shows as the activity title. Default: the type's `display_name`, cut to Garmin's
-  suggested 15 characters. The user can change it. Names are unique within the list.
+- `code` is a small stable integer, unique in the list, assigned when the entry is added
+  and never edited. It is what the watch writes into the FIT file (Decision 2) and what the
+  importer maps back to the type.
+- `session_name` is the label on the watch and the `:name` of the recorded session. Default:
+  the type's `display_name`, cut to 20 characters. **Garmin Connect does not keep it**
+  (verified against real data: Meditate names its sessions "Meditating 🧘", Connect returns
+  `activityName: "Meditation"`), so it is a watch-side label only.
 - `fit_sport` / `fit_sub_sport` is the Garmin sport the session is recorded as, so Garmin
   Connect's own history stays sensible: "log sex as Yoga" keeps continuity with how it was
-  logged before. Aurboda suggests a default where a Garmin sport already maps onto the type
-  (yoga → training/yoga 10/43, meditation → 67, strength → training/strength 10/20, the
-  reverse of `garminTypeKeyOverrides` and the built-in names) and generic (0/0) otherwise.
+  logged before. Aurboda suggests a default where a Garmin sport maps onto the type
+  (`defaultGarminSportForType` in api-spec: yoga → training/yoga 10/43, meditation → 67,
+  strength → training/strength 10/20, …) and generic (0/0) otherwise.
 
 Outbound, the watch fetches this list and shows exactly it, in this order (Decision 3).
-Inbound, `resolveActivityType` in `process.ts` gets a first step: if the imported activity's
-`activityName` equals a `session_name` in the user's list (case-insensitive), that entry's
-`activity_type` wins over the Garmin `typeKey`, and the activity is marked in `data` as
-watch-recorded (`garmin_watch_session: true`). Everything else resolves as today. The match is
-against the user's own list, so it is per user, and an activity whose title happens to equal
-a session name resolves the way the user configured it, which is what they asked for.
+Inbound, the Garmin details pass finds the code in developer field 40, looks it up in the
+user's list, and sets the activity's type, title (the session name) and a `data` marker
+(`garmin_watch_type`, `garmin_watch_code`, `garmin_watch_session_name`). The summary pass
+re-runs on every sync and would otherwise reset the type to Garmin's sport, so
+`processActivity` keeps the type and title of an existing row that carries the marker.
 
-Fallback if spike S1 shows Garmin Connect does not preserve the session name: write the
-list entry's `activity_type` as a FIT session-level developer field (`FitContributor`,
-`MESG_TYPE_SESSION`) and read it from the activity summary JSON. The setting stays the same.
-
-### 2. Samples: HR natively, stress (and later HRV) as developer fields
+### 2. Samples: HR natively, type and stress as developer fields
 
 - HR is recorded by the session automatically; the importer already maps it.
-- Stress: a record-level developer field `stress` (score, 0..100), sampled every tick from
-  `ActivityMonitor.getInfo().stressScore` when the device has it, else the newest
-  `SensorHistory.getStressHistory()` sample. Field numbers are fixed by the app and documented
-  in `docs/garmin-watch-app.md`.
-- `DETAIL_METRIC_MAP` gains entries for the app's developer field numbers. Garmin only exposes
-  the field number, not the app UUID, so the entries apply only to activities Decision 1
-  marked as watch-recorded. That keeps Meditate's fields from being misread if both apps are
-  installed.
+- Two record-level developer fields, numbered in `garminWatchFitFields` in api-spec:
+  **40** `aurboda_type` (uint16, the entry's `code`, set every second) and **41** `stress`
+  (uint8, 0..100, from `ActivityMonitor.getInfo().stressScore` when the device has it, else
+  the newest `SensorHistory.getStressHistory()` sample). Garmin exposes them in the details
+  endpoint as `connectIQDeveloperField-40` / `-41`.
+- The importer reads field 40 as the type code (the most frequent value across the records)
+  and maps field 41 to `stress_level` only when field 40 is present, so another Connect IQ
+  app's numbered fields (Meditate's) are never misread, and only when Garmin's own
+  `directCurrentStress` is absent. Real data shows Garmin records per-second stress natively
+  for its Yoga profile (a native Yoga session had a full `stress_level` series); whether it
+  does so for a Connect IQ session with sport yoga is spike S3, and either way the activity
+  gets a stress series.
 - HRV (phase 3): `Sensor.registerSensorDataListener` with `heartBeatIntervals` at 1 s, RMSSD
   over a rolling window, written as a developer field and mapped to a `hrv_rmssd` series.
 
@@ -151,13 +154,16 @@ guidance are out of scope until someone wants them.
 
 - **S0** Confirm `makeWebRequest` from the FR255 reaches the user's Aurboda with a bearer
   header and receives a small JSON response.
-- **S1** Record a session from a throwaway Connect IQ app with `:name => "Sex"` and sport
-  training/yoga. Confirm the name is what Garmin Connect returns as `activityName` (and that
-  Connect does not rename it after the sport), and note the `typeKey` it reports.
-- **S2** In the same session, write one record-level developer field. Confirm it shows up in
-  the details endpoint as `connectIQDeveloperField-NN` with the expected number.
-- **S3** On the FR255, check that `ActivityMonitor.getInfo().stressScore` is non-null during
-  a recorded session. If not, measure what `getStressHistory()` yields mid-session.
+- **S1 (done, negative)** Garmin Connect does not keep the Connect IQ session name: the
+  imported Meditate activities carry `activityName: "Meditation"` while Meditate sets
+  "Meditating 🧘". Hence the developer-field code in Decision 1.
+- **S2 (done, positive)** Record-level developer fields reach the details endpoint as
+  `connectIQDeveloperField-NN`; the importer's own fixtures were taken from a Meditate
+  activity. Still to confirm on the first real session: the key for field 40 is
+  `connectIQDeveloperField-40`.
+- **S3** On the FR255, record one session with the app as Yoga and check in the imported
+  detail whether `directCurrentStress` is present (Garmin's own stress) and whether field 41
+  carries values (`ActivityMonitor.getInfo().stressScore` non-null during a session).
 
 ## Phases
 

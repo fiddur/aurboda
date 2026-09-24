@@ -2,6 +2,7 @@ import { z } from 'zod'
 
 import { baseResponseSchema, hrZoneSourceSchema } from './common.ts'
 import { dashboardConfigSchema } from './dashboard.ts'
+import { garminWatchTypesSchema } from './garmin-watch.ts'
 import { goalsSchema } from './goals.ts'
 import { garminDataTypeSchema } from './sync.ts'
 import { trainingLoadSettingsSchema } from './training-load.ts'
@@ -172,6 +173,9 @@ export const updateSettingsInputSchema = z
     food_sensitivity_map: foodSensitivityMapSchema.nullable().optional().meta({
       description: 'Food-to-sensitivity mapping (set to null to clear)',
     }),
+    garmin_watch_types: garminWatchTypesSchema.nullable().optional().meta({
+      description: 'Activity types the Aurboda watch app offers, in display order (set to null to clear)',
+    }),
     meal_slots: mealSlotsSchema.nullable().optional().meta({
       description: 'Configured meal slots for quick-logging (set to null to clear)',
     }),
@@ -235,6 +239,9 @@ export const userSettingsResponseSchema = baseResponseSchema
       .boolean()
       .default(false)
       .meta({ description: 'Whether Garmin Connect is connected via stored session' }),
+    garmin_watch_types: garminWatchTypesSchema
+      .default([])
+      .meta({ description: 'Activity types the Aurboda watch app offers, in display order' }),
     garmin_disabled_data_types: z
       .array(garminDataTypeSchema)
       .default([])
