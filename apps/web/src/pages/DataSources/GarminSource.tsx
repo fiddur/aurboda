@@ -3,6 +3,7 @@ import type { GarminDataType, ProviderSyncStatus } from '@aurboda/api-spec'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
 
+import { GarminWatchTypesSettings } from '../../components/GarminWatchTypesSettings'
 import {
   connectGarmin,
   disconnectGarmin,
@@ -503,6 +504,8 @@ export function GarminSource() {
             handleFullResync={handleFullResync}
           />
         )}
+
+        <GarminWatchTypesSettings />
       </div>
     </div>
   )
