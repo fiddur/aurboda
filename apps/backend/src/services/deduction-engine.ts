@@ -272,7 +272,11 @@ export const evaluateRule = async (
   const createdIds: string[] = []
   for (const range of result) {
     const id = randomUUID()
-    await deps.insertActivity(user, {
+    // The insert upserts on (source, activity_type, start_time), so a re-evaluation
+    // returns the id of the row that already exists there rather than the one
+    // generated here. Keeping the generated id would make the stale cleanup below
+    // delete the real activity on every other evaluation.
+    const insertedId = await deps.insertActivity(user, {
       activity_type: rule.output_activity_type,
       data: { rule_id: rule.id, rule_name: rule.name, ...rule.output_data },
       end_time: range.end,
@@ -281,7 +285,7 @@ export const evaluateRule = async (
       start_time: range.start,
       title: rule.output_title ?? rule.name,
     })
-    createdIds.push(id)
+    createdIds.push(insertedId ?? id)
   }
 
   return { affected_ids: createdIds, would_affect: createdIds.length }

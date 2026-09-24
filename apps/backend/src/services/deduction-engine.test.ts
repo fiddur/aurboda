@@ -149,6 +149,25 @@ describe('evaluateRule', () => {
     expect(deps.insertActivity).not.toHaveBeenCalled()
   })
 
+  test('reports the id the insert returns when the activity already exists', async () => {
+    vi.mocked(deps.getActivities).mockResolvedValue([{ end: d(11), start: d(10) }])
+    vi.mocked(deps.insertActivity).mockResolvedValue('existing-id')
+
+    const { affected_ids } = await evaluateRule(user, makeRule(), window, deps)
+
+    expect(affected_ids).toEqual(['existing-id'])
+  })
+
+  test('falls back to the generated id when the insert returns nothing', async () => {
+    vi.mocked(deps.getActivities).mockResolvedValue([{ end: d(11), start: d(10) }])
+    vi.mocked(deps.insertActivity).mockResolvedValue(undefined)
+
+    const { affected_ids } = await evaluateRule(user, makeRule(), window, deps)
+
+    const inserted = vi.mocked(deps.insertActivity).mock.calls[0][1]
+    expect(affected_ids).toEqual([inserted.id])
+  })
+
   test('intersects multiple conditions (AND)', async () => {
     const rule = makeRule({
       conditions: [
@@ -606,6 +625,28 @@ describe('evaluateAllRules', () => {
       window.end,
       expect.any(Array),
     )
+  })
+
+  test('keeps the existing activity when a re-evaluation upserts onto it', async () => {
+    const rules: DeductionRule[] = [
+      {
+        conditions: [{ activity_type: 'sauna', kind: 'activity' }],
+        enabled: true,
+        id: 'rule-1',
+        name: 'Rule 1',
+        output_activity_type: 'sauna',
+        priority: 0,
+      },
+    ]
+
+    vi.mocked(deps.getActivities).mockResolvedValue([{ end: d(11), start: d(10) }])
+    vi.mocked(deps.insertActivity).mockResolvedValue('existing-id')
+
+    await evaluateAllRules(user, rules, window, deps)
+
+    expect(deps.deleteStaleRuleActivities).toHaveBeenCalledWith(user, 'rule-1', window.start, window.end, [
+      'existing-id',
+    ])
   })
 
   test('does not clean up stale activities for enrich mode rules', async () => {
