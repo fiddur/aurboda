@@ -12,6 +12,7 @@ import type { DashboardConfig } from '@aurboda/api-spec'
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import { insertActivity } from '../db/index.ts'
+import { insertTimeSeries } from '../db/time-series.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import { resolveDashboardData } from './shared-dashboard-data.ts'
 
@@ -289,5 +290,39 @@ describe('resolveDashboardData integration', () => {
       expect(a.data.sleep).toBeNull()
       expect(a.data.meditation).toBeNull()
     }
+  })
+
+  test('zone2_weekly metric card totals only the last 7 days of zone 2 time', async () => {
+    const user = getTestUser()
+    const DAY = 24 * 60 * 60 * 1000
+    // 115 bpm sits in zone 2 of the default zones; 61 samples 5s apart → 305s.
+    const zone2Burst = (start: Date) =>
+      Array.from({ length: 61 }, (_, i) => ({
+        metric: 'heart_rate' as const,
+        source: 'garmin' as const,
+        time: new Date(start.getTime() + i * 5_000),
+        value: 115,
+      }))
+    await insertTimeSeries(user, [
+      ...zone2Burst(new Date(Date.now() - 20 * DAY)),
+      ...zone2Burst(new Date(Date.now() - 2 * DAY)),
+    ])
+
+    const data = await resolveDashboardData(user, {
+      sections: [
+        {
+          id: 'sec',
+          title: 'Metrics',
+          type: 'metrics',
+          widgets: [{ config: { metric: 'zone2_weekly', title: 'Zone 2' }, id: 'z2', type: 'metric_card' }],
+        },
+      ],
+      version: 1,
+    })
+
+    const card = data['z2']
+    expect(card.type).toBe('metric_card')
+    if (card.type !== 'metric_card') return
+    expect(card.data?.value).toBe(305)
   })
 })
