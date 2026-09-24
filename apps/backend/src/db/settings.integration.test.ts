@@ -288,4 +288,22 @@ describe('Settings Integration Tests', () => {
       expect(settings?.birth_date).toBe('2000-01-01')
     })
   })
+
+  describe('User Settings with garmin_watch_types', () => {
+    test('stores, retrieves in order and clears garmin_watch_types', async () => {
+      const user = getTestUser()
+      const watchTypes = [
+        { activity_type: 'meditation', code: 2, fit_sport: 67, fit_sub_sport: 0, session_name: 'Meditate' },
+        { activity_type: 'yoga', code: 1, fit_sport: 10, fit_sub_sport: 43, session_name: 'Yoga' },
+      ]
+
+      await upsertUserSettings(user, { birth_date: '1990-01-15', garmin_watch_types: watchTypes })
+      expect((await getUserSettings(user))?.garmin_watch_types).toEqual(watchTypes)
+
+      await upsertUserSettings(user, {}, ['garmin_watch_types'])
+      const settings = await getUserSettings(user)
+      expect(settings?.garmin_watch_types).toBeUndefined()
+      expect(settings?.birth_date).toBe('1990-01-15')
+    })
+  })
 })

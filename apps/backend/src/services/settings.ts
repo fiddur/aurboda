@@ -11,6 +11,7 @@ import {
 } from '@aurboda/api-spec'
 
 import {
+  activityTypeExists,
   getGoals,
   getOAuthToken,
   getUserSettings,
@@ -174,6 +175,7 @@ const settingsWithDefaultsSchema = userSettingsResponseSchema.pick({
   dashboard: true,
   food_sensitivity_map: true,
   garmin_disabled_data_types: true,
+  garmin_watch_types: true,
   item_icons: true,
   lastfm_username: true,
   manually_approve_followers: true,
@@ -269,6 +271,14 @@ export const validateAndUpdateSettings = async (user: string, input: unknown): P
   const parsed = updateSettingsInputSchema.safeParse(input)
   if (!parsed.success) {
     return buildErrorSettingsResponse(parsed.error.issues.map((e) => e.message).join('; '))
+  }
+
+  if (parsed.data.garmin_watch_types) {
+    for (const entry of parsed.data.garmin_watch_types) {
+      if (!(await activityTypeExists(user, entry.activity_type))) {
+        return buildErrorSettingsResponse(`Unknown activity type: ${entry.activity_type}`)
+      }
+    }
   }
 
   if (parsed.data.goals !== undefined) {

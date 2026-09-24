@@ -10,7 +10,9 @@ import { query } from '../../db/connection.ts'
 import {
   activityTypeExists,
   adoptLegacyActivity,
+  applyGarminWatchType,
   deleteGarminActivityWithWrongType,
+  findActivityByExternalId,
   insertActivity,
   insertLocations,
   insertRawRecord,
@@ -30,6 +32,7 @@ const realDeps = {
   auditInfo,
   auditWarn,
   deleteGarminActivityWithWrongType,
+  findActivityByExternalId,
   insertActivity,
   insertLocations,
   insertRawRecord,
@@ -142,5 +145,24 @@ describe('Garmin activity type resolution (integration)', () => {
     expect(audit.rows).toHaveLength(1)
     expect(audit.rows[0].message).toContain('Failed to process Garmin activity 1')
     expect(audit.rows[0].details.error).toContain('too long')
+  })
+
+  test('a re-sync keeps the type and title the watch app gave the activity', async () => {
+    const user = getTestUser()
+    const yoga = makeActivity({ activityName: 'Yoga', activityType: { typeKey: 'yoga' } })
+
+    await processGarminData(user, 'activities', [yoga], realDeps)
+    const row = await findActivityByExternalId(user, 'garmin', 'garmin-activity-12345')
+    await applyGarminWatchType(user, row!.id!, {
+      activity_type: 'meditation',
+      code: 3,
+      session_name: 'Meditate',
+    })
+    await processGarminData(user, 'activities', [yoga], realDeps)
+
+    const stored = await getStoredActivities(user)
+    expect(stored).toHaveLength(1)
+    expect(stored[0]).toMatchObject({ activity_type: 'meditation', title: 'Meditate' })
+    expect(stored[0].data).toMatchObject({ garmin_watch_code: 3, garmin_watch_type: 'meditation' })
   })
 })

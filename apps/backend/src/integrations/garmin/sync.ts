@@ -4,12 +4,15 @@ import type { SyncState } from '../../db/types.ts'
 import type { GarminClient } from './client.ts'
 
 import {
+  activityTypeExists,
+  applyGarminWatchType,
   getActivitiesNeedingDetail,
   getSyncState,
   markActivityDetailSynced,
   upsertSyncState,
 } from '../../db/index.ts'
-import { auditError, auditInfo } from '../../services/audit-log.ts'
+import { auditError, auditInfo, auditWarn } from '../../services/audit-log.ts'
+import { findGarminWatchTypeByCode, getGarminWatchTypes } from '../../services/garmin-watch.ts'
 import { type GarminDataType, garminDataTypes, processActivityDetail, processGarminData } from './process.ts'
 
 const DEFAULT_SYNC_HISTORY_DAYS = 90
@@ -181,6 +184,42 @@ export const syncAllGarminData = async (
 }
 
 /**
+ * Retype an activity the Aurboda watch app recorded, from the type code its
+ * detail carried. An unknown code, or one whose type no longer exists, leaves
+ * the activity as Garmin typed it.
+ */
+export const applyGarminWatchTypeCode = async (
+  user: string,
+  activityId: string,
+  garminActivityId: number,
+  code: number | null,
+): Promise<void> => {
+  if (code == null) return
+
+  const entry = findGarminWatchTypeByCode(await getGarminWatchTypes(user), code)
+  if (!entry || !(await activityTypeExists(user, entry.activity_type))) {
+    auditWarn(
+      user,
+      'sync',
+      `⚠️ Unknown Aurboda watch type code ${code} on Garmin activity ${garminActivityId}`,
+      {
+        activity_type: entry?.activity_type,
+        code,
+        garmin_activity_id: garminActivityId,
+      },
+    )
+    return
+  }
+
+  if (await applyGarminWatchType(user, activityId, entry)) {
+    auditInfo(user, 'sync', `⌚ Garmin watch session typed as ${entry.activity_type}`, {
+      code,
+      garmin_activity_id: garminActivityId,
+    })
+  }
+}
+
+/**
  * Fetch granular per-second metrics (stress, HR, respiration, body battery)
  * from Garmin activity details for activities that haven't been processed yet.
  * When fullResync is true, re-fetches detail for all activities (e.g. to pick up
@@ -204,7 +243,10 @@ export const syncActivityDetails = async (
       // precedence range to a few minutes around the start. Fall back to the
       // track's own range instead.
       const activitySpan = activity.end_time ? { end: activity.end_time, start: activity.start_time } : null
-      const pointCount = await processActivityDetail(user, detail, { activitySpan })
+      const { points: pointCount, watch_type_code } = await processActivityDetail(user, detail, {
+        activitySpan,
+      })
+      await applyGarminWatchTypeCode(user, activity.id, garminActivityId, watch_type_code)
       await markActivityDetailSynced(user, activity.id)
 
       auditInfo(

@@ -47,6 +47,7 @@ describe('Garmin resync integration', () => {
     auditInfo,
     auditWarn,
     deleteGarminActivityWithWrongType: async () => null as string | null,
+    findActivityByExternalId: async () => null,
     insertActivity: async () => '' as string,
     insertLocations,
     insertRawRecord,
@@ -58,9 +59,10 @@ describe('Garmin resync integration', () => {
     const user = getTestUser()
     const data = garminDetailFixture as unknown as GarminActivityDetailResponse
 
-    const points = await processActivityDetail(user, data, { deps: realDeps })
+    const { points, watch_type_code } = await processActivityDetail(user, data, { deps: realDeps })
 
     expect(points).toBeGreaterThan(0)
+    expect(watch_type_code).toBeNull()
 
     const latIdx = data.metricDescriptors.findIndex((d) => d.key === 'directLatitude')
     const lonIdx = data.metricDescriptors.findIndex((d) => d.key === 'directLongitude')
@@ -125,7 +127,7 @@ describe('Garmin resync integration', () => {
     const points1 = await processActivityDetail(user, data, { deps: realDeps })
     const points2 = await processActivityDetail(user, data, { deps: realDeps })
 
-    expect(points1).toBe(points2)
+    expect(points1).toEqual(points2)
   })
 
   test('insertLocations works with Garmin GPS points (no regions)', async () => {

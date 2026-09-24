@@ -36,6 +36,7 @@ import { registerDebugTools } from './mcp/debug-tools.ts'
 import { registerDeductionRuleTools } from './mcp/deduction-rule-tools.ts'
 import { registerFeedTools } from './mcp/feed-tools.ts'
 import { registerFoodItemTools } from './mcp/food-item-tools.ts'
+import { registerGarminWatchTools } from './mcp/garmin-watch-tools.ts'
 import { registerImportTools } from './mcp/import-tools.ts'
 import { registerLocationTools } from './mcp/location-tools.ts'
 import { registerMealTools } from './mcp/meal-tools.ts'
@@ -102,6 +103,7 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
     deps.gravl,
   )
   registerSettingsTools(server, user)
+  registerGarminWatchTools(server, user)
   registerLocationTools(server, user)
   registerCorrelationTools(server, user, deps.sync)
   registerTrainingLoadTools(server, user)

@@ -117,6 +117,7 @@ export {
 
 export {
   adoptLegacyActivity,
+  applyGarminWatchType,
   checkActivityConflict,
   deleteActivity,
   deleteGarminActivityWithWrongType,

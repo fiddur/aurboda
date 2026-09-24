@@ -18,14 +18,9 @@ export const garminWatchSessionNameMaxLength = 20
 export const garminWatchTypeSchema = z
   .object({
     activity_type: activityTypeSchema.meta({ description: 'Aurboda activity type the watch logs' }),
-    code: z
-      .number()
-      .int()
-      .min(1)
-      .max(65535)
-      .meta({
-        description: 'Stable id the watch writes into the FIT file so the import can recognise the type',
-      }),
+    code: z.number().int().min(1).max(65535).meta({
+      description: 'Stable id the watch writes into the FIT file so the import can recognise the type',
+    }),
     fit_sport: z
       .number()
       .int()

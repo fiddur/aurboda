@@ -17,6 +17,7 @@ import {
 } from './schemas/challenges.ts'
 import { dateOnlySchema, iso8601DateTimeSchema, metricTypeSchema } from './schemas/common.ts'
 import { dailySummaryResponseSchema } from './schemas/daily-summary.ts'
+import { garminWatchConfigResponseSchema } from './schemas/garmin-watch.ts'
 import { goalsProgressResponseSchema } from './schemas/goals.ts'
 import {
   addNamedLocationBodySchema,
@@ -1007,6 +1008,23 @@ const openApiDocument = createDocument({
         tags: ['Settings'],
       },
     },
+    '/garmin-watch/config': {
+      get: {
+        description:
+          'What the Aurboda Connect IQ watch app fetches: the configured activity types in display order, with the code the watch writes into the FIT file.',
+        responses: {
+          200: {
+            content: {
+              'application/json': { schema: garminWatchConfigResponseSchema },
+            },
+            description: 'Successful response',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get the Garmin watch app configuration',
+        tags: ['Garmin watch'],
+      },
+    },
   },
   servers: [
     { description: 'Production', url: 'https://aurboda.net/api' },
@@ -1022,6 +1040,7 @@ const openApiDocument = createDocument({
     { description: 'Named and detected locations', name: 'Locations' },
     { description: 'RescueTime productivity data', name: 'Productivity' },
     { description: 'User settings and preferences', name: 'Settings' },
+    { description: 'Configuration for the Aurboda Connect IQ watch app', name: 'Garmin watch' },
     {
       description: 'Data synchronization with external services',
       name: 'Sync',

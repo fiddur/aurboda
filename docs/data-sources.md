@@ -37,6 +37,8 @@ Aurboda aggregates health, productivity, and location data from multiple sources
 
 **Triggered enrichment** ([#1080](https://github.com/fiddur/aurboda/issues/1080)): when the Android app delivers a Health Connect session written by an app we also sync directly — Garmin Connect (`com.garmin.android.apps.connectmobile`) or Gravl (`com.liteup.getgains`) — the session is stored under that provider's identity and an enrichment job fetches the provider's own detail right away (Gravl's sets, Garmin's summary + per-second detail, Garmin's sleep record). Polling remains the fallback for devices without Health Connect and for edits made after the fact. See [Health Connect → Source identity](./health-connect.md#source-identity).
 
+**Garmin watch app**: sessions recorded with the [Aurboda watch app](./garmin-watch-app.md) on a Garmin watch come in through the Garmin Connect import, typed as the Aurboda activity type chosen on the watch.
+
 **Push-based sources** (ActivityWatch, Health Connect, OwnTracks) receive data from agents/apps:
 
 - Data is sent by a local agent or app via `POST /api/sync/{provider}`

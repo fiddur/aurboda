@@ -1,6 +1,8 @@
 import type { IActivity } from '@fiddur/garmin-connect/dist/garmin/types/activity'
 import type { GarminNapDTO, SleepData } from '@fiddur/garmin-connect/dist/garmin/types/sleep'
 
+import { garminWatchFitFields } from '@aurboda/api-spec'
+
 import type { Activity, Location, RawRecord, TimeSeriesPoint } from '../../db/types.ts'
 import type { ActivitySpan } from '../gps-precedence.ts'
 import type {
@@ -19,6 +21,7 @@ import {
   activityTypeExists,
   adoptLegacyActivity,
   deleteGarminActivityWithWrongType,
+  findActivityByExternalId,
   insertActivity,
   insertLocations,
   insertRawRecord,
@@ -67,6 +70,7 @@ export interface GarminProcessDeps {
   auditInfo: typeof auditInfo
   auditWarn: typeof auditWarn
   deleteGarminActivityWithWrongType: typeof deleteGarminActivityWithWrongType
+  findActivityByExternalId: typeof findActivityByExternalId
   insertActivity: typeof insertActivity
   insertLocations: typeof insertLocations
   insertRawRecord: typeof insertRawRecord
@@ -91,6 +95,7 @@ const defaultDeps: GarminProcessDeps = {
   auditInfo,
   auditWarn,
   deleteGarminActivityWithWrongType,
+  findActivityByExternalId,
   insertActivity,
   insertLocations,
   insertRawRecord,
@@ -495,6 +500,26 @@ const processBodyBattery = async (
   return count
 }
 
+/**
+ * The type the Aurboda watch app gave an activity on an earlier detail pass.
+ * The summary upsert overwrites `activity_type` and `title`, so without this a
+ * re-sync would put Garmin's own sport back.
+ */
+const keptGarminWatchType = async (
+  user: string,
+  existing: Activity | null,
+  deps: GarminProcessDeps,
+): Promise<{ activity_type: string; session_name?: string } | null> => {
+  const activityType = existing?.data?.garmin_watch_type
+  if (typeof activityType !== 'string' || activityType === '') return null
+  if (!(await deps.activityTypeExists(user, activityType))) return null
+  const sessionName = existing?.data?.garmin_watch_session_name
+  return {
+    activity_type: activityType,
+    ...(typeof sessionName === 'string' && sessionName !== '' ? { session_name: sessionName } : {}),
+  }
+}
+
 const processActivity = async (
   user: string,
   act: IActivity,
@@ -509,8 +534,15 @@ const processActivity = async (
   await deps.insertRawRecord(user, makeRaw('garmin_activity', externalId, startTime, act))
 
   const activityTypeKey = act.activityType?.typeKey ?? 'unknown'
-  const resolved = await resolveActivityType(user, activityTypeKey, deps, typeCache)
-  const exerciseTitle = act.activityName || activityTypeKey
+  const watchType = await keptGarminWatchType(
+    user,
+    await deps.findActivityByExternalId(user, 'garmin', externalId),
+    deps,
+  )
+  const resolved: ResolvedActivityType = watchType
+    ? { activity_type: watchType.activity_type }
+    : await resolveActivityType(user, activityTypeKey, deps, typeCache)
+  const exerciseTitle = watchType?.session_name ?? (act.activityName || activityTypeKey)
 
   // Legacy rows (no external_id) with a different type are removed so a
   // re-sync after a type-mapping change doesn't leave a duplicate; keyed rows
@@ -739,9 +771,10 @@ const extractDetailPoints = (
   metrics: unknown[],
   time: Date,
   indexMap: Map<string, number>,
+  metricMap: Record<string, DetailMetricMapping>,
 ): TimeSeriesPoint[] => {
   const points: TimeSeriesPoint[] = []
-  for (const [garminKey, mapping] of Object.entries(DETAIL_METRIC_MAP)) {
+  for (const [garminKey, mapping] of Object.entries(metricMap)) {
     const idx = indexMap.get(garminKey)
     if (idx === undefined) continue
     const raw = extractNumericValue(metrics[idx])
@@ -784,12 +817,64 @@ const extractPolylineGps = (data: GarminActivityDetailResponse): Location[] => {
   return gpsPoints
 }
 
+/** Garmin's key for a Connect IQ developer field in activity details, e.g. `connectIQDeveloperField-07`. */
+export const garminDeveloperFieldKey = (fieldNumber: number): string =>
+  `connectIQDeveloperField-${String(fieldNumber).padStart(2, '0')}`
+
+/**
+ * The Aurboda activity type code the watch app wrote on every record, or null
+ * when the activity was not recorded by it. The most frequent value wins, so a
+ * few records without the field (before the first write) do not matter.
+ */
+export const extractGarminWatchTypeCode = (data: GarminActivityDetailResponse): number | null => {
+  const idx = buildMetricIndexMap(data.metricDescriptors).get(
+    garminDeveloperFieldKey(garminWatchFitFields.activity_type_code),
+  )
+  if (idx === undefined) return null
+
+  const counts = new Map<number, number>()
+  for (const entry of data.activityDetailMetrics ?? []) {
+    const value = extractNumericValue(entry.metrics[idx])
+    if (value == null || !Number.isInteger(value) || value <= 0) continue
+    counts.set(value, (counts.get(value) ?? 0) + 1)
+  }
+
+  let best: number | null = null
+  let bestCount = 0
+  for (const [value, count] of counts) {
+    if (count > bestCount) {
+      best = value
+      bestCount = count
+    }
+  }
+  return best
+}
+
+/**
+ * The detail mappings for one activity. The watch app's stress field is only
+ * trusted alongside its type field, since other Connect IQ apps (Meditate)
+ * write their own numbered fields, and Garmin's own stress wins when present.
+ */
+const detailMetricMapFor = (
+  indexMap: Map<string, number>,
+  watchTypeCode: number | null,
+): Record<string, DetailMetricMapping> =>
+  watchTypeCode != null && !indexMap.has('directCurrentStress')
+    ? {
+        ...DETAIL_METRIC_MAP,
+        [garminDeveloperFieldKey(garminWatchFitFields.stress)]: { metric: 'stress_level', unit: 'score' },
+      }
+    : DETAIL_METRIC_MAP
+
 const extractMetricsAndGps = (
   data: GarminActivityDetailResponse,
-): { gpsPoints: Location[]; points: TimeSeriesPoint[] } => {
+): { gpsPoints: Location[]; points: TimeSeriesPoint[]; watchTypeCode: number | null } => {
   const indexMap = buildMetricIndexMap(data.metricDescriptors)
   const tsIdx = indexMap.get('directTimestamp')
-  if (tsIdx === undefined) return { gpsPoints: [], points: [] }
+  if (tsIdx === undefined) return { gpsPoints: [], points: [], watchTypeCode: null }
+
+  const watchTypeCode = extractGarminWatchTypeCode(data)
+  const metricMap = detailMetricMapFor(indexMap, watchTypeCode)
 
   const latIdx = indexMap.get('directLatitude')
   const lonIdx = indexMap.get('directLongitude')
@@ -803,7 +888,7 @@ const extractMetricsAndGps = (
     if (!ts || ts <= 0) continue
     const time = new Date(ts)
 
-    points.push(...extractDetailPoints(entry.metrics, time, indexMap))
+    points.push(...extractDetailPoints(entry.metrics, time, indexMap, metricMap))
 
     // Extract GPS, downsampled to ~1 point per minute
     if (latIdx !== undefined && lonIdx !== undefined && ts - lastGpsTime >= GPS_DOWNSAMPLE_MS) {
@@ -819,24 +904,32 @@ const extractMetricsAndGps = (
     gpsPoints.push(...extractPolylineGps(data))
   }
 
-  return { gpsPoints, points }
+  return { gpsPoints, points, watchTypeCode }
 }
+
+export interface ProcessedActivityDetail {
+  points: number
+  /** Aurboda watch type code from the FIT developer field, null when the watch app did not record it. */
+  watch_type_code: number | null
+}
+
+const emptyDetail: ProcessedActivityDetail = { points: 0, watch_type_code: null }
 
 export const processActivityDetail = async (
   user: string,
   data: GarminActivityDetailResponse,
   { activitySpan, deps = defaultDeps }: ProcessActivityDetailOptions = {},
-): Promise<number> => {
-  if (!data.activityDetailMetrics?.length) return 0
+): Promise<ProcessedActivityDetail> => {
+  if (!data.activityDetailMetrics?.length) return emptyDetail
 
   const indexMap = buildMetricIndexMap(data.metricDescriptors)
   const tsIdx = indexMap.get('directTimestamp')
-  if (tsIdx === undefined) return 0
+  if (tsIdx === undefined) return emptyDetail
 
   const firstTs = extractNumericValue(data.activityDetailMetrics[0]!.metrics[tsIdx])
-  if (!firstTs) return 0
+  if (!firstTs) return emptyDetail
 
-  const { gpsPoints, points } = extractMetricsAndGps(data)
+  const { gpsPoints, points, watchTypeCode } = extractMetricsAndGps(data)
 
   await deps.insertRawRecord(
     user,
@@ -867,5 +960,5 @@ export const processActivityDetail = async (
     }
   }
 
-  return points.length
+  return { points: points.length, watch_type_code: watchTypeCode }
 }

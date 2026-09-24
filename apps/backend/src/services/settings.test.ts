@@ -15,6 +15,7 @@ import {
 } from './settings.ts'
 
 vi.mock('../db', () => ({
+  activityTypeExists: vi.fn().mockResolvedValue(true),
   getGoals: vi.fn().mockResolvedValue([]),
   getOAuthToken: vi.fn(),
   getUserSettings: vi.fn(),
@@ -240,6 +241,52 @@ describe('validateAndUpdateSettings', () => {
     expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', { lastfm_username: 'bob' }, [
       'timeline_show_replies',
     ])
+  })
+
+  test('stores garmin_watch_types when every activity type exists', async () => {
+    const watchTypes = [
+      { activity_type: 'sex', code: 1, fit_sport: 10, fit_sub_sport: 43, session_name: 'Sex' },
+      { activity_type: 'meditation', code: 2, fit_sport: 67, fit_sub_sport: 0, session_name: 'Meditate' },
+    ]
+    vi.mocked(db.activityTypeExists).mockResolvedValue(true)
+    vi.mocked(db.getUserSettings).mockResolvedValue({ garmin_watch_types: watchTypes })
+    vi.mocked(db.upsertUserSettings).mockResolvedValue({ garmin_watch_types: watchTypes })
+    vi.mocked(db.getOAuthToken).mockResolvedValue(null)
+
+    const result = await validateAndUpdateSettings('testuser', { garmin_watch_types: watchTypes })
+
+    expect(result.success).toBe(true)
+    expect(result.garmin_watch_types).toEqual(watchTypes)
+    expect(db.activityTypeExists).toHaveBeenCalledWith('testuser', 'sex')
+    expect(db.activityTypeExists).toHaveBeenCalledWith('testuser', 'meditation')
+    expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', { garmin_watch_types: watchTypes }, [])
+  })
+
+  test('rejects garmin_watch_types naming an unknown activity type', async () => {
+    vi.mocked(db.activityTypeExists).mockImplementation(async (_user, name) => name !== 'nonexistent')
+
+    const result = await validateAndUpdateSettings('testuser', {
+      garmin_watch_types: [
+        { activity_type: 'yoga', code: 1, fit_sport: 10, fit_sub_sport: 43, session_name: 'Yoga' },
+        { activity_type: 'nonexistent', code: 2, fit_sport: 0, fit_sub_sport: 0, session_name: 'Nope' },
+      ],
+    })
+
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('nonexistent')
+    expect(db.upsertUserSettings).not.toHaveBeenCalled()
+  })
+
+  test('clears garmin_watch_types when set to null', async () => {
+    vi.mocked(db.getUserSettings).mockResolvedValue({})
+    vi.mocked(db.upsertUserSettings).mockResolvedValue({})
+    vi.mocked(db.getOAuthToken).mockResolvedValue(null)
+
+    const result = await validateAndUpdateSettings('testuser', { garmin_watch_types: null })
+
+    expect(result.success).toBe(true)
+    expect(result.garmin_watch_types).toEqual([])
+    expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', {}, ['garmin_watch_types'])
   })
 
   test('updates HR zones with valid input', async () => {

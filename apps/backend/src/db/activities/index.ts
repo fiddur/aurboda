@@ -9,6 +9,7 @@ export { backfillSuperseded, materializeSuperseded } from './supersession.ts'
 
 export {
   adoptLegacyActivity,
+  applyGarminWatchType,
   deleteActivity,
   deleteGarminActivityWithWrongType,
   hardDeleteActivitiesByExternalIdPrefix,

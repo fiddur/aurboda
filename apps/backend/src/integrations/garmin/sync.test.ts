@@ -2,6 +2,9 @@ import { subDays } from 'date-fns'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 import * as db from '../../db/index.ts'
+import * as audit from '../../services/audit-log.ts'
+import * as garminWatch from '../../services/garmin-watch.ts'
+import { processActivityDetail } from './process.ts'
 import {
   calculateRetryAfter,
   garminDataTypes,
@@ -15,7 +18,9 @@ import {
 vi.mock('../../db/index.ts', () => ({
   activityTypeExists: vi.fn().mockResolvedValue(true),
   adoptLegacyActivity: vi.fn().mockResolvedValue(null),
+  applyGarminWatchType: vi.fn().mockResolvedValue(true),
   deleteGarminActivityWithWrongType: vi.fn().mockResolvedValue(null),
+  findActivityByExternalId: vi.fn().mockResolvedValue(null),
   getActivitiesNeedingDetail: vi.fn().mockResolvedValue([]),
   getSyncState: vi.fn(),
   insertActivity: vi.fn(),
@@ -32,10 +37,15 @@ vi.mock('./process', async (importOriginal) => {
   const actual = (await importOriginal()) as Record<string, unknown>
   return {
     ...actual,
-    processActivityDetail: vi.fn().mockResolvedValue(0),
+    processActivityDetail: vi.fn().mockResolvedValue({ points: 0, watch_type_code: null }),
     processGarminData: vi.fn().mockResolvedValue(1),
   }
 })
+
+vi.mock('../../services/garmin-watch', async (importOriginal) => ({
+  ...((await importOriginal()) as Record<string, unknown>),
+  getGarminWatchTypes: vi.fn().mockResolvedValue([]),
+}))
 
 vi.mock('../../services/audit-log', () => ({
   auditError: vi.fn(),
@@ -296,6 +306,65 @@ describe('syncActivityDetails', () => {
     expect(db.getActivitiesNeedingDetail).toHaveBeenCalledWith(user, { forceAll: false })
     expect(mockGarmin.getActivityDetail).toHaveBeenCalledWith(user, 12345)
     expect(db.markActivityDetailSynced).toHaveBeenCalledWith(user, 'test-id')
+  })
+
+  const watchActivity = {
+    activity_type: 'yoga' as const,
+    data: { garmin_activity_id: 777 },
+    end_time: new Date(),
+    id: 'watch-id',
+    source: 'garmin' as const,
+    start_time: new Date(),
+  }
+  const meditateEntry = {
+    activity_type: 'meditation',
+    code: 3,
+    fit_sport: 67,
+    fit_sub_sport: 0,
+    session_name: 'Meditate',
+  }
+
+  test('applies the watch type for a known code before marking the detail synced', async () => {
+    vi.mocked(db.getActivitiesNeedingDetail).mockResolvedValue([watchActivity])
+    vi.mocked(processActivityDetail).mockResolvedValueOnce({ points: 10, watch_type_code: 3 })
+    vi.mocked(garminWatch.getGarminWatchTypes).mockResolvedValueOnce([meditateEntry])
+
+    await syncActivityDetails(user, createMockGarmin() as never)
+
+    expect(db.applyGarminWatchType).toHaveBeenCalledWith(user, 'watch-id', meditateEntry)
+    expect(audit.auditInfo).toHaveBeenCalledWith(
+      user,
+      'sync',
+      '⌚ Garmin watch session typed as meditation',
+      expect.objectContaining({ code: 3, garmin_activity_id: 777 }),
+    )
+    expect(db.markActivityDetailSynced).toHaveBeenCalledWith(user, 'watch-id')
+  })
+
+  test('warns and leaves the activity alone for an unknown code', async () => {
+    vi.mocked(db.getActivitiesNeedingDetail).mockResolvedValue([watchActivity])
+    vi.mocked(processActivityDetail).mockResolvedValueOnce({ points: 10, watch_type_code: 99 })
+    vi.mocked(garminWatch.getGarminWatchTypes).mockResolvedValueOnce([meditateEntry])
+
+    await syncActivityDetails(user, createMockGarmin() as never)
+
+    expect(db.applyGarminWatchType).not.toHaveBeenCalled()
+    expect(audit.auditWarn).toHaveBeenCalledWith(
+      user,
+      'sync',
+      '⚠️ Unknown Aurboda watch type code 99 on Garmin activity 777',
+      expect.objectContaining({ code: 99 }),
+    )
+    expect(db.markActivityDetailSynced).toHaveBeenCalledWith(user, 'watch-id')
+  })
+
+  test('does not look up watch types for an activity the watch app did not record', async () => {
+    vi.mocked(db.getActivitiesNeedingDetail).mockResolvedValue([watchActivity])
+
+    await syncActivityDetails(user, createMockGarmin() as never)
+
+    expect(garminWatch.getGarminWatchTypes).not.toHaveBeenCalled()
+    expect(db.applyGarminWatchType).not.toHaveBeenCalled()
   })
 
   test('passes forceAll when fullResync is true', async () => {

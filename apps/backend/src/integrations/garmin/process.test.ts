@@ -4,7 +4,13 @@ import type { GarminActivityDetailResponse } from './client.ts'
 import type { GarminProcessDeps } from './process.ts'
 
 import { activityTrackSources } from '../gps-precedence.ts'
-import { extractNumericValue, processActivityDetail, processGarminData } from './process.ts'
+import {
+  extractGarminWatchTypeCode,
+  extractNumericValue,
+  garminDeveloperFieldKey,
+  processActivityDetail,
+  processGarminData,
+} from './process.ts'
 
 /** Activity types the mocked activity_type_definitions table contains. */
 const definedActivityTypes = new Set([
@@ -23,6 +29,7 @@ const mockDeps: GarminProcessDeps = {
   auditWarn: vi.fn(),
   adoptLegacyActivity: vi.fn().mockResolvedValue(null),
   deleteGarminActivityWithWrongType: vi.fn().mockResolvedValue(null),
+  findActivityByExternalId: vi.fn().mockResolvedValue(null),
   insertActivity: vi.fn().mockResolvedValue(undefined),
   insertLocations: vi.fn().mockResolvedValue(undefined),
   insertRawRecord: vi.fn().mockResolvedValue(undefined),
@@ -887,6 +894,50 @@ describe('processGarminData', () => {
       expect(activityArg.end_time).toEqual(expectedEnd)
     })
 
+    test('a re-sync keeps the type and title the watch app gave the activity', async () => {
+      vi.mocked(mockDeps.findActivityByExternalId).mockResolvedValueOnce({
+        activity_type: 'meditation',
+        data: {
+          garmin_watch_code: 3,
+          garmin_watch_session_name: 'Meditate',
+          garmin_watch_type: 'meditation',
+        },
+        id: 'existing-id',
+        source: 'garmin',
+        start_time: new Date('2025-01-15T07:00:00.000'),
+      })
+
+      await processGarminData(
+        user,
+        'activities',
+        [makeActivity({ activityName: 'Yoga', activityType: { typeKey: 'kundalini' } })],
+        mockDeps,
+      )
+
+      expect(mockDeps.findActivityByExternalId).toHaveBeenCalledWith(user, 'garmin', 'garmin-activity-12345')
+      const activityArg = vi.mocked(mockDeps.insertActivity).mock.calls[0]![1]
+      expect(activityArg.activity_type).toBe('meditation')
+      expect(activityArg.title).toBe('Meditate')
+      expect(activityArg.data).not.toHaveProperty('garmin_type_key')
+      expect(mockDeps.auditWarn).not.toHaveBeenCalled()
+    })
+
+    test('a kept watch type that no longer exists falls back to the Garmin type', async () => {
+      vi.mocked(mockDeps.findActivityByExternalId).mockResolvedValueOnce({
+        activity_type: 'deleted_type',
+        data: { garmin_watch_session_name: 'Gone', garmin_watch_type: 'deleted_type' },
+        id: 'existing-id',
+        source: 'garmin',
+        start_time: new Date('2025-01-15T07:00:00.000'),
+      })
+
+      await processGarminData(user, 'activities', [makeActivity()], mockDeps)
+
+      const activityArg = vi.mocked(mockDeps.insertActivity).mock.calls[0]![1]
+      expect(activityArg.activity_type).toBe('running')
+      expect(activityArg.title).toBe('Morning Run')
+    })
+
     test('maps meditation typeKey to meditation activity_type', async () => {
       await processGarminData(
         user,
@@ -1383,7 +1434,7 @@ describe('processActivityDetail', () => {
 
   test('returns number of time series points inserted', async () => {
     const result = await processActivityDetail(user, makeDetail(), { deps: mockDeps })
-    expect(result).toBe(12)
+    expect(result).toEqual({ points: 12, watch_type_code: null })
   })
 
   test('skips metrics with zero values', async () => {
@@ -1447,7 +1498,7 @@ describe('processActivityDetail', () => {
   test('returns 0 for empty activityDetailMetrics', async () => {
     const detail = makeDetail({ activityDetailMetrics: [] })
     const result = await processActivityDetail(user, detail, { deps: mockDeps })
-    expect(result).toBe(0)
+    expect(result).toEqual({ points: 0, watch_type_code: null })
     expect(mockDeps.insertTimeSeries).not.toHaveBeenCalled()
   })
 
@@ -1458,7 +1509,7 @@ describe('processActivityDetail', () => {
     })
 
     const result = await processActivityDetail(user, detail, { deps: mockDeps })
-    expect(result).toBe(0)
+    expect(result).toEqual({ points: 0, watch_type_code: null })
     expect(mockDeps.insertTimeSeries).not.toHaveBeenCalled()
   })
 
@@ -1786,6 +1837,96 @@ describe('processActivityDetail', () => {
       { lat: 57.65, lon: 12.62, source: 'garmin', time: new Date(1700000001000) },
       { lat: 57.66, lon: 12.63, source: 'garmin', time: new Date(1700000062000) },
     ])
+  })
+})
+
+describe('Aurboda watch app developer fields', () => {
+  const user = 'testuser'
+  const typeKey = garminDeveloperFieldKey(40)
+  const stressKey = garminDeveloperFieldKey(41)
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  const makeWatchDetail = (keys: string[], rows: (number | null)[][]): GarminActivityDetailResponse => ({
+    activityDetailMetrics: rows.map((metrics) => ({ metrics: metrics as number[] })),
+    activityId: 555,
+    metricDescriptors: keys.map((key, metricsIndex) => ({
+      key,
+      metricsIndex,
+      unit: { key: 'dimensionless' },
+    })),
+  })
+
+  test('builds the two-digit developer field key Garmin uses', () => {
+    expect(garminDeveloperFieldKey(7)).toBe('connectIQDeveloperField-07')
+    expect(garminDeveloperFieldKey(40)).toBe('connectIQDeveloperField-40')
+  })
+
+  test('takes the most frequent type code and maps the stress field when Garmin has none', async () => {
+    const detail = makeWatchDetail(
+      ['directTimestamp', 'directHeartRate', typeKey, stressKey],
+      [
+        [1700000001000, 70, null, 0],
+        [1700000002000, 71, 12, 35],
+        [1700000003000, 72, 12, 40],
+      ],
+    )
+
+    const result = await processActivityDetail(user, detail, { deps: mockDeps })
+
+    expect(result.watch_type_code).toBe(12)
+    const points = vi.mocked(mockDeps.insertTimeSeries).mock.calls[0]![1]
+    const stress = points.filter((p) => p.metric === 'stress_level')
+    expect(stress).toEqual([
+      { metric: 'stress_level', source: 'garmin', time: new Date(1700000002000), unit: 'score', value: 35 },
+      { metric: 'stress_level', source: 'garmin', time: new Date(1700000003000), unit: 'score', value: 40 },
+    ])
+    expect(result.points).toBe(5)
+  })
+
+  test("ignores the stress field when Garmin's own stress is present", async () => {
+    const detail = makeWatchDetail(
+      ['directTimestamp', 'directCurrentStress', typeKey, stressKey],
+      [
+        [1700000001000, 20, 12, 35],
+        [1700000002000, 22, 12, 40],
+      ],
+    )
+
+    await processActivityDetail(user, detail, { deps: mockDeps })
+
+    const points = vi.mocked(mockDeps.insertTimeSeries).mock.calls[0]![1]
+    expect(points.map((p) => p.value)).toEqual([20, 22])
+  })
+
+  test('without the type field, the code is null and the stress field is ignored', async () => {
+    const detail = makeWatchDetail(
+      ['directTimestamp', 'directHeartRate', stressKey],
+      [
+        [1700000001000, 70, 35],
+        [1700000002000, 71, 40],
+      ],
+    )
+
+    const result = await processActivityDetail(user, detail, { deps: mockDeps })
+
+    expect(result).toEqual({ points: 2, watch_type_code: null })
+    const points = vi.mocked(mockDeps.insertTimeSeries).mock.calls[0]![1]
+    expect(points.every((p) => p.metric === 'heart_rate')).toBe(true)
+  })
+
+  test('extractGarminWatchTypeCode reads parsedValue entries and ignores non-integer values', () => {
+    const detail = makeWatchDetail(
+      ['directTimestamp', typeKey],
+      [
+        [1700000001000, 4.5],
+        [1700000002000, { parsedValue: 9 } as unknown as number],
+      ],
+    )
+
+    expect(extractGarminWatchTypeCode(detail)).toBe(9)
   })
 })
 

@@ -33,6 +33,10 @@ Garmin labels each activity with a `typeKey` (e.g. `running`, `indoor_rowing`, `
 
 A degraded type is recorded in the audit log as a warning (once per distinct key per sync), so new Garmin sports surface there rather than only in `data.garmin_type_key`. A failure on one activity is logged as an error and does not stop the remaining activities in the batch.
 
+### Watch app
+
+Sessions recorded with the [Aurboda watch app](./garmin-watch-app.md) carry their Aurboda activity type in a Connect IQ developer field. The activity detail pass reads it and retypes the activity, and later summary syncs keep that type instead of Garmin's sport. The same app records stress during the session, stored as `stress_level` when Garmin has none of its own.
+
 ## GPS
 
 Activity GPS comes from the activity detail API, downsampled to 60-second intervals. It supersedes coarser tracking from other sources (e.g. OwnTracks phone positions) for the activity's whole span -- see [GPS Precedence](./data-sources.md#gps-precedence).

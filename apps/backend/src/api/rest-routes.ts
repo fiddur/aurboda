@@ -27,6 +27,7 @@ import type { AnyMiddleware } from '../typed-router.ts'
 
 import { getFeedPostById, getLocations, getTimeSeries, markActivityDetailSynced } from '../db/index.ts'
 import { processActivityDetail } from '../integrations/garmin/process.ts'
+import { applyGarminWatchTypeCode } from '../integrations/garmin/sync.ts'
 import { createActivitiesRouter } from '../routes/activities-router.ts'
 import { createActivityTypesRouter } from '../routes/activity-types-router.ts'
 import { createAdminRouter } from '../routes/admin-router.ts'
@@ -44,6 +45,7 @@ import { createFeedImageRouter } from '../routes/feed-image-router.ts'
 import { createFeedPublicRouter } from '../routes/feed-public-router.ts'
 import { createFeedRouter, type FeedDeliver } from '../routes/feed-router.ts'
 import { createFoodItemsRouter } from '../routes/food-items-router.ts'
+import { createGarminWatchRouter } from '../routes/garmin-watch-router.ts'
 import { createIconsRouter } from '../routes/icons-router.ts'
 import { createImportsRouter } from '../routes/imports-router.ts'
 import { createLocationsRouter } from '../routes/locations-router.ts'
@@ -160,7 +162,8 @@ export const mountRestRouters = ({
       activityNotifier,
       async (user, activityId, garminActivityId, activitySpan) => {
         const detail = await garmin.getActivityDetail(user, garminActivityId)
-        const points = await processActivityDetail(user, detail, { activitySpan })
+        const { points, watch_type_code } = await processActivityDetail(user, detail, { activitySpan })
+        await applyGarminWatchTypeCode(user, activityId, garminActivityId, watch_type_code)
         await markActivityDetailSynced(user, activityId)
         return points
       },
@@ -175,6 +178,7 @@ export const mountRestRouters = ({
   httpd.use('/autoshare-rules', createAutoshareRulesRouter(authMiddleware, autosharePreviewDeps))
   httpd.use('/locations', createLocationsRouter(authMiddleware))
   httpd.use(createSettingsRouter(authMiddleware))
+  httpd.use('/garmin-watch', createGarminWatchRouter(authMiddleware))
   httpd.use(createAuditLogRouter(authMiddleware))
   httpd.use(createRawRecordsRouter(authMiddleware))
   httpd.use('/dashboard', createDashboardRouter(authMiddleware))

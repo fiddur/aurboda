@@ -471,6 +471,35 @@ export const adoptLegacyActivity = async (
   return null
 }
 
+/**
+ * Retype a Garmin activity recorded by the Aurboda watch app. The `garmin_watch_*`
+ * keys in `data` are what the summary sync reads to keep this type and title,
+ * since its upsert would otherwise put Garmin's own sport back.
+ */
+export const applyGarminWatchType = async (
+  user: string,
+  id: string,
+  watchType: { activity_type: string; code: number; session_name: string },
+): Promise<boolean> => {
+  const result = await query<{ start_time: Date }>(
+    user,
+    `UPDATE activities SET
+       activity_type = $2::text,
+       title = $3::text,
+       data = COALESCE(data, '{}'::jsonb) || jsonb_build_object(
+         'garmin_watch_type', $2::text,
+         'garmin_watch_code', $4::int,
+         'garmin_watch_session_name', $3::text
+       )
+     WHERE id = $1 AND deleted_at IS NULL
+     RETURNING start_time`,
+    [id, watchType.activity_type, watchType.session_name, watchType.code],
+  )
+  if (result.rows.length === 0) return false
+  await materializeSuperseded(user, result.rows[0].start_time)
+  return true
+}
+
 /** Mark an activity's detail data as synced using JSONB merge (preserves existing data). */
 export const markActivityDetailSynced = async (user: string, id: string): Promise<void> => {
   await query(user, `UPDATE activities SET data = data || '{"detail_synced": true}'::jsonb WHERE id = $1`, [

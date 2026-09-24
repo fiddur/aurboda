@@ -4,6 +4,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import {
   adoptLegacyActivity,
+  applyGarminWatchType,
   deleteActivity,
   deleteGarminActivityWithWrongType,
   findActivityByExternalId,
@@ -1199,6 +1200,58 @@ describe('Activities Integration Tests', () => {
       expect(await getActivityById(user, keyedId!)).not.toBeNull()
     })
   })
+  describe('applyGarminWatchType', () => {
+    test('retypes the activity, sets the title and marks it, keeping the rest of data', async () => {
+      const user = getTestUser()
+      const id = await insertActivity(user, {
+        activity_type: 'yoga',
+        data: { average_hr: 80, garmin_activity_id: 42 },
+        external_id: 'garmin-activity-42',
+        source: 'garmin',
+        start_time: new Date('2026-09-06T20:00:00Z'),
+        title: 'Yoga',
+      })
+
+      expect(
+        await applyGarminWatchType(user, id, {
+          activity_type: 'meditation',
+          code: 3,
+          session_name: 'Meditate',
+        }),
+      ).toBe(true)
+
+      const updated = await getActivityById(user, id)
+      expect(updated).toMatchObject({ activity_type: 'meditation', title: 'Meditate' })
+      expect(updated?.data).toMatchObject({
+        average_hr: 80,
+        garmin_activity_id: 42,
+        garmin_watch_code: 3,
+        garmin_watch_session_name: 'Meditate',
+        garmin_watch_type: 'meditation',
+      })
+    })
+
+    test('leaves a deleted activity alone', async () => {
+      const user = getTestUser()
+      const id = await insertActivity(user, {
+        activity_type: 'yoga',
+        external_id: 'garmin-activity-43',
+        source: 'garmin',
+        start_time: new Date('2026-09-06T21:00:00Z'),
+      })
+      await deleteActivity(user, id)
+
+      expect(
+        await applyGarminWatchType(user, id, {
+          activity_type: 'meditation',
+          code: 3,
+          session_name: 'Meditate',
+        }),
+      ).toBe(false)
+      expect((await getActivityById(user, id, true))?.activity_type).toBe('yoga')
+    })
+  })
+
   describe('findActivityByExternalId', () => {
     test('returns the live row for a provider identity and null otherwise', async () => {
       const user = getTestUser()
