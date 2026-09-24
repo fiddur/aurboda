@@ -47,6 +47,11 @@ import {
 } from '../db/sensitivities.ts'
 import { getSharedFoodItemOverridesByIds } from '../db/shared-food-item-overrides.ts'
 
+/**
+ * `MergedFoodItem` is intentionally the union of user and central entity
+ * types. Both have the same nutrient shape; the service just promises that
+ * the row came from one of the two stores.
+ */
 export type MergedFoodItem = FoodItemEntity | SharedFoodItemEntity
 
 export interface ResolvedIngredient {

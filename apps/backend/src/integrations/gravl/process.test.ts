@@ -121,6 +121,7 @@ describe('processGravlWorkout', () => {
     existing: { id: string; data?: Record<string, unknown>; start_time?: Date } | null,
   ): GravlProcessDeps => ({
     adoptLegacyActivity: vi.fn().mockResolvedValue(null),
+    auditInfo: vi.fn(),
     findActivityByExternalId: vi.fn().mockResolvedValue(existing),
     insertActivity: vi.fn().mockResolvedValue('act-1'),
     insertRawRecord: vi.fn(),
@@ -147,6 +148,15 @@ describe('processGravlWorkout', () => {
       'gravl-workout-97248067-7947-4715-8fc9-d0048369a0d0',
     )
     expect(deps.materializeSuperseded).toHaveBeenCalledWith('alice', new Date('2026-09-03T05:16:12Z'))
+    expect(deps.auditInfo).toHaveBeenCalledWith(
+      'alice',
+      'sync',
+      expect.stringContaining('Removed Health Connect copy'),
+      expect.objectContaining({
+        activity_id: 'act-1',
+        workout_id: '97248067-7947-4715-8fc9-d0048369a0d0',
+      }),
+    )
     expect(deps.insertRawRecord).not.toHaveBeenCalled()
     expect(deps.insertActivity).not.toHaveBeenCalled()
     expect(deps.adoptLegacyActivity).not.toHaveBeenCalled()

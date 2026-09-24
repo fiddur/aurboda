@@ -641,6 +641,7 @@ const ingestFeedActivity = async (
     // attribution mismatch, uninvolved stranger) has no card of ours to update.
     if (admitted && activity instanceof Update) await refreshBoostCardsOfNote(me, object)
   } catch (error) {
+    // A missing DB is not an error worth a 500: that would invite redelivery retries.
     if (isMissingDatabase(error)) return
     throw error
   }
