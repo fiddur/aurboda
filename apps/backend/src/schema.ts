@@ -209,7 +209,7 @@ export {
  * data fixes that are not expressed in `createTableStatements`. DDL changes are
  * picked up automatically by the fingerprint below.
  */
-export const MIGRATION_REVISION = 2
+export const MIGRATION_REVISION = 3
 
 /**
  * Hash the inputs a migration is derived from. Split out from

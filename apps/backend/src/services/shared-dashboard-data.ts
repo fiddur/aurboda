@@ -27,6 +27,7 @@ import { getActivityImpact } from './correlations/activity-impact.ts'
 import { getBaseline } from './correlations/baseline.ts'
 import { getCustomMetrics } from './custom-metrics.ts'
 import { getGoalsProgress } from './goals.ts'
+import { getLatestSleep } from './latest-sleep.ts'
 import { getPeriodSummary, queryActivities, queryMetrics } from './queries/index.ts'
 import { getEffectiveHrZones } from './settings.ts'
 import { getTrend } from './trends.ts'
@@ -311,6 +312,8 @@ const resolveWidget = async (user: string, widget: DashboardWidget): Promise<Wid
       return resolveHrZones(user, widget.config)
     case 'goal_progress':
       return resolveGoalProgress(user)
+    case 'last_sleep':
+      return { data: await getLatestSleep(user), type: 'last_sleep' }
     case 'quick_link':
       return { data: null, type: 'quick_link' }
   }
@@ -334,6 +337,8 @@ const nullData = (type: DashboardWidget['type']): WidgetData => {
     case 'hr_zones':
       return { data: null, type }
     case 'goal_progress':
+      return { data: null, type }
+    case 'last_sleep':
       return { data: null, type }
     case 'quick_link':
       return { data: null, type }

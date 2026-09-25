@@ -9,7 +9,7 @@
 | Daily Summary      | time_series            | `steps`, `distance`, `floors_climbed`, `calories_active`, `calories_total`, `resting_heart_rate`, `stress_level`, `spo2` |
 | Heart Rate         | time_series            | `heart_rate` (individual samples from heartRateValues)                                                                   |
 | HRV                | time_series            | `hrv_rmssd` (last night average)                                                                                         |
-| Sleep              | activity + time_series | Sleep activity with stage durations; `sleep_score`, `resting_heart_rate`, `hrv_rmssd`, `heart_rate` (sleep HR samples)   |
+| Sleep              | activity + time_series | Sleep activity with stages and durations; `sleep_score`, `resting_heart_rate`, `hrv_rmssd`, `heart_rate` (sleep HR)      |
 | Stress             | time_series            | `stress_level` (overall daily stress)                                                                                    |
 | Body Battery       | time_series            | `body_battery` (from values array or daily charged amount)                                                               |
 | Activities         | activity + time_series | Exercise activities with type, distance, calories, HR, VO2 max; `vo2_max`                                                |
@@ -68,6 +68,8 @@ The sync fetches all 11 data types sequentially. Each data type's API is queried
 Each data type tracks its own sync state, so incremental syncs only fetch new data since the last sync (with a 2-day overlap to catch retroactive edits).
 
 Activities are keyed by `external_id = garmin-activity-<activityId>` and sleep by `garmin-sleep-<calendarDate>` — the same identity the Health Connect processor derives for sessions the Garmin Connect app writes, so both paths share one row (see [Health Connect → Source identity](./health-connect.md#source-identity)). Rows from before external ids existed are claimed on the next sync that touches them rather than duplicated. A type-mapping change still replaces such legacy rows; keyed rows are updated in place so an enriched Health Connect session and its notes survive.
+
+The sleep row's `data.stages` holds the stage timeline in the Health Connect shape (`{ startTime, endTime, stage }`, stages `1` awake, `4` light, `5` deep, `6` REM), mapped from Garmin's `sleepLevels` (`activityLevel` 0 deep, 1 light, 2 REM, 3 awake). A night without levels leaves the key out so a Health Connect timeline already on the row is kept.
 
 Rate limiting (HTTP 429 or similar errors) is handled automatically with exponential backoff (1, 5, 15, 60 minutes). If one data type hits a rate limit, remaining data types are skipped for that sync cycle.
 

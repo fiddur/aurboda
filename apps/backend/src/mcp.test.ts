@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { createAuth } from './auth.ts'
 import * as db from './db/index.ts'
 import { createMcpRouter } from './mcp.ts'
+import * as latestSleep from './services/latest-sleep.ts'
 import * as mutations from './services/mutations.ts'
 import * as queries from './services/queries/index.ts'
 
@@ -95,6 +96,10 @@ vi.mock('./services/deduction-deps', () => ({
     insertActivity: vi.fn().mockResolvedValue(undefined),
     insertRuleRun: vi.fn().mockResolvedValue(undefined),
   }),
+}))
+
+vi.mock('./services/latest-sleep', () => ({
+  getLatestSleep: vi.fn(),
 }))
 
 vi.mock('./oura-sync', () => ({
@@ -443,6 +448,47 @@ describe('MCP Server', () => {
 
       expect(response.status).toBe(200)
       expect(response.toolResult.metrics[0].completeness_percent).toBe(48)
+    })
+  })
+
+  describe('Tool: get_latest_sleep', () => {
+    const callTool = async (app: express.Express, token: string) => {
+      const response = await mcpPost(app)
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          id: 1,
+          jsonrpc: '2.0',
+          method: 'tools/call',
+          params: { arguments: { tz: 'UTC' }, name: 'get_latest_sleep' },
+        })
+      const parsed = parseSSEResponse(response.text) as { result: { content: { text: string }[] } }
+      return { status: response.status, toolResult: JSON.parse(parsed.result.content[0].text) }
+    }
+
+    test('returns the latest sleep for the user', async () => {
+      vi.mocked(latestSleep.getLatestSleep).mockResolvedValue({
+        activity_id: 'sleep-1',
+        end_time: '2026-09-25T05:00:00.000Z',
+        sleep_score: 81,
+        stages: [],
+        start_time: '2026-09-24T21:00:00.000Z',
+        time_in_bed_min: 480,
+      })
+
+      const response = await callTool(createTestApp(), auth.createToken('testuser'))
+
+      expect(response.status).toBe(200)
+      expect(response.toolResult.success).toBe(true)
+      expect(response.toolResult.data).toMatchObject({ activity_id: 'sleep-1', sleep_score: 81 })
+      expect(latestSleep.getLatestSleep).toHaveBeenCalledWith('testuser')
+    })
+
+    test('returns null data without a recent sleep', async () => {
+      vi.mocked(latestSleep.getLatestSleep).mockResolvedValue(null)
+
+      const response = await callTool(createTestApp(), auth.createToken('testuser'))
+
+      expect(response.toolResult.data).toBeNull()
     })
   })
 

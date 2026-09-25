@@ -104,14 +104,14 @@ The app uses Health Connect's **Changes API** with token-based tracking:
 
 Some apps that write to Health Connect are also synced directly by Aurboda, and their records carry the app's own id in `metadata.clientRecordId`. Rather than storing such a session as a `health_connect` activity and letting the provider sync add a second row, the backend stores it **as the provider's activity** ([#1080](https://github.com/fiddur/aurboda/issues/1080)):
 
-| Record                | `metadata.dataOrigin`                   | `metadata.clientRecordId`     | Stored as                                              |
-| --------------------- | --------------------------------------- | ----------------------------- | ------------------------------------------------------ |
-| ExerciseSessionRecord | `com.liteup.getgains` (Gravl)           | `gravl-session-<uuid>`        | `source = 'gravl'`, `external_id = 'gravl-workout-<uuid>'` |
-| ExerciseSessionRecord | `com.garmin.android.apps.connectmobile` | Garmin `activityId`           | `source = 'garmin'`, `external_id = 'garmin-activity-<id>'`, `data.garmin_activity_id` |
-| SleepSessionRecord    | `com.garmin.android.apps.connectmobile` | epoch ms of local midnight    | `source = 'garmin'`, `external_id = 'garmin-sleep-<YYYY-MM-DD>'` |
-| anything else         |                                         |                               | `source = 'health_connect'` (unchanged)                |
+| Record                | `metadata.dataOrigin`                   | `metadata.clientRecordId`  | Stored as                                                                              |
+| --------------------- | --------------------------------------- | -------------------------- | -------------------------------------------------------------------------------------- |
+| ExerciseSessionRecord | `com.liteup.getgains` (Gravl)           | `gravl-session-<uuid>`     | `source = 'gravl'`, `external_id = 'gravl-workout-<uuid>'`                             |
+| ExerciseSessionRecord | `com.garmin.android.apps.connectmobile` | Garmin `activityId`        | `source = 'garmin'`, `external_id = 'garmin-activity-<id>'`, `data.garmin_activity_id` |
+| SleepSessionRecord    | `com.garmin.android.apps.connectmobile` | epoch ms of local midnight | `source = 'garmin'`, `external_id = 'garmin-sleep-<YYYY-MM-DD>'`                       |
+| anything else         |                                         |                            | `source = 'health_connect'` (unchanged)                                                |
 
-The Garmin sleep date comes from the client record id plus the offset in the record's own `startTime`; if the id cannot be read that way the record is stored as a plain `health_connect` row, still merged with the scraper's `garmin` row at query time.
+The Garmin sleep date comes from the client record id plus the offset in the record's own `startTime`, rounded to the nearest midnight: the Android app sends every Health Connect timestamp in UTC (`Z`), so the offset is usually 0, and rounding the local-midnight id recovers the right date for any zone within ±12h (plain truncation filed every night east of UTC one day early). A one-off startup repair (`repair_garmin_sleep_stages_v1`) moved payloads stored under the old rule to their own night. If the id cannot be read that way the record is stored as a plain `health_connect` row, still merged with the scraper's `garmin` row at query time.
 
 The provider's own sync then upserts onto the **same row** (`ON CONFLICT (source, external_id)`) and enriches it: Gravl adds the sets, Garmin adds distance/calories/HR and the per-second detail. Rows written before this existed (no `external_id`) are claimed rather than duplicated: a `garmin` row with the same `garmin_activity_id`, a `health_connect` row with the same client record, or one at the same type and start time.
 

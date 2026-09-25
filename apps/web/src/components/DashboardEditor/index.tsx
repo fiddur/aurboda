@@ -57,6 +57,13 @@ const widgetTemplates: WidgetTemplate[] = [
     type: 'sparkline_card',
   },
   {
+    allowedSections: ['metrics'],
+    defaultConfig: () => ({}),
+    description: 'Latest sleep: score, stages, vitals',
+    label: 'Last night',
+    type: 'last_sleep',
+  },
+  {
     allowedSections: ['metrics', 'charts'],
     defaultConfig: () => ({
       lookback_days: 7,
@@ -369,6 +376,21 @@ export function DashboardEditor({ sectionType, onAddWidget, onClose }: Dashboard
                 />{' '}
                 Compact mode (hide losing-tomorrow info)
               </label>
+            </div>
+          </div>
+        )
+
+      case 'last_sleep':
+        return (
+          <div class="config-form">
+            <div class="form-group">
+              <label>Title (optional)</label>
+              <input
+                type="text"
+                value={(configValues.title as string) ?? ''}
+                onChange={(e) => updateConfig('title', (e.target as HTMLInputElement).value || undefined)}
+                placeholder="Last night"
+              />
             </div>
           </div>
         )
