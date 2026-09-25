@@ -453,7 +453,7 @@ const buildBarDataHref = (
   urlParams.set('to', bucketEnd.toISOString())
   urlParams.set('date', bucketStart.toISOString().slice(0, 10))
   urlParams.set('types', pattern)
-  urlParams.set('hide', 'location,music,meal,report,screentime')
+  urlParams.set('hide', 'location,media,meal,report,screentime')
 
   if (info.series_name && breakdownFields?.length) {
     const values = info.series_name.split(' / ')

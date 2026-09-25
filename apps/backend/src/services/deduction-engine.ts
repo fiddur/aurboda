@@ -308,6 +308,19 @@ const buildMediaDataFor = async (
   }
 }
 
+const withMemoizedMediaPlays = (deps: DeductionEngineDeps): DeductionEngineDeps => {
+  const cache = new Map<string, Promise<MediaPlay[]>>()
+  return {
+    ...deps,
+    getMediaPlays: (user, window) => {
+      const key = `${user}|${window.start.getTime()}|${window.end.getTime()}`
+      const cached = cache.get(key) ?? deps.getMediaPlays(user, window)
+      cache.set(key, cached)
+      return cached
+    },
+  }
+}
+
 export interface EvaluateRuleResult {
   affected_ids: string[]
   would_affect: number
@@ -320,9 +333,10 @@ export const evaluateRule = async (
   user: string,
   rule: DeductionRule,
   window: EvaluationWindow,
-  deps: DeductionEngineDeps,
+  baseDeps: DeductionEngineDeps,
   dryRun = false,
 ): Promise<EvaluateRuleResult> => {
+  const deps = withMemoizedMediaPlays(baseDeps)
   const result = await resolveConditions(user, rule, window, deps)
   if (result.length === 0) return { affected_ids: [], would_affect: 0 }
 

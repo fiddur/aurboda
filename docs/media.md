@@ -87,6 +87,7 @@ Computed at read time, never sent or stored:
 
 - REST: `GET /api/media/plays?start=<iso>&end=<iso>` — plays overlapping the window, sorted by `started_at`.
 - MCP: `query_media_plays` (`start`, `end`, `tz`).
+- Web: the Data page's **Media** rows list the same plays, with played time, ratio and player for MPRIS plays.
 
 ## Rules
 
@@ -127,8 +128,12 @@ The play usually arrives hours before Garmin syncs the activity. Both orders wor
 - **Activity first:** `POST /sync/media` triggers the same evaluation over the plays' span.
 
 Enrichment is idempotent: re-syncs write nothing when the value is unchanged. After editing the rule (say, a new
-`strip_pattern`), re-evaluation overwrites values the rule wrote itself (`data._enriched_by` is the rule id), but
-never a value set by someone else.
+`strip_pattern`, a regular expression of at most 200 characters), re-evaluation overwrites values the rule wrote
+itself (`data._enriched_by` is the rule id), but never a value set by someone else.
+
+`_enriched_by` records only the last rule that enriched an activity. If another enrich rule touches the same
+activity afterwards, the media rule falls back to fill-only for it: it never overwrites a value it cannot tell it
+wrote. To refresh such a value, clear the field on the activity and re-evaluate.
 
 ## Client
 

@@ -2,6 +2,7 @@ import type {
   Activity as ApiActivity,
   DetectedLocation as ApiDetectedLocation,
   Meal as ApiMeal,
+  MediaPlay as ApiMediaPlay,
   PlaceVisit as ApiPlaceVisit,
   ProductivityRecord as ApiProductivityRecord,
   Report as ApiReport,
@@ -138,6 +139,11 @@ export interface Scrobble {
   track: string
   album: string
   recorded_at: Date
+}
+
+export interface MediaPlay extends Omit<ApiMediaPlay, 'started_at' | 'ended_at'> {
+  started_at: Date
+  ended_at?: Date
 }
 
 export interface Meal extends Omit<ApiMeal, 'time' | 'created_at'> {

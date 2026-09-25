@@ -7,6 +7,7 @@ import type { DataFilter, DeductionRuleCondition } from '../../state/api'
 
 import { fetchActivityTypeDefinitions, fetchNamedLocations } from '../../state/api'
 import { ActivityTypePicker } from '../ActivityTypePicker'
+import { positiveOrUndefined } from './positiveOrUndefined'
 import './style.css'
 
 const KIND_LABELS: Record<string, string> = {
@@ -245,8 +246,6 @@ const splitList = (value: string): string[] =>
     .map((s) => s.trim())
     .filter(Boolean)
 
-const optionalNumber = (value: string): number | undefined => (value === '' ? undefined : Number(value))
-
 function MediaBody({
   condition,
   onChange,
@@ -309,9 +308,9 @@ function MediaBody({
           <span style={{ fontSize: '0.85em', opacity: 0.8 }}>Min played (s)</span>
           <input
             type="number"
-            min="0"
-            value={condition.min_played_secs ?? ''}
-            onInput={(e) => onChange({ ...condition, min_played_secs: optionalNumber(inputValue(e)) })}
+            min="1"
+            defaultValue={condition.min_played_secs?.toString() ?? ''}
+            onInput={(e) => onChange({ ...condition, min_played_secs: positiveOrUndefined(inputValue(e)) })}
             class="condition-field-input"
             style={{ width: '80px' }}
           />
@@ -320,11 +319,11 @@ function MediaBody({
           <span style={{ fontSize: '0.85em', opacity: 0.8 }}>Min ratio</span>
           <input
             type="number"
-            min="0"
+            min="0.05"
             max="1"
             step="0.05"
-            value={condition.min_played_ratio ?? ''}
-            onInput={(e) => onChange({ ...condition, min_played_ratio: optionalNumber(inputValue(e)) })}
+            defaultValue={condition.min_played_ratio?.toString() ?? ''}
+            onInput={(e) => onChange({ ...condition, min_played_ratio: positiveOrUndefined(inputValue(e)) })}
             class="condition-field-input"
             style={{ width: '80px' }}
           />

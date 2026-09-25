@@ -63,11 +63,15 @@ In enrich mode, a rule with at least one `media` condition can copy the title of
 - For each enriched activity, the plays matching **every** `media` condition within the activity's matched span are
   considered, and the one with the most `played_secs` wins (ties: the earliest). Several videos in one session
   therefore give the longest one's title.
-- `strip_pattern` is a JavaScript regular expression (flags `giu`); every match is removed, then whitespace is
-  collapsed and trimmed. An empty result writes nothing.
+- `strip_pattern` is a JavaScript regular expression (flags `giu`, at most 200 characters); every match is
+  removed, then whitespace is collapsed and trimmed. An empty result writes nothing.
 - The field is filled when missing, and **overwritten when the rule wrote it before** (`_enriched_by` is this
   rule), so re-evaluating after editing the pattern updates old values. A value set by anyone else is never
   overwritten. Unchanged values are not rewritten.
+- `_enriched_by` holds a single rule id: the last rule that enriched the activity. If another enrich rule later
+  touches the same activity, this rule no longer recognises the value as its own and falls back to fill-only there —
+  it never overwrites a value it did not write. To refresh such a value, clear the field on the activity and
+  re-evaluate.
 - The API rejects `output_media_field` outside enrich mode, without a `media` condition, or with a pattern that does
   not compile.
 

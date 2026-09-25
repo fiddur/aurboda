@@ -140,9 +140,9 @@ export const outputMediaFieldSchema = z
       .meta({
         description: 'Activity data field to write the play title into (snake_case), e.g. "session_name"',
       }),
-    strip_pattern: z.string().optional().meta({
+    strip_pattern: z.string().max(200).optional().meta({
       description:
-        'JavaScript regular expression (flags "giu"); every match is removed from the title before writing, then whitespace is collapsed and trimmed',
+        'JavaScript regular expression (flags "giu", at most 200 characters); every match is removed from the title before writing, then whitespace is collapsed and trimmed',
     }),
   })
   .meta({
