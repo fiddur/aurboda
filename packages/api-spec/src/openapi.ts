@@ -27,7 +27,7 @@ import {
   promoteDetectedLocationBodySchema,
   updateNamedLocationBodySchema,
 } from './schemas/locations.ts'
-import { mediaPlaysQuerySchema, mediaPlaysResponseSchema } from './schemas/media.ts'
+import { mediaPlayResponseSchema, mediaPlaysQuerySchema, mediaPlaysResponseSchema } from './schemas/media.ts'
 import {
   addMetricBodySchema,
   addMetricResponseSchema,
@@ -774,6 +774,30 @@ const openApiDocument = createDocument({
         },
         security: [{ bearerAuth: [] }],
         summary: 'Query media plays',
+        tags: ['Media'],
+      },
+    },
+    '/media/plays/{id}': {
+      get: {
+        description:
+          'One media play by id: an MPRIS play id, or a Last.fm scrobble external id when no MPRIS play has it.',
+        requestParams: {
+          path: z.object({
+            id: z.string().meta({ description: 'Play id (mpris) or scrobble external id (lastfm)' }),
+          }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: mediaPlayResponseSchema } },
+            description: 'Successful response',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get a media play',
         tags: ['Media'],
       },
     },

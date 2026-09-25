@@ -46,24 +46,24 @@ const scrobble: MediaPlay = {
 }
 
 describe('mediaToItem', () => {
-  test('an MPRIS play shows played time, ratio and player, and links to its url', () => {
+  test('an MPRIS play shows played time, ratio and player, and links to its detail page', () => {
     expect(mediaToItem(mpris(), false)).toEqual({
       color: MEDIA_COLOR,
       detail: '10:02 · 29m played (99%) · firefox',
       end: ended,
-      href: 'https://www.truenakedyoga.com/videos/yin-hips',
+      href: '/detail/media/p1',
       label: 'Yin Yoga for Healthy Hips',
       start: started,
       type: 'media',
     })
   })
 
-  test('a Last.fm scrobble reads as time · artist with the track as label', () => {
+  test('a Last.fm scrobble reads as time · artist with the track as label and links to its detail page', () => {
     expect(mediaToItem(scrobble, false)).toEqual({
       color: MEDIA_COLOR,
       detail: '10:02 · Portishead',
       end: undefined,
-      href: undefined,
+      href: '/detail/media/s1',
       label: 'Roads',
       start: started,
       type: 'media',
@@ -90,7 +90,7 @@ describe('mediaToItem', () => {
     expect(mediaToItem(mpris({ title: '', url: '' }), false).label).toBe('Untitled')
   })
 
-  test('links only http(s) urls', () => {
-    expect(mediaToItem(mpris({ url: 'file:///home/me/video.mkv' }), false).href).toBeUndefined()
+  test('encodes the play id in the detail link', () => {
+    expect(mediaToItem(mpris({ id: 'a/b c' }), false).href).toBe('/detail/media/a%2Fb%20c')
   })
 })

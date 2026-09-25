@@ -86,8 +86,12 @@ Computed at read time, never sent or stored:
 ## Querying
 
 - REST: `GET /api/media/plays?start=<iso>&end=<iso>` — plays overlapping the window, sorted by `started_at`.
-- MCP: `query_media_plays` (`start`, `end`, `tz`).
+- REST: `GET /api/media/plays/:id` — one play by id (an MPRIS play id, else a Last.fm scrobble external id); 404
+  when there is none.
+- MCP: `query_media_plays` (`start`, `end`, `tz`) and `get_media_play` (`id`, `tz`).
 - Web: the Data page's **Media** rows list the same plays, with played time, ratio and player for MPRIS plays.
+  Clicking a row opens the play's detail page (`/detail/media/:id`): its fields, the source URL as an external
+  link, the activities that overlap it (e.g. the yoga activity a rule enriched), and the places visited meanwhile.
 
 ## Rules
 
