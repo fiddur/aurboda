@@ -4,6 +4,7 @@ import type { Activity, MediaPlay } from '../../state/api'
 
 import {
   activitiesDuringPlay,
+  activitiesFetchWindow,
   buildMediaPlayFields,
   formatSecs,
   isWebUrl,
@@ -128,6 +129,16 @@ describe('mediaPlayRange', () => {
   })
 })
 
+describe('activitiesFetchWindow', () => {
+  test('reaches back a day before the play and ends with it', () => {
+    expect(activitiesFetchWindow(mpris())).toEqual({ end: ended, start: new Date(2026, 0, 9, 10, 2) })
+    expect(activitiesFetchWindow(scrobble)).toEqual({
+      end: new Date(2026, 0, 10, 10, 3),
+      start: new Date(2026, 0, 9, 10, 2),
+    })
+  })
+})
+
 describe('activitiesDuringPlay', () => {
   test('keeps overlapping activities sorted by start, dropping scrobbles, screen time and others', () => {
     const yoga = activity({ end_time: new Date(2026, 0, 10, 10, 35), id: 'yoga' })
@@ -157,5 +168,21 @@ describe('activitiesDuringPlay', () => {
   test('counts an activity without an end as an instant', () => {
     const instant = activity({ id: 'instant', start_time: new Date(2026, 0, 10, 10, 2, 30) })
     expect(activitiesDuringPlay([instant], scrobble).map((a) => a.id)).toEqual(['instant'])
+  })
+
+  test('keeps an activity that started before the play (#1167)', () => {
+    const yoga = activity({ end_time: new Date(2026, 0, 10, 10, 35), id: 'yoga' })
+    const meditation = activity({
+      activity_type: 'meditation',
+      end_time: new Date(2026, 0, 10, 10, 45),
+      id: 'med',
+      start_time: new Date(2026, 0, 10, 10, 30),
+    })
+    expect(activitiesDuringPlay([meditation, yoga], mpris()).map((a) => a.id)).toEqual(['yoga', 'med'])
+  })
+
+  test('excludes an activity ending exactly when the play starts', () => {
+    const touching = activity({ end_time: started, id: 'touching' })
+    expect(activitiesDuringPlay([touching], mpris())).toEqual([])
   })
 })

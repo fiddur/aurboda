@@ -52,6 +52,14 @@ export const mediaPlaysQuerySchema = z
 
 export type MediaPlaysQuery = z.infer<typeof mediaPlaysQuerySchema>
 
+export const mediaPlayQuerySchema = z
+  .object({
+    id: z.string().min(1).meta({ description: 'Play id; may contain "/" and other reserved characters' }),
+  })
+  .meta({ id: 'MediaPlayQuery' })
+
+export type MediaPlayQuery = z.infer<typeof mediaPlayQuerySchema>
+
 export const mediaPlaysResponseSchema = baseResponseSchema
   .extend({
     data: z

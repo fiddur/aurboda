@@ -1,5 +1,7 @@
 import {
   type MediaPlay,
+  type MediaPlayQuery,
+  mediaPlayQuerySchema,
   type MediaPlayResponse,
   type MediaPlaysQuery,
   mediaPlaysQuerySchema,
@@ -30,14 +32,19 @@ export const createMediaRouter = (
     },
   )
 
-  router.get<{ id: string }, MediaPlayResponse>('/plays/:id', authMiddleware, async (req, res) => {
-    const play = await getPlay(req.user!, req.params.id)
-    if (!play) {
-      res.status(404).json({ error: 'Media play not found', success: false })
-      return
-    }
-    res.json({ data: play, success: true })
-  })
+  router.get<Record<string, never>, MediaPlayResponse, unknown, MediaPlayQuery>(
+    '/play',
+    authMiddleware,
+    validateQuery(mediaPlayQuerySchema),
+    async (req, res) => {
+      const play = await getPlay(req.user!, req.query.id)
+      if (!play) {
+        res.status(404).json({ error: 'Media play not found', success: false })
+        return
+      }
+      res.json({ data: play, success: true })
+    },
+  )
 
   return router
 }

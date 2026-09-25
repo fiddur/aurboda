@@ -4,6 +4,8 @@ import { formatDateTime } from './format-utils'
 
 const POINT_PLAY_MS = 60_000
 
+const ACTIVITY_LOOKBACK_MS = 24 * 60 * 60 * 1000
+
 const EXCLUDED_ACTIVITY_TYPES = new Set(['music_scrobble', 'screentime'])
 
 export const OVERLAP_EXCLUDED_TYPES = [...EXCLUDED_ACTIVITY_TYPES]
@@ -37,6 +39,12 @@ export const mediaPlayRange = (play: MediaPlay): { start: Date; end: Date } => (
   start: play.started_at,
 })
 
+/** GET /activities selects by start time, so reach back far enough to catch activities already running when the play began. */
+export const activitiesFetchWindow = (play: MediaPlay): { start: Date; end: Date } => {
+  const { start, end } = mediaPlayRange(play)
+  return { end, start: new Date(start.getTime() - ACTIVITY_LOOKBACK_MS) }
+}
+
 /** The play's fields worth showing, in display order, skipping unknown and empty ones. */
 export const buildMediaPlayFields = (play: MediaPlay): MediaPlayField[] => {
   const fields: Array<[string, string | null | undefined]> = [
@@ -64,7 +72,7 @@ export const activitiesDuringPlay = (activities: Activity[], play: MediaPlay): A
     .filter((a) => !EXCLUDED_ACTIVITY_TYPES.has(a.activity_type))
     .filter((a) => {
       const aEnd = a.end_time ?? a.start_time
-      return a.start_time < end && aEnd >= start
+      return a.start_time < end && aEnd > start
     })
     .sort((a, b) => a.start_time.getTime() - b.start_time.getTime())
 }

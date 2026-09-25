@@ -2,11 +2,13 @@
  * ConditionBuilder — editable list of AND-combined deduction rule conditions.
  */
 import { useQuery } from '@tanstack/react-query'
+import { useRef } from 'preact/hooks'
 
 import type { DataFilter, DeductionRuleCondition } from '../../state/api'
 
 import { fetchActivityTypeDefinitions, fetchNamedLocations } from '../../state/api'
 import { ActivityTypePicker } from '../ActivityTypePicker'
+import { removeKey, syncKeys } from './conditionKeys'
 import { positiveOrUndefined } from './positiveOrUndefined'
 import './style.css'
 
@@ -478,6 +480,9 @@ function ConditionCard({
   )
 }
 
+let nextConditionKey = 0
+const newConditionKey = () => `condition-${nextConditionKey++}`
+
 export function ConditionBuilder({
   conditions,
   onChange,
@@ -485,6 +490,9 @@ export function ConditionBuilder({
   conditions: DeductionRuleCondition[]
   onChange: (conditions: DeductionRuleCondition[]) => void
 }) {
+  const keysRef = useRef<string[]>([])
+  keysRef.current = syncKeys(keysRef.current, conditions.length, newConditionKey)
+
   const handleChange = (index: number, updated: DeductionRuleCondition) => {
     const next = [...conditions]
     next[index] = updated
@@ -492,6 +500,7 @@ export function ConditionBuilder({
   }
 
   const handleRemove = (index: number) => {
+    keysRef.current = removeKey(keysRef.current, index)
     onChange(conditions.filter((_, i) => i !== index))
   }
 
@@ -502,7 +511,7 @@ export function ConditionBuilder({
   return (
     <div class="condition-builder">
       {conditions.map((condition, i) => (
-        <div key={i}>
+        <div key={keysRef.current[i]}>
           {i > 0 && <div class="condition-and">AND</div>}
           <ConditionCard
             condition={condition}

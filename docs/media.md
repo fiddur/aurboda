@@ -86,8 +86,9 @@ Computed at read time, never sent or stored:
 ## Querying
 
 - REST: `GET /api/media/plays?start=<iso>&end=<iso>` — plays overlapping the window, sorted by `started_at`.
-- REST: `GET /api/media/plays/:id` — one play by id (an MPRIS play id, else a Last.fm scrobble external id); 404
-  when there is none.
+- REST: `GET /api/media/play?id=<id>` — one play by id (an MPRIS play id, else a Last.fm scrobble external id); 404
+  when there is none. The id is a query parameter, not a path segment, because Last.fm ids (`<timestamp>-<track>-<artist>`)
+  can contain `/` (e.g. `AC/DC`), which nginx decodes before proxying.
 - MCP: `query_media_plays` (`start`, `end`, `tz`) and `get_media_play` (`id`, `tz`).
 - Web: the Data page's **Media** rows list the same plays, with played time, ratio and player for MPRIS plays.
   Clicking a row opens the play's detail page (`/detail/media/:id`): its fields, the source URL as an external

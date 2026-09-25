@@ -742,11 +742,10 @@ const VALID_ENTITY_TYPES = new Set<string>(['activity', 'productivity', 'metric'
 export const EntityDetail = () => {
   const { params } = useRoute()
   const rawEntityType = params.type as string
-  const entityId = decodeURIComponent(params.id as string)
+  const entityId = params.id as string
 
   // Tags are now activities — redirect tag routes to activity
-  const entityType: EntityType | 'media' =
-    rawEntityType === 'tag' ? 'activity' : (rawEntityType as EntityType | 'media')
+  const entityType: EntityType = rawEntityType === 'tag' ? 'activity' : (rawEntityType as EntityType)
 
   if (!VALID_ENTITY_TYPES.has(entityType) && rawEntityType !== 'tag') {
     return (
