@@ -14,6 +14,7 @@ import {
   scrobbleRecordToPlay,
   stripTitle,
   validateOutputMediaField,
+  validateRuleShape,
 } from './media-plays.ts'
 
 const mpris = (overrides: Partial<MediaPlay> = {}): MediaPlay => ({
@@ -299,5 +300,34 @@ describe('validateOutputMediaField', () => {
     const existing = { conditions: [media], mode: 'enrich', output_media_field: field }
     expect(mergeRuleUpdate(existing, { mode: 'create' })).toEqual({ ...existing, mode: 'create' })
     expect(mergeRuleUpdate(existing, { output_media_field: null }).output_media_field).toBeNull()
+  })
+})
+
+describe('validateRuleShape', () => {
+  const activity = { activity_type: 'other_workout', kind: 'activity' as const, title: 'sex' }
+
+  test('accepts a retype rule with one activity condition', () => {
+    expect(
+      validateRuleShape({
+        conditions: [activity, { kind: 'location', location_name: 'Home' }],
+        mode: 'retype',
+      }),
+    ).toBeNull()
+  })
+
+  test('rejects a retype rule without an activity condition', () => {
+    expect(
+      validateRuleShape({ conditions: [{ kind: 'location', location_name: 'Home' }], mode: 'retype' }),
+    ).toMatch(/exactly one "activity" condition/)
+  })
+
+  test('rejects a retype rule with two activity conditions', () => {
+    expect(validateRuleShape({ conditions: [activity, activity], mode: 'retype' })).toMatch(/exactly one/)
+  })
+
+  test('still checks output_media_field', () => {
+    expect(
+      validateRuleShape({ conditions: [activity], mode: 'retype', output_media_field: { field: 'x' } }),
+    ).toMatch(/enrich/)
   })
 })

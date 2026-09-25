@@ -19,8 +19,8 @@ const makeDeps = (): DeductionEngineDeps => ({
   deleteStaleRuleActivities: vi.fn().mockResolvedValue(0),
   enrichActivities: vi.fn().mockResolvedValue([]),
   getActivities: vi.fn().mockResolvedValue([]),
+  findActivities: vi.fn().mockResolvedValue([]),
   getActivitiesWithData: vi.fn().mockResolvedValue([]),
-  getActivitiesWithDataFilters: vi.fn().mockResolvedValue([]),
   getEarliestActivityTime: vi.fn().mockResolvedValue(null),
   getLocationVisits: vi.fn().mockResolvedValue([]),
   getMediaPlays: vi.fn().mockResolvedValue([]),
@@ -28,6 +28,7 @@ const makeDeps = (): DeductionEngineDeps => ({
   getScreentime: vi.fn().mockResolvedValue([]),
   insertActivity: vi.fn().mockResolvedValue(undefined),
   insertRuleRun: vi.fn().mockResolvedValue(undefined),
+  retypeActivity: vi.fn().mockResolvedValue(true),
 })
 
 describe('intersectTimeRanges', () => {
@@ -869,6 +870,120 @@ describe('media conditions and play-title enrichment', () => {
 
     expect(would_affect).toBe(1)
     expect(deps.enrichActivities).not.toHaveBeenCalled()
+  })
+})
+
+describe('retype mode', () => {
+  const user = 'testuser'
+  const window = { end: d(23), start: d(0) }
+  const target = { activity_type: 'other_workout', kind: 'activity' as const, title: 'sex' }
+  const retypeRule: DeductionRule = {
+    conditions: [target],
+    enabled: true,
+    id: 'rule-retype',
+    mode: 'retype',
+    name: 'Sex from Garmin',
+    output_activity_type: 'sex',
+    priority: 0,
+  }
+  let deps: DeductionEngineDeps
+
+  beforeEach(() => {
+    deps = makeDeps()
+  })
+
+  test('retypes the activities the activity condition matches', async () => {
+    vi.mocked(deps.findActivities).mockResolvedValue([
+      { end: d(21, 30), id: 'a1', start: d(20, 50) },
+      { end: d(23), id: 'a2', start: d(22) },
+    ])
+
+    const result = await evaluateRule(user, retypeRule, window, deps)
+
+    expect(result.affected_ids).toEqual(['a1', 'a2'])
+    expect(deps.findActivities).toHaveBeenCalledWith(user, target, window)
+    expect(deps.findActivities).toHaveBeenCalledWith(user, target, window, 'sex')
+    expect(deps.retypeActivity).toHaveBeenCalledWith(user, 'a1', {
+      activity_type: 'sex',
+      output_data: undefined,
+      rule_id: 'rule-retype',
+      title: undefined,
+    })
+    expect(deps.insertActivity).not.toHaveBeenCalled()
+  })
+
+  test('only retypes activities overlapping the other conditions', async () => {
+    vi.mocked(deps.findActivities).mockResolvedValue([
+      { end: d(11), id: 'at-home', start: d(10) },
+      { end: d(15), id: 'elsewhere', start: d(14) },
+    ])
+    vi.mocked(deps.getLocationVisits).mockResolvedValue([{ end: d(12), start: d(9) }])
+    const rule: DeductionRule = {
+      ...retypeRule,
+      conditions: [target, { kind: 'location', location_name: 'Home' }],
+      output_title: 'Sex',
+    }
+
+    const result = await evaluateRule(user, rule, window, deps)
+
+    expect(result.affected_ids).toEqual(['at-home'])
+    expect(deps.retypeActivity).toHaveBeenCalledWith(
+      user,
+      'at-home',
+      expect.objectContaining({ title: 'Sex' }),
+    )
+  })
+
+  test('dry run counts without retyping', async () => {
+    vi.mocked(deps.findActivities).mockResolvedValue([{ end: d(11), id: 'a1', start: d(10) }])
+
+    const result = await evaluateRule(user, retypeRule, window, deps, true)
+
+    expect(result.would_affect).toBe(1)
+    expect(deps.retypeActivity).not.toHaveBeenCalled()
+  })
+
+  test('leaves out activities that failed to retype', async () => {
+    vi.mocked(deps.findActivities).mockResolvedValue([
+      { end: d(11), id: 'a1', start: d(10) },
+      { end: d(13), id: 'a2', start: d(12) },
+    ])
+    vi.mocked(deps.retypeActivity).mockImplementation(async (_u, id) => id === 'a2')
+
+    expect((await evaluateRule(user, retypeRule, window, deps)).affected_ids).toEqual(['a2'])
+  })
+
+  test('does nothing without exactly one activity condition', async () => {
+    vi.mocked(deps.findActivities).mockResolvedValue([{ end: d(11), id: 'a1', start: d(10) }])
+    const rule: DeductionRule = {
+      ...retypeRule,
+      conditions: [target, { activity_type: 'walking', kind: 'activity' }],
+    }
+
+    expect((await evaluateRule(user, rule, window, deps)).affected_ids).toEqual([])
+    expect(deps.retypeActivity).not.toHaveBeenCalled()
+  })
+
+  test('does not delete stale rule activities', async () => {
+    await evaluateAllRules(user, [retypeRule], window, deps)
+    expect(deps.deleteStaleRuleActivities).not.toHaveBeenCalled()
+  })
+
+  test('an activity condition without title or data filters uses the plain type lookup', async () => {
+    vi.mocked(deps.getActivities).mockResolvedValue([{ end: d(11), start: d(10) }])
+    const rule: DeductionRule = {
+      conditions: [{ activity_type: 'sauna', kind: 'activity' }],
+      enabled: true,
+      id: 'r',
+      name: 'Sauna',
+      output_activity_type: 'wellness',
+      priority: 0,
+    }
+
+    await evaluateRule(user, rule, window, deps)
+
+    expect(deps.getActivities).toHaveBeenCalled()
+    expect(deps.findActivities).not.toHaveBeenCalled()
   })
 })
 

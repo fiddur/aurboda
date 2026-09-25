@@ -1,3 +1,5 @@
+import type { DeductionRuleMode } from '@aurboda/api-spec'
+
 import axios from 'axios'
 
 import type { DeductionRule, DeductionRuleCondition, OutputMediaField } from './types'
@@ -21,7 +23,7 @@ export const previewDeductionRule = async (body: {
   output_title?: string
   merge_gap_seconds?: number
   priority?: number
-  mode?: 'create' | 'enrich'
+  mode?: DeductionRuleMode
   output_data?: Record<string, unknown>
   output_media_field?: OutputMediaField
 }): Promise<{ would_affect: number; sample_days: number }> => {
@@ -42,7 +44,7 @@ export const createDeductionRule = async (body: {
   merge_gap_seconds?: number
   priority?: number
   enabled?: boolean
-  mode?: 'create' | 'enrich'
+  mode?: DeductionRuleMode
   output_data?: Record<string, unknown>
   output_media_field?: OutputMediaField
 }): Promise<DeductionRule> => {
@@ -65,7 +67,7 @@ export const updateDeductionRule = async (
     merge_gap_seconds: number | null
     priority: number
     enabled: boolean
-    mode: 'create' | 'enrich'
+    mode: DeductionRuleMode
     output_data: Record<string, unknown> | null
     output_media_field: OutputMediaField | null
   }>,

@@ -25,7 +25,7 @@ import {
   updateDeductionRule,
 } from '../db/index.ts'
 import { evaluateAllRules } from '../services/deduction-engine.ts'
-import { mergeRuleUpdate, validateOutputMediaField } from '../services/media-plays.ts'
+import { mergeRuleUpdate, validateRuleShape } from '../services/media-plays.ts'
 import { type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody } from '../validation.ts'
 
@@ -67,8 +67,8 @@ export const createDeductionRulesRouter = (
           .json({ error: `Unknown activity type: "${output_activity_type}"`, success: false })
       }
 
-      const mediaFieldError = validateOutputMediaField(req.body)
-      if (mediaFieldError) return res.status(400).json({ error: mediaFieldError, success: false })
+      const ruleShapeError = validateRuleShape(req.body)
+      if (ruleShapeError) return res.status(400).json({ error: ruleShapeError, success: false })
 
       const rule = await insertDeductionRule(user, {
         conditions,
@@ -109,11 +109,11 @@ export const createDeductionRulesRouter = (
         })
       }
 
-      const mediaFieldError = validateOutputMediaField(req.body)
-      if (mediaFieldError) {
+      const ruleShapeError = validateRuleShape(req.body)
+      if (ruleShapeError) {
         return res
           .status(400)
-          .json({ error: mediaFieldError, sample_days: 0, success: false, would_affect: 0 })
+          .json({ error: ruleShapeError, sample_days: 0, success: false, would_affect: 0 })
       }
 
       const tempRule = {
@@ -155,8 +155,8 @@ export const createDeductionRulesRouter = (
       if (!existing) {
         return res.status(404).json({ error: 'Deduction rule not found', success: false })
       }
-      const mediaFieldError = validateOutputMediaField(mergeRuleUpdate(existing, req.body))
-      if (mediaFieldError) return res.status(400).json({ error: mediaFieldError, success: false })
+      const ruleShapeError = validateRuleShape(mergeRuleUpdate(existing, req.body))
+      if (ruleShapeError) return res.status(400).json({ error: ruleShapeError, success: false })
 
       const updated = await updateDeductionRule(user, id, req.body)
       if (!updated) {

@@ -184,6 +184,12 @@
   flex-shrink: 0;
 }
 
+.rule-field-hint {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #6b7280;
+}
+
 .rule-field-input {
   width: 280px;
   max-width: 100%;

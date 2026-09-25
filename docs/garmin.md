@@ -31,6 +31,8 @@ Garmin labels each activity with a `typeKey` (e.g. `running`, `indoor_rowing`, `
 2. **Version suffix stripped** — Garmin revises sport keys in place and marks them with a version suffix, so `rowing_v2` resolves as `rowing` and `indoor_rowing_v2` goes through the override map as `indoor_rowing`.
 3. **Fallback** — if the resulting name has no row in `activity_type_definitions`, the activity is stored as `other_workout` with the original key kept in `data.garmin_type_key`. Without this, an unrecognized sport would violate the `activities.activity_type` foreign key and abort the rest of the batch.
 
+A custom activity profile made on the watch (a copy of a built-in profile with a new name) is reported by Garmin as its base sport — a copy of "Other" arrives as `other`, stored as `other_workout`. The profile name only survives in the title, which Garmin prefixes with the place for GPS activities ("Mark Sex"). A [retype deduction rule](./features/deduction-rules.md#retype-mode) matching on the title turns these into the aurboda type you want.
+
 A degraded type is recorded in the audit log as a warning (once per distinct key per sync), so new Garmin sports surface there rather than only in `data.garmin_type_key`. A failure on one activity is logged as an error and does not stop the remaining activities in the batch.
 
 ## GPS

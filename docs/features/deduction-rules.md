@@ -1,6 +1,6 @@
 # Deduction Rules
 
-Deduction rules automatically create activities when data conditions are met. Define rules like "when I have a sauna tag, create a sauna activity" or "when I'm meditating and listening to Holosync, create a binaural meditation activity."
+Deduction rules automatically create activities when data conditions are met, or [enrich](#enrich-mode) or [retype](#retype-mode) existing ones. Define rules like "when I have a sauna tag, create a sauna activity" or "when I'm meditating and listening to Holosync, create a binaural meditation activity."
 
 ## How It Works
 
@@ -23,13 +23,15 @@ Timeline:
 
 | Kind                  | Description                                                                                       | Example                                                                             |
 | --------------------- | ------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| `activity`            | Matches time ranges of an activity type, optionally filtered by data fields                       | `{kind: "activity", activity_type: "meditation"}`                                   |
+| `activity`            | Matches time ranges of an activity type, optionally filtered by data fields and title             | `{kind: "activity", activity_type: "meditation"}`                                   |
 | `activity_data`       | Matches activities of a type whose data field matches (`eq`, `neq`, `exists`, `not_exists`)       | `{kind: "activity_data", activity_type: "run", field: "route", operator: "exists"}` |
 | `screentime_category` | Matches screentime in a hierarchical category                                                     | `{kind: "screentime_category", category: ["Work", "Programming"]}`                  |
 | `location`            | Matches visits to a named location                                                                | `{kind: "location", location_name: "Gym"}`                                          |
 | `after_date`          | Restricts matches to after a date                                                                 | `{kind: "after_date", date: "2024-06-01"}`                                          |
 | `scrobble`            | Matches Last.fm scrobbles by artist/track, each covering `duration_seconds`                       | `{kind: "scrobble", artist: ["Holosync"], duration_seconds: 210}`                   |
 | `media`               | Matches [media plays](../media.md) (MPRIS pushes and non-duplicate Last.fm scrobbles) — see below | `{kind: "media", url_host: ["truenakedyoga.com"], min_played_secs: 600}`            |
+
+An `activity` condition's `title` matches case-insensitively, per `match_mode`: `contains` (the default) or `exact`.
 
 ### Media plays
 
@@ -76,6 +78,32 @@ In enrich mode, a rule with at least one `media` condition can copy the title of
   not compile.
 
 See [Media plays](../media.md) for a full example.
+
+## Retype Mode
+
+With `mode: "retype"`, a rule changes the type of existing activities to `output_activity_type`. The rule needs
+exactly one `activity` condition, which selects the activities to change; the other conditions only narrow it down
+in time (an activity is retyped when it overlaps their intersection). For example, to turn Garmin activities recorded
+with a custom "Sex" profile — which Garmin reports as its base sport, `other` (stored as `other_workout`), titled
+"Sex" or "`<place> Sex`" — into the `sex` type:
+
+```json
+{
+  "name": "Sex from Garmin",
+  "mode": "retype",
+  "conditions": [{ "kind": "activity", "activity_type": "other_workout", "title": "sex" }],
+  "output_activity_type": "sex",
+  "output_title": "Sex"
+}
+```
+
+- A synced activity (Garmin, Health Connect, …) gets an aurboda override carrying the new type, exactly like a manual
+  type change, so the next sync of the source row does not undo it. An aurboda activity is changed in place.
+- `output_title`, when set, replaces the title; `output_data` only fills fields that are missing. `data._retyped_by`
+  records the rule id.
+- Activities already overridden are reached through their override, rows produced by rules are never retyped, and an
+  activity already of the target type is skipped, so re-evaluation changes nothing twice.
+- Deleting or disabling the rule does not change retyped activities back; edit them like any other activity.
 
 ## Merge Gap
 
