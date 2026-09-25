@@ -322,7 +322,7 @@ describe('createSyncProvider › syncGravlIfNeeded', () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-06-01T00:20:00Z'))
     vi.mocked(getSettings).mockResolvedValue({ sync_intervals: { gravl: 60 } } as never)
-    const provider = createSyncProvider({ gravl: gravl('oauth'), syncThresholdMinutes: 10 })
+    const provider = createSyncProvider({ gravl: gravl('oauth'), recheckMs: 0, syncThresholdMinutes: 10 })
 
     await provider.syncGravlIfNeeded('alice')
     expect(syncGravlWorkouts).not.toHaveBeenCalled()
@@ -337,5 +337,85 @@ describe('createSyncProvider › syncGravlIfNeeded', () => {
     const provider = createSyncProvider({})
     await provider.syncGravlIfNeeded('alice')
     expect(syncGravlWorkouts).not.toHaveBeenCalled()
+  })
+})
+
+describe('createSyncProvider › recheck debounce', () => {
+  const stale = new Date('2026-06-01T00:00:00Z')
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(getSettings).mockResolvedValue({ rescue_time_key: 'rt-key' } as never)
+    vi.mocked(dbIndex.getSyncState).mockResolvedValue({ last_sync_time: stale } as never)
+    vi.mocked(syncRescueTimeData).mockResolvedValue({ records_processed: 0, status: 'success' } as never)
+    vi.mocked(syncOuraDataType).mockResolvedValue({ records_processed: 0, status: 'success' } as never)
+  })
+
+  const build = (overrides: Parameters<typeof createSyncProvider>[0] = {}) => {
+    const clock = { t: 1_000_000 }
+    const provider = createSyncProvider({ now: () => clock.t, recheckMs: 60_000, ...overrides })
+    return { clock, provider }
+  }
+
+  test('coalesces concurrent calls for the same key into one run', async () => {
+    const { provider } = build()
+
+    const first = provider.syncRescueTimeIfNeeded('alice')
+    const second = provider.syncRescueTimeIfNeeded('alice')
+    expect(second).toBe(first)
+    await Promise.all([first, second])
+
+    expect(getSettings).toHaveBeenCalledTimes(1)
+    expect(syncRescueTimeData).toHaveBeenCalledTimes(1)
+  })
+
+  test('skips the DB entirely for a repeat call inside the window', async () => {
+    const { clock, provider } = build()
+
+    await provider.syncRescueTimeIfNeeded('alice')
+    vi.clearAllMocks()
+    clock.t += 59_999
+    await provider.syncRescueTimeIfNeeded('alice')
+
+    expect(getSettings).not.toHaveBeenCalled()
+    expect(dbIndex.getSyncState).not.toHaveBeenCalled()
+  })
+
+  test('checks again once the window has passed', async () => {
+    const { clock, provider } = build()
+
+    await provider.syncRescueTimeIfNeeded('alice')
+    clock.t += 60_000
+    await provider.syncRescueTimeIfNeeded('alice')
+
+    expect(getSettings).toHaveBeenCalledTimes(2)
+  })
+
+  test('keeps users and data types independent', async () => {
+    const oura = { getAccessToken: vi.fn().mockResolvedValue('token') } as never
+    const { provider } = build({ oura })
+
+    await provider.syncOuraIfNeeded('alice', 'tags')
+    await provider.syncOuraIfNeeded('alice', 'sessions')
+    await provider.syncOuraIfNeeded('bob', 'tags')
+    await provider.syncOuraIfNeeded('alice', 'tags')
+
+    expect(syncOuraDataType).toHaveBeenCalledTimes(3)
+    expect(vi.mocked(dbIndex.getSyncState).mock.calls.map(([user, , type]) => `${user}:${type}`)).toEqual([
+      'alice:tags',
+      'alice:sessions',
+      'bob:tags',
+    ])
+  })
+
+  test('an error still records the check and does not reject', async () => {
+    vi.mocked(dbIndex.getSyncState).mockRejectedValue(new Error('db down'))
+    const { clock, provider } = build()
+
+    await expect(provider.syncRescueTimeIfNeeded('alice')).resolves.toBeUndefined()
+    clock.t += 1_000
+    await provider.syncRescueTimeIfNeeded('alice')
+
+    expect(dbIndex.getSyncState).toHaveBeenCalledTimes(1)
   })
 })

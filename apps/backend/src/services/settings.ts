@@ -89,11 +89,9 @@ const isStoredSettingsKey = (key: string): key is Exclude<keyof UpdateSettingsIn
 /**
  * Priority: custom zones > age-based zones (from birth date) > default zones
  */
-export const getEffectiveHrZones = async (
-  user: string,
-): Promise<{ zones: HrZoneThresholds; source: HrZoneSource }> => {
-  const settings = await getSettings(user)
-
+export const hrZonesFromSettings = (
+  settings: UserSettings,
+): { zones: HrZoneThresholds; source: HrZoneSource } => {
   if (settings.hr_zone_start) {
     return { source: 'custom', zones: settings.hr_zone_start }
   }
@@ -104,6 +102,10 @@ export const getEffectiveHrZones = async (
 
   return { source: 'default', zones: calculateDefaultHrZones(null) }
 }
+
+export const getEffectiveHrZones = async (
+  user: string,
+): Promise<{ zones: HrZoneThresholds; source: HrZoneSource }> => hrZonesFromSettings(await getSettings(user))
 
 /**
  * Get effective goals for a user (from goals table, falling back to defaults).
@@ -197,23 +199,37 @@ const withDefaults = (settings: UserSettings) =>
   })
 
 export const getSettingsResponse = async (user: string): Promise<SettingsResponse> => {
-  const settings = await getSettings(user)
-  const { zones, source } = await getEffectiveHrZones(user)
-  const ouraToken = await getOAuthToken(user, 'oura')
-  const garminToken = await getOAuthToken(user, 'garmin')
-  const stravaToken = await getOAuthToken(user, 'strava')
   const centralDb = getCentralDb()
-  const lastFmConfigured = !!(await centralDb.getLastFmApiKey())
-  const ouraConfigured =
-    !!(await centralDb.getServerSetting('oura_client_id')) &&
-    !!(await centralDb.getServerSetting('oura_client_secret'))
-  const stravaConfigured =
-    !!(await centralDb.getServerSetting('strava_client_id')) &&
-    !!(await centralDb.getServerSetting('strava_client_secret'))
-  const gravlConfigured =
-    !!(await centralDb.getServerSetting('gravl_client_id')) &&
-    !!(await centralDb.getServerSetting('gravl_client_secret'))
-  const gravlToken = await getOAuthToken(user, 'gravl')
+  const [
+    settings,
+    ouraToken,
+    garminToken,
+    stravaToken,
+    gravlToken,
+    lastFmApiKey,
+    ouraClientId,
+    ouraClientSecret,
+    stravaClientId,
+    stravaClientSecret,
+    gravlClientId,
+    gravlClientSecret,
+    goals,
+  ] = await Promise.all([
+    getSettings(user),
+    getOAuthToken(user, 'oura'),
+    getOAuthToken(user, 'garmin'),
+    getOAuthToken(user, 'strava'),
+    getOAuthToken(user, 'gravl'),
+    centralDb.getLastFmApiKey(),
+    centralDb.getServerSetting('oura_client_id'),
+    centralDb.getServerSetting('oura_client_secret'),
+    centralDb.getServerSetting('strava_client_id'),
+    centralDb.getServerSetting('strava_client_secret'),
+    centralDb.getServerSetting('gravl_client_id'),
+    centralDb.getServerSetting('gravl_client_secret'),
+    getEffectiveGoals(user),
+  ])
+  const { zones, source } = hrZonesFromSettings(settings)
   // Mirrors the client's credential order: an OAuth grant wins over a pasted token.
   const gravlConnection =
     gravlToken !== null && gravlToken.access_token !== ''
@@ -222,20 +238,18 @@ export const getSettingsResponse = async (user: string): Promise<SettingsRespons
         ? 'token'
         : null
 
-  const goals = await getEffectiveGoals(user)
-
   return {
     ...withDefaults(settings),
     garmin_connected: garminToken !== null && garminToken.access_token !== '',
     goals,
-    gravl_configured: gravlConfigured,
+    gravl_configured: !!gravlClientId && !!gravlClientSecret,
     gravl_connection: gravlConnection,
     hr_zone_start: zones,
     hr_zone_start_source: source,
-    lastfm_configured: lastFmConfigured,
-    oura_configured: ouraConfigured,
+    lastfm_configured: !!lastFmApiKey,
+    oura_configured: !!ouraClientId && !!ouraClientSecret,
     oura_connected: ouraToken !== null,
-    strava_configured: stravaConfigured,
+    strava_configured: !!stravaClientId && !!stravaClientSecret,
     strava_connected: stravaToken !== null && stravaToken.access_token !== '',
     success: true,
   }
@@ -243,10 +257,11 @@ export const getSettingsResponse = async (user: string): Promise<SettingsRespons
 
 const buildErrorSettingsResponse = async (errorMessage: string): Promise<SettingsResponse> => {
   const centralDb = getCentralDb()
-  const lastFmConfigured = !!(await centralDb.getLastFmApiKey())
-  const ouraConfigured =
-    !!(await centralDb.getServerSetting('oura_client_id')) &&
-    !!(await centralDb.getServerSetting('oura_client_secret'))
+  const [lastFmApiKey, ouraClientId, ouraClientSecret] = await Promise.all([
+    centralDb.getLastFmApiKey(),
+    centralDb.getServerSetting('oura_client_id'),
+    centralDb.getServerSetting('oura_client_secret'),
+  ])
   return {
     ...settingsWithDefaultsSchema.parse({}),
     error: errorMessage,
@@ -255,8 +270,8 @@ const buildErrorSettingsResponse = async (errorMessage: string): Promise<Setting
     gravl_connection: null,
     hr_zone_start: calculateDefaultHrZones(null),
     hr_zone_start_source: 'default' as const,
-    lastfm_configured: lastFmConfigured,
-    oura_configured: ouraConfigured,
+    lastfm_configured: !!lastFmApiKey,
+    oura_configured: !!ouraClientId && !!ouraClientSecret,
     garmin_connected: false,
     oura_connected: false,
     strava_configured: false,

@@ -7,7 +7,7 @@ import {
   getIngredientsBatch,
   setIngredients,
 } from './food-item-ingredients.ts'
-import { getFoodItemById, upsertFoodItem } from './food-items.ts'
+import { deleteFoodItem, getFoodItemById, setFoodItemReference, upsertFoodItem } from './food-items.ts'
 
 const CONTAINER_TIMEOUT = 120_000
 
@@ -75,7 +75,6 @@ describe('food_item_ingredients integration', () => {
     const ing = await upsertFoodItem(user, { name: 'Survivor' })
     await setIngredients(user, parent.id, [{ ingredient_food_item_id: ing.id, quantity: 1, sort_order: 0 }])
 
-    const { deleteFoodItem } = await import('./food-items.ts')
     await deleteFoodItem(user, parent.id)
 
     expect(await getIngredients(user, parent.id)).toEqual([])
@@ -89,6 +88,40 @@ describe('food_item_ingredients integration', () => {
     await expect(
       setIngredients(user, parent.id, [{ ingredient_food_item_id: parent.id, quantity: 1, sort_order: 0 }]),
     ).rejects.toThrow()
+  })
+
+  test('a failing setIngredients rolls back, leaving the previous ingredient list intact', async () => {
+    const user = getTestUser()
+    const parent = await upsertFoodItem(user, { name: 'Porridge' })
+    const oats = await upsertFoodItem(user, { name: 'Oats' })
+    await setIngredients(user, parent.id, [{ ingredient_food_item_id: oats.id, quantity: 60, sort_order: 0 }])
+
+    await expect(
+      setIngredients(user, parent.id, [{ ingredient_food_item_id: parent.id, quantity: 1, sort_order: 0 }]),
+    ).rejects.toThrow()
+
+    const rows = await getIngredients(user, parent.id)
+    expect(rows.map((r) => r.ingredient_food_item_id)).toEqual([oats.id])
+    expect((await getFoodItemById(user, parent.id))?.is_composite).toBe(true)
+  })
+
+  test('deleteFoodItem refuses an item used as an ingredient and changes nothing', async () => {
+    const user = getTestUser()
+    const parent = await upsertFoodItem(user, { name: 'Pancakes' })
+    const flour = await upsertFoodItem(user, { name: 'Flour' })
+    const referrer = await upsertFoodItem(user, { name: 'Flour (brand)' })
+    await setIngredients(user, parent.id, [
+      { ingredient_food_item_id: flour.id, quantity: 100, sort_order: 0 },
+    ])
+    await setFoodItemReference(user, referrer.id, flour.id)
+
+    await expect(deleteFoodItem(user, flour.id)).rejects.toThrow(
+      'Cannot delete: this food item is used as an ingredient in one or more recipes.',
+    )
+
+    expect(await getFoodItemById(user, flour.id)).not.toBeNull()
+    expect((await getFoodItemById(user, referrer.id))?.reference_food_item_id).toBe(flour.id)
+    expect((await getIngredients(user, parent.id)).map((r) => r.ingredient_food_item_id)).toEqual([flour.id])
   })
 
   test('getIngredientsBatch keys results by parent_food_item_id', async () => {
