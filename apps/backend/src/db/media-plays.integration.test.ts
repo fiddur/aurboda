@@ -6,7 +6,7 @@ import { createDefaultEngineDeps } from '../services/deduction-deps.ts'
 import { evaluateRule } from '../services/deduction-engine.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import { getActivityById, insertActivity } from './index.ts'
-import { getMediaPlays, storeMediaPlays } from './media-plays.ts'
+import { getMediaPlayById, getMediaPlays, storeMediaPlays } from './media-plays.ts'
 import { insertRawRecord, queryRawRecords } from './raw-records.ts'
 
 const CONTAINER_TIMEOUT = 120_000
@@ -97,6 +97,33 @@ describe('media plays (integration)', () => {
     expect(plays[0]).toMatchObject({ kind: null, played_ratio: 1710 / 1800, source: 'mpris' })
     expect(plays[1]).toMatchObject({ played_ratio: null, track_secs: null })
     expect(plays[2]).toMatchObject({ ended_at: null, kind: 'music', source: 'lastfm', title: 'Teardrop' })
+  })
+
+  test('getMediaPlayById finds an MPRIS play, then a Last.fm scrobble, else null', async () => {
+    const user = getTestUser()
+    await storeMediaPlays(user, [play()], 'laptop')
+    await insertRawRecord(user, {
+      data: { album: 'Mezzanine', artist: 'Massive Attack', track: 'Teardrop' },
+      external_id: 'scrobble-1',
+      record_type: 'scrobble',
+      recorded_at: new Date('2026-01-10T13:00:00Z'),
+      source: 'lastfm',
+    })
+
+    expect(await getMediaPlayById(user, 'play-1')).toMatchObject({
+      id: 'play-1',
+      played_ratio: 1710 / 1800,
+      source: 'mpris',
+      url: 'https://www.truenakedyoga.com/videos/yin-hips',
+    })
+    expect(await getMediaPlayById(user, 'scrobble-1')).toMatchObject({
+      id: 'scrobble-1',
+      kind: 'music',
+      source: 'lastfm',
+      started_at: '2026-01-10T13:00:00.000Z',
+      title: 'Teardrop',
+    })
+    expect(await getMediaPlayById(user, 'missing')).toBeNull()
   })
 
   test('an enrich rule writes the play title onto the activity it overlaps', async () => {

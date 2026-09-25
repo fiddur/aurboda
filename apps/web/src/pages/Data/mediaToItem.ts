@@ -1,18 +1,9 @@
 import type { MediaPlay } from '../../state/api'
+import type { DataItem } from './dataItem'
 
 import { formatTime } from './formatTime'
 
 export const MEDIA_COLOR = '#ec4899'
-
-export interface MediaItem {
-  color: string
-  detail: string
-  end?: Date
-  href?: string
-  label: string
-  start: Date
-  type: 'media'
-}
 
 const formatPlayedSecs = (secs: number): string => {
   if (secs < 60) return `${Math.round(secs)}s`
@@ -29,15 +20,13 @@ const playedDetail = (play: MediaPlay): string | undefined => {
   return `${formatPlayedSecs(play.played_secs)} played${ratio}`
 }
 
-const isWebUrl = (url: string): boolean => /^https?:\/\//i.test(url)
-
-export const mediaToItem = (play: MediaPlay, multiDay: boolean): MediaItem => ({
+export const mediaToItem = (play: MediaPlay, multiDay: boolean): DataItem => ({
   color: MEDIA_COLOR,
   detail: [formatTime(play.started_at, multiDay), play.artist, playedDetail(play), play.player]
     .filter(Boolean)
     .join(' · '),
   end: play.ended_at,
-  href: isWebUrl(play.url) ? play.url : undefined,
+  href: `/detail/media/${encodeURIComponent(play.id)}`,
   label: play.title || play.url || 'Untitled',
   start: play.started_at,
   type: 'media',
