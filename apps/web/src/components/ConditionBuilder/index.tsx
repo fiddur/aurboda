@@ -248,6 +248,39 @@ const splitList = (value: string): string[] =>
     .map((s) => s.trim())
     .filter(Boolean)
 
+function ActivityTitleFilter({
+  condition,
+  onChange,
+}: {
+  condition: DeductionRuleCondition
+  onChange: (c: DeductionRuleCondition) => void
+}) {
+  return (
+    <div class="condition-data-row">
+      <input
+        type="text"
+        value={condition.title ?? ''}
+        onInput={(e) => onChange({ ...condition, title: (e.target as HTMLInputElement).value || undefined })}
+        placeholder="Title (optional)"
+        class="condition-field-input"
+      />
+      <select
+        value={condition.match_mode ?? 'contains'}
+        onChange={(e) =>
+          onChange({
+            ...condition,
+            match_mode: (e.target as HTMLSelectElement).value as 'exact' | 'contains',
+          })
+        }
+        class="condition-field-select condition-field-narrow"
+      >
+        <option value="contains">Contains</option>
+        <option value="exact">Exact match</option>
+      </select>
+    </div>
+  )
+}
+
 function MediaBody({
   condition,
   onChange,
@@ -408,6 +441,7 @@ function ConditionCard({
         {condition.kind === 'activity' && (
           <>
             <ActivityTypeSelect condition={condition} onChange={update} />
+            <ActivityTitleFilter condition={condition} onChange={update} />
             {(() => {
               const typeDef = definitions.find((d) => d.name === condition.activity_type)
               const schemaFields = (

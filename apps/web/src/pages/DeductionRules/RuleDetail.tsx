@@ -1,3 +1,5 @@
+import type { DeductionRuleMode } from '@aurboda/api-spec'
+
 /**
  * Handles both editing existing rules and creating new ones (/deduction-rules/new).
  */
@@ -52,10 +54,18 @@ function TextField({
   )
 }
 
-function OutputActivityTypePicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+function OutputActivityTypePicker({
+  label,
+  value,
+  onChange,
+}: {
+  label: string
+  value: string
+  onChange: (v: string) => void
+}) {
   return (
     <div class="rule-field">
-      <span class="rule-field-label">Output Activity Type</span>
+      <span class="rule-field-label">{label}</span>
       <ActivityTypePicker value={value} onChange={onChange} placeholder="Search activity types..." />
     </div>
   )
@@ -131,7 +141,7 @@ interface RuleFormFields {
   mediaField: string
   mediaStripPattern: string
   mergeGapMinutes: string
-  mode: 'create' | 'enrich'
+  mode: DeductionRuleMode
   name: string
   outputData: Record<string, unknown>
   outputTitle: string
@@ -302,10 +312,10 @@ function RuleForm({ id, rule }: { id?: string; rule?: DeductionRule }) {
             <select
               value={fields.mode}
               onChange={(e) => {
-                const v = (e.target as HTMLSelectElement).value as 'create' | 'enrich'
+                const v = (e.target as HTMLSelectElement).value as DeductionRuleMode
                 updateField('mode', v)
                 autoSave(
-                  v === 'create' && rule?.output_media_field
+                  v !== 'enrich' && rule?.output_media_field
                     ? { mode: v, output_media_field: null }
                     : { mode: v },
                 )
@@ -314,10 +324,20 @@ function RuleForm({ id, rule }: { id?: string; rule?: DeductionRule }) {
             >
               <option value="create">Create new activities</option>
               <option value="enrich">Enrich existing activities</option>
+              <option value="retype">Change type of matching activities</option>
             </select>
           </div>
 
+          {fields.mode === 'retype' && (
+            <p class="rule-field-hint">
+              Needs exactly one Activity condition: the activities it matches (where the other conditions also
+              hold) change to the new type. Output Title, if set, replaces their title; Output Data only fills
+              missing fields. Deleting the rule does not change them back.
+            </p>
+          )}
+
           <OutputActivityTypePicker
+            label={fields.mode === 'retype' ? 'New Activity Type' : 'Output Activity Type'}
             value={fields.outputType}
             onChange={(v) => {
               updateField('outputType', v)

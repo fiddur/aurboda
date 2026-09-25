@@ -1,16 +1,28 @@
-import type { DeductionEngineDeps, EnrichOptions, EvaluationWindow, TimeRange } from './deduction-engine.ts'
+import type { ActivityCondition } from '@aurboda/api-spec'
+
+import type {
+  DeductionEngineDeps,
+  EnrichOptions,
+  EvaluationWindow,
+  MatchedActivity,
+  RetypeChange,
+  TimeRange,
+} from './deduction-engine.ts'
 import type { ActivityNotifier } from './deduction-queue.ts'
 
 import { query } from '../db/connection.ts'
 import {
   deleteStaleRuleActivities,
   expandActivityTypes,
+  getActivityById,
   getMediaPlays,
   insertActivity as dbInsertActivity,
   insertDeductionRuleRun,
 } from '../db/index.ts'
+import { auditWarn } from './audit-log.ts'
 import { computeEnrichPatch } from './deduction-engine.ts'
 import { getPlaceVisits } from './locations.ts'
+import { updateActivity } from './mutations.ts'
 
 const getActivities = async (
   user: string,
@@ -119,17 +131,27 @@ const getActivitiesWithData = async (
   }))
 }
 
-const getActivitiesWithDataFilters = async (
+const escapeLike = (s: string) => s.replaceAll('\\', '\\\\').replaceAll('%', '\\%').replaceAll('_', '\\_')
+
+const DEFAULT_SPAN_MS = 60 * 60 * 1000
+
+/**
+ * Activities matching an `activity` condition (type incl. descendants, data filters, title).
+ * With `retypeTo`, only rows a retype may change: not already of that type, not produced by
+ * a rule, and not superseded or overridden — so an overridden synced row is reached through
+ * its override, which is itself a candidate.
+ */
+const findActivities = async (
   user: string,
-  activityType: string,
-  filters: Array<{ field: string; operator: string; value?: string | number | boolean }>,
+  condition: ActivityCondition,
   window: EvaluationWindow,
-): Promise<TimeRange[]> => {
-  const types = await expandActivityTypes(user, [activityType])
+  retypeTo?: string,
+): Promise<MatchedActivity[]> => {
+  const types = await expandActivityTypes(user, [condition.activity_type])
   const params: unknown[] = [types, window.start, window.end]
   const whereClauses: string[] = []
 
-  for (const filter of filters) {
+  for (const filter of condition.data_filters ?? []) {
     if (!/^[a-z][a-z0-9_]*$/.test(filter.field)) return []
 
     switch (filter.operator) {
@@ -152,9 +174,28 @@ const getActivitiesWithDataFilters = async (
     }
   }
 
+  const title = condition.title?.trim().toLowerCase()
+  if (title) {
+    if (condition.match_mode === 'exact') {
+      params.push(title)
+      whereClauses.push(`AND LOWER(TRIM(title)) = $${params.length}`)
+    } else {
+      params.push(`%${escapeLike(title)}%`)
+      whereClauses.push(`AND LOWER(title) LIKE $${params.length}`)
+    }
+  }
+
+  if (retypeTo) {
+    params.push(retypeTo)
+    whereClauses.push(`AND activity_type != $${params.length}
+       AND source != 'deduction-rule'
+       AND superseded_by IS NULL
+       AND NOT EXISTS (SELECT 1 FROM activity_override_targets t WHERE t.target_id = activities.id)`)
+  }
+
   const result = await query(
     user,
-    `SELECT start_time, end_time FROM activities
+    `SELECT id, start_time, end_time FROM activities
      WHERE activity_type = ANY($1)
        AND deleted_at IS NULL
        AND start_time < $3
@@ -164,7 +205,8 @@ const getActivitiesWithDataFilters = async (
     params,
   )
   return result.rows.map((r) => ({
-    end: (r.end_time as Date) ?? new Date((r.start_time as Date).getTime() + 60 * 60 * 1000),
+    end: (r.end_time as Date) ?? new Date((r.start_time as Date).getTime() + DEFAULT_SPAN_MS),
+    id: r.id as string,
     start: r.start_time as Date,
   }))
 }
@@ -184,8 +226,6 @@ const getScrobbles = async (
     `recorded_at >= $1`,
     `recorded_at < $2`,
   ]
-
-  const escapeLike = (s: string) => s.replaceAll('%', '\\%').replaceAll('_', '\\_')
 
   if (artist && artist.length > 0) {
     if (matchMode === 'exact') {
@@ -287,6 +327,39 @@ const enrichActivities = async (
   return enrichedIds
 }
 
+const retypeActivity = async (
+  user: string,
+  id: string,
+  change: RetypeChange,
+  notifier?: ActivityNotifier,
+): Promise<boolean> => {
+  const current = await getActivityById(user, id)
+  if (!current) return false
+  const existing = current.data ?? {}
+  const fill = Object.fromEntries(
+    Object.entries(change.output_data ?? {}).filter(
+      ([key]) => existing[key] === undefined || existing[key] === null,
+    ),
+  )
+  const result = await updateActivity(
+    user,
+    id,
+    {
+      activity_type: change.activity_type,
+      data: { ...fill, _retyped_by: change.rule_id },
+      ...(change.title ? { title: change.title } : {}),
+    },
+    notifier && ((u, type, start, end) => notifier(u, type, start, end, change.rule_id)),
+  )
+  if (!result.success) {
+    auditWarn(user, 'deduction', `Rule could not retype activity ${id}`, {
+      error: result.error,
+      rule_id: change.rule_id,
+    })
+  }
+  return result.success
+}
+
 const getEarliestActivityTime = async (user: string): Promise<Date | null> => {
   const result = await query(
     user,
@@ -300,7 +373,7 @@ export const createDefaultEngineDeps = (notifier?: ActivityNotifier): DeductionE
   enrichActivities,
   getActivities,
   getActivitiesWithData,
-  getActivitiesWithDataFilters,
+  findActivities,
   getEarliestActivityTime,
   getLocationVisits,
   getMediaPlays,
@@ -322,4 +395,5 @@ export const createDefaultEngineDeps = (notifier?: ActivityNotifier): DeductionE
     return id
   },
   insertRuleRun: insertDeductionRuleRun,
+  retypeActivity: (user, id, change) => retypeActivity(user, id, change, notifier),
 })

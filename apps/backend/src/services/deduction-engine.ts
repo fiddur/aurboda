@@ -5,10 +5,12 @@
  * 3. Optional merge_gap coalesces nearby ranges
  * 4. In 'create' mode: resulting ranges become activities with source 'deduction-rule'
  * 5. In 'enrich' mode: matching target activities have output_data merged into their data
+ *    In 'retype' mode: the activities of the rule's single 'activity' condition that overlap the
+ *    result change type to output_activity_type
  * 6. Rules are evaluated in priority order for chaining support
  */
 
-import type { Condition, DeductionRule, MediaPlay } from '@aurboda/api-spec'
+import type { ActivityCondition, Condition, DeductionRule, MediaPlay } from '@aurboda/api-spec'
 
 import { randomUUID } from 'node:crypto'
 
@@ -45,6 +47,17 @@ export interface EnrichOptions {
   overwriteKeys?: string[]
 }
 
+export interface MatchedActivity extends TimeRange {
+  id: string
+}
+
+export interface RetypeChange {
+  activity_type: string
+  output_data?: Record<string, unknown>
+  rule_id: string
+  title?: string
+}
+
 export interface DeductionEngineDeps {
   getActivities: (user: string, activityType: string, window: EvaluationWindow) => Promise<TimeRange[]>
   getScreentime: (user: string, category: string[], window: EvaluationWindow) => Promise<TimeRange[]>
@@ -56,12 +69,13 @@ export interface DeductionEngineDeps {
     value: string | number | boolean | undefined,
     window: EvaluationWindow,
   ) => Promise<TimeRange[]>
-  getActivitiesWithDataFilters: (
+  /** With `retypeTo`, only activities a retype to that type may change. */
+  findActivities: (
     user: string,
-    activityType: string,
-    filters: Array<{ field: string; operator: string; value?: string | number | boolean }>,
+    condition: ActivityCondition,
     window: EvaluationWindow,
-  ) => Promise<TimeRange[]>
+    retypeTo?: string,
+  ) => Promise<MatchedActivity[]>
   getLocationVisits: (user: string, locationName: string, window: EvaluationWindow) => Promise<TimeRange[]>
   getScrobbles: (
     user: string,
@@ -99,6 +113,7 @@ export interface DeductionEngineDeps {
     },
   ) => Promise<void>
   getEarliestActivityTime: (user: string) => Promise<Date | null>
+  retypeActivity: (user: string, id: string, change: RetypeChange) => Promise<boolean>
 }
 
 /**
@@ -159,8 +174,9 @@ type ConditionResolver = (
 
 const resolveActivity: ConditionResolver = async (user, condition, window, deps) => {
   if (condition.kind !== 'activity') return []
-  if (condition.data_filters?.length) {
-    return deps.getActivitiesWithDataFilters(user, condition.activity_type, condition.data_filters, window)
+  if (condition.data_filters?.length || condition.title?.trim()) {
+    const matched = await deps.findActivities(user, condition, window)
+    return matched.map(({ end, start }) => ({ end, start }))
   }
   return deps.getActivities(user, condition.activity_type, window)
 }
@@ -326,6 +342,40 @@ export interface EvaluateRuleResult {
   would_affect: number
 }
 
+export const activityConditionsOf = (conditions: Condition[]): ActivityCondition[] =>
+  conditions.filter((c): c is ActivityCondition => c.kind === 'activity')
+
+const overlapsAny = (span: TimeRange, ranges: TimeRange[]): boolean =>
+  ranges.some((r) => r.start < span.end && span.start < r.end)
+
+const retype = async (
+  user: string,
+  rule: DeductionRule,
+  matched: TimeRange[],
+  window: EvaluationWindow,
+  deps: DeductionEngineDeps,
+  dryRun: boolean,
+): Promise<EvaluateRuleResult> => {
+  const [target, ...others] = activityConditionsOf(rule.conditions)
+  if (!target || others.length > 0) return { affected_ids: [], would_affect: 0 }
+
+  const candidates = await deps.findActivities(user, target, window, rule.output_activity_type)
+  const toRetype = candidates.filter((c) => overlapsAny(c, matched))
+  if (dryRun) return { affected_ids: [], would_affect: toRetype.length }
+
+  const retypedIds: string[] = []
+  for (const activity of toRetype) {
+    const ok = await deps.retypeActivity(user, activity.id, {
+      activity_type: rule.output_activity_type,
+      output_data: rule.output_data,
+      rule_id: rule.id,
+      title: rule.output_title,
+    })
+    if (ok) retypedIds.push(activity.id)
+  }
+  return { affected_ids: retypedIds, would_affect: retypedIds.length }
+}
+
 /**
  * When dryRun is true, returns the count of activities that would be affected without making changes.
  */
@@ -339,6 +389,8 @@ export const evaluateRule = async (
   const deps = withMemoizedMediaPlays(baseDeps)
   const result = await resolveConditions(user, rule, window, deps)
   if (result.length === 0) return { affected_ids: [], would_affect: 0 }
+
+  if (rule.mode === 'retype') return retype(user, rule, result, window, deps, dryRun)
 
   if (rule.mode === 'enrich') {
     const dataFor = await buildMediaDataFor(user, rule, result, window, deps)
@@ -420,7 +472,7 @@ export const evaluateAllRules = async (
 
       if (!dryRun) {
         // Clean up stale activities from previous evaluations (only for create mode)
-        if (rule.mode !== 'enrich') {
+        if ((rule.mode ?? 'create') === 'create') {
           await deps.deleteStaleRuleActivities(user, rule.id, window.start, window.end, affected_ids)
         }
 

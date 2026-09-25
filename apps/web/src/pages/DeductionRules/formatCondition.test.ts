@@ -15,6 +15,20 @@ describe('formatCondition', () => {
     ).toBe('Media: host truenakedyoga.com, title "Yin", ≥ 600 s, ≥ 80%')
   })
 
+  test('summarises an activity condition with a title', () => {
+    expect(formatCondition({ activity_type: 'other_workout', kind: 'activity', title: 'Sex' })).toBe(
+      'Activity: other_workout, title contains "Sex"',
+    )
+    expect(
+      formatCondition({
+        activity_type: 'other_workout',
+        kind: 'activity',
+        match_mode: 'exact',
+        title: 'Sex',
+      }),
+    ).toBe('Activity: other_workout, title is "Sex"')
+  })
+
   test('a media condition without matchers matches any play', () => {
     expect(formatCondition({ kind: 'media' })).toBe('Media: any')
   })

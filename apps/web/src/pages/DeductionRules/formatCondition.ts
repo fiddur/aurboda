@@ -14,7 +14,9 @@ const formatMedia = (c: DeductionRuleCondition): string => {
 export const formatCondition = (c: DeductionRuleCondition): string => {
   switch (c.kind) {
     case 'activity':
-      return `Activity: ${c.activity_type}`
+      return c.title
+        ? `Activity: ${c.activity_type}, title ${c.match_mode === 'exact' ? 'is' : 'contains'} "${c.title}"`
+        : `Activity: ${c.activity_type}`
     case 'screentime_category':
       return `Screen: ${c.category?.join(' > ')}`
     case 'scrobble': {

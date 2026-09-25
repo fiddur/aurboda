@@ -208,6 +208,14 @@ export const validateOutputMediaField = (rule: {
 
 type MediaFieldRuleShape = Parameters<typeof validateOutputMediaField>[0]
 
+/** Mode-specific checks the schema cannot express, for the REST API and MCP alike. */
+export const validateRuleShape = (rule: MediaFieldRuleShape): string | null => {
+  if (rule.mode === 'retype' && rule.conditions.filter((c) => c.kind === 'activity').length !== 1) {
+    return 'mode "retype" requires exactly one "activity" condition, which selects the activities to retype'
+  }
+  return validateOutputMediaField(rule)
+}
+
 /** The parts of a rule validateOutputMediaField checks, as they will be after a partial update. */
 export const mergeRuleUpdate = (
   existing: MediaFieldRuleShape,

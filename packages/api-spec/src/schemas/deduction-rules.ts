@@ -26,11 +26,18 @@ export const activityConditionSchema = z
       .optional()
       .meta({ description: 'Optional data field filters — all must match (AND logic)' }),
     kind: z.literal('activity'),
+    match_mode: z
+      .enum(['exact', 'contains'])
+      .optional()
+      .meta({ description: 'Case-insensitive match mode for title (default contains)' }),
+    title: z.string().optional().meta({ description: 'Activity title to match (per match_mode)' }),
   })
   .meta({
     description:
-      'Matches time ranges where an activity of the given type exists, optionally filtered by data fields',
+      'Matches time ranges where an activity of the given type exists, optionally filtered by data fields and title',
   })
+
+export type ActivityCondition = z.infer<typeof activityConditionSchema>
 
 export const screentimeCategoryConditionSchema = z
   .object({
@@ -153,9 +160,11 @@ export const outputMediaFieldSchema = z
 
 export type OutputMediaField = z.infer<typeof outputMediaFieldSchema>
 
-export const deductionRuleModeSchema = z
-  .enum(['create', 'enrich'])
-  .meta({ id: 'DeductionRuleMode', description: 'Whether to create new activities or enrich existing ones' })
+export const deductionRuleModeSchema = z.enum(['create', 'enrich', 'retype']).meta({
+  id: 'DeductionRuleMode',
+  description:
+    'Whether to create new activities, enrich existing ones, or change the type of the activities the rule\'s single "activity" condition matches',
+})
 
 export type DeductionRuleMode = z.infer<typeof deductionRuleModeSchema>
 
@@ -174,19 +183,23 @@ export const deductionRuleSchema = z
       .optional()
       .meta({ description: 'Coalesce nearby matches within this gap' }),
     mode: deductionRuleModeSchema.optional().meta({
-      description: 'create (default): create new activities. enrich: patch data onto existing activities.',
+      description:
+        'create (default): create new activities. enrich: patch data onto existing activities. retype: change the matched activities to output_activity_type.',
     }),
     name: z.string().meta({ description: 'Human-readable rule name' }),
     output_activity_type: activityTypeSchema.meta({
       description:
-        'In create mode: activity type to create. In enrich mode: activity type to patch data onto.',
+        'In create mode: activity type to create. In enrich mode: activity type to patch data onto. In retype mode: the new type.',
     }),
-    output_data: z
-      .record(z.string(), z.unknown())
-      .optional()
-      .meta({ description: 'Static data fields to set on created/enriched activities' }),
+    output_data: z.record(z.string(), z.unknown()).optional().meta({
+      description:
+        'Static data fields to set on created activities; enrich and retype only fill missing fields',
+    }),
     output_media_field: outputMediaFieldSchema.optional(),
-    output_title: z.string().optional().meta({ description: 'Optional title for created activities' }),
+    output_title: z.string().optional().meta({
+      description:
+        'Optional title for created activities; in retype mode, replaces the retyped activity title',
+    }),
     priority: z
       .number()
       .int()
@@ -216,17 +229,20 @@ export const addDeductionRuleBodySchema = z
       .meta({ description: 'Coalesce nearby matches within this gap (seconds)' }),
     mode: deductionRuleModeSchema
       .optional()
-      .meta({ description: 'create (default) or enrich existing activities' }),
+      .meta({ description: 'create (default), enrich existing activities, or retype them' }),
     name: z.string().meta({ description: 'Human-readable rule name' }),
     output_activity_type: activityTypeSchema.meta({
-      description: 'In create mode: type to create. In enrich mode: type to patch data onto.',
+      description:
+        'In create mode: type to create. In enrich mode: type to patch data onto. In retype mode: the new type.',
     }),
-    output_data: z
-      .record(z.string(), z.unknown())
-      .optional()
-      .meta({ description: 'Static data fields for created/enriched activities' }),
+    output_data: z.record(z.string(), z.unknown()).optional().meta({
+      description: 'Static data fields for created activities; enrich and retype only fill missing fields',
+    }),
     output_media_field: outputMediaFieldSchema.optional(),
-    output_title: z.string().optional().meta({ description: 'Optional title for created activities' }),
+    output_title: z.string().optional().meta({
+      description:
+        'Optional title for created activities; in retype mode, replaces the retyped activity title',
+    }),
     priority: z
       .number()
       .int()

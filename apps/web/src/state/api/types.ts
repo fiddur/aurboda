@@ -7,6 +7,7 @@ import type {
   ProductivityRecord as ApiProductivityRecord,
   Report as ApiReport,
   DataSchemaDefinition,
+  DeductionRuleMode,
 } from '@aurboda/api-spec'
 
 // Frontend types with Date objects (converted from API string types)
@@ -75,7 +76,7 @@ export interface DeductionRule {
   output_activity_type: string
   output_title?: string
   merge_gap_seconds?: number
-  mode?: 'create' | 'enrich'
+  mode?: DeductionRuleMode
   output_data?: Record<string, unknown>
   output_media_field?: OutputMediaField
   created_at?: string
