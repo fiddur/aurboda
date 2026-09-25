@@ -455,7 +455,7 @@ function RuleForm({ id, rule }: { id?: string; rule?: DeductionRule }) {
           <>
             <section class="rule-section">
               <a
-                href={`/data?date=${formatISO(new Date(), { representation: 'date' })}&types=${encodeURIComponent(fields.outputType)}&deduction_rule_id=${id}&hide=location,music,meal,report,screentime`}
+                href={`/data?date=${formatISO(new Date(), { representation: 'date' })}&types=${encodeURIComponent(fields.outputType)}&deduction_rule_id=${id}&hide=location,media,meal,report,screentime`}
                 class="note-action-btn"
                 style={{ display: 'inline-block', textAlign: 'center', textDecoration: 'none' }}
               >

@@ -49,12 +49,12 @@ export const mergeSmallItems = (
         Activity: 'activity',
         Exercise: 'activity',
         Location: 'location',
-        Music: 'music',
+        Music: 'media',
         'Screen Time': 'screentime',
         'Sleep / Rest': 'activity',
       }
       const dataType = columnToDataType[first.column]
-      const allDataTypes = ['activity', 'location', 'music', 'meal', 'report', 'screentime']
+      const allDataTypes = ['activity', 'location', 'media', 'meal', 'report', 'screentime']
       const hideTypes = dataType ? allDataTypes.filter((t) => t !== dataType) : []
       const dataParams = new URLSearchParams({
         date: formatISO(mergedStart, { representation: 'date' }),

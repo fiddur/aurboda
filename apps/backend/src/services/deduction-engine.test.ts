@@ -852,6 +852,15 @@ describe('media conditions and play-title enrichment', () => {
     expect(activities[0].data).toEqual({ session_name: 'Hips' })
   })
 
+  test('fetches media plays once per rule evaluation', async () => {
+    vi.mocked(deps.getMediaPlays).mockResolvedValue([play()])
+    deps.enrichActivities = vi.fn(inMemoryEnrich(stored()))
+
+    await evaluateRule(user, yogaRule(), window, deps)
+
+    expect(deps.getMediaPlays).toHaveBeenCalledTimes(1)
+  })
+
   test('dry-run counts target activities that would get a value', async () => {
     vi.mocked(deps.getActivities).mockResolvedValue([yogaSpan, { end: d(12, 30), start: d(12) }])
     vi.mocked(deps.getMediaPlays).mockResolvedValue([play(), skim])

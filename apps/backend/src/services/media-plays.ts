@@ -91,19 +91,26 @@ export const playInputToRecordData = (
 
 const norm = (s: string) => s.trim().toLowerCase()
 
-const isLastfmDuplicate = (scrobble: MediaPlay, mpris: MediaPlay): boolean => {
-  if (norm(mpris.artist) === '') return false
-  if (norm(mpris.title) !== norm(scrobble.title) || norm(mpris.artist) !== norm(scrobble.artist)) return false
-  const delta = Math.abs(Date.parse(scrobble.started_at) - Date.parse(mpris.started_at))
-  return delta <= LASTFM_DUPLICATE_WINDOW_MS
-}
+const trackKey = (play: MediaPlay): string => JSON.stringify([norm(play.title), norm(play.artist)])
 
 const byStartedAt = (a: MediaPlay, b: MediaPlay) =>
   Date.parse(a.started_at) - Date.parse(b.started_at) || a.id.localeCompare(b.id)
 
 /** MPRIS plays win over Last.fm scrobbles of the same track within five minutes. */
 export const dedupeAgainstLastfm = (mpris: MediaPlay[], lastfm: MediaPlay[]): MediaPlay[] => {
-  const kept = lastfm.filter((s) => !mpris.some((m) => isLastfmDuplicate(s, m)))
+  const startsByTrack = new Map<string, number[]>()
+  for (const m of mpris) {
+    if (norm(m.artist) === '') continue
+    const key = trackKey(m)
+    const starts = startsByTrack.get(key) ?? []
+    starts.push(Date.parse(m.started_at))
+    startsByTrack.set(key, starts)
+  }
+  const kept = lastfm.filter((s) => {
+    const scrobbledAt = Date.parse(s.started_at)
+    const starts = startsByTrack.get(trackKey(s)) ?? []
+    return !starts.some((start) => Math.abs(scrobbledAt - start) <= LASTFM_DUPLICATE_WINDOW_MS)
+  })
   return [...mpris, ...kept].sort(byStartedAt)
 }
 
@@ -178,7 +185,6 @@ export const pickLongestPlay = (plays: MediaPlay[], windows: PlayRange[]): Media
   return best?.play ?? null
 }
 
-/** Returns an error message, or null when the rule's output_media_field is acceptable. */
 export const validateOutputMediaField = (rule: {
   mode?: string
   conditions: Condition[]
