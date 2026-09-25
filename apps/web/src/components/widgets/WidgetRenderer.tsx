@@ -5,6 +5,7 @@ import { BarChartWidget } from './BarChartWidget'
 import { CorrelationWidget } from './CorrelationWidget'
 import { GoalProgressWidget } from './GoalProgressWidget'
 import { HrZonesWidget } from './HrZonesWidget'
+import { LastSleepWidget } from './LastSleepWidget'
 import { MetricCardWidget } from './MetricCardWidget'
 import { QuickLinkWidget } from './QuickLinkWidget'
 import { SparklineCardWidget } from './SparklineCardWidget'
@@ -43,6 +44,8 @@ export function WidgetRenderer({ widget, isEditing, onRemove, boardId, sectionId
         return <HrZonesWidget config={widget.config} />
       case 'goal_progress':
         return <GoalProgressWidget config={widget.config} />
+      case 'last_sleep':
+        return <LastSleepWidget config={widget.config} />
       default:
         return <div class="widget-unknown">Unknown widget type</div>
     }

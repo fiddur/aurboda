@@ -210,6 +210,14 @@ export const goalProgressConfigSchema = z
 
 export type GoalProgressConfig = z.infer<typeof goalProgressConfigSchema>
 
+export const lastSleepConfigSchema = z
+  .object({
+    title: z.string().optional().meta({ description: 'Widget title (default: "Last night")' }),
+  })
+  .meta({ id: 'LastSleepConfig' })
+
+export type LastSleepConfig = z.infer<typeof lastSleepConfigSchema>
+
 export const widgetTypeSchema = z.enum([
   'metric_card',
   'sparkline_card',
@@ -220,6 +228,7 @@ export const widgetTypeSchema = z.enum([
   'quick_link',
   'hr_zones',
   'goal_progress',
+  'last_sleep',
 ])
 
 export type WidgetType = z.infer<typeof widgetTypeSchema>
@@ -269,6 +278,11 @@ export const dashboardWidgetSchema = z.discriminatedUnion('type', [
     config: goalProgressConfigSchema,
     id: z.string().min(1).meta({ description: 'Unique widget ID' }),
     type: z.literal('goal_progress'),
+  }),
+  z.object({
+    config: lastSleepConfigSchema,
+    id: z.string().min(1).meta({ description: 'Unique widget ID' }),
+    type: z.literal('last_sleep'),
   }),
 ])
 
@@ -369,6 +383,7 @@ export const defaultDashboardConfig: DashboardConfig = {
       title: '30-Day Summary',
       type: 'metrics',
       widgets: [
+        { config: {}, id: 'last-sleep', type: 'last_sleep' },
         {
           config: { color: '#3b82f6', lookback_days: 30, metric: 'sleep_score' },
           id: 'sleep',

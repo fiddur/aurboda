@@ -12,7 +12,7 @@ A card grid showing your current HRV and resting heart rate averages over 7-day 
 
 ### 30-Day Summary
 
-A mix of metric cards and sparklines covering sleep score (with a mini chart of recent history), readiness score, daily steps, and weekly Zone 2 minutes. The Zone 2 card converts raw seconds into weekly minutes and shows the target range.
+Opens with a **Last night** card for the most recent sleep, followed by a mix of metric cards and sparklines covering sleep score (with a mini chart of recent history), readiness score, daily steps, and weekly Zone 2 minutes. The Zone 2 card converts raw seconds into weekly minutes and shows the target range.
 
 ### Activity
 
@@ -37,6 +37,12 @@ Values are sourced from either the HRV/HR baseline endpoint (for 7-day and 30-da
 Like a metric card, but with a small area chart underneath showing the metric's recent history. The sparkline renders a smooth curve with a filled area and a dot on the latest data point. Useful for seeing at a glance whether a metric is trending up or down.
 
 **Configuration:** Metric name, optional title (auto-derived from metric name), lookback period (7-365 days, default 30), chart color (default blue).
+
+### Last Night
+
+A summary of the most recent sleep that ended within the last 36 hours, for a quick morning check-in. Shows bedtime and wake-up, the sleep score and total sleep, a stage strip (one coloured segment per stage along the night), minutes of deep, light, REM and awake, resting heart rate and overnight HRV with an arrow against their 30-day averages, and Body Battery from bedtime to wake-up with the change. The card links to the sleep's detail page. Data comes from `GET /api/latest-sleep` (MCP: `get_latest_sleep`); when no sleep was recorded it says so.
+
+**Configuration:** Optional title (default "Last night").
 
 ### Activity Summary
 
@@ -133,6 +139,7 @@ The dashboard works with whatever data sources you have connected. Widgets grace
 | ---------------------------- | ----------------------------------------------- |
 | HRV and resting HR baselines | Oura, Garmin, or Health Connect                 |
 | Sleep score                  | Oura                                            |
+| Last night                   | Any sleep source; Body Battery from Garmin      |
 | Readiness score              | Oura                                            |
 | Steps                        | Garmin or Health Connect                        |
 | Zone 2 minutes               | Any source providing HR during exercise         |

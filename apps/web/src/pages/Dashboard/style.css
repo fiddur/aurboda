@@ -947,3 +947,115 @@
     color: #e5e7eb;
   }
 }
+
+.dashboard .metrics-grid > .last-sleep,
+.dashboard .metrics-grid > :has(> .last-sleep) {
+  grid-column: 1 / -1;
+}
+
+.dashboard .last-sleep .no-data {
+  font-size: 0.9rem;
+  color: #9ca3af;
+}
+
+.dashboard .last-sleep-link {
+  color: inherit;
+}
+
+.dashboard .last-sleep-headline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+  align-items: baseline;
+}
+
+.dashboard .last-sleep-headline .unit {
+  font-size: 0.85rem;
+  font-weight: 400;
+  color: #6b7280;
+  margin-left: 0.25rem;
+}
+
+.dashboard .last-sleep-strip {
+  position: relative;
+  height: 24px;
+  margin: 0.5rem 0;
+  border-radius: 4px;
+  overflow: hidden;
+  background: #e5e7eb;
+}
+
+.dashboard .last-sleep-segment {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+}
+
+.dashboard .last-sleep-stages {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.9rem;
+  font-size: 0.8rem;
+  color: #4b5563;
+}
+
+.dashboard .last-sleep-stage {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.dashboard .last-sleep-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.dashboard .last-sleep-vitals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.5rem;
+  margin-top: 0.75rem;
+}
+
+.dashboard .last-sleep-vital {
+  display: flex;
+  flex-direction: column;
+}
+
+.dashboard .last-sleep-vital-label {
+  font-size: 0.75rem;
+  color: #6b7280;
+}
+
+.dashboard .last-sleep-vital-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #111827;
+}
+
+.dashboard .last-sleep-vital-value .unit {
+  font-size: 0.8rem;
+  font-weight: 400;
+  color: #6b7280;
+}
+
+@media (prefers-color-scheme: dark) {
+  .dashboard .last-sleep-strip {
+    background: #374151;
+  }
+
+  .dashboard .last-sleep-stages,
+  .dashboard .last-sleep-vital-label,
+  .dashboard .last-sleep-headline .unit,
+  .dashboard .last-sleep-vital-value .unit {
+    color: #9ca3af;
+  }
+
+  .dashboard .last-sleep-vital-value {
+    color: #f9fafb;
+  }
+}

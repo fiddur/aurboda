@@ -20,6 +20,7 @@ import { chartDataBreakdownBucketSchema, chartDataBucketSchema } from './chart-d
 import { baseResponseSchema } from './common.ts'
 import { dashboardConfigSchema } from './dashboard.ts'
 import { goalProgressSchema } from './goals.ts'
+import { latestSleepSchema } from './sleep.ts'
 import { trendHistoryPointSchema } from './trends.ts'
 import { shareVisibilitySchema } from './visibility.ts'
 
@@ -225,6 +226,7 @@ export const widgetDataSchema = z
     z.object({ data: z.null(), type: z.literal('quick_link') }),
     z.object({ data: hrZonesDataSchema.nullable(), type: z.literal('hr_zones') }),
     z.object({ data: goalProgressDataSchema.nullable(), type: z.literal('goal_progress') }),
+    z.object({ data: latestSleepSchema.nullable(), type: z.literal('last_sleep') }),
   ])
   .meta({ id: 'WidgetData' })
 
@@ -238,6 +240,7 @@ export type CorrelationData = z.infer<typeof correlationDataSchema>
 export type ActivitySummaryData = z.infer<typeof activitySummaryDataSchema>
 export type HrZonesData = z.infer<typeof hrZonesDataSchema>
 export type GoalProgressData = z.infer<typeof goalProgressDataSchema>
+export type LastSleepData = z.infer<typeof latestSleepSchema>
 
 export const widgetDataMapSchema = z.record(z.string(), widgetDataSchema).meta({ id: 'WidgetDataMap' })
 

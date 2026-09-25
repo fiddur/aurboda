@@ -7,14 +7,9 @@ import * as d3 from 'd3'
 import { format } from 'date-fns'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 
-import {
-  chartRightMargin,
-  countRightAxes,
-  findNearest,
-  findStageAtTime,
-  MAX_RIGHT_AXES,
-} from './chart-utils'
+import { chartRightMargin, countRightAxes, findNearest, findStageAtTime, MAX_RIGHT_AXES } from './chart-utils'
 import { STAGE_COLORS, STAGE_LABELS, STAGE_Y_ORDER, type SleepStage } from './sleep-utils'
+import { barWidth, type BarChartStyle, METRIC_CHART_STYLES } from './stress-bands'
 import './CombinedMetricChart.css'
 
 export interface CombinedChartSeries {
@@ -132,6 +127,39 @@ const drawHypnogram = (
   }
 }
 
+const drawYAxis = (
+  g: GSelection,
+  yScale: d3.ScaleLinear<number, number>,
+  innerWidth: number,
+  color: string,
+  unit: string,
+  axisSide: 'left' | 'right',
+  axisOffset: number,
+) => {
+  if (axisSide === 'right') {
+    g.append('g')
+      .attr('transform', `translate(${innerWidth + axisOffset},0)`)
+      .call(d3.axisRight(yScale).ticks(4))
+      .selectAll('text')
+      .attr('fill', color)
+      .attr('font-size', '0.7rem')
+
+    g.append('text')
+      .attr('x', innerWidth + axisOffset + 35)
+      .attr('y', -2)
+      .attr('text-anchor', 'end')
+      .attr('fill', color)
+      .attr('font-size', '0.65rem')
+      .text(unit)
+  } else {
+    g.append('g')
+      .call(d3.axisLeft(yScale).ticks(4))
+      .selectAll('text')
+      .attr('fill', color)
+      .attr('font-size', '0.7rem')
+  }
+}
+
 const drawLineOverlay = (
   g: GSelection,
   xScale: d3.ScaleTime<number, number>,
@@ -152,30 +180,7 @@ const drawLineOverlay = (
     .domain([yMin, yExtent[1] + padding])
     .range([innerHeight, 0])
 
-  if (showAxis) {
-    if (axisSide === 'right') {
-      g.append('g')
-        .attr('transform', `translate(${innerWidth + axisOffset},0)`)
-        .call(d3.axisRight(yScale).ticks(4))
-        .selectAll('text')
-        .attr('fill', color)
-        .attr('font-size', '0.7rem')
-
-      g.append('text')
-        .attr('x', innerWidth + axisOffset + 35)
-        .attr('y', -2)
-        .attr('text-anchor', 'end')
-        .attr('fill', color)
-        .attr('font-size', '0.65rem')
-        .text(unit)
-    } else {
-      g.append('g')
-        .call(d3.axisLeft(yScale).ticks(4))
-        .selectAll('text')
-        .attr('fill', color)
-        .attr('font-size', '0.7rem')
-    }
-  }
+  if (showAxis) drawYAxis(g, yScale, innerWidth, color, unit, axisSide, axisOffset)
 
   const line = d3
     .line<[Date, number]>()
@@ -212,30 +217,7 @@ const drawDotOverlay = (
     .domain([yMin, yExtent[1] + padding])
     .range([innerHeight, 0])
 
-  if (showAxis) {
-    if (axisSide === 'right') {
-      g.append('g')
-        .attr('transform', `translate(${innerWidth + axisOffset},0)`)
-        .call(d3.axisRight(yScale).ticks(4))
-        .selectAll('text')
-        .attr('fill', color)
-        .attr('font-size', '0.7rem')
-
-      g.append('text')
-        .attr('x', innerWidth + axisOffset + 35)
-        .attr('y', -2)
-        .attr('text-anchor', 'end')
-        .attr('fill', color)
-        .attr('font-size', '0.65rem')
-        .text(unit)
-    } else {
-      g.append('g')
-        .call(d3.axisLeft(yScale).ticks(4))
-        .selectAll('text')
-        .attr('fill', color)
-        .attr('font-size', '0.7rem')
-    }
-  }
+  if (showAxis) drawYAxis(g, yScale, innerWidth, color, unit, axisSide, axisOffset)
 
   const diamond = d3.symbol().type(d3.symbolDiamond).size(40)
 
@@ -247,6 +229,38 @@ const drawDotOverlay = (
       .attr('fill-opacity', 0.9)
       .attr('stroke', color)
       .attr('stroke-width', 0.5)
+  }
+}
+
+const drawBarOverlay = (
+  g: GSelection,
+  xScale: d3.ScaleTime<number, number>,
+  innerWidth: number,
+  innerHeight: number,
+  data: TimeSeries,
+  style: BarChartStyle,
+  color: string,
+  unit: string,
+  axisSide: 'left' | 'right',
+  axisOffset: number,
+  showAxis: boolean,
+) => {
+  const yScale = d3.scaleLinear().domain(style.domain).range([innerHeight, 0]).clamp(true)
+  if (showAxis) drawYAxis(g, yScale, innerWidth, color, unit, axisSide, axisOffset)
+
+  const bars = data.map(([time, value]) => ({ value, x: xScale(time) }))
+  const width = barWidth(bars.map((b) => b.x))
+  const baseline = yScale(Math.max(style.domain[0], 0))
+
+  for (const { value, x } of bars) {
+    const y = yScale(value)
+    g.append('rect')
+      .attr('x', x - width / 2)
+      .attr('y', Math.min(y, baseline))
+      .attr('width', width)
+      .attr('height', Math.abs(baseline - y))
+      .attr('fill', style.color(value))
+      .attr('fill-opacity', 0.85)
   }
 }
 
@@ -268,25 +282,43 @@ const drawOverlays = (
 ) => {
   let rightAxisCount = 0
   let leftUsed = false
+  const barLayer = g.append('g')
 
   for (const overlay of overlays) {
     const axisSide = leftUsed || hasHypnogram ? 'right' : 'left'
     const showAxis = overlay.showAxis && (axisSide === 'left' || rightAxisCount < MAX_RIGHT_AXES)
     const offset = axisSide === 'right' ? rightAxisCount * 45 : 0
 
+    const style = METRIC_CHART_STYLES[overlay.metric]
     const drawFn = overlay.data.length < SPARSE_THRESHOLD ? drawDotOverlay : drawLineOverlay
-    drawFn(
-      g,
-      xScale,
-      innerWidth,
-      innerHeight,
-      overlay.data,
-      overlay.color,
-      overlay.unit,
-      axisSide,
-      offset,
-      showAxis,
-    )
+    if (style?.kind === 'bars') {
+      drawBarOverlay(
+        barLayer,
+        xScale,
+        innerWidth,
+        innerHeight,
+        overlay.data,
+        style,
+        overlay.color,
+        overlay.unit,
+        axisSide,
+        offset,
+        showAxis,
+      )
+    } else {
+      drawFn(
+        g,
+        xScale,
+        innerWidth,
+        innerHeight,
+        overlay.data,
+        overlay.color,
+        overlay.unit,
+        axisSide,
+        offset,
+        showAxis,
+      )
+    }
 
     if (axisSide === 'left') leftUsed = true
     if (axisSide === 'right' && showAxis) rightAxisCount++

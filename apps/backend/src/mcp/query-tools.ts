@@ -13,6 +13,7 @@ import {
 import { z } from 'zod'
 
 import { getActivityById, getAllActivityTypeNames, getMediaPlays } from '../db/index.ts'
+import { getLatestSleep } from '../services/latest-sleep.ts'
 import { getCustomMetrics } from '../services/mutations.ts'
 import {
   computeActivityDetailMetrics,
@@ -119,6 +120,16 @@ Use cases:
 
       const summary = await getDailySummary(user, dateObj, sync, tz)
       return tzJsonResponse(summary, tz)
+    },
+  )
+
+  server.tool(
+    'get_latest_sleep',
+    'How did I sleep last night? Returns the most recent sleep that ended within the last 36 hours: bedtime and wake-up, time in bed, total sleep, sleep score, the stage timeline (1 Awake, 2 Sleeping, 3 Out of bed, 4 Light, 5 Deep, 6 REM) and minutes per stage, resting heart rate and overnight HRV with their 30-day baselines, and Body Battery at bedtime and wake-up. Data is null when no sleep was recorded.',
+    { tz: tzSchema },
+    async ({ tz }) => {
+      const data = await getLatestSleep(user)
+      return tzJsonResponse({ data, success: true }, tz)
     },
   )
 

@@ -47,6 +47,7 @@ const everyWidgetConfig: DashboardConfig = {
         { config: { href: '/timeline', label: 'Timeline' }, id: 'ql', type: 'quick_link' },
         { config: { lookback_days: 7 }, id: 'hrz', type: 'hr_zones' },
         { config: {}, id: 'goals', type: 'goal_progress' },
+        { config: {}, id: 'sleep', type: 'last_sleep' },
       ],
     },
   ],
@@ -76,7 +77,19 @@ describe('resolveDashboardData integration', () => {
 
     // Keyed by widget id, one entry per widget.
     expect(Object.keys(data).sort()).toEqual(
-      ['actsum', 'bar', 'corr', 'goals', 'hrz', 'mc-baseline', 'mc-period', 'ql', 'spark', 'trend'].sort(),
+      [
+        'actsum',
+        'bar',
+        'corr',
+        'goals',
+        'hrz',
+        'mc-baseline',
+        'mc-period',
+        'ql',
+        'sleep',
+        'spark',
+        'trend',
+      ].sort(),
     )
 
     // Each entry carries its widget type.
@@ -88,6 +101,7 @@ describe('resolveDashboardData integration', () => {
     expect(data['actsum'].type).toBe('activity_summary')
     expect(data['hrz'].type).toBe('hr_zones')
     expect(data['goals'].type).toBe('goal_progress')
+    expect(data['sleep']).toEqual({ data: null, type: 'last_sleep' })
 
     // quick_link never carries data.
     expect(data['ql']).toEqual({ data: null, type: 'quick_link' })

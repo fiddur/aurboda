@@ -1,6 +1,8 @@
 import type {
   AddMetricBody,
   AddMetricResponse,
+  LatestSleep,
+  LatestSleepResponse,
   PeriodSummaryQuery,
   PeriodSummaryResponse,
   QueryMetricsBucketedQuery,
@@ -236,4 +238,13 @@ export const deleteMetricPoint = async (metric: string, time: string, source: st
     headers: { Authorization: `Bearer ${token}` },
     params: { source, time },
   })
+}
+
+export const fetchLatestSleep = async (): Promise<LatestSleep | null> => {
+  const { token } = auth.value
+  const response = await axios.get<LatestSleepResponse>(`${API_URL}/latest-sleep`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+
+  return response.data.data ?? null
 }
