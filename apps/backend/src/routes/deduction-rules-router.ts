@@ -18,12 +18,14 @@ import {
   activityTypeExists,
   deleteDeductionRule,
   deleteRuleActivities,
+  getDeductionRule,
   getDeductionRules,
   getEnabledDeductionRules,
   insertDeductionRule,
   updateDeductionRule,
 } from '../db/index.ts'
 import { evaluateAllRules } from '../services/deduction-engine.ts'
+import { mergeRuleUpdate, validateOutputMediaField } from '../services/media-plays.ts'
 import { type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody } from '../validation.ts'
 
@@ -56,6 +58,7 @@ export const createDeductionRulesRouter = (
         enabled,
         mode,
         output_data,
+        output_media_field,
       } = req.body
 
       if (!(await activityTypeExists(user, output_activity_type))) {
@@ -63,6 +66,9 @@ export const createDeductionRulesRouter = (
           .status(400)
           .json({ error: `Unknown activity type: "${output_activity_type}"`, success: false })
       }
+
+      const mediaFieldError = validateOutputMediaField(req.body)
+      if (mediaFieldError) return res.status(400).json({ error: mediaFieldError, success: false })
 
       const rule = await insertDeductionRule(user, {
         conditions,
@@ -72,6 +78,7 @@ export const createDeductionRulesRouter = (
         name,
         output_activity_type,
         output_data: output_data as Record<string, unknown> | undefined,
+        output_media_field,
         output_title,
         priority,
       })
@@ -102,6 +109,13 @@ export const createDeductionRulesRouter = (
         })
       }
 
+      const mediaFieldError = validateOutputMediaField(req.body)
+      if (mediaFieldError) {
+        return res
+          .status(400)
+          .json({ error: mediaFieldError, sample_days: 0, success: false, would_affect: 0 })
+      }
+
       const tempRule = {
         conditions: req.body.conditions,
         enabled: true,
@@ -111,6 +125,7 @@ export const createDeductionRulesRouter = (
         name: req.body.name,
         output_activity_type,
         output_data: req.body.output_data as Record<string, unknown> | undefined,
+        output_media_field: req.body.output_media_field,
         output_title: req.body.output_title,
         priority: req.body.priority ?? 0,
       }
@@ -135,6 +150,13 @@ export const createDeductionRulesRouter = (
           .status(400)
           .json({ error: `Unknown activity type: "${req.body.output_activity_type}"`, success: false })
       }
+
+      const existing = await getDeductionRule(user, id)
+      if (!existing) {
+        return res.status(404).json({ error: 'Deduction rule not found', success: false })
+      }
+      const mediaFieldError = validateOutputMediaField(mergeRuleUpdate(existing, req.body))
+      if (mediaFieldError) return res.status(400).json({ error: mediaFieldError, success: false })
 
       const updated = await updateDeductionRule(user, id, req.body)
       if (!updated) {

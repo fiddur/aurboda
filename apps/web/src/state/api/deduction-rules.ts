@@ -1,6 +1,6 @@
 import axios from 'axios'
 
-import type { DeductionRule, DeductionRuleCondition } from './types'
+import type { DeductionRule, DeductionRuleCondition, OutputMediaField } from './types'
 
 import { API_URL } from '../../config'
 import { auth } from '../auth'
@@ -23,6 +23,7 @@ export const previewDeductionRule = async (body: {
   priority?: number
   mode?: 'create' | 'enrich'
   output_data?: Record<string, unknown>
+  output_media_field?: OutputMediaField
 }): Promise<{ would_affect: number; sample_days: number }> => {
   const { token } = auth.value
   const response = await axios.post<{ success: boolean; would_affect: number; sample_days: number }>(
@@ -43,6 +44,7 @@ export const createDeductionRule = async (body: {
   enabled?: boolean
   mode?: 'create' | 'enrich'
   output_data?: Record<string, unknown>
+  output_media_field?: OutputMediaField
 }): Promise<DeductionRule> => {
   const { token } = auth.value
   const response = await axios.post<{ success: boolean; data: DeductionRule }>(
@@ -65,6 +67,7 @@ export const updateDeductionRule = async (
     enabled: boolean
     mode: 'create' | 'enrich'
     output_data: Record<string, unknown> | null
+    output_media_field: OutputMediaField | null
   }>,
 ): Promise<DeductionRule> => {
   const { token } = auth.value

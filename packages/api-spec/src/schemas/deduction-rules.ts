@@ -85,6 +85,41 @@ export const scrobbleConditionSchema = z
   })
   .meta({ description: 'Matches time ranges from Last.fm scrobbles by artist/track name' })
 
+export const mediaConditionSchema = z
+  .object({
+    artist: z
+      .array(z.string())
+      .optional()
+      .meta({ description: 'Artist name(s) to match (any of, per match_mode)' }),
+    kind: z.literal('media'),
+    match_mode: z
+      .enum(['exact', 'contains'])
+      .default('contains')
+      .meta({ description: 'Case-insensitive match mode for title and artist' }),
+    min_played_ratio: z.number().gt(0).max(1).optional().meta({
+      description:
+        'Minimum played_secs / track_secs. Skipped when the play has no known track length (Last.fm, some mpv plays).',
+    }),
+    min_played_secs: z.number().positive().optional().meta({
+      description: 'Minimum seconds actually played. Plays without played_secs (Last.fm) never pass.',
+    }),
+    player: z
+      .array(z.string())
+      .optional()
+      .meta({ description: 'Player name(s) to match exactly, case-insensitive (e.g. "firefox", "mpv")' }),
+    title: z.string().optional().meta({ description: 'Title to match (per match_mode)' }),
+    url_host: z.array(z.string()).optional().meta({
+      description:
+        'URL host(s) to match (any of). Matches the host itself or any subdomain, case-insensitive (www.example.com matches example.com).',
+    }),
+  })
+  .meta({
+    description:
+      'Matches time ranges of media plays (MPRIS pushes and non-duplicate Last.fm scrobbles) by host, title, artist, player and how much was played',
+  })
+
+export type MediaCondition = z.infer<typeof mediaConditionSchema>
+
 export const conditionSchema = z.discriminatedUnion('kind', [
   activityConditionSchema,
   screentimeCategoryConditionSchema,
@@ -92,9 +127,31 @@ export const conditionSchema = z.discriminatedUnion('kind', [
   locationConditionSchema,
   afterDateConditionSchema,
   scrobbleConditionSchema,
+  mediaConditionSchema,
 ])
 
 export type Condition = z.infer<typeof conditionSchema>
+
+export const outputMediaFieldSchema = z
+  .object({
+    field: z
+      .string()
+      .regex(/^[a-z][a-z0-9_]*$/)
+      .meta({
+        description: 'Activity data field to write the play title into (snake_case), e.g. "session_name"',
+      }),
+    strip_pattern: z.string().optional().meta({
+      description:
+        'JavaScript regular expression (flags "giu"); every match is removed from the title before writing, then whitespace is collapsed and trimmed',
+    }),
+  })
+  .meta({
+    id: 'OutputMediaField',
+    description:
+      'Enrich mode only, with at least one media condition: copy the title of the longest matching play overlapping each enriched activity into a data field',
+  })
+
+export type OutputMediaField = z.infer<typeof outputMediaFieldSchema>
 
 export const deductionRuleModeSchema = z
   .enum(['create', 'enrich'])
@@ -128,6 +185,7 @@ export const deductionRuleSchema = z
       .record(z.string(), z.unknown())
       .optional()
       .meta({ description: 'Static data fields to set on created/enriched activities' }),
+    output_media_field: outputMediaFieldSchema.optional(),
     output_title: z.string().optional().meta({ description: 'Optional title for created activities' }),
     priority: z
       .number()
@@ -167,6 +225,7 @@ export const addDeductionRuleBodySchema = z
       .record(z.string(), z.unknown())
       .optional()
       .meta({ description: 'Static data fields for created/enriched activities' }),
+    output_media_field: outputMediaFieldSchema.optional(),
     output_title: z.string().optional().meta({ description: 'Optional title for created activities' }),
     priority: z
       .number()
@@ -199,6 +258,10 @@ export const updateDeductionRuleBodySchema = z
       .nullable()
       .optional()
       .meta({ description: 'New output data (null to clear)' }),
+    output_media_field: outputMediaFieldSchema
+      .nullable()
+      .optional()
+      .meta({ description: 'New play-title enrichment (null to clear)' }),
     output_title: z.string().nullable().optional().meta({ description: 'New title (null to remove)' }),
     priority: z.number().int().min(0).max(2).optional().meta({ description: 'New priority' }),
   })

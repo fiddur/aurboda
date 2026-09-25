@@ -6,7 +6,7 @@ import { formatISO } from 'date-fns'
 import { useLocation, useRoute } from 'preact-iso'
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
 
-import type { DeductionRule, DeductionRuleCondition } from '../../state/api'
+import type { DeductionRule, DeductionRuleCondition, OutputMediaField } from '../../state/api'
 
 import { ActivityTypePicker } from '../../components/ActivityTypePicker'
 import { ConditionBuilder } from '../../components/ConditionBuilder'
@@ -128,6 +128,8 @@ function OutputDataEditor({
 interface RuleFormFields {
   conditions: DeductionRuleCondition[]
   enabled: boolean
+  mediaField: string
+  mediaStripPattern: string
   mergeGapMinutes: string
   mode: 'create' | 'enrich'
   name: string
@@ -140,6 +142,8 @@ interface RuleFormFields {
 const defaultFields: RuleFormFields = {
   conditions: [{ kind: 'activity' }],
   enabled: true,
+  mediaField: '',
+  mediaStripPattern: '',
   mergeGapMinutes: '',
   mode: 'create',
   name: '',
@@ -152,6 +156,8 @@ const defaultFields: RuleFormFields = {
 const ruleToFields = (rule: DeductionRule): RuleFormFields => ({
   conditions: rule.conditions,
   enabled: rule.enabled,
+  mediaField: rule.output_media_field?.field ?? '',
+  mediaStripPattern: rule.output_media_field?.strip_pattern ?? '',
   mergeGapMinutes: rule.merge_gap_seconds ? String(rule.merge_gap_seconds / 60) : '',
   mode: rule.mode ?? 'create',
   name: rule.name,
@@ -161,6 +167,11 @@ const ruleToFields = (rule: DeductionRule): RuleFormFields => ({
   priority: rule.priority,
 })
 
+const toOutputMediaField = (f: RuleFormFields): OutputMediaField | undefined =>
+  f.mode === 'enrich' && f.mediaField
+    ? { field: f.mediaField, ...(f.mediaStripPattern ? { strip_pattern: f.mediaStripPattern } : {}) }
+    : undefined
+
 const fieldsToBuildBody = (f: RuleFormFields) => ({
   conditions: f.conditions,
   enabled: f.enabled,
@@ -169,6 +180,7 @@ const fieldsToBuildBody = (f: RuleFormFields) => ({
   name: f.name,
   output_activity_type: f.outputType,
   output_data: Object.keys(f.outputData).length > 0 ? f.outputData : undefined,
+  output_media_field: toOutputMediaField(f),
   output_title: f.outputTitle || undefined,
   priority: f.priority,
 })
@@ -251,6 +263,14 @@ function RuleForm({ id, rule }: { id?: string; rule?: DeductionRule }) {
     setConditionsDirty(false)
   }, [fields.conditions, autoSave])
 
+  const saveMediaField = () => {
+    if (isNew) return
+    const next = toOutputMediaField(fields) ?? null
+    if (JSON.stringify(next) !== JSON.stringify(rule?.output_media_field ?? null)) {
+      autoSave({ output_media_field: next })
+    }
+  }
+
   const canSubmit = Boolean(fields.name && fields.outputType)
 
   return (
@@ -284,7 +304,11 @@ function RuleForm({ id, rule }: { id?: string; rule?: DeductionRule }) {
               onChange={(e) => {
                 const v = (e.target as HTMLSelectElement).value as 'create' | 'enrich'
                 updateField('mode', v)
-                autoSave({ mode: v })
+                autoSave(
+                  v === 'create' && rule?.output_media_field
+                    ? { mode: v, output_media_field: null }
+                    : { mode: v },
+                )
               }}
               class="rule-field-select"
             >
@@ -308,6 +332,25 @@ function RuleForm({ id, rule }: { id?: string; rule?: DeductionRule }) {
               autoSave({ output_data: Object.keys(data).length > 0 ? data : null })
             }}
           />
+
+          {fields.mode === 'enrich' && (
+            <>
+              <TextField
+                label="Copy play title into field"
+                value={fields.mediaField}
+                onChange={(v) => updateField('mediaField', v)}
+                onBlur={saveMediaField}
+                placeholder="e.g. session_name (needs a Media play condition)"
+              />
+              <TextField
+                label="Strip from title (regex)"
+                value={fields.mediaStripPattern}
+                onChange={(v) => updateField('mediaStripPattern', v)}
+                onBlur={saveMediaField}
+                placeholder="e.g. \s*—\s*True Naked Yoga$"
+              />
+            </>
+          )}
 
           <TextField
             label="Output Title"

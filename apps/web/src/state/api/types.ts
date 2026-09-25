@@ -33,7 +33,14 @@ export interface DataFilter {
 }
 
 export interface DeductionRuleCondition {
-  kind: 'activity' | 'screentime_category' | 'activity_data' | 'location' | 'after_date' | 'scrobble'
+  kind:
+    | 'activity'
+    | 'screentime_category'
+    | 'activity_data'
+    | 'location'
+    | 'after_date'
+    | 'scrobble'
+    | 'media'
   activity_type?: string
   data_filters?: DataFilter[]
   category?: string[]
@@ -46,6 +53,16 @@ export interface DeductionRuleCondition {
   track?: string
   match_mode?: 'exact' | 'contains'
   duration_seconds?: number
+  url_host?: string[]
+  title?: string
+  player?: string[]
+  min_played_secs?: number
+  min_played_ratio?: number
+}
+
+export interface OutputMediaField {
+  field: string
+  strip_pattern?: string
 }
 
 export interface DeductionRule {
@@ -59,6 +76,7 @@ export interface DeductionRule {
   merge_gap_seconds?: number
   mode?: 'create' | 'enrich'
   output_data?: Record<string, unknown>
+  output_media_field?: OutputMediaField
   created_at?: string
 }
 

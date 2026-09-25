@@ -158,6 +158,7 @@ export const dataSourceSchema = z
     'manual',
     'lastfm',
     'lastfm-auto',
+    'mpris',
     'location-detection',
   ])
   .meta({

@@ -256,6 +256,9 @@ export const activitiesTables: Record<string, string> = {
       output_activity_type  VARCHAR(100) NOT NULL REFERENCES activity_type_definitions(name) ON UPDATE CASCADE,
       output_title          VARCHAR(255),
       merge_gap_seconds     INTEGER,
+      mode                  VARCHAR(10) NOT NULL DEFAULT 'create',
+      output_data           JSONB,
+      output_media_field    JSONB,
       created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )

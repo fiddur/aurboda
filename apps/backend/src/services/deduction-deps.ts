@@ -1,13 +1,15 @@
-import type { DeductionEngineDeps, EvaluationWindow, TimeRange } from './deduction-engine.ts'
+import type { DeductionEngineDeps, EnrichOptions, EvaluationWindow, TimeRange } from './deduction-engine.ts'
 import type { ActivityNotifier } from './deduction-queue.ts'
 
 import { query } from '../db/connection.ts'
 import {
   deleteStaleRuleActivities,
   expandActivityTypes,
+  getMediaPlays,
   insertActivity as dbInsertActivity,
   insertDeductionRuleRun,
 } from '../db/index.ts'
+import { computeEnrichPatch } from './deduction-engine.ts'
 import { getPlaceVisits } from './locations.ts'
 
 const getActivities = async (
@@ -238,15 +240,17 @@ const enrichActivities = async (
   ranges: TimeRange[],
   data: Record<string, unknown>,
   ruleId: string,
+  options: EnrichOptions = {},
 ): Promise<string[]> => {
-  if (ranges.length === 0 || Object.keys(data).length === 0) return []
+  if (ranges.length === 0 || (Object.keys(data).length === 0 && !options.dataFor)) return []
 
+  const seen = new Set<string>()
   const enrichedIds: string[] = []
 
   for (const range of ranges) {
     const result = await query(
       user,
-      `SELECT id, data FROM activities
+      `SELECT id, data, start_time, end_time FROM activities
        WHERE activity_type = $1
          AND deleted_at IS NULL
          AND start_time < $3
@@ -257,20 +261,19 @@ const enrichActivities = async (
 
     for (const row of result.rows) {
       const activityId = row.id as string
-      const existingData = (row.data as Record<string, unknown>) ?? {}
+      if (seen.has(activityId)) continue
+      seen.add(activityId)
 
-      // Only merge keys that are missing (null/undefined) in existing data
-      const patch: Record<string, unknown> = {}
-      for (const [key, val] of Object.entries(data)) {
-        if (existingData[key] === undefined || existingData[key] === null) {
-          patch[key] = val
-        }
-      }
-
-      if (Object.keys(patch).length === 0) continue
-
-      // Track enrichment provenance (just the ID — name resolved at query time)
-      patch._enriched_by = ruleId
+      const start = row.start_time as Date
+      const span = { end: (row.end_time as Date) ?? new Date(start.getTime() + 60 * 60 * 1000), start }
+      const activityData = options.dataFor ? { ...data, ...options.dataFor(span) } : data
+      const patch = computeEnrichPatch(
+        (row.data as Record<string, unknown>) ?? {},
+        activityData,
+        ruleId,
+        options.overwriteKeys,
+      )
+      if (!patch) continue
 
       await query(
         user,
@@ -300,6 +303,7 @@ export const createDefaultEngineDeps = (notifier?: ActivityNotifier): DeductionE
   getActivitiesWithDataFilters,
   getEarliestActivityTime,
   getLocationVisits,
+  getMediaPlays,
   getScrobbles,
   getScreentime,
   insertActivity: async (user, activity) => {

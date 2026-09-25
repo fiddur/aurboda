@@ -119,6 +119,14 @@ export const dataSources: DataSourceInfo[] = [
     userSetup: 'Last.fm username',
   },
   {
+    name: 'Media players (MPRIS)',
+    doc: 'media.md',
+    provides: 'Video, music and podcast plays with URL, played time and track length (Linux desktop)',
+    how: 'Push (logger script)',
+    adminSetup: 'None',
+    userSetup: 'Run the MPRIS logger + push script',
+  },
+  {
     name: 'Calendars (ICS)',
     doc: 'calendars.md',
     provides: 'Calendar events imported as tags (Google Calendar, Outlook, iCloud, Nextcloud, etc.)',

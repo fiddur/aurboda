@@ -32,6 +32,7 @@ describe('sync router', () => {
     resetOuraSyncState: vi.fn().mockResolvedValue(undefined),
     resetRescueTimeSyncState: vi.fn().mockResolvedValue(undefined),
     resetStravaSyncState: vi.fn().mockResolvedValue(undefined),
+    storeMediaPlays: vi.fn().mockResolvedValue({ plays_received: 0, plays_stored: 0 }),
     getStravaSyncStates: vi.fn().mockResolvedValue([]),
     syncStrava: vi.fn().mockResolvedValue({ status: 'syncing' }),
     syncCalendars: vi.fn().mockResolvedValue([]),
@@ -393,6 +394,85 @@ describe('sync router', () => {
 
       expect(response.status).toBe(200)
       expect(mockDeps.processActivityWatchEvents).toHaveBeenCalledWith('testuser', events, '', undefined)
+    })
+  })
+
+  describe('media endpoint', () => {
+    const play = (overrides: Record<string, unknown> = {}) => ({
+      album: '',
+      artist: '',
+      device: 'laptop',
+      ended_at: '2026-01-10T10:32:00Z',
+      id: 'play-1',
+      max_position_secs: 1790,
+      played_secs: 1710,
+      player: 'firefox',
+      seek_count: 0,
+      started_at: '2026-01-10T10:02:00Z',
+      title: 'Yin Yoga for Healthy Hips with Meagan — True Naked Yoga',
+      track_secs: 1800,
+      url: 'https://www.truenakedyoga.com/videos/yin-hips',
+      ...overrides,
+    })
+
+    test('stores plays with the device name and evaluates rules over their span', async () => {
+      vi.mocked(mockDeps.storeMediaPlays).mockResolvedValueOnce({ plays_received: 2, plays_stored: 2 })
+      const plays = [
+        play(),
+        play({
+          ended_at: '2026-01-10T09:05:00Z',
+          id: 'play-2',
+          started_at: '2026-01-10T09:00:00Z',
+          track_secs: null,
+        }),
+      ]
+      const response = await request(createTestApp())
+        .post('/sync/media')
+        .send({ device_name: 'laptop', plays })
+
+      expect(response.status).toBe(200)
+      expect(response.body).toEqual({ result: { plays_received: 2, plays_stored: 2 }, success: true })
+      expect(mockDeps.storeMediaPlays).toHaveBeenCalledWith('testuser', plays, 'laptop')
+      expect(mockDeps.onActivitySynced).toHaveBeenCalledWith(
+        'testuser',
+        '*',
+        new Date('2026-01-10T09:00:00Z'),
+        new Date('2026-01-10T10:32:00Z'),
+      )
+      expect(mockDeps.processHealthConnectBatch).not.toHaveBeenCalled()
+    })
+
+    test('rejects a body without plays', async () => {
+      const response = await request(createTestApp()).post('/sync/media').send({ device_name: 'laptop' })
+
+      expect(response.status).toBe(400)
+      expect(mockDeps.storeMediaPlays).not.toHaveBeenCalled()
+    })
+
+    test('rejects a play with a non-positive track length', async () => {
+      const response = await request(createTestApp())
+        .post('/sync/media')
+        .send({ plays: [play({ track_secs: 0 })] })
+
+      expect(response.status).toBe(400)
+    })
+
+    test('an empty batch stores nothing and triggers no evaluation', async () => {
+      const response = await request(createTestApp()).post('/sync/media').send({ plays: [] })
+
+      expect(response.status).toBe(200)
+      expect(mockDeps.storeMediaPlays).toHaveBeenCalledWith('testuser', [], undefined)
+      expect(mockDeps.onActivitySynced).not.toHaveBeenCalled()
+    })
+
+    test('returns 500 when storing fails', async () => {
+      vi.mocked(mockDeps.storeMediaPlays).mockRejectedValueOnce(new Error('db down'))
+      const response = await request(createTestApp())
+        .post('/sync/media')
+        .send({ plays: [play()] })
+
+      expect(response.status).toBe(500)
+      expect(response.body).toEqual({ error: 'db down', success: false })
     })
   })
 

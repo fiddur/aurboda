@@ -2,6 +2,7 @@ import { describe, expect, test, vi } from 'vitest'
 
 vi.mock('../db/index', () => ({
   deleteStaleRuleActivities: vi.fn(),
+  getMediaPlays: vi.fn().mockResolvedValue([]),
   insertActivity: vi.fn().mockResolvedValue('new-id'),
   insertDeductionRuleRun: vi.fn(),
 }))
