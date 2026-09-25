@@ -8,9 +8,9 @@
  * copy values directly regardless of source.
  */
 
-import type pg from 'pg'
-
 import { FOOD_ITEM_QUALITY_TIER_SQL, NUTRIENT_FIELD_NAMES, nutrientColumnsDDL } from '@aurboda/api-spec'
+
+import type { Queryable } from '../db/pool.ts'
 
 export interface SharedFoodItemEntity {
   id: string
@@ -123,7 +123,7 @@ export interface SharedFoodItemsApi {
   listSharedFoodItems: (limit?: number) => Promise<SharedFoodItemEntity[]>
 }
 
-export const createSharedFoodItemsApi = (getClient: () => Promise<pg.Client>): SharedFoodItemsApi => ({
+export const createSharedFoodItemsApi = (getClient: () => Promise<Queryable>): SharedFoodItemsApi => ({
   searchSharedFoodItems: async (q, limit = 20) => {
     const trimmed = q.trim()
     if (!trimmed) return []

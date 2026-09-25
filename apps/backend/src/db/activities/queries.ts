@@ -321,11 +321,23 @@ export const getActivitiesByCategory = async (
   return mergeOverlappingActivities(activities, categoryMap)
 }
 
-/** Unlike getActivityTypeNames (which reads from definitions), this reads actual data. */
+/**
+ * Unlike getActivityTypeNames (which reads from definitions), this reads actual data.
+ * A recursive loose index scan over `idx_activities_not_deleted`: one index probe per
+ * distinct type instead of the full scan a plain `SELECT DISTINCT` needs.
+ */
 export const getAllActivityTypeNames = async (user: string): Promise<string[]> => {
   const result = await query(
     user,
-    `SELECT DISTINCT activity_type FROM activities WHERE deleted_at IS NULL ORDER BY activity_type`,
+    `WITH RECURSIVE t(activity_type) AS (
+       (SELECT activity_type FROM activities WHERE deleted_at IS NULL ORDER BY activity_type LIMIT 1)
+       UNION ALL
+       SELECT (SELECT a.activity_type FROM activities a
+                WHERE a.deleted_at IS NULL AND a.activity_type > t.activity_type
+                ORDER BY a.activity_type LIMIT 1)
+       FROM t WHERE t.activity_type IS NOT NULL
+     )
+     SELECT activity_type FROM t WHERE activity_type IS NOT NULL`,
   )
   return result.rows.map((r) => r.activity_type as string)
 }

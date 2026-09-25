@@ -1,8 +1,10 @@
 /**
  * Postgres `LISTEN/NOTIFY` for the home timeline — the low-level transport behind
- * live updates. Each user has one long-lived per-user DB connection (see
- * `getDbForUser`); the ingest path emits a ping on it when a new post arrives, and
- * an open SSE stream listens on that same connection and receives its own ping.
+ * live updates. The ingest path emits a ping through the user's pool when a new
+ * post arrives; an open channel listens on its own dedicated connection to the
+ * user's database, because `LISTEN` is session state and a pooled connection is
+ * handed to other callers between statements. `pg_notify` reaches every session
+ * listening in the same database.
  *
  * The payload is intentionally empty: a ping means "your timeline changed, refetch
  * the newest page". Keeping it empty sidesteps NOTIFY's 8 kB payload limit and
@@ -13,36 +15,44 @@
  */
 import type { Client, Notification } from 'pg'
 
-import { getDbForUser } from './connection.ts'
+import { createUserListenClient, getDbForUser } from './connection.ts'
 
 /** A fixed identifier (no interpolation of user input) — safe to inline in LISTEN/UNLISTEN. */
 const CHANNEL = 'timeline_updates'
 
 /** Emit a home-timeline "changed" ping on the user's DB. */
 export const emitTimelineNotify = async (user: string): Promise<void> => {
-  const client = await getDbForUser(user)
-  await client.query('SELECT pg_notify($1, $2)', [CHANNEL, ''])
+  const db = await getDbForUser(user)
+  await db.query('SELECT pg_notify($1, $2)', [CHANNEL, ''])
 }
 
 /**
- * Start listening for home-timeline pings on the user's DB connection, invoking
- * `onNotify` for each. Returns a teardown that detaches the listener and issues
- * `UNLISTEN`. The caller opens exactly one channel per user (and tears it down when
- * the last subscriber leaves), so this doesn't refcount.
+ * Start listening for home-timeline pings on a dedicated connection to the user's
+ * DB, invoking `onNotify` for each. Returns a teardown that issues `UNLISTEN` and
+ * closes the connection. The caller opens exactly one channel per user (and tears
+ * it down when the last subscriber leaves), so this doesn't refcount.
  */
 export const openTimelineChannel = async (
   user: string,
   onNotify: () => void,
+  makeClient: (user: string) => Client = createUserListenClient,
 ): Promise<() => Promise<void>> => {
-  const client: Client = await getDbForUser(user)
-  const handler = (msg: Notification) => {
+  const client = makeClient(user)
+  // Without a listener, a dropped connection would crash the process.
+  client.on('error', (err) => console.error(`⚠️ Timeline LISTEN connection error for ${user}:`, err))
+  client.on('notification', (msg: Notification) => {
     if (msg.channel === CHANNEL) onNotify()
+  })
+  try {
+    await client.connect()
+    await client.query(`LISTEN ${CHANNEL}`)
+  } catch (err) {
+    await client.end().catch(() => {})
+    throw err
   }
-  client.on('notification', handler)
-  await client.query(`LISTEN ${CHANNEL}`)
   return async () => {
-    client.removeListener('notification', handler)
     // Best-effort: the connection may already be gone on shutdown.
     await client.query(`UNLISTEN ${CHANNEL}`).catch(() => {})
+    await client.end().catch(() => {})
   }
 }

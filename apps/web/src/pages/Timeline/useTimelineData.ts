@@ -19,9 +19,9 @@ import {
   fetchMeals,
   fetchScreentimeCategories,
   fetchScreentimeBucketed,
-  fetchItemIcons,
   fetchTrainingLoad,
   fetchUserSettings,
+  selectItemIcons,
 } from '../../state/api'
 import { parseBucketedResponse } from '../../utils/chart'
 import { packLanes } from '../../utils/lanePacking'
@@ -51,10 +51,8 @@ import {
   type LegendCategory,
   type ScreentimeSubEntry,
 } from './legendCategories'
+import { TIMELINE_METRICS, TIMELINE_SLEEP_METRICS } from './timelineMetrics'
 import { buildSleepDetails, type SleepMetricsByDate } from './tooltipBuilder'
-
-/** Metrics to exclude from the unified bucketed query (fetched via separate endpoints). */
-const TIMELINE_EXCLUDED_METRICS = ['training_impulse', 'activity_impulse']
 
 const ACTIVITY_CATEGORIES = new Set(['sleep_rest', 'exercise', 'meditation', 'wellness'])
 
@@ -151,7 +149,7 @@ export const useTimelineData = ({
 
   const settingsQuery = useQuery({
     queryFn: fetchUserSettings,
-    queryKey: ['user-settings'],
+    queryKey: ['userSettings'],
     staleTime: 30 * 60 * 1000,
   })
 
@@ -161,20 +159,15 @@ export const useTimelineData = ({
     enabled: !hiddenCategories.has('metrics'),
     placeholderData: keepPreviousData,
     queryFn: () =>
-      fetchBucketedMetrics(
-        subDays(fetchStart, 0.5),
-        addDays(fetchEnd, 0.5),
-        undefined,
-        bucketSize,
-        TIMELINE_EXCLUDED_METRICS,
-      ),
+      fetchBucketedMetrics(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5), TIMELINE_METRICS, bucketSize),
     queryKey: ['timeline-bucketed-metrics', fromDateKey, toDateKey, bucketSize],
     staleTime: 5 * 60 * 1000,
   })
 
   const itemIconsQuery = useQuery({
-    queryFn: fetchItemIcons,
-    queryKey: ['item-icons'],
+    queryFn: fetchUserSettings,
+    queryKey: ['userSettings'],
+    select: selectItemIcons,
     staleTime: 30 * 60 * 1000,
   })
 
@@ -342,15 +335,8 @@ export const useTimelineData = ({
 
   const sleepMetricsByDate = useMemo<SleepMetricsByDate>(() => {
     const map: SleepMetricsByDate = new Map()
-    const sleepMetricNames = [
-      'sleep_score',
-      'sleep_efficiency',
-      'sleep_restfulness',
-      'sleep_deep_score',
-      'sleep_rem_score',
-    ]
     for (const bucket of bucketedMetricsQuery.data?.buckets ?? []) {
-      for (const name of sleepMetricNames) {
+      for (const name of TIMELINE_SLEEP_METRICS) {
         const stats = bucket.metrics[name]
         if (!stats) continue
         const key = format(new Date(bucket.start), 'yyyy-MM-dd')

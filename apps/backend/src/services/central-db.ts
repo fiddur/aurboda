@@ -7,6 +7,7 @@
 import { NUTRIENT_FIELD_NAMES } from '@aurboda/api-spec'
 import pg from 'pg'
 
+import { createRolePool, type Queryable, type UserDb, withTransaction } from '../db/pool.ts'
 import {
   createSharedFoodItemsApi,
   CREATE_SHARED_FOOD_ITEMS_INDEXES,
@@ -98,7 +99,8 @@ export interface OAuthToken {
 }
 
 export interface CentralDbDeps {
-  getClient: () => Promise<pg.Client>
+  getClient: () => Promise<Queryable>
+  withTransaction: <T>(fn: (tx: Queryable) => Promise<T>) => Promise<T>
 }
 
 export interface CentralDb
@@ -428,7 +430,7 @@ export const createCentralDb = (deps: CentralDbDeps): CentralDb => {
       for (const stmt of CREATE_IMPORT_JOBS_INDEXES) await client.query(stmt)
 
       await client.query(CREATE_SHARED_NUTRIENT_RECOMMENDATIONS_TABLE)
-      await seedSharedNutrientRecommendations(client)
+      await deps.withTransaction((tx) => seedSharedNutrientRecommendations(tx))
 
       await client.query(
         `INSERT INTO server_settings (key, value)
@@ -703,21 +705,35 @@ export const createCentralDb = (deps: CentralDbDeps): CentralDb => {
   }
 }
 
-let centralDbClient: pg.Client | null = null
+const CENTRAL_POOL_MAX = 5
+const CENTRAL_POOL_IDLE_TIMEOUT_MS = 30_000
+const CENTRAL_POOL_CONNECTION_TIMEOUT_MS = 30_000
+
+let centralPool: Promise<UserDb> | null = null
 let centralDbInstance: CentralDb | null = null
 
-const getCentralDbClient = async (): Promise<pg.Client> => {
-  if (centralDbClient) return centralDbClient
-
+const createCentralPool = async (): Promise<UserDb> => {
   const dbReady = await ensureDatabase()
   if (!dbReady) {
     throw new Error('Failed to initialize central database')
   }
+  return createRolePool({
+    connectionTimeoutMillis: CENTRAL_POOL_CONNECTION_TIMEOUT_MS,
+    database: getDbParams().database,
+    idleTimeoutMillis: CENTRAL_POOL_IDLE_TIMEOUT_MS,
+    max: CENTRAL_POOL_MAX,
+  })
+}
 
-  const params = getDbParams()
-  centralDbClient = new pg.Client({ database: params.database })
-  await centralDbClient.connect()
-  return centralDbClient
+/** Cached as a promise so concurrent first callers share one pool; a failure is not cached. */
+const getCentralDbClient = (): Promise<UserDb> => {
+  if (!centralPool) {
+    centralPool = createCentralPool().catch((err: unknown) => {
+      centralPool = null
+      throw err
+    })
+  }
+  return centralPool
 }
 
 /**
@@ -725,7 +741,10 @@ const getCentralDbClient = async (): Promise<pg.Client> => {
  */
 export const getCentralDb = (): CentralDb => {
   if (!centralDbInstance) {
-    centralDbInstance = createCentralDb({ getClient: getCentralDbClient })
+    centralDbInstance = createCentralDb({
+      getClient: getCentralDbClient,
+      withTransaction: async (fn) => withTransaction(await getCentralDbClient(), fn),
+    })
   }
   return centralDbInstance
 }

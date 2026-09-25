@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
-import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
+import { cleanTestDb, getTestDbClient, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import {
   adoptLegacyActivity,
   deleteActivity,
@@ -11,6 +11,7 @@ import {
   getActivities,
   getActivityById,
   getActivitiesNeedingDetail,
+  getAllActivityTypeNames,
   getNonSleepActivitiesMerged,
   getOverlappingActivities,
   getOverrideForActivity,
@@ -1212,6 +1213,43 @@ describe('Activities Integration Tests', () => {
       expect(await findActivityByExternalId(user, 'garmin', 'gravl-workout-abc')).toBeNull()
       await deleteActivity(user, id!)
       expect(await findActivityByExternalId(user, 'gravl', 'gravl-workout-abc')).toBeNull()
+    })
+  })
+
+  describe('getAllActivityTypeNames', () => {
+    test('returns [] for an empty table', async () => {
+      expect(await getAllActivityTypeNames(getTestUser())).toEqual([])
+    })
+
+    test('matches SELECT DISTINCT over non-deleted rows', async () => {
+      const user = getTestUser()
+      const at = (h: number) => new Date(Date.UTC(2024, 0, 15, h))
+      await insertActivities(user, [
+        { activity_type: 'walking', source: 'aurboda', start_time: at(1) },
+        { activity_type: 'sleep', source: 'aurboda', start_time: at(2) },
+        { activity_type: 'walking', source: 'aurboda', start_time: at(3) },
+        { activity_type: 'exercise', source: 'aurboda', start_time: at(4) },
+        { activity_type: 'sleep', source: 'aurboda', start_time: at(5) },
+        { activity_type: 'meditation', source: 'aurboda', start_time: at(6) },
+        { activity_type: 'screentime', source: 'aurboda', start_time: at(7) },
+        { activity_type: 'walking', source: 'aurboda', start_time: at(8) },
+      ])
+      const client = getTestDbClient()
+      await client.query(
+        `UPDATE activities SET deleted_at = now() WHERE activity_type IN ('meditation', 'screentime')`,
+      )
+      await client.query(
+        `UPDATE activities SET deleted_at = now() WHERE activity_type = 'walking' AND start_time = $1`,
+        [at(1)],
+      )
+
+      const expected = await client.query(
+        `SELECT DISTINCT activity_type FROM activities WHERE deleted_at IS NULL ORDER BY activity_type`,
+      )
+      const names = await getAllActivityTypeNames(user)
+
+      expect(names).toEqual(expected.rows.map((r) => r.activity_type))
+      expect(names).toEqual(['exercise', 'sleep', 'walking'])
     })
   })
 

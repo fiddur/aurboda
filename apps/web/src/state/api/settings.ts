@@ -44,7 +44,5 @@ export const uploadIcon = async (file: File): Promise<{ id: string; url: string 
   return { id: response.data.id, url: response.data.url }
 }
 
-export const fetchItemIcons = async (): Promise<Record<string, string>> => {
-  const settings = await fetchUserSettings()
-  return settings.item_icons ?? {}
-}
+export const selectItemIcons = (settings: UserSettingsResponse): Record<string, string> =>
+  settings.item_icons ?? {}

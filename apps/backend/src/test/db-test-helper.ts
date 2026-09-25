@@ -1,11 +1,13 @@
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql'
 import { Client } from 'pg'
 
-import { _setClientForUser } from '../db/index.ts'
+import { _setDbForUser } from '../db/index.ts'
+import { createRolePool, type UserDb } from '../db/pool.ts'
 import { createTableStatements, tableCreationOrder } from '../schema.ts'
 
 let container: StartedPostgreSqlContainer | null = null
 let client: Client | null = null
+let pool: UserDb | null = null
 
 const TEST_USER = 'testuser'
 
@@ -32,8 +34,16 @@ export const startTestDb = async (): Promise<void> => {
     }
   }
 
-  // Inject the client so db.ts functions use this connection
-  _setClientForUser(TEST_USER, client)
+  // The user's queries go through a real pool, as in production, so parallel
+  // statements and transactions run on separate connections.
+  pool = createRolePool({ connectionString: container.getConnectionUri(), max: 5 })
+  _setDbForUser(TEST_USER, pool)
+}
+
+/** Connection URI of the test container, for tests that open their own connections. */
+export const getTestConnectionUri = (): string => {
+  if (!container) throw new Error('Test DB not started — call startTestDb() first.')
+  return container.getConnectionUri()
 }
 
 /**
@@ -49,6 +59,10 @@ export const getTestDbClient = (): Client => {
  * Call this in afterAll().
  */
 export const stopTestDb = async (): Promise<void> => {
+  if (pool) {
+    await pool.end()
+    pool = null
+  }
   if (client) {
     await client.end()
     client = null

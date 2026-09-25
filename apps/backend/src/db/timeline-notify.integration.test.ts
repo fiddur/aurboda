@@ -1,12 +1,15 @@
+import { Client } from 'pg'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 
 /**
  * Integration tests for the home-timeline LISTEN/NOTIFY transport against a real
- * Postgres. The user's single per-user connection both LISTENs and NOTIFYs, so it
- * receives its own ping (exactly how ingest → open SSE stream works in one process).
+ * Postgres. The channel LISTENs on its own dedicated connection while pings are
+ * emitted through the user's pool — exactly how ingest → open SSE stream works.
  */
-import { getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
+import { getTestConnectionUri, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import { emitTimelineNotify, openTimelineChannel } from './timeline-notify.ts'
+
+const listenClient = () => new Client({ connectionString: getTestConnectionUri() })
 
 const CONTAINER_TIMEOUT = 120_000
 
@@ -37,10 +40,10 @@ describe('Timeline LISTEN/NOTIFY integration', () => {
     await stopTestDb()
   })
 
-  test('a subscriber receives a ping emitted on the same user DB', async () => {
+  test('a subscriber receives a ping emitted through the user pool', async () => {
     const user = getTestUser()
     const ping = nextPing(5000)
-    const close = await openTimelineChannel(user, ping.onNotify)
+    const close = await openTimelineChannel(user, ping.onNotify, listenClient)
     try {
       await emitTimelineNotify(user)
       await expect(ping.promise).resolves.toBeUndefined()
@@ -52,9 +55,13 @@ describe('Timeline LISTEN/NOTIFY integration', () => {
   test('after teardown, further pings are not delivered', async () => {
     const user = getTestUser()
     let count = 0
-    const close = await openTimelineChannel(user, () => {
-      count++
-    })
+    const close = await openTimelineChannel(
+      user,
+      () => {
+        count++
+      },
+      listenClient,
+    )
     await emitTimelineNotify(user)
     // Give the first notification time to arrive, then tear down.
     await new Promise((r) => setTimeout(r, 200))
