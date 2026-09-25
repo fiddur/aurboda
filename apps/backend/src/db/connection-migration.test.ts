@@ -22,35 +22,50 @@ const mocks = vi.hoisted(() => {
   return { state }
 })
 
-vi.mock('pg', () => ({
-  Client: class {
-    config: Record<string, unknown>
-    connect = vi.fn(async () => {})
-    end = vi.fn(async () => {})
+vi.mock('pg', () => {
+  const runQuery = async (database: unknown, sql: string, params?: unknown[]) => {
+    mocks.state.queries.push({ database, params, sql })
 
-    query = vi.fn(async (sql: string, params?: unknown[]) => {
-      const database = this.config.database
-      mocks.state.queries.push({ database, params, sql })
-
-      if (mocks.state.failDatabases.has(String(database))) {
-        throw new Error(`database ${String(database)} is broken`)
-      }
-      if (mocks.state.failOn && sql.includes(mocks.state.failOn)) {
-        throw new Error('sweep failed midway')
-      }
-      if (sql.includes('FROM schema_migrations WHERE name = $1')) {
-        return mocks.state.fingerprintRecorded
-          ? { rowCount: 1, rows: [{ '?column?': 1 }] }
-          : { rowCount: 0, rows: [] }
-      }
-      return { rowCount: 0, rows: [] }
-    })
-
-    constructor(config: Record<string, unknown>) {
-      this.config = config
+    if (mocks.state.failDatabases.has(String(database))) {
+      throw new Error(`database ${String(database)} is broken`)
     }
-  },
-}))
+    if (mocks.state.failOn && sql.includes(mocks.state.failOn)) {
+      throw new Error('sweep failed midway')
+    }
+    if (sql.includes('FROM schema_migrations WHERE name = $1')) {
+      return mocks.state.fingerprintRecorded
+        ? { rowCount: 1, rows: [{ '?column?': 1 }] }
+        : { rowCount: 0, rows: [] }
+    }
+    return { rowCount: 0, rows: [] }
+  }
+
+  return {
+    Client: class {
+      config: Record<string, unknown>
+      connect = vi.fn(async () => {})
+      end = vi.fn(async () => {})
+      query = vi.fn(async (sql: string, params?: unknown[]) => runQuery(this.config.database, sql, params))
+
+      constructor(config: Record<string, unknown>) {
+        this.config = config
+      }
+    },
+    Pool: class {
+      config: Record<string, unknown>
+      end = vi.fn(async () => {})
+      on = vi.fn()
+      connect = vi.fn(async () => ({
+        query: async (sql: string, params?: unknown[]) => runQuery(this.config.database, sql, params),
+        release: () => {},
+      }))
+
+      constructor(config: Record<string, unknown>) {
+        this.config = config
+      }
+    },
+  }
+})
 
 const { _runMigrationOnce, migrateAllUsers, migrateSchema, migrateSchemaIfNeeded } =
   await import('./connection.ts')
@@ -69,7 +84,7 @@ const recordedFingerprints = (database: string) =>
     .filter((q) => q.database === database && q.sql.includes('INSERT INTO schema_migrations'))
     .flatMap((q) => q.params ?? [])
 
-/** Distinct per test: `getDbForUser` caches its client per user, module-wide. */
+/** Distinct per test: `getDbForUser` caches its pool per user, module-wide. */
 let counter = 0
 const freshUser = () => `user${(counter += 1)}`
 

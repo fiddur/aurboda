@@ -18,7 +18,9 @@ import {
   fetchActivityById,
   fetchActivityTypeDefinitions,
   fetchBucketedMetrics,
-  fetchItemIcons,
+  fetchUserSettings,
+  selectItemIcons,
+  fetchMediaPlay,
   fetchMetricTimeSeries,
   fetchProductivityById,
   fetchScreentimeCategories,
@@ -36,6 +38,8 @@ import { type ActivityDraft, EditableActivityFields } from './EditableActivityFi
 import { EntityActions, type EntityType } from './EntityActions'
 import { formatDateTimeLocal, formatTime } from './format-utils'
 import { LocationInfo } from './LocationInfo'
+import { MediaPlayDetail } from './MediaPlayDetail'
+import { mediaPlayRange } from './mediaPlayFields'
 import { forceMergedSpanForOverride, mergedEditAction } from './mergedEdit'
 import { MergePanel } from './MergePanel'
 import { MetricContent } from './MetricContent'
@@ -446,8 +450,9 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
   const referencedRules = activityResult?.referenced_rules
 
   const { data: itemIcons = {} } = useQuery({
-    queryFn: fetchItemIcons,
-    queryKey: ['item-icons'],
+    queryFn: fetchUserSettings,
+    queryKey: ['userSettings'],
+    select: selectItemIcons,
     staleTime: 30 * 60 * 1000,
   })
 
@@ -668,8 +673,9 @@ const ProductivityContent = ({ entityId }: { entityId: string }) => {
   })
 
   const { data: itemIcons = {} } = useQuery({
-    queryFn: fetchItemIcons,
-    queryKey: ['item-icons'],
+    queryFn: fetchUserSettings,
+    queryKey: ['userSettings'],
+    select: selectItemIcons,
     staleTime: 30 * 60 * 1000,
   })
 
@@ -710,7 +716,31 @@ const ProductivityContent = ({ entityId }: { entityId: string }) => {
   )
 }
 
-const VALID_ENTITY_TYPES = new Set<string>(['activity', 'productivity', 'metric'])
+const MediaContent = ({ entityId }: { entityId: string }) => {
+  const {
+    data: play,
+    isLoading,
+    isError,
+  } = useQuery({
+    queryFn: () => fetchMediaPlay(entityId),
+    queryKey: ['entity-detail', 'media', entityId],
+    staleTime: 60_000,
+  })
+
+  if (isLoading) return <p class="loading">Loading...</p>
+  if (isError) return <p class="error">Failed to load media play</p>
+  if (!play) return <p class="error">Media play not found</p>
+
+  const { start, end } = mediaPlayRange(play)
+  return (
+    <>
+      <MediaPlayDetail play={play} />
+      <LocationInfo start={start} end={end} />
+    </>
+  )
+}
+
+const VALID_ENTITY_TYPES = new Set<string>(['activity', 'productivity', 'metric', 'media'])
 
 export const EntityDetail = () => {
   const { params } = useRoute()
@@ -718,7 +748,8 @@ export const EntityDetail = () => {
   const entityId = decodeURIComponent(params.id as string)
 
   // Tags are now activities — redirect tag routes to activity
-  const entityType: EntityType = rawEntityType === 'tag' ? 'activity' : (rawEntityType as EntityType)
+  const entityType: EntityType | 'media' =
+    rawEntityType === 'tag' ? 'activity' : (rawEntityType as EntityType | 'media')
 
   if (!VALID_ENTITY_TYPES.has(entityType) && rawEntityType !== 'tag') {
     return (
@@ -733,6 +764,7 @@ export const EntityDetail = () => {
       {entityType === 'activity' && <ActivityContent entityId={entityId} />}
       {entityType === 'productivity' && <ProductivityContent entityId={entityId} />}
       {entityType === 'metric' && <MetricContent entityId={entityId} />}
+      {entityType === 'media' && <MediaContent entityId={entityId} />}
     </div>
   )
 }

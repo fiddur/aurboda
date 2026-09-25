@@ -3,9 +3,10 @@ import { Client, type QueryResultRow } from 'pg'
 import format from 'pg-format'
 
 import { createTableStatements, schemaFingerprint, tableCreationOrder } from '../schema.ts'
+import { createRolePool, type Queryable, type UserDb, withTransaction } from './pool.ts'
 import { repairGarminSleepStages } from './repair-garmin-sleep-stages.ts'
 
-const dbByUser: Record<string, Client> = {}
+const dbByUser = new Map<string, Promise<UserDb>>()
 
 const userDbName = (user: string) => `aurboda_${user}`
 
@@ -15,6 +16,15 @@ const userDbName = (user: string) => `aurboda_${user}`
  * caller hanging until the OS TCP timeout — minutes.
  */
 const CONNECT_TIMEOUT_MS = 10_000
+
+/**
+ * Per-user pool sizing. pg-pool applies `connectionTimeoutMillis` both to
+ * connecting and to waiting for a free slot, hence longer than a bare connect.
+ * Idle pools drain to zero, so only active users hold connections.
+ */
+const USER_POOL_MAX = 5
+const POOL_IDLE_TIMEOUT_MS = 30_000
+const POOL_CONNECTION_TIMEOUT_MS = 30_000
 
 /**
  * Postgres SQLSTATEs that mean "the credentials are wrong", as opposed to
@@ -37,8 +47,8 @@ export const isInvalidPasswordError = (error: unknown): boolean => {
 }
 
 /** @internal Exported for testing with testcontainers. */
-export const _setClientForUser = (user: string, client: Client) => {
-  dbByUser[user] = client
+export const _setDbForUser = (user: string, db: UserDb) => {
+  dbByUser.set(user, Promise.resolve(db))
 }
 
 /**
@@ -132,7 +142,7 @@ export const migrateAllUsers = async (
 }
 
 export const query = async <T extends QueryResultRow = QueryResultRow>(
-  dbOrUser: Client | string,
+  dbOrUser: Queryable | string,
   queryStr: string,
   params?: unknown[],
   /** @internal Override migration function for testing. */
@@ -157,11 +167,9 @@ export const query = async <T extends QueryResultRow = QueryResultRow>(
  * Throws when the connection fails; `isInvalidPasswordError` separates a wrong
  * password from an unreachable database.
  *
- * This ALWAYS opens a connection, even when `dbByUser` already holds a client
- * for the user. A cached client proves nothing about the password: it is
- * normally filled by `getDbForUser`, which connects as the service role and
- * does `SET ROLE`, so any token-authenticated request (a sync push, an MCP
- * call) warms it.
+ * This ALWAYS opens a connection and always closes it again: it is purely a
+ * password check. The user's pool connects as the service role and does
+ * `SET ROLE`, so a warm pool proves nothing about the password.
  */
 export const loginToUserDb = async (user: string, password: string) => {
   const client = new Client({
@@ -173,18 +181,9 @@ export const loginToUserDb = async (user: string, password: string) => {
 
   try {
     await client.connect()
-  } catch (error) {
+  } finally {
     await client.end().catch(() => {})
-    throw error
   }
-
-  // Keep the freshly authenticated client only when nothing is cached yet;
-  // otherwise the cached one stays and this one was purely a password check.
-  if (dbByUser[user]) {
-    await client.end().catch(() => {})
-    return
-  }
-  dbByUser[user] = client
 }
 
 export const makeNewUserDb = async (adminClient: Client, user: string, password: string) => {
@@ -207,9 +206,6 @@ export const makeNewUserDb = async (adminClient: Client, user: string, password:
   await query(newDbClient, 'CREATE EXTENSION IF NOT EXISTS unaccent')
   await newDbClient.end()
 
-  const client = new Client({ database, password, user })
-  await client.connect()
-  dbByUser[user] = client
   await initializeSchema(user)
 }
 
@@ -221,13 +217,13 @@ export const makeNewUserDb = async (adminClient: Client, user: string, password:
  */
 export const dropUserDb = async (adminClient: Client, user: string) => {
   const database = userDbName(user)
-  // Close the per-user client so DROP DATABASE isn't blocked by an open conn.
-  const existing = dbByUser[user]
+  // Close the per-user pool so DROP DATABASE isn't blocked by an open conn.
+  const existing = dbByUser.get(user)
   if (existing) {
+    dbByUser.delete(user)
     try {
-      await existing.end()
+      await (await existing).end()
     } catch {}
-    delete dbByUser[user]
   }
   await query(
     adminClient,
@@ -256,14 +252,43 @@ export const listUserNames = async (client: Client): Promise<string[]> => {
   return result.rows.map((row) => row.datname.slice(prefix.length))
 }
 
-export const getDbForUser = async (user: string) => {
-  if (dbByUser[user]) return dbByUser[user]
-  const client = new Client({ connectionTimeoutMillis: CONNECT_TIMEOUT_MS, database: userDbName(user) })
-  await client.connect()
-  await query(client, format('SET ROLE %L', user))
-  dbByUser[user] = client
-  return client
+/**
+ * The user's pool, created once and shared by every caller. It connects as the
+ * service role (PG* env) and applies `SET ROLE <user>` on each physical
+ * connection. The cached value is a promise so concurrent first callers can
+ * never each build a pool.
+ */
+export const getDbForUser = (user: string): Promise<UserDb> => {
+  const cached = dbByUser.get(user)
+  if (cached) return cached
+  const db = Promise.resolve(
+    createRolePool(
+      {
+        connectionTimeoutMillis: POOL_CONNECTION_TIMEOUT_MS,
+        database: userDbName(user),
+        idleTimeoutMillis: POOL_IDLE_TIMEOUT_MS,
+        max: USER_POOL_MAX,
+      },
+      user,
+    ),
+  )
+  dbByUser.set(user, db)
+  return db
 }
+
+/**
+ * A dedicated, unpooled connection to the user's database, for session state
+ * a pooled connection must not carry (`LISTEN`). The caller connects and ends it.
+ */
+export const createUserListenClient = (user: string): Client =>
+  new Client({ connectionTimeoutMillis: CONNECT_TIMEOUT_MS, database: userDbName(user) })
+
+/**
+ * Run `fn` in a transaction on one of the user's connections. Every statement
+ * of the transaction must be issued through `tx`, never through `user`.
+ */
+export const withUserTransaction = async <T>(user: string, fn: (tx: Queryable) => Promise<T>): Promise<T> =>
+  withTransaction(await getDbForUser(user), fn)
 
 /** PostGIS extension is created in makeNewUserDb before this is called. */
 export const initializeSchema = async (user: string) => {
@@ -278,7 +303,7 @@ export const initializeSchema = async (user: string) => {
  * Backfill tag_key for Oura tags that were already mapped via tag_mappings in user settings.
  * Reverses the mapping (display name -> programmatic key) to populate tag_key.
  */
-const backfillTagKeysFromMappings = async (db: Client, existingTableNames: Set<string>) => {
+const backfillTagKeysFromMappings = async (db: Queryable, existingTableNames: Set<string>) => {
   if (!existingTableNames.has('user_settings')) return
 
   const settingsResult = await query(db, `SELECT settings FROM user_settings LIMIT 1`)
@@ -307,7 +332,7 @@ const backfillTagKeysFromMappings = async (db: Client, existingTableNames: Set<s
 }
 
 const backfillCreateOrLinkDefinition = async (
-  db: Client,
+  db: Queryable,
   createdByLowerName: Map<string, string>,
   name: string,
   icon: string | null,
@@ -343,7 +368,7 @@ const backfillCreateOrLinkDefinition = async (
 }
 
 const readTagSettingsForBackfill = async (
-  db: Client,
+  db: Queryable,
   existingTableNames: Set<string>,
 ): Promise<{ tagMappings: Record<string, string>; itemIcons: Record<string, string> }> => {
   if (!existingTableNames.has('user_settings')) return { itemIcons: {}, tagMappings: {} }
@@ -357,7 +382,7 @@ const readTagSettingsForBackfill = async (
 }
 
 const backfillFromMappings = async (
-  db: Client,
+  db: Queryable,
   createdByLowerName: Map<string, string>,
   tagMappings: Record<string, string>,
   itemIcons: Record<string, string>,
@@ -378,7 +403,7 @@ const backfillFromMappings = async (
 }
 
 const backfillFromOuraTags = async (
-  db: Client,
+  db: Queryable,
   createdByLowerName: Map<string, string>,
   itemIcons: Record<string, string>,
 ) => {
@@ -406,7 +431,7 @@ const backfillFromOuraTags = async (
 }
 
 const backfillFromManualTags = async (
-  db: Client,
+  db: Queryable,
   createdByLowerName: Map<string, string>,
   itemIcons: Record<string, string>,
 ) => {
@@ -431,7 +456,7 @@ const backfillFromManualTags = async (
   }
 }
 
-const backfillTagDefinitions = async (db: Client, existingTableNames: Set<string>) => {
+const backfillTagDefinitions = async (db: Queryable, existingTableNames: Set<string>) => {
   if (!existingTableNames.has('tag_definitions') && !existingTableNames.has('tags')) return
 
   const countResult = await query(db, `SELECT count(*) FROM tag_definitions`)
@@ -445,7 +470,7 @@ const backfillTagDefinitions = async (db: Client, existingTableNames: Set<string
   await backfillFromManualTags(db, createdByLowerName, itemIcons)
 }
 
-const migrateTagDefinitionFk = async (db: Client) => {
+const migrateTagDefinitionFk = async (db: Queryable) => {
   await query(db, `ALTER TABLE tags ADD COLUMN IF NOT EXISTS tag_definition_id UUID`)
   await query(
     db,
@@ -475,7 +500,7 @@ const migrateTagDefinitionFk = async (db: Client) => {
  * dropping them is a follow-up once we're confident migration ran cleanly.
  */
 const readLegacySensitivitySettings = async (
-  db: Client,
+  db: Queryable,
 ): Promise<{ areas: string[]; map: Record<string, string[]> } | null> => {
   const settingsResult = await query(
     db,
@@ -492,7 +517,7 @@ const readLegacySensitivitySettings = async (
   return { areas, map }
 }
 
-const ensureFlagsInTable = async (db: Client, names: Iterable<string>): Promise<Map<string, string>> => {
+const ensureFlagsInTable = async (db: Queryable, names: Iterable<string>): Promise<Map<string, string>> => {
   const flagIdByName = new Map<string, string>()
   let sortOrder = 0
   for (const name of names) {
@@ -519,7 +544,7 @@ const ensureFlagsInTable = async (db: Client, names: Iterable<string>): Promise<
 }
 
 const backfillFoodItemSensitivities = async (
-  db: Client,
+  db: Queryable,
   map: Record<string, string[]>,
   flagIdByName: Map<string, string>,
 ): Promise<void> => {
@@ -545,9 +570,9 @@ const backfillFoodItemSensitivities = async (
 }
 
 /** @internal Exported for testing — see db/sensitivities-migration.test.ts. */
-export const _backfillSensitivityFlags = async (db: Client) => backfillSensitivityFlags(db)
+export const _backfillSensitivityFlags = async (db: Queryable) => backfillSensitivityFlags(db)
 
-const backfillSensitivityFlags = async (db: Client) => {
+const backfillSensitivityFlags = async (db: Queryable) => {
   // Skip if there's already data — don't clobber the user's later edits.
   const existing = await query(db, 'SELECT COUNT(*)::int AS c FROM sensitivity_flags')
   if (existing.rows[0]?.c > 0) return
@@ -576,7 +601,7 @@ const toSnakeCase = (s: string): string =>
     .replaceAll(/_+/g, '_') || 'unknown'
 
 /** Migrate tags into activities and tag_definitions into activity_type_definitions. */
-const migrateTagsToActivities = async (db: Client, existingTableNames: Set<string>) => {
+const migrateTagsToActivities = async (db: Queryable, existingTableNames: Set<string>) => {
   if (!existingTableNames.has('tags')) return
 
   const tagCount = await query(db, `SELECT count(*) FROM tags WHERE deleted_at IS NULL`)
@@ -662,21 +687,21 @@ const migrateTagsToActivities = async (db: Client, existingTableNames: Set<strin
  * The ledger of applied migrations. Idempotent, and needed before anything
  * reads it — `schemaUpToDate` runs on databases that predate the table.
  */
-export const ensureSchemaMigrationsTable = async (db: Client) => {
+export const ensureSchemaMigrationsTable = async (db: Queryable) => {
   await query(
     db,
     `CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`,
   )
 }
 
-export const schemaUpToDate = async (db: Client, fingerprint: string): Promise<boolean> => {
+export const schemaUpToDate = async (db: Queryable, fingerprint: string): Promise<boolean> => {
   await ensureSchemaMigrationsTable(db)
   const result = await query(db, `SELECT 1 FROM schema_migrations WHERE name = $1`, [`schema@${fingerprint}`])
   return result.rowCount !== 0
 }
 
 /** Append-only: the rows left behind read as the database's migration history. */
-export const recordSchemaFingerprint = async (db: Client, fingerprint: string) => {
+export const recordSchemaFingerprint = async (db: Queryable, fingerprint: string) => {
   await ensureSchemaMigrationsTable(db)
   await query(db, `INSERT INTO schema_migrations (name) VALUES ($1) ON CONFLICT DO NOTHING`, [
     `schema@${fingerprint}`,
@@ -1075,11 +1100,13 @@ export const migrateSchema = async (user: string, opts?: { force?: boolean }) =>
       `SELECT 1 FROM schema_migrations WHERE name = 'repair_garmin_sleep_stages_v1'`,
     )
     if (sleepRepairApplied.rows.length === 0) {
-      await repairGarminSleepStages(db)
-      await query(
-        db,
-        `INSERT INTO schema_migrations (name) VALUES ('repair_garmin_sleep_stages_v1') ON CONFLICT DO NOTHING`,
-      )
+      await withTransaction(db, async (tx) => {
+        await repairGarminSleepStages(tx)
+        await query(
+          tx,
+          `INSERT INTO schema_migrations (name) VALUES ('repair_garmin_sleep_stages_v1') ON CONFLICT DO NOTHING`,
+        )
+      })
     }
   }
   if (existingTableNames.has('locations')) {
@@ -1593,7 +1620,7 @@ export const migrateSchema = async (user: string, opts?: { force?: boolean }) =>
 }
 
 const migrateGoalsFromSettings = async (
-  db: Client,
+  db: Queryable,
   settings: Record<string, unknown>,
   existingTableNames: Set<string>,
 ) => {
@@ -1617,7 +1644,7 @@ const migrateGoalsFromSettings = async (
 }
 
 const migrateCustomMetricsFromSettings = async (
-  db: Client,
+  db: Queryable,
   settings: Record<string, unknown>,
   existingTableNames: Set<string>,
 ) => {
@@ -1644,7 +1671,7 @@ const migrateCustomMetricsFromSettings = async (
   await query(db, `UPDATE user_settings SET settings = settings - 'custom_metrics', updated_at = NOW()`)
 }
 
-const migrateGoalsAndCustomMetrics = async (db: Client, existingTableNames: Set<string>) => {
+const migrateGoalsAndCustomMetrics = async (db: Queryable, existingTableNames: Set<string>) => {
   if (!existingTableNames.has('user_settings')) return
 
   const settingsResult = await query(db, `SELECT settings FROM user_settings LIMIT 1`)

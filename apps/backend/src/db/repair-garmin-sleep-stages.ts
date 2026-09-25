@@ -1,5 +1,6 @@
 import type { SleepData } from '@fiddur/garmin-connect/dist/garmin/types/sleep'
-import type { Client } from 'pg'
+
+import type { Queryable } from './pool.ts'
 
 import { garminSleepLevelsToStages } from '../integrations/garmin/sleep-stages.ts'
 import {
@@ -78,47 +79,41 @@ const RAW_BATCH_SIZE = 200
  * One-off repair (#1080 follow-up): moves Health Connect sleep payloads that
  * the UTC calendar-date bug filed one night early onto their own row, then
  * fills a stage timeline from the stored Garmin `sleepLevels` for rows still
- * without one. Idempotent; `start_time`/`end_time` are left alone.
+ * without one. Idempotent; `start_time`/`end_time` are left alone. Run it on a
+ * transaction handle: the moves are computed from one snapshot.
  */
-export const repairGarminSleepStages = async (db: Client): Promise<void> => {
-  await db.query('BEGIN')
-  try {
-    const { rows } = await db.query<SleepRow>(
-      `SELECT id, external_id, data FROM activities
+export const repairGarminSleepStages = async (db: Queryable): Promise<void> => {
+  const { rows } = await db.query<SleepRow>(
+    `SELECT id, external_id, data FROM activities
         WHERE source = 'garmin' AND activity_type = 'sleep' AND deleted_at IS NULL
           AND external_id LIKE 'garmin-sleep-%'`,
-    )
+  )
 
-    const updates = planHcPayloadMoves(rows)
-    for (const [id, data] of updates) {
-      await db.query(`UPDATE activities SET data = $2::jsonb WHERE id = $1`, [id, JSON.stringify(data)])
-    }
+  const updates = planHcPayloadMoves(rows)
+  for (const [id, data] of updates) {
+    await db.query(`UPDATE activities SET data = $2::jsonb WHERE id = $1`, [id, JSON.stringify(data)])
+  }
 
-    const stageless = rows
-      .map((row) => ({ ...row, data: updates.get(row.id) ?? row.data }))
-      .filter((row) => !hasStages(row.data))
-    for (let i = 0; i < stageless.length; i += RAW_BATCH_SIZE) {
-      const batch = stageless.slice(i, i + RAW_BATCH_SIZE)
-      const raw = await db.query<{ external_id: string; sleep_levels: SleepData['sleepLevels'] }>(
-        `SELECT external_id, data->'sleepLevels' AS sleep_levels
+  const stageless = rows
+    .map((row) => ({ ...row, data: updates.get(row.id) ?? row.data }))
+    .filter((row) => !hasStages(row.data))
+  for (let i = 0; i < stageless.length; i += RAW_BATCH_SIZE) {
+    const batch = stageless.slice(i, i + RAW_BATCH_SIZE)
+    const raw = await db.query<{ external_id: string; sleep_levels: SleepData['sleepLevels'] }>(
+      `SELECT external_id, data->'sleepLevels' AS sleep_levels
            FROM raw_records
           WHERE source = 'garmin' AND record_type = 'garmin_sleep' AND external_id = ANY($1::text[])`,
-        [batch.map((row) => row.external_id)],
+      [batch.map((row) => row.external_id)],
+    )
+    const levelsByExternalId = new Map(raw.rows.map((r) => [r.external_id, r.sleep_levels]))
+    for (const row of batch) {
+      const levels = levelsByExternalId.get(row.external_id)
+      const stages = garminSleepLevelsToStages(Array.isArray(levels) ? levels : null)
+      if (stages.length === 0) continue
+      await db.query(
+        `UPDATE activities SET data = data || jsonb_build_object('stages', $2::jsonb) WHERE id = $1`,
+        [row.id, JSON.stringify(stages)],
       )
-      const levelsByExternalId = new Map(raw.rows.map((r) => [r.external_id, r.sleep_levels]))
-      for (const row of batch) {
-        const levels = levelsByExternalId.get(row.external_id)
-        const stages = garminSleepLevelsToStages(Array.isArray(levels) ? levels : null)
-        if (stages.length === 0) continue
-        await db.query(
-          `UPDATE activities SET data = data || jsonb_build_object('stages', $2::jsonb) WHERE id = $1`,
-          [row.id, JSON.stringify(stages)],
-        )
-      }
     }
-    await db.query('COMMIT')
-  } catch (error) {
-    await db.query('ROLLBACK')
-    throw error
   }
 }

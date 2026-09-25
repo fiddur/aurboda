@@ -2,7 +2,7 @@ import type { DataSource } from '@aurboda/api-spec'
 
 import type { EntityType, Note } from './types.ts'
 
-import { query } from './connection.ts'
+import { query, withUserTransaction } from './connection.ts'
 import { buildDynamicUpdate } from './dynamic-update.ts'
 import { mapNoteRow } from './row-mappers.ts'
 
@@ -187,25 +187,19 @@ export const deleteNotesForEntity = async (
   user: string,
   entityType: EntityType,
   entityId: string,
-): Promise<number> => {
-  await query(user, 'BEGIN')
-  try {
+): Promise<number> =>
+  withUserTransaction(user, async (tx) => {
     const deleted = await query<{ id: string }>(
-      user,
+      tx,
       `DELETE FROM notes WHERE entity_type = $1 AND entity_id = $2 RETURNING id`,
       [entityType, entityId],
     )
     const deletedIds = deleted.rows.map((r) => r.id)
     if (deletedIds.length > 0) {
-      await query(user, `DELETE FROM notes WHERE entity_type = 'note' AND entity_id = ANY($1)`, [deletedIds])
+      await query(tx, `DELETE FROM notes WHERE entity_type = 'note' AND entity_id = ANY($1)`, [deletedIds])
     }
-    await query(user, 'COMMIT')
     return deletedIds.length
-  } catch (err) {
-    await query(user, 'ROLLBACK').catch(() => {})
-    throw err
-  }
-}
+  })
 
 /**
  * Replace all user-authored notes (`source IS NULL`) for an entity with a
@@ -222,11 +216,10 @@ export const replaceUserNotes = async (
   content: string,
   startTime?: Date,
   endTime?: Date,
-): Promise<void> => {
-  await query(user, 'BEGIN')
-  try {
+): Promise<void> =>
+  withUserTransaction(user, async (tx) => {
     const deleted = await query<{ id: string }>(
-      user,
+      tx,
       `DELETE FROM notes WHERE entity_type = $1 AND entity_id = $2 AND source IS NULL RETURNING id`,
       [entityType, entityId],
     )
@@ -234,22 +227,17 @@ export const replaceUserNotes = async (
     // leaving them orphaned (there is no FK to cascade for us).
     const deletedIds = deleted.rows.map((r) => r.id)
     if (deletedIds.length > 0) {
-      await query(user, `DELETE FROM notes WHERE entity_type = 'note' AND entity_id = ANY($1)`, [deletedIds])
+      await query(tx, `DELETE FROM notes WHERE entity_type = 'note' AND entity_id = ANY($1)`, [deletedIds])
     }
     if (content.length > 0) {
       await query(
-        user,
+        tx,
         `INSERT INTO notes (entity_type, entity_id, content, start_time, end_time)
          VALUES ($1, $2, $3, $4, $5)`,
         [entityType, entityId, content, startTime ?? null, endTime ?? null],
       )
     }
-    await query(user, 'COMMIT')
-  } catch (err) {
-    await query(user, 'ROLLBACK').catch(() => {})
-    throw err
-  }
-}
+  })
 
 /**
  * Join all user-authored notes (`source IS NULL`) for an entity into a single

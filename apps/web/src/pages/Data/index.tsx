@@ -4,6 +4,8 @@ import { format, formatISO, subDays } from 'date-fns'
 import { useLocation } from 'preact-iso'
 import { useCallback, useEffect, useState } from 'preact/hooks'
 
+import type { DataItem, ItemType } from './dataItem'
+
 import { DateNav } from '../../components/DateNav'
 import {
   fetchActivities,
@@ -25,18 +27,6 @@ import { MEAL_LOCATION_WINDOW_MS } from '../EntityDetail/LocationInfo'
 import { formatTime } from './formatTime'
 import { MEDIA_COLOR, mediaToItem } from './mediaToItem'
 import './style.css'
-
-type ItemType = 'activity' | 'location' | 'media' | 'meal' | 'metric' | 'report' | 'screentime'
-
-interface DataItem {
-  color: string
-  detail: string
-  end?: Date
-  href?: string
-  label: string
-  start: Date
-  type: ItemType
-}
 
 const ACTIVITY_COLORS: Record<string, string> = {
   exercise: '#10b981',
@@ -537,9 +527,6 @@ export const Data = () => {
                   key={i}
                   class={`data-item${item.href ? ' clickable' : ''}`}
                   {...(item.href ? { href: item.href } : {})}
-                  {...(item.href && /^https?:\/\//i.test(item.href)
-                    ? { rel: 'noopener noreferrer', target: '_blank' }
-                    : {})}
                 >
                   <span class="data-dot" style={{ background: item.color }} />
                   <div class="data-item-content">

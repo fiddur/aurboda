@@ -1,7 +1,7 @@
 /** Media plays: MPRIS pushes unified with non-duplicate Last.fm scrobbles, computed at read time. */
 import { z } from 'zod'
 
-import { baseResponseSchema, iso8601DateTimeSchema } from './common.ts'
+import { baseResponseSchema, createDataResponseSchema, iso8601DateTimeSchema } from './common.ts'
 
 export const mediaPlaySourceSchema = z
   .enum(['mpris', 'lastfm'])
@@ -62,3 +62,9 @@ export const mediaPlaysResponseSchema = baseResponseSchema
   .meta({ id: 'MediaPlaysResponse' })
 
 export type MediaPlaysResponse = z.infer<typeof mediaPlaysResponseSchema>
+
+export const mediaPlayResponseSchema = createDataResponseSchema(mediaPlaySchema).meta({
+  id: 'MediaPlayResponse',
+})
+
+export type MediaPlayResponse = z.infer<typeof mediaPlayResponseSchema>

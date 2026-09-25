@@ -1,3 +1,4 @@
+import { defaultGoals } from '@aurboda/api-spec'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 import * as db from '../db/index.ts'
@@ -9,6 +10,7 @@ import {
   getSettings,
   getSettingsResponse,
   getTagMappings,
+  hrZonesFromSettings,
   type HrZoneThresholds,
   setTagMapping,
   validateAndUpdateSettings,
@@ -23,11 +25,13 @@ vi.mock('../db', () => ({
   upsertUserSettings: vi.fn(),
 }))
 
+const central = vi.hoisted(() => ({
+  getLastFmApiKey: vi.fn(async (): Promise<string | null> => null),
+  getServerSetting: vi.fn(async (_key: string): Promise<string | null> => null),
+}))
+
 vi.mock('./central-db', () => ({
-  getCentralDb: () => ({
-    getLastFmApiKey: vi.fn().mockResolvedValue(null),
-    getServerSetting: vi.fn().mockResolvedValue(null),
-  }),
+  getCentralDb: () => central,
 }))
 
 describe('calculateDefaultHrZones', () => {
@@ -145,6 +149,78 @@ describe('getSettingsResponse', () => {
   })
 })
 
+describe('getSettingsResponse derived fields', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    central.getServerSetting.mockImplementation(async () => null)
+    central.getLastFmApiKey.mockResolvedValue(null)
+  })
+
+  test('derives every connection/config flag from one read of each source', async () => {
+    const serverSettings: Record<string, string> = {
+      gravl_client_id: 'g-id',
+      gravl_client_secret: 'g-secret',
+      oura_client_id: 'o-id',
+      strava_client_id: 's-id',
+      strava_client_secret: 's-secret',
+    }
+    central.getServerSetting.mockImplementation(async (key: string) => serverSettings[key] ?? null)
+    central.getLastFmApiKey.mockResolvedValue('lastfm-key')
+    vi.mocked(db.getUserSettings).mockResolvedValue({ birth_date: '1985-03-15', gravl_api_token: 'pasted' })
+    vi.mocked(db.getGoals).mockResolvedValue([])
+    const tokens: Record<string, { access_token: string; provider: string } | null> = {
+      garmin: { access_token: '', provider: 'garmin' },
+      gravl: { access_token: 'oauth-token', provider: 'gravl' },
+      oura: { access_token: 'o', provider: 'oura' },
+      strava: { access_token: 's', provider: 'strava' },
+    }
+    vi.mocked(db.getOAuthToken).mockImplementation(async (_user, provider) => tokens[provider] as never)
+
+    const result = await getSettingsResponse('testuser')
+
+    expect(db.getUserSettings).toHaveBeenCalledTimes(1)
+    expect(result).toMatchObject({
+      birth_date: '1985-03-15',
+      garmin_connected: false,
+      goals: defaultGoals,
+      gravl_configured: true,
+      gravl_connection: 'oauth',
+      hr_zone_start: calculateDefaultHrZones('1985-03-15'),
+      hr_zone_start_source: 'age_based',
+      lastfm_configured: true,
+      oura_configured: false,
+      oura_connected: true,
+      strava_configured: true,
+      strava_connected: true,
+      success: true,
+    })
+  })
+
+  test('falls back to a pasted Gravl token when the OAuth grant is empty', async () => {
+    vi.mocked(db.getUserSettings).mockResolvedValue({ gravl_api_token: 'pasted' })
+    vi.mocked(db.getOAuthToken).mockImplementation(async (_user, provider) =>
+      provider === 'gravl' ? ({ access_token: '', provider: 'gravl' } as never) : null,
+    )
+
+    const result = await getSettingsResponse('testuser')
+
+    expect(result.gravl_connection).toBe('token')
+    expect(result.gravl_configured).toBe(false)
+    expect(result.lastfm_configured).toBe(false)
+  })
+
+  test('reports no Gravl connection without a grant or a pasted token', async () => {
+    vi.mocked(db.getUserSettings).mockResolvedValue(null)
+    vi.mocked(db.getOAuthToken).mockResolvedValue(null)
+
+    const result = await getSettingsResponse('testuser')
+
+    expect(result.gravl_connection).toBeNull()
+    expect(result.garmin_connected).toBe(false)
+    expect(result.strava_connected).toBe(false)
+  })
+})
+
 describe('getSettingsResponse with item_icons', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -211,11 +287,7 @@ describe('validateAndUpdateSettings', () => {
   })
 
   test('updates birth date with valid input', async () => {
-    // getSettingsResponse calls getSettings + getEffectiveHrZones, each calls getUserSettings
-    // So we need 2 mock returns for getSettingsResponse
-    vi.mocked(db.getUserSettings)
-      .mockResolvedValueOnce({ birth_date: '1985-03-15' }) // for getSettings in getSettingsResponse
-      .mockResolvedValueOnce({ birth_date: '1985-03-15' }) // for getEffectiveHrZones in getSettingsResponse
+    vi.mocked(db.getUserSettings).mockResolvedValueOnce({ birth_date: '1985-03-15' })
     vi.mocked(db.upsertUserSettings).mockResolvedValue({ birth_date: '1985-03-15' })
     vi.mocked(db.getOAuthToken).mockResolvedValue(null)
 
@@ -227,7 +299,7 @@ describe('validateAndUpdateSettings', () => {
   })
 
   test('a null clears the stored key instead of being dropped (#1063)', async () => {
-    vi.mocked(db.getUserSettings).mockResolvedValueOnce({}).mockResolvedValueOnce({})
+    vi.mocked(db.getUserSettings).mockResolvedValueOnce({})
     vi.mocked(db.upsertUserSettings).mockResolvedValue({})
     vi.mocked(db.getOAuthToken).mockResolvedValue(null)
 
@@ -491,6 +563,27 @@ describe('getTagMappings', () => {
     const result = await getTagMappings('testuser')
 
     expect(result).toEqual({ icons: {}, mappings: {} })
+  })
+})
+
+describe('hrZonesFromSettings', () => {
+  test('custom zones win over a birth date', () => {
+    const customZones: HrZoneThresholds = { 1: 86, 2: 103, 3: 121, 4: 138, 5: 155 }
+    expect(hrZonesFromSettings({ birth_date: '1985-03-15', hr_zone_start: customZones })).toEqual({
+      source: 'custom',
+      zones: customZones,
+    })
+  })
+
+  test('age-based zones from a birth date', () => {
+    expect(hrZonesFromSettings({ birth_date: '1985-03-15' })).toEqual({
+      source: 'age_based',
+      zones: calculateDefaultHrZones('1985-03-15'),
+    })
+  })
+
+  test('default zones without settings', () => {
+    expect(hrZonesFromSettings({})).toEqual({ source: 'default', zones: calculateDefaultHrZones(null) })
   })
 })
 

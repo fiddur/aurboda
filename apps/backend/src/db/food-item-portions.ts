@@ -7,7 +7,7 @@
  * food deletion is handled in app code (deleteFoodItem).
  */
 
-import { query } from './connection.ts'
+import { query, withUserTransaction } from './connection.ts'
 
 export interface FoodItemPortionRow {
   id: string
@@ -145,21 +145,16 @@ export const deleteFoodItemPortion = async (user: string, id: string): Promise<b
   // food row's default pointer would be cleared while the portion is still
   // present. Central-target portions have no default pointer to clear (the
   // override table picks that up in PR2), so the UPDATE is a no-op for those.
-  try {
-    await query(user, 'BEGIN')
+  return withUserTransaction(user, async (tx) => {
     await query(
-      user,
+      tx,
       `UPDATE food_items SET default_portion_id = NULL, updated_at = NOW()
          WHERE default_portion_id = $1`,
       [id],
     )
-    const result = await query(user, `DELETE FROM food_item_portions WHERE id = $1`, [id])
-    await query(user, 'COMMIT')
+    const result = await query(tx, `DELETE FROM food_item_portions WHERE id = $1`, [id])
     return (result.rowCount ?? 0) > 0
-  } catch (err) {
-    await query(user, 'ROLLBACK').catch(() => {})
-    throw err
-  }
+  })
 }
 
 /** Cascade helper called when a per-user food item is deleted. */

@@ -11,9 +11,12 @@ const auth = (req: express.Request, _res: express.Response, next: express.NextFu
   next()
 }
 
-const buildApp = (getPlays: (user: string, window: { start: Date; end: Date }) => Promise<MediaPlay[]>) => {
+const buildApp = (
+  getPlays: (user: string, window: { start: Date; end: Date }) => Promise<MediaPlay[]>,
+  getPlay: (user: string, id: string) => Promise<MediaPlay | null> = vi.fn(),
+) => {
   const app = express()
-  app.use(createMediaRouter(auth, getPlays) as unknown as express.RequestHandler)
+  app.use(createMediaRouter(auth, getPlays, getPlay) as unknown as express.RequestHandler)
   return app
 }
 
@@ -38,5 +41,43 @@ describe('GET /plays', () => {
 
     expect(res.status).toBe(400)
     expect(getPlays).not.toHaveBeenCalled()
+  })
+})
+
+const samplePlay: MediaPlay = {
+  album: '',
+  artist: '',
+  device: 'laptop',
+  ended_at: '2026-01-10T10:32:00.000Z',
+  id: 'play/1',
+  kind: null,
+  max_position_secs: 1790,
+  played_ratio: 0.95,
+  played_secs: 1710,
+  player: 'firefox',
+  seek_count: 0,
+  source: 'mpris',
+  started_at: '2026-01-10T10:02:00.000Z',
+  title: 'Yin Yoga',
+  track_secs: 1800,
+  url: 'https://www.truenakedyoga.com/videos/yin-hips',
+}
+
+describe('GET /plays/:id', () => {
+  test('returns the play', async () => {
+    const getPlay = vi.fn().mockResolvedValue(samplePlay)
+    const res = await supertest(buildApp(vi.fn(), getPlay)).get(`/plays/${encodeURIComponent('play/1')}`)
+
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ data: samplePlay, success: true })
+    expect(getPlay).toHaveBeenCalledWith('tester', 'play/1')
+  })
+
+  test('404s when the play does not exist', async () => {
+    const getPlay = vi.fn().mockResolvedValue(null)
+    const res = await supertest(buildApp(vi.fn(), getPlay)).get('/plays/missing')
+
+    expect(res.status).toBe(404)
+    expect(res.body).toEqual({ error: 'Media play not found', success: false })
   })
 })

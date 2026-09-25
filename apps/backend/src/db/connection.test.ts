@@ -1,8 +1,10 @@
-import type { Client, QueryResult, QueryResultRow } from 'pg'
+import type { QueryResult, QueryResultRow } from 'pg'
 
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
-import { _isSchemaError, _runMigrationOnce, _setClientForUser, query } from './connection.ts'
+import type { UserDb } from './pool.ts'
+
+import { _isSchemaError, _runMigrationOnce, _setDbForUser, query } from './connection.ts'
 
 describe('isSchemaError', () => {
   test('returns true for undefined_table (42P01)', () => {
@@ -109,7 +111,7 @@ const mockQueryResult = <T extends QueryResultRow>(rows: T[] = []): QueryResult<
 
 describe('query retry on schema error', () => {
   const makeClient = (queryFn: (...args: unknown[]) => Promise<QueryResult>) =>
-    ({ query: queryFn }) as unknown as Client
+    ({ query: queryFn }) as unknown as UserDb
 
   test('retries on schema error when called with username', async () => {
     const mockMigrate = vi.fn<(user: string) => Promise<void>>().mockResolvedValue(undefined)
@@ -122,7 +124,7 @@ describe('query retry on schema error', () => {
       return mockQueryResult([{ id: 1 }])
     })
 
-    _setClientForUser('retryuser', client)
+    _setDbForUser('retryuser', client)
     const result = await query('retryuser', 'SELECT * FROM metrics', undefined, mockMigrate)
 
     expect(result.rows).toEqual([{ id: 1 }])
@@ -148,7 +150,7 @@ describe('query retry on schema error', () => {
       throw Object.assign(new Error('syntax error'), { code: '42601' })
     })
 
-    _setClientForUser('syntaxuser', client)
+    _setDbForUser('syntaxuser', client)
     await expect(query('syntaxuser', 'SELECT * FROM foo', undefined, mockMigrate)).rejects.toThrow(
       'syntax error',
     )
@@ -161,7 +163,7 @@ describe('query retry on schema error', () => {
       throw Object.assign(new Error('relation "metrics" does not exist'), { code: '42P01' })
     })
 
-    _setClientForUser('doublefail', client)
+    _setDbForUser('doublefail', client)
     await expect(query('doublefail', 'SELECT * FROM metrics', undefined, mockMigrate)).rejects.toThrow(
       'relation "metrics" does not exist',
     )
