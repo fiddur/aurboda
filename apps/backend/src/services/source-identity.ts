@@ -68,13 +68,18 @@ export const isoOffsetMs = (iso: string): number | null => {
   return sign * (Number(match[2]) * 60 + Number(match[3])) * 60_000
 }
 
+const DAY_MS = 86_400_000
+
 /**
- * Calendar date (YYYY-MM-DD) of an epoch instant in the zone whose offset the
- * HC record's own timestamps carry. Garmin keys sleep by local midnight of the
- * calendar date, so `clientRecordId + offset` lands exactly on that date.
+ * Calendar date (YYYY-MM-DD) whose local midnight is `epochMs`. Garmin's sleep
+ * `clientRecordId` is that instant, so with the right offset `epochMs + offset`
+ * is exactly UTC midnight of the date. The Android app sends every HC timestamp
+ * in UTC (`Z`), so the offset is usually 0 instead; rounding to the nearest
+ * midnight recovers the date for any real zone within ±12h, where truncating
+ * would give the previous day east of UTC.
  */
 export const localCalendarDate = (epochMs: number, offsetMs: number): string =>
-  new Date(epochMs + offsetMs).toISOString().slice(0, 10)
+  new Date(Math.round((epochMs + offsetMs) / DAY_MS) * DAY_MS).toISOString().slice(0, 10)
 
 const garminExerciseIdentity = (
   data: Record<string, unknown>,

@@ -3,6 +3,7 @@ import { Client, type QueryResultRow } from 'pg'
 import format from 'pg-format'
 
 import { createTableStatements, schemaFingerprint, tableCreationOrder } from '../schema.ts'
+import { repairGarminSleepStages } from './repair-garmin-sleep-stages.ts'
 
 const dbByUser: Record<string, Client> = {}
 
@@ -1066,6 +1067,20 @@ export const migrateSchema = async (user: string, opts?: { force?: boolean }) =>
           )
        ON CONFLICT (source, external_id) WHERE external_id IS NOT NULL DO NOTHING`,
     )
+    // One-shot: Garmin sleep rows whose Health Connect payload was filed a
+    // night early (UTC-derived calendar date), and rows lacking a stage timeline.
+    await ensureSchemaMigrationsTable(db)
+    const sleepRepairApplied = await query(
+      db,
+      `SELECT 1 FROM schema_migrations WHERE name = 'repair_garmin_sleep_stages_v1'`,
+    )
+    if (sleepRepairApplied.rows.length === 0) {
+      await repairGarminSleepStages(db)
+      await query(
+        db,
+        `INSERT INTO schema_migrations (name) VALUES ('repair_garmin_sleep_stages_v1') ON CONFLICT DO NOTHING`,
+      )
+    }
   }
   if (existingTableNames.has('locations')) {
     await query(db, `ALTER TABLE locations ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`)

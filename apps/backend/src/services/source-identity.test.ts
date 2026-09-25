@@ -85,6 +85,25 @@ describe('resolveHealthConnectIdentity', () => {
     expect(identity?.external_id).toBe('garmin-sleep-2026-09-03')
   })
 
+  it('recovers the local date from a UTC (`Z`) startTime east of UTC, as the Android app sends it', () => {
+    // 1790287200000 = 2026-09-24T22:00:00Z = local midnight of 2026-09-25 in +02:00
+    const identity = resolveHealthConnectIdentity(
+      'SleepSessionRecord',
+      hc(GARMIN_HC_ORIGIN, '1790287200000', { startTime: '2026-09-24T21:20:26Z' }),
+    )
+    expect(identity).toMatchObject({ external_id: 'garmin-sleep-2026-09-25', key: '2026-09-25' })
+  })
+
+  it('recovers the local date from a UTC (`Z`) startTime west of UTC', () => {
+    const identity = resolveHealthConnectIdentity(
+      'SleepSessionRecord',
+      hc(GARMIN_HC_ORIGIN, String(Date.parse('2026-09-03T04:00:00Z')), {
+        startTime: '2026-09-03T03:10:00Z',
+      }),
+    )
+    expect(identity).toMatchObject({ external_id: 'garmin-sleep-2026-09-03', key: '2026-09-03' })
+  })
+
   it('returns null for unknown origins, unparsable keys and non-session records', () => {
     expect(resolveHealthConnectIdentity('ExerciseSessionRecord', hc('com.polar.polarflow', '123'))).toBeNull()
     expect(resolveHealthConnectIdentity('ExerciseSessionRecord', hc(GARMIN_HC_ORIGIN, 'abc'))).toBeNull()
@@ -118,7 +137,9 @@ describe('helpers', () => {
 
   it('formats the local calendar date', () => {
     expect(localCalendarDate(Date.parse('2026-09-02T22:00:00Z'), 7_200_000)).toBe('2026-09-03')
-    expect(localCalendarDate(Date.parse('2026-09-02T22:00:00Z'), 0)).toBe('2026-09-02')
+    expect(localCalendarDate(Date.parse('2026-09-02T22:00:00Z'), 0)).toBe('2026-09-03')
+    expect(localCalendarDate(Date.parse('2026-09-03T04:00:00Z'), 0)).toBe('2026-09-03')
+    expect(localCalendarDate(Date.parse('2026-09-03T04:00:00Z'), -14_400_000)).toBe('2026-09-03')
   })
 
   it('extracts the Gravl workout id from a client record id', () => {
