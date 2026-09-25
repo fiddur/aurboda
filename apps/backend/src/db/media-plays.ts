@@ -65,7 +65,6 @@ export const getMediaPlays = async (
   })
 }
 
-/** One play by id: the MPRIS play with that id, else the Last.fm scrobble with that external id. */
 export const getMediaPlayById = async (user: string, id: string): Promise<MediaPlay | null> => {
   const mprisResult = await query(
     user,

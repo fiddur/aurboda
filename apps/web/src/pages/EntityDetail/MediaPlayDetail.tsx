@@ -7,10 +7,10 @@ import { toDisplayName } from '../../utils/displayName'
 import { formatTime } from './format-utils'
 import {
   activitiesDuringPlay,
+  activitiesFetchWindow,
   buildMediaPlayFields,
   isWebUrl,
   mediaPlayHeading,
-  mediaPlayRange,
   OVERLAP_EXCLUDED_TYPES,
 } from './mediaPlayFields'
 
@@ -18,7 +18,7 @@ const typeName = (type: string, definitions: ActivityTypeDefinition[] | undefine
   definitions?.find((d) => d.name === type)?.display_name ?? toDisplayName(type)
 
 const ActivitiesDuringPlay = ({ play }: { play: MediaPlay }) => {
-  const { start, end } = mediaPlayRange(play)
+  const { start, end } = activitiesFetchWindow(play)
   const activitiesQuery = useQuery({
     queryFn: () => fetchActivities(start, end, undefined, OVERLAP_EXCLUDED_TYPES),
     queryKey: ['detail-media-activities', start.toISOString(), end.toISOString()],

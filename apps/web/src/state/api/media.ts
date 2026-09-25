@@ -28,12 +28,12 @@ export const fetchMediaPlays = async (start: Date, end: Date): Promise<MediaPlay
   return (response.data.data ?? []).map(toMediaPlay)
 }
 
-/** One play by id, or null when there is none. */
 export const fetchMediaPlay = async (id: string): Promise<MediaPlay | null> => {
   const { token } = auth.value
   try {
-    const response = await axios.get<MediaPlayResponse>(`${API_URL}/media/plays/${encodeURIComponent(id)}`, {
+    const response = await axios.get<MediaPlayResponse>(`${API_URL}/media/play`, {
       headers: { Authorization: `Bearer ${token}` },
+      params: { id },
     })
     return response.data.data ? toMediaPlay(response.data.data) : null
   } catch (error) {
