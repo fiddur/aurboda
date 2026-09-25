@@ -124,7 +124,7 @@ function SettingsSection({
       setSaveStatus({ status: 'saved' })
       queryClient.invalidateQueries({ queryKey: ['activity-type-definitions'] })
       queryClient.invalidateQueries({ queryKey: ['activityTypeDefinitions'] })
-      queryClient.invalidateQueries({ queryKey: ['item-icons'] })
+      queryClient.invalidateQueries({ queryKey: ['userSettings'] })
       setIconValue(undefined)
       setDisplayNameValue(undefined)
       setCategoryValue(undefined)

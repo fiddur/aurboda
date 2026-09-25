@@ -18,7 +18,8 @@ import {
   fetchActivityById,
   fetchActivityTypeDefinitions,
   fetchBucketedMetrics,
-  fetchItemIcons,
+  fetchUserSettings,
+  selectItemIcons,
   fetchMetricTimeSeries,
   fetchProductivityById,
   fetchScreentimeCategories,
@@ -446,8 +447,9 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
   const referencedRules = activityResult?.referenced_rules
 
   const { data: itemIcons = {} } = useQuery({
-    queryFn: fetchItemIcons,
-    queryKey: ['item-icons'],
+    queryFn: fetchUserSettings,
+    queryKey: ['userSettings'],
+    select: selectItemIcons,
     staleTime: 30 * 60 * 1000,
   })
 
@@ -668,8 +670,9 @@ const ProductivityContent = ({ entityId }: { entityId: string }) => {
   })
 
   const { data: itemIcons = {} } = useQuery({
-    queryFn: fetchItemIcons,
-    queryKey: ['item-icons'],
+    queryFn: fetchUserSettings,
+    queryKey: ['userSettings'],
+    select: selectItemIcons,
     staleTime: 30 * 60 * 1000,
   })
 

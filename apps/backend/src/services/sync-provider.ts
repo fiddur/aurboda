@@ -36,6 +36,14 @@ import { getSettings } from './settings.ts'
 
 export const DEFAULT_SYNC_THRESHOLD_MINUTES = 30
 
+/**
+ * How long a finished `*IfNeeded` check suppresses the next one for the same
+ * method/user/data type. Read paths call these on every request; without this
+ * each call re-reads settings and sync state (and concurrent requests could
+ * start the same external sync twice).
+ */
+export const SYNC_RECHECK_MS = 2 * 60_000
+
 /** Providers a user can set a poll interval for (`user_settings.sync_intervals`). */
 export type SchedulableProvider = 'calendar' | 'garmin' | 'gravl' | 'lastfm' | 'oura' | 'rescuetime'
 
@@ -83,12 +91,40 @@ export interface SyncProviderConfig {
   onActivitySynced?: ActivityNotifier
   /** Sync threshold in minutes when the user has no `sync_intervals` entry (default: 30) */
   syncThresholdMinutes?: number
+  /** Minimum time between two checks of the same method/user/data type (default: SYNC_RECHECK_MS) */
+  recheckMs?: number
+  now?: () => number
 }
 
 export function createSyncProvider(config: SyncProviderConfig): SyncProvider {
   const fallbackThreshold = config.syncThresholdMinutes ?? DEFAULT_SYNC_THRESHOLD_MINUTES
   const thresholdFor = (intervals: SyncIntervals | undefined, provider: SchedulableProvider): number =>
     resolveSyncInterval(intervals, provider, fallbackThreshold)
+
+  const recheckMs = config.recheckMs ?? SYNC_RECHECK_MS
+  const clock = config.now ?? Date.now
+  const inFlight = new Map<string, Promise<void>>()
+  const lastChecked = new Map<string, number>()
+
+  const debounced =
+    <A extends [user: string, dataType?: string]>(method: string, body: (...args: A) => Promise<void>) =>
+    (...args: A): Promise<void> => {
+      const [user, dataType] = args
+      const key = `${method}:${user}:${dataType ?? ''}`
+      const pending = inFlight.get(key)
+      if (pending) return pending
+      const last = lastChecked.get(key)
+      if (last !== undefined && clock() - last < recheckMs) return Promise.resolve()
+
+      const run = body(...args)
+        .catch(() => undefined)
+        .finally(() => {
+          lastChecked.set(key, clock())
+          inFlight.delete(key)
+        })
+      inFlight.set(key, run)
+      return run
+    }
 
   // Fire deduction evaluation over the window a sync just ingested, so rules
   // (activity / screentime / etc. conditions) run on freshly-synced data —
@@ -109,7 +145,7 @@ export function createSyncProvider(config: SyncProviderConfig): SyncProvider {
   }
 
   return {
-    syncCalendarsIfNeeded: async (user: string): Promise<void> => {
+    syncCalendarsIfNeeded: debounced('syncCalendarsIfNeeded', async (user: string): Promise<void> => {
       try {
         const settings = await getSettings(user)
         if (!settings.calendars || settings.calendars.length === 0) return
@@ -127,44 +163,47 @@ export function createSyncProvider(config: SyncProviderConfig): SyncProvider {
       } catch (error) {
         auditError(user, 'sync', 'Failed to auto-sync calendars', { error: String(error) })
       }
-    },
+    }),
 
-    syncGarminIfNeeded: async (user: string, dataType: string): Promise<void> => {
-      if (!config.garmin) return
+    syncGarminIfNeeded: debounced(
+      'syncGarminIfNeeded',
+      async (user: string, dataType: string): Promise<void> => {
+        if (!config.garmin) return
 
-      try {
-        const settings = await getSettings(user)
-        if (settings.garmin_disabled_data_types?.includes(dataType as GarminDataType)) return
+        try {
+          const settings = await getSettings(user)
+          if (settings.garmin_disabled_data_types?.includes(dataType as GarminDataType)) return
 
-        const syncState = await getSyncState(user, 'garmin', dataType)
+          const syncState = await getSyncState(user, 'garmin', dataType)
 
-        if (isGarminRateLimited(syncState)) {
-          auditWarn(user, 'sync', `Garmin ${dataType} sync skipped - rate limited`, {
-            retry_after: syncState?.retry_after?.toISOString(),
-          })
-          return
+          if (isGarminRateLimited(syncState)) {
+            auditWarn(user, 'sync', `Garmin ${dataType} sync skipped - rate limited`, {
+              retry_after: syncState?.retry_after?.toISOString(),
+            })
+            return
+          }
+
+          const thresholdTime = subMinutes(new Date(), thresholdFor(settings.sync_intervals, 'garmin'))
+          if (syncState?.last_sync_time && isBefore(thresholdTime, syncState.last_sync_time)) {
+            return
+          }
+
+          auditInfo(user, 'sync', `Auto-syncing Garmin ${dataType}`)
+          const result = await syncGarminDataType(user, config.garmin, dataType as GarminDataType)
+
+          // After syncing activities, also fetch per-second detail data (GPS, HR, etc.)
+          if (dataType === 'activities') {
+            await syncActivityDetails(user, config.garmin)
+          }
+
+          triggerDeductionAfterSync(user, syncState, result)
+        } catch (error) {
+          auditError(user, 'sync', `Failed to auto-sync Garmin ${dataType}`, { error: String(error) })
         }
+      },
+    ),
 
-        const thresholdTime = subMinutes(new Date(), thresholdFor(settings.sync_intervals, 'garmin'))
-        if (syncState?.last_sync_time && isBefore(thresholdTime, syncState.last_sync_time)) {
-          return
-        }
-
-        auditInfo(user, 'sync', `Auto-syncing Garmin ${dataType}`)
-        const result = await syncGarminDataType(user, config.garmin, dataType as GarminDataType)
-
-        // After syncing activities, also fetch per-second detail data (GPS, HR, etc.)
-        if (dataType === 'activities') {
-          await syncActivityDetails(user, config.garmin)
-        }
-
-        triggerDeductionAfterSync(user, syncState, result)
-      } catch (error) {
-        auditError(user, 'sync', `Failed to auto-sync Garmin ${dataType}`, { error: String(error) })
-      }
-    },
-
-    syncGravlIfNeeded: async (user: string): Promise<void> => {
+    syncGravlIfNeeded: debounced('syncGravlIfNeeded', async (user: string): Promise<void> => {
       if (!config.gravl) return
 
       try {
@@ -194,9 +233,9 @@ export function createSyncProvider(config: SyncProviderConfig): SyncProvider {
       } catch (error) {
         auditError(user, 'sync', 'Failed to auto-sync Gravl', { error: String(error) })
       }
-    },
+    }),
 
-    syncLastFmIfNeeded: async (user: string): Promise<void> => {
+    syncLastFmIfNeeded: debounced('syncLastFmIfNeeded', async (user: string): Promise<void> => {
       if (!config.getLastFmApiKey) return
 
       try {
@@ -225,38 +264,41 @@ export function createSyncProvider(config: SyncProviderConfig): SyncProvider {
       } catch (error) {
         auditError(user, 'sync', 'Failed to auto-sync Last.fm', { error: String(error) })
       }
-    },
+    }),
 
-    syncOuraIfNeeded: async (user: string, dataType: 'tags' | 'sessions'): Promise<void> => {
-      if (!config.oura) return
+    syncOuraIfNeeded: debounced(
+      'syncOuraIfNeeded',
+      async (user: string, dataType: 'tags' | 'sessions'): Promise<void> => {
+        if (!config.oura) return
 
-      try {
-        const ouraDataType: OuraDataType = dataType
-        const syncState = await getSyncState(user, 'oura', ouraDataType)
+        try {
+          const ouraDataType: OuraDataType = dataType
+          const syncState = await getSyncState(user, 'oura', ouraDataType)
 
-        if (isOuraRateLimited(syncState)) {
-          auditWarn(user, 'sync', `Oura ${dataType} sync skipped - rate limited`, {
-            retry_after: syncState?.retry_after?.toISOString(),
-          })
-          return
+          if (isOuraRateLimited(syncState)) {
+            auditWarn(user, 'sync', `Oura ${dataType} sync skipped - rate limited`, {
+              retry_after: syncState?.retry_after?.toISOString(),
+            })
+            return
+          }
+
+          const settings = await getSettings(user)
+          const thresholdTime = subMinutes(new Date(), thresholdFor(settings.sync_intervals, 'oura'))
+          if (syncState?.last_sync_time && isBefore(thresholdTime, syncState.last_sync_time)) {
+            return
+          }
+
+          auditInfo(user, 'sync', `Auto-syncing Oura ${dataType}`)
+          const accessToken = await config.oura.getAccessToken(user)
+          const result = await syncOuraDataType(user, config.oura, ouraDataType, accessToken)
+          triggerDeductionAfterSync(user, syncState, result)
+        } catch (error) {
+          auditError(user, 'sync', `Failed to auto-sync Oura ${dataType}`, { error: String(error) })
         }
+      },
+    ),
 
-        const settings = await getSettings(user)
-        const thresholdTime = subMinutes(new Date(), thresholdFor(settings.sync_intervals, 'oura'))
-        if (syncState?.last_sync_time && isBefore(thresholdTime, syncState.last_sync_time)) {
-          return
-        }
-
-        auditInfo(user, 'sync', `Auto-syncing Oura ${dataType}`)
-        const accessToken = await config.oura.getAccessToken(user)
-        const result = await syncOuraDataType(user, config.oura, ouraDataType, accessToken)
-        triggerDeductionAfterSync(user, syncState, result)
-      } catch (error) {
-        auditError(user, 'sync', `Failed to auto-sync Oura ${dataType}`, { error: String(error) })
-      }
-    },
-
-    syncRescueTimeIfNeeded: async (user: string): Promise<void> => {
+    syncRescueTimeIfNeeded: debounced('syncRescueTimeIfNeeded', async (user: string): Promise<void> => {
       try {
         const settings = await getSettings(user)
         if (!settings.rescue_time_key) return
@@ -272,6 +314,6 @@ export function createSyncProvider(config: SyncProviderConfig): SyncProvider {
       } catch (error) {
         auditError(user, 'sync', 'Failed to auto-sync RescueTime', { error: String(error) })
       }
-    },
+    }),
   }
 }
