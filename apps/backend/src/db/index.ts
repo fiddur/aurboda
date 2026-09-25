@@ -41,7 +41,7 @@ export type {
 } from './types.ts'
 
 export {
-  _setClientForUser,
+  _setDbForUser,
   dropUserDb,
   getDbForUser,
   initializeSchema,
@@ -54,7 +54,10 @@ export {
   migrateSchemaIfNeeded,
   query,
   schemaInitialized,
+  withUserTransaction,
 } from './connection.ts'
+
+export { type Queryable, type UserDb } from './pool.ts'
 
 export {
   getAllScrobbles,

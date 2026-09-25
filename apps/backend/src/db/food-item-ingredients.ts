@@ -11,7 +11,7 @@
  * read time to derive the parent's nutrient totals.
  */
 
-import { query } from './connection.ts'
+import { query, withUserTransaction } from './connection.ts'
 
 const COLUMNS =
   'id, parent_food_item_id, ingredient_food_item_id, quantity, unit, food_item_portion_id, portion_count, sort_order, created_at, updated_at'
@@ -89,10 +89,9 @@ export const setIngredients = async (
   user: string,
   parentFoodItemId: string,
   items: FoodItemIngredientInput[],
-): Promise<void> => {
-  try {
-    await query(user, 'BEGIN')
-    await query(user, `DELETE FROM food_item_ingredients WHERE parent_food_item_id = $1`, [parentFoodItemId])
+): Promise<void> =>
+  withUserTransaction(user, async (tx) => {
+    await query(tx, `DELETE FROM food_item_ingredients WHERE parent_food_item_id = $1`, [parentFoodItemId])
 
     if (items.length > 0) {
       // Single multi-row INSERT — 7 columns per row, parameterised.
@@ -113,7 +112,7 @@ export const setIngredients = async (
         })
         .join(', ')
       await query(
-        user,
+        tx,
         `INSERT INTO food_item_ingredients
            (parent_food_item_id, ingredient_food_item_id, quantity, unit, food_item_portion_id, portion_count, sort_order)
          VALUES ${valuesSql}`,
@@ -121,16 +120,11 @@ export const setIngredients = async (
       )
     }
 
-    await query(user, `UPDATE food_items SET is_composite = $2, updated_at = NOW() WHERE id = $1`, [
+    await query(tx, `UPDATE food_items SET is_composite = $2, updated_at = NOW() WHERE id = $1`, [
       parentFoodItemId,
       items.length > 0,
     ])
-    await query(user, 'COMMIT')
-  } catch (err) {
-    await query(user, 'ROLLBACK').catch(() => {})
-    throw err
-  }
-}
+  })
 
 /**
  * Wipe all ingredients and clear the composite flag.

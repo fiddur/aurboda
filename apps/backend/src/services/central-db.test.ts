@@ -1,6 +1,6 @@
-import type pg from 'pg'
-
 import { beforeEach, describe, expect, test, vi } from 'vitest'
+
+import type { Queryable } from '../db/pool.ts'
 
 import { createCentralDb, type CentralDb, type SignupMode } from './central-db.ts'
 
@@ -21,6 +21,8 @@ describe('central-db', () => {
     query: ReturnType<typeof vi.fn>
   }
   let centralDb: CentralDb
+  let transactionClient: { query: ReturnType<typeof vi.fn> }
+  let withTransaction: ReturnType<typeof vi.fn>
 
   beforeEach(() => {
     vi.clearAllMocks()
@@ -29,7 +31,14 @@ describe('central-db', () => {
       end: vi.fn(),
       query: vi.fn(),
     }
-    centralDb = createCentralDb({ getClient: async () => mockClient as unknown as pg.Client })
+    transactionClient = { query: vi.fn().mockResolvedValue({ rows: [] }) }
+    withTransaction = vi.fn(async (fn: (tx: Queryable) => Promise<unknown>) =>
+      fn(transactionClient as unknown as Queryable),
+    )
+    centralDb = createCentralDb({
+      getClient: async () => mockClient as unknown as Queryable,
+      withTransaction: withTransaction as <T>(fn: (tx: Queryable) => Promise<T>) => Promise<T>,
+    })
   })
 
   describe('initializeCentralDb', () => {
@@ -48,6 +57,24 @@ describe('central-db', () => {
       )
       // Should insert default signup_mode (third call, no params array)
       expect(mockClient.query).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO server_settings'))
+    })
+
+    test('seeds nutrient recommendations inside a transaction, under the advisory lock', async () => {
+      mockClient.query.mockResolvedValue({ rows: [] })
+
+      await centralDb.initializeCentralDb()
+
+      expect(withTransaction).toHaveBeenCalledTimes(1)
+      const statements = transactionClient.query.mock.calls.map(([sql]) => String(sql))
+      expect(statements[0]).toContain('pg_advisory_xact_lock')
+      expect(
+        statements.slice(1).every((sql) => sql.includes('INSERT INTO shared_nutrient_recommendations')),
+      ).toBe(true)
+      expect(
+        mockClient.query.mock.calls.some(([sql]) =>
+          /pg_advisory_xact_lock|INSERT INTO shared_nutrient_recommendations/.test(String(sql)),
+        ),
+      ).toBe(false)
     })
   })
 

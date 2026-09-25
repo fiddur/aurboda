@@ -5,7 +5,7 @@
  * only exposes the read API and seeding for the central layer.
  */
 
-import type pg from 'pg'
+import type { Queryable } from '../db/pool.ts'
 
 import { nnr2023Seed, NNR2023_SOURCE_LABEL, NNR2023_SOURCE_VERSION } from '../data/nnr2023-seed.ts'
 
@@ -56,7 +56,7 @@ const SELECT_COLUMNS =
   'nutrient_name, recommended_low, recommended_high, unit, source, source_version, notes, updated_at'
 
 export const createSharedNutrientRecommendationsApi = (
-  getClient: () => Promise<pg.Client>,
+  getClient: () => Promise<Queryable>,
 ): SharedNutrientRecommendationsApi => ({
   getAllSharedNutrientRecommendations: async () => {
     const client = await getClient()
@@ -94,54 +94,47 @@ const NNR2023_SEED_ADVISORY_LOCK_KEY = 7702_320_023n // mnemonic: NNR-2023
  * one-shot delete pass — keeping it deliberate for now to avoid surprising
  * users whose UI suddenly drops a familiar bar.
  *
- * Wrapped in a transaction with `pg_advisory_xact_lock` so multiple backend
- * instances starting in parallel serialize through one writer instead of
- * each issuing the same ~30 INSERTs.
+ * `tx` must already be inside a transaction: `pg_advisory_xact_lock` holds
+ * until it ends, so multiple backend instances starting in parallel serialize
+ * through one writer instead of each issuing the same ~30 INSERTs.
  */
-export const seedSharedNutrientRecommendations = async (client: pg.Client): Promise<void> => {
-  await client.query('BEGIN')
-  try {
-    await client.query('SELECT pg_advisory_xact_lock($1)', [NNR2023_SEED_ADVISORY_LOCK_KEY.toString()])
-    for (const entry of nnr2023Seed) {
-      if (entry.recommended_low === null && entry.recommended_high === null) {
-        // The table CHECK constraint forbids all-null rows; if this hits, a
-        // typo in the seed file would silently no-op. Fail loudly instead.
-        throw new Error(
-          `nnr2023Seed entry "${entry.nutrient_name}" has no bounds — at least one of recommended_low / recommended_high is required`,
-        )
-      }
-      await client.query(
-        `INSERT INTO shared_nutrient_recommendations
-           (nutrient_name, recommended_low, recommended_high, unit, source, source_version, notes, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
-         ON CONFLICT (nutrient_name) DO UPDATE SET
-           recommended_low  = EXCLUDED.recommended_low,
-           recommended_high = EXCLUDED.recommended_high,
-           unit             = EXCLUDED.unit,
-           source           = EXCLUDED.source,
-           source_version   = EXCLUDED.source_version,
-           notes            = EXCLUDED.notes,
-           updated_at       = NOW()
-         WHERE shared_nutrient_recommendations.recommended_low  IS DISTINCT FROM EXCLUDED.recommended_low
-            OR shared_nutrient_recommendations.recommended_high IS DISTINCT FROM EXCLUDED.recommended_high
-            OR shared_nutrient_recommendations.unit             IS DISTINCT FROM EXCLUDED.unit
-            OR shared_nutrient_recommendations.source           IS DISTINCT FROM EXCLUDED.source
-            OR shared_nutrient_recommendations.source_version   IS DISTINCT FROM EXCLUDED.source_version
-            OR shared_nutrient_recommendations.notes            IS DISTINCT FROM EXCLUDED.notes`,
-        [
-          entry.nutrient_name,
-          entry.recommended_low,
-          entry.recommended_high,
-          entry.unit,
-          NNR2023_SOURCE_LABEL,
-          NNR2023_SOURCE_VERSION,
-          entry.notes ?? null,
-        ],
+export const seedSharedNutrientRecommendations = async (tx: Queryable): Promise<void> => {
+  await tx.query('SELECT pg_advisory_xact_lock($1)', [NNR2023_SEED_ADVISORY_LOCK_KEY.toString()])
+  for (const entry of nnr2023Seed) {
+    if (entry.recommended_low === null && entry.recommended_high === null) {
+      // The table CHECK constraint forbids all-null rows; if this hits, a
+      // typo in the seed file would silently no-op. Fail loudly instead.
+      throw new Error(
+        `nnr2023Seed entry "${entry.nutrient_name}" has no bounds — at least one of recommended_low / recommended_high is required`,
       )
     }
-    await client.query('COMMIT')
-  } catch (err) {
-    await client.query('ROLLBACK').catch(() => {})
-    throw err
+    await tx.query(
+      `INSERT INTO shared_nutrient_recommendations
+         (nutrient_name, recommended_low, recommended_high, unit, source, source_version, notes, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+       ON CONFLICT (nutrient_name) DO UPDATE SET
+         recommended_low  = EXCLUDED.recommended_low,
+         recommended_high = EXCLUDED.recommended_high,
+         unit             = EXCLUDED.unit,
+         source           = EXCLUDED.source,
+         source_version   = EXCLUDED.source_version,
+         notes            = EXCLUDED.notes,
+         updated_at       = NOW()
+       WHERE shared_nutrient_recommendations.recommended_low  IS DISTINCT FROM EXCLUDED.recommended_low
+          OR shared_nutrient_recommendations.recommended_high IS DISTINCT FROM EXCLUDED.recommended_high
+          OR shared_nutrient_recommendations.unit             IS DISTINCT FROM EXCLUDED.unit
+          OR shared_nutrient_recommendations.source           IS DISTINCT FROM EXCLUDED.source
+          OR shared_nutrient_recommendations.source_version   IS DISTINCT FROM EXCLUDED.source_version
+          OR shared_nutrient_recommendations.notes            IS DISTINCT FROM EXCLUDED.notes`,
+      [
+        entry.nutrient_name,
+        entry.recommended_low,
+        entry.recommended_high,
+        entry.unit,
+        NNR2023_SOURCE_LABEL,
+        NNR2023_SOURCE_VERSION,
+        entry.notes ?? null,
+      ],
+    )
   }
 }
