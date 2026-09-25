@@ -142,7 +142,8 @@ export const getActivities = async (
 
   if (deductionRuleId) {
     params.push(deductionRuleId)
-    filterClauses += `\n       AND (data->>'rule_id' = $${params.length} OR data->>'_enriched_by' = $${params.length})`
+    const n = params.length
+    filterClauses += `\n       AND (data->>'rule_id' = $${n} OR data->>'_enriched_by' = $${n} OR data->>'_retyped_by' = $${n})`
   }
 
   const result = await query(

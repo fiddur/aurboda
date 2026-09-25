@@ -9,6 +9,7 @@ import { evaluateRule } from '../services/deduction-engine.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import {
   activityTypeExists,
+  getActivities,
   getActivityById,
   getOverrideForActivity,
   insertActivity,
@@ -77,6 +78,17 @@ describe('retype rules (integration)', () => {
     expect((await getOverrideForActivity(user, syncedId))?.id).toBe(override?.id)
 
     expect((await evaluateRule(user, rule, window, deps)).affected_ids).toEqual([])
+  })
+
+  test('the deduction_rule_id filter lists what the rule retyped', async () => {
+    const user = getTestUser()
+    const syncedId = await insertActivity(user, garminActivity())
+    await evaluateRule(user, rule, window, createDefaultEngineDeps())
+    const overrideId = (await getOverrideForActivity(user, syncedId))?.id
+
+    const listed = await getActivities(user, 'sex', window.start, window.end, undefined, rule.id)
+
+    expect(listed.map((a) => a.id)).toEqual([overrideId])
   })
 
   test('an activity whose title does not match is left alone', async () => {
