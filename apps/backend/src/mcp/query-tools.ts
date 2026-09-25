@@ -12,7 +12,7 @@ import {
 } from '@aurboda/api-spec'
 import { z } from 'zod'
 
-import { getActivityById, getAllActivityTypeNames, getMediaPlays } from '../db/index.ts'
+import { getActivityById, getAllActivityTypeNames, getMediaPlayById, getMediaPlays } from '../db/index.ts'
 import { getCustomMetrics } from '../services/mutations.ts'
 import {
   computeActivityDetailMetrics,
@@ -270,6 +270,17 @@ Each play has url, title, artist, album, player, device, started_at/ended_at, pl
     async ({ end, start, tz }) => {
       const plays = await getMediaPlays(user, { end: new Date(end), start: new Date(start) })
       return tzJsonResponse({ data: plays, success: true }, tz)
+    },
+  )
+
+  server.tool(
+    'get_media_play',
+    'Get one media play by id (an MPRIS play id, or a Last.fm scrobble external id), with the same fields as query_media_plays.',
+    { id: z.string().describe('Play id from query_media_plays'), tz: tzSchema },
+    async ({ id, tz }) => {
+      const play = await getMediaPlayById(user, id)
+      if (!play) return errorResponse('Media play not found')
+      return tzJsonResponse({ data: play, success: true }, tz)
     },
   )
 
