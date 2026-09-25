@@ -16,6 +16,12 @@ Key areas covered by MCP tools:
 - **Sync** -- trigger data syncs from Garmin, Oura, Last.fm, RescueTime, calendars
 - **Settings** -- user preferences, HR zones, training load configuration
 
+### Sleep tools
+
+| Tool               | What it does                                                                                                                                                                                               |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `get_latest_sleep` | "How did I sleep last night?" -- the most recent sleep ending within 36 hours: timing, score, stage timeline and minutes, resting HR and HRV against 30-day baselines, Body Battery at bedtime and wake-up |
+
 ### Comment tools
 
 Comments (stored as "notes") hang off anything, or off a bare point in time, and

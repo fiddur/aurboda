@@ -12,6 +12,7 @@ import { BarChartView } from './BarChartWidget'
 import { CorrelationView } from './CorrelationWidget'
 import { GoalProgressView } from './GoalProgressWidget'
 import { HrZonesView } from './HrZonesWidget'
+import { LastSleepView } from './LastSleepWidget'
 import { MetricCardView } from './MetricCardWidget'
 import { QuickLinkView } from './QuickLinkWidget'
 import { SparklineCardView } from './SparklineCardWidget'
@@ -53,6 +54,8 @@ export function PublicWidgetRenderer({ widget, data }: PublicWidgetRendererProps
       return (
         <GoalProgressView config={widget.config} data={data?.type === 'goal_progress' ? data.data : null} />
       )
+    case 'last_sleep':
+      return <LastSleepView config={widget.config} data={data?.type === 'last_sleep' ? data.data : null} />
     default:
       return <div class="widget-unknown">Unknown widget type</div>
   }

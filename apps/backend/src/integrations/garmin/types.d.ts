@@ -83,11 +83,11 @@ declare module '@fiddur/garmin-connect/dist/garmin/types/sleep' {
       endGMT: string
       activityLevel: number
     }>
-    sleepLevels: Array<{
+    sleepLevels?: Array<{
       startGMT: string
       endGMT: string
       activityLevel: number
-    }>
+    }> | null
     sleepRestlessMoments: Array<{ value: number; startGMT: string }>
     wellnessEpochSPO2DataDTOList: Array<{
       epochTimestamp: number

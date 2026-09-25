@@ -5,6 +5,7 @@ import { format } from 'date-fns'
 
 import type { ScreentimeBucketParsed } from '../../state/api'
 
+import { stressBandColor } from '../../components/charts/stress-bands'
 import { type MetricBucketParsed, aggregateBuckets, aggregateBucketsAligned } from '../../utils/chart'
 import { type BarLayoutResult, slotPixels } from './barLayout'
 import { buildScreentimeTooltipHtml, findScreentimeBucket } from './drawScreentimeTrack'
@@ -175,7 +176,7 @@ const drawBarChart = (
   xScale: d3.ScaleTime<number, number>,
   yScale: d3.ScaleLinear<number, number>,
   trackBottom: number,
-  color: string,
+  color: string | ((avg: number) => string),
   opacity: number,
   barLayout?: BarLayoutResult,
   slotId?: string,
@@ -210,7 +211,7 @@ const drawBarChart = (
       .attr('y', barTop)
       .attr('width', barWidth)
       .attr('height', barHeight)
-      .attr('fill', color)
+      .attr('fill', typeof color === 'function' ? color(stats.avg) : color)
       .attr('opacity', opacity)
       .attr('pointer-events', 'none')
   }
@@ -651,6 +652,10 @@ const drawBarAndBandCharts = (
     )
   }
 
+  if (showStress) {
+    drawBarChart(chartGroup, lineBuckets, 'stress_level', xScale, yStress, trackBottom, stressBandColor, 0.7)
+  }
+
   if (showHR) {
     const hrBand = extractBandData(lineBuckets, 'heart_rate')
     if (hrBand.length > 1) drawBandChart(chartGroup, hrBand, xScale, yHr, HR_COLOR)
@@ -658,10 +663,6 @@ const drawBarAndBandCharts = (
   if (showHRV) {
     const hrvBand = extractBandData(lineBuckets, 'hrv_rmssd')
     if (hrvBand.length > 1) drawBandChart(chartGroup, hrvBand, xScale, yHrv, HRV_COLOR)
-  }
-  if (showStress) {
-    const stressBand = extractBandData(lineBuckets, 'stress_level')
-    if (stressBand.length > 1) drawBandChart(chartGroup, stressBand, xScale, yStress, STRESS_COLOR)
   }
 }
 

@@ -18,6 +18,7 @@ import {
   deleteMetricQuerySchema,
   type DeleteMetricResponse,
   type LatestMetricResponse,
+  type LatestSleepResponse,
   type MergeCustomMetricBody,
   mergeCustomMetricBodySchema,
   type MergeCustomMetricResponse,
@@ -41,6 +42,7 @@ import type { MetricType } from '../schema.ts'
 import { auditError, auditInfo } from '../services/audit-log.ts'
 import { computeAndStoreCalories, computeAndStoreCaloriesAll } from '../services/calorie-computation.ts'
 import { mergeCustomMetricService } from '../services/custom-metrics.ts'
+import { getLatestSleep } from '../services/latest-sleep.ts'
 import {
   addCustomMetric,
   addMetric,
@@ -297,6 +299,15 @@ export const createMetricsRouter = (
 
       const summary = await getDailySummary(user, new Date(date), syncProvider)
       res.json({ data: summary, success: true })
+    },
+  )
+
+  router.get<Record<string, never>, LatestSleepResponse>(
+    '/latest-sleep',
+    authMiddleware,
+    async (req, res) => {
+      const data = await getLatestSleep(req.user!)
+      res.json({ data, success: true })
     },
   )
 

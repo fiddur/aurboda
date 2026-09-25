@@ -32,6 +32,9 @@ import {
   garminSleepExternalId,
 } from '../../services/source-identity.ts'
 import { activityTrackSources, gpsPrecedenceSpan } from '../gps-precedence.ts'
+import { garminSleepLevelsToStages, parseGarminGmt } from './sleep-stages.ts'
+
+export { garminSleepLevelsToStages } from './sleep-stages.ts'
 
 export type GarminDataType =
   | 'dailySummary'
@@ -295,11 +298,14 @@ const processHrv = async (user: string, data: GarminHrvData, deps: GarminProcess
  * date (`garmin-sleep-<date>`), the same id the Health Connect processor
  * derives for a Garmin-written sleep session, so both paths share one row (#1080).
  */
-const buildSleepActivity = (dto: SleepData['dailySleepDTO']): Activity | null => {
+const buildSleepActivity = (data: SleepData): Activity | null => {
+  const dto = data.dailySleepDTO
   const startTime = dto.sleepStartTimestampGMT ? new Date(dto.sleepStartTimestampGMT) : null
   const endTime = dto.sleepEndTimestampGMT ? new Date(dto.sleepEndTimestampGMT) : null
   if (!startTime || !endTime) return null
 
+  // An empty timeline is left out so the upsert keeps stages Health Connect wrote.
+  const stages = garminSleepLevelsToStages(data.sleepLevels)
   return {
     activity_type: 'sleep',
     data: {
@@ -308,6 +314,7 @@ const buildSleepActivity = (dto: SleepData['dailySleepDTO']): Activity | null =>
       light_sleep_seconds: dto.lightSleepSeconds,
       rem_sleep_seconds: dto.remSleepSeconds,
       sleep_score: dto.sleepScores?.overall?.value,
+      ...(stages.length > 0 ? { stages } : {}),
     },
     end_time: endTime,
     external_id: garminSleepExternalId(dto.calendarDate),
@@ -317,20 +324,9 @@ const buildSleepActivity = (dto: SleepData['dailySleepDTO']): Activity | null =>
   }
 }
 
-// Garmin's nap timestamp field is named "...GMT" but in practice the API
-// returns ISO strings with an explicit zone suffix (e.g. "+02:00") for the
-// data we've observed. Parse as-is when a Z/offset suffix is present, and
-// fall back to treating bare strings as UTC.
-const parseNapGmt = (ts: string | null | undefined): Date | null => {
-  if (!ts) return null
-  const hasZone = /(?:Z|[+-]\d{2}:?\d{2})$/.test(ts)
-  const d = new Date(hasZone ? ts : `${ts}Z`)
-  return Number.isNaN(d.getTime()) ? null : d
-}
-
 const buildNapActivity = (nap: GarminNapDTO): Activity | null => {
-  const startTime = parseNapGmt(nap.napStartTimestampGMT)
-  const endTime = parseNapGmt(nap.napEndTimestampGMT)
+  const startTime = parseGarminGmt(nap.napStartTimestampGMT)
+  const endTime = parseGarminGmt(nap.napEndTimestampGMT)
   if (!startTime || !endTime) return null
 
   return {
@@ -396,7 +392,7 @@ const processSleep = async (user: string, data: SleepData, deps: GarminProcessDe
   const time = dateAt(dto.calendarDate)
   await deps.insertRawRecord(user, makeRaw('garmin_sleep', `garmin-sleep-${dto.calendarDate}`, time, data))
 
-  const activity = buildSleepActivity(dto)
+  const activity = buildSleepActivity(data)
   if (activity) {
     // Claim the row written before sleep had an external id (same start), or
     // the Health Connect copy of this night, so the upsert enriches it.

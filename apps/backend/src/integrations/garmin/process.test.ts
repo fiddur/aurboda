@@ -4,7 +4,12 @@ import type { GarminActivityDetailResponse } from './client.ts'
 import type { GarminProcessDeps } from './process.ts'
 
 import { activityTrackSources } from '../gps-precedence.ts'
-import { extractNumericValue, processActivityDetail, processGarminData } from './process.ts'
+import {
+  extractNumericValue,
+  garminSleepLevelsToStages,
+  processActivityDetail,
+  processGarminData,
+} from './process.ts'
 
 /** Activity types the mocked activity_type_definitions table contains. */
 const definedActivityTypes = new Set([
@@ -344,6 +349,39 @@ describe('processGarminData', () => {
         start_time: new Date(1736899200000),
         title: 'Sleep',
       })
+    })
+
+    test('maps sleepLevels into data.stages', async () => {
+      await processGarminData(
+        user,
+        'sleep',
+        makeSleepData({
+          sleepLevels: [
+            { activityLevel: 1, endGMT: '2025-01-15T00:30:00.0', startGMT: '2025-01-15T00:00:00.0' },
+            { activityLevel: 0, endGMT: '2025-01-15T01:00:00.0', startGMT: '2025-01-15T00:30:00.0' },
+          ],
+        }),
+        mockDeps,
+      )
+
+      expect(mockDeps.insertActivity).toHaveBeenCalledWith(
+        user,
+        expect.objectContaining({
+          data: expect.objectContaining({
+            stages: [
+              { endTime: '2025-01-15T00:30:00.000Z', stage: 4, startTime: '2025-01-15T00:00:00.000Z' },
+              { endTime: '2025-01-15T01:00:00.000Z', stage: 5, startTime: '2025-01-15T00:30:00.000Z' },
+            ],
+          }),
+        }),
+      )
+    })
+
+    test('omits data.stages when sleepLevels is empty', async () => {
+      await processGarminData(user, 'sleep', makeSleepData({ sleepLevels: [] }), mockDeps)
+
+      const activity = vi.mocked(mockDeps.insertActivity).mock.calls[0][1]
+      expect(activity.data).not.toHaveProperty('stages')
     })
 
     test('inserts sleep_score, resting_heart_rate, and hrv_rmssd time series', async () => {
@@ -1809,5 +1847,38 @@ describe('extractNumericValue', () => {
   test('returns null for non-numeric types', () => {
     expect(extractNumericValue('string')).toBeNull()
     expect(extractNumericValue({})).toBeNull()
+  })
+})
+
+describe('garminSleepLevelsToStages', () => {
+  test('maps Garmin activity levels to Health Connect stages, sorted by start', () => {
+    expect(
+      garminSleepLevelsToStages([
+        { activityLevel: 3, endGMT: '2026-09-24T02:00:00Z', startGMT: '2026-09-24T01:50:00Z' },
+        { activityLevel: 2, endGMT: '2026-09-24T01:50:00+02:00', startGMT: '2026-09-24T01:30:00+02:00' },
+        { activityLevel: 0, endGMT: '2026-09-23T23:00:00.0', startGMT: '2026-09-23T22:00:00.0' },
+        { activityLevel: 1, endGMT: '2026-09-23T22:00:00.0', startGMT: '2026-09-23T21:00:00.0' },
+      ]),
+    ).toEqual([
+      { endTime: '2026-09-23T22:00:00.000Z', stage: 4, startTime: '2026-09-23T21:00:00.000Z' },
+      { endTime: '2026-09-23T23:00:00.000Z', stage: 5, startTime: '2026-09-23T22:00:00.000Z' },
+      { endTime: '2026-09-23T23:50:00.000Z', stage: 6, startTime: '2026-09-23T23:30:00.000Z' },
+      { endTime: '2026-09-24T02:00:00.000Z', stage: 1, startTime: '2026-09-24T01:50:00.000Z' },
+    ])
+  })
+
+  test('drops unknown levels and unparsable times', () => {
+    expect(
+      garminSleepLevelsToStages([
+        { activityLevel: 7, endGMT: '2026-09-23T22:00:00.0', startGMT: '2026-09-23T21:00:00.0' },
+        { activityLevel: 1, endGMT: 'nope', startGMT: '2026-09-23T21:00:00.0' },
+        { activityLevel: 0, endGMT: '2026-09-23T23:00:00.0', startGMT: '2026-09-23T22:00:00.0' },
+      ]),
+    ).toEqual([{ endTime: '2026-09-23T23:00:00.000Z', stage: 5, startTime: '2026-09-23T22:00:00.000Z' }])
+  })
+
+  test('returns an empty array for missing levels', () => {
+    expect(garminSleepLevelsToStages(null)).toEqual([])
+    expect(garminSleepLevelsToStages(undefined)).toEqual([])
   })
 })

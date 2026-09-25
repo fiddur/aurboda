@@ -46,6 +46,7 @@ import {
 import { periodSummaryResponseSchema } from './schemas/period-summary.ts'
 import { productivityResponseSchema } from './schemas/productivity.ts'
 import { updateSettingsInputSchema, userSettingsResponseSchema } from './schemas/settings.ts'
+import { latestSleepResponseSchema } from './schemas/sleep.ts'
 import {
   dailyAggregatesBodySchema,
   healthConnectDeletionsBodySchema,
@@ -257,6 +258,24 @@ const openApiDocument = createDocument({
         security: [{ bearerAuth: [] }],
         summary: 'Get goal progress',
         tags: ['Goals'],
+      },
+    },
+
+    '/latest-sleep': {
+      get: {
+        description:
+          'Get the most recent night of sleep that ended within the last 36 hours: timing, sleep score, stage timeline and minutes, resting heart rate and HRV against their 30-day baselines, and Body Battery at bedtime and wake-up. Data is null when no sleep was recorded.',
+        responses: {
+          200: {
+            content: {
+              'application/json': { schema: latestSleepResponseSchema },
+            },
+            description: 'Successful response',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: "Get last night's sleep",
+        tags: ['Summary'],
       },
     },
 
