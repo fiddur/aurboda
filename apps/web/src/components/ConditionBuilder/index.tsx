@@ -257,13 +257,6 @@ function ActivityTitleFilter({
 }) {
   return (
     <div class="condition-data-row">
-      <input
-        type="text"
-        value={condition.title ?? ''}
-        onInput={(e) => onChange({ ...condition, title: (e.target as HTMLInputElement).value || undefined })}
-        placeholder="Title (optional)"
-        class="condition-field-input"
-      />
       <select
         value={condition.match_mode ?? 'contains'}
         onChange={(e) =>
@@ -272,11 +265,18 @@ function ActivityTitleFilter({
             match_mode: (e.target as HTMLSelectElement).value as 'exact' | 'contains',
           })
         }
-        class="condition-field-select condition-field-narrow"
+        class="condition-field-select condition-field-intrinsic"
       >
-        <option value="contains">Contains</option>
-        <option value="exact">Exact match</option>
+        <option value="contains">Title contains</option>
+        <option value="exact">Title is</option>
       </select>
+      <input
+        type="text"
+        value={condition.title ?? ''}
+        onInput={(e) => onChange({ ...condition, title: (e.target as HTMLInputElement).value || undefined })}
+        placeholder="any title"
+        class="condition-field-input condition-field-narrow"
+      />
     </div>
   )
 }

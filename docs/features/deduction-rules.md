@@ -103,6 +103,8 @@ with a custom "Sex" profile — which Garmin reports as its base sport, `other` 
   records the rule id.
 - Activities already overridden are reached through their override, rows produced by rules are never retyped, and an
   activity already of the target type is skipped, so re-evaluation changes nothing twice.
+- The new type's data schema applies, as for a manual type change: if it has required fields the activity lacks,
+  that activity is not retyped and an audit-log warning names it. Supply them in `output_data`.
 - Deleting or disabling the rule does not change retyped activities back; edit them like any other activity.
 
 ## Merge Gap

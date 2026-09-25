@@ -273,7 +273,7 @@ export const activitiesQuerySchema = timeRangeQuerySchema
       example: 'partner:Sara',
     }),
     deduction_rule_id: z.string().uuid().optional().meta({
-      description: 'Filter to activities created or enriched by a specific deduction rule',
+      description: 'Filter to activities created, enriched or retyped by a specific deduction rule',
     }),
   })
   .meta({ id: 'ActivitiesQuery' })

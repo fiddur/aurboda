@@ -18,6 +18,8 @@ export const dataFilterSchema = z.object({
 
 export type DataFilter = z.infer<typeof dataFilterSchema>
 
+const matchModeSchema = z.enum(['exact', 'contains'])
+
 export const activityConditionSchema = z
   .object({
     activity_type: activityTypeSchema,
@@ -26,8 +28,7 @@ export const activityConditionSchema = z
       .optional()
       .meta({ description: 'Optional data field filters — all must match (AND logic)' }),
     kind: z.literal('activity'),
-    match_mode: z
-      .enum(['exact', 'contains'])
+    match_mode: matchModeSchema
       .optional()
       .meta({ description: 'Case-insensitive match mode for title (default contains)' }),
     title: z.string().optional().meta({ description: 'Activity title to match (per match_mode)' }),
@@ -84,10 +85,7 @@ export const scrobbleConditionSchema = z
       .positive()
       .meta({ description: 'Duration each matching scrobble covers (seconds)' }),
     kind: z.literal('scrobble'),
-    match_mode: z
-      .enum(['exact', 'contains'])
-      .default('exact')
-      .meta({ description: 'Case-insensitive match mode' }),
+    match_mode: matchModeSchema.default('exact').meta({ description: 'Case-insensitive match mode' }),
     track: z.string().optional().meta({ description: 'Track name to match' }),
   })
   .meta({ description: 'Matches time ranges from Last.fm scrobbles by artist/track name' })
@@ -99,8 +97,7 @@ export const mediaConditionSchema = z
       .optional()
       .meta({ description: 'Artist name(s) to match (any of, per match_mode)' }),
     kind: z.literal('media'),
-    match_mode: z
-      .enum(['exact', 'contains'])
+    match_mode: matchModeSchema
       .default('contains')
       .meta({ description: 'Case-insensitive match mode for title and artist' }),
     min_played_ratio: z.number().gt(0).max(1).optional().meta({

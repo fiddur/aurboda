@@ -24,6 +24,8 @@ import { computeEnrichPatch } from './deduction-engine.ts'
 import { getPlaceVisits } from './locations.ts'
 import { updateActivity } from './mutations.ts'
 
+const DEFAULT_SPAN_MS = 60 * 60 * 1000
+
 const getActivities = async (
   user: string,
   activityType: string,
@@ -41,7 +43,7 @@ const getActivities = async (
     [types, window.start, window.end],
   )
   return result.rows.map((r) => ({
-    end: (r.end_time as Date) ?? new Date((r.start_time as Date).getTime() + 60 * 60 * 1000),
+    end: (r.end_time as Date) ?? new Date((r.start_time as Date).getTime() + DEFAULT_SPAN_MS),
     start: r.start_time as Date,
   }))
 }
@@ -126,14 +128,12 @@ const getActivitiesWithData = async (
     params,
   )
   return result.rows.map((r) => ({
-    end: (r.end_time as Date) ?? new Date((r.start_time as Date).getTime() + 60 * 60 * 1000),
+    end: (r.end_time as Date) ?? new Date((r.start_time as Date).getTime() + DEFAULT_SPAN_MS),
     start: r.start_time as Date,
   }))
 }
 
 const escapeLike = (s: string) => s.replaceAll('\\', '\\\\').replaceAll('%', '\\%').replaceAll('_', '\\_')
-
-const DEFAULT_SPAN_MS = 60 * 60 * 1000
 
 /**
  * Activities matching an `activity` condition (type incl. descendants, data filters, title).
@@ -305,7 +305,7 @@ const enrichActivities = async (
       seen.add(activityId)
 
       const start = row.start_time as Date
-      const span = { end: (row.end_time as Date) ?? new Date(start.getTime() + 60 * 60 * 1000), start }
+      const span = { end: (row.end_time as Date) ?? new Date(start.getTime() + DEFAULT_SPAN_MS), start }
       const activityData = options.dataFor ? { ...data, ...options.dataFor(span) } : data
       const patch = computeEnrichPatch(
         (row.data as Record<string, unknown>) ?? {},

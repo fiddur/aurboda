@@ -576,7 +576,7 @@ const processActivities = async (
       count++
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
-      deps.auditError(user, 'sync', `Failed to process Garmin activity ${act.activityId}`, {
+      await deps.auditError(user, 'sync', `Failed to process Garmin activity ${act.activityId}`, {
         error: message,
       })
     }

@@ -69,7 +69,6 @@ export interface DeductionEngineDeps {
     value: string | number | boolean | undefined,
     window: EvaluationWindow,
   ) => Promise<TimeRange[]>
-  /** With `retypeTo`, only activities a retype to that type may change. */
   findActivities: (
     user: string,
     condition: ActivityCondition,
@@ -342,7 +341,7 @@ export interface EvaluateRuleResult {
   would_affect: number
 }
 
-export const activityConditionsOf = (conditions: Condition[]): ActivityCondition[] =>
+const activityConditionsOf = (conditions: Condition[]): ActivityCondition[] =>
   conditions.filter((c): c is ActivityCondition => c.kind === 'activity')
 
 const overlapsAny = (span: TimeRange, ranges: TimeRange[]): boolean =>
