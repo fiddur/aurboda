@@ -3,6 +3,7 @@ import {
   bucketSizeSchema,
   dateOnlySchema,
   locationSummaryQuerySchema,
+  mediaPlaysQuerySchema,
   type MetricType,
   overnightStaysQuerySchema,
   timeRangeQuerySchema,
@@ -11,7 +12,7 @@ import {
 } from '@aurboda/api-spec'
 import { z } from 'zod'
 
-import { getActivityById, getAllActivityTypeNames } from '../db/index.ts'
+import { getActivityById, getAllActivityTypeNames, getMediaPlays } from '../db/index.ts'
 import { getCustomMetrics } from '../services/mutations.ts'
 import {
   computeActivityDetailMetrics,
@@ -258,6 +259,17 @@ Source-agnostic: works for any activity that has time-series and/or GPS populate
     async ({ end, start, tz }) => {
       const result = await queryProductivity(user, new Date(start), new Date(end), sync)
       return tzJsonResponse({ data: result.data, success: true }, tz)
+    },
+  )
+
+  server.tool(
+    'query_media_plays',
+    `Query media plays (videos, music, podcasts) for a time range: plays pushed by an MPRIS logger plus Last.fm scrobbles that are not duplicates of one.
+Each play has url, title, artist, album, player, device, started_at/ended_at, played_secs, track_secs (null when unknown), played_ratio and kind (music for Last.fm, otherwise null — classify MPRIS plays with a deduction rule's media condition, e.g. by url_host).`,
+    { ...mediaPlaysQuerySchema.shape, tz: tzSchema },
+    async ({ end, start, tz }) => {
+      const plays = await getMediaPlays(user, { end: new Date(end), start: new Date(start) })
+      return tzJsonResponse({ data: plays, success: true }, tz)
     },
   )
 

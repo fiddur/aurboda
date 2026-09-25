@@ -15,6 +15,7 @@ import {
   type OutboundSyncRequeueResponse,
   syncActivityWatchBodySchema,
   syncCalendarsBodySchema,
+  syncMediaBodySchema,
   syncGarminBodySchema,
   syncGravlBodySchema,
   syncLastFmBodySchema,
@@ -42,6 +43,9 @@ import {
   type LastFmSyncResponse,
   type LastFmSyncResult,
   type LastFmSyncStatusResponse,
+  type MediaPlayInput,
+  type MediaSyncResponse,
+  type MediaSyncResult,
   type OuraSyncResponse,
   type OuraSyncResult,
   type OuraSyncStatusResponse,
@@ -60,15 +64,16 @@ import {
   type SyncGarminBody,
   type SyncGravlBody,
   type SyncLastFmBody,
+  type SyncMediaBody,
   type SyncOuraBody,
   type SyncRescueTimeBody,
   type SyncStravaBody,
   type SyncResponse,
 } from '@aurboda/api-spec'
 
-import { maxOf, minOf } from './services/numeric-extremes.ts'
 import type { SourceArrival } from './services/source-identity.ts'
 
+import { maxOf, minOf } from './services/numeric-extremes.ts'
 import { type TypedRouter, typedRouter } from './typed-router.ts'
 import { validateBody } from './validation.ts'
 
@@ -162,6 +167,11 @@ export interface SyncRouterDeps {
     deviceName: string,
     isMobile?: boolean,
   ) => Promise<ActivityWatchSyncResult>
+  storeMediaPlays: (
+    user: string,
+    plays: MediaPlayInput[],
+    deviceName: string | undefined,
+  ) => Promise<MediaSyncResult>
   syncStrava: (user: string, options: { fullResync?: boolean }) => Promise<StravaSyncResult>
   getStravaSyncStates: (user: string) => Promise<ProviderSyncStatus[]>
   getStravaQueueStatus?: () => Promise<{ queued_count: number; active_count: number }>
@@ -567,6 +577,29 @@ export const createSyncRouter = (deps: SyncRouterDeps, authMiddleware: RequestHa
       try {
         const states = await deps.getActivityWatchSyncStates(user)
         res.json({ states, success: true })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        res.status(500).json({ error: message, success: false })
+      }
+    },
+  )
+
+  router.post<ParamsDictionary, MediaSyncResponse, SyncMediaBody>(
+    '/media',
+    authMiddleware,
+    validateBody(syncMediaBodySchema),
+    async (req, res) => {
+      const user = req.user!
+      const { plays, device_name } = req.body
+
+      try {
+        const result = await deps.storeMediaPlays(user, plays, device_name)
+        const start = minOf(plays.map((p) => Date.parse(p.started_at)))
+        const end = maxOf(plays.map((p) => Date.parse(p.ended_at)))
+        if (start !== undefined && end !== undefined) {
+          deps.onActivitySynced?.(user, '*', new Date(start), new Date(end))
+        }
+        res.json({ result, success: true })
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error'
         res.status(500).json({ error: message, success: false })

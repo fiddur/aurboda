@@ -8,12 +8,14 @@ import {
   activityTypeExists,
   deleteDeductionRule,
   deleteRuleActivities,
+  getDeductionRule,
   getDeductionRules,
   getEnabledDeductionRules,
   insertDeductionRule,
   updateDeductionRule,
 } from '../db/index.ts'
 import { evaluateAllRules } from '../services/deduction-engine.ts'
+import { mergeRuleUpdate, validateOutputMediaField } from '../services/media-plays.ts'
 import { errorResponse, jsonResponse, type McpServer } from './helpers.ts'
 
 export const registerDeductionRuleTools = (
@@ -42,12 +44,16 @@ Condition kinds:
 - "screentime_category": matches productivity records in a category path
 - "activity_data": matches when an activity has a specific data field value (operators: eq, neq, exists, not_exists)
 - "location": matches when the user is at a named location
+- "scrobble": matches Last.fm scrobbles by artist/track
+- "media": matches media plays (MPRIS pushes and non-duplicate Last.fm scrobbles) by url_host (host or subdomain), title, artist, player, min_played_secs and min_played_ratio (ratio is skipped when the track length is unknown)
+- "after_date": only matches after a date
 
 Modes:
 - "create" (default): creates new activities of output_activity_type
 - "enrich": patches output_data onto existing activities of output_activity_type (only fills missing fields)
 
 Use output_data to set custom data fields on created/enriched activities.
+In enrich mode with a "media" condition, output_media_field { field, strip_pattern? } copies the title of the longest matching play overlapping each activity into data[field], after removing every strip_pattern (JS regex) match. The rule overwrites a value it wrote itself, never one set by someone else.
 Multiple conditions use AND logic — all must overlap in time. The rule is applied retroactively to all historical data.`,
     { ...addDeductionRuleBodySchema.shape },
     async (params) => {
@@ -56,6 +62,9 @@ Multiple conditions use AND logic — all must overlap in time. The rule is appl
           `Unknown activity type: "${params.output_activity_type}". Create it first with add_activity_type.`,
         )
       }
+
+      const mediaFieldError = validateOutputMediaField(params)
+      if (mediaFieldError) return errorResponse(mediaFieldError)
 
       const rule = await insertDeductionRule(user, params)
 
@@ -81,6 +90,11 @@ Multiple conditions use AND logic — all must overlap in time. The rule is appl
       if (updates.output_activity_type && !(await activityTypeExists(user, updates.output_activity_type))) {
         return errorResponse(`Unknown activity type: "${updates.output_activity_type}"`)
       }
+
+      const existing = await getDeductionRule(user, id)
+      if (!existing) return errorResponse('Deduction rule not found')
+      const mediaFieldError = validateOutputMediaField(mergeRuleUpdate(existing, updates))
+      if (mediaFieldError) return errorResponse(mediaFieldError)
 
       const updated = await updateDeductionRule(user, id, updates)
       if (!updated) return errorResponse('Deduction rule not found')
@@ -144,6 +158,9 @@ Multiple conditions use AND logic — all must overlap in time. The rule is appl
         return errorResponse(`Unknown activity type: "${params.output_activity_type}"`)
       }
 
+      const mediaFieldError = validateOutputMediaField(params)
+      if (mediaFieldError) return errorResponse(mediaFieldError)
+
       // Create a temporary rule object for evaluation (no DB insert)
       const tempRule = {
         conditions: params.conditions,
@@ -154,6 +171,7 @@ Multiple conditions use AND logic — all must overlap in time. The rule is appl
         name: params.name,
         output_activity_type: params.output_activity_type,
         output_data: params.output_data as Record<string, unknown> | undefined,
+        output_media_field: params.output_media_field,
         output_title: params.output_title,
         priority: params.priority ?? 0,
       }

@@ -8,11 +8,19 @@
  * 6. Rules are evaluated in priority order for chaining support
  */
 
-import type { Condition, DeductionRule } from '@aurboda/api-spec'
+import type { Condition, DeductionRule, MediaPlay } from '@aurboda/api-spec'
 
 import { randomUUID } from 'node:crypto'
 
 import type { Activity } from '../db/types.ts'
+
+import {
+  matchesMediaCondition,
+  mediaConditionsOf,
+  pickLongestPlay,
+  playRange,
+  stripTitle,
+} from './media-plays.ts'
 
 export interface TimeRange {
   start: Date
@@ -28,6 +36,13 @@ export interface RuleEvaluationResult {
   rule_id: string
   activities_created: number
   duration_ms: number
+}
+
+export interface EnrichOptions {
+  /** Per-activity data merged over the static data, given the activity's span. */
+  dataFor?: (span: TimeRange) => Record<string, unknown>
+  /** Keys this rule may overwrite when it wrote the activity's enrichment before. */
+  overwriteKeys?: string[]
 }
 
 export interface DeductionEngineDeps {
@@ -63,7 +78,9 @@ export interface DeductionEngineDeps {
     ranges: TimeRange[],
     data: Record<string, unknown>,
     ruleId: string,
+    options?: EnrichOptions,
   ) => Promise<string[]>
+  getMediaPlays: (user: string, window: EvaluationWindow) => Promise<MediaPlay[]>
   deleteStaleRuleActivities: (
     user: string,
     ruleId: string,
@@ -189,11 +206,19 @@ const resolveScrobble: ConditionResolver = async (user, condition, window, deps)
   )
 }
 
+const resolveMedia: ConditionResolver = async (user, condition, window, deps) => {
+  if (condition.kind !== 'media') return []
+  const plays = await deps.getMediaPlays(user, window)
+  const ranges = plays.filter((p) => matchesMediaCondition(p, condition)).map(playRange)
+  return mergeRangesWithGap(ranges, 0)
+}
+
 const conditionResolvers: Record<string, ConditionResolver> = {
   activity: resolveActivity,
   activity_data: resolveActivityData,
   after_date: resolveAfterDate,
   location: resolveLocation,
+  media: resolveMedia,
   scrobble: resolveScrobble,
   screentime_category: resolveScreentimeCategory,
 }
@@ -230,6 +255,59 @@ const resolveConditions = async (
   return result
 }
 
+/**
+ * The patch enrichment writes onto one activity, or null when nothing changes. Keys are only
+ * filled when missing, except `overwriteKeys`, which are also replaced when this rule wrote the
+ * activity's enrichment before — so re-running an edited rule updates its own values but never
+ * a value someone else set.
+ */
+export const computeEnrichPatch = (
+  existing: Record<string, unknown>,
+  data: Record<string, unknown>,
+  ruleId: string,
+  overwriteKeys: string[] = [],
+): Record<string, unknown> | null => {
+  const ownedByRule = existing._enriched_by === ruleId
+  const patch: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(data)) {
+    const current = existing[key]
+    if (current === undefined || current === null) {
+      patch[key] = value
+    } else if (ownedByRule && overwriteKeys.includes(key) && current !== value) {
+      patch[key] = value
+    }
+  }
+  if (Object.keys(patch).length === 0) return null
+  patch._enriched_by = ruleId
+  return patch
+}
+
+/**
+ * For rules with output_media_field: the title of the longest play matching every media
+ * condition within the activity's matched span, keyed by the output field.
+ */
+const buildMediaDataFor = async (
+  user: string,
+  rule: DeductionRule,
+  matched: TimeRange[],
+  window: EvaluationWindow,
+  deps: DeductionEngineDeps,
+): Promise<((span: TimeRange) => Record<string, unknown>) | undefined> => {
+  const output = rule.output_media_field
+  if (!output) return undefined
+  const conditions = mediaConditionsOf(rule.conditions)
+  const plays = (await deps.getMediaPlays(user, window)).filter((play) =>
+    conditions.every((c) => matchesMediaCondition(play, c)),
+  )
+  return (span) => {
+    const windows = intersectTimeRanges([span], matched)
+    const play = pickLongestPlay(plays, windows)
+    if (!play) return {}
+    const value = stripTitle(play.title, output.strip_pattern)
+    return value ? { [output.field]: value } : {}
+  }
+}
+
 export interface EvaluateRuleResult {
   affected_ids: string[]
   would_affect: number
@@ -249,8 +327,13 @@ export const evaluateRule = async (
   if (result.length === 0) return { affected_ids: [], would_affect: 0 }
 
   if (rule.mode === 'enrich') {
+    const dataFor = await buildMediaDataFor(user, rule, result, window, deps)
     if (dryRun) {
       const targetRanges = await deps.getActivities(user, rule.output_activity_type, window)
+      if (dataFor) {
+        const withValue = targetRanges.filter((target) => Object.keys(dataFor(target)).length > 0)
+        return { affected_ids: [], would_affect: withValue.length }
+      }
       const overlapping = intersectTimeRanges(result, targetRanges)
       return { affected_ids: [], would_affect: overlapping.length }
     }
@@ -260,6 +343,9 @@ export const evaluateRule = async (
       result,
       rule.output_data ?? {},
       rule.id,
+      dataFor && rule.output_media_field
+        ? { dataFor, overwriteKeys: [rule.output_media_field.field] }
+        : undefined,
     )
     return { affected_ids: enrichedIds, would_affect: enrichedIds.length }
   }

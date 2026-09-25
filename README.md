@@ -38,6 +38,7 @@ Aurboda's reach is the point, so here's what it ingests today:
 | [**RescueTime**](docs/rescuetime.md)                 | App/website usage, productivity scores, categories                                                     | Pull (API)                             |
 | [**ActivityWatch**](docs/activitywatch.md)           | App/window usage per device (desktop and Android)                                                      | Push (agent script)                    |
 | [**Last.fm**](docs/lastfm.md)                        | Music scrobbles with auto-generated tags from configurable rules                                       | Pull (API)                             |
+| [**Media players (MPRIS)**](docs/media.md)           | Video, music and podcast plays with URL, played time and track length (Linux desktop)                  | Push (logger script)                   |
 | [**Calendars (ICS)**](docs/calendars.md)             | Calendar events imported as tags (Google Calendar, Outlook, iCloud, Nextcloud, etc.)                   | Pull (ICS fetch)                       |
 | **Cronometer**                                       | Meals with full per-item macros and ~50 micronutrients                                                 | CSV import                             |
 | [**Livsmedelsverket**](docs/livsmedelsverket.md)     | Canonical food library: 2,500+ Swedish foods with macros + micros (per 100 g)                          | One-shot bulk import (UI button)       |

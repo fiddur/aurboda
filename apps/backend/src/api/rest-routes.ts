@@ -48,6 +48,7 @@ import { createIconsRouter } from '../routes/icons-router.ts'
 import { createImportsRouter } from '../routes/imports-router.ts'
 import { createLocationsRouter } from '../routes/locations-router.ts'
 import { createMealsRouter } from '../routes/meals-router.ts'
+import { createMediaRouter } from '../routes/media-router.ts'
 import { createMetricsRouter } from '../routes/metrics-router.ts'
 import { createNotesRouter } from '../routes/notes-router.ts'
 import { createNutrientRecommendationsRouter } from '../routes/nutrient-recommendations-router.ts'
@@ -147,6 +148,7 @@ export const mountRestRouters = ({
   httpd.use(createMetricsRouter(authMiddleware, syncProvider))
   httpd.use('/icons', createIconsRouter(authMiddleware))
   httpd.use('/notes', createNotesRouter(authMiddleware))
+  httpd.use('/media', createMediaRouter(authMiddleware))
   httpd.use('/meals', createMealsRouter(authMiddleware))
   httpd.use('/food-items', createFoodItemsRouter(authMiddleware, centralDb))
   httpd.use('/sensitivity-flags', createSensitivityFlagsRouter(authMiddleware))

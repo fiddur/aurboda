@@ -1,10 +1,11 @@
-import type { DeductionRule } from '@aurboda/api-spec'
+import type { DeductionRule, MediaPlay } from '@aurboda/api-spec'
 
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
-import type { DeductionEngineDeps, TimeRange } from './deduction-engine.ts'
+import type { DeductionEngineDeps, EnrichOptions, TimeRange } from './deduction-engine.ts'
 
 import {
+  computeEnrichPatch,
   evaluateAllRules,
   evaluateRule,
   intersectTimeRanges,
@@ -22,6 +23,7 @@ const makeDeps = (): DeductionEngineDeps => ({
   getActivitiesWithDataFilters: vi.fn().mockResolvedValue([]),
   getEarliestActivityTime: vi.fn().mockResolvedValue(null),
   getLocationVisits: vi.fn().mockResolvedValue([]),
+  getMediaPlays: vi.fn().mockResolvedValue([]),
   getScrobbles: vi.fn().mockResolvedValue([]),
   getScreentime: vi.fn().mockResolvedValue([]),
   insertActivity: vi.fn().mockResolvedValue(undefined),
@@ -345,6 +347,7 @@ describe('evaluateRule', () => {
       [{ end: d(11), start: d(10) }],
       { partner: 'Sara' },
       'rule-1',
+      undefined,
     )
     expect(deps.insertActivity).not.toHaveBeenCalled()
   })
@@ -669,5 +672,216 @@ describe('evaluateAllRules', () => {
     await evaluateAllRules(user, rules, window, deps)
 
     expect(deps.deleteStaleRuleActivities).not.toHaveBeenCalled()
+  })
+})
+
+describe('media conditions and play-title enrichment', () => {
+  const user = 'testuser'
+  const window = { end: d(23), start: d(0) }
+  let deps: DeductionEngineDeps
+
+  const play = (overrides: Partial<MediaPlay> = {}): MediaPlay => ({
+    album: '',
+    artist: '',
+    device: 'laptop',
+    ended_at: d(10, 32).toISOString(),
+    id: 'p1',
+    kind: null,
+    max_position_secs: 1800,
+    played_ratio: 0.95,
+    played_secs: 1710,
+    player: 'firefox',
+    seek_count: 0,
+    source: 'mpris',
+    started_at: d(10, 2).toISOString(),
+    title: 'Yin Yoga for Healthy Hips with Meagan — True Naked Yoga',
+    track_secs: 1800,
+    url: 'https://www.truenakedyoga.com/videos/yin-hips',
+    ...overrides,
+  })
+
+  const skim = play({
+    ended_at: d(12, 1).toISOString(),
+    id: 'skim',
+    played_ratio: 40 / 1800,
+    played_secs: 40,
+    started_at: d(12).toISOString(),
+    title: 'Power Yoga — True Naked Yoga',
+  })
+
+  const yogaRule = (overrides: Partial<DeductionRule> = {}): DeductionRule => ({
+    conditions: [
+      { activity_type: 'yoga', kind: 'activity' },
+      {
+        kind: 'media',
+        match_mode: 'contains',
+        min_played_ratio: 0.8,
+        min_played_secs: 600,
+        url_host: ['truenakedyoga.com'],
+      },
+    ],
+    enabled: true,
+    id: 'rule-1',
+    mode: 'enrich',
+    name: 'Yoga session name',
+    output_activity_type: 'yoga',
+    output_media_field: { field: 'session_name', strip_pattern: '\\s*—\\s*True Naked Yoga$' },
+    priority: 0,
+    ...overrides,
+  })
+
+  const yogaSpan = { end: d(10, 35), start: d(10) }
+
+  interface StoredActivity {
+    id: string
+    span: TimeRange
+    data: Record<string, unknown>
+  }
+
+  const stored = (data: Record<string, unknown> = {}): StoredActivity[] => [
+    { data, id: 'a1', span: yogaSpan },
+  ]
+
+  /** Mirrors the DB-backed enrichActivities over an in-memory list. */
+  const inMemoryEnrich =
+    (activities: StoredActivity[]): DeductionEngineDeps['enrichActivities'] =>
+    async (_user, _type, ranges, data, ruleId, options: EnrichOptions = {}) => {
+      const ids: string[] = []
+      for (const activity of activities) {
+        if (!ranges.some((r) => r.start < activity.span.end && r.end > activity.span.start)) continue
+        const merged = options.dataFor ? { ...data, ...options.dataFor(activity.span) } : data
+        const patch = computeEnrichPatch(activity.data, merged, ruleId, options.overwriteKeys)
+        if (!patch) continue
+        activity.data = { ...activity.data, ...patch }
+        ids.push(activity.id)
+      }
+      return ids
+    }
+
+  beforeEach(() => {
+    deps = makeDeps()
+    vi.mocked(deps.getActivities).mockResolvedValue([yogaSpan])
+  })
+
+  test('media condition resolves to the ranges of matching plays', async () => {
+    vi.mocked(deps.getMediaPlays).mockResolvedValue([play(), skim])
+    const rule = yogaRule({
+      conditions: [
+        { kind: 'media', match_mode: 'contains', min_played_secs: 600, url_host: ['truenakedyoga.com'] },
+      ],
+      mode: undefined,
+      output_media_field: undefined,
+    })
+
+    await evaluateRule(user, rule, window, deps)
+
+    expect(deps.getMediaPlays).toHaveBeenCalledWith(user, window)
+    expect(deps.insertActivity).toHaveBeenCalledTimes(1)
+    expect(deps.insertActivity).toHaveBeenCalledWith(
+      user,
+      expect.objectContaining({ end_time: d(10, 32), start_time: d(10, 2) }),
+    )
+  })
+
+  test('writes the stripped play title onto the overlapping activity', async () => {
+    vi.mocked(deps.getMediaPlays).mockResolvedValue([play()])
+    const activities = stored()
+    deps.enrichActivities = vi.fn(inMemoryEnrich(activities))
+
+    const { affected_ids } = await evaluateRule(user, yogaRule(), window, deps)
+
+    expect(affected_ids).toEqual(['a1'])
+    expect(activities[0].data).toEqual({
+      _enriched_by: 'rule-1',
+      session_name: 'Yin Yoga for Healthy Hips with Meagan',
+    })
+  })
+
+  test('a skim does not enrich', async () => {
+    vi.mocked(deps.getActivities).mockResolvedValue([{ end: d(12, 30), start: d(12) }])
+    vi.mocked(deps.getMediaPlays).mockResolvedValue([skim])
+
+    const { affected_ids } = await evaluateRule(user, yogaRule(), window, deps)
+
+    expect(affected_ids).toEqual([])
+    expect(deps.enrichActivities).not.toHaveBeenCalled()
+  })
+
+  test('the longest of several plays wins', async () => {
+    const short = play({
+      ended_at: d(10, 12).toISOString(),
+      id: 'short',
+      played_secs: 610,
+      started_at: d(10, 1).toISOString(),
+      title: 'Short Flow — True Naked Yoga',
+    })
+    const long = play({ id: 'long', played_secs: 1200, started_at: d(10, 13).toISOString() })
+    vi.mocked(deps.getMediaPlays).mockResolvedValue([short, long])
+    const activities = stored()
+    deps.enrichActivities = vi.fn(inMemoryEnrich(activities))
+
+    await evaluateRule(user, yogaRule(), window, deps)
+
+    expect(activities[0].data.session_name).toBe('Yin Yoga for Healthy Hips with Meagan')
+  })
+
+  test('re-running after the strip pattern changes overwrites the value the rule wrote', async () => {
+    vi.mocked(deps.getMediaPlays).mockResolvedValue([play()])
+    const activities = stored()
+    deps.enrichActivities = vi.fn(inMemoryEnrich(activities))
+
+    await evaluateRule(user, yogaRule({ output_media_field: { field: 'session_name' } }), window, deps)
+    expect(activities[0].data.session_name).toBe('Yin Yoga for Healthy Hips with Meagan — True Naked Yoga')
+
+    const again = await evaluateRule(user, yogaRule(), window, deps)
+    expect(again.affected_ids).toEqual(['a1'])
+    expect(activities[0].data.session_name).toBe('Yin Yoga for Healthy Hips with Meagan')
+
+    const unchanged = await evaluateRule(user, yogaRule(), window, deps)
+    expect(unchanged.affected_ids).toEqual([])
+  })
+
+  test('does not overwrite a value someone else set', async () => {
+    vi.mocked(deps.getMediaPlays).mockResolvedValue([play()])
+    const activities = stored({ session_name: 'Hips' })
+    deps.enrichActivities = vi.fn(inMemoryEnrich(activities))
+
+    const { affected_ids } = await evaluateRule(user, yogaRule(), window, deps)
+
+    expect(affected_ids).toEqual([])
+    expect(activities[0].data).toEqual({ session_name: 'Hips' })
+  })
+
+  test('dry-run counts target activities that would get a value', async () => {
+    vi.mocked(deps.getActivities).mockResolvedValue([yogaSpan, { end: d(12, 30), start: d(12) }])
+    vi.mocked(deps.getMediaPlays).mockResolvedValue([play(), skim])
+
+    const { would_affect } = await evaluateRule(user, yogaRule(), window, deps, true)
+
+    expect(would_affect).toBe(1)
+    expect(deps.enrichActivities).not.toHaveBeenCalled()
+  })
+})
+
+describe('computeEnrichPatch', () => {
+  test('fills missing keys and records provenance', () => {
+    expect(computeEnrichPatch({ a: 1 }, { a: 2, b: 3 }, 'r')).toEqual({ _enriched_by: 'r', b: 3 })
+  })
+
+  test('returns null when nothing changes', () => {
+    expect(computeEnrichPatch({ a: 1 }, { a: 2 }, 'r')).toBeNull()
+    expect(computeEnrichPatch({ _enriched_by: 'r', a: 1 }, { a: 1 }, 'r', ['a'])).toBeNull()
+  })
+
+  test('overwrite keys are replaced only when the rule owns the enrichment', () => {
+    expect(computeEnrichPatch({ _enriched_by: 'r', a: 1 }, { a: 2 }, 'r', ['a'])).toEqual({
+      _enriched_by: 'r',
+      a: 2,
+    })
+    expect(computeEnrichPatch({ _enriched_by: 'other', a: 1 }, { a: 2 }, 'r', ['a'])).toBeNull()
+  })
+
+  test('static keys are never overwritten, even when owned', () => {
+    expect(computeEnrichPatch({ _enriched_by: 'r', a: 1 }, { a: 2 }, 'r')).toBeNull()
   })
 })

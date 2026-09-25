@@ -97,6 +97,8 @@ export {
   updateDeductionRule,
 } from './deduction-rules.ts'
 
+export { getMediaPlays, storeMediaPlays } from './media-plays.ts'
+
 export {
   activityTypeExists,
   deleteActivityTypeDefinition,

@@ -28,6 +28,7 @@ import {
   reportSyncFailure,
   requeueOutboundSync,
   resetSyncState,
+  storeMediaPlays,
   upsertUserSettings,
 } from '../db/index.ts'
 import { processActivityWatchEvents } from '../integrations/activitywatch/sync.ts'
@@ -141,6 +142,7 @@ export const mountSyncRouter = ({
         resetRescueTimeSyncState: (user) => resetSyncState(user, 'rescuetime'),
         resetStravaSyncState,
         getStravaSyncStates,
+        storeMediaPlays,
         getStravaQueueStatus: stravaQueue ? () => stravaQueue.getStatus() : undefined,
         syncStrava: async (user, options) => {
           if (!stravaQueue) throw new Error('Strava integration not configured')

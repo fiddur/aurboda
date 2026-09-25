@@ -529,3 +529,58 @@ export const activityWatchSyncStatusResponseSchema = baseResponseSchema
   .meta({ id: 'ActivityWatchSyncStatusResponse' })
 
 export type ActivityWatchSyncStatusResponse = z.infer<typeof activityWatchSyncStatusResponseSchema>
+
+/** A single media play pushed by an MPRIS logger. Empty strings mean "not reported by the player". */
+export const mediaPlayInputSchema = z
+  .object({
+    album: z.string(),
+    artist: z.string(),
+    device: z.string().meta({ description: 'Device the play happened on' }),
+    ended_at: iso8601DateTimeSchema,
+    id: z
+      .string()
+      .min(1)
+      .max(64)
+      .meta({ description: 'Stable client-generated play id; re-posting the same id updates the play' }),
+    max_position_secs: z.number().min(0).meta({ description: 'Furthest playback position reached' }),
+    played_secs: z.number().min(0).meta({ description: 'Seconds actually played' }),
+    player: z.string().meta({ description: 'MPRIS player name, e.g. "firefox" or "mpv"' }),
+    seek_count: z.number().int().min(0),
+    started_at: iso8601DateTimeSchema,
+    title: z.string(),
+    track_secs: z
+      .number()
+      .positive()
+      .nullable()
+      .meta({ description: 'Track length in seconds, null when the player does not publish it' }),
+    url: z.string(),
+  })
+  .meta({ id: 'MediaPlayInput' })
+
+export type MediaPlayInput = z.infer<typeof mediaPlayInputSchema>
+
+export const syncMediaBodySchema = z
+  .object({
+    device_name: z.string().max(100).optional().meta({ description: 'Name of the pushing device' }),
+    plays: z.array(mediaPlayInputSchema).max(1000).meta({ description: 'Media plays to store' }),
+  })
+  .meta({ id: 'SyncMediaBody', description: 'Batch of media plays pushed by an MPRIS logger' })
+
+export type SyncMediaBody = z.infer<typeof syncMediaBodySchema>
+
+export const mediaSyncResultSchema = z
+  .object({
+    plays_received: z.number().int().meta({ description: 'Plays in the request' }),
+    plays_stored: z.number().int().meta({ description: 'Plays stored after collapsing duplicate ids' }),
+  })
+  .meta({ id: 'MediaSyncResult' })
+
+export type MediaSyncResult = z.infer<typeof mediaSyncResultSchema>
+
+export const mediaSyncResponseSchema = baseResponseSchema
+  .extend({
+    result: mediaSyncResultSchema.optional(),
+  })
+  .meta({ id: 'MediaSyncResponse' })
+
+export type MediaSyncResponse = z.infer<typeof mediaSyncResponseSchema>

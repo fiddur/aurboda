@@ -14,6 +14,7 @@ const KIND_LABELS: Record<string, string> = {
   activity_data: 'Activity Data Field',
   after_date: 'Since Date',
   location: 'Location',
+  media: 'Media play',
   scrobble: 'Scrobble (Last.fm)',
   screentime_category: 'Screentime Category',
 }
@@ -25,6 +26,7 @@ const KINDS: Array<DeductionRuleCondition['kind']> = [
   'location',
   'after_date',
   'scrobble',
+  'media',
 ]
 
 const OPERATOR_LABELS: Record<string, string> = {
@@ -237,11 +239,107 @@ function ScrobbleBody({
   )
 }
 
+const splitList = (value: string): string[] =>
+  value
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+
+const optionalNumber = (value: string): number | undefined => (value === '' ? undefined : Number(value))
+
+function MediaBody({
+  condition,
+  onChange,
+}: {
+  condition: DeductionRuleCondition
+  onChange: (c: DeductionRuleCondition) => void
+}) {
+  const inputValue = (e: Event) => (e.target as HTMLInputElement).value
+  return (
+    <div class="condition-data-fields">
+      <div class="condition-data-row">
+        <input
+          type="text"
+          value={(condition.url_host ?? []).join(', ')}
+          onInput={(e) => onChange({ ...condition, url_host: splitList(inputValue(e)) })}
+          placeholder="URL host(s), comma-separated (e.g. youtube.com)"
+          class="condition-field-input"
+        />
+      </div>
+      <div class="condition-data-row">
+        <input
+          type="text"
+          value={condition.title ?? ''}
+          onInput={(e) => onChange({ ...condition, title: inputValue(e) || undefined })}
+          placeholder="Title (optional)"
+          class="condition-field-input"
+        />
+      </div>
+      <div class="condition-data-row">
+        <input
+          type="text"
+          value={(condition.artist ?? []).join(', ')}
+          onInput={(e) => onChange({ ...condition, artist: splitList(inputValue(e)) })}
+          placeholder="Artist(s), comma-separated (optional)"
+          class="condition-field-input condition-field-narrow"
+        />
+        <input
+          type="text"
+          value={(condition.player ?? []).join(', ')}
+          onInput={(e) => onChange({ ...condition, player: splitList(inputValue(e)) })}
+          placeholder="Player(s), e.g. firefox, mpv"
+          class="condition-field-input condition-field-narrow"
+        />
+      </div>
+      <div class="condition-data-row">
+        <select
+          value={condition.match_mode ?? 'contains'}
+          onChange={(e) =>
+            onChange({
+              ...condition,
+              match_mode: (e.target as HTMLSelectElement).value as 'exact' | 'contains',
+            })
+          }
+          class="condition-field-select condition-field-narrow"
+        >
+          <option value="contains">Contains</option>
+          <option value="exact">Exact match</option>
+        </select>
+        <label class="condition-field-narrow" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+          <span style={{ fontSize: '0.85em', opacity: 0.8 }}>Min played (s)</span>
+          <input
+            type="number"
+            min="0"
+            value={condition.min_played_secs ?? ''}
+            onInput={(e) => onChange({ ...condition, min_played_secs: optionalNumber(inputValue(e)) })}
+            class="condition-field-input"
+            style={{ width: '80px' }}
+          />
+        </label>
+        <label class="condition-field-narrow" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+          <span style={{ fontSize: '0.85em', opacity: 0.8 }}>Min ratio</span>
+          <input
+            type="number"
+            min="0"
+            max="1"
+            step="0.05"
+            value={condition.min_played_ratio ?? ''}
+            onInput={(e) => onChange({ ...condition, min_played_ratio: optionalNumber(inputValue(e)) })}
+            class="condition-field-input"
+            style={{ width: '80px' }}
+          />
+        </label>
+      </div>
+    </div>
+  )
+}
+
 const KIND_DEFAULTS: Record<string, Partial<DeductionRuleCondition>> = {
   activity: { activity_type: '' },
   activity_data: { activity_type: '', field: '', operator: 'eq', value: '' },
   after_date: { date: new Date().toISOString().slice(0, 10) },
   location: { location_name: '' },
+  media: { match_mode: 'contains', url_host: [] },
   scrobble: { artist: [], track: '', match_mode: 'exact', duration_seconds: 210 },
   screentime_category: { category: [] },
 }
@@ -374,6 +472,8 @@ function ConditionCard({
         )}
 
         {condition.kind === 'scrobble' && <ScrobbleBody condition={condition} onChange={update} />}
+
+        {condition.kind === 'media' && <MediaBody condition={condition} onChange={update} />}
       </div>
     </div>
   )

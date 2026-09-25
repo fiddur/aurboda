@@ -27,6 +27,7 @@ import {
   promoteDetectedLocationBodySchema,
   updateNamedLocationBodySchema,
 } from './schemas/locations.ts'
+import { mediaPlaysQuerySchema, mediaPlaysResponseSchema } from './schemas/media.ts'
 import {
   addMetricBodySchema,
   addMetricResponseSchema,
@@ -48,6 +49,8 @@ import {
   syncGravlBodySchema,
   gravlSyncResponseSchema,
   gravlSyncStatusResponseSchema,
+  mediaSyncResponseSchema,
+  syncMediaBodySchema,
   syncRescueTimeBodySchema,
   syncResponseSchema,
   syncStatusResponseSchema,
@@ -732,6 +735,49 @@ const openApiDocument = createDocument({
       },
     },
 
+    '/sync/media': {
+      post: {
+        description:
+          "Push media plays (videos, music, podcasts) from an MPRIS logger. Plays are stored as raw records deduplicated by id, so re-posting a batch is safe. Triggers deduction rule evaluation over the plays' time span.",
+        requestBody: {
+          content: { 'application/json': { schema: syncMediaBodySchema } },
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: mediaSyncResponseSchema } },
+            description: 'Plays stored',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Bad request',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Push media plays',
+        tags: ['Sync'],
+      },
+    },
+    '/media/plays': {
+      get: {
+        description:
+          'Media plays in a time window: MPRIS plays plus Last.fm scrobbles that are not duplicates of an MPRIS play. kind and played_ratio are derived at read time.',
+        requestParams: { query: mediaPlaysQuerySchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: mediaPlaysResponseSchema } },
+            description: 'Successful response',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Bad request',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Query media plays',
+        tags: ['Media'],
+      },
+    },
+
     '/sync/gravl': {
       post: {
         description:
@@ -1018,6 +1064,7 @@ const openApiDocument = createDocument({
     { description: 'Time series health metrics', name: 'Metrics' },
     { description: 'Daily and period summaries', name: 'Summary' },
     { description: 'Sleep, exercise, meditation sessions', name: 'Activities' },
+    { description: 'Media plays (videos, music, podcasts)', name: 'Media' },
     { description: 'Federated challenges: hosted, joined, and public standings', name: 'Challenges' },
     { description: 'Named and detected locations', name: 'Locations' },
     { description: 'RescueTime productivity data', name: 'Productivity' },

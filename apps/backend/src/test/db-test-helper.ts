@@ -111,6 +111,7 @@ export const cleanTestDb = async (): Promise<void> => {
     'user_settings',
     'mcp_sessions',
     'lastfm_tag_rules',
+    'deduction_rules',
     'outbound_sync_queue',
     'screentime_categories',
     'import_jobs',
