@@ -227,11 +227,11 @@
   }
 
   .session-label {
-    min-width: 7rem;
+    min-width: 5.5rem;
   }
 
   .hr-box-plot {
-    width: 80px;
+    width: 72px;
   }
 
   .activity-neighbors-row {
