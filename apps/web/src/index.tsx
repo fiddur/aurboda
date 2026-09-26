@@ -7,62 +7,85 @@ import { Footer } from './components/Footer.jsx'
 import { Header } from './components/Header.jsx'
 import { Sidebar } from './components/Sidebar.jsx'
 import { isEmbedded } from './embed.js'
+import { lazyPage } from './lazyPage.js'
 import { NotFound } from './pages/_404.jsx'
-import { ActivityTypeMeta } from './pages/ActivityTypeMeta/index.jsx'
-import { ActivityTypes } from './pages/ActivityTypes/index.jsx'
-import { AddData } from './pages/AddData/index.jsx'
-import { AdminSettings } from './pages/AdminSettings/index.jsx'
-import { AuditLog } from './pages/AuditLog/index.jsx'
-import { Challenges } from './pages/Challenges/index.jsx'
-import { ChallengeJoin } from './pages/Challenges/Join.jsx'
-import { Chart } from './pages/Chart/index.jsx'
-import { Correlations } from './pages/Correlations/index.jsx'
-import { Data } from './pages/Data/index.jsx'
-import { ActivityWatchAndroidSource } from './pages/DataSources/ActivityWatchAndroidSource.jsx'
-import { ActivityWatchDesktopSource } from './pages/DataSources/ActivityWatchDesktopSource.jsx'
-import { AndroidAppSource } from './pages/DataSources/AndroidAppSource.jsx'
-import { AurbodaSource } from './pages/DataSources/AurbodaSource.jsx'
-import { CalendarsSource } from './pages/DataSources/CalendarsSource.jsx'
-import { GarminSource } from './pages/DataSources/GarminSource.jsx'
-import { GravlSource } from './pages/DataSources/GravlSource.jsx'
-import { DataSources } from './pages/DataSources/index.jsx'
-import { LastFmSource } from './pages/DataSources/LastFmSource.jsx'
-import { OuraSource } from './pages/DataSources/OuraSource.jsx'
-import { OwnTracksSource } from './pages/DataSources/OwnTracksSource.jsx'
-import { RescueTimeSource } from './pages/DataSources/RescueTimeSource.jsx'
-import { StravaSource } from './pages/DataSources/StravaSource.jsx'
-import { DeductionRules } from './pages/DeductionRules/index.jsx'
-import { DeductionRuleDetail } from './pages/DeductionRules/RuleDetail.jsx'
-import { EntityDetail } from './pages/EntityDetail/index.jsx'
-import { Feed } from './pages/Feed/index.jsx'
-import { FoodItemDetail } from './pages/FoodItems/FoodItemDetail.jsx'
-import { FoodItems } from './pages/FoodItems/index.jsx'
-import { Goals } from './pages/Goals/index.jsx'
-import { Home } from './pages/Home/index.jsx'
-import { Login } from './pages/Login/index.jsx'
-import { Meals } from './pages/Meals/index.jsx'
-import { MealDetail } from './pages/Meals/MealDetail.jsx'
-import { MealTypeMeta } from './pages/MealTypeMeta/index.jsx'
-import { MetricMeta } from './pages/MetricMeta/index.jsx'
-import { Places } from './pages/Places/index.jsx'
-import { Privacy } from './pages/Privacy/index.jsx'
-import { PublicResource } from './pages/PublicDashboard/index.jsx'
-import { PublicProfile } from './pages/PublicProfile/index.jsx'
-import { AddReport } from './pages/Reports/AddReport.jsx'
-import { Reports } from './pages/Reports/index.jsx'
-import { ReportDetail } from './pages/Reports/ReportDetail.jsx'
-import { CategoryDetail } from './pages/ScreentimeCategories/CategoryDetail.jsx'
-import { ScreentimeCategories } from './pages/ScreentimeCategories/index.jsx'
-import { Settings } from './pages/Settings/index.jsx'
-import { SharedDashboards } from './pages/SharedDashboards/index.jsx'
-import { Signup } from './pages/Signup/index.jsx'
-import { Sleep } from './pages/Sleep/index.jsx'
-import { Terms } from './pages/Terms/index.jsx'
-import { Timeline } from './pages/Timeline/index.jsx'
 import { shouldShowNav } from './shell.js'
 import { auth } from './state/auth.js'
 import { queryClient } from './state/queryClient.js'
 import './style.css'
+
+const ActivityTypeMeta = lazyPage(() => import('./pages/ActivityTypeMeta/index.jsx'), 'ActivityTypeMeta')
+const ActivityTypes = lazyPage(() => import('./pages/ActivityTypes/index.jsx'), 'ActivityTypes')
+const AddData = lazyPage(() => import('./pages/AddData/index.jsx'), 'AddData')
+const AdminSettings = lazyPage(() => import('./pages/AdminSettings/index.jsx'), 'AdminSettings')
+const AuditLog = lazyPage(() => import('./pages/AuditLog/index.jsx'), 'AuditLog')
+const Challenges = lazyPage(() => import('./pages/Challenges/index.jsx'), 'Challenges')
+const ChallengeJoin = lazyPage(() => import('./pages/Challenges/Join.jsx'), 'ChallengeJoin')
+const Chart = lazyPage(() => import('./pages/Chart/index.jsx'), 'Chart')
+const Correlations = lazyPage(() => import('./pages/Correlations/index.jsx'), 'Correlations')
+const Data = lazyPage(() => import('./pages/Data/index.jsx'), 'Data')
+const ActivityWatchAndroidSource = lazyPage(
+  () => import('./pages/DataSources/ActivityWatchAndroidSource.jsx'),
+  'ActivityWatchAndroidSource',
+)
+const ActivityWatchDesktopSource = lazyPage(
+  () => import('./pages/DataSources/ActivityWatchDesktopSource.jsx'),
+  'ActivityWatchDesktopSource',
+)
+const AndroidAppSource = lazyPage(
+  () => import('./pages/DataSources/AndroidAppSource.jsx'),
+  'AndroidAppSource',
+)
+const AurbodaSource = lazyPage(() => import('./pages/DataSources/AurbodaSource.jsx'), 'AurbodaSource')
+const CalendarsSource = lazyPage(() => import('./pages/DataSources/CalendarsSource.jsx'), 'CalendarsSource')
+const GarminSource = lazyPage(() => import('./pages/DataSources/GarminSource.jsx'), 'GarminSource')
+const GravlSource = lazyPage(() => import('./pages/DataSources/GravlSource.jsx'), 'GravlSource')
+const DataSources = lazyPage(() => import('./pages/DataSources/index.jsx'), 'DataSources')
+const LastFmSource = lazyPage(() => import('./pages/DataSources/LastFmSource.jsx'), 'LastFmSource')
+const OuraSource = lazyPage(() => import('./pages/DataSources/OuraSource.jsx'), 'OuraSource')
+const OwnTracksSource = lazyPage(() => import('./pages/DataSources/OwnTracksSource.jsx'), 'OwnTracksSource')
+const RescueTimeSource = lazyPage(
+  () => import('./pages/DataSources/RescueTimeSource.jsx'),
+  'RescueTimeSource',
+)
+const StravaSource = lazyPage(() => import('./pages/DataSources/StravaSource.jsx'), 'StravaSource')
+const DeductionRules = lazyPage(() => import('./pages/DeductionRules/index.jsx'), 'DeductionRules')
+const DeductionRuleDetail = lazyPage(
+  () => import('./pages/DeductionRules/RuleDetail.jsx'),
+  'DeductionRuleDetail',
+)
+const EntityDetail = lazyPage(() => import('./pages/EntityDetail/index.jsx'), 'EntityDetail')
+const Feed = lazyPage(() => import('./pages/Feed/index.jsx'), 'Feed')
+const FoodItemDetail = lazyPage(() => import('./pages/FoodItems/FoodItemDetail.jsx'), 'FoodItemDetail')
+const FoodItems = lazyPage(() => import('./pages/FoodItems/index.jsx'), 'FoodItems')
+const Goals = lazyPage(() => import('./pages/Goals/index.jsx'), 'Goals')
+const Home = lazyPage(() => import('./pages/Home/index.jsx'), 'Home')
+const Login = lazyPage(() => import('./pages/Login/index.jsx'), 'Login')
+const Meals = lazyPage(() => import('./pages/Meals/index.jsx'), 'Meals')
+const MealDetail = lazyPage(() => import('./pages/Meals/MealDetail.jsx'), 'MealDetail')
+const MealTypeMeta = lazyPage(() => import('./pages/MealTypeMeta/index.jsx'), 'MealTypeMeta')
+const MetricMeta = lazyPage(() => import('./pages/MetricMeta/index.jsx'), 'MetricMeta')
+const Places = lazyPage(() => import('./pages/Places/index.jsx'), 'Places')
+const Privacy = lazyPage(() => import('./pages/Privacy/index.jsx'), 'Privacy')
+const PublicResource = lazyPage(() => import('./pages/PublicDashboard/index.jsx'), 'PublicResource')
+const PublicProfile = lazyPage(() => import('./pages/PublicProfile/index.jsx'), 'PublicProfile')
+const AddReport = lazyPage(() => import('./pages/Reports/AddReport.jsx'), 'AddReport')
+const Reports = lazyPage(() => import('./pages/Reports/index.jsx'), 'Reports')
+const ReportDetail = lazyPage(() => import('./pages/Reports/ReportDetail.jsx'), 'ReportDetail')
+const CategoryDetail = lazyPage(
+  () => import('./pages/ScreentimeCategories/CategoryDetail.jsx'),
+  'CategoryDetail',
+)
+const ScreentimeCategories = lazyPage(
+  () => import('./pages/ScreentimeCategories/index.jsx'),
+  'ScreentimeCategories',
+)
+const Settings = lazyPage(() => import('./pages/Settings/index.jsx'), 'Settings')
+const SharedDashboards = lazyPage(() => import('./pages/SharedDashboards/index.jsx'), 'SharedDashboards')
+const Signup = lazyPage(() => import('./pages/Signup/index.jsx'), 'Signup')
+const Sleep = lazyPage(() => import('./pages/Sleep/index.jsx'), 'Sleep')
+const Terms = lazyPage(() => import('./pages/Terms/index.jsx'), 'Terms')
+const Timeline = lazyPage(() => import('./pages/Timeline/index.jsx'), 'Timeline')
 
 function AppShell() {
   const { path } = useLocation()

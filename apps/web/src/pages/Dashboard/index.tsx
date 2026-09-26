@@ -6,14 +6,25 @@ import { useState } from 'preact/hooks'
 
 import { EditableDashboard } from '../../components/EditableDashboard'
 import { fetchDashboard, resetDashboard, saveDashboard } from '../../state/api'
+import { auth } from '../../state/auth'
+import { readCachedDashboard, writeCachedDashboard } from './dashboardCache'
 import './style.css'
+
+const browserStorage = () => window.localStorage
 
 export function Dashboard() {
   const queryClient = useQueryClient()
   const [isEditing, setIsEditing] = useState(false)
+  const user = auth.value.user
 
   const dashboardQuery = useQuery({
-    queryFn: fetchDashboard,
+    initialData: () => readCachedDashboard(browserStorage, user),
+    initialDataUpdatedAt: 0,
+    queryFn: async () => {
+      const config = await fetchDashboard()
+      writeCachedDashboard(browserStorage, user, config)
+      return config
+    },
     queryKey: ['dashboard'],
     staleTime: 5 * 60 * 1000,
   })
@@ -21,6 +32,7 @@ export function Dashboard() {
   const saveMutation = useMutation({
     mutationFn: saveDashboard,
     onSuccess: (data) => {
+      writeCachedDashboard(browserStorage, user, data)
       queryClient.setQueryData(['dashboard'], data)
     },
   })
@@ -28,6 +40,7 @@ export function Dashboard() {
   const resetMutation = useMutation({
     mutationFn: resetDashboard,
     onSuccess: (data) => {
+      writeCachedDashboard(browserStorage, user, data)
       queryClient.setQueryData(['dashboard'], data)
     },
   })

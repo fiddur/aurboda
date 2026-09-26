@@ -3,6 +3,7 @@ import { addDays, differenceInCalendarDays, endOfDay, format, formatISO, startOf
 import { useCallback, useMemo } from 'preact/hooks'
 
 import { collapseDepthForPixelsPerHour, computePixelsPerHour, mergeGapForZoom } from './collapseTier'
+import { nextFetchRange } from './fetchRange'
 import { getDefaultViewEnd, getDefaultViewStart, parseViewHash } from './viewHash'
 
 const fromDate = signal(formatISO(subDays(new Date(), 1), { representation: 'date' }))
@@ -117,27 +118,11 @@ export const useTimelineNavigation = (options: TimelineNavigationOptions = {}): 
     viewStart.value = zoomStart
     viewEnd.value = zoomEnd
 
-    const currentFetchStart = startOfDay(new Date(fromDate.value))
-    const currentFetchEnd = endOfDay(new Date(toDate.value))
-    const todayStr = formatISO(new Date(), { representation: 'date' })
-
-    let needsExpand = false
-    let newFrom = fromDate.value
-    let newTo = toDate.value
-
-    if (zoomStart < currentFetchStart) {
-      newFrom = formatISO(subDays(zoomStart, 3), { representation: 'date' })
-      needsExpand = true
-    }
-    if (zoomEnd > currentFetchEnd) {
-      const expanded = formatISO(addDays(zoomEnd, 3), { representation: 'date' })
-      newTo = expanded > todayStr ? todayStr : expanded
-      needsExpand = true
-    }
-
-    if (needsExpand) {
-      fromDate.value = newFrom
-      toDate.value = newTo
+    const current = { from: fromDate.value, to: toDate.value }
+    const next = nextFetchRange({ end: zoomEnd, start: zoomStart }, current, new Date())
+    if (next !== current) {
+      fromDate.value = next.from
+      toDate.value = next.to
     }
   }, [])
 
