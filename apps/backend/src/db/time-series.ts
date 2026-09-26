@@ -13,7 +13,7 @@ import {
   type MetricType,
   metricUnits,
 } from '../schema.ts'
-import { query } from './connection.ts'
+import { query, withUserTransaction } from './connection.ts'
 import { querySplitByCumulative } from './cumulative-query.ts'
 import { parseMetricType } from './row-mappers.ts'
 
@@ -488,6 +488,33 @@ export const getLatestTimeSeriesValue = async (
 }
 
 /**
+ * The `time_series` rows inside each window of a preceding `unnest(…) AS w(…, s, e, …)`, as `ts`.
+ * Written as a plain range join, the planner can't see how narrow the windows are: it estimates a
+ * sizeable share of the table per window and picks one scan over every sample of the metric, each
+ * checked against every window (seconds on a year of heart rate, even for two windows). The lateral
+ * subquery makes it an index range scan per window; OFFSET 0 keeps it from being flattened back
+ * into the join.
+ */
+const samplesPerWindow = (conditions: string): string =>
+  `CROSS JOIN LATERAL (
+         SELECT time, source, value
+           FROM time_series
+          WHERE ${conditions}
+         OFFSET 0
+       ) ts`
+
+/**
+ * Runs a `samplesPerWindow` query with JIT off. The planner still overestimates each window
+ * (it assumes a fixed share of the table), and the inflated cost switches JIT compilation on, which
+ * for these short index range scans takes longer than the query itself.
+ */
+const queryWindowSamples = (user: string, sql: string, params: unknown[]) =>
+  withUserTransaction(user, async (tx) => {
+    await query(tx, 'SET LOCAL jit = off')
+    return query(tx, sql, params)
+  })
+
+/**
  * Per-window equivalent of `getTimeSeriesBucketed(user, [metric], w.start, w.end, interval)`'s
  * `[bucket_start, avg]` series (UTC bins anchored at each window's start), in one query.
  * The result is index-aligned with `windows`.
@@ -504,15 +531,14 @@ export const getTimeSeriesBucketedAvgForWindows = async (
   const params: unknown[] = [windows.map((w) => w.start), windows.map((w) => w.end), metric, interval]
   if (sources) params.push(sources)
 
-  const result = await query(
+  const result = await queryWindowSamples(
     user,
     `SELECT w.i::int AS i,
             date_bin($4::interval, ts.time AT TIME ZONE 'UTC', (w.s AT TIME ZONE 'UTC')::timestamp)
               AT TIME ZONE 'UTC' AS bucket_start,
             AVG(ts.value) AS avg
        FROM unnest($1::timestamptz[], $2::timestamptz[]) WITH ORDINALITY AS w(s, e, i)
-       JOIN time_series ts
-         ON ts.metric = $3 AND ts.time >= w.s AND ts.time < w.e AND ts.deleted_at IS NULL${sources ? ' AND ts.source = ANY($5)' : ''}
+       ${samplesPerWindow(`metric = $3 AND time >= w.s AND time < w.e AND deleted_at IS NULL${sources ? ' AND source = ANY($5)' : ''}`)}
       GROUP BY w.i, bucket_start
       ORDER BY w.i, bucket_start`,
     params,
@@ -641,13 +667,12 @@ export const getHrZoneSecsForWindows = async (
   const params: unknown[] = [windows.map((w) => w.start), windows.map((w) => w.end), ...hrZoneParams(zones)]
   if (sources) params.push(sources)
 
-  const result = await query(
+  const result = await queryWindowSamples(
     user,
     `WITH hr AS (
        SELECT w.i AS b, ts.time, ts.source, ts.value
          FROM unnest($1::timestamptz[], $2::timestamptz[]) WITH ORDINALITY AS w(s, e, i)
-         JOIN time_series ts
-           ON ts.metric = 'heart_rate' AND ts.time >= w.s AND ts.time <= w.e AND ts.deleted_at IS NULL${sources ? ' AND ts.source = ANY($10)' : ''}
+         ${samplesPerWindow(`metric = 'heart_rate' AND time >= w.s AND time <= w.e AND deleted_at IS NULL${sources ? ' AND source = ANY($10)' : ''}`)}
      ), ${HR_ZONE_SECS_BY_B}`,
     params,
   )
@@ -689,14 +714,12 @@ export const getTimeSeriesDistributions = async (
   ]
   if (sources) params.push(sources)
 
-  const result = await query(
+  const result = await queryWindowSamples(
     user,
     `WITH samples AS (
        SELECT DISTINCT w.k, ts.time, ts.source, ts.value
          FROM unnest($1::text[], $2::timestamptz[], $3::timestamptz[]) AS w(k, s, e)
-         JOIN time_series ts
-           ON ts.metric = $4 AND ts.time >= w.s AND ts.time <= w.e AND ts.deleted_at IS NULL
-          AND ts.value > 0${sources ? ' AND ts.source = ANY($5)' : ''}
+         ${samplesPerWindow(`metric = $4 AND time >= w.s AND time <= w.e AND deleted_at IS NULL AND value > 0${sources ? ' AND source = ANY($5)' : ''}`)}
      )
      SELECT k, COUNT(*)::int AS sample_count, MIN(value) AS min, MAX(value) AS max, AVG(value) AS avg,
             percentile_cont(ARRAY[0.25, 0.5, 0.75]) WITHIN GROUP (ORDER BY value) AS q
