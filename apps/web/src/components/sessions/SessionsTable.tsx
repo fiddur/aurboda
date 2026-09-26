@@ -24,6 +24,7 @@ const SortHeader = ({
   onSort,
   title,
   optional,
+  numeric,
 }: {
   label: string
   sortKey: SessionSortKey
@@ -31,10 +32,11 @@ const SortHeader = ({
   onSort: (key: SessionSortKey) => void
   title?: string
   optional?: boolean
+  numeric?: boolean
 }) => (
   <th
     scope="col"
-    class={optional ? 'session-opt' : undefined}
+    class={[numeric && 'session-num', optional && 'session-opt'].filter(Boolean).join(' ') || undefined}
     title={title}
     aria-sort={sort.key === sortKey ? (sort.desc ? 'descending' : 'ascending') : undefined}
   >
@@ -79,13 +81,21 @@ export const SessionsTable = ({
           <tr>
             <SortHeader label="Date" sortKey="date" {...header} />
             {showLabel && <th scope="col">Session</th>}
-            <SortHeader label="Length" sortKey="duration" {...header} />
-            <SortHeader label="Avg" sortKey="avg_hr" title="Average heart rate" {...header} />
-            <SortHeader label="Max" sortKey="max_hr" title="Maximum heart rate" optional {...header} />
+            <SortHeader label="Length" sortKey="duration" numeric {...header} />
+            <SortHeader label="Avg" sortKey="avg_hr" title="Average heart rate" numeric {...header} />
+            <SortHeader
+              label="Max"
+              sortKey="max_hr"
+              title="Maximum heart rate"
+              numeric
+              optional
+              {...header}
+            />
             <SortHeader
               label="Z3+"
               sortKey="hard_minutes"
               title="Minutes in HR zone 3 or higher"
+              numeric
               optional
               {...header}
             />

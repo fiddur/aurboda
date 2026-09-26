@@ -126,18 +126,26 @@ const GroupsTable = ({
           <thead>
             <tr>
               <th scope="col">{fieldLabel(field)}</th>
-              <th scope="col">Done</th>
+              <th scope="col" class="session-num">
+                Done
+              </th>
               <th scope="col" class="session-opt">
                 Last
               </th>
-              <th scope="col">Length</th>
-              <th scope="col" title="Median of the sessions' average heart rate">
+              <th scope="col" class="session-num">
+                Length
+              </th>
+              <th scope="col" class="session-num" title="Median of the sessions' average heart rate">
                 Avg
               </th>
-              <th scope="col" class="session-opt" title="Highest heart rate in any session">
+              <th scope="col" class="session-num session-opt" title="Highest heart rate in any session">
                 Max
               </th>
-              <th scope="col" class="session-opt" title="Minutes in HR zone 3 or higher, per session">
+              <th
+                scope="col"
+                class="session-num session-opt"
+                title="Minutes in HR zone 3 or higher, per session"
+              >
                 Z3+
               </th>
               <th scope="col" title="Heart rate over all the sessions">
