@@ -9,10 +9,12 @@ import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-te
 import {
   deleteTimeSeriesPoint,
   getHrZoneSecs,
+  getHrZoneSecsForWindows,
   getLatestTimeSeriesValue,
   getTimeSeries,
   getTimeSeriesBucketed,
   getTimeSeriesBucketedAvgForWindows,
+  getTimeSeriesDistributions,
   getTimeSeriesWithSource,
   type HrZoneBucket,
   insertTimeSeries,
@@ -223,6 +225,105 @@ describe('Time series SQL aggregates', () => {
 
       expect(await getHrZoneSecs(user, start, end, ZONES)).toEqual([])
       expect(await getHrZoneSecs(user, start, end, ZONES, '1d')).toEqual([])
+    })
+  })
+
+  describe('getHrZoneSecsForWindows', () => {
+    test('equals getHrZoneSecs per window, undefined where a window has no samples', async () => {
+      const user = getTestUser()
+      await insertTimeSeries(user, [
+        ...irregularSeries('2024-01-15T09:58:00Z', 200),
+        hr('2024-01-15T10:10:00Z', 130, 'health_connect'),
+        hr('2024-01-15T11:00:00Z', 175),
+      ])
+      const windows = [
+        { end: new Date('2024-01-15T11:00:00Z'), start: new Date('2024-01-15T10:00:00Z') },
+        { end: new Date('2024-01-15T10:47:31Z'), start: new Date('2024-01-15T10:02:17.500Z') },
+        { end: new Date('2024-01-16T01:00:00Z'), start: new Date('2024-01-16T00:00:00Z') },
+        { end: new Date('2024-01-15T11:00:00Z'), start: new Date('2024-01-15T10:00:00Z') },
+      ]
+
+      const actual = await getHrZoneSecsForWindows(user, windows, ZONES)
+      const expected = await Promise.all(
+        windows.map(async (w) => (await getHrZoneSecs(user, w.start, w.end, ZONES))[0]?.secs),
+      )
+
+      expect(actual).toHaveLength(windows.length)
+      expect(actual[2]).toBeUndefined()
+      actual.forEach((secs, i) => {
+        if (i === 2) return
+        for (const zone of [0, 1, 2, 3, 4, 5] as const) expect(secs![zone]).toBeCloseTo(expected[i]![zone], 9)
+      })
+    })
+
+    test('no windows → no query, no zones', async () => {
+      expect(await getHrZoneSecsForWindows(getTestUser(), [], ZONES)).toEqual([])
+    })
+  })
+
+  describe('getTimeSeriesDistributions', () => {
+    /** The web's fiveNumberSummary: linear interpolation between order statistics. */
+    const quantile = (sorted: number[], p: number): number => {
+      const idx = p * (sorted.length - 1)
+      const lo = Math.floor(idx)
+      const hi = Math.ceil(idx)
+      return sorted[lo]! + (sorted[hi]! - sorted[lo]!) * (idx - lo)
+    }
+
+    test('five-number summary and mean of the positive samples per key, windows sharing a key pooled once', async () => {
+      const user = getTestUser()
+      await insertTimeSeries(user, [
+        ...irregularSeries('2024-01-15T09:58:00Z', 200),
+        hr('2024-01-15T10:05:00Z', 0, 'health_connect'),
+        hr('2024-01-15T20:00:00Z', 100),
+        hr('2024-01-15T20:00:30Z', 110),
+        hr('2024-01-15T20:01:00Z', 150),
+      ])
+      const morning = { end: new Date('2024-01-15T11:00:00Z'), start: new Date('2024-01-15T10:00:00Z') }
+      const overlap = { end: new Date('2024-01-15T10:30:00Z'), start: new Date('2024-01-15T10:15:00Z') }
+      const evening = { end: new Date('2024-01-15T20:01:00Z'), start: new Date('2024-01-15T20:00:00Z') }
+
+      const result = await getTimeSeriesDistributions(user, 'heart_rate', [
+        { key: 'morning', ...morning },
+        { key: 'evening', ...evening },
+        { key: 'both', ...morning },
+        { key: 'both', ...overlap },
+        { key: 'both', ...evening },
+        { end: new Date('2024-01-16T01:00:00Z'), key: 'empty', start: new Date('2024-01-16T00:00:00Z') },
+      ])
+
+      const positive = async (w: { start: Date; end: Date }) =>
+        (await getTimeSeries(user, 'heart_rate', w.start, w.end)).map(([, v]) => v).filter((v) => v > 0)
+      const morningValues = (await positive(morning)).sort((a, b) => a - b)
+      const bothValues = [...morningValues, 100, 110, 150].sort((a, b) => a - b)
+
+      expect(result.has('empty')).toBe(false)
+      expect(result.get('evening')).toEqual({
+        avg: 120,
+        max: 150,
+        median: 110,
+        min: 100,
+        q1: 105,
+        q3: 130,
+        sample_count: 3,
+      })
+      for (const [key, values] of [
+        ['morning', morningValues],
+        ['both', bothValues],
+      ] as const) {
+        const row = result.get(key)!
+        expect(row.sample_count).toBe(values.length)
+        expect(row.min).toBe(values[0])
+        expect(row.max).toBe(values.at(-1))
+        expect(row.avg).toBeCloseTo(values.reduce((a, b) => a + b, 0) / values.length, 9)
+        expect(row.q1).toBeCloseTo(quantile(values, 0.25), 9)
+        expect(row.median).toBeCloseTo(quantile(values, 0.5), 9)
+        expect(row.q3).toBeCloseTo(quantile(values, 0.75), 9)
+      }
+    })
+
+    test('no windows → no query, empty map', async () => {
+      expect((await getTimeSeriesDistributions(getTestUser(), 'heart_rate', [])).size).toBe(0)
     })
   })
 

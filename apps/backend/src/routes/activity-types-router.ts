@@ -3,6 +3,9 @@ import type { RequestHandler } from 'express'
 import {
   type ActivityTypeDefinitionResponse,
   type ActivityTypeDefinitionsResponse,
+  type ActivitySessionsQuery,
+  activitySessionsQuerySchema,
+  type ActivitySessionsResponse,
   type AddActivityTypeDefinitionBody,
   addActivityTypeDefinitionBodySchema,
   type MergeActivityTypeBody,
@@ -23,8 +26,9 @@ import {
   renameActivityTypeDefinition,
   updateActivityTypeDefinition,
 } from '../services/activity-type-definitions.ts'
+import { queryActivitySessions, sessionsOptionsFromQuery } from '../services/queries/index.ts'
 import { type TypedRouter, typedRouter } from '../typed-router.ts'
-import { validateBody } from '../validation.ts'
+import { validateBody, validateQuery } from '../validation.ts'
 
 export const createActivityTypesRouter = (authMiddleware: RequestHandler): TypedRouter => {
   const router = typedRouter()
@@ -36,6 +40,20 @@ export const createActivityTypesRouter = (authMiddleware: RequestHandler): Typed
       const user = req.user!
       const definitions = await listActivityTypeDefinitions(user)
       res.json({ data: definitions, success: true })
+    },
+  )
+
+  router.get<{ name: string }, ActivitySessionsResponse, unknown, ActivitySessionsQuery>(
+    '/:name/sessions',
+    authMiddleware,
+    validateQuery(activitySessionsQuerySchema),
+    async (req, res) => {
+      const sessions = await queryActivitySessions(
+        req.user!,
+        req.params.name,
+        sessionsOptionsFromQuery(req.query),
+      )
+      res.json({ data: sessions, success: true })
     },
   )
 

@@ -2,6 +2,9 @@ import express from 'express'
 import request from 'supertest'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
+import type * as ActivityQueries from './services/queries/activities.ts'
+import type * as SessionQueries from './services/queries/activity-sessions.ts'
+
 import { createAuth } from './auth.ts'
 import * as db from './db/index.ts'
 import { createMcpRouter } from './mcp.ts'
@@ -9,10 +12,17 @@ import * as latestSleep from './services/latest-sleep.ts'
 import * as mutations from './services/mutations.ts'
 import * as queries from './services/queries/index.ts'
 
-vi.mock('./services/queries/index', () => ({
+vi.mock('./services/queries/index', async () => ({
+  getActivityNeighbors: vi.fn(),
   getDailySummary: vi.fn(),
   getPeriodSummary: vi.fn(),
+  parseDataFilter: (await vi.importActual<typeof ActivityQueries>('./services/queries/activities.ts'))
+    .parseDataFilter,
   queryActivities: vi.fn(),
+  queryActivitySessions: vi.fn(),
+  sessionsOptionsFromQuery: (
+    await vi.importActual<typeof SessionQueries>('./services/queries/activity-sessions.ts')
+  ).sessionsOptionsFromQuery,
   queryLocations: vi.fn(),
   queryMetrics: vi.fn(),
   queryProductivity: vi.fn(),
@@ -668,6 +678,86 @@ describe('MCP Server', () => {
         undefined,
         undefined,
       )
+    })
+  })
+
+  describe('Tools: query_activity_sessions, get_activity_neighbors', () => {
+    async function callTool(
+      app: express.Express,
+      token: string,
+      toolName: string,
+      args: Record<string, unknown>,
+    ) {
+      const response = await mcpPost(app)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ id: 1, jsonrpc: '2.0', method: 'tools/call', params: { arguments: args, name: toolName } })
+      const parsed = parseSSEResponse(response.text) as { result: { content: { text: string }[] } }
+      return { ...response, text: parsed.result.content[0].text }
+    }
+
+    test('query_activity_sessions maps its arguments onto the service', async () => {
+      const app = createTestApp()
+      const token = auth.createToken('testuser')
+      vi.mocked(queries.queryActivitySessions).mockResolvedValue({
+        activity_type: 'yoga',
+        group_by: 'session_name',
+        groups: [],
+        sessions: [],
+      })
+
+      const response = await callTool(app, token, 'query_activity_sessions', {
+        activity_type: 'yoga',
+        filter_field: 'session_name',
+        filter_value: '(none)',
+        group_by: 'session_name',
+        tz: 'UTC',
+      })
+
+      expect(JSON.parse(response.text).data.group_by).toBe('session_name')
+      expect(queries.queryActivitySessions).toHaveBeenCalledWith('testuser', 'yoga', {
+        end: undefined,
+        filter: { field: 'session_name', value: null },
+        groupBy: 'session_name',
+        start: undefined,
+      })
+    })
+
+    test('query_activity_sessions rejects a filter field without a value', async () => {
+      vi.mocked(queries.queryActivitySessions).mockClear()
+      const response = await callTool(
+        createTestApp(),
+        auth.createToken('testuser'),
+        'query_activity_sessions',
+        {
+          activity_type: 'yoga',
+          filter_field: 'session_name',
+          tz: 'UTC',
+        },
+      )
+
+      expect(response.text).toBe('filter_field and filter_value must be given together')
+      expect(queries.queryActivitySessions).not.toHaveBeenCalled()
+    })
+
+    test('get_activity_neighbors returns the neighbors, or an error for a missing activity', async () => {
+      const app = createTestApp()
+      const token = auth.createToken('testuser')
+      vi.mocked(queries.getActivityNeighbors).mockResolvedValueOnce({
+        activity_type: 'yoga',
+        previous: { id: 'prev-id', start_time: '2024-01-14T07:00:00.000Z' },
+      })
+
+      const found = await callTool(app, token, 'get_activity_neighbors', {
+        id: 'x',
+        same_field: 'session_name',
+        tz: 'UTC',
+      })
+      expect(JSON.parse(found.text).data.previous.id).toBe('prev-id')
+      expect(queries.getActivityNeighbors).toHaveBeenCalledWith('testuser', 'x', 'session_name')
+
+      vi.mocked(queries.getActivityNeighbors).mockResolvedValueOnce(null)
+      const missing = await callTool(app, token, 'get_activity_neighbors', { id: 'y', tz: 'UTC' })
+      expect(missing.text).toBe('Activity not found')
     })
   })
 

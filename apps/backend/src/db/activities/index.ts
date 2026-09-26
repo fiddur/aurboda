@@ -29,6 +29,8 @@ export {
 
 export {
   checkActivityConflict,
+  type DataFilter,
+  findAdjacentActivity,
   findActivityByExternalId,
   findDeletedActivityByExternalId,
   findMergeableActivity,

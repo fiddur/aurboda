@@ -115,30 +115,36 @@ export const getOverrideForActivity = async (user: string, targetId: string): Pr
   return mapActivityRow(result.rows[0])
 }
 
+export type DataFilter = { field: string; value: string | null }
+
+/** `AND …` clauses matching `data` JSONB fields, pushing values onto `params`. Invalid field names are skipped. */
+const dataFilterClauses = (dataFilters: DataFilter[] | undefined, params: unknown[]): string => {
+  let clauses = ''
+  for (const filter of dataFilters ?? []) {
+    if (!/^[a-z][a-z0-9_]*$/.test(filter.field)) continue
+    if (filter.value === null) {
+      clauses += `\n       AND (data->>'${filter.field}' IS NULL OR data->>'${filter.field}' = '')`
+    } else {
+      params.push(filter.value)
+      clauses += `\n       AND data->>'${filter.field}' = $${params.length}`
+    }
+  }
+  return clauses
+}
+
 export const getActivities = async (
   user: string,
   activityType: ActivityType | ActivityType[],
   start: Date,
   end: Date,
-  dataFilters?: Array<{ field: string; value: string | null }>,
+  dataFilters?: DataFilter[],
   deductionRuleId?: string,
   categoryMap?: Map<string, string>,
 ): Promise<MergedActivity[]> => {
   const types = Array.isArray(activityType) ? activityType : [activityType]
   const params: unknown[] = [types, start, end]
 
-  let filterClauses = ''
-  if (dataFilters?.length) {
-    for (const filter of dataFilters) {
-      if (!/^[a-z][a-z0-9_]*$/.test(filter.field)) continue
-      if (filter.value === null) {
-        filterClauses += `\n       AND (data->>'${filter.field}' IS NULL OR data->>'${filter.field}' = '')`
-      } else {
-        params.push(filter.value)
-        filterClauses += `\n       AND data->>'${filter.field}' = $${params.length}`
-      }
-    }
-  }
+  let filterClauses = dataFilterClauses(dataFilters, params)
 
   if (deductionRuleId) {
     params.push(deductionRuleId)
@@ -159,6 +165,33 @@ export const getActivities = async (
   const activities = result.rows.map(mapActivityRow)
 
   return mergeOverlappingActivities(activities, categoryMap)
+}
+
+/**
+ * The closest non-deleted activity of `activityType` starting strictly before (`'previous'`) or
+ * after (`'next'`) `time`, skipping `excludeIds`, optionally matching `dataFilters`.
+ */
+export const findAdjacentActivity = async (
+  user: string,
+  activityType: string,
+  direction: 'previous' | 'next',
+  time: Date,
+  excludeIds: string[],
+  dataFilters?: DataFilter[],
+): Promise<Activity | null> => {
+  const params: unknown[] = [activityType, time, excludeIds]
+  const filterClauses = dataFilterClauses(dataFilters, params)
+  const result = await query(
+    user,
+    `SELECT ${ACTIVITY_COLUMNS_BARE}
+     FROM activities
+     WHERE activity_type = $1 AND start_time ${direction === 'next' ? '>' : '<'} $2
+       AND id <> ALL($3::uuid[]) AND deleted_at IS NULL${filterClauses}
+     ORDER BY start_time ${direction === 'next' ? 'ASC' : 'DESC'}
+     LIMIT 1`,
+    params,
+  )
+  return result.rows.length > 0 ? mapActivityRow(result.rows[0]) : null
 }
 
 /**

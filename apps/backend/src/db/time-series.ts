@@ -540,40 +540,13 @@ const hrZoneBucketExprs: Record<HrZoneBucket, string> = {
 }
 
 /**
- * SQL counterpart of `computeHrZoneSecs` over the heart_rate samples in `[start, end]`, per bucket:
- * each sample counts the gap to the next one (capped at MAX_GAP_SECONDS), the last one the mean of
- * those gaps, a lone sample SINGLE_SAMPLE_SECONDS. Buckets without samples are absent, so an empty
- * range returns `[]` for every bucket size including 'none'.
+ * Zone seconds per `b` over a preceding `hr(b, time, source, value)` CTE, the SQL counterpart of
+ * `computeHrZoneSecs`: each sample counts the gap to the next one (capped at MAX_GAP_SECONDS, $3),
+ * the last one the mean of those gaps, a lone sample SINGLE_SAMPLE_SECONDS ($4). $5–$9 are the
+ * zone 1–5 thresholds. LEAST ignores NULLs, so the last sample's missing gap has to stay NULL
+ * explicitly for AVG to skip it.
  */
-export const getHrZoneSecs = async (
-  user: string,
-  start: Date,
-  end: Date,
-  zones: HrZoneThresholds,
-  bucket: HrZoneBucket = 'none',
-): Promise<{ bucket_start: Date | null; sample_count: number; secs: HrZoneSecs }[]> => {
-  const sources = getSourceFilter('heart_rate')
-  const params: unknown[] = [
-    start,
-    end,
-    MAX_GAP_SECONDS,
-    SINGLE_SAMPLE_SECONDS,
-    zones[1],
-    zones[2],
-    zones[3],
-    zones[4],
-    zones[5],
-  ]
-  if (sources) params.push(sources)
-
-  // LEAST ignores NULLs, so the last sample's missing gap has to stay NULL explicitly for AVG to skip it.
-  const result = await query(
-    user,
-    `WITH hr AS (
-       SELECT ${hrZoneBucketExprs[bucket]} AS b, time, source, value
-         FROM time_series
-        WHERE metric = 'heart_rate' AND time >= $1 AND time <= $2 AND deleted_at IS NULL${sources ? ' AND source = ANY($10)' : ''}
-     ), s AS (
+const HR_ZONE_SECS_BY_B = `s AS (
        SELECT b, value,
               CASE WHEN lead(time) OVER w IS NULL THEN NULL
                    ELSE LEAST(EXTRACT(EPOCH FROM (lead(time) OVER w - time))::float8, $3::float8)
@@ -591,7 +564,7 @@ export const getHrZoneSecs = async (
               END AS zone
          FROM s
      )
-     SELECT b AS bucket_start, COUNT(*)::int AS sample_count,
+     SELECT b, COUNT(*)::int AS sample_count,
             COALESCE(SUM(secs) FILTER (WHERE zone = 0), 0) AS z0,
             COALESCE(SUM(secs) FILTER (WHERE zone = 1), 0) AS z1,
             COALESCE(SUM(secs) FILTER (WHERE zone = 2), 0) AS z2,
@@ -600,20 +573,153 @@ export const getHrZoneSecs = async (
             COALESCE(SUM(secs) FILTER (WHERE zone = 5), 0) AS z5
        FROM g
       GROUP BY b
-      ORDER BY b`,
+      ORDER BY b`
+
+const hrZoneParams = (zones: HrZoneThresholds): unknown[] => [
+  MAX_GAP_SECONDS,
+  SINGLE_SAMPLE_SECONDS,
+  zones[1],
+  zones[2],
+  zones[3],
+  zones[4],
+  zones[5],
+]
+
+const zoneSecsFromRow = (row: Record<string, unknown>): HrZoneSecs => ({
+  0: Number(row.z0),
+  1: Number(row.z1),
+  2: Number(row.z2),
+  3: Number(row.z3),
+  4: Number(row.z4),
+  5: Number(row.z5),
+})
+
+/**
+ * `computeHrZoneSecs` over the heart_rate samples in `[start, end]`, per bucket. Buckets without
+ * samples are absent, so an empty range returns `[]` for every bucket size including 'none'.
+ */
+export const getHrZoneSecs = async (
+  user: string,
+  start: Date,
+  end: Date,
+  zones: HrZoneThresholds,
+  bucket: HrZoneBucket = 'none',
+): Promise<{ bucket_start: Date | null; sample_count: number; secs: HrZoneSecs }[]> => {
+  const sources = getSourceFilter('heart_rate')
+  const params: unknown[] = [start, end, ...hrZoneParams(zones)]
+  if (sources) params.push(sources)
+
+  const result = await query(
+    user,
+    `WITH hr AS (
+       SELECT ${hrZoneBucketExprs[bucket]} AS b, time, source, value
+         FROM time_series
+        WHERE metric = 'heart_rate' AND time >= $1 AND time <= $2 AND deleted_at IS NULL${sources ? ' AND source = ANY($10)' : ''}
+     ), ${HR_ZONE_SECS_BY_B}`,
     params,
   )
 
   return result.rows.map((row) => ({
-    bucket_start: row.bucket_start === null ? null : new Date(row.bucket_start as string),
+    bucket_start: row.b === null ? null : new Date(row.b as string),
     sample_count: row.sample_count as number,
-    secs: {
-      0: Number(row.z0),
-      1: Number(row.z1),
-      2: Number(row.z2),
-      3: Number(row.z3),
-      4: Number(row.z4),
-      5: Number(row.z5),
-    },
+    secs: zoneSecsFromRow(row),
   }))
+}
+
+/**
+ * `getHrZoneSecs(user, w.start, w.end, zones)` for every window in one query, index-aligned with
+ * `windows`; undefined where a window has no samples.
+ */
+export const getHrZoneSecsForWindows = async (
+  user: string,
+  windows: { start: Date; end: Date }[],
+  zones: HrZoneThresholds,
+): Promise<(HrZoneSecs | undefined)[]> => {
+  if (windows.length === 0) return []
+
+  const sources = getSourceFilter('heart_rate')
+  const params: unknown[] = [windows.map((w) => w.start), windows.map((w) => w.end), ...hrZoneParams(zones)]
+  if (sources) params.push(sources)
+
+  const result = await query(
+    user,
+    `WITH hr AS (
+       SELECT w.i AS b, ts.time, ts.source, ts.value
+         FROM unnest($1::timestamptz[], $2::timestamptz[]) WITH ORDINALITY AS w(s, e, i)
+         JOIN time_series ts
+           ON ts.metric = 'heart_rate' AND ts.time >= w.s AND ts.time <= w.e AND ts.deleted_at IS NULL${sources ? ' AND ts.source = ANY($10)' : ''}
+     ), ${HR_ZONE_SECS_BY_B}`,
+    params,
+  )
+
+  const secs: (HrZoneSecs | undefined)[] = windows.map(() => undefined)
+  for (const row of result.rows) secs[Number(row.b) - 1] = zoneSecsFromRow(row)
+  return secs
+}
+
+export interface ValueDistributionRow {
+  min: number
+  q1: number
+  median: number
+  q3: number
+  max: number
+  avg: number
+  sample_count: number
+}
+
+/**
+ * Five-number summary and mean of the positive `metric` samples in each keyed `[start, end]`
+ * window. Windows sharing a key are pooled, and a sample inside several of them counts once.
+ * Quartiles interpolate linearly, like the web's `fiveNumberSummary`. Keys without samples are
+ * absent from the result.
+ */
+export const getTimeSeriesDistributions = async (
+  user: string,
+  metric: string,
+  windows: { key: string; start: Date; end: Date }[],
+): Promise<Map<string, ValueDistributionRow>> => {
+  if (windows.length === 0) return new Map()
+
+  const sources = getSourceFilter(metric)
+  const params: unknown[] = [
+    windows.map((w) => w.key),
+    windows.map((w) => w.start),
+    windows.map((w) => w.end),
+    metric,
+  ]
+  if (sources) params.push(sources)
+
+  const result = await query(
+    user,
+    `WITH samples AS (
+       SELECT DISTINCT w.k, ts.time, ts.source, ts.value
+         FROM unnest($1::text[], $2::timestamptz[], $3::timestamptz[]) AS w(k, s, e)
+         JOIN time_series ts
+           ON ts.metric = $4 AND ts.time >= w.s AND ts.time <= w.e AND ts.deleted_at IS NULL
+          AND ts.value > 0${sources ? ' AND ts.source = ANY($5)' : ''}
+     )
+     SELECT k, COUNT(*)::int AS sample_count, MIN(value) AS min, MAX(value) AS max, AVG(value) AS avg,
+            percentile_cont(ARRAY[0.25, 0.5, 0.75]) WITHIN GROUP (ORDER BY value) AS q
+       FROM samples
+      GROUP BY k`,
+    params,
+  )
+
+  return new Map(
+    result.rows.map((row) => {
+      const [q1, median, q3] = (row.q as number[]).map(Number)
+      return [
+        row.k as string,
+        {
+          avg: Number(row.avg),
+          max: Number(row.max),
+          median: median!,
+          min: Number(row.min),
+          q1: q1!,
+          q3: q3!,
+          sample_count: row.sample_count as number,
+        },
+      ]
+    }),
+  )
 }
