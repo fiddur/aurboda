@@ -38,8 +38,9 @@
   overflow-x: auto;
 }
 
+/* Sized to its content: stretched to a wide screen, each column spreads its header far from its values. */
 .sessions-table {
-  width: 100%;
+  width: auto;
   border-collapse: collapse;
   font-size: 0.85rem;
 }
@@ -51,6 +52,10 @@
   padding: 0.35rem 0.5rem;
   border-bottom: 1px solid #e5e7eb;
   white-space: nowrap;
+}
+
+.sessions-table th.session-num {
+  text-align: right;
 }
 
 .sessions-table td {
