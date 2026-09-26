@@ -21,10 +21,10 @@ import {
   getActivities,
   getActivityTypeDefinitions,
   getHrZoneSecsForWindows,
-  getTimeSeriesDistributions,
-  type ValueDistributionRow,
+  getValueHistogramsForWindows,
 } from '../../db/index.ts'
 import { getEffectiveHrZones } from '../settings.ts'
+import { mergeHistograms, summarizeHistogram, type ValueDistributionRow } from './value-histogram.ts'
 
 type FieldValue = string | number | boolean
 
@@ -188,6 +188,35 @@ export const groupSessions = (
     })
 }
 
+/**
+ * HR distributions keyed by session id, and with `groupBy` also by `groupKey(value)`: each group
+ * pools its sessions' histograms.
+ */
+export const distributionsByKey = (
+  timed: MergedActivity[],
+  histograms: Map<number, number>[],
+  groupBy: string | undefined,
+): Map<string, ValueDistributionRow> => {
+  const byKey = new Map<string, ValueDistributionRow>()
+  const groupHistograms = new Map<string, Map<number, number>[]>()
+  timed.forEach((a, i) => {
+    const histogram = histograms[i] ?? new Map<number, number>()
+    const summary = summarizeHistogram(histogram)
+    if (summary) byKey.set(sessionId(a), summary)
+    if (groupBy) {
+      const key = groupKey(fieldValue(a.data?.[groupBy]) ?? null)
+      const members = groupHistograms.get(key) ?? []
+      members.push(histogram)
+      groupHistograms.set(key, members)
+    }
+  })
+  for (const [key, members] of groupHistograms) {
+    const summary = summarizeHistogram(mergeHistograms(members))
+    if (summary) byKey.set(key, summary)
+  }
+  return byKey
+}
+
 export const queryActivitySessions = async (
   user: string,
   activityType: string,
@@ -219,19 +248,15 @@ export const queryActivitySessions = async (
   )
   const activities = filter ? merged.filter((a) => matchesFilter(a, filter)) : merged
   const timed = activities.filter((a) => a.id !== undefined && a.end_time)
-  const windows = timed.map((a) => ({ end: a.end_time!, key: sessionId(a), start: a.start_time }))
+  const windows = timed.map((a) => ({ end: a.end_time!, start: a.start_time }))
 
-  // Group windows pool every session's samples under the group's key.
-  const groupWindows = groupBy
-    ? timed.map((a, i) => ({ ...windows[i]!, key: groupKey(fieldValue(a.data?.[groupBy]) ?? null) }))
-    : []
-
-  const [zoneSecs, hrDistributions] = await Promise.all([
+  const [zoneSecs, histograms] = await Promise.all([
     timed.length === 0
       ? Promise.resolve([])
       : getEffectiveHrZones(user).then(({ zones }) => getHrZoneSecsForWindows(user, windows, zones)),
-    getTimeSeriesDistributions(user, 'heart_rate', [...windows, ...groupWindows]),
+    getValueHistogramsForWindows(user, 'heart_rate', windows),
   ])
+  const hrDistributions = distributionsByKey(timed, histograms, groupBy)
 
   const sessions = buildSessions(
     activities,

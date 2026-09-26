@@ -682,67 +682,33 @@ export const getHrZoneSecsForWindows = async (
   return secs
 }
 
-export interface ValueDistributionRow {
-  min: number
-  q1: number
-  median: number
-  q3: number
-  max: number
-  avg: number
-  sample_count: number
-}
-
 /**
- * Five-number summary and mean of the positive `metric` samples in each keyed `[start, end]`
- * window. Windows sharing a key are pooled, and a sample inside several of them counts once.
- * Quartiles interpolate linearly, like the web's `fiveNumberSummary`. Keys without samples are
- * absent from the result.
+ * Histogram of the positive `metric` samples in each `[start, end]` window, rounded to whole units
+ * (value → sample count), index-aligned with `windows` and empty where a window has none. It is
+ * small to transfer, and windows pool by adding counts, so a group's distribution needs no second
+ * pass over its samples.
  */
-export const getTimeSeriesDistributions = async (
+export const getValueHistogramsForWindows = async (
   user: string,
   metric: string,
-  windows: { key: string; start: Date; end: Date }[],
-): Promise<Map<string, ValueDistributionRow>> => {
-  if (windows.length === 0) return new Map()
+  windows: { start: Date; end: Date }[],
+): Promise<Map<number, number>[]> => {
+  if (windows.length === 0) return []
 
   const sources = getSourceFilter(metric)
-  const params: unknown[] = [
-    windows.map((w) => w.key),
-    windows.map((w) => w.start),
-    windows.map((w) => w.end),
-    metric,
-  ]
+  const params: unknown[] = [windows.map((w) => w.start), windows.map((w) => w.end), metric]
   if (sources) params.push(sources)
 
   const result = await queryWindowSamples(
     user,
-    `WITH samples AS (
-       SELECT DISTINCT w.k, ts.time, ts.source, ts.value
-         FROM unnest($1::text[], $2::timestamptz[], $3::timestamptz[]) AS w(k, s, e)
-         ${samplesPerWindow(`metric = $4 AND time >= w.s AND time <= w.e AND deleted_at IS NULL AND value > 0${sources ? ' AND source = ANY($5)' : ''}`)}
-     )
-     SELECT k, COUNT(*)::int AS sample_count, MIN(value) AS min, MAX(value) AS max, AVG(value) AS avg,
-            percentile_cont(ARRAY[0.25, 0.5, 0.75]) WITHIN GROUP (ORDER BY value) AS q
-       FROM samples
-      GROUP BY k`,
+    `SELECT w.i::int AS i, round(ts.value)::int AS v, COUNT(*)::int AS n
+       FROM unnest($1::timestamptz[], $2::timestamptz[]) WITH ORDINALITY AS w(s, e, i)
+       ${samplesPerWindow(`metric = $3 AND time >= w.s AND time <= w.e AND deleted_at IS NULL AND value > 0${sources ? ' AND source = ANY($4)' : ''}`)}
+      GROUP BY 1, 2`,
     params,
   )
 
-  return new Map(
-    result.rows.map((row) => {
-      const [q1, median, q3] = (row.q as number[]).map(Number)
-      return [
-        row.k as string,
-        {
-          avg: Number(row.avg),
-          max: Number(row.max),
-          median: median!,
-          min: Number(row.min),
-          q1: q1!,
-          q3: q3!,
-          sample_count: row.sample_count as number,
-        },
-      ]
-    }),
-  )
+  const histograms = windows.map(() => new Map<number, number>())
+  for (const row of result.rows) histograms[(row.i as number) - 1]!.set(row.v as number, row.n as number)
+  return histograms
 }

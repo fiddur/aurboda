@@ -229,7 +229,7 @@ const SessionsControls = ({
  */
 export function SessionsSection({ name, fields }: { name: string; fields: DataFieldDefinition[] }) {
   const [view, setView] = useState<string | undefined>(undefined)
-  const [lookback, setLookback] = useState(365)
+  const [lookback, setLookback] = useState(90)
   const groupByName = view ?? fields[0]?.name ?? LIST_VIEW
   const groupField = fields.find((f) => f.name === groupByName)
 

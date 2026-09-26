@@ -84,12 +84,11 @@ export {
   getTimeSeries,
   getTimeSeriesBucketed,
   getTimeSeriesBucketedAvgForWindows,
-  getTimeSeriesDistributions,
   getTimeSeriesEntriesMultiMetric,
   getTimeSeriesMultiMetric,
   getTimeSeriesStats,
   getTimeSeriesWithSource,
-  type ValueDistributionRow,
+  getValueHistogramsForWindows,
   type HrZoneBucket,
   insertTimeSeries,
 } from './time-series.ts'
