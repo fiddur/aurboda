@@ -15,7 +15,9 @@ Aggregation: count (number of occurrences), sum (total value), mean (average val
 Examples:
 - Daily coffee counts this month: source_type="tag", pattern="coffee", bucket_size="1d", aggregation="count"
 - Weekly average weight: source_type="metric", pattern="weight", bucket_size="1w", aggregation="mean"
-- Monthly programming hours: source_type="productivity_category", pattern="Work > Programming", bucket_size="1M"`,
+- Monthly programming hours: source_type="productivity_category", pattern="Work > Programming", bucket_size="1M"
+
+Each screentime category is also an activity type (its activity_type_name), so source_type="activity_type" with that name works too.`,
     { ...chartDataQuerySchema.shape },
     async ({
       aggregation,

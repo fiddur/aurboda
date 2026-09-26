@@ -33,7 +33,7 @@ Tracks the smoothed value of any numeric metric (weight, HRV, sleep score, steps
 
 ### Screentime Categories
 
-Tracks hours spent in a productivity category per day. Includes all subcategories -- trending "Work" includes time in "Work > Programming", "Work > Meetings", etc.
+Tracks hours spent in a screentime category per day, summed from its screen time activity spans. Includes all subcategories -- trending "Work" includes time in "Work > Programming", "Work > Meetings", etc.
 
 The trend value is shown as "hours per day" (or per week/month).
 
@@ -100,7 +100,7 @@ Trends work with whatever data you have:
 | ----------- | ----------------------------------------------------------------------- |
 | Tags        | Any tags -- manual, Oura, calendar imports, Last.fm auto-tags           |
 | Metrics     | Time series data from any source (Oura, Garmin, Health Connect, manual) |
-| Screentime  | Productivity data from RescueTime or ActivityWatch                      |
+| Screentime  | Screen time spans from RescueTime or ActivityWatch                      |
 
 The more historical data you have, the more useful long lookback periods become. A 30-day lookback with only 10 days of data will look sparse.
 

@@ -12,7 +12,8 @@ import { baseResponseSchema } from './common.ts'
 export const chartDataSourceTypeSchema = z
   .enum(['tag', 'metric', 'productivity_category', 'activity_type'])
   .meta({
-    description: "Type of data source for chart data query. 'tag' is a deprecated alias for 'activity_type'.",
+    description:
+      "Type of data source for chart data query. 'tag' is a deprecated alias for 'activity_type'. 'productivity_category' selects screentime by category path (pattern 'Work > Programming', sub-categories included); each screentime category is also an activity type (its activity_type_name), usable with 'activity_type'.",
     example: 'activity_type',
     id: 'ChartDataSourceType',
   })

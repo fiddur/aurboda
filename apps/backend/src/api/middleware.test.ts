@@ -1,7 +1,7 @@
 /**
  * What the auth middleware does on the way through: resolve the token to a
  * user, make sure that user's schema is current before the handler runs, and
- * kick off the one-shot screentime backfill.
+ * kick off the one-shot screentime backfill and legacy retype.
  *
  * The schema check is gated by the schema fingerprint (#1125), so it is
  * normally one `SELECT` — but the middleware must still go through
@@ -26,8 +26,13 @@ vi.mock('../services/backfill-screentime-activities.ts', () => ({
   backfillScreentimeActivities: vi.fn(async () => ({ created: 0, skipped: true })),
 }))
 
+vi.mock('../services/retype-legacy-screentime.ts', () => ({
+  retypeLegacyScreentime: vi.fn(async () => ({ deduplicated: 0, retyped: 0, skipped: true })),
+}))
+
 const db = await import('../db/index.ts')
 const backfill = await import('../services/backfill-screentime-activities.ts')
+const retype = await import('../services/retype-legacy-screentime.ts')
 const { createAuthMiddleware } = await import('./middleware.ts')
 
 /** Tokens are `token-<user>`; anything else is rejected, as a bad token is. */
@@ -59,6 +64,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   vi.mocked(db.migrateSchemaIfNeeded).mockResolvedValue(undefined)
   vi.mocked(backfill.backfillScreentimeActivities).mockResolvedValue({ created: 0, skipped: true })
+  vi.mocked(retype.retypeLegacyScreentime).mockResolvedValue({ deduplicated: 0, retyped: 0, skipped: true })
 })
 
 describe('createAuthMiddleware', () => {
@@ -98,6 +104,25 @@ describe('createAuthMiddleware', () => {
     expect(backfill.backfillScreentimeActivities).toHaveBeenCalledWith('alice')
   })
 
+  test('retypes legacy screentime after the backfill, even when the backfill fails', async () => {
+    const order: string[] = []
+    vi.mocked(backfill.backfillScreentimeActivities).mockImplementation(async () => {
+      order.push('backfill')
+      throw new Error('boom')
+    })
+    vi.mocked(retype.retypeLegacyScreentime).mockImplementation(async () => {
+      order.push('retype')
+      return { deduplicated: 0, retyped: 0, skipped: true }
+    })
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    await get(buildApp(), 'alice')
+
+    await vi.waitFor(() => expect(retype.retypeLegacyScreentime).toHaveBeenCalledWith('alice'))
+    expect(order).toEqual(['backfill', 'retype'])
+    errorSpy.mockRestore()
+  })
+
   test('still serves the request when the schema check fails', async () => {
     // A user whose database is broken should see the real failure from their
     // actual query, not a blanket 401 from the middleware.
@@ -107,6 +132,7 @@ describe('createAuthMiddleware', () => {
 
     expect(response.status).toBe(200)
     expect(backfill.backfillScreentimeActivities).not.toHaveBeenCalled()
+    expect(retype.retypeLegacyScreentime).not.toHaveBeenCalled()
   })
 
   test('rejects a request with no Authorization header', async () => {

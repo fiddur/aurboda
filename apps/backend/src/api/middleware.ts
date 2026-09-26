@@ -7,6 +7,7 @@ import type { AnyMiddleware } from '../typed-router.ts'
 import { migrateSchemaIfNeeded } from '../db/index.ts'
 import { auditError, auditInfo, auditWarn } from '../services/audit-log.ts'
 import { backfillScreentimeActivities } from '../services/backfill-screentime-activities.ts'
+import { retypeLegacyScreentime } from '../services/retype-legacy-screentime.ts'
 
 /**
  * Log level is based on response status: 4xx → warn, 5xx → error, otherwise → info.
@@ -90,9 +91,14 @@ export const createAuthMiddleware = (auth: Auth, unauthorized: Error): AnyMiddle
         if (!migratedUsers.has(user)) {
           const migrationPromise = migrateSchemaIfNeeded(user)
             .then(() => {
-              void backfillScreentimeActivities(user).catch((err) =>
-                console.error(`⚠️ Screentime backfill failed for ${user}:`, err),
-              )
+              void (async () => {
+                await backfillScreentimeActivities(user).catch((err) =>
+                  console.error(`⚠️ Screentime backfill failed for ${user}:`, err),
+                )
+                await retypeLegacyScreentime(user).catch((err) =>
+                  console.error(`⚠️ Legacy screentime retype failed for ${user}:`, err),
+                )
+              })()
             })
             .catch((err) => console.error(`⚠️ Migration failed for ${user}:`, err))
           migratedUsers.set(user, migrationPromise)

@@ -265,7 +265,9 @@ describe('getChartData', () => {
     // to screentime activities as the source of truth.
     const call = vi.mocked(db.query).mock.calls[0]
     expect(call[1]).toContain('FROM activities')
-    expect(call[1]).toContain('FROM screentime_categories')
+    expect(call[1]).toContain("data->>'category_path' = $2")
+    expect(call[1]).toContain("starts_with(data->>'category_path', $2 || ' > ')")
+    expect(call[1]).not.toMatch(/activity_type\s*(=|IN)/)
     expect(call[1]).not.toContain('FROM productivity')
   })
 
