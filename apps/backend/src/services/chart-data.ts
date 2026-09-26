@@ -1,6 +1,7 @@
 import type { ChartDataBreakdownBucket, ChartDataBucket, ChartDataSourceType } from '@aurboda/api-spec'
 
 import { expandActivityTypes, getSourceFilter, getTimeSeries, query } from '../db/index.ts'
+import { SCREENTIME_ACTIVITY_TYPES_SQL } from '../db/screentime-activity-types.ts'
 import { computeHrZoneSecs, getEffectiveHrZones } from './settings.ts'
 
 /** Map bucket_size parameter to PostgreSQL date_trunc interval name (day and above). */
@@ -228,7 +229,7 @@ const queryHrZoneBuckets = async (
 }
 
 /**
- * Reads from the `activities` table (activity_type='screentime') so a
+ * Reads screentime activities from the `activities` table so a
  * prefix match on data->>'category_path' walks the category hierarchy
  * (e.g. categoryPath='Work' matches 'Work', 'Work > Programming', etc.).
  * Activities are derived from productivity records during sync and
@@ -247,7 +248,7 @@ const queryProductivityCategoryBuckets = async (
     `SELECT ${bucket.expr} AS bucket_start,
             SUM(EXTRACT(EPOCH FROM (end_time - start_time))) / 3600.0 AS value
        FROM activities
-      WHERE activity_type = 'screentime'
+      WHERE activity_type IN ${SCREENTIME_ACTIVITY_TYPES_SQL}
         AND deleted_at IS NULL
         AND superseded_by IS NULL
         AND end_time IS NOT NULL
