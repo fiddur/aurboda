@@ -19,7 +19,7 @@ vi.mock('../../db', () => ({
   getActivities: vi.fn(),
   getActivityTypeDefinitions: vi.fn(),
   getHrZoneSecsForWindows: vi.fn(),
-  getTimeSeriesDistributions: vi.fn(),
+  getValueHistogramsForWindows: vi.fn(),
   getUserSettings: vi.fn().mockResolvedValue(null),
 }))
 
@@ -225,18 +225,20 @@ describe('queryActivitySessions', () => {
     vi.mocked(db.getActivityTypeDefinitions).mockResolvedValue([yogaDef])
   })
 
-  test('queries all time by default, and pools group windows under the group key', async () => {
+  test("queries all time by default, and pools each group from its sessions' histograms", async () => {
     const a = activity('a', '2026-09-01T07:00:00Z', 26, { session_name: 'Flow' })
     const b = activity('b', '2026-09-02T07:00:00Z', 30, { session_name: 'Flow' })
     const open = { ...activity('c', '2026-09-03T07:00:00Z', 0), end_time: undefined }
     vi.mocked(db.getActivities).mockResolvedValue([a, b, open])
     vi.mocked(db.getHrZoneSecsForWindows).mockResolvedValue([zones(60, 0), undefined])
-    vi.mocked(db.getTimeSeriesDistributions).mockResolvedValue(
+    vi.mocked(db.getValueHistogramsForWindows).mockResolvedValue([
       new Map([
-        ['a', dist(80, 90, 100, 110, 120)],
-        [groupKey('Flow'), dist(70, 90, 100, 110, 130)],
+        [80, 1],
+        [100, 2],
+        [120, 1],
       ]),
-    )
+      new Map([[130, 1]]),
+    ])
 
     const result = await queryActivitySessions('u', 'yoga', { groupBy: 'session_name' })
 
@@ -247,23 +249,25 @@ describe('queryActivitySessions', () => {
     expect(categoryMap?.get('yoga')).toBe('exercise')
 
     const windows = [
-      { end: a.end_time, key: 'a', start: a.start_time },
-      { end: b.end_time, key: 'b', start: b.start_time },
+      { end: a.end_time, start: a.start_time },
+      { end: b.end_time, start: b.start_time },
     ]
     expect(vi.mocked(db.getHrZoneSecsForWindows).mock.calls[0]![1]).toEqual(windows)
-    expect(vi.mocked(db.getTimeSeriesDistributions).mock.calls[0]![2]).toEqual([
-      ...windows,
-      ...windows.map((w) => ({ ...w, key: groupKey('Flow') })),
+    expect(vi.mocked(db.getValueHistogramsForWindows).mock.calls[0]!.slice(1)).toEqual([
+      'heart_rate',
+      windows,
     ])
 
-    expect(result.sessions.map((s) => [s.id, s.hr_zone_secs?.[1], s.hr?.median])).toEqual([
-      ['c', undefined, undefined],
-      ['b', undefined, undefined],
-      ['a', 60, 100],
+    expect(result.sessions.map((s) => [s.id, s.hr_zone_secs?.[1], s.hr?.median, s.hr?.max])).toEqual([
+      ['c', undefined, undefined, undefined],
+      ['b', undefined, 130, 130],
+      ['a', 60, 100, 120],
     ])
-    expect(result.groups?.map((g) => [g.value, g.count, g.hr?.max])).toEqual([
-      ['Flow', 2, 130],
-      [null, 1, undefined],
+    expect(
+      result.groups?.map((g) => [g.value, g.count, g.hr?.sample_count, g.hr?.median, g.hr?.max]),
+    ).toEqual([
+      ['Flow', 2, 5, 100, 130],
+      [null, 1, undefined, undefined, undefined],
     ])
   })
 
@@ -274,7 +278,7 @@ describe('queryActivitySessions', () => {
       activity('c', '2026-09-03T07:00:00Z', 20, { session_name: ' ' }),
     ])
     vi.mocked(db.getHrZoneSecsForWindows).mockResolvedValue([])
-    vi.mocked(db.getTimeSeriesDistributions).mockResolvedValue(new Map())
+    vi.mocked(db.getValueHistogramsForWindows).mockResolvedValue([])
 
     const flow = await queryActivitySessions('u', 'yoga', {
       end: at('2026-09-26T00:00:00Z'),
@@ -296,7 +300,7 @@ describe('queryActivitySessions', () => {
 
   test('nothing timed → no zone query', async () => {
     vi.mocked(db.getActivities).mockResolvedValue([])
-    vi.mocked(db.getTimeSeriesDistributions).mockResolvedValue(new Map())
+    vi.mocked(db.getValueHistogramsForWindows).mockResolvedValue([])
 
     const result = await queryActivitySessions('u', 'yoga')
 

@@ -14,8 +14,8 @@ import {
   getTimeSeries,
   getTimeSeriesBucketed,
   getTimeSeriesBucketedAvgForWindows,
-  getTimeSeriesDistributions,
   getTimeSeriesWithSource,
+  getValueHistogramsForWindows,
   type HrZoneBucket,
   insertTimeSeries,
 } from './time-series.ts'
@@ -261,69 +261,45 @@ describe('Time series SQL aggregates', () => {
     })
   })
 
-  describe('getTimeSeriesDistributions', () => {
-    /** The web's fiveNumberSummary: linear interpolation between order statistics. */
-    const quantile = (sorted: number[], p: number): number => {
-      const idx = p * (sorted.length - 1)
-      const lo = Math.floor(idx)
-      const hi = Math.ceil(idx)
-      return sorted[lo]! + (sorted[hi]! - sorted[lo]!) * (idx - lo)
-    }
-
-    test('five-number summary and mean of the positive samples per key, windows sharing a key pooled once', async () => {
+  describe('getValueHistogramsForWindows', () => {
+    test('counts the positive samples per rounded value in each window, index-aligned', async () => {
       const user = getTestUser()
       await insertTimeSeries(user, [
         ...irregularSeries('2024-01-15T09:58:00Z', 200),
         hr('2024-01-15T10:05:00Z', 0, 'health_connect'),
-        hr('2024-01-15T20:00:00Z', 100),
-        hr('2024-01-15T20:00:30Z', 110),
-        hr('2024-01-15T20:01:00Z', 150),
+        hr('2024-01-15T20:00:00Z', 100.4),
+        hr('2024-01-15T20:00:30Z', 99.6),
+        hr('2024-01-15T20:01:00Z', 150, 'health_connect'),
+        hr('2024-01-15T20:01:00.001Z', 170),
       ])
       const morning = { end: new Date('2024-01-15T11:00:00Z'), start: new Date('2024-01-15T10:00:00Z') }
-      const overlap = { end: new Date('2024-01-15T10:30:00Z'), start: new Date('2024-01-15T10:15:00Z') }
       const evening = { end: new Date('2024-01-15T20:01:00Z'), start: new Date('2024-01-15T20:00:00Z') }
+      const empty = { end: new Date('2024-01-16T01:00:00Z'), start: new Date('2024-01-16T00:00:00Z') }
 
-      const result = await getTimeSeriesDistributions(user, 'heart_rate', [
-        { key: 'morning', ...morning },
-        { key: 'evening', ...evening },
-        { key: 'both', ...morning },
-        { key: 'both', ...overlap },
-        { key: 'both', ...evening },
-        { end: new Date('2024-01-16T01:00:00Z'), key: 'empty', start: new Date('2024-01-16T00:00:00Z') },
+      const [m, e, none, again] = await getValueHistogramsForWindows(user, 'heart_rate', [
+        morning,
+        evening,
+        empty,
+        morning,
       ])
 
-      const positive = async (w: { start: Date; end: Date }) =>
-        (await getTimeSeries(user, 'heart_rate', w.start, w.end)).map(([, v]) => v).filter((v) => v > 0)
-      const morningValues = (await positive(morning)).sort((a, b) => a - b)
-      const bothValues = [...morningValues, 100, 110, 150].sort((a, b) => a - b)
-
-      expect(result.has('empty')).toBe(false)
-      expect(result.get('evening')).toEqual({
-        avg: 120,
-        max: 150,
-        median: 110,
-        min: 100,
-        q1: 105,
-        q3: 130,
-        sample_count: 3,
-      })
-      for (const [key, values] of [
-        ['morning', morningValues],
-        ['both', bothValues],
-      ] as const) {
-        const row = result.get(key)!
-        expect(row.sample_count).toBe(values.length)
-        expect(row.min).toBe(values[0])
-        expect(row.max).toBe(values.at(-1))
-        expect(row.avg).toBeCloseTo(values.reduce((a, b) => a + b, 0) / values.length, 9)
-        expect(row.q1).toBeCloseTo(quantile(values, 0.25), 9)
-        expect(row.median).toBeCloseTo(quantile(values, 0.5), 9)
-        expect(row.q3).toBeCloseTo(quantile(values, 0.75), 9)
+      const expected = new Map<number, number>()
+      for (const [, v] of await getTimeSeries(user, 'heart_rate', morning.start, morning.end)) {
+        if (v > 0) expected.set(Math.round(v), (expected.get(Math.round(v)) ?? 0) + 1)
       }
+      expect(m).toEqual(expected)
+      expect(again).toEqual(expected)
+      expect(e).toEqual(
+        new Map([
+          [100, 2],
+          [150, 1],
+        ]),
+      )
+      expect(none).toEqual(new Map())
     })
 
-    test('no windows → no query, empty map', async () => {
-      expect((await getTimeSeriesDistributions(getTestUser(), 'heart_rate', [])).size).toBe(0)
+    test('no windows → no query, no histograms', async () => {
+      expect(await getValueHistogramsForWindows(getTestUser(), 'heart_rate', [])).toEqual([])
     })
   })
 

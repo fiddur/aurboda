@@ -52,8 +52,9 @@ so rows compare at a glance.
   row.
 - **All sessions**: one sortable table.
 
-The period defaults to a year; the zone and HR figures are computed in SQL per session window,
-so a long period costs one query rather than loading the whole span's time-series.
+The period defaults to 90 days. Zone seconds and heart-rate histograms are computed in SQL,
+with one index range scan per session window. Box plots come from the histograms, and a group's
+box plot adds up its sessions' histograms, so the samples are read only once.
 
 On an activity's detail page:
 
