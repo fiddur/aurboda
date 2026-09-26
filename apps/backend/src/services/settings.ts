@@ -18,6 +18,7 @@ import {
   updateActivityTypeByTagKey,
   upsertUserSettings,
 } from '../db/index.ts'
+import { MAX_GAP_SECONDS, SINGLE_SAMPLE_SECONDS } from '../hr-zone-constants.ts'
 import { getCentralDb } from './central-db.ts'
 
 export type { HrZoneSecs, HrZoneSource, HrZoneThresholds }
@@ -28,8 +29,6 @@ export type { UserSettings }
 export type SettingsResponse = UserSettingsResponse & { error?: string }
 
 const DEFAULT_MAX_HR = 180 // Assumes age ~40
-const MAX_GAP_SECONDS = 60
-const SINGLE_SAMPLE_SECONDS = 1
 
 // Zone percentages of max HR
 const ZONE_PERCENTAGES = {

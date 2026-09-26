@@ -180,4 +180,52 @@ describe('queryActivities with comments', () => {
     expect(a.body_battery_after).toBe(55)
     expect(a.avg_hr).toBe(140) // from time-series since data has no average_hr
   })
+
+  test('HR zones and HRV use the samples inside [start, end], both ends included', async () => {
+    vi.mocked(db.getActivities).mockResolvedValue([
+      {
+        activity_type: 'exercise',
+        end_time: new Date('2024-01-15T10:30:00Z'),
+        id: 'ex-1',
+        source: 'garmin',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+      },
+      {
+        activity_type: 'sleep',
+        end_time: new Date('2024-01-15T07:00:00Z'),
+        id: 'sl-1',
+        source: 'oura',
+        start_time: new Date('2024-01-14T23:00:00Z'),
+      },
+    ])
+    vi.mocked(db.getNotesByEntityIds).mockResolvedValue(new Map())
+    vi.mocked(db.getTimeSeries).mockResolvedValue([
+      [new Date('2024-01-14T22:59:59.999Z'), 1000],
+      [new Date('2024-01-14T23:00:00Z'), 40],
+      [new Date('2024-01-15T03:00:00Z'), 50],
+      [new Date('2024-01-15T07:00:00Z'), 60],
+      [new Date('2024-01-15T07:00:00.001Z'), 1000],
+    ])
+    vi.mocked(db.getTimeSeriesMultiMetric).mockResolvedValue({
+      heart_rate: [
+        [new Date('2024-01-15T09:59:59.999Z'), 180],
+        [new Date('2024-01-15T10:00:00Z'), 95],
+        [new Date('2024-01-15T10:15:00Z'), 95],
+        [new Date('2024-01-15T10:30:00Z'), 170],
+        [new Date('2024-01-15T10:30:00.001Z'), 60],
+      ],
+    })
+
+    const result = await queryActivities(
+      'testuser',
+      ['exercise', 'sleep'],
+      new Date('2024-01-14'),
+      new Date('2024-01-16'),
+    )
+
+    const exercise = result.find((a) => a.id === 'ex-1')
+    // Default zones (1=90 … 5=162): two capped 60 s gaps in zone 1, the last sample's mean gap in zone 5
+    expect(exercise?.hr_zone_secs).toEqual({ 0: 0, 1: 120, 2: 0, 3: 0, 4: 0, 5: 60 })
+    expect(result.find((a) => a.id === 'sl-1')?.avg_hrv).toBe(50)
+  })
 })

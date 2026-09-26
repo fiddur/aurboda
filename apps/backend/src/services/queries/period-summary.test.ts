@@ -1,16 +1,28 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 import * as db from '../../db/index.ts'
+import { computeHrZoneSecs } from '../settings.ts'
 import { getPeriodSummary } from './period-summary.ts'
 
 vi.mock('../../db', () => ({
   getActivities: vi.fn(),
   getDailyAggregates: vi.fn(),
+  getHrZoneSecs: vi.fn(),
   getSleepSessions: vi.fn(),
   getTimeSeries: vi.fn(),
   getTimeSeriesStats: vi.fn(),
   getUserSettings: vi.fn(),
 }))
+
+/** Stands in for the SQL zone computation with its JS reference, over fixed heart-rate samples. */
+const hrZoneSecsOver = (samples: [Date, number][]) =>
+  vi
+    .mocked(db.getHrZoneSecs)
+    .mockImplementation(async (_user, _start, _end, zones) =>
+      samples.length === 0
+        ? []
+        : [{ bucket_start: null, sample_count: samples.length, secs: computeHrZoneSecs(samples, zones) }],
+    )
 
 describe('getPeriodSummary', () => {
   beforeEach(() => {
@@ -160,7 +172,7 @@ describe('getPeriodSummary', () => {
     vi.mocked(db.getUserSettings).mockResolvedValue(null) // Use default HR zones
 
     // Default zones with age ~40 (max HR 180): 1=90, 2=108, 3=126, 4=144, 5=162
-    vi.mocked(db.getTimeSeries).mockResolvedValue([
+    hrZoneSecsOver([
       [new Date('2024-01-15T10:00:00Z'), 70], // Zone 0 (below 90)
       [new Date('2024-01-15T10:00:02Z'), 70], // Zone 0
       [new Date('2024-01-15T10:00:04Z'), 95], // Zone 1 (90-107)
@@ -204,7 +216,7 @@ describe('getPeriodSummary', () => {
     })
 
     // HR at 75 - would be zone 0 with defaults (90), but zone 1 with custom (70)
-    vi.mocked(db.getTimeSeries).mockResolvedValue([
+    hrZoneSecsOver([
       [new Date('2024-01-15T10:00:00Z'), 75],
       [new Date('2024-01-15T10:00:02Z'), 75],
     ])
@@ -228,7 +240,7 @@ describe('getPeriodSummary', () => {
     vi.mocked(db.getTimeSeriesStats).mockResolvedValue([])
     vi.mocked(db.getDailyAggregates).mockResolvedValue([])
     vi.mocked(db.getUserSettings).mockResolvedValue(null)
-    vi.mocked(db.getTimeSeries).mockResolvedValue([])
+    hrZoneSecsOver([])
 
     const result = await getPeriodSummary(
       'testuser',
@@ -251,7 +263,7 @@ describe('getPeriodSummary', () => {
     vi.mocked(db.getUserSettings).mockResolvedValue(null)
 
     // HR data for zone calculation
-    vi.mocked(db.getTimeSeries).mockResolvedValue([
+    hrZoneSecsOver([
       [new Date('2024-01-15T10:00:00Z'), 95],
       [new Date('2024-01-15T10:00:02Z'), 95],
     ])

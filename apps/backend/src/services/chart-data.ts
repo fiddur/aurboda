@@ -1,8 +1,8 @@
 import type { ChartDataBreakdownBucket, ChartDataBucket, ChartDataSourceType } from '@aurboda/api-spec'
 
-import { expandActivityTypes, getSourceFilter, getTimeSeries, query } from '../db/index.ts'
+import { expandActivityTypes, getHrZoneSecs, getSourceFilter, query } from '../db/index.ts'
 import { categoryPathMatchSql } from './screentime-sql.ts'
-import { computeHrZoneSecs, getEffectiveHrZones } from './settings.ts'
+import { getEffectiveHrZones } from './settings.ts'
 
 /** Map bucket_size parameter to PostgreSQL date_trunc interval name (day and above). */
 const bucketToTrunc: Record<string, string> = {
@@ -159,45 +159,17 @@ const queryMetricBuckets = async (
   }))
 }
 
-const HR_ZONE_BIN_ORIGIN = Date.UTC(2000, 0, 1)
-
-/** UTC bucket-start for a timestamp, mirroring buildBucketExpr's date_trunc/date_bin. */
-const utcBucketStart = (t: Date, bucketSize: string): Date => {
-  const bin = (intervalMs: number): Date =>
-    new Date(HR_ZONE_BIN_ORIGIN + Math.floor((t.getTime() - HR_ZONE_BIN_ORIGIN) / intervalMs) * intervalMs)
-  switch (bucketSize) {
-    case '1m':
-      return bin(60_000)
-    case '5m':
-      return bin(5 * 60_000)
-    case '15m':
-      return bin(15 * 60_000)
-    case '1h':
-      return new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate(), t.getUTCHours()))
-    case '1w': {
-      const d = new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate()))
-      d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7)) // back to Monday (date_trunc('week'))
-      return d
-    }
-    case '1M':
-      return new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), 1))
-    default:
-      return new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate()))
-  }
-}
-
 /**
  * Bucketed seconds-in-zone for an `hr_zone_<n>_sec` metric. HR-zone metrics are
  * not stored — they're computed from heart-rate samples + the user's effective
- * zones (same as the period summary / HR-zones widget). We group the samples
- * into buckets and run the zone computation per bucket.
+ * zones (same as the period summary / HR-zones widget), per bucket in SQL.
  */
 const queryHrZoneBuckets = async (
   user: string,
   metric: string,
   start: string,
   end: string,
-  bucketSize: string,
+  bucketSize: ChartDataInput['bucket_size'],
 ): Promise<ChartDataBucket[]> => {
   const zoneIndex = Number.parseInt(metric.replace('hr_zone_', '').replace('_sec', ''), 10) as
     | 0
@@ -206,26 +178,12 @@ const queryHrZoneBuckets = async (
     | 3
     | 4
     | 5
-  const [hrData, { zones }] = await Promise.all([
-    getTimeSeries(user, 'heart_rate', new Date(start), new Date(end)),
-    getEffectiveHrZones(user),
-  ])
-  if (hrData.length === 0) return []
-
-  const groups = new Map<number, [Date, number][]>()
-  for (const point of hrData) {
-    const key = utcBucketStart(point[0], bucketSize).getTime()
-    const arr = groups.get(key)
-    if (arr) arr.push(point)
-    else groups.set(key, [point])
-  }
-
-  return [...groups.entries()]
-    .sort((a, b) => a[0] - b[0])
-    .map(([key, points]) => ({
-      bucket_start: new Date(key).toISOString(),
-      value: computeHrZoneSecs(points, zones)[zoneIndex],
-    }))
+  const { zones } = await getEffectiveHrZones(user)
+  const rows = await getHrZoneSecs(user, new Date(start), new Date(end), zones, bucketSize)
+  return rows.map((row) => ({
+    bucket_start: (row.bucket_start as Date).toISOString(),
+    value: row.secs[zoneIndex],
+  }))
 }
 
 /**
@@ -367,7 +325,7 @@ const queryMetricSource = async (
   pattern: string | undefined,
   start: string,
   end: string,
-  bucketSize: string,
+  bucketSize: ChartDataInput['bucket_size'],
   aggregation: 'count' | 'mean' | 'sum',
 ): Promise<ChartDataBucket[]> => {
   const metric = pattern === 'zone2_weekly' ? 'hr_zone_2_sec' : pattern

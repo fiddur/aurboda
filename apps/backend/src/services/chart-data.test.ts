@@ -10,12 +10,11 @@ import * as settings from './settings.ts'
 // the cumulative-source rules can't drift from production.
 vi.mock('../db', async () => ({
   expandActivityTypes: vi.fn().mockImplementation((_user: string, types: string[]) => Promise.resolve(types)),
+  getHrZoneSecs: vi.fn(),
   getSourceFilter: (await vi.importActual<typeof TimeSeriesModule>('../db/time-series.ts')).getSourceFilter,
-  getTimeSeries: vi.fn(),
   query: vi.fn(),
 }))
 
-// Keep the real (pure) computeHrZoneSecs; only stub the DB-backed zones lookup.
 vi.mock('./settings', async () => ({
   ...(await vi.importActual<typeof settings>('./settings.ts')),
   getEffectiveHrZones: vi.fn(),
@@ -160,15 +159,20 @@ describe('getChartData', () => {
   })
 
   test('charts hr_zone metrics by computing zone seconds per bucket', async () => {
-    // Two heart-rate samples 60s apart in zone 2 (hr 115, with z2 start 110).
-    vi.mocked(db.getTimeSeries).mockResolvedValue([
-      [new Date('2026-06-24T08:00:00Z'), 115],
-      [new Date('2026-06-24T08:01:00Z'), 115],
+    const zones = { 1: 90, 2: 110, 3: 130, 4: 150, 5: 170 }
+    vi.mocked(db.getHrZoneSecs).mockResolvedValue([
+      {
+        bucket_start: new Date('2026-06-24T00:00:00Z'),
+        sample_count: 2,
+        secs: { 0: 0, 1: 0, 2: 120, 3: 0, 4: 0, 5: 0 },
+      },
+      {
+        bucket_start: new Date('2026-06-25T00:00:00Z'),
+        sample_count: 1,
+        secs: { 0: 1, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },
+      },
     ])
-    vi.mocked(settings.getEffectiveHrZones).mockResolvedValue({
-      source: 'custom',
-      zones: { 1: 90, 2: 110, 3: 130, 4: 150, 5: 170 },
-    })
+    vi.mocked(settings.getEffectiveHrZones).mockResolvedValue({ source: 'custom', zones })
 
     const result = await getChartData('testuser', {
       aggregation: 'sum',
@@ -179,17 +183,24 @@ describe('getChartData', () => {
       start: '2026-06-24T00:00:00Z',
     })
 
-    // Reads heart_rate (not the non-existent hr_zone_2_sec rows) and buckets by day.
-    expect(vi.mocked(db.getTimeSeries).mock.calls[0][1]).toBe('heart_rate')
-    expect(result.buckets).toHaveLength(1)
-    expect(result.buckets[0].bucket_start).toBe('2026-06-24T00:00:00.000Z')
-    expect((result.buckets[0] as { value: number }).value).toBeGreaterThan(0)
+    // Computed from heart_rate with the user's zones (not the non-existent hr_zone_2_sec rows), by day.
+    expect(db.getHrZoneSecs).toHaveBeenCalledWith(
+      'testuser',
+      new Date('2026-06-24T00:00:00Z'),
+      new Date('2026-06-25T00:00:00Z'),
+      zones,
+      '1d',
+    )
+    expect(result.buckets).toEqual([
+      { bucket_start: '2026-06-24T00:00:00.000Z', value: 120 },
+      { bucket_start: '2026-06-25T00:00:00.000Z', value: 0 },
+    ])
     // Plain metric query path is not used for zone metrics.
     expect(vi.mocked(db.query)).not.toHaveBeenCalled()
   })
 
   test('zone2_weekly aliases to hr_zone_2_sec (computed, not queried)', async () => {
-    vi.mocked(db.getTimeSeries).mockResolvedValue([])
+    vi.mocked(db.getHrZoneSecs).mockResolvedValue([])
     vi.mocked(settings.getEffectiveHrZones).mockResolvedValue({
       source: 'default',
       zones: { 1: 90, 2: 110, 3: 130, 4: 150, 5: 170 },
@@ -204,7 +215,7 @@ describe('getChartData', () => {
       start: '2026-06-01T00:00:00Z',
     })
 
-    expect(vi.mocked(db.getTimeSeries).mock.calls[0][1]).toBe('heart_rate')
+    expect(vi.mocked(db.getHrZoneSecs).mock.calls[0][4]).toBe('1w')
     expect(vi.mocked(db.query)).not.toHaveBeenCalled()
   })
 

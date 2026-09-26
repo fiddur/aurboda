@@ -1,10 +1,10 @@
 import type { PeriodMetricStats, PeriodSummaryResult } from './types.ts'
 
-import { getDailyAggregates, getTimeSeries, getTimeSeriesStats } from '../../db/index.ts'
+import { getDailyAggregates, getHrZoneSecs, getTimeSeries, getTimeSeriesStats } from '../../db/index.ts'
 import { isContextualHrvMetric, isHrZoneMetric, type MetricType, metricUnits } from '../../schema.ts'
 import { classifyHrvByContext, getHrvContextWindows, type HrvContext } from '../hrv-context.ts'
 import { maxOf, minOf } from '../numeric-extremes.ts'
-import { computeHrZoneSecs, getEffectiveHrZones } from '../settings.ts'
+import { getEffectiveHrZones } from '../settings.ts'
 import { contextualHrvMetricToContext } from './metrics.ts'
 
 export const emptyPeriodMetricStats = (metric: string): PeriodMetricStats => ({
@@ -29,12 +29,9 @@ async function computeHrZoneStats(
 ): Promise<PeriodMetricStats[]> {
   if (hrZoneMetrics.length === 0) return []
 
-  const [hrData, { zones: hrZones }] = await Promise.all([
-    getTimeSeries(user, 'heart_rate', start, end),
-    getEffectiveHrZones(user),
-  ])
-
-  const zoneSecs = computeHrZoneSecs(hrData, hrZones)
+  const { zones } = await getEffectiveHrZones(user)
+  const [row] = await getHrZoneSecs(user, start, end, zones)
+  const hasSamples = row !== undefined && row.sample_count > 0
 
   return hrZoneMetrics.map((metric) => {
     const zoneIndex = parseInt(metric.replace('hr_zone_', '').replace('_sec', ''), 10) as
@@ -44,13 +41,13 @@ async function computeHrZoneStats(
       | 3
       | 4
       | 5
-    const totalSecs = zoneSecs[zoneIndex]
+    const totalSecs = row?.secs[zoneIndex] ?? 0
 
     return {
       avg: Math.round(totalSecs * 100) / 100,
       change_from_previous_period_percent: null, // Could compute if needed
-      completeness_percent: hrData.length > 0 ? 100 : 0,
-      count: hrData.length > 0 ? 1 : 0, // Treat as single aggregated value
+      completeness_percent: hasSamples ? 100 : 0,
+      count: hasSamples ? 1 : 0, // Treat as single aggregated value
       max: Math.round(totalSecs * 100) / 100,
       metric,
       min: Math.round(totalSecs * 100) / 100,

@@ -1,7 +1,10 @@
+import type { HrZoneSecs, HrZoneThresholds } from '@aurboda/api-spec'
+
 import format from 'pg-format'
 
 import type { BucketedMetricData, DailyMetricAggregate, MetricStats, TimeSeriesPoint } from './types.ts'
 
+import { MAX_GAP_SECONDS, SINGLE_SAMPLE_SECONDS } from '../hr-zone-constants.ts'
 import {
   aurbodaOnlyMetrics,
   aurbodaOnlySources,
@@ -461,4 +464,156 @@ export const getDistinctMetrics = async (user: string, start: Date, end: Date): 
     [start, end],
   )
   return result.rows.map((row) => row.metric as string).sort()
+}
+
+/** Most recent value of `metric` in `[since, now]`, or undefined when there is none. */
+export const getLatestTimeSeriesValue = async (
+  user: string,
+  metric: string,
+  since: Date,
+): Promise<number | undefined> => {
+  const sources = getSourceFilter(metric)
+  const params: unknown[] = [metric, since, new Date()]
+  if (sources) params.push(sources)
+
+  const result = await query(
+    user,
+    `SELECT value FROM time_series
+     WHERE metric = $1 AND time >= $2 AND time <= $3 AND deleted_at IS NULL${sources ? ' AND source = ANY($4)' : ''}
+     ORDER BY time DESC
+     LIMIT 1`,
+    params,
+  )
+  return result.rows.length > 0 ? (result.rows[0].value as number) : undefined
+}
+
+/**
+ * Per-window equivalent of `getTimeSeriesBucketed(user, [metric], w.start, w.end, interval)`'s
+ * `[bucket_start, avg]` series (UTC bins anchored at each window's start), in one query.
+ * The result is index-aligned with `windows`.
+ */
+export const getTimeSeriesBucketedAvgForWindows = async (
+  user: string,
+  metric: string,
+  windows: { start: Date; end: Date }[],
+  interval: string,
+): Promise<[Date, number][][]> => {
+  if (windows.length === 0) return []
+
+  const sources = getSourceFilter(metric)
+  const params: unknown[] = [windows.map((w) => w.start), windows.map((w) => w.end), metric, interval]
+  if (sources) params.push(sources)
+
+  const result = await query(
+    user,
+    `SELECT w.i::int AS i,
+            date_bin($4::interval, ts.time AT TIME ZONE 'UTC', (w.s AT TIME ZONE 'UTC')::timestamp)
+              AT TIME ZONE 'UTC' AS bucket_start,
+            AVG(ts.value) AS avg
+       FROM unnest($1::timestamptz[], $2::timestamptz[]) WITH ORDINALITY AS w(s, e, i)
+       JOIN time_series ts
+         ON ts.metric = $3 AND ts.time >= w.s AND ts.time < w.e AND ts.deleted_at IS NULL${sources ? ' AND ts.source = ANY($5)' : ''}
+      GROUP BY w.i, bucket_start
+      ORDER BY w.i, bucket_start`,
+    params,
+  )
+
+  const series: [Date, number][][] = windows.map(() => [])
+  for (const row of result.rows) {
+    series[(row.i as number) - 1].push([new Date(row.bucket_start as string), Number(row.avg)])
+  }
+  return series
+}
+
+export type HrZoneBucket = 'none' | '1m' | '5m' | '15m' | '1h' | '1d' | '1w' | '1M'
+
+/** Fixed-width bins count from 2000-01-01Z; calendar units truncate in UTC whatever the session TimeZone. */
+const hrZoneBucketExprs: Record<HrZoneBucket, string> = {
+  '15m': "date_bin('15 minutes', time, '2000-01-01T00:00:00Z'::timestamptz)",
+  '1M': "date_trunc('month', time, 'UTC')",
+  '1d': "date_trunc('day', time, 'UTC')",
+  '1h': "date_trunc('hour', time, 'UTC')",
+  '1m': "date_bin('1 minute', time, '2000-01-01T00:00:00Z'::timestamptz)",
+  '1w': "date_trunc('week', time, 'UTC')",
+  '5m': "date_bin('5 minutes', time, '2000-01-01T00:00:00Z'::timestamptz)",
+  none: 'NULL::timestamptz',
+}
+
+/**
+ * SQL counterpart of `computeHrZoneSecs` over the heart_rate samples in `[start, end]`, per bucket:
+ * each sample counts the gap to the next one (capped at MAX_GAP_SECONDS), the last one the mean of
+ * those gaps, a lone sample SINGLE_SAMPLE_SECONDS. Buckets without samples are absent, so an empty
+ * range returns `[]` for every bucket size including 'none'.
+ */
+export const getHrZoneSecs = async (
+  user: string,
+  start: Date,
+  end: Date,
+  zones: HrZoneThresholds,
+  bucket: HrZoneBucket = 'none',
+): Promise<{ bucket_start: Date | null; sample_count: number; secs: HrZoneSecs }[]> => {
+  const sources = getSourceFilter('heart_rate')
+  const params: unknown[] = [
+    start,
+    end,
+    MAX_GAP_SECONDS,
+    SINGLE_SAMPLE_SECONDS,
+    zones[1],
+    zones[2],
+    zones[3],
+    zones[4],
+    zones[5],
+  ]
+  if (sources) params.push(sources)
+
+  // LEAST ignores NULLs, so the last sample's missing gap has to stay NULL explicitly for AVG to skip it.
+  const result = await query(
+    user,
+    `WITH hr AS (
+       SELECT ${hrZoneBucketExprs[bucket]} AS b, time, source, value
+         FROM time_series
+        WHERE metric = 'heart_rate' AND time >= $1 AND time <= $2 AND deleted_at IS NULL${sources ? ' AND source = ANY($10)' : ''}
+     ), s AS (
+       SELECT b, value,
+              CASE WHEN lead(time) OVER w IS NULL THEN NULL
+                   ELSE LEAST(EXTRACT(EPOCH FROM (lead(time) OVER w - time))::float8, $3::float8)
+              END AS gap
+         FROM hr
+       WINDOW w AS (PARTITION BY b ORDER BY time, source)
+     ), g AS (
+       SELECT b, COALESCE(gap, AVG(gap) OVER (PARTITION BY b), $4::float8) AS secs,
+              CASE WHEN value >= $9 THEN 5
+                   WHEN value >= $8 THEN 4
+                   WHEN value >= $7 THEN 3
+                   WHEN value >= $6 THEN 2
+                   WHEN value >= $5 THEN 1
+                   ELSE 0
+              END AS zone
+         FROM s
+     )
+     SELECT b AS bucket_start, COUNT(*)::int AS sample_count,
+            COALESCE(SUM(secs) FILTER (WHERE zone = 0), 0) AS z0,
+            COALESCE(SUM(secs) FILTER (WHERE zone = 1), 0) AS z1,
+            COALESCE(SUM(secs) FILTER (WHERE zone = 2), 0) AS z2,
+            COALESCE(SUM(secs) FILTER (WHERE zone = 3), 0) AS z3,
+            COALESCE(SUM(secs) FILTER (WHERE zone = 4), 0) AS z4,
+            COALESCE(SUM(secs) FILTER (WHERE zone = 5), 0) AS z5
+       FROM g
+      GROUP BY b
+      ORDER BY b`,
+    params,
+  )
+
+  return result.rows.map((row) => ({
+    bucket_start: row.bucket_start === null ? null : new Date(row.bucket_start as string),
+    sample_count: row.sample_count as number,
+    secs: {
+      0: Number(row.z0),
+      1: Number(row.z1),
+      2: Number(row.z2),
+      3: Number(row.z3),
+      4: Number(row.z4),
+      5: Number(row.z5),
+    },
+  }))
 }
