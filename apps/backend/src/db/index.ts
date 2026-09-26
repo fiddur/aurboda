@@ -75,15 +75,19 @@ export {
   deleteTimeSeriesPoint,
   getDailyAggregates,
   getDistinctMetrics,
+  getHrZoneSecs,
   getRawDailySum,
   getSourceFilter,
   getLatestMetricValuesMulti,
+  getLatestTimeSeriesValue,
   getTimeSeries,
   getTimeSeriesBucketed,
+  getTimeSeriesBucketedAvgForWindows,
   getTimeSeriesEntriesMultiMetric,
   getTimeSeriesMultiMetric,
   getTimeSeriesStats,
   getTimeSeriesWithSource,
+  type HrZoneBucket,
   insertTimeSeries,
 } from './time-series.ts'
 
@@ -501,6 +505,7 @@ export { getAllSyncStates, getSyncState, resetSyncState, upsertSyncState } from 
 export {
   deleteHealthConnectRecords,
   getDailyAggregateValue,
+  getDailyAggregateValues,
   processDailyAggregate,
   processHealthConnectBatch,
   processHealthConnectData,

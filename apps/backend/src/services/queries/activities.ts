@@ -13,14 +13,15 @@ import {
   computeActivitySummaryMetrics,
   SUMMARY_METRICS,
   type SummaryMetricSeries,
+  windowBounds,
 } from './activity-summary-metrics.ts'
 import { buildCategoryMap, dedupeCommentsForIds, getCommentsMap } from './types.ts'
 
 type TimeSeriesPoint = [Date, number]
 
-/** Filter pre-fetched time series points to those inside [start, end] (inclusive). */
+/** Time-ordered points inside [start, end] (inclusive). */
 const pointsInRange = (points: TimeSeriesPoint[], start: Date, end: Date): TimeSeriesPoint[] =>
-  points.filter(([time]) => time >= start && time <= end)
+  points.slice(...windowBounds(points, start, end))
 
 /**
  * Compute average HRV for an activity using either embedded Oura data or

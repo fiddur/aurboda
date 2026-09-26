@@ -11,28 +11,9 @@ import {
   type WidgetGoalProgress,
 } from '@aurboda/api-spec'
 
-import { getDailyAggregates, getDailyAggregateValue, getRawDailySum, getTimeSeries } from '../db/index.ts'
-import { computeHrZoneSecs, getEffectiveGoals, getEffectiveHrZones } from './settings.ts'
+import { getDailyAggregates, getDailyAggregateValues, getHrZoneSecs, getRawDailySum } from '../db/index.ts'
+import { getEffectiveGoals, getEffectiveHrZones } from './settings.ts'
 import { getTrend } from './trends.ts'
-
-/**
- * Get all dates in a range (inclusive).
- */
-const getDatesInRange = (start: Date, end: Date): Date[] => {
-  const dates: Date[] = []
-  const current = new Date(start)
-  current.setUTCHours(0, 0, 0, 0)
-
-  const endDay = new Date(end)
-  endDay.setUTCHours(23, 59, 59, 999)
-
-  while (current <= endDay) {
-    dates.push(new Date(current))
-    current.setUTCDate(current.getUTCDate() + 1)
-  }
-
-  return dates
-}
 
 /**
  * Handles HR zone metrics specially (computed from heart_rate).
@@ -40,11 +21,8 @@ const getDatesInRange = (start: Date, end: Date): Date[] => {
  */
 const getMetricSum = async (user: string, metric: MetricType, start: Date, end: Date): Promise<number> => {
   if (metric.startsWith('hr_zone_')) {
-    const [hrData, { zones: hrZones }] = await Promise.all([
-      getTimeSeries(user, 'heart_rate', start, end),
-      getEffectiveHrZones(user),
-    ])
-    const zoneSecs = computeHrZoneSecs(hrData, hrZones)
+    const { zones } = await getEffectiveHrZones(user)
+    const [row] = await getHrZoneSecs(user, start, end, zones)
     const zoneIndex = parseInt(metric.replace('hr_zone_', '').replace('_sec', ''), 10) as
       | 0
       | 1
@@ -52,16 +30,15 @@ const getMetricSum = async (user: string, metric: MetricType, start: Date, end: 
       | 3
       | 4
       | 5
-    return zoneSecs[zoneIndex]
+    return row?.secs[zoneIndex] ?? 0
   }
 
   if (cumulativeMetrics.includes(metric)) {
-    const dates = getDatesInRange(start, end)
-    const values = await Promise.all(dates.map((date) => getDailyAggregateValue(user, metric, date)))
-
-    const hasAggregates = values.some((v) => v !== null)
-    if (hasAggregates) {
-      return values.reduce<number>((sum, v) => sum + (v ?? 0), 0)
+    const values = await getDailyAggregateValues(user, metric, start, end)
+    if (values.size > 0) {
+      let sum = 0
+      for (const v of values.values()) sum += v
+      return sum
     }
 
     // Fall back to raw data from ALL sources if no aggregates exist.
@@ -146,17 +123,13 @@ export const getGoalsProgress = async (user: string): Promise<GoalProgress[]> =>
     return []
   }
 
-  const results: GoalProgress[] = []
-
-  for (const goal of goals) {
-    if (goal.goal_type === 'trend') {
-      results.push(await computeTrendGoalProgress(user, goal))
-    } else {
-      results.push(await computeMetricGoalProgress(user, goal))
-    }
-  }
-
-  return results
+  return Promise.all(
+    goals.map((goal) =>
+      goal.goal_type === 'trend'
+        ? computeTrendGoalProgress(user, goal)
+        : computeMetricGoalProgress(user, goal),
+    ),
+  )
 }
 
 const toWidgetProgress = (p: GoalProgress): WidgetGoalProgress => {

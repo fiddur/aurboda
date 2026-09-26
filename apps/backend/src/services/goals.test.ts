@@ -6,15 +6,14 @@ import * as settings from './settings.ts'
 import * as trends from './trends.ts'
 
 vi.mock('../db', () => ({
-  getDailyAggregateValue: vi.fn(),
   getDailyAggregates: vi.fn(),
+  getDailyAggregateValues: vi.fn(),
   getGoals: vi.fn(),
+  getHrZoneSecs: vi.fn(),
   getRawDailySum: vi.fn(),
-  getTimeSeries: vi.fn(),
 }))
 
 vi.mock('./settings', () => ({
-  computeHrZoneSecs: vi.fn(),
   getEffectiveGoals: vi.fn(),
   getEffectiveHrZones: vi.fn(),
 }))
@@ -22,6 +21,15 @@ vi.mock('./settings', () => ({
 vi.mock('./trends', () => ({
   getTrend: vi.fn(),
 }))
+
+/** Stands in for the DB: the per-day values of `perDay` whose UTC day falls in `[start's day, end's day]`. */
+const fakeDailyValues =
+  (perDay: Record<string, number>) =>
+  async (_user: string, _metric: string, start: Date, end: Date): Promise<Map<string, number>> => {
+    const from = start.toISOString().slice(0, 10)
+    const to = end.toISOString().slice(0, 10)
+    return new Map(Object.entries(perDay).filter(([day]) => day >= from && day <= to))
+  }
 
 describe('getGoalsProgress', () => {
   beforeEach(() => {
@@ -42,17 +50,16 @@ describe('getGoalsProgress', () => {
     expect(result).toEqual([])
   })
 
-  test('uses getDailyAggregateValue for cumulative metrics like steps', async () => {
+  test('uses getDailyAggregateValues for cumulative metrics like steps', async () => {
     vi.mocked(settings.getEffectiveGoals).mockResolvedValue([
       { goal_type: 'metric', id: 'goal-1', metric: 'steps', min: 10000, window: '1d' },
     ])
 
-    // For a 1d window with day-based duration, we only include today (1 calendar day)
-    // Mock aggregate value: today has 4672 so far
+    // For a 1d window with day-based duration, we only include today (1 calendar day);
     // losingTomorrow queries today separately (same day for 1d window)
-    vi.mocked(db.getDailyAggregateValue)
-      .mockResolvedValueOnce(4672) // today for current
-      .mockResolvedValueOnce(4672) // today for losingTomorrow
+    vi.mocked(db.getDailyAggregateValues).mockImplementation(
+      fakeDailyValues({ '2026-02-01': 9999, '2026-02-02': 4672 }),
+    )
 
     const result = await getGoalsProgress('testuser')
 
@@ -61,8 +68,8 @@ describe('getGoalsProgress', () => {
     expect((result[0] as { losing_tomorrow: number }).losing_tomorrow).toBe(4672)
     expect((result[0] as { metric: string }).metric).toBe('steps')
 
-    // Should use getDailyAggregateValue, not getDailyAggregates
-    expect(db.getDailyAggregateValue).toHaveBeenCalled()
+    // One range query per sum, not one per day, and not getDailyAggregates
+    expect(db.getDailyAggregateValues).toHaveBeenCalledTimes(2)
     expect(db.getDailyAggregates).not.toHaveBeenCalled()
   })
 
@@ -72,7 +79,7 @@ describe('getGoalsProgress', () => {
     ])
 
     // No aggregate value exists
-    vi.mocked(db.getDailyAggregateValue).mockResolvedValue(null)
+    vi.mocked(db.getDailyAggregateValues).mockResolvedValue(new Map())
     // getRawDailySum queries ALL sources as fallback
     vi.mocked(db.getRawDailySum)
       .mockResolvedValueOnce(4672) // current window
@@ -94,22 +101,24 @@ describe('getGoalsProgress', () => {
 
     // For a 7d window with day-based duration, we include exactly 7 calendar days
     // (today + 6 previous days)
-    // At 2026-02-02T12:00:00Z, this is Jan 27 through Feb 2
-    vi.mocked(db.getDailyAggregateValue)
-      .mockResolvedValueOnce(10000) // Jan 27 (oldest)
-      .mockResolvedValueOnce(12000) // Jan 28
-      .mockResolvedValueOnce(11000) // Jan 29
-      .mockResolvedValueOnce(9000) // Jan 30
-      .mockResolvedValueOnce(13000) // Jan 31
-      .mockResolvedValueOnce(8000) // Feb 1
-      .mockResolvedValueOnce(5000) // Feb 2 (today)
-      // losingTomorrow query for oldest day (Jan 27)
-      .mockResolvedValueOnce(10000)
+    // At 2026-02-02T12:00:00Z, this is Jan 27 through Feb 2; Jan 26 is outside the window
+    // and Jan 29 has no value
+    vi.mocked(db.getDailyAggregateValues).mockImplementation(
+      fakeDailyValues({
+        '2026-01-26': 99999,
+        '2026-01-27': 10000,
+        '2026-01-28': 12000,
+        '2026-01-30': 20000,
+        '2026-01-31': 13000,
+        '2026-02-01': 8000,
+        '2026-02-02': 5000,
+      }),
+    )
 
     const result = await getGoalsProgress('testuser')
 
     expect(result).toHaveLength(1)
-    // Total should be sum of all 7 days = 68000
+    // Sum of the days present in the window = 68000
     expect(result[0].current).toBe(68000)
     expect((result[0] as { losing_tomorrow: number }).losing_tomorrow).toBe(10000)
   })
@@ -122,11 +131,9 @@ describe('getGoalsProgress', () => {
     // For a 24h window at noon, we use rolling hours (not calendar days)
     // At 2026-02-02T12:00:00Z, this is yesterday 12:00 through now
     // This spans 2 calendar days: Feb 1 (partial) and Feb 2 (partial)
-    vi.mocked(db.getDailyAggregateValue)
-      .mockResolvedValueOnce(5000) // Feb 1 (partial)
-      .mockResolvedValueOnce(4672) // Feb 2 (partial)
-      // losingTomorrow query for Feb 1
-      .mockResolvedValueOnce(5000)
+    vi.mocked(db.getDailyAggregateValues).mockImplementation(
+      fakeDailyValues({ '2026-01-31': 99999, '2026-02-01': 5000, '2026-02-02': 4672 }),
+    )
 
     const result = await getGoalsProgress('testuser')
 
@@ -136,7 +143,7 @@ describe('getGoalsProgress', () => {
     expect((result[0] as { losing_tomorrow: number }).losing_tomorrow).toBe(5000)
   })
 
-  test('uses getTimeSeries for HR zone metrics', async () => {
+  test('uses getHrZoneSecs for HR zone metrics', async () => {
     vi.mocked(settings.getEffectiveGoals).mockResolvedValue([
       { goal_type: 'metric', id: 'goal-1', metric: 'hr_zone_2_sec', min: 9000, window: '7d' },
     ])
@@ -144,19 +151,67 @@ describe('getGoalsProgress', () => {
       source: 'default',
       zones: { 1: 90, 2: 108, 3: 126, 4: 144, 5: 162 },
     })
-    vi.mocked(db.getTimeSeries).mockResolvedValue([])
-    vi.mocked(settings.computeHrZoneSecs).mockReturnValue({ 0: 0, 1: 0, 2: 9000, 3: 0, 4: 0, 5: 0 })
+    vi.mocked(db.getHrZoneSecs)
+      .mockResolvedValueOnce([
+        { bucket_start: null, sample_count: 10, secs: { 0: 0, 1: 0, 2: 9000, 3: 0, 4: 0, 5: 0 } },
+      ])
+      .mockResolvedValueOnce([])
 
     const result = await getGoalsProgress('testuser')
 
     expect(result).toHaveLength(1)
     expect(result[0].current).toBe(9000)
-    expect(db.getTimeSeries).toHaveBeenCalledWith(
-      'testuser',
-      'heart_rate',
-      expect.any(Date),
-      expect.any(Date),
+    // No samples on the oldest day → no row → 0
+    expect((result[0] as { losing_tomorrow: number }).losing_tomorrow).toBe(0)
+    expect(db.getHrZoneSecs).toHaveBeenCalledWith('testuser', expect.any(Date), expect.any(Date), {
+      1: 90,
+      2: 108,
+      3: 126,
+      4: 144,
+      5: 162,
+    })
+  })
+
+  test('returns goals in configured order', async () => {
+    vi.mocked(settings.getEffectiveGoals).mockResolvedValue([
+      {
+        aggregation: 'count',
+        display_period: 'monthly',
+        goal_type: 'trend',
+        half_life_days: 30,
+        id: 'slow-trend',
+        pattern: 'x',
+        source_type: 'activity_type',
+      },
+      { goal_type: 'metric', id: 'fast-metric', metric: 'steps', min: 1, window: '1d' },
+    ])
+    vi.mocked(trends.getTrend).mockImplementation(
+      () =>
+        new Promise((resolve) =>
+          setTimeout(
+            () =>
+              resolve({
+                aggregation: 'count',
+                current_value: 1,
+                display_period: 'monthly',
+                display_unit: 'per month',
+                half_life_days: 30,
+                history: [],
+                lookback_days: 90,
+                pattern: 'x',
+                source_type: 'activity_type',
+              }),
+            50,
+          ),
+        ),
     )
+    vi.mocked(db.getDailyAggregateValues).mockImplementation(fakeDailyValues({ '2026-02-02': 1 }))
+
+    const pending = getGoalsProgress('testuser')
+    await vi.advanceTimersByTimeAsync(50)
+    const result = await pending
+
+    expect(result.map((g) => g.id)).toEqual(['slow-trend', 'fast-metric'])
   })
 
   test('computes trend goal progress using getTrend', async () => {
@@ -204,7 +259,7 @@ describe('getGoalsProgress', () => {
     })
 
     // Should not touch the db directly for trend goals
-    expect(db.getDailyAggregateValue).not.toHaveBeenCalled()
+    expect(db.getDailyAggregateValues).not.toHaveBeenCalled()
     expect(db.getDailyAggregates).not.toHaveBeenCalled()
   })
 
@@ -221,7 +276,7 @@ describe('getGoalsProgress', () => {
     expect(result).toHaveLength(1)
     // Non-cumulative metrics still use getDailyAggregates
     expect(db.getDailyAggregates).toHaveBeenCalled()
-    expect(db.getDailyAggregateValue).not.toHaveBeenCalled()
+    expect(db.getDailyAggregateValues).not.toHaveBeenCalled()
   })
 })
 
@@ -240,7 +295,17 @@ describe('getWidgetGoalsProgress', () => {
     vi.mocked(settings.getEffectiveGoals).mockResolvedValue([
       { goal_type: 'metric', id: 'goal-1', metric: 'steps', min: 70000, window: '7d' },
     ])
-    vi.mocked(db.getDailyAggregateValue).mockResolvedValue(10000)
+    vi.mocked(db.getDailyAggregateValues).mockImplementation(
+      fakeDailyValues({
+        '2026-01-27': 10000,
+        '2026-01-28': 10000,
+        '2026-01-29': 10000,
+        '2026-01-30': 10000,
+        '2026-01-31': 10000,
+        '2026-02-01': 10000,
+        '2026-02-02': 10000,
+      }),
+    )
 
     const result = await getWidgetGoalsProgress('testuser')
 

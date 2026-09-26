@@ -641,3 +641,34 @@ export const getDailyAggregateValue = async (
   if (result.rows.length === 0) return null
   return result.rows[0].value
 }
+
+/**
+ * `getDailyAggregateValue` for every UTC day from `start`'s day through `end`'s day, in one query.
+ * Days without a value are absent. Like the single-day version it keeps each day's `[00:00, 23:59:59.999)`
+ * window and does not filter `deleted_at`.
+ */
+export const getDailyAggregateValues = async (
+  user: string,
+  metric: MetricType,
+  start: Date,
+  end: Date,
+): Promise<Map<string, number>> => {
+  const rangeStart = new Date(start)
+  rangeStart.setUTCHours(0, 0, 0, 0)
+  const rangeEnd = new Date(end)
+  rangeEnd.setUTCHours(23, 59, 59, 999)
+
+  const result = await query(
+    user,
+    `SELECT date_trunc('day', time, 'UTC') AS day, MAX(value) AS value
+       FROM time_series
+      WHERE metric = $1 AND source = ANY($4)
+        AND time >= $2 AND time < $3
+        AND time < date_trunc('day', time, 'UTC') + interval '23:59:59.999'
+      GROUP BY 1
+      ORDER BY 1`,
+    [metric, rangeStart, rangeEnd, cumulativeSources],
+  )
+
+  return new Map(result.rows.map((row) => [(row.day as Date).toISOString().slice(0, 10), Number(row.value)]))
+}
