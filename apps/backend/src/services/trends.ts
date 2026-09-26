@@ -15,6 +15,7 @@ import {
 } from '@aurboda/api-spec'
 
 import { query } from '../db/index.ts'
+import { categoryPathMatchSql } from './screentime-sql.ts'
 
 /**
  * Natural log of 2, used for EMA decay calculation.
@@ -109,8 +110,8 @@ const calculateMetricTrend = async (
 }
 
 /**
- * Aggregates daily total duration (in hours) of productivity records whose
- * resolved_category path starts with the given category path, then applies EMA.
+ * Aggregates daily screentime span hours from `activities` whose category path
+ * is the given path or one of its sub-categories, then applies EMA.
  * Pattern is the category path joined by ' > ', e.g. "Work > Programming".
  */
 const calculateProductivityCategoryTrend = async (
@@ -141,11 +142,12 @@ const calculateProductivityCategoryTrend = async (
       LEFT JOIN (
         SELECT
           date_trunc('day', start_time AT TIME ZONE 'UTC')::date as day,
-          SUM(duration_sec) / 3600.0 as daily_hours
-        FROM productivity
+          SUM(EXTRACT(EPOCH FROM (end_time - start_time))) / 3600.0 as daily_hours
+        FROM activities
         WHERE deleted_at IS NULL
-          AND resolved_category IS NOT NULL
-          AND array_to_string(resolved_category, ' > ') LIKE $1 || '%'
+          AND superseded_by IS NULL
+          AND end_time IS NOT NULL
+          AND ${categoryPathMatchSql(1)}
           AND start_time > CURRENT_DATE - INTERVAL '1 day' * ($6::integer + 1)
         GROUP BY 1
       ) t ON d.day = t.day

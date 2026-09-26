@@ -14,7 +14,7 @@ import type {
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useLocation } from 'preact-iso'
-import { useCallback, useMemo, useState } from 'preact/hooks'
+import { useCallback, useEffect, useMemo, useState } from 'preact/hooks'
 
 import type { ChartOrigin } from '../../utils/chart-url'
 
@@ -39,6 +39,7 @@ import {
   updateUserSettings,
 } from '../../state/api'
 import { auth } from '../../state/auth'
+import { mapLegacyCategorySource } from './legacySource'
 import {
   boardReturnPath,
   chartWidgetMaskedFields,
@@ -48,7 +49,7 @@ import {
 } from './updateWidget'
 import './style.css'
 
-type SourceType = 'metric' | 'productivity_category' | 'activity_type'
+type SourceType = 'metric' | 'activity_type'
 type ChartType = 'trend' | 'bar'
 type BucketSize = '1m' | '5m' | '15m' | '1h' | '1d' | '1w' | '1M'
 
@@ -92,6 +93,8 @@ interface ChartState {
   activity_type_id: string
 }
 
+const LEGACY_CATEGORY_SOURCE = 'productivity_category'
+
 function parseQuery(query: Record<string, string>): ChartState {
   return {
     aggregation: (query.aggregation ?? 'count') as 'count' | 'mean' | 'sum',
@@ -101,8 +104,8 @@ function parseQuery(query: Record<string, string>): ChartState {
     display_period: (query.display_period ?? 'monthly') as TrendDisplayPeriod,
     half_life_days: Number(query.half_life_days) || 15,
     lookback_days: Number(query.lookback_days) || 90,
-    pattern: query.pattern ?? '',
-    source_type: (query.source_type ?? 'activity_type') as SourceType,
+    pattern: query.source_type === LEGACY_CATEGORY_SOURCE ? '' : (query.pattern ?? ''),
+    source_type: query.source_type === 'metric' ? 'metric' : 'activity_type',
     activity_type_id: query.activity_type_id ?? '',
   }
 }
@@ -148,25 +151,6 @@ function lookbackToRange(lookbackDays: number): { start: string; end: string } {
   return { end: end.toISOString(), start: start.toISOString() }
 }
 
-function CategoryPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const { data: categories = [] } = useQuery({
-    queryFn: fetchScreentimeCategories,
-    queryKey: ['screentime-categories'],
-    staleTime: 5 * 60 * 1000,
-  })
-
-  return (
-    <select value={value} onChange={(e) => onChange((e.target as HTMLSelectElement).value)}>
-      <option value="">Select a category...</option>
-      {categories.map((cat) => (
-        <option key={cat.id} value={cat.name.join(' > ')}>
-          {cat.name.join(' > ')}
-        </option>
-      ))}
-    </select>
-  )
-}
-
 /** Source picker shared between both chart modes. */
 function SourcePicker({
   state,
@@ -194,17 +178,11 @@ function SourcePicker({
         >
           <option value="activity_type">Activity Type</option>
           <option value="metric">Metric</option>
-          <option value="productivity_category">Screentime Category</option>
         </select>
       </label>
 
       <label class="source-picker">
-        {state.source_type === 'productivity_category' ? (
-          <>
-            Category
-            <CategoryPicker value={state.pattern} onChange={(pattern) => onUpdate({ pattern })} />
-          </>
-        ) : state.source_type === 'activity_type' ? (
+        {state.source_type === 'activity_type' ? (
           <>
             Activity Type
             <ActivityTypePicker
@@ -578,10 +556,7 @@ function buildWidgetFromState(
       half_life_days: state.half_life_days,
       lookback_days: state.lookback_days,
       pattern: state.pattern,
-      source_type:
-        state.source_type === 'activity_type' || state.source_type === 'metric'
-          ? state.source_type
-          : 'activity_type',
+      source_type: state.source_type,
       ...(state.activity_type_id ? { tag_definition_id: state.activity_type_id } : {}),
       ...(title ? { title } : {}),
     },
@@ -925,6 +900,9 @@ export function Chart() {
   const { query } = useLocation()
   const [state, setState] = useState(() => parseQuery(query))
   const [origin] = useState(() => parseChartOrigin(query))
+  const [legacyCategoryPath, setLegacyCategoryPath] = useState(() =>
+    query.source_type === LEGACY_CATEGORY_SOURCE ? (query.pattern ?? '') : null,
+  )
   const [showAddToDashboard, setShowAddToDashboard] = useState(false)
   const [showSetGoal, setShowSetGoal] = useState(false)
   const [goalMax, setGoalMax] = useState('')
@@ -939,6 +917,27 @@ export function Chart() {
     },
     [state, origin],
   )
+
+  const { data: screentimeCategories } = useQuery({
+    enabled: Boolean(isLoggedIn) && legacyCategoryPath !== null,
+    queryFn: fetchScreentimeCategories,
+    queryKey: ['screentime-categories'],
+    staleTime: 5 * 60 * 1000,
+  })
+
+  useEffect(() => {
+    if (legacyCategoryPath === null || !screentimeCategories) return
+    setLegacyCategoryPath(null)
+    handleUpdate(
+      mapLegacyCategorySource(
+        {
+          aggregation: query.aggregation as ChartState['aggregation'] | undefined,
+          pattern: legacyCategoryPath,
+        },
+        screentimeCategories,
+      ),
+    )
+  }, [legacyCategoryPath, screentimeCategories, handleUpdate, query.aggregation])
 
   if (!isLoggedIn) {
     return (
@@ -957,8 +956,8 @@ export function Chart() {
     <div class="chart-page">
       <h1>Chart Explorer</h1>
       <p class="chart-page-description">
-        Explore time-weighted averages (EMA) or raw bucketed data for activity types, metrics, and screentime
-        categories. Toggle between Trend and Bar chart modes.
+        Explore time-weighted averages (EMA) or raw bucketed data for activity types and metrics. Screentime
+        categories are activity types too. Toggle between Trend and Bar chart modes.
       </p>
 
       <ChartControls state={state} onUpdate={handleUpdate} />

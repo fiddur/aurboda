@@ -160,6 +160,11 @@ describe('getTrend', () => {
     expect(result.display_unit).toBe('hours per day')
     expect(result.current_value).toBe(3.1)
     expect(result.history).toHaveLength(2)
+
+    const sql = vi.mocked(db.query).mock.calls[0][1] as string
+    expect(sql).toContain('FROM activities')
+    expect(sql).toContain("starts_with(data->>'category_path', $1 || ' > ')")
+    expect(sql).not.toContain('FROM productivity')
   })
 
   test('uses sum aggregation for metrics when specified', async () => {
