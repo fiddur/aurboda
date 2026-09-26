@@ -14,6 +14,7 @@ import {
   type SleepMetricKey,
   parseSleepStages,
 } from '../../components/charts/sleep-utils'
+import { categoricalFields, categoricalValues } from '../../components/sessions/sessionView'
 import {
   fetchActivityById,
   fetchActivityTypeDefinitions,
@@ -33,6 +34,7 @@ import { resolveItemIcon } from '../../utils/emojiLookup'
 import { renderMarkdown } from '../../utils/markdown'
 import { ActivityChart } from './ActivityChart'
 import { ActivityMap } from './ActivityMap'
+import { ActivityNeighborsNav } from './ActivityNeighborsNav'
 import { type BuildActivityStatRowsInput, buildActivityStatRows } from './activityStats'
 import { type ActivityDraft, EditableActivityFields } from './EditableActivityFields'
 import { EntityActions, type EntityType } from './EntityActions'
@@ -46,6 +48,7 @@ import { MetricContent } from './MetricContent'
 import { MusicPlaylist } from './MusicPlaylist'
 import { NotesSection } from './NotesSection'
 import { ProductivityDetail } from './ProductivityDetail'
+import { SameValueSessions } from './SameValueSessions'
 import { activityRouteAfterSave } from './saveNavigation'
 import { SchemaDataFields } from './SchemaDataFields'
 import { ShareActivityButton } from './ShareActivityButton'
@@ -458,9 +461,12 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
 
   const invalidate = useCallback(
     () =>
-      queryClient.invalidateQueries({
-        queryKey: ['entity-detail', 'activity', entityId],
-      }),
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['entity-detail', 'activity', entityId] }),
+        // An edited name or time moves this activity between groups and neighbors
+        queryClient.invalidateQueries({ queryKey: ['activity-sessions'] }),
+        queryClient.invalidateQueries({ queryKey: ['activity-neighbors'] }),
+      ]),
     [queryClient, entityId],
   )
 
@@ -593,9 +599,22 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
   if (isError || !activity) return <p class="error">Failed to load activity</p>
 
   const allEntityIds = activity.source_records ? activity.source_records.map((r) => r.id) : undefined
+  const typeDef = typeDefinitions?.find((d) => d.name === activity.activity_type)
+  const groupValues = categoricalValues(
+    categoricalFields(typeDef?.data_schema),
+    activity.data as Record<string, unknown> | undefined,
+  )
+  const showSiblings = !isEditing && !activity.deleted_at
 
   return (
     <>
+      {showSiblings && (
+        <ActivityNeighborsNav
+          activityId={entityId}
+          typeLabel={typeDef?.display_name ?? toDisplayName(activity.activity_type)}
+          values={groupValues}
+        />
+      )}
       <EntityActions
         entityType="activity"
         entityId={rawEntityId}
@@ -649,6 +668,13 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
         onRevertOverride={() => revertOverrideMutation.mutate()}
         isReverting={revertOverrideMutation.isPending}
       />
+      {showSiblings && (
+        <SameValueSessions
+          activityType={activity.activity_type}
+          values={groupValues}
+          start={activity.merged_start_time ?? activity.start_time}
+        />
+      )}
       <NotesSection entityType="activity" entityId={rawEntityId} allEntityIds={allEntityIds} />
     </>
   )

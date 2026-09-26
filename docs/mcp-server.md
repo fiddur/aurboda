@@ -22,6 +22,15 @@ Key areas covered by MCP tools:
 | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `get_latest_sleep` | "How did I sleep last night?" -- the most recent sleep ending within 36 hours: timing, score, stage timeline and minutes, resting HR and HRV against 30-day baselines, Body Battery at bedtime and wake-up |
 
+### Activity session tools
+
+See [Activity types -- sessions overview](features/activity-types.md#sessions-overview).
+
+| Tool                      | What it does                                                                                                                                                                                                                                 |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `query_activity_sessions` | Sessions of one type, each with length, avg/max HR, HR-zone seconds and a box-plot summary of its HR samples; with `group_by` (a categorical data field) also one group per value, to compare repeats or pick a session by length and effort |
+| `get_activity_neighbors`  | The previous and next activity of the same type, optionally only those sharing a data field value (`same_field`, e.g. `session_name`)                                                                                                        |
+
 ### Comment tools
 
 Comments (stored as "notes") hang off anything, or off a bare point in time, and

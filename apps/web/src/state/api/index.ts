@@ -1,4 +1,5 @@
 export * from './activities'
+export * from './activity-sessions'
 export * from './activity-types'
 export * from './admin'
 export * from './audit'

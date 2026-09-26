@@ -7,6 +7,7 @@ import {
   deleteActivity,
   deleteGarminActivityWithWrongType,
   findActivityByExternalId,
+  findAdjacentActivity,
   findDeletedActivityByExternalId,
   getActivities,
   getActivityById,
@@ -351,6 +352,68 @@ describe('Activities Integration Tests', () => {
 
       expect(sessions).toHaveLength(1)
       expect(sessions[0].activity_type).toBe('sleep')
+    })
+  })
+
+  describe('findAdjacentActivity', () => {
+    const at = (iso: string) => new Date(iso)
+    const seed = async (user: string) => {
+      const ids = {
+        before: randomUUID(),
+        deleted: randomUUID(),
+        otherType: randomUUID(),
+        sameGroup: randomUUID(),
+        after: randomUUID(),
+        afterNamed: randomUUID(),
+      }
+      const yoga = (id: string, startIso: string, data?: Record<string, unknown>) =>
+        insertActivity(user, {
+          activity_type: 'yoga',
+          data,
+          end_time: new Date(at(startIso).getTime() + 30 * 60_000),
+          id,
+          source: 'garmin',
+          start_time: at(startIso),
+        })
+      await yoga(ids.before, '2024-01-10T07:00:00Z', { session_name: 'Flow' })
+      await yoga(ids.sameGroup, '2024-01-12T07:00:05Z')
+      await yoga(ids.after, '2024-01-13T07:00:00Z', { session_name: '' })
+      await yoga(ids.afterNamed, '2024-01-14T07:00:00Z', { session_name: 'Flow' })
+      await yoga(ids.deleted, '2024-01-11T07:00:00Z', { session_name: 'Flow' })
+      await deleteActivity(user, ids.deleted)
+      await insertActivity(user, {
+        activity_type: 'running',
+        id: ids.otherType,
+        source: 'garmin',
+        start_time: at('2024-01-12T12:00:00Z'),
+      })
+      return ids
+    }
+
+    test('nearest of the same type strictly before / after, skipping excluded and deleted rows', async () => {
+      const user = getTestUser()
+      const ids = await seed(user)
+      const time = at('2024-01-12T07:00:00Z')
+
+      expect((await findAdjacentActivity(user, 'yoga', 'previous', time, []))?.id).toBe(ids.before)
+      expect((await findAdjacentActivity(user, 'yoga', 'next', time, []))?.id).toBe(ids.sameGroup)
+      expect((await findAdjacentActivity(user, 'yoga', 'next', time, [ids.sameGroup]))?.id).toBe(ids.after)
+      expect(await findAdjacentActivity(user, 'yoga', 'previous', at('2024-01-10T07:00:00Z'), [])).toBeNull()
+      expect(await findAdjacentActivity(user, 'yoga', 'next', at('2024-01-14T07:00:00Z'), [])).toBeNull()
+    })
+
+    test('matches data filters, (none) meaning missing or empty', async () => {
+      const user = getTestUser()
+      const ids = await seed(user)
+      const time = at('2024-01-12T07:00:00Z')
+      const flow = [{ field: 'session_name', value: 'Flow' }]
+      const none = [{ field: 'session_name', value: null }]
+
+      expect((await findAdjacentActivity(user, 'yoga', 'next', time, [], flow))?.id).toBe(ids.afterNamed)
+      expect((await findAdjacentActivity(user, 'yoga', 'previous', time, [], flow))?.id).toBe(ids.before)
+      expect((await findAdjacentActivity(user, 'yoga', 'next', time, [ids.sameGroup], none))?.id).toBe(
+        ids.after,
+      )
     })
   })
 

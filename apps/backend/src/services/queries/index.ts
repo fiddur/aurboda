@@ -43,7 +43,15 @@ export { getPeriodSummary } from './period-summary.ts'
 
 export { queryTags } from './tags.ts'
 
-export { queryActivities } from './activities.ts'
+export { isExerciseLike, parseDataFilter, queryActivities } from './activities.ts'
+
+export {
+  type ActivitySessionsOptions,
+  queryActivitySessions,
+  sessionsOptionsFromQuery,
+} from './activity-sessions.ts'
+
+export { getActivityNeighbors } from './activity-neighbors.ts'
 
 export {
   type ActivityFullDetailOptions,

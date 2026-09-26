@@ -1,4 +1,6 @@
 import {
+  activityNeighborsQuerySchema,
+  activitySessionsQuerySchema,
   activityTypeSchema,
   bucketSizeSchema,
   dateOnlySchema,
@@ -18,12 +20,16 @@ import { getCustomMetrics } from '../services/mutations.ts'
 import {
   computeActivityDetailMetrics,
   getActivityFullDetail,
+  getActivityNeighbors,
   getDailySummary,
   getLocationSummary,
   getPeriodSummary,
   parseActivityId,
+  parseDataFilter,
   parseMetricsParam,
   queryActivities,
+  queryActivitySessions,
+  sessionsOptionsFromQuery,
   queryLocations,
   queryMetrics,
   queryMetricsBucketed,
@@ -178,27 +184,41 @@ Use cases:
     },
     async ({ data_filter, end, start, types, tz }) => {
       const requestedTypes = types ?? (await getAllActivityTypeNames(user))
-      const dataFilters = data_filter
-        ? data_filter
-            .split(',')
-            .map((segment) => {
-              const colonIdx = segment.indexOf(':')
-              if (colonIdx === -1) return null
-              const field = segment.slice(0, colonIdx).trim()
-              const rawValue = segment.slice(colonIdx + 1).trim()
-              return { field, value: rawValue === '(none)' ? null : rawValue }
-            })
-            .filter((f): f is { field: string; value: string | null } => f !== null)
-        : undefined
       const activities = await queryActivities(
         user,
         requestedTypes,
         new Date(start),
         new Date(end),
         sync,
-        dataFilters,
+        parseDataFilter(data_filter),
       )
       return tzJsonResponse({ data: activities, success: true }, tz)
+    },
+  )
+
+  server.tool(
+    'query_activity_sessions',
+    `Sessions of one activity type (descendant types included), newest first, each with duration, avg/max HR, HR-zone seconds and the five-number summary of its HR samples, plus the values of the type's data_schema fields.
+
+Pass group_by (a data field, typically one marked is_categorical, e.g. session_name) to also get one group per value — count, last done, duration range, median avg HR, max HR, summed zone seconds and the pooled HR distribution — for comparing or choosing sessions by length and exertion. filter_field + filter_value narrow to one value ("(none)" for sessions without one). Omit start for all time.`,
+    { activity_type: activityTypeSchema, ...activitySessionsQuerySchema.shape, tz: tzSchema },
+    async ({ activity_type, tz, ...query }) => {
+      if ((query.filter_field === undefined) !== (query.filter_value === undefined)) {
+        return errorResponse('filter_field and filter_value must be given together')
+      }
+      const sessions = await queryActivitySessions(user, activity_type, sessionsOptionsFromQuery(query))
+      return tzJsonResponse({ data: sessions, success: true }, tz)
+    },
+  )
+
+  server.tool(
+    'get_activity_neighbors',
+    'The previous and next activity of the same type as a given activity (plain or "merged:" id), skipping its other merged sources. With same_field, only activities sharing its value of that data field (e.g. the same session_name).',
+    { id: z.string().describe('Activity ID'), ...activityNeighborsQuerySchema.shape, tz: tzSchema },
+    async ({ id, same_field, tz }) => {
+      const neighbors = await getActivityNeighbors(user, id, same_field)
+      if (!neighbors) return errorResponse('Activity not found')
+      return tzJsonResponse({ data: neighbors, success: true }, tz)
     },
   )
 

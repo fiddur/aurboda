@@ -1,13 +1,17 @@
+import { isExerciseActivityType } from '@aurboda/api-spec'
+
 import type { ActivityType } from '../../schema.ts'
 import type { ActivityResult, CommentSummary, SyncProvider } from './types.ts'
 
 import {
+  type DataFilter,
   expandActivityTypes,
   getActivities,
+  getHrZoneSecsForWindows,
   getTimeSeries,
   getTimeSeriesMultiMetric,
 } from '../../db/index.ts'
-import { computeHrZoneSecs, getEffectiveHrZones, type HrZoneThresholds } from '../settings.ts'
+import { getEffectiveHrZones, type HrZoneSecs } from '../settings.ts'
 import { computeSleepMinutes } from '../sleep-duration.ts'
 import {
   computeActivitySummaryMetrics,
@@ -55,27 +59,36 @@ export function enrichSleepFields(result: ActivityResult, data: Record<string, u
   }
 }
 
+/**
+ * Parse a `"field:value,field2:value2"` data filter; `(none)` matches a missing or empty value.
+ * Segments without a colon are ignored.
+ */
+export const parseDataFilter = (raw: string | undefined): DataFilter[] | undefined =>
+  raw
+    ?.split(',')
+    .map((segment) => {
+      const colonIdx = segment.indexOf(':')
+      if (colonIdx === -1) return null
+      const field = segment.slice(0, colonIdx).trim()
+      const rawValue = segment.slice(colonIdx + 1).trim()
+      return { field, value: rawValue === '(none)' ? null : rawValue }
+    })
+    .filter((f): f is DataFilter => f !== null)
+
+/** A workout: the generic bucket, a Health Connect exercise subtype, or a custom type in the exercise category. */
+export const isExerciseLike = (activityType: string, categoryMap: Map<string, string>): boolean =>
+  isExerciseActivityType(activityType) || categoryMap.get(activityType) === 'exercise'
+
 interface EnrichmentContext {
-  hrZones: HrZoneThresholds | null
   hrvSeries: TimeSeriesPoint[]
   summarySeries: SummaryMetricSeries
   commentsMap: Map<string, CommentSummary[]>
 }
 
-/** Compute HR zone seconds from the HR samples within an activity window. */
-function hrZonesForActivity(
-  a: Awaited<ReturnType<typeof getActivities>>[number],
-  ctx: EnrichmentContext,
-): ActivityResult['hr_zone_secs'] {
-  if (!ctx.hrZones || a.activity_type !== 'exercise' || !a.end_time) return undefined
-  const hrSeries = ctx.summarySeries.heart_rate ?? []
-  const hrWindow = pointsInRange(hrSeries, a.start_time, a.end_time)
-  return hrWindow.length > 0 ? computeHrZoneSecs(hrWindow, ctx.hrZones) : undefined
-}
-
 function enrichActivity(
   a: Awaited<ReturnType<typeof getActivities>>[number],
   ctx: EnrichmentContext,
+  hrZoneSecs: HrZoneSecs | undefined,
 ): ActivityResult {
   const isMerged = 'source_ids' in a && Boolean(a.source_ids)
   // For merged rows, collect comments anchored to the winner and to any
@@ -89,7 +102,7 @@ function enrichActivity(
       ? Math.round((a.end_time.getTime() - a.start_time.getTime()) / 1000 / 60)
       : undefined,
     end_time: a.end_time?.toISOString(),
-    hr_zone_secs: hrZonesForActivity(a, ctx),
+    hr_zone_secs: hrZoneSecs,
     id: isMerged ? `merged:${a.id}` : a.id,
     override_target_ids: a.override_target_ids,
     source: a.source,
@@ -119,7 +132,7 @@ export async function queryActivities(
   start: Date,
   end: Date,
   sync?: SyncProvider,
-  dataFilters?: Array<{ field: string; value: string | null }>,
+  dataFilters?: DataFilter[],
   deductionRuleId?: string,
 ): Promise<ActivityResult[]> {
   // Fire-and-forget: trigger background sync so activity data is fresh for the next request
@@ -171,9 +184,22 @@ export async function queryActivities(
   const siblingIds = activities.flatMap((a) => a.source_ids ?? [])
   const commentLookupIds = [...new Set([...activityIds, ...siblingIds])]
 
+  // Zones come from SQL per activity window, so exercise subtypes (yoga, running, …) get them
+  // without pulling their whole span's time-series into memory.
+  const zoneActivities = activities.filter((a) => a.end_time && isExerciseLike(a.activity_type, categoryMap))
+  const hrZoneSecsForZoneActivities = async (): Promise<(HrZoneSecs | undefined)[]> => {
+    if (zoneActivities.length === 0) return []
+    const { zones } = await getEffectiveHrZones(user)
+    return getHrZoneSecsForWindows(
+      user,
+      zoneActivities.map((a) => ({ end: a.end_time!, start: a.start_time })),
+      zones,
+    )
+  }
+
   const emptySeries: SummaryMetricSeries = {}
-  const [hrZonesResult, summarySeries, hrvSeries, commentsMap] = await Promise.all([
-    expandedTypes.includes('exercise') ? getEffectiveHrZones(user) : Promise.resolve(null),
+  const [zoneSecs, summarySeries, hrvSeries, commentsMap] = await Promise.all([
+    hrZoneSecsForZoneActivities(),
     hasExerciseLike
       ? getTimeSeriesMultiMetric(user, [...SUMMARY_METRICS], span.from, span.to)
       : Promise.resolve(emptySeries),
@@ -181,12 +207,8 @@ export async function queryActivities(
     getCommentsMap(user, 'activity', commentLookupIds),
   ])
 
-  const ctx: EnrichmentContext = {
-    commentsMap,
-    hrvSeries,
-    hrZones: hrZonesResult?.zones ?? null,
-    summarySeries,
-  }
+  const ctx: EnrichmentContext = { commentsMap, hrvSeries, summarySeries }
+  const zoneSecsByActivity = new Map(zoneActivities.map((a, i) => [a, zoneSecs[i]]))
 
-  return activities.map((a) => enrichActivity(a, ctx))
+  return activities.map((a) => enrichActivity(a, ctx, zoneSecsByActivity.get(a)))
 }

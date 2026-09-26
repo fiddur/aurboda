@@ -16,8 +16,10 @@ vi.mock('../services/queries/index.ts', () => ({
   computeActivityDetailMetrics: vi.fn().mockResolvedValue({}),
   dedupeCommentsForIds: vi.fn(),
   getActivityFullDetail: vi.fn(),
+  getActivityNeighbors: vi.fn(),
   getCommentsMap: vi.fn(),
   parseActivityId: vi.fn(),
+  parseDataFilter: vi.fn(),
   parseMetricsParam: vi.fn(),
   queryActivities: vi.fn(),
   resolveActivityWindow: vi.fn(),
@@ -181,5 +183,36 @@ describe('POST /activities/:id/resync-detail', () => {
 
     expect(res.status).toBe(400)
     expect(resync).not.toHaveBeenCalled()
+  })
+})
+
+describe('GET /activities/:id/neighbors', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  test('passes the id and same_field through', async () => {
+    vi.mocked(queries.getActivityNeighbors).mockResolvedValue({
+      activity_type: 'yoga',
+      next: { id: `merged:${ACTIVITY_ID}`, start_time: '2026-06-09T07:00:00.000Z' },
+    })
+
+    const res = await supertest(buildApp()).get(
+      `/activities/merged:${ACTIVITY_ID}/neighbors?same_field=session_name`,
+    )
+
+    expect(res.status).toBe(200)
+    expect(res.body.data.next.id).toBe(`merged:${ACTIVITY_ID}`)
+    expect(queries.getActivityNeighbors).toHaveBeenCalledWith(
+      'tester',
+      `merged:${ACTIVITY_ID}`,
+      'session_name',
+    )
+  })
+
+  test('404s for an unknown activity, 400s for an invalid field name', async () => {
+    vi.mocked(queries.getActivityNeighbors).mockResolvedValue(null)
+    expect((await supertest(buildApp()).get(`/activities/${ACTIVITY_ID}/neighbors`)).status).toBe(404)
+    expect(
+      (await supertest(buildApp()).get(`/activities/${ACTIVITY_ID}/neighbors?same_field=Bad-Name`)).status,
+    ).toBe(400)
   })
 })

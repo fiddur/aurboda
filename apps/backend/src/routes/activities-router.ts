@@ -8,6 +8,9 @@ import {
   type ActivityFullDetailQuery,
   activityFullDetailQuerySchema,
   type ActivityFullDetailResponse,
+  type ActivityNeighborsQuery,
+  activityNeighborsQuerySchema,
+  type ActivityNeighborsResponse,
   type AddActivityBody,
   addActivityBodySchema,
   type AddActivityResponse,
@@ -48,8 +51,10 @@ import {
   computeActivityDetailMetrics,
   dedupeCommentsForIds,
   getActivityFullDetail,
+  getActivityNeighbors,
   getCommentsMap,
   parseActivityId,
+  parseDataFilter,
   parseMetricsParam,
   queryActivities,
   resolveActivityWindow,
@@ -168,27 +173,13 @@ export const createActivitiesRouter = (
         types = types.filter((t) => !excludeSet.has(t))
       }
 
-      // Parse data field filters (format: "field:value,field2:value2")
-      const dataFilters = dataFilterStr
-        ? dataFilterStr
-            .split(',')
-            .map((segment) => {
-              const colonIdx = segment.indexOf(':')
-              if (colonIdx === -1) return null
-              const field = segment.slice(0, colonIdx).trim()
-              const rawValue = segment.slice(colonIdx + 1).trim()
-              return { field, value: rawValue === '(none)' ? null : rawValue }
-            })
-            .filter((f): f is { field: string; value: string | null } => f !== null)
-        : undefined
-
       const activities = await queryActivities(
         user,
         types,
         new Date(start),
         new Date(end),
         syncProvider,
-        dataFilters,
+        parseDataFilter(dataFilterStr),
         deductionRuleId,
       )
       res.json({ data: activities, success: true })
@@ -369,6 +360,17 @@ export const createActivitiesRouter = (
         })),
         success: true,
       })
+    },
+  )
+
+  router.get<{ id: string }, ActivityNeighborsResponse, unknown, ActivityNeighborsQuery>(
+    '/activities/:id/neighbors',
+    authMiddleware,
+    validateQuery(activityNeighborsQuerySchema),
+    async (req, res) => {
+      const neighbors = await getActivityNeighbors(req.user!, req.params.id, req.query.same_field)
+      if (!neighbors) return res.status(404).json({ error: 'Activity not found', success: false })
+      res.json({ data: neighbors, success: true })
     },
   )
 
