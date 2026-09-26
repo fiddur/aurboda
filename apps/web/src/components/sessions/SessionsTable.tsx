@@ -81,7 +81,7 @@ export const SessionsTable = ({
             {showLabel && <th scope="col">Session</th>}
             <SortHeader label="Length" sortKey="duration" {...header} />
             <SortHeader label="Avg" sortKey="avg_hr" title="Average heart rate" {...header} />
-            <SortHeader label="Max" sortKey="max_hr" title="Maximum heart rate" {...header} />
+            <SortHeader label="Max" sortKey="max_hr" title="Maximum heart rate" optional {...header} />
             <SortHeader
               label="Z3+"
               sortKey="hard_minutes"
@@ -101,7 +101,10 @@ export const SessionsTable = ({
           {sorted.slice(0, shown).map((s) => (
             <tr key={s.id} class={isCurrent?.(s) ? 'session-current' : undefined}>
               <td class="session-date">
-                <a href={`/detail/activity/${s.id}`}>{format(new Date(s.start_time), 'yyyy-MM-dd HH:mm')}</a>
+                <a href={`/detail/activity/${s.id}`}>
+                  {format(new Date(s.start_time), 'yyyy-MM-dd')}
+                  <span class="session-secondary"> {format(new Date(s.start_time), 'HH:mm')}</span>
+                </a>
               </td>
               {showLabel && (
                 <td class="session-label">
@@ -110,7 +113,7 @@ export const SessionsTable = ({
               )}
               <td class="session-num">{s.duration === undefined ? '–' : formatMinutes(s.duration)}</td>
               <td class="session-num">{s.avg_hr === undefined ? '–' : Math.round(s.avg_hr)}</td>
-              <td class="session-num">{s.max_hr === undefined ? '–' : Math.round(s.max_hr)}</td>
+              <td class="session-num session-opt">{s.max_hr === undefined ? '–' : Math.round(s.max_hr)}</td>
               <td class="session-num session-opt">{hardMinutes(s.hr_zone_secs) ?? '–'}</td>
               <td>
                 <HrBoxPlot dist={s.hr} domain={domain} />

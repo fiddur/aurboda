@@ -45,5 +45,7 @@ export const HrBoxPlot = ({
 
 /** The shared axis's ends, for a column header. */
 export const HrAxisLabel = ({ domain }: { domain: [number, number] | null }) => (
-  <span class="hr-box-axis">{domain ? `HR ${domain[0]}–${domain[1]} bpm` : 'HR'}</span>
+  <span class="hr-box-axis">
+    HR{domain && <span class="session-secondary">{` ${domain[0]}–${domain[1]} bpm`}</span>}
+  </span>
 )

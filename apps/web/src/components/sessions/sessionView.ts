@@ -24,12 +24,18 @@ export const formatMinutes = (minutes: number): string => {
   return rest > 0 ? `${h} h ${rest} min` : `${h} h`
 }
 
+/** The spread of session lengths in minutes, e.g. "20–30"; undefined when they are all the same. */
+export const groupDurationRange = (group: ActivitySessionGroup): string | undefined => {
+  const { duration_max: max, duration_min: min } = group
+  return min !== undefined && max !== undefined && min !== max ? `${min}–${max}` : undefined
+}
+
 /** Median length, with the range when the sessions differ, e.g. "26 min (20–30)". */
 export const groupDurationLabel = (group: ActivitySessionGroup): string | undefined => {
   if (group.duration_median === undefined) return undefined
+  const range = groupDurationRange(group)
   const median = formatMinutes(group.duration_median)
-  const { duration_max: max, duration_min: min } = group
-  return min !== undefined && max !== undefined && min !== max ? `${median} (${min}–${max})` : median
+  return range ? `${median} (${range})` : median
 }
 
 /** Minutes at zone 3 or above: one exertion number that tells a gentle yin from a sweaty flow. */

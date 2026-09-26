@@ -216,8 +216,14 @@
 
 /* Phones: keep what a session is picked by (name, length, HR) and drop the rest. */
 @media (max-width: 640px) {
-  .session-opt {
+  .session-opt,
+  .session-secondary {
     display: none;
+  }
+
+  .sessions-table th,
+  .sessions-table td {
+    padding: 0.3rem 0.25rem;
   }
 
   .session-label {
@@ -225,7 +231,7 @@
   }
 
   .hr-box-plot {
-    width: 90px;
+    width: 80px;
   }
 
   .activity-neighbors-row {

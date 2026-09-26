@@ -8,6 +8,7 @@ import {
   fieldLabel,
   formatMinutes,
   groupDurationLabel,
+  groupDurationRange,
   groupHardMinutes,
   hardMinutes,
   hrDomain,
@@ -73,6 +74,8 @@ describe('formatting', () => {
       '26 min',
     )
     expect(groupDurationLabel(group('a'))).toBeUndefined()
+    expect(groupDurationRange(group('a', { duration_max: 30, duration_min: 20 }))).toBe('20–30')
+    expect(groupDurationRange(group('a', { duration_max: 26, duration_min: 26 }))).toBeUndefined()
   })
 
   test('hard minutes are zone 3 and up', () => {

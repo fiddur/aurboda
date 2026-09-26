@@ -14,7 +14,8 @@ import { HrZoneStrip } from '../../components/sessions/HrZoneStrip'
 import { SessionsTable } from '../../components/sessions/SessionsTable'
 import {
   fieldLabel,
-  groupDurationLabel,
+  formatMinutes,
+  groupDurationRange,
   groupHardMinutes,
   type GroupSortKey,
   hrDomain,
@@ -53,6 +54,7 @@ const GroupRow = ({
 }) => {
   const [open, setOpen] = useState(false)
   const hard = groupHardMinutes(group)
+  const range = groupDurationRange(group)
   const label = group.value === null ? `No ${fieldLabel(field).toLowerCase()}` : String(group.value)
 
   return (
@@ -65,11 +67,14 @@ const GroupRow = ({
         </td>
         <td class="session-num">{group.count}×</td>
         <td class="session-date session-opt">{format(new Date(group.last_start_time), 'yyyy-MM-dd')}</td>
-        <td class="session-num">{groupDurationLabel(group) ?? '–'}</td>
+        <td class="session-num">
+          {group.duration_median === undefined ? '–' : formatMinutes(group.duration_median)}
+          {range && <span class="session-secondary"> ({range})</span>}
+        </td>
         <td class="session-num">
           {group.avg_hr_median === undefined ? '–' : Math.round(group.avg_hr_median)}
         </td>
-        <td class="session-num">{group.max_hr === undefined ? '–' : Math.round(group.max_hr)}</td>
+        <td class="session-num session-opt">{group.max_hr === undefined ? '–' : Math.round(group.max_hr)}</td>
         <td class="session-num session-opt">{hard ?? '–'}</td>
         <td>
           <HrBoxPlot dist={group.hr} domain={domain} />
@@ -129,7 +134,7 @@ const GroupsTable = ({
               <th scope="col" title="Median of the sessions' average heart rate">
                 Avg
               </th>
-              <th scope="col" title="Highest heart rate in any session">
+              <th scope="col" class="session-opt" title="Highest heart rate in any session">
                 Max
               </th>
               <th scope="col" class="session-opt" title="Minutes in HR zone 3 or higher, per session">
