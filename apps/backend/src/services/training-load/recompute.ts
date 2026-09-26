@@ -5,7 +5,7 @@
  * Buckets are read from time_series at query time (see `query.ts`); the
  * current incomplete hour is computed on-the-fly there.
  */
-import type { TimeSeriesPoint } from '../../db/types.ts'
+import type { Activity, TimeSeriesPoint } from '../../db/types.ts'
 import type { ResolvedTrainingLoadSettings } from './banister.ts'
 import type { TrainingLoadDeps } from './deps.ts'
 
@@ -23,10 +23,16 @@ import { getOrCacheMaxObservedHr } from './hr-cache.ts'
 /** Maximum chunk size for recomputation (7 days in ms). */
 const RECOMPUTE_CHUNK_MS = 7 * 24 * MS_PER_HOUR
 
+/** The HR window read for an exercise; one without an end counts as an hour long. */
+export const exerciseWindow = (ex: Activity): { start: Date; end: Date } => ({
+  end: ex.end_time ?? new Date(ex.start_time.getTime() + MS_PER_HOUR),
+  start: ex.start_time,
+})
+
 /**
  * Recompute one chunk of impulse buckets [chunkStart, chunkEnd).
  *
- * Fetches exercises for the chunk, then HR samples per-exercise (bounded),
+ * Fetches exercises for the chunk, then HR samples for all their windows in one query (bounded),
  * and hourly calorie sums via DB-level aggregation. This keeps memory bounded
  * regardless of how much raw data exists.
  */
@@ -44,12 +50,12 @@ const recomputeChunk = async (
     deps.getHourlyCalorieSums(user, chunkStart, chunkEnd),
   ])
 
+  const hrPerExercise =
+    exercises.length > 0 ? await deps.getHrSamplesForWindows(user, exercises.map(exerciseWindow)) : []
   const training = new Map<string, number>()
-  for (const ex of exercises) {
-    const sessionEnd = ex.end_time ?? new Date(ex.start_time.getTime() + MS_PER_HOUR)
-    const hrSamples = await deps.getHrSamples(user, ex.start_time, sessionEnd)
-    processExercise(ex, hrSamples, hrMax, hrRest, settings.k_factor, training)
-  }
+  exercises.forEach((ex, i) => {
+    processExercise(ex, hrPerExercise[i] ?? [], hrMax, hrRest, settings.k_factor, training)
+  })
 
   const activity = new Map<string, number>()
   for (const [time, kcalSum] of hourlyCalories) {

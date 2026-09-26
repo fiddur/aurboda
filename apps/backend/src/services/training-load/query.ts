@@ -25,9 +25,11 @@ import {
   type ResolvedTrainingLoadSettings,
 } from './banister.ts'
 import { getOrCacheMaxObservedHr } from './hr-cache.ts'
-import { recomputeImpulseBuckets } from './recompute.ts'
+import { exerciseWindow, recomputeImpulseBuckets } from './recompute.ts'
 
 type TrainingLoadBucketSize = (typeof trainingLoadBucketSizes)[number]
+
+const BOOTSTRAP_MEMO_MS = 60 * 60 * 1000
 
 const mergeLiveHourImpulses = async (
   deps: TrainingLoadDeps,
@@ -82,14 +84,8 @@ const buildWorkoutList = async (
   const exercises = await deps.getExercises(user, start, end)
   if (exercises.length === 0) return []
 
-  // Fetch HR samples per exercise session in parallel (not the whole range)
-  // — avoids pulling months of 5-minute HR data when only a few sessions need it
-  const hrPerExercise = await Promise.all(
-    exercises.map((ex) => {
-      const sessionEnd = ex.end_time ?? new Date(ex.start_time.getTime() + MS_PER_HOUR)
-      return deps.getHrSamples(user, ex.start_time, sessionEnd)
-    }),
-  )
+  // Only the sessions' own windows, not the whole range: months of 5-minute HR data would be wasted
+  const hrPerExercise = await deps.getHrSamplesForWindows(user, exercises.map(exerciseWindow))
 
   const training = new Map<string, number>() // throwaway, just for reusing processExercise
   const workoutList: WorkoutTrimp[] = []
@@ -143,9 +139,18 @@ export const computeTrainingLoad = async (
   ])
 
   // Auto-bootstrap: if no watermark was set and no impulse buckets exist,
-  // trigger a full recompute from the extended start range
-  if (!watermark && trainingBuckets.length === 0 && activityBuckets.length === 0) {
+  // trigger a full recompute from the extended start range. A user without data
+  // gets nothing written, so a bootstrap that already covered this range is not
+  // repeated — for an hour, since not every ingestion path sets the watermark.
+  const covered = deps.bootstrappedFrom.get(user)
+  const now = Date.now()
+  const alreadyCovered =
+    covered !== undefined &&
+    now - covered.at < BOOTSTRAP_MEMO_MS &&
+    extendedStartHour.getTime() >= covered.fromHour
+  if (!watermark && trainingBuckets.length === 0 && activityBuckets.length === 0 && !alreadyCovered) {
     await recomputeImpulseBuckets(deps, user, extendedStartHour)
+    deps.bootstrappedFrom.set(user, { at: now, fromHour: extendedStartHour.getTime() })
     ;[trainingBuckets, activityBuckets] = await Promise.all([
       deps.getImpulseBuckets(user, 'training_impulse', extendedStartHour, effectiveEnd),
       deps.getImpulseBuckets(user, 'activity_impulse', extendedStartHour, effectiveEnd),

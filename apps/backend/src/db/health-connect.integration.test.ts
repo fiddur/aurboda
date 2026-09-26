@@ -1,3 +1,5 @@
+import type { DataSource } from '@aurboda/api-spec'
+
 import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest'
 
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
@@ -6,11 +8,12 @@ import { query } from './connection.ts'
 import {
   deleteHealthConnectRecords,
   getDailyAggregateValue,
+  getDailyAggregateValues,
   processDailyAggregate,
   processHealthConnectBatch,
   processHealthConnectData,
 } from './health-connect.ts'
-import { getTimeSeries } from './time-series.ts'
+import { deleteTimeSeriesPoint, getTimeSeries, insertTimeSeries } from './time-series.ts'
 
 const CONTAINER_TIMEOUT = 120_000
 
@@ -136,6 +139,64 @@ describe('Health Connect Integration Tests', () => {
 
       const result = await getDailyAggregateValue(user, 'steps', new Date('2024-01-15'))
       expect(result).toBeNull()
+    })
+  })
+
+  describe('getDailyAggregateValues', () => {
+    test('equals getDailyAggregateValue for every day in the range', async () => {
+      const user = getTestUser()
+      const steps = (iso: string, value: number, source: DataSource) => ({
+        metric: 'steps',
+        source,
+        time: new Date(iso),
+        value,
+      })
+      await insertTimeSeries(user, [
+        steps('2024-01-09T12:00:00Z', 111, 'health_connect_aggregate'),
+        // Several sources on one day; garmin is not a trusted cumulative source
+        steps('2024-01-10T00:00:00Z', 5000, 'health_connect_aggregate'),
+        steps('2024-01-10T13:00:00Z', 7000, 'aurboda'),
+        steps('2024-01-10T14:00:00Z', 90000, 'garmin'),
+        // 2024-01-11 has no rows
+        // The single-day window ends before 23:59:59.999, also on days inside the range
+        steps('2024-01-12T23:59:59.998Z', 4000, 'aurboda'),
+        steps('2024-01-12T23:59:59.999Z', 80000, 'aurboda'),
+        steps('2024-01-13T06:00:00Z', 3000, 'health_connect_aggregate'),
+        steps('2024-01-13T07:00:00Z', 6000, 'health_connect_aggregate'),
+        steps('2024-01-14T22:00:00Z', 2500, 'aurboda'),
+        steps('2024-01-15T00:00:00Z', 222, 'health_connect_aggregate'),
+      ])
+      // Neither version filters deleted_at
+      await deleteTimeSeriesPoint(user, 'steps', new Date('2024-01-13T07:00:00Z'), 'health_connect_aggregate')
+
+      const start = new Date('2024-01-10T15:00:00Z')
+      const end = new Date('2024-01-14T03:00:00Z')
+      const actual = await getDailyAggregateValues(user, 'steps', start, end)
+
+      const expected = new Map<string, number>()
+      for (const day of ['2024-01-10', '2024-01-11', '2024-01-12', '2024-01-13', '2024-01-14']) {
+        const value = await getDailyAggregateValue(user, 'steps', new Date(`${day}T12:00:00Z`))
+        if (value !== null) expected.set(day, value)
+      }
+      expect(actual).toEqual(expected)
+      expect([...actual.entries()]).toEqual([
+        ['2024-01-10', 7000],
+        ['2024-01-12', 4000],
+        ['2024-01-13', 6000],
+        ['2024-01-14', 2500],
+      ])
+    })
+
+    test('is empty when no day has a value', async () => {
+      const user = getTestUser()
+
+      const result = await getDailyAggregateValues(
+        user,
+        'steps',
+        new Date('2024-01-10T00:00:00Z'),
+        new Date('2024-01-12T00:00:00Z'),
+      )
+      expect(result.size).toBe(0)
     })
   })
 
