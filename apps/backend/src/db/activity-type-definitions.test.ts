@@ -14,6 +14,7 @@ import {
 
 vi.mock('./connection.ts', () => ({
   query: vi.fn(),
+  withUserTransaction: vi.fn((_user: string, fn: (tx: unknown) => Promise<unknown>) => fn({})),
 }))
 
 import { query } from './connection.ts'
@@ -428,17 +429,25 @@ describe('activity-type-definitions db', () => {
       .mockResolvedValueOnce({ command: 'SELECT', fields: [], oid: 0, rowCount: 1, rows: [targetDef] })
       // 3. Update target aliases
       .mockResolvedValueOnce({ command: 'UPDATE', fields: [], oid: 0, rowCount: 1, rows: [] })
-      // 4. Reassign activities
-      .mockResolvedValueOnce({ command: 'UPDATE', fields: [], oid: 0, rowCount: 3, rows: [] })
-      // 5. Reparent children of source to target
+      // 4. Drop soft-deleted rows that would collide with the target's
+      .mockResolvedValueOnce({ command: 'DELETE', fields: [], oid: 0, rowCount: 0, rows: [] })
+      // 5. Reassign activities: three live, one soft-deleted
+      .mockResolvedValueOnce({
+        command: 'UPDATE',
+        fields: [],
+        oid: 0,
+        rowCount: 4,
+        rows: [{ live: true }, { live: true }, { live: false }, { live: true }],
+      })
+      // 6. Reparent children of source to target
       .mockResolvedValueOnce({ command: 'UPDATE', fields: [], oid: 0, rowCount: 0, rows: [] })
-      // 6. Update deduction rules output_activity_type
+      // 7. Update deduction rules output_activity_type
       .mockResolvedValueOnce({ command: 'UPDATE', fields: [], oid: 0, rowCount: 1, rows: [] })
-      // 7. Update deduction rules conditions
+      // 8. Update deduction rules conditions
       .mockResolvedValueOnce({ command: 'UPDATE', fields: [], oid: 0, rowCount: 0, rows: [] })
-      // 8. Delete source
+      // 9. Delete source
       .mockResolvedValueOnce({ command: 'DELETE', fields: [], oid: 0, rowCount: 1, rows: [] })
-      // 9. Get updated target (getActivityTypeDefinition)
+      // 10. Get updated target
       .mockResolvedValueOnce({
         command: 'SELECT',
         fields: [],

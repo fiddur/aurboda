@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
+import { deleteActivity, getActivityById, insertActivity } from './activities/index.ts'
 import {
   deleteActivityTypeDefinition,
   expandActivityTypes,
@@ -278,6 +279,97 @@ describe('Hierarchical activity types', () => {
       await mergeActivityTypeDefinition(user, 'parent_a', 'parent_b')
       const leaf = await getActivityTypeDefinition(user, 'leaf_x')
       expect(leaf?.parent_type).toBe('parent_b')
+    })
+  })
+
+  describe('mergeActivityTypeDefinition with soft-deleted activities (#1193)', () => {
+    const seed = async (user: string, alias: string) => {
+      await insertActivityTypeDefinition(user, {
+        aliases: [alias],
+        display_name: 'Yin yoga',
+        display_category: 'exercise',
+        name: 'yinyoga',
+      })
+      const live = await insertActivity(user, {
+        activity_type: 'yinyoga',
+        end_time: new Date('2025-02-18T19:00:00Z'),
+        source: 'aurboda',
+        start_time: new Date('2025-02-18T18:00:00Z'),
+      })
+      const gone = await insertActivity(user, {
+        activity_type: 'yinyoga',
+        end_time: new Date('2025-02-11T19:00:00Z'),
+        source: 'aurboda',
+        start_time: new Date('2025-02-11T18:00:00Z'),
+      })
+      await deleteActivity(user, gone)
+      return { gone, live }
+    }
+
+    test('moves soft-deleted rows too, so the source definition can go', async () => {
+      const user = getTestUser()
+      const { gone, live } = await seed(user, 'yin')
+
+      const result = await mergeActivityTypeDefinition(user, 'yinyoga', 'yoga')
+
+      expect(result?.activities_reassigned).toBe(1)
+      expect(result?.target.aliases).toContain('yin')
+      expect(await getActivityTypeDefinition(user, 'yinyoga')).toBeNull()
+      expect((await getActivityById(user, live))?.activity_type).toBe('yoga')
+      const deleted = await getActivityById(user, gone, true)
+      expect(deleted?.activity_type).toBe('yoga')
+      expect(deleted?.deleted_at).toBeDefined()
+    })
+
+    test('a deleted source row that duplicates a target row is dropped rather than colliding', async () => {
+      const user = getTestUser()
+      await seed(user, 'yin')
+      const start = new Date('2025-03-04T18:00:00Z')
+      const kept = await insertActivity(user, {
+        activity_type: 'yoga',
+        end_time: new Date('2025-03-04T19:00:00Z'),
+        source: 'aurboda',
+        start_time: start,
+      })
+      const duplicate = await insertActivity(user, {
+        activity_type: 'yinyoga',
+        end_time: new Date('2025-03-04T19:00:00Z'),
+        source: 'aurboda',
+        start_time: start,
+      })
+      await deleteActivity(user, duplicate)
+
+      const result = await mergeActivityTypeDefinition(user, 'yinyoga', 'yoga')
+
+      expect(result?.activities_reassigned).toBe(1)
+      expect(await getActivityTypeDefinition(user, 'yinyoga')).toBeNull()
+      expect(await getActivityById(user, duplicate, true)).toBeNull()
+      expect((await getActivityById(user, kept))?.activity_type).toBe('yoga')
+    })
+
+    test('a failure part-way leaves nothing merged', async () => {
+      const user = getTestUser()
+      const { live } = await seed(user, 'yin_rolled_back')
+      await query(
+        user,
+        `CREATE FUNCTION block_type_delete() RETURNS trigger LANGUAGE plpgsql AS
+           $$ BEGIN RAISE EXCEPTION 'blocked'; END $$`,
+      )
+      await query(
+        user,
+        `CREATE TRIGGER block_type_delete BEFORE DELETE ON activity_type_definitions
+           FOR EACH ROW EXECUTE FUNCTION block_type_delete()`,
+      )
+      try {
+        await expect(mergeActivityTypeDefinition(user, 'yinyoga', 'yoga')).rejects.toThrow('blocked')
+      } finally {
+        await query(user, `DROP TRIGGER block_type_delete ON activity_type_definitions`)
+        await query(user, `DROP FUNCTION block_type_delete()`)
+      }
+
+      expect(await getActivityTypeDefinition(user, 'yinyoga')).not.toBeNull()
+      expect((await getActivityTypeDefinition(user, 'yoga'))?.aliases).not.toContain('yin_rolled_back')
+      expect((await getActivityById(user, live))?.activity_type).toBe('yinyoga')
     })
   })
 

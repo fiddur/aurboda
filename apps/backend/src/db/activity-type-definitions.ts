@@ -1,6 +1,8 @@
 import type { ActivityTypeDefinition, DataSchemaDefinition, DisplayCategory } from '@aurboda/api-spec'
 
-import { query } from './connection.ts'
+import type { Queryable } from './pool.ts'
+
+import { query, withUserTransaction } from './connection.ts'
 
 const mapRow = (row: Record<string, unknown>): ActivityTypeDefinition => ({
   aliases: (row.aliases as string[]) ?? [],
@@ -320,9 +322,24 @@ export const mergeActivityTypeDefinition = async (
   target: ActivityTypeDefinition
 } | null> => {
   if (sourceName === targetName) return null
+  return withUserTransaction(user, (tx) => mergeInTransaction(tx, sourceName, targetName))
+}
 
+/**
+ * All-or-nothing, so a failure part-way can't leave a half-merged type behind: aliases merged
+ * and activities moved, but the source definition still there.
+ */
+const mergeInTransaction = async (
+  tx: Queryable,
+  sourceName: string,
+  targetName: string,
+): Promise<{
+  activities_reassigned: number
+  deduction_rules_updated: number
+  target: ActivityTypeDefinition
+} | null> => {
   const sourceResult = await query(
-    user,
+    tx,
     `SELECT ${SELECT_COLS} FROM activity_type_definitions WHERE name = $1`,
     [sourceName],
   )
@@ -331,7 +348,7 @@ export const mergeActivityTypeDefinition = async (
   if (sourceDef.is_builtin) return null
 
   const targetResult = await query(
-    user,
+    tx,
     `SELECT ${SELECT_COLS} FROM activity_type_definitions WHERE name = $1`,
     [targetName],
   )
@@ -342,26 +359,41 @@ export const mergeActivityTypeDefinition = async (
     ...(targetDef.aliases ?? []),
     ...(sourceDef.aliases ?? []),
   ])
-  await query(user, `UPDATE activity_type_definitions SET aliases = $1, updated_at = NOW() WHERE name = $2`, [
+  await query(tx, `UPDATE activity_type_definitions SET aliases = $1, updated_at = NOW() WHERE name = $2`, [
     mergedAliases,
     targetName,
   ])
 
-  const activitiesResult = await query(
-    user,
-    `UPDATE activities SET activity_type = $1 WHERE activity_type = $2 AND deleted_at IS NULL`,
+  // Soft-deleted rows move too: they still reference the source definition (blocking its delete
+  // below), and a restored activity should land on a type that exists. A deleted row that would
+  // collide with the target's (source, type, start_time) unique index is dropped instead: the
+  // target already has that activity.
+  await query(
+    tx,
+    `DELETE FROM activities a
+      WHERE a.activity_type = $2 AND a.deleted_at IS NOT NULL AND a.external_id IS NULL
+        AND EXISTS (
+          SELECT 1 FROM activities b
+           WHERE b.activity_type = $1 AND b.source = a.source AND b.start_time = a.start_time
+             AND b.external_id IS NULL
+        )`,
     [targetName, sourceName],
   )
-  const activities_reassigned = activitiesResult.rowCount ?? 0
+  const activitiesResult = await query(
+    tx,
+    `UPDATE activities SET activity_type = $1 WHERE activity_type = $2 RETURNING deleted_at IS NULL AS live`,
+    [targetName, sourceName],
+  )
+  const activities_reassigned = activitiesResult.rows.filter((r) => r.live === true).length
 
   await query(
-    user,
+    tx,
     `UPDATE activity_type_definitions SET parent_type = $1, updated_at = NOW() WHERE parent_type = $2`,
     [targetName, sourceName],
   )
 
   const outputResult = await query(
-    user,
+    tx,
     `UPDATE deduction_rules SET output_activity_type = $1, updated_at = NOW() WHERE output_activity_type = $2`,
     [targetName, sourceName],
   )
@@ -369,7 +401,7 @@ export const mergeActivityTypeDefinition = async (
 
   // Update deduction rules: conditions JSONB where kind = 'activity' references the source type
   const conditionsResult = await query(
-    user,
+    tx,
     `UPDATE deduction_rules
      SET conditions = (
        SELECT jsonb_agg(
@@ -390,14 +422,16 @@ export const mergeActivityTypeDefinition = async (
   )
   deduction_rules_updated += conditionsResult.rowCount ?? 0
 
-  await query(user, `DELETE FROM activity_type_definitions WHERE name = $1 AND is_builtin = false`, [
+  await query(tx, `DELETE FROM activity_type_definitions WHERE name = $1 AND is_builtin = false`, [
     sourceName,
   ])
 
-  const updated = await getActivityTypeDefinition(user, targetName)
-  if (!updated) return null
+  const updated = await query(tx, `SELECT ${SELECT_COLS} FROM activity_type_definitions WHERE name = $1`, [
+    targetName,
+  ])
+  if (updated.rows.length === 0) return null
 
-  return { activities_reassigned, deduction_rules_updated, target: updated }
+  return { activities_reassigned, deduction_rules_updated, target: mapRow(updated.rows[0]) }
 }
 
 /** Only allowed for custom (non-built-in) types. New name must not already exist. */
