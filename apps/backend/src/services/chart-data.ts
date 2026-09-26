@@ -1,7 +1,7 @@
 import type { ChartDataBreakdownBucket, ChartDataBucket, ChartDataSourceType } from '@aurboda/api-spec'
 
 import { expandActivityTypes, getSourceFilter, getTimeSeries, query } from '../db/index.ts'
-import { SCREENTIME_ACTIVITY_TYPES_SQL } from '../db/screentime-activity-types.ts'
+import { categoryPathMatchSql } from './screentime-sql.ts'
 import { computeHrZoneSecs, getEffectiveHrZones } from './settings.ts'
 
 /** Map bucket_size parameter to PostgreSQL date_trunc interval name (day and above). */
@@ -229,11 +229,8 @@ const queryHrZoneBuckets = async (
 }
 
 /**
- * Reads screentime activities from the `activities` table so a
- * prefix match on data->>'category_path' walks the category hierarchy
- * (e.g. categoryPath='Work' matches 'Work', 'Work > Programming', etc.).
- * Activities are derived from productivity records during sync and
- * historical data is filled in by a one-shot backfill.
+ * Sums screentime span hours from `activities`, walking the category hierarchy
+ * by path prefix (categoryPath='Work' matches 'Work', 'Work > Programming').
  */
 const queryProductivityCategoryBuckets = async (
   user: string,
@@ -248,14 +245,10 @@ const queryProductivityCategoryBuckets = async (
     `SELECT ${bucket.expr} AS bucket_start,
             SUM(EXTRACT(EPOCH FROM (end_time - start_time))) / 3600.0 AS value
        FROM activities
-      WHERE activity_type IN ${SCREENTIME_ACTIVITY_TYPES_SQL}
-        AND deleted_at IS NULL
+      WHERE deleted_at IS NULL
         AND superseded_by IS NULL
         AND end_time IS NOT NULL
-        AND (
-          data->>'category_path' = $${bucket.params.length + 1}
-          OR starts_with(data->>'category_path', $${bucket.params.length + 1} || ' > ')
-        )
+        AND ${categoryPathMatchSql(bucket.params.length + 1)}
         AND start_time BETWEEN $${bucket.params.length + 2} AND $${bucket.params.length + 3}
       GROUP BY 1
       ORDER BY 1`,

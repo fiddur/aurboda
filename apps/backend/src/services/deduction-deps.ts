@@ -19,11 +19,11 @@ import {
   insertActivity as dbInsertActivity,
   insertDeductionRuleRun,
 } from '../db/index.ts'
-import { SCREENTIME_ACTIVITY_TYPES_SQL } from '../db/screentime-activity-types.ts'
 import { auditWarn } from './audit-log.ts'
 import { computeEnrichPatch } from './deduction-engine.ts'
 import { getPlaceVisits } from './locations.ts'
 import { updateActivity } from './mutations.ts'
+import { categoryPathMatchSql } from './screentime-sql.ts'
 
 const DEFAULT_SPAN_MS = 60 * 60 * 1000
 
@@ -64,16 +64,12 @@ const getScreentime = async (
   const result = await query(
     user,
     `SELECT start_time, end_time FROM activities
-     WHERE activity_type IN ${SCREENTIME_ACTIVITY_TYPES_SQL}
-       AND deleted_at IS NULL
+     WHERE deleted_at IS NULL
        AND superseded_by IS NULL
        AND end_time IS NOT NULL
        AND start_time < $3
        AND end_time > $2
-       AND (
-         data->>'category_path' = $1
-         OR starts_with(data->>'category_path', $1 || ' > ')
-       )
+       AND ${categoryPathMatchSql(1)}
      ORDER BY start_time`,
     [categoryPath, window.start, window.end],
   )

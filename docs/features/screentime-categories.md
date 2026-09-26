@@ -56,7 +56,17 @@ Clicking a category name opens its detail page showing:
 - **Uncategorized apps**: Apps with no category, with an "Add here" button to quickly assign them. You can match by app name, a keyword from the window title, or a custom term.
 - **Icon**: An emoji or image you can assign to the category (shown on the Timeline).
 
+## Screen Time as Activities
+
+Categorized screen time is stored as activity spans: consecutive records in the same category are merged into one activity whose type is the category's own activity type (shown on the category as its activity type name), with the category path kept on the activity (`data.category_path`). Excluded categories produce no spans. A category can reuse an existing activity type instead of minting its own; charts by category path then count only the screen time spans, not other activities of that type.
+
+Older screen time spans were stored under a single `screentime` activity type. On the first login after the upgrade they are retyped, once, to the activity type of the category whose path they carry; a span that already has a per-category twin is soft-deleted instead, and spans whose category no longer exists, or sits under an excluded category, stay `screentime`. Deleting a category keeps its spans and their activity type.
+
 ## Where Categories Appear
+
+### Charts
+
+The Chart Explorer (`/chart`) reaches a category through its activity type: pick it under **Activity Type**, with **Sum (hours)** aggregation for time spent. Old links using `source_type=productivity_category&pattern=<path>` open on the matching activity type. The API and MCP `query_chart_data` / trends still accept `source_type=productivity_category` with a category path, which counts that category's screen time spans including sub-categories.
 
 ### Timeline
 

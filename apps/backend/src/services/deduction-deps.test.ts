@@ -216,7 +216,7 @@ describe('createDefaultEngineDeps', () => {
       const lastCall = mockedQuery.mock.calls[mockedQuery.mock.calls.length - 1]
       const sql = lastCall[1] as string
       expect(sql).toContain('FROM activities')
-      expect(sql).toContain('FROM screentime_categories')
+      expect(sql).not.toMatch(/activity_type\s*(=|IN)/)
       expect(sql).not.toContain('FROM productivity')
     })
 
