@@ -121,7 +121,8 @@ export const buildSessions = (
         id,
         max_hr: numberFromData(a.data, 'max_hr') ?? hr?.max,
         start_time: a.start_time.toISOString(),
-        title: a.title,
+        // Rows map a NULL title to null, which the optional-string schema doesn't allow
+        title: a.title ?? undefined,
       }
     })
 

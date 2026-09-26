@@ -19,7 +19,13 @@ export const HrBoxPlot = ({
   const title = `HR ${Math.round(dist.min)} · ${Math.round(dist.q1)}–${Math.round(dist.q3)} (median ${Math.round(dist.median)}) · ${Math.round(dist.max)} bpm, ${dist.sample_count} samples`
 
   return (
-    <svg class="hr-box-plot" width={WIDTH} height={HEIGHT} role="img" aria-label={title}>
+    <svg
+      class="hr-box-plot"
+      viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
+      preserveAspectRatio="none"
+      role="img"
+      aria-label={title}
+    >
       <title>{title}</title>
       <line class="hr-box-whisker" x1={x(dist.min)} x2={x(dist.max)} y1={mid} y2={mid} />
       <line class="hr-box-whisker" x1={x(dist.min)} x2={x(dist.min)} y1={mid - 4} y2={mid + 4} />
@@ -38,13 +44,6 @@ export const HrBoxPlot = ({
 }
 
 /** The shared axis's ends, for a column header. */
-export const HrAxisLabel = ({ domain }: { domain: [number, number] | null }) =>
-  domain ? (
-    <span class="hr-box-axis" style={{ width: `${WIDTH}px` }}>
-      <span>{domain[0]}</span>
-      <span>HR bpm</span>
-      <span>{domain[1]}</span>
-    </span>
-  ) : (
-    <span>HR</span>
-  )
+export const HrAxisLabel = ({ domain }: { domain: [number, number] | null }) => (
+  <span class="hr-box-axis">{domain ? `HR ${domain[0]}–${domain[1]} bpm` : 'HR'}</span>
+)

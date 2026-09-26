@@ -23,15 +23,18 @@ const SortHeader = ({
   sort,
   onSort,
   title,
+  optional,
 }: {
   label: string
   sortKey: SessionSortKey
   sort: { key: SessionSortKey; desc: boolean }
   onSort: (key: SessionSortKey) => void
   title?: string
+  optional?: boolean
 }) => (
   <th
     scope="col"
+    class={optional ? 'session-opt' : undefined}
     title={title}
     aria-sort={sort.key === sortKey ? (sort.desc ? 'descending' : 'ascending') : undefined}
   >
@@ -51,18 +54,21 @@ export const SessionsTable = ({
   fields,
   isCurrent,
   showLabel = true,
+  domain: sharedDomain,
 }: {
   sessions: ActivitySession[]
   fields: DataFieldDefinition[]
   isCurrent?: (session: ActivitySession) => boolean
   showLabel?: boolean
+  /** The bpm axis of an enclosing table, so nested box plots line up with its rows. */
+  domain?: [number, number] | null
 }) => {
   const [sort, setSort] = useState<{ key: SessionSortKey; desc: boolean }>({ desc: true, key: 'date' })
   const [shown, setShown] = useState(PAGE)
   const onSort = (key: SessionSortKey) =>
     setSort((prev) => ({ desc: prev.key === key ? !prev.desc : true, key }))
 
-  const domain = hrDomain(sessions.map((s) => s.hr))
+  const domain = sharedDomain ?? hrDomain(sessions.map((s) => s.hr))
   const sorted = sortSessions(sessions, sort.key, sort.desc)
   const header = { onSort, sort }
 
@@ -80,12 +86,15 @@ export const SessionsTable = ({
               label="Z3+"
               sortKey="hard_minutes"
               title="Minutes in HR zone 3 or higher"
+              optional
               {...header}
             />
             <th scope="col">
               <HrAxisLabel domain={domain} />
             </th>
-            <th scope="col">Zones</th>
+            <th scope="col" class="session-opt">
+              Zones
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -102,11 +111,11 @@ export const SessionsTable = ({
               <td class="session-num">{s.duration === undefined ? '–' : formatMinutes(s.duration)}</td>
               <td class="session-num">{s.avg_hr === undefined ? '–' : Math.round(s.avg_hr)}</td>
               <td class="session-num">{s.max_hr === undefined ? '–' : Math.round(s.max_hr)}</td>
-              <td class="session-num">{hardMinutes(s.hr_zone_secs) ?? '–'}</td>
+              <td class="session-num session-opt">{hardMinutes(s.hr_zone_secs) ?? '–'}</td>
               <td>
                 <HrBoxPlot dist={s.hr} domain={domain} />
               </td>
-              <td>
+              <td class="session-opt">
                 <HrZoneStrip zones={s.hr_zone_secs} />
               </td>
             </tr>

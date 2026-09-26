@@ -150,14 +150,21 @@ describe('buildSessions', () => {
     expect(sessions[0]!.hr_zone_secs).toBeUndefined()
   })
 
-  test('an open-ended session has no duration and no HR', () => {
+  test('an open-ended session has no duration and no HR, and a NULL title is omitted', () => {
     const [session] = buildSessions(
-      [{ ...activity('a', '2026-09-01T07:00:00Z', 0), end_time: undefined }],
+      [
+        {
+          ...activity('a', '2026-09-01T07:00:00Z', 0),
+          end_time: undefined,
+          title: null as unknown as string,
+        },
+      ],
       [],
       new Map(),
       new Map(),
     )
     expect(session).toMatchObject({ duration: undefined, hr: undefined, id: 'a' })
+    expect(session).toHaveProperty('title', undefined)
   })
 })
 

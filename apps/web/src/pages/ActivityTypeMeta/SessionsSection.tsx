@@ -64,24 +64,24 @@ const GroupRow = ({
           </button>
         </td>
         <td class="session-num">{group.count}×</td>
-        <td class="session-date">{format(new Date(group.last_start_time), 'yyyy-MM-dd')}</td>
+        <td class="session-date session-opt">{format(new Date(group.last_start_time), 'yyyy-MM-dd')}</td>
         <td class="session-num">{groupDurationLabel(group) ?? '–'}</td>
         <td class="session-num">
           {group.avg_hr_median === undefined ? '–' : Math.round(group.avg_hr_median)}
         </td>
         <td class="session-num">{group.max_hr === undefined ? '–' : Math.round(group.max_hr)}</td>
-        <td class="session-num">{hard ?? '–'}</td>
+        <td class="session-num session-opt">{hard ?? '–'}</td>
         <td>
           <HrBoxPlot dist={group.hr} domain={domain} />
         </td>
-        <td>
+        <td class="session-opt">
           <HrZoneStrip zones={group.hr_zone_secs} />
         </td>
       </tr>
       {open && (
         <tr class="session-group-detail">
           <td colSpan={9}>
-            <SessionsTable sessions={sessions} fields={[field]} showLabel={false} />
+            <SessionsTable sessions={sessions} fields={[field]} showLabel={false} domain={domain} />
           </td>
         </tr>
       )}
@@ -122,7 +122,9 @@ const GroupsTable = ({
             <tr>
               <th scope="col">{fieldLabel(field)}</th>
               <th scope="col">Done</th>
-              <th scope="col">Last</th>
+              <th scope="col" class="session-opt">
+                Last
+              </th>
               <th scope="col">Length</th>
               <th scope="col" title="Median of the sessions' average heart rate">
                 Avg
@@ -130,13 +132,15 @@ const GroupsTable = ({
               <th scope="col" title="Highest heart rate in any session">
                 Max
               </th>
-              <th scope="col" title="Minutes in HR zone 3 or higher, per session">
+              <th scope="col" class="session-opt" title="Minutes in HR zone 3 or higher, per session">
                 Z3+
               </th>
               <th scope="col" title="Heart rate over all the sessions">
                 <HrAxisLabel domain={domain} />
               </th>
-              <th scope="col">Zones</th>
+              <th scope="col" class="session-opt">
+                Zones
+              </th>
             </tr>
           </thead>
           <tbody>

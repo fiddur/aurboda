@@ -31,6 +31,7 @@ import {
 } from '../../state/api'
 import { toDisplayName } from '../../utils/displayName'
 import { resolveItemIcon } from '../../utils/emojiLookup'
+import { hrZoneColors } from '../../utils/hrZones'
 import { renderMarkdown } from '../../utils/markdown'
 import { ActivityChart } from './ActivityChart'
 import { ActivityMap } from './ActivityMap'
@@ -100,7 +101,6 @@ export const resolveExerciseType = (activity: Activity): string | undefined => {
 }
 
 const hrZoneLabels = ['Rest', 'Zone 1', 'Zone 2', 'Zone 3', 'Zone 4', 'Zone 5']
-const hrZoneColors = ['#22c55e', '#22c55e', '#3b82f6', '#f59e0b', '#f97316', '#ef4444']
 
 const HrZoneBar = ({ zones }: { zones: Record<number, number> }) => {
   const total = Object.values(zones).reduce((s, v) => s + v, 0)

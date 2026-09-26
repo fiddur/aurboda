@@ -133,6 +133,8 @@
 
 .hr-box-plot {
   display: block;
+  width: 150px;
+  height: 18px;
 }
 
 .hr-box-whisker {
@@ -152,10 +154,7 @@
 }
 
 .hr-box-axis {
-  display: inline-flex;
-  justify-content: space-between;
   font-weight: 400;
-  font-size: 0.75rem;
 }
 
 .hr-zone-strip {
@@ -213,6 +212,36 @@
   margin: 0 0 0.5rem;
   font-size: 0.85rem;
   color: #6b7280;
+}
+
+/* Phones: keep what a session is picked by (name, length, HR) and drop the rest. */
+@media (max-width: 640px) {
+  .session-opt {
+    display: none;
+  }
+
+  .session-label {
+    min-width: 7rem;
+  }
+
+  .hr-box-plot {
+    width: 90px;
+  }
+
+  .activity-neighbors-row {
+    flex-wrap: wrap;
+  }
+
+  .activity-neighbors-scope {
+    order: -1;
+    flex-basis: 100%;
+    max-width: none;
+    text-align: center;
+  }
+
+  .activity-neighbors-title {
+    display: none;
+  }
 }
 
 @media (prefers-color-scheme: dark) {

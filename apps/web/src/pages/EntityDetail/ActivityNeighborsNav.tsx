@@ -9,8 +9,16 @@ import { fieldLabel } from '../../components/sessions/sessionView'
 import { fetchActivityNeighbors } from '../../state/api'
 import '../../components/sessions/sessions.css'
 
-const neighborLabel = (n: ActivityNeighbor) =>
-  `${format(new Date(n.start_time), 'EEE d MMM yyyy')}${n.title ? ` · ${n.title}` : ''}`
+const neighborDate = (n: ActivityNeighbor) => format(new Date(n.start_time), 'd MMM yyyy')
+
+const neighborLabel = (n: ActivityNeighbor) => `${neighborDate(n)}${n.title ? ` · ${n.title}` : ''}`
+
+const NeighborText = ({ n }: { n: ActivityNeighbor }) => (
+  <>
+    {neighborDate(n)}
+    {n.title && <span class="activity-neighbors-title"> · {n.title}</span>}
+  </>
+)
 
 const isTyping = (target: EventTarget | null): boolean =>
   target instanceof HTMLElement &&
@@ -55,7 +63,7 @@ const NeighborsRow = ({
     <div class="activity-neighbors-row">
       {previous ? (
         <a href={`/detail/activity/${previous.id}`} title={`Previous: ${neighborLabel(previous)}`}>
-          ← {neighborLabel(previous)}
+          ← <NeighborText n={previous} />
         </a>
       ) : (
         <span class="session-muted">No earlier</span>
@@ -65,7 +73,7 @@ const NeighborsRow = ({
       </span>
       {next ? (
         <a href={`/detail/activity/${next.id}`} title={`Next: ${neighborLabel(next)}`}>
-          {neighborLabel(next)} →
+          <NeighborText n={next} /> →
         </a>
       ) : (
         <span class="session-muted">No later</span>
