@@ -855,9 +855,9 @@ export type FeedPostReactionsResponse = z.infer<typeof feedPostReactionsResponse
  */
 export const seriesBucketSchema = z
   .string()
-  .regex(/^\d+[smh]$/, 'Must be {number}{unit} where unit is s, m, or h')
+  .regex(/^\d+[smhd]$/, 'Must be {number}{unit} where unit is s, m, h, or d')
   .meta({
-    description: 'Bucket size: {number}{unit} where unit is s (seconds), m (minutes), or h (hours)',
+    description: 'Bucket size: {number}{unit} where unit is s (seconds), m (minutes), h (hours), or d (days)',
     example: '5s',
     id: 'SeriesBucket',
   })
@@ -872,7 +872,9 @@ export const publicSeriesQuerySchema = z
   .object({
     bucket: seriesBucketSchema,
     end: iso8601DateTimeSchema.meta({ description: 'End of the requested window (ISO 8601)' }),
-    metric: metricTypeSchema.meta({ description: 'The single metric to fetch' }),
+    metric: z.string().min(1).meta({
+      description: 'Metric key, lowerCamelCase (`heartRate`); the `0.1` snake_case form is also accepted',
+    }),
     start: iso8601DateTimeSchema.meta({ description: 'Start of the requested window (ISO 8601)' }),
   })
   .meta({ id: 'PublicSeriesQuery' })

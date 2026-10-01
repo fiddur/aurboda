@@ -30,15 +30,15 @@ import {
   feedPostStructuredResponseSchema,
   type FeedStructuredPost,
   type TimelineImage,
-  type WellKnownAurboda,
+  wellKnownQuantpubSchema,
 } from '@aurboda/api-spec'
 import axios from 'axios'
 
 import { isValidUsername } from '../../api/auth-routes.ts'
-import { discoverInstance } from '../challenge-federation.ts'
 import { resolveStructuredPost } from '../feed-structured.ts'
 import { safeFetchGet } from '../safe-fetch.ts'
 import { withTimeout } from '../with-timeout.ts'
+import { normalizeStructuredActivity, normalizeWellKnownQuantpub } from './quant-wire.ts'
 
 /** Aurboda's object-dispatcher path: `/users/{identifier}/feed/{postId}` (postId is a UUID). */
 const FEED_OBJECT_PATH =
@@ -63,8 +63,11 @@ export const parseAurbodaFeedUrl = (raw: string): ParsedFeedObject | null => {
 }
 
 export interface AurbodaEnrichDeps {
-  /** Resolve an instance's federation metadata (throws if not an Aurboda host). */
-  discover: (base: string) => Promise<WellKnownAurboda>
+  /**
+   * Fetch an origin's raw QuantPub discovery document (`/.well-known/quantpub`),
+   * either version; `enrichFromAurboda` normalises and validates it.
+   */
+  discover: (base: string) => Promise<unknown>
   /** Fetch + JSON-decode a public URL (SSRF-guarded). */
   fetchStructured: (url: string) => Promise<unknown>
   /**
@@ -120,14 +123,22 @@ export const enrichFromAurboda = async (
   if (deps.local && parsed.origin === trimSlashes(deps.local.origin)) {
     return deps.local.resolve(parsed.user, parsed.postId, token)
   }
-  const wellKnown = await deps.discover(parsed.origin)
-  const base = `${trimSlashes(wellKnown.api_base)}/public/${encodeURIComponent(parsed.user)}/feed/${parsed.postId}`
+  const wellKnown = wellKnownQuantpubSchema.parse(
+    normalizeWellKnownQuantpub(await deps.discover(parsed.origin)),
+  )
+  const base = `${trimSlashes(wellKnown.apiBase)}/public/${encodeURIComponent(parsed.user)}/feed/${parsed.postId}`
   const url = token == null ? base : `${base}?token=${encodeURIComponent(token)}`
-  const body = await deps.fetchStructured(url)
-  const result = feedPostStructuredResponseSchema.safeParse(body)
+  const result = feedPostStructuredResponseSchema.safeParse(
+    normalizeStructuredResponse(await deps.fetchStructured(url)),
+  )
   if (!result.success) throw new Error('malformed structured response')
   return result.data.structured ?? null
 }
+
+const normalizeStructuredResponse = (body: unknown): unknown =>
+  typeof body === 'object' && body !== null && 'structured' in body
+    ? { ...body, structured: normalizeStructuredActivity(body.structured) }
+    : body
 
 /** Total time budget for one post's enrichment (discovery + structured fetch). */
 const ENRICH_TIMEOUT_MS = 12_000
@@ -135,7 +146,7 @@ const ENRICH_TIMEOUT_MS = 12_000
 export type TimelineEnricher = (objectUri: string, token?: string) => Promise<FeedStructuredPost | null>
 
 const realEnrichDeps = (origin: string): AurbodaEnrichDeps => ({
-  discover: discoverInstance,
+  discover: async (base) => (await safeFetchGet(`${trimSlashes(base)}/.well-known/quantpub`)).data,
   fetchStructured: async (url) => (await safeFetchGet(url)).data,
   local: {
     origin,

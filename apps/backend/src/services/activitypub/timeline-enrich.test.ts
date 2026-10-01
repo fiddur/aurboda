@@ -1,4 +1,4 @@
-import type { FeedStructuredActivity, WellKnownAurboda } from '@aurboda/api-spec'
+import type { FeedStructuredActivity, WellKnownQuantpub } from '@aurboda/api-spec'
 import type { AxiosResponse } from 'axios'
 
 import { AxiosError } from 'axios'
@@ -40,19 +40,19 @@ describe('parseAurbodaFeedUrl', () => {
   })
 })
 
-const wellKnown: WellKnownAurboda = {
-  api_base: 'https://aurboda.net/api',
-  federation: true,
+const wellKnown: WellKnownQuantpub = {
+  apiBase: 'https://aurboda.net/api',
   product: 'aurboda',
+  quantpub: '0.2',
   version: '1.0.0',
 }
 
 const structured: FeedStructuredActivity = {
-  activity_type: 'exercise',
+  activityType: 'exercise',
   kind: 'activity',
-  metrics: [{ key: 'heart_rate_avg', unit: 'bpm', value: 142 }],
+  metrics: [{ key: 'heartRateAvg', unit: 'bpm', value: 142 }],
   series: [],
-  start_time: '2026-07-01T08:00:00.000Z',
+  startTime: '2026-07-01T08:00:00.000Z',
 }
 
 describe('enrichFromAurboda', () => {
@@ -70,7 +70,7 @@ describe('enrichFromAurboda', () => {
     }
     const result = await enrichFromAurboda(`https://aurboda.net/users/fredrik/feed/${UUID}`, deps)
     expect(result).toEqual(structured)
-    // Discovery uses the object's origin; the structured URL uses the discovered api_base.
+    // Discovery uses the object's origin; the structured URL uses the discovered apiBase.
     expect(calls).toEqual([
       'discover:https://aurboda.net',
       `fetch:https://aurboda.net/api/public/fredrik/feed/${UUID}`,
@@ -78,13 +78,7 @@ describe('enrichFromAurboda', () => {
   })
 
   test('tolerates a kind-less payload from a peer on the previous release (tags it activity)', async () => {
-    // The un-tagged `FeedStructured` shape a peer running the previous release emits.
-    const legacy = {
-      activity_type: 'exercise',
-      metrics: [{ key: 'heart_rate_avg', unit: 'bpm', value: 142 }],
-      series: [],
-      start_time: '2026-07-01T08:00:00.000Z',
-    }
+    const { kind: _kind, ...legacy } = structured
     const deps: AurbodaEnrichDeps = {
       discover: async () => wellKnown,
       fetchStructured: async () => ({ structured: legacy, success: true }),
@@ -92,6 +86,51 @@ describe('enrichFromAurboda', () => {
     const result = await enrichFromAurboda(`https://aurboda.net/users/fredrik/feed/${UUID}`, deps)
     // The preprocess shim tags it `kind:'activity'` so it parses instead of being dropped.
     expect(result).toEqual(structured)
+  })
+
+  test('enriches from a QuantPub 0.1 origin (api_base discovery, snake_case payload) to 0.2', async () => {
+    const urls: string[] = []
+    const deps: AurbodaEnrichDeps = {
+      discover: async () => ({
+        api_base: 'https://vertmatch.run/api',
+        product: 'vertmatch',
+        quantpub: '0.1',
+        version: '3',
+      }),
+      fetchStructured: async (url) => {
+        urls.push(url)
+        return {
+          structured: {
+            activity_type: 'exercise',
+            duration_seconds: 2400,
+            end_time: '2026-07-01T08:40:00.000Z',
+            kind: 'activity',
+            metrics: [
+              { key: 'heart_rate_avg', unit: 'bpm', value: 142 },
+              { key: 'hr_zone_minutes', value: { z2: 22 } },
+            ],
+            series: [{ bucket: '5s', metric: 'heart_rate', samples: [], unit: 'bpm' }],
+            start_time: '2026-07-01T08:00:00.000Z',
+            title: 'Morning run',
+          },
+          success: true,
+        }
+      },
+    }
+    const result = await enrichFromAurboda(`https://vertmatch.run/users/fredrik/feed/${UUID}`, deps)
+    expect(urls).toEqual([`https://vertmatch.run/api/public/fredrik/feed/${UUID}`])
+    expect(result).toEqual({
+      activityType: 'exercise',
+      endTime: '2026-07-01T08:40:00.000Z',
+      kind: 'activity',
+      metrics: [
+        { key: 'heartRateAvg', unit: 'bpm', value: 142 },
+        { key: 'hrZoneMinutes', value: { z2: 22 } },
+      ],
+      name: 'Morning run',
+      series: [{ bucket: '5s', metric: 'heartRate', samples: [], unit: 'bpm' }],
+      startTime: '2026-07-01T08:00:00.000Z',
+    })
   })
 
   test('returns null (no fetch) for a non-Aurboda-shaped object URI', async () => {

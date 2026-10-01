@@ -420,7 +420,7 @@ export type WellKnownAurboda = z.infer<typeof wellKnownAurbodaSchema>
 /** QuantPub discovery document (FEP §4, `/.well-known/quantpub`). */
 export const wellKnownQuantpubSchema = z
   .object({
-    api_base: z
+    apiBase: z
       .string()
       .meta({ description: 'Absolute base URL under which the structured-post and series endpoints live' }),
     product: z.string().meta({ description: 'Free-form implementation identity' }),

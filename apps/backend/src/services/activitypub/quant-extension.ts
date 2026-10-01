@@ -30,12 +30,13 @@ import type { Object as APObject } from '@fedify/fedify/vocab'
 import type { ScalarMetric } from './object.ts'
 
 import { isPubliclyVisible } from './object.ts'
+import { toWireKey } from './quant-wire.ts'
 
 /** The QuantPub JSON-LD namespace (FEP §1; final IRI settles with the FEP number). */
 export const QUANT_NS = 'https://w3id.org/quantpub#'
 
 /** The QuantPub spec version this implementation speaks (discovery document §4). */
-export const QUANTPUB_VERSION = '0.1'
+export const QUANTPUB_VERSION = '0.2'
 
 /**
  * The inline `@context` entry defining the `quant:` prefix. `quant:metrics` and
@@ -89,7 +90,7 @@ export const quantExerciseExtension = (input: QuantExerciseInput): Record<string
   const props: Record<string, unknown> = {
     'quant:activityType': input.activityType,
     'quant:metrics': input.scalars.map(({ key, unit, value }) => ({
-      key,
+      key: toWireKey(key),
       ...(unit === undefined ? {} : { unit }),
       value,
     })),
@@ -98,7 +99,8 @@ export const quantExerciseExtension = (input: QuantExerciseInput): Record<string
   const endTime = input.endTime
   if (isPubliclyVisible(input.visibility) && endTime !== undefined && input.seriesMetrics.length > 0) {
     const bucket = input.seriesBucket ?? '5s'
-    props['quant:series'] = input.seriesMetrics.map((metric) => {
+    props['quant:series'] = input.seriesMetrics.map((internal) => {
+      const metric = toWireKey(internal)
       const params = new URLSearchParams({
         bucket,
         end: endTime.toISOString(),

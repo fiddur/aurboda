@@ -62,7 +62,7 @@ export const splitStats = (
       cells.push({ key: metric.key, label: summaryLabel(metric.key), value })
       continue
     }
-    // The only record-valued scalar today is hr_zone_minutes; render any future
+    // The only record-valued scalar today is HR-zone minutes; render any future
     // record the same way (key/value pairs) rather than dropping it.
     for (const [zone, minutes] of Object.entries(metric.value)) {
       zones.push({ minutes, zone: zoneName(zone) })

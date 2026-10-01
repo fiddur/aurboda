@@ -159,7 +159,8 @@ plus a `name` headline, addressed per the post's visibility
 `["Note", "quant:Exercise"]` and carries the typed [QuantPub](../fep/quantpub.md)
 extension in-band: the AS2 window as native `startTime`/`endTime`, plus
 `quant:activityType`, `quant:metrics` (the shared scalar summaries as
-`key`/`value`/`unit` objects), `quant:series` links into the public series endpoint
+`key`/`value`/`unit` objects, keys in lowerCamelCase such as `heartRateAvg`),
+`quant:series` links into the public series endpoint (`metric` such as `heartRate`)
 (only for `public`/`unlisted` posts with a bounded window), and
 `quant:structuredUrl` pointing at the structured post endpoint (carrying the
 capability token on `followers`-only deliveries). The `quant:` term definitions are
@@ -171,6 +172,18 @@ document. Fedify's typed vocabulary drops unknown properties, so the extension i
 spliced into the serialized JSON-LD of the outermost delivered/served object
 (`services/activitypub/quant-extension.ts`); plain fediverse clients ignore the
 extra type and terms and render the Note as before.
+
+**QuantPub versions.** Aurboda serves QuantPub `0.2`, whose payload layer is
+lowerCamelCase: the discovery document's `apiBase`, the structured payload's
+`activityType`/`startTime`/`endTime`/`name`, and metric keys (`heartRateAvg`,
+`hrZoneMinutes`, `heartRate`). Aurboda's own names stay snake_case (metric types,
+`included_metrics`, the owner-facing `FeedPost`, `/.well-known/aurboda`); the
+conversion is mechanical and happens at the boundary in
+`services/activitypub/quant-wire.ts`. It still accepts `0.1` (snake_case, with
+`api_base` and `duration_seconds`) from peers: inbound discovery documents and
+structured payloads are normalised to `0.2` before validation, and timeline entries
+stored before the switch were rewritten to `0.2` once by the
+`quantpub_0_2_structured_camelcase` migration.
 
 **Merged activities.** A post stores only `activity_id` (the plain anchor uuid). When that
 activity is part of a **merge group** (overlapping cross-source records, shown in the
@@ -523,7 +536,8 @@ id-convention path — reliable even when a typed consumer drops the in-band ext
 
 1. **Emit.** Every instance serves `GET /public/:username/feed/:postId` — a native JSON payload
    (`FeedStructuredPost`: a discriminated union on `kind`). An **activity** post resolves to
-   `FeedStructuredActivity` (activity type/window, typed scalar `metrics`, inline
+   `FeedStructuredActivity`, the QuantPub `0.2` payload (`activityType`, the
+   `startTime`/`endTime` window, `name`, typed scalar `metrics`, inline
    high-resolution `series` samples, and — only when the post attaches the route map
    (`include_map`) — a downsampled GPS `route` of timestamped points, capped at 500, from the
    same locations the route image draws), reusing the exact same scalar resolution as delivery
@@ -540,8 +554,9 @@ id-convention path — reliable even when a typed consumer drops the in-band ext
    structured payload and the images share one authorization boundary.
 2. **Detect + fetch.** On ingesting a `Create`/`Update`, if the note's id matches Aurboda's own
    object path (`/users/{user}/feed/{postId}` — a Mastodon status id never does, so no needless
-   request is made), the receiver discovers the peer via `/.well-known/aurboda` and fetches its
-   structured endpoint — the same path for an activity share or an article, since both federate
+   request is made), the receiver discovers the peer via `/.well-known/quantpub` (reading
+   `apiBase`, or `api_base` from a `0.1` peer) and fetches its structured endpoint, normalising a
+   `0.1` payload to `0.2` before storing it — the same path for an activity share or an article, since both federate
    as a `Note` and the object id doesn't distinguish them. For a `followers`-only post it lifts
    the capability token from the delivered image URL (the `?token=` embedded only in the
    follower's `Note`) and forwards it, so an accepted follower fetches the native payload while a
@@ -693,8 +708,12 @@ High-resolution series are **never** embedded in a post. Instead each shared ser
 exposed through a public, read-only endpoint:
 
 ```
-GET /public/:username/series?metric=<key>&start=<iso>&end=<iso>&bucket=<5s|60s|…>
+GET /public/:username/series?metric=<key>&start=<iso>&end=<iso>&bucket=<5s|60s|1h|1d|…>
 ```
+
+`metric` is the lowerCamelCase QuantPub key (`heartRate`); the `0.1` snake_case form
+(`heart_rate`) is also accepted, and the response's `metric` is always the camelCase
+form. An unknown key is the same plain 404 as any other unauthorized request.
 
 Like a shared-dashboard slug, it takes **no auth token** — so the scoping below is the
 _entire_ privacy boundary, and it is **data-driven, not obscurity-based**. A request
@@ -813,7 +832,7 @@ Public / federation (unauthenticated):
 | `GET /public/:username/feed/:postId/blocks/:index/image.svg` | Same article block as crisp `image/svg+xml`                                                                                                                           |
 | `GET /public/:username/posts`                                | A user's public/unlisted posts (newest-first, keyset page of 20 + `next_cursor`) for their profile feed                                                               |
 | `GET /.well-known/webfinger`                                 | Resolve `acct:<username>@<host>` → the actor                                                                                                                          |
-| `GET /.well-known/quantpub`                                  | QuantPub discovery document (FEP §4): product, versions, `api_base`                                                                                                   |
+| `GET /.well-known/quantpub`                                  | QuantPub discovery document (FEP §4): product, versions, `apiBase`                                                                                                    |
 | `GET /ns/quantpub`                                           | The published QuantPub JSON-LD `@context` document (`application/ld+json`)                                                                                            |
 | `GET /.well-known/nodeinfo`                                  | NodeInfo JRD pointing at the 2.1 document (#1047)                                                                                                                     |
 | `GET /nodeinfo/2.1`                                          | NodeInfo 2.1: software `aurboda` + version, `activitypub` protocol (no usage stats — per-user DBs)                                                                    |

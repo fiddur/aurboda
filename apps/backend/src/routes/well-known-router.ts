@@ -73,7 +73,7 @@ export const createWellKnownRouter = (config: WellKnownConfig): TypedRouter => {
   router.get<Record<string, never>, WellKnownQuantpub>('/.well-known/quantpub', (_req, res) => {
     res.setHeader('Cache-Control', 'public, max-age=3600')
     res.json({
-      api_base: config.apiBaseUrl,
+      apiBase: config.apiBaseUrl,
       product: 'aurboda',
       quantpub: QUANTPUB_VERSION,
       version: config.version,

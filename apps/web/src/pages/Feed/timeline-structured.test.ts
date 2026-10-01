@@ -21,7 +21,7 @@ const sample = (start: string, end: string, avg: number) => ({
 
 const hrSeries = {
   bucket: '5s',
-  metric: 'heart_rate',
+  metric: 'heartRate',
   samples: [
     sample('2026-07-01T08:00:00.000Z', '2026-07-01T08:00:10.000Z', 140),
     sample('2026-07-01T08:00:10.000Z', '2026-07-01T08:00:20.000Z', 145),
@@ -35,18 +35,18 @@ const route = [
 ]
 
 const structured = (over: Partial<FeedStructuredActivity> = {}): FeedStructuredActivity => ({
-  activity_type: 'exercise',
+  activityType: 'exercise',
   kind: 'activity',
   metrics: [],
   series: [],
-  start_time: '2026-07-01T08:00:00.000Z',
+  startTime: '2026-07-01T08:00:00.000Z',
   ...over,
 })
 
 const article: FeedStructuredPost = { blocks: [], kind: 'article', title: 'My analysis' }
 
 describe('structuredCombinedSeries', () => {
-  test('maps samples to [bucket midpoint, avg] chart points, carrying the unit', () => {
+  test('maps samples to [bucket midpoint, avg] chart points, carrying the unit and the internal metric name', () => {
     const result = structuredCombinedSeries(structured({ series: [hrSeries] }))
     expect(result).toEqual([
       {
@@ -87,8 +87,11 @@ describe('structuredRoutePoints', () => {
 })
 
 describe('native-render predicates', () => {
-  test('HR chart: only a drawable heart_rate series counts — not another metric (#1001)', () => {
+  test('HR chart: only a drawable heart-rate series counts — not another metric (#1001)', () => {
     expect(structuredHasNativeHrChart(structured({ series: [hrSeries] }))).toBe(true)
+    expect(structuredHasNativeHrChart(structured({ series: [{ ...hrSeries, metric: 'heart_rate' }] }))).toBe(
+      true,
+    )
     expect(structuredHasNativeHrChart(structured({ series: [{ ...hrSeries, metric: 'power' }] }))).toBe(false)
     expect(
       structuredHasNativeHrChart(

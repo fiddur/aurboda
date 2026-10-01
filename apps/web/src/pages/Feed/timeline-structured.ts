@@ -14,6 +14,8 @@ import type { FeedStructuredPost } from '@aurboda/api-spec'
 import type { CombinedChartSeries } from '../../components/charts/CombinedMetricChart'
 import type { RoutePoint } from '../../components/charts/RouteMap'
 
+import { fromWireKey } from '../../components/feed-metrics'
+
 /** A line (and a route polyline) needs at least two points to draw. */
 const MIN_DRAWABLE_POINTS = 2
 
@@ -23,7 +25,9 @@ const sampleTime = (sample: { start: string; end: string }): Date =>
 
 /**
  * The shared series as combined-chart input (bucket midpoint → avg), dropping
- * any series with fewer than two points (a line needs two).
+ * any series with fewer than two points (a line needs two). The chart keys its
+ * labels, colours and units on Aurboda's snake_case metric names, so the wire
+ * key is converted back.
  */
 export const structuredCombinedSeries = (
   structured: FeedStructuredPost | undefined,
@@ -32,7 +36,7 @@ export const structuredCombinedSeries = (
   return structured.series
     .map((series) => ({
       data: series.samples.map((sample) => [sampleTime(sample), sample.avg] as [Date, number]),
-      metric: series.metric,
+      metric: fromWireKey(series.metric),
       ...(series.unit === undefined ? {} : { unit: series.unit }),
     }))
     .filter((series) => series.data.length >= MIN_DRAWABLE_POINTS)
@@ -58,7 +62,7 @@ export const structuredHasNativeHrChart = (structured: FeedStructuredPost | unde
   structured != null &&
   structured.kind !== 'article' &&
   structured.series.some(
-    (series) => series.metric === 'heart_rate' && series.samples.length >= MIN_DRAWABLE_POINTS,
+    (series) => fromWireKey(series.metric) === 'heart_rate' && series.samples.length >= MIN_DRAWABLE_POINTS,
   )
 
 /** Whether the native interactive map actually renders (a polyline needs two points). */
