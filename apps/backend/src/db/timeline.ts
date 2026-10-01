@@ -343,8 +343,9 @@ export const getTimelineEntryByObjectUri = async (
 }
 
 /**
- * The replies this instance holds for one object, oldest first — the comments
- * under one of the owner's own posts. These are ordinary timeline rows: any
+ * The latest `limit` replies this instance holds for one object, oldest first —
+ * the comments under one of the owner's own posts. Past the cap it is the
+ * OLDEST that drop out, so a new comment always shows (#1109). These are ordinary timeline rows: any
  * actor's Note that replied to an existing own post is admitted on ingest
  * (#1060), so no network is involved in reading them back.
  *
@@ -359,10 +360,13 @@ export const listTimelineRepliesTo = async (
 ): Promise<TimelineEntryRecord[]> => {
   const result = await query<TimelineEntryRecord>(
     user,
-    `SELECT ${TIMELINE_COLUMNS} FROM timeline_entry
-     WHERE in_reply_to_uri = $1 AND boost_of_uri IS NULL
-     ORDER BY published_at ASC, id ASC
-     LIMIT $2`,
+    `SELECT * FROM (
+       SELECT ${TIMELINE_COLUMNS} FROM timeline_entry
+       WHERE in_reply_to_uri = $1 AND boost_of_uri IS NULL
+       ORDER BY published_at DESC, id DESC
+       LIMIT $2
+     ) latest
+     ORDER BY published_at ASC, id ASC`,
     [objectUri, limit],
   )
   return result.rows

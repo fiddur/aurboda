@@ -43,12 +43,12 @@ export function PostReplySummary({ post }: { post: FeedPost }) {
       >
         <span>🗨 {count}</span>
       </button>
-      {expanded && <PostReplies postId={post.id} />}
+      {expanded && <PostReplies postId={post.id} total={count} />}
     </>
   )
 }
 
-export function PostReplies({ postId }: { postId: string }) {
+export function PostReplies({ postId, total }: { postId: string; total: number }) {
   const query = useQuery({
     queryFn: () => fetchFeedPostReplies(postId),
     queryKey: postRepliesKey(postId),
@@ -62,6 +62,11 @@ export function PostReplies({ postId }: { postId: string }) {
 
   return (
     <div class="feed-post-comments">
+      {total > replies.length && (
+        <p class="feed-post-reactions-status">
+          Showing the latest {replies.length} of {total} replies
+        </p>
+      )}
       {replies.map((entry) => (
         <article key={entry.id} class="feed-post-comment">
           <TimelineEntryHead entry={entry} compact />

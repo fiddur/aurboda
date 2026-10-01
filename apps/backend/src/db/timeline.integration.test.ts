@@ -654,6 +654,24 @@ describe('Timeline store integration', () => {
       expect(await listTimelineRepliesTo(user, TARGET, 1)).toHaveLength(1)
     })
 
+    test('past the limit it keeps the LATEST replies, still oldest first (#1109)', async () => {
+      const user = getTestUser()
+      const base = Date.parse('2026-07-01T10:00:00Z')
+      for (let i = 0; i < 105; i++) {
+        await upsertTimelineEntry(user, {
+          ...entry(1),
+          in_reply_to_uri: TARGET,
+          object_uri: `https://mastodon.example/notes/reply-${i}`,
+          published_at: new Date(base + i * 60_000),
+        })
+      }
+
+      const replies = await listTimelineRepliesTo(user, TARGET, 100)
+      expect(replies.map((r) => r.object_uri)).toEqual(
+        Array.from({ length: 100 }, (_, i) => `https://mastodon.example/notes/reply-${i + 5}`),
+      )
+    })
+
     test('countTimelineRepliesTo tallies many targets in one query, omitting empty ones', async () => {
       const user = getTestUser()
       await upsertTimelineEntry(user, entry(1, { in_reply_to_uri: TARGET }))

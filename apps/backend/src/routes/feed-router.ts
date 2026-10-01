@@ -316,7 +316,7 @@ export const createFeedRouter = (
 
   // The comments under one of the owner's OWN posts: the replies this instance
   // already holds as timeline entries (any actor's Note answering an existing
-  // own post is admitted on ingest — #1060), oldest first. No network.
+  // own post is admitted on ingest — #1060), the latest 100 oldest first. No network.
   router.get<{ postId: string }, FeedPostRepliesResponse>(
     '/:postId/replies',
     authMiddleware,
