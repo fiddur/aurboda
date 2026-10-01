@@ -14,7 +14,7 @@ import {
   type TrendSourceType,
 } from '@aurboda/api-spec'
 
-import { query } from '../db/index.ts'
+import { getSourceFilter, query } from '../db/index.ts'
 import { categoryPathMatchSql } from './screentime-sql.ts'
 
 /**
@@ -50,6 +50,7 @@ const calculateMetricTrend = async (
 ): Promise<{ currentValue: number; history: TrendHistoryPoint[] }> => {
   const multiplier = aggregation === 'sum' ? displayPeriodMultipliers[displayPeriod] : 1
   const warmupDays = lookbackDays + 3 * halfLifeDays
+  const sources = getSourceFilter(metric)
 
   const result = await query(
     user,
@@ -73,6 +74,7 @@ const calculateMetricTrend = async (
         FROM time_series
         WHERE metric = $1
           AND time > CURRENT_DATE - INTERVAL '1 day' * ($6::integer + 1)
+          AND deleted_at IS NULL${sources ? '\n          AND source = ANY($7)' : ''}
         GROUP BY 1
       ) t ON d.day = t.day
     ),
@@ -94,7 +96,7 @@ const calculateMetricTrend = async (
     WHERE day >= CURRENT_DATE - INTERVAL '1 day' * $2::integer
     ORDER BY day
     `,
-    [metric, lookbackDays, LN2, multiplier, halfLifeDays, warmupDays],
+    [metric, lookbackDays, LN2, multiplier, halfLifeDays, warmupDays, ...(sources ? [sources] : [])],
   )
 
   const history: TrendHistoryPoint[] = result.rows

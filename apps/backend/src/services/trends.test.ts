@@ -1,9 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
+import type * as TimeSeries from '../db/time-series.ts'
+
 import * as db from '../db/index.ts'
 import { getTrend } from './trends.ts'
 
-vi.mock('../db', () => ({
+vi.mock('../db', async () => ({
+  getSourceFilter: (await vi.importActual<typeof TimeSeries>('../db/time-series.ts')).getSourceFilter,
   query: vi.fn(),
 }))
 
