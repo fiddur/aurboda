@@ -4,11 +4,11 @@
 
 ## Data Synced
 
-| Gravl Data     | Stored As                                     | Notes                                                                          |
-| -------------- | --------------------------------------------- | ------------------------------------------------------------------------------ |
-| Workouts       | `strength_training` activity, source `gravl`  | Keyed by `gravl-workout-<uuid>`; title is the workout name                     |
-| Sets           | `data.sets` array on the activity + a note    | One entry per set with the exercise repeated (the shape #1044 defines)         |
-| Workout totals | `data.volume_kg`, `data.calories`, `data.personal_record_count`, `data.set_count`, `data.exercise_count` | |
+| Gravl Data     | Stored As                                                                                                | Notes                                                                  |
+| -------------- | -------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| Workouts       | `strength_training` activity, source `gravl`                                                             | Keyed by `gravl-workout-<uuid>`; title is the workout name             |
+| Sets           | `data.sets` array on the activity + a note                                                               | One entry per set with the exercise repeated (the shape #1044 defines) |
+| Workout totals | `data.volume_kg`, `data.calories`, `data.personal_record_count`, `data.set_count`, `data.exercise_count` |                                                                        |
 
 Every workout is also preserved as raw JSON in the `raw_records` table (`record_type = 'gravl_workout'`).
 

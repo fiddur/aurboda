@@ -5,7 +5,6 @@
  */
 
 import { metricCardLookbackDays, type MetricCardConfig, type MetricCardData } from '@aurboda/api-spec'
-
 import { useQuery } from '@tanstack/react-query'
 import { endOfDay, startOfDay, subDays } from 'date-fns'
 

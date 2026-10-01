@@ -255,7 +255,9 @@ export const registerSyncTools = (
         return errorResponse('Gravl integration is not available on this server.')
       }
       if ((await gravl.connectionKind(user)) === null) {
-        return errorResponse('Gravl is not connected. Connect via OAuth or add a personal token in settings first.')
+        return errorResponse(
+          'Gravl is not connected. Connect via OAuth or add a personal token in settings first.',
+        )
       }
 
       try {

@@ -394,8 +394,8 @@ export function Correlations() {
       {activeTab.value === 'hrv' && (
         <>
           <p class="intro-text">
-            Analyze how different activities correlate with your {CONTEXT_METRIC_PHRASES[contextMetric.value]}.
-            Click a row to see the detailed before/during/after timeline.
+            Analyze how different activities correlate with your {CONTEXT_METRIC_PHRASES[contextMetric.value]}
+            . Click a row to see the detailed before/during/after timeline.
           </p>
 
           {isLoading && <div class="loading">Analyzing correlations...</div>}
@@ -567,7 +567,6 @@ export function Correlations() {
                   </div>
                 </section>
               )}
-
             </>
           )}
 

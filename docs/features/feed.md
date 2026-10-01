@@ -269,7 +269,7 @@ web's "Show replies" button on each timeline card renders it on demand.
 
 The snapshot also carries **`fetched`** (#1065): `false` means the origin's thread could not
 be read at all (the post never loaded, or it declared a `replies` collection we couldn't
-resolve). An empty list is then *unknown*, not *empty*, and the web says "Couldn't read the
+resolve). An empty list is then _unknown_, not _empty_, and the web says "Couldn't read the
 thread from `<host>`." instead of "No replies found" — a failed fetch that reads as an empty
 thread is a lie about someone else's conversation.
 
@@ -277,7 +277,7 @@ The reader's **own replies** to the same object are merged into the snapshot (ma
 `mine: true`, matched on the reply's `object_uri`). The origin need not list our Note yet —
 Mastodon adds it only once it has processed the `Create`, and a followers-only thread may
 never expose it — and a thread that hides its own reader's reply reads as if it were never
-sent. A reply the origin *does* list is kept as the origin's copy (that is what everyone else
+sent. A reply the origin _does_ list is kept as the origin's copy (that is what everyone else
 sees) and only flagged `mine`; one it doesn't is appended in `published_at` order.
 
 **Marker composition** (#1066): the card's markers compose rather than exclude each other —
@@ -337,7 +337,7 @@ date, a stat grid, **one combined multi-metric chart** with per-metric toggle bu
 **time-synced interactive map** that marks the position at the hovered chart time — the same
 components the activity detail view uses (#1011) — while an article shows the full inline
 article. Each delivered image is kept unless its native counterpart actually draws: the
-chart PNG renders heart rate only, so it is skipped exactly when a drawable *heart-rate*
+chart PNG renders heart rate only, so it is skipped exactly when a drawable _heart-rate_
 series is present, and the route PNG is skipped when the payload carries a drawable route.
 A `followers`-only Aurboda share federates
 its native payload to accepted followers too (via the capability token, see below), so a
@@ -354,7 +354,7 @@ every page (#1025). Cursors issued before that fix are still accepted, at their 
 Because the content was sanitised on ingest, the web client renders it directly.
 
 Two ingest guards keep the timeline honest given `object_uri` is a **globally-unique** upsert
-key: the note's id must be on the **sender's host** *and* it must declare `attributedTo` naming
+key: the note's id must be on the **sender's host** _and_ it must declare `attributedTo` naming
 the sender (so an accepted followee can't overwrite another actor's post by colliding its id —
 a note with no `attributedTo` at all is refused too, since every real implementation sets it);
 and `published_at` is **clamped to "not in the future"** on ingest (it's the sort key, so a
@@ -394,7 +394,7 @@ otherwise a bounded actor lookup, and a reaction we can't address fails with `50
 storing a row the card would lie about. Delivery itself is **best-effort** (like `Follow`): a
 failed POST is logged and the local state stands. Both toggles are **idempotent** — a second
 like is a local no-op with no second delivery, and un-reacting something you never reacted to
-changes nothing. Reacting to a **boost card** targets the *original* post, not the `Announce`.
+changes nothing. Reacting to a **boost card** targets the _original_ post, not the `Announce`.
 
 **Inbound.** A `Like`/`Announce` of one of **our own** posts is recorded in
 `feed_post_reaction` with a best-effort snapshot of the sender (handle / name / avatar), so the
@@ -406,7 +406,7 @@ undoing actor; when the `Undo`'s inner object doesn't resolve, the remote activi
 matched instead.
 
 An `Announce` **by an accepted followee of a third party's post** becomes a **boost card** in
-the home timeline. A boost is its own row: `object_uri` is the *`Announce` activity id* (so two
+the home timeline. A boost is its own row: `object_uri` is the _`Announce` activity id_ (so two
 followees boosting one post give two cards, and a boost never collides with the original's own
 entry), `boost_of_uri` is the announced Note's id, `boosted_by_*` the followee, and
 `published_at` is the boost time — so the card sorts where Mastodon puts it. Everything else
@@ -420,7 +420,7 @@ reblog of a post you already have).
 A boost card tracks the post it shows: the author's `Update{Note}` refreshes the **boost cards
 of that Note** as well as the direct entry (the card is keyed on the `Announce` id, so the
 ingest upsert alone would leave it showing pre-edit content), while its `published_at` stays at
-boost time so it doesn't jump on an edit. And a boost is never treated as a *reply*, even when
+boost time so it doesn't jump on an edit. And a boost is never treated as a _reply_, even when
 the boosted Note is one: it stays visible with `timeline_show_replies` off (Mastodon shows
 reblogs of replies), and it is left out of an own post's comment list + `reply_count`, which
 would otherwise show the same comment twice under someone else's byline.
@@ -445,7 +445,7 @@ outright, since showing who replied is the entire point of admitting it; a boost
 author, likewise, yields no card.
 
 `Undo{Announce}` removes the card, scoped to the booster; an author's `Delete` removes their
-post *and* every boost of it; unfollowing removes that actor's own posts and their boosts, but
+post _and_ every boost of it; unfollowing removes that actor's own posts and their boosts, but
 keeps other people's boosts of their posts (those are in the timeline on the booster's
 account).
 
@@ -462,7 +462,7 @@ permalinks) rather than a parallel one.
 
 **Outbound.** `POST /feed/timeline/:id/reply` (MCP `reply_to_timeline_post`) takes
 `{ message, visibility }` and resolves the target itself from the addressed timeline entry:
-the object is `boost_of_uri ?? object_uri` (replying to a **boost card** answers the *original*
+the object is `boost_of_uri ?? object_uri` (replying to a **boost card** answers the _original_
 post) and the author is the entry's `actor_uri` / `handle`. Nothing about the target is
 client-supplied, so a reply can never claim to answer a post the reader never received. The
 author's inbox resolves exactly as for a like — cached `feed_following` row, else a bounded
@@ -773,56 +773,56 @@ resolving.
 
 Owner-facing (authenticated, scoped to the caller):
 
-| Method & path                      | Purpose                                                                                                                 |
-| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `GET /feed`                        | My feed posts, newest-first, keyset-paginated (`?cursor=` from the previous page's `next_cursor`); each post enriched with the shared activity's title/type, merged-span window, and full structured payload |
-| `POST /feed/activities/:id/share`  | Publish an activity with a chosen metric selection                                                                      |
-| `POST /feed/articles`              | Publish a long-form **article** (title + prose + inline chart/correlation blocks)                                       |
-| `POST /feed/activities/:id/preview`| Live share **preview** (#902): the exact federated content + resolved metrics for a selection; creates nothing          |
-| `POST /feed/challenges`            | Share a **challenge invitation** (personal note + canonical link); exactly one of `challenge_id`/`participation_id`     |
-| `GET/POST /autoshare-rules` (+`/:id`, `/preview`) | [Auto-share rules](auto-share-rules.md): automatically publish matching settled activities (#903)         |
-| `PATCH /feed/articles/:postId`     | Edit an article (title / blocks / default window / visibility)                                                          |
-| `GET /feed/articles/:postId/export`| Export an article as paste-ready markdown (title + prose + one image link per block) for Reddit/text-only destinations  |
-| `PATCH /feed/:postId`              | Edit an activity post's selection / visibility / attachments                                                            |
-| `DELETE /feed/:postId`             | Unpublish any post (an activity post's public series stops resolving)                                                   |
-| `GET /feed/following`              | List the actors I follow (accepted + pending)                                                                           |
-| `POST /feed/following`             | Follow an actor by handle (`@user@host` or actor URL)                                                                   |
-| `DELETE /feed/following/:id`       | Unfollow (sends `Undo{Follow}`)                                                                                         |
-| `GET /feed/followers`              | List my followers; `?status=pending\|accepted\|all` (default `all`)                                                     |
-| `POST /feed/followers/:id/approve` | Approve a pending follow request (sends the deferred `Accept`)                                                          |
-| `DELETE /feed/followers/:id`       | Reject a request / remove a follower (sends `Reject`)                                                                   |
-| `GET /feed/timeline`               | My home timeline (posts from followees), newest-first, `?cursor=` to page                                               |
-| `GET /feed/timeline/stream`        | Server-Sent Events stream of live "new posts" pings (falls back to polling)                                             |
-| `POST/DELETE /feed/timeline/:id/like`  | Favourite ⭐ / un-favourite a timeline post (`Like` / `Undo{Like}`); idempotent, returns the updated entry           |
-| `POST/DELETE /feed/timeline/:id/boost` | Boost 🔄 / un-boost a timeline post (`Announce` / `Undo{Announce}`); idempotent, returns the updated entry           |
-| `GET /feed/timeline/:id/replies`   | Bounded snapshot of a timeline post's thread (origin's `replies` + my own replies merged); `fetched`/`partial`          |
-| `POST /feed/timeline/:id/reply`    | Reply 🗨 to a timeline post — publishes a `reply` post (`Create{Note inReplyTo}` + `Mention`); `visibility` defaults to `unlisted` |
-| `GET /feed/:postId/reactions`      | Who favourited or boosted one of MY posts (newest first, max 100)                                                       |
-| `GET /feed/:postId/replies`        | The comments received under one of MY posts (oldest first, max 100), as full timeline entries — no network fetch        |
+| Method & path                                     | Purpose                                                                                                                                                                                                      |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GET /feed`                                       | My feed posts, newest-first, keyset-paginated (`?cursor=` from the previous page's `next_cursor`); each post enriched with the shared activity's title/type, merged-span window, and full structured payload |
+| `POST /feed/activities/:id/share`                 | Publish an activity with a chosen metric selection                                                                                                                                                           |
+| `POST /feed/articles`                             | Publish a long-form **article** (title + prose + inline chart/correlation blocks)                                                                                                                            |
+| `POST /feed/activities/:id/preview`               | Live share **preview** (#902): the exact federated content + resolved metrics for a selection; creates nothing                                                                                               |
+| `POST /feed/challenges`                           | Share a **challenge invitation** (personal note + canonical link); exactly one of `challenge_id`/`participation_id`                                                                                          |
+| `GET/POST /autoshare-rules` (+`/:id`, `/preview`) | [Auto-share rules](auto-share-rules.md): automatically publish matching settled activities (#903)                                                                                                            |
+| `PATCH /feed/articles/:postId`                    | Edit an article (title / blocks / default window / visibility)                                                                                                                                               |
+| `GET /feed/articles/:postId/export`               | Export an article as paste-ready markdown (title + prose + one image link per block) for Reddit/text-only destinations                                                                                       |
+| `PATCH /feed/:postId`                             | Edit an activity post's selection / visibility / attachments                                                                                                                                                 |
+| `DELETE /feed/:postId`                            | Unpublish any post (an activity post's public series stops resolving)                                                                                                                                        |
+| `GET /feed/following`                             | List the actors I follow (accepted + pending)                                                                                                                                                                |
+| `POST /feed/following`                            | Follow an actor by handle (`@user@host` or actor URL)                                                                                                                                                        |
+| `DELETE /feed/following/:id`                      | Unfollow (sends `Undo{Follow}`)                                                                                                                                                                              |
+| `GET /feed/followers`                             | List my followers; `?status=pending\|accepted\|all` (default `all`)                                                                                                                                          |
+| `POST /feed/followers/:id/approve`                | Approve a pending follow request (sends the deferred `Accept`)                                                                                                                                               |
+| `DELETE /feed/followers/:id`                      | Reject a request / remove a follower (sends `Reject`)                                                                                                                                                        |
+| `GET /feed/timeline`                              | My home timeline (posts from followees), newest-first, `?cursor=` to page                                                                                                                                    |
+| `GET /feed/timeline/stream`                       | Server-Sent Events stream of live "new posts" pings (falls back to polling)                                                                                                                                  |
+| `POST/DELETE /feed/timeline/:id/like`             | Favourite ⭐ / un-favourite a timeline post (`Like` / `Undo{Like}`); idempotent, returns the updated entry                                                                                                   |
+| `POST/DELETE /feed/timeline/:id/boost`            | Boost 🔄 / un-boost a timeline post (`Announce` / `Undo{Announce}`); idempotent, returns the updated entry                                                                                                   |
+| `GET /feed/timeline/:id/replies`                  | Bounded snapshot of a timeline post's thread (origin's `replies` + my own replies merged); `fetched`/`partial`                                                                                               |
+| `POST /feed/timeline/:id/reply`                   | Reply 🗨 to a timeline post — publishes a `reply` post (`Create{Note inReplyTo}` + `Mention`); `visibility` defaults to `unlisted`                                                                           |
+| `GET /feed/:postId/reactions`                     | Who favourited or boosted one of MY posts (newest first, max 100)                                                                                                                                            |
+| `GET /feed/:postId/replies`                       | The comments received under one of MY posts (oldest first, max 100), as full timeline entries — no network fetch                                                                                             |
 
 Public / federation (unauthenticated):
 
-| Method & path                                                | Purpose                                                                                                    |
-| ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------- |
-| `GET /public/:username/series`                               | Bucketed samples for a **shared** series within its window                                                 |
+| Method & path                                                | Purpose                                                                                                                                                               |
+| ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /public/:username/series`                               | Bucketed samples for a **shared** series within its window                                                                                                            |
 | `GET /public/:username/feed/:postId`                         | Native structured post (`FeedStructuredPost`: an activity's typed metrics + inline series, or an article's title + resolved blocks) for Aurboda-to-Aurboda enrichment |
-| `GET /public/:username/feed/:postId/chart.png`               | Rendered HR chart (PNG) for an opted-in post (`?token=` for followers-only)                                |
-| `GET /public/:username/feed/:postId/chart.svg`               | Same HR chart as crisp `image/svg+xml` for Aurboda-native rendering (`?token=` for followers-only)         |
-| `GET /public/:username/feed/:postId/route.png`               | Rendered GPS route map for an opted-in post (`?token=` for followers-only)                                 |
-| `GET /public/:username/feed/:postId/blocks/:index/image.png` | Rendered PNG of an article's chart/correlation block (visibility-gated; `?token=` for followers-only)      |
-| `GET /public/:username/feed/:postId/blocks/:index/image.svg` | Same article block as crisp `image/svg+xml`                                                                |
-| `GET /public/:username/posts`                                | A user's public/unlisted posts (newest-first, keyset page of 20 + `next_cursor`) for their profile feed    |
-| `GET /.well-known/webfinger`                                 | Resolve `acct:<username>@<host>` → the actor                                                               |
-| `GET /.well-known/quantpub`                                  | QuantPub discovery document (FEP §4): product, versions, `api_base`                                        |
-| `GET /ns/quantpub`                                           | The published QuantPub JSON-LD `@context` document (`application/ld+json`)                                 |
-| `GET /.well-known/nodeinfo`                                  | NodeInfo JRD pointing at the 2.1 document (#1047)                                                          |
-| `GET /nodeinfo/2.1`                                          | NodeInfo 2.1: software `aurboda` + version, `activitypub` protocol (no usage stats — per-user DBs)         |
-| `GET /users/:username`                                       | The actor document (`Person`); a browser (`Accept: text/html`) is 302-redirected to `/u/:username`         |
-| `GET /users/:username/outbox`                                | Public + unlisted posts as `Create` activities                                                             |
-| `GET /users/:username/followers`                             | The actor's followers collection                                                                           |
-| `GET /users/:username/following`                             | The actor's following collection (accepted follows only)                                                   |
-| `GET /users/:username/feed/:postId`                          | A single post's `Note` — an activity share or an article (or `410` Tombstone once deleted)                 |
-| `POST /users/:username/inbox` (+ `/inbox`)                   | Inbound `Follow` / `Undo{Follow}` / `Accept` / `Reject` (HTTP-Signature verified)                          |
+| `GET /public/:username/feed/:postId/chart.png`               | Rendered HR chart (PNG) for an opted-in post (`?token=` for followers-only)                                                                                           |
+| `GET /public/:username/feed/:postId/chart.svg`               | Same HR chart as crisp `image/svg+xml` for Aurboda-native rendering (`?token=` for followers-only)                                                                    |
+| `GET /public/:username/feed/:postId/route.png`               | Rendered GPS route map for an opted-in post (`?token=` for followers-only)                                                                                            |
+| `GET /public/:username/feed/:postId/blocks/:index/image.png` | Rendered PNG of an article's chart/correlation block (visibility-gated; `?token=` for followers-only)                                                                 |
+| `GET /public/:username/feed/:postId/blocks/:index/image.svg` | Same article block as crisp `image/svg+xml`                                                                                                                           |
+| `GET /public/:username/posts`                                | A user's public/unlisted posts (newest-first, keyset page of 20 + `next_cursor`) for their profile feed                                                               |
+| `GET /.well-known/webfinger`                                 | Resolve `acct:<username>@<host>` → the actor                                                                                                                          |
+| `GET /.well-known/quantpub`                                  | QuantPub discovery document (FEP §4): product, versions, `api_base`                                                                                                   |
+| `GET /ns/quantpub`                                           | The published QuantPub JSON-LD `@context` document (`application/ld+json`)                                                                                            |
+| `GET /.well-known/nodeinfo`                                  | NodeInfo JRD pointing at the 2.1 document (#1047)                                                                                                                     |
+| `GET /nodeinfo/2.1`                                          | NodeInfo 2.1: software `aurboda` + version, `activitypub` protocol (no usage stats — per-user DBs)                                                                    |
+| `GET /users/:username`                                       | The actor document (`Person`); a browser (`Accept: text/html`) is 302-redirected to `/u/:username`                                                                    |
+| `GET /users/:username/outbox`                                | Public + unlisted posts as `Create` activities                                                                                                                        |
+| `GET /users/:username/followers`                             | The actor's followers collection                                                                                                                                      |
+| `GET /users/:username/following`                             | The actor's following collection (accepted follows only)                                                                                                              |
+| `GET /users/:username/feed/:postId`                          | A single post's `Note` — an activity share or an article (or `410` Tombstone once deleted)                                                                            |
+| `POST /users/:username/inbox` (+ `/inbox`)                   | Inbound `Follow` / `Undo{Follow}` / `Accept` / `Reject` (HTTP-Signature verified)                                                                                     |
 
 The actor's `icon` URL carries the avatar's upload time as a `?v=` version, and an avatar
 upload/removal delivers an `Update{Person}` to accepted followers — remote servers (Mastodon
@@ -917,7 +917,7 @@ These are known and intentional for the current implementation:
   custom-emoji reactions), and likes/boosts are not listed in the actor's `outbox` or on the
   public profile — they are a private-to-the-owner record plus the delivered activity.
 - **Remote cards carry no like/boost counts.** Mastodon does not push a post's totals to
-  subscribers, so a home-timeline card shows only *your own* reaction state. Counts appear on
+  subscribers, so a home-timeline card shows only _your own_ reaction state. Counts appear on
   the owner's own posts, from what was delivered to us.
 - **Boosts are not backfilled on follow.** The on-follow backfill reads the followee's outbox
   for their own posts; their earlier boosts don't appear retroactively.

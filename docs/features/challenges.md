@@ -49,13 +49,13 @@ base-URL federation identity, and the bucketed-data engine behind dashboards.
 
 Endpoints (under each instance's API base):
 
-| Endpoint                                | Auth              | Purpose                                                                               |
-| --------------------------------------- | ----------------- | ------------------------------------------------------------------------------------- |
-| `GET /.well-known/aurboda`              | none              | Discovery: `{ product, version, federation, api_base }`                               |
-| `GET /public/:username/:slug`           | none              | Resolve a slug → dashboard or challenge spec (incl. `join_token`, public member list) |
-| `POST /public/:username/:slug/members`  | none              | Register-back: a joining instance adds itself as a remote member                      |
-| `GET /public/:username/:slug/standings` | none (slug-gated) | Host-aggregated standings (`?refresh=1` busts the cache)                              |
-| `GET /challenge-data/:username/:token`  | none (token)      | A member instance serves its own series for one challenge                             |
+| Endpoint                                | Auth              | Purpose                                                                                  |
+| --------------------------------------- | ----------------- | ---------------------------------------------------------------------------------------- |
+| `GET /.well-known/aurboda`              | none              | Discovery: `{ product, version, federation, api_base }`                                  |
+| `GET /public/:username/:slug`           | none              | Resolve a slug → dashboard or challenge spec (incl. `join_token`, public member list)    |
+| `POST /public/:username/:slug/members`  | none              | Register-back: a joining instance adds itself as a remote member                         |
+| `GET /public/:username/:slug/standings` | none (slug-gated) | Host-aggregated standings (`?refresh=1` busts the cache)                                 |
+| `GET /challenge-data/:username/:token`  | none (token)      | A member instance serves its own series for one challenge                                |
 | `GET /public/:username/dashboards`      | none              | Public profile listing: public dashboards + public challenges (name, link, window, spec) |
 
 **Join (canonical: "join by challenge URL on your own instance B", host = A):**

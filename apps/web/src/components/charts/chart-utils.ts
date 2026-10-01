@@ -31,8 +31,7 @@ export const countRightAxes = (hasHypnogram: boolean, overlays: { showAxis: bool
  * maximum instead squeezed the plot to half a phone card's width when only
  * one metric was shown (the common feed-card case).
  */
-export const chartRightMargin = (rightAxes: number): number =>
-  rightAxes === 0 ? 14 : rightAxes * 45 + 20
+export const chartRightMargin = (rightAxes: number): number => (rightAxes === 0 ? 14 : rightAxes * 45 + 20)
 
 export const findNearest = (data: [Date, number][], targetTime: Date): [Date, number] | undefined => {
   if (data.length === 0) return undefined

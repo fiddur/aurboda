@@ -2,9 +2,9 @@
 
 A comment is a short piece of free text you attach to something you tracked --
 or to a bare moment, when there is nothing to attach it to yet. Comments are
-what turn a wall of numbers into a record you can read back: *"felt dizzy right
-after this"*, *"third night in a row with the window open"*, *"this meal was way
-too salty"*.
+what turn a wall of numbers into a record you can read back: _"felt dizzy right
+after this"_, _"third night in a row with the window open"_, _"this meal was way
+too salty"_.
 
 Internally they live in the `notes` table (the API and MCP tools still call them
 notes), one row per comment. See
@@ -86,12 +86,12 @@ list forever as loose day-level notes in the daily summary.
 
 ## REST API
 
-| Method   | Path          | What it does                                                                                         |
-| -------- | ------------- | ---------------------------------------------------------------------------------------------------- |
-| `GET`    | `/notes`      | `?entity_type=&entity_id=` for one entity's comments, or `?from=&to=` for every comment in a window   |
-| `POST`   | `/notes`      | Create a comment in any of the three shapes                                                          |
-| `PATCH`  | `/notes/:id`  | Change `content`; `start_time`/`end_time` only on a `time` comment                                    |
-| `DELETE` | `/notes/:id`  | Delete a comment (and, for a root, its replies)                                                      |
+| Method   | Path         | What it does                                                                                        |
+| -------- | ------------ | --------------------------------------------------------------------------------------------------- |
+| `GET`    | `/notes`     | `?entity_type=&entity_id=` for one entity's comments, or `?from=&to=` for every comment in a window |
+| `POST`   | `/notes`     | Create a comment in any of the three shapes                                                         |
+| `PATCH`  | `/notes/:id` | Change `content`; `start_time`/`end_time` only on a `time` comment                                  |
+| `DELETE` | `/notes/:id` | Delete a comment (and, for a root, its replies)                                                     |
 
 Both `GET` shapes return thread roots with `replies` nested. Setting times on a
 comment that is anchored to an entity is a `400`.
