@@ -255,6 +255,11 @@ export const updateFoodItem = async (
   return result.rows.length > 0 ? mapFoodItemRow(result.rows[0]) : null
 }
 
+export const FOOD_ITEM_USED_AS_INGREDIENT_ERROR =
+  'Cannot delete: this food item is used as an ingredient in one or more recipes. Remove it from those recipes (or merge into a replacement) first.'
+
+export type DeleteFoodItemResult = 'deleted' | 'not_found' | 'used_as_ingredient'
+
 /**
  * Delete a food item by ID.
  *
@@ -272,7 +277,7 @@ export const updateFoodItem = async (
  *   by design; the dangling pointer is acceptable because every nutrient
  *   value the meal needs is already snapshotted onto the junction row.
  */
-export const deleteFoodItem = async (user: string, id: string): Promise<boolean> =>
+export const deleteFoodItem = async (user: string, id: string): Promise<DeleteFoodItemResult> =>
   withUserTransaction(user, async (tx) => {
     // Re-check inside the txn with FOR SHARE so a concurrent INSERT into
     // food_item_ingredients blocks until our transaction completes — without
@@ -283,11 +288,7 @@ export const deleteFoodItem = async (user: string, id: string): Promise<boolean>
       'SELECT 1 FROM food_item_ingredients WHERE ingredient_food_item_id = $1 LIMIT 1 FOR SHARE',
       [id],
     )
-    if (usedAsIngredient.rows.length > 0) {
-      throw new Error(
-        'Cannot delete: this food item is used as an ingredient in one or more recipes. Remove it from those recipes (or merge into a replacement) first.',
-      )
-    }
+    if (usedAsIngredient.rows.length > 0) return 'used_as_ingredient'
     // Reference dangling: NULL out every pointer to this id.
     await query(
       tx,
@@ -299,7 +300,7 @@ export const deleteFoodItem = async (user: string, id: string): Promise<boolean>
     // Portion sizings — owned by this food; drop alongside the food itself.
     await query(tx, 'DELETE FROM food_item_portions WHERE food_item_id = $1', [id])
     const result = await query(tx, 'DELETE FROM food_items WHERE id = $1', [id])
-    return (result.rowCount ?? 0) > 0
+    return (result.rowCount ?? 0) > 0 ? 'deleted' : 'not_found'
   })
 
 /**

@@ -124,7 +124,7 @@ Logging on the base unit uses the legacy free-form `quantity` + `unit` path, unc
 - `GET /food-items/:id` -- detail; includes `portions[]`, `effective_default_portion_id`, composite ingredients/derived nutrients, reference enrichment, sensitivities
 - `POST /food-items` -- create a per-user food item
 - `PATCH /food-items/:id` -- update a per-user food item (does **not** accept `default_portion_id` -- use the dedicated endpoint below)
-- `DELETE /food-items/:id` -- delete a per-user food item
+- `DELETE /food-items/:id` -- delete a per-user food item (409 while it is an ingredient of a recipe: remove it from those recipes, or merge it into a replacement, first)
 - `POST /food-items/:id/duplicate` -- duplicate into a fresh per-user copy named `"<name> (copy)"` (deduped); copies nutrients, defaults, composite ingredients, portions, reference, and sensitivities. Works on per-user **and** central items (a central copy becomes an editable per-user fork). Returns the new copy's detail.
 - `GET /food-items/:id/portions` -- list portions
 - `POST /food-items/:id/portions` -- add a portion

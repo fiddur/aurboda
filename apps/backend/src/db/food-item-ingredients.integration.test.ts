@@ -115,9 +115,7 @@ describe('food_item_ingredients integration', () => {
     ])
     await setFoodItemReference(user, referrer.id, flour.id)
 
-    await expect(deleteFoodItem(user, flour.id)).rejects.toThrow(
-      'Cannot delete: this food item is used as an ingredient in one or more recipes.',
-    )
+    expect(await deleteFoodItem(user, flour.id)).toBe('used_as_ingredient')
 
     expect(await getFoodItemById(user, flour.id)).not.toBeNull()
     expect((await getFoodItemById(user, referrer.id))?.reference_food_item_id).toBe(flour.id)

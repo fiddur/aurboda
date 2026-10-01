@@ -16,6 +16,8 @@ vi.mock('../db/index.ts', () => ({
   clearIngredients: vi.fn(),
   deleteFoodItem: vi.fn(),
   deleteFoodItemPortion: vi.fn().mockResolvedValue(true),
+  FOOD_ITEM_USED_AS_INGREDIENT_ERROR:
+    'Cannot delete: this food item is used as an ingredient in one or more recipes.',
   findCompositeParentsOfIngredient: vi.fn().mockResolvedValue([]),
   getFoodItemById: vi.fn(),
   getFoodItemPortionById: vi.fn().mockResolvedValue(null),
@@ -229,6 +231,37 @@ describe('PUT /food-items/:id/reference', () => {
       .put('/food-items/11111111-1111-4111-8111-111111111111/reference')
       .send({ reference_food_item_id: 'not-a-uuid' })
     expect(res.status).toBe(400)
+  })
+})
+
+describe('DELETE /food-items/:id', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  test('200 when deleted', async () => {
+    vi.mocked(dbBarrel.deleteFoodItem).mockResolvedValue('deleted')
+    const res = await supertest(buildApp(fakeCentral())).delete(`/food-items/${FOOD_ID}`)
+    expect(res.status).toBe(200)
+  })
+
+  test('409 with a clear message when the item is used as an ingredient', async () => {
+    vi.mocked(dbBarrel.deleteFoodItem).mockResolvedValue('used_as_ingredient')
+    const res = await supertest(buildApp(fakeCentral())).delete(`/food-items/${FOOD_ID}`)
+    expect(res.status).toBe(409)
+    expect(res.body).toEqual({
+      error: 'Cannot delete: this food item is used as an ingredient in one or more recipes.',
+      success: false,
+    })
+  })
+
+  test('404 when not found, 403 for a shared library item', async () => {
+    vi.mocked(dbBarrel.deleteFoodItem).mockResolvedValue('not_found')
+    expect((await supertest(buildApp(fakeCentral())).delete(`/food-items/${FOOD_ID}`)).status).toBe(404)
+
+    const central = fakeCentral()
+    vi.mocked(central.getSharedFoodItemById).mockResolvedValue(sharedItem('s1'))
+    expect((await supertest(buildApp(central)).delete(`/food-items/${FOOD_ID}`)).status).toBe(403)
   })
 })
 
