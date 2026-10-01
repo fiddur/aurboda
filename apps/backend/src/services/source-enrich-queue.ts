@@ -19,7 +19,19 @@ import type { SourceArrival, SourceKind, SourceProvider } from './source-identit
 
 import { auditError, auditInfo } from './audit-log.ts'
 
-const QUEUE_NAME = 'source-enrich'
+/**
+ * `stately`: per singleton key at most one job waiting and one running, so a
+ * burst of arrivals collapses into one fetch while an arrival during a running
+ * fetch still queues one more. The policy is fixed at creation, hence `-v2`.
+ */
+export const SOURCE_ENRICH_QUEUE = 'source-enrich-v2'
+
+/**
+ * Created with the default `standard` policy, under which pg-boss ignores
+ * `singletonKey`. Dropped with whatever it still holds: those jobs only
+ * hurry what the scheduled Garmin and Gravl polls fetch anyway.
+ */
+const LEGACY_QUEUE_NAME = 'source-enrich'
 
 export const ENRICH_DELAY_SECONDS = 60
 const RETRY_LIMIT = 3
@@ -92,13 +104,14 @@ export const createSourceEnrichQueue = async (
   boss: PgBoss,
   deps: SourceEnrichDeps,
 ): Promise<SourceEnrichQueue> => {
-  await boss.createQueue(QUEUE_NAME)
+  await boss.createQueue(SOURCE_ENRICH_QUEUE, { policy: 'stately' })
+  await boss.deleteQueue(LEGACY_QUEUE_NAME)
 
   // One job per batch: pg-boss completes or fails a batch as a unit, so a
   // throwing job (a Gravl 404 while the workout is still saving) would otherwise
   // re-queue its batch-mates too. A failure propagates so pg-boss retries it.
   await boss.work<SourceEnrichJobData>(
-    QUEUE_NAME,
+    SOURCE_ENRICH_QUEUE,
     { batchSize: 1, pollingIntervalSeconds: 10 },
     async ([job]) => {
       if (!job) return
@@ -121,7 +134,7 @@ export const createSourceEnrichQueue = async (
           user,
         }
         try {
-          await boss.send(QUEUE_NAME, data, {
+          await boss.send(SOURCE_ENRICH_QUEUE, data, {
             retryBackoff: true,
             retryDelay: RETRY_DELAY_SECONDS,
             retryLimit: RETRY_LIMIT,
