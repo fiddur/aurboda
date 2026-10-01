@@ -9,14 +9,8 @@ dateReceived: (not yet submitted)
 
 > **Status of this document.** A pre-submission draft, developed in the open in
 > the [Aurboda](https://github.com/fiddur/aurboda) repository (issue
-> [#905](https://github.com/fiddur/aurboda/issues/905)) for discussion on
-> r/QuantifiedSelf and SocialHub before submission to the
-> [FEP process](https://codeberg.org/fediverse/fep). The FEP number is a
-> placeholder.
-
-> **Naming.** The working name is **QuantPub**, prefix `quant:`. The name is
-> open for community input; alternatives include **Personal Metrics
-> Vocabulary** and **MetricPub**.
+> [#905](https://github.com/fiddur/aurboda/issues/905)). The FEP number is a
+> placeholder until submission.
 
 ## Summary
 
@@ -38,36 +32,45 @@ It has three parts:
    channel is the interoperable core of the proposal.
 3. **Privacy principles as normative requirements**: scalar summaries never
    imply series access, series and geography are separate explicit opt-ins,
-   authorization is data-driven (unshared data is indistinguishable from
-   nonexistent data), and revocation is immediate.
+   unshared data is indistinguishable from nonexistent data, and revocation is
+   immediate.
 
-A home-built QS tool interoperates by implementing the discovery document and
+A home-built tool interoperates by implementing the discovery document and
 the two endpoint contracts — no ActivityPub actor required — and can grow into
 full federation later.
 
 ## Motivation
 
-The quantified-self community is full of hand-rolled, single-user systems: a
-database, some sync scripts, a dashboard. They will never converge on one
-product, but they _could_ converge on a small wire contract — and then their
-owners could follow each other, see each other's data rendered natively, and
-run cross-instance comparisons, as single-vendor fitness platforms do behind
-walled gardens today.
+Sharing a workout is a social act. On Strava, Garmin Connect and their peers a
+run shows up in followers' feeds as a card: a map, a few headline stats, a
+heart-rate chart, room for kudos and comments. That is what people want from
+fitness sharing, and it is why those platforms hold the data.
 
-ActivityPub already solves identity, discovery, follow relationships and
-delivery. What is missing is:
+The fediverse already has the social half: identity, follows, delivery,
+replies and likes. It lacks the card. A workout posted to Mastodon today is a
+sentence and a screenshot; a federated fitness server posting to another
+federated fitness server has no agreed shape for the stats behind it, so each
+pair of implementations negotiates its own.
+
+Two things are missing:
 
 - a shared shape for "a measured thing over a time window", and
 - a realistic answer to the fact that **extension vocabularies do not survive
   federation** through mainstream servers, which parse inbound objects into a
   fixed vocabulary and drop unknown terms.
 
-QuantPub therefore treats the in-band vocabulary as _progressive enhancement_
-and standardises the out-of-band fetch: deliver a boring, Mastodon-compatible
-`Note` (flattened text plus rendered-image attachments) and serve the
-machine-readable payload at a discoverable endpoint on the author's own
-instance. A peer that recognises the pattern fetches the structured data;
+QuantPub therefore treats the in-band vocabulary as progressive enhancement and
+standardises the out-of-band fetch: deliver a boring, Mastodon-compatible
+`Note` (text plus rendered-image attachments) and serve the machine-readable
+payload at a discoverable endpoint on the author's own instance. A peer that
+recognises the pattern fetches the structured data and renders the card;
 everyone else sees a perfectly good status.
+
+The same shape covers sleep, HRV, steps and mood, so the proposal is written
+for quantified-self data in general, with exercise as the leading case. And
+because the payload side needs no ActivityPub stack, the many hand-rolled
+single-user QS systems — a database, some sync scripts, a dashboard — can join
+with a handful of routes.
 
 ## Requirements
 
@@ -91,16 +94,14 @@ interpreted as described in [RFC-2119].
 All names are lowerCamelCase, on the JSON-LD layer and the plain-JSON payload
 layer alike, so a post's `startTime` and its payload's `startTime` are the same
 name. AS2 properties are reused where they exist (`startTime`, `endTime`,
-`name`) rather than minting parallel terms. Timestamps are ISO 8601 with
-timezone. The `quant:` namespace is `https://w3id.org/quantpub#` (final IRI to
-be settled with the FEP number).
+`name`). Timestamps are ISO 8601 with timezone. The `quant:` namespace is
+`https://w3id.org/quantpub#` (final IRI to be settled with the FEP number).
 
 `quant:metrics` and `quant:series` are **JSON literals**: the published
-`@context` defines both with `"@type": "@json"` (JSON-LD 1.1), so conforming
-processors preserve the nested objects verbatim instead of expanding, and
-losing, unmapped keys. A series entry's `mediaType`/`href` are therefore opaque
-to JSON-LD processing — plain data, not an AS2 `Link`. Consumers MUST treat
-these values as plain JSON.
+`@context` defines both with `"@type": "@json"` (JSON-LD 1.1), so processors
+preserve the nested objects verbatim instead of expanding, and losing,
+unmapped keys. Consumers MUST treat these values as plain JSON; a series
+entry's `mediaType`/`href` are data, not an AS2 `Link`.
 
 ### 2. `quant:Exercise` — a shared workout
 
@@ -109,7 +110,7 @@ A shared exercise is an AS2 object, RECOMMENDED to be **dual-typed**
 `name`/`content` as a status. The extra type is descriptive, not load-bearing:
 detection (§7) keys on the object id or `quant:structuredUrl`, never on the
 type, so a publisher MAY emit a single-typed `Note` where deployed consumers
-mishandle array-valued `type` (see §10). Consumers MUST tolerate both forms.
+mishandle array-valued `type` (§10). Consumers MUST tolerate both forms.
 
 | Property              | Type                    | Notes                                                                   |
 | --------------------- | ----------------------- | ----------------------------------------------------------------------- |
@@ -235,9 +236,8 @@ share is `kind: "activity"`:
 }
 ```
 
-- `activityType` (exercise) or `observationOf` (observation) mirrors the
-  object's `quant:` property; `name`, `startTime` and `endTime` mirror the
-  object's.
+- `activityType` (exercise) or `observationOf` (observation), `name`,
+  `startTime` and `endTime` mirror the object's properties.
 - `metrics` MUST contain exactly the shared scalars — the set the delivered
   `Note` summarised.
 - `series` MUST contain only series the author _separately_ opted in (§8.2),
@@ -245,11 +245,11 @@ share is `kind: "activity"`:
 - `route` (OPTIONAL) is the GPS track as a time-ordered array of
   `{ "lat", "lon", "t" }` (WGS84, ISO 8601), present only under the geography
   opt-in (§8.6). Timestamped points are used instead of a GeoJSON `LineString`
-  because GeoJSON carries no per-point time, and the time is what lets a
-  consumer sync the route to the series chart. It also exposes position-at-time,
-  hence pace; a client offering route sharing SHOULD say so.
-- Implementations MAY define further `kind`s (Aurboda adds `article`).
-  Consumers MUST ignore unknown kinds.
+  because the time is what lets a consumer sync the route to the series
+  chart. It also exposes position-at-time, hence pace; a client offering route
+  sharing SHOULD say so.
+- Implementations MAY define further `kind`s. Consumers MUST ignore unknown
+  kinds.
 
 Authorization follows post visibility: a public or unlisted post resolves
 unconditionally; a followers-only post resolves only with a valid capability
@@ -268,18 +268,18 @@ GET {apiBase}/public/{username}/series?metric={key}&start={iso}&end={iso}&bucket
 `bucket` is an integer followed by `s`, `m`, `h` or `d` (`5s`, `60s`, `1d`).
 
 A request resolves **only when all of the following hold**; this data-driven
-check is the entire authorization boundary, and is not obscurity-based:
+check is the entire authorization boundary:
 
 1. some shared post opted that exact `metric` in as a **series** (a shared
    scalar summary alone MUST NOT satisfy this);
 2. that post is publicly visible;
-3. the underlying activity still exists (not deleted) and has a bounded window;
+3. the underlying activity still exists and has a bounded window;
 4. the activity's window covers the requested `[start, end]`.
 
-Anything else returns 404 (§8.3). The response covers the requested range;
-the server SHOULD additionally clamp it to the shared window as defence in
-depth. The bucket size MUST be floored server-side (RECOMMENDED minimum: 5
-seconds), and only aggregated buckets are returned (§8.5).
+Anything else returns 404 (§8.3). The server SHOULD additionally clamp the
+range to the shared window as defence in depth. The bucket size MUST be
+floored server-side (RECOMMENDED minimum: 5 seconds), and only aggregated
+buckets are returned (§8.5).
 
 #### 6.1 Bucketed samples
 
@@ -302,9 +302,9 @@ seconds), and only aggregated buckets are returned (§8.5).
 ```
 
 Each sample carries `start`, `end`, `avg`, `min`, `max`, `count`, and `sum`
-for cumulative metrics such as steps. One shape serves exercise heart-rate
-traces, nightly HRV, daily step counts and mood check-ins alike; only the
-metric key and bucket size differ.
+for cumulative metrics such as steps. One shape serves heart-rate traces,
+nightly HRV, daily step counts and mood check-ins alike; only the metric key
+and bucket size differ.
 
 ### 7. Detection and enrichment (Level 3)
 
@@ -373,13 +373,12 @@ a Level 1 publisher has no actor keys at all. QuantPub therefore uses
   the token never appears on any public surface.
 - The token MUST reach the consumer through a channel that survives typed
   processing, since the §7 id convention alone yields a tokenless URL and an
-  extension property may be dropped. Two channels are defined:
-  (a) the delivered **image attachment URLs** (`?token=` on each `attachment`
-  `Image` `url`), which standard AS2 processing preserves — REQUIRED whenever
-  the post has image attachments; (b) `quant:structuredUrl` carrying the
-  token, the only channel for an attachment-less post. A publisher SHOULD
-  attach at least one tokenised image wherever the post has any renderable
-  image.
+  extension property may be dropped. Two channels are defined: (a) the
+  delivered **image attachment URLs** (`?token=` on each `attachment` `Image`
+  `url`), which standard AS2 processing preserves — REQUIRED whenever the post
+  has image attachments; (b) `quant:structuredUrl` carrying the token, the
+  only channel for an attachment-less post. A publisher SHOULD attach at least
+  one tokenised image wherever the post has any renderable image.
 - Consumers SHOULD lift the token from a delivered attachment URL, falling
   back to a same-host `quant:structuredUrl`, and forward it to the payload
   fetch.
@@ -576,12 +575,30 @@ GET /api/public/freja/series?metric=stress&start=...&end=...&bucket=60s
 - **[Aurboda](https://github.com/fiddur/aurboda)** — ships this document's
   vocabulary on the wire (dual-typed exercise shares with `quant:metrics`,
   `quant:series` and `quant:structuredUrl`), the discovery document, a
-  published context at `/ns/quantpub`, the structured post endpoint (activity
-  and article kinds, with the optional `route`), the data-driven series
-  endpoint, capability tokens conveyed on attachment URLs, and Level 3
-  enrichment between Aurboda instances via the §7 id convention. Its payload
-  field names still use the earlier snake_case forms and will follow this
-  document once naming settles in review.
+  published context at `/ns/quantpub`, the structured post endpoint (with the
+  optional `route`), the data-driven series endpoint, capability tokens
+  conveyed on attachment URLs, and Level 3 enrichment between Aurboda
+  instances via the §7 id convention.
+- **[VertMatch](https://vertmatch.run)** — a trail-running and training
+  platform federating via ActivityPub; serves the `/.well-known/quantpub`
+  discovery document and structured activity shares, and follows FitPub
+  actors alongside.
+
+Both implementations' payload fields predate this document's lowerCamelCase
+alignment and still serve the earlier snake_case forms (`api_base`,
+`start_time`, …); they will follow once naming settles in review.
+
+## References
+
+- [ActivityPub] — Christine Lemmer-Webber, Jessica Tallon, Erin Shepherd, Amy
+  Guy, Evan Prodromou, _ActivityPub_, 2018
+- [RFC-2119] — S. Bradner, _Key words for use in RFCs to Indicate Requirement
+  Levels_, 1997
+- [HTTP Signature] — A. Backman, J. Richer, M. Sporny, _Signing HTTP
+  Messages_ (draft-cavage-http-signatures), 2019
+- [FEP-67ff] — silverpill, _FEDERATION.md_, 2023
+- [FEP-400e] — Gregory Klyushnikov, _Publicly-appendable ActivityPub
+  collections_, 2021
 
 ## Copyright
 
