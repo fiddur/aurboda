@@ -111,7 +111,9 @@ one). Only a _definite_ answer is remembered — a 404 for the well-known docume
 that isn't Aurboda's, a refused private address. Anything that says nothing about the
 host (no answer at all, a 5xx, a 429 or 403, a DNS failure or a timeout) is transient:
 it is not cached, the peer is retried next round, and it is counted instead in
-`peers_unreachable`.
+`peers_unreachable`. Within the round it is remembered, though: once a probe or listing
+of an instance has failed transiently, its other followees are skipped rather than each
+asking it again.
 
 An Aurboda peer's public challenges are read from its public-profile listing (a followee
 on the same instance in-process); ended ones, anything the user hosts, joined or left,
