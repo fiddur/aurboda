@@ -132,17 +132,21 @@ export const resolveMemberSeries = async (
   start: Date,
   end: Date,
 ): Promise<MemberSeries> => {
+  // `end` is exclusive but the queries below use an inclusive BETWEEN, and daily aggregates
+  // sit at local midnight — exactly at `end` — so without this step back the day after the
+  // challenge would count.
+  const lastInstant = new Date(end.getTime() - 1)
   const [{ buckets }, lastDataTime] = await Promise.all([
     getChartData(user, {
       activity_type_id: spec.activity_type_id ?? undefined,
       aggregation: spec.aggregation,
       bucket_size: effectiveBucketSize(spec.bucket_size, start, end),
-      end: end.toISOString(),
+      end: lastInstant.toISOString(),
       pattern: spec.pattern ?? undefined,
       source_type: spec.source_type,
       start: start.toISOString(),
     }),
-    resolveLastDataTime(user, spec, start, end),
+    resolveLastDataTime(user, spec, start, lastInstant),
   ])
 
   // We never request breakdown series, so every bucket has a scalar `value`.

@@ -18,6 +18,14 @@ export const formatDateInZone = (iso: string, timeZone: string): string => {
   }
 }
 
+export const formatUpdated = (iso: string): string =>
+  new Date(iso).toLocaleString(undefined, {
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    month: 'short',
+  })
+
 /** Advance an ISO instant by one bucket, returning that bucket's exclusive end. */
 export const bucketEnd = (bucketStartIso: string, bucketSize: BucketSize): string => {
   const d = new Date(bucketStartIso)

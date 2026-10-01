@@ -92,11 +92,13 @@ last changed. For a metric it is the newest `updated_at` among the contributing 
 per day at local midnight and are rewritten in place all day, so their `time` would
 always read 00:00), falling back to the point's `time` for rows stored before
 `updated_at` existed. For an activity type it is `MAX(start_time)` of the matching
-activities. The same source filter bounds it as bounds the total. A member with
-no data yet reports `null` (rendered as "—"), never the request time — so members on
-0 don't all share a bogus "just now". Remote members report their own `last_updated`;
-the host persists it (distinct from `last_fetched_at`, which is when the host fetched)
-and surfaces it in standings.
+activities. The same source filter bounds it as bounds the total. A point stamped
+exactly at `end_ts` is outside the window, so the daily aggregate for the day after the
+last day (stored at that local midnight) never counts toward the total or `last_updated`.
+A member with no data yet reports `null` (rendered as "—"), never the request time — so
+members on 0 don't all share a bogus "just now". Remote members report their own
+`last_updated`; the host persists it (distinct from `last_fetched_at`, which is when the
+host fetched) and surfaces it in standings.
 
 **Discovery — open challenges from people you follow:** `GET /challenges/discover`
 (MCP `discover_challenges`) walks the user's accepted ActivityPub followees. A followee
