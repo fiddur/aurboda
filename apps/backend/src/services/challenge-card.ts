@@ -43,10 +43,17 @@ const byTotalDesc = (a: OgChallengeMember, b: OgChallengeMember): number => {
   return b.total - a.total
 }
 
+/** `trail_running` → `Trail running`; activity-type ids have no display name yet. */
+const humanizeActivityType = (pattern: string): string => {
+  const words = pattern.replaceAll(/[_-]+/g, ' ').trim()
+  return words.charAt(0).toUpperCase() + words.slice(1)
+}
+
 export const describeChallenge = (resolved: ResolvedChallenge, now: Date): ChallengeDescription => {
   const { end_ts, spec, start_ts, timezone } = resolved
   return {
-    measure: spec.source_type === 'metric' ? getMetricDisplayName(spec.pattern) : spec.pattern,
+    measure:
+      spec.source_type === 'metric' ? getMetricDisplayName(spec.pattern) : humanizeActivityType(spec.pattern),
     members: resolved.members
       .map((m) => ({ name: m.display_name, total: m.cached_total }))
       .toSorted(byTotalDesc),

@@ -32,9 +32,7 @@ export interface OgChallengeDetails {
   /** "Steps", "Running" — what is measured, for the eyebrow. */
   measure: string
   unit: string
-  /** "1 Oct – 31 Oct 2026" */
   range: string
-  /** "Starts in 3 days" / "Ends tomorrow" / "Ended 31 Oct 2026" */
   phrase: string
   status: ChallengeTimeStatus
   /** Active members, best total first; totals null while nothing has been fetched. */

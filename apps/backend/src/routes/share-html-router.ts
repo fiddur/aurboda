@@ -48,6 +48,7 @@ export interface ShareHtmlDeps {
   resolveChallenge: (username: string, slug: string) => Promise<ResolvedChallenge | null>
   /** True if the user's public profile exists (db reachable). */
   profileExists: (username: string) => Promise<boolean>
+  now?: () => Date
 }
 
 /** Connecting to a non-existent user database fails with invalid_catalog_name. */
@@ -145,6 +146,7 @@ const sendHtml = async (
 
 export const createShareHtmlRouter = (deps: ShareHtmlDeps): Router => {
   const { loadTemplate, profileExists, resolveChallenge, resolveDashboard, webHost } = deps
+  const now = deps.now ?? (() => new Date())
   const router = Router()
 
   // Attach the oEmbed discovery link to a public resource's meta.
@@ -180,7 +182,7 @@ export const createShareHtmlRouter = (deps: ShareHtmlDeps): Router => {
 
     const challenge = dashboard ? null : await resolveChallenge(username, slug)
     if (challenge?.is_public) {
-      const { measure, members, phrase, range } = describeChallenge(challenge, new Date())
+      const { measure, members, phrase, range } = describeChallenge(challenge, now())
       return sendHtml(
         loadTemplate,
         withOembed(

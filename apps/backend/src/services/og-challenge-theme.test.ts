@@ -6,6 +6,8 @@ describe('challengeTheme', () => {
   test.each([
     ['metric', 'steps', 'steps'],
     ['activity_type', 'Running', 'running'],
+    ['activity_type', 'trail_running', 'running'],
+    ['activity_type', 'treadmill_running', 'running'],
     ['metric', 'sleep_score', 'sleep'],
     ['metric', 'hr_zone_2_sec', 'heart'],
     ['metric', 'weight', 'default'],
