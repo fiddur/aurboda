@@ -31,6 +31,7 @@ import {
   upsertFeedFollowing,
 } from '../db/index.ts'
 import { extractActorPresentation } from './activitypub/actor-presentation.ts'
+import { signedFetchOptions } from './activitypub/signed-lookup.ts'
 import { withTimeout } from './with-timeout.ts'
 
 // Re-exported for existing importers (the follow tools + tests) — the util now
@@ -110,7 +111,7 @@ export const followActor = async (deps: FollowDeps, user: string, handle: string
 
   let actor: Actor | null
   try {
-    const object = await ctx.lookupObject(handle)
+    const object = await ctx.lookupObject(handle, await signedFetchOptions(ctx, user))
     actor = isActor(object) ? object : null
   } catch {
     actor = null

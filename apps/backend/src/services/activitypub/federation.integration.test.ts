@@ -30,7 +30,7 @@ import { listTimelineEntries, upsertTimelineEntry } from '../../db/timeline.ts'
 import { createActorHtmlRouter } from '../../routes/actor-html-router.ts'
 import { createFeedTombstoneRouter } from '../../routes/feed-tombstone-router.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../../test/db-test-helper.ts'
-import { actorDocument, inboxContext } from '../../test/inbox-context.ts'
+import { actorDocument, inboxContext, stubDocumentLoader } from '../../test/inbox-context.ts'
 import { buildFeedUpdate } from './deliver.ts'
 import {
   buildActorPerson,
@@ -735,6 +735,26 @@ describe('Feed federation actor + WebFinger', () => {
         display_name: 'Alice',
         handle: '@alice@mastodon.example',
       })
+    })
+
+    test('the follower’s actor document is fetched signed as the followed user (authorized fetch)', async () => {
+      const user = getTestUser()
+      await upsertUserSettings(user, { manually_approve_followers: true })
+      const base = inboxContext(fed, ORIGIN, user, aliceServes())
+      const identities: unknown[] = []
+      const ctx = new Proxy(base, {
+        get: (target, prop) =>
+          prop === 'getDocumentLoader'
+            ? async (identity: unknown) => {
+                identities.push(identity)
+                return stubDocumentLoader(aliceServes())
+              }
+            : (Reflect.get(target, prop) as unknown),
+      })
+      await handleInboundFollow(ctx, followUs(user))
+
+      expect(identities).toEqual([{ identifier: user }])
+      expect(await getFeedFollowerByActor(user, ALICE)).toMatchObject({ display_name: 'Alice' })
     })
 
     test('a Follow whose actor id serves nothing is still recorded, with no byline', async () => {

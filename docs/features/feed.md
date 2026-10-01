@@ -232,6 +232,11 @@ posts into your timeline). Resolving the actor's avatar is bounded by a short ti
 icon host can't hang the (synchronous) follow. When a follow fails, the web panel surfaces the
 server's specific reason (e.g. an unresolvable handle) rather than a generic message.
 
+Every remote fetch made on a user's behalf — resolving a followee, the backfill's outbox walk,
+the actor documents behind inbound bylines and boosts, mention and reaction delivery lookups —
+is **signed with that user's actor key**, so instances running authorized fetch (Mastodon
+secure mode, GoToSocial) answer instead of refusing with a 401.
+
 When the followee's server answers with an `Accept`, the inbox marks the follow
 **accepted**; a `Reject` drops it. Unfollowing sends an `Undo{Follow}` to the cached inbox
 and removes the row. Local follows use the exact same path (delivered to the local inbox

@@ -52,6 +52,7 @@ import {
 } from '../db/index.ts'
 import { AS_PUBLIC } from './activitypub/object.ts'
 import { actorUriToHandle } from './activitypub/reply-object.ts'
+import { signedFetchOptions } from './activitypub/signed-lookup.ts'
 import { dateToTemporalInstant } from './activitypub/temporal-interop.ts'
 import { serializeFeedPost } from './feed.ts'
 import { loadReactionsForRows, ownObjectPrefix, reactionTarget, serializeTimelineEntry } from './timeline.ts'
@@ -191,7 +192,10 @@ const resolveAuthorInbox = async (
   const ctx = await deps.federation.createContext(new URL(deps.origin))
   let actor: Actor | null
   try {
-    const object = await withTimeout(ctx.lookupObject(authorUri), AUTHOR_LOOKUP_TIMEOUT_MS)
+    const object = await withTimeout(
+      signedFetchOptions(ctx, user).then((options) => ctx.lookupObject(authorUri, options)),
+      AUTHOR_LOOKUP_TIMEOUT_MS,
+    )
     actor = isActor(object) ? object : null
   } catch {
     actor = null

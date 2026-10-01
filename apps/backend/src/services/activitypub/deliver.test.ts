@@ -340,14 +340,16 @@ describe('completion-post fan-out to tagged winners (#1074, #1079)', () => {
     const ctx = await createFeedFederation(ORIGIN, `${ORIGIN}/api`).createContext(new URL(ORIGIN))
     const sendActivity = vi.fn().mockResolvedValue(undefined)
     const lookupObject = vi.fn().mockResolvedValue(new Person({ id: new URL(WINNER_ACTOR) }))
-    Object.assign(ctx, { lookupObject, sendActivity, ...overrides })
+    const getDocumentLoader = vi.fn().mockResolvedValue(signedLoader)
+    Object.assign(ctx, { getDocumentLoader, lookupObject, sendActivity, ...overrides })
     const deps: FeedDeliveryDeps = {
       apiBaseUrl: `${ORIGIN}/api`,
       federation: { createContext: async () => ctx } as unknown as FeedDeliveryDeps['federation'],
       origin: ORIGIN,
     }
-    return { deps, lookupObject, sendActivity }
+    return { deps, getDocumentLoader, lookupObject, sendActivity }
   }
+  const signedLoader = async () => ({ contextUrl: null, document: {}, documentUrl: '' })
 
   const sentTo = (sendActivity: ReturnType<typeof vi.fn>) =>
     sendActivity.mock.calls.map(([, recipient]) =>
@@ -397,6 +399,13 @@ describe('completion-post fan-out to tagged winners (#1074, #1079)', () => {
     const { deps } = await fakeDeps({ sendActivity })
     await expect(deliverFeedChallengePost(deps, 'fiddur', completion())).rejects.toThrow('ECONNREFUSED')
     expect(sentTo(sendActivity).sort()).toEqual(['followers', WINNER_ACTOR])
+  })
+
+  test('the winner’s actor is fetched signed as the posting user (authorized fetch)', async () => {
+    const { deps, getDocumentLoader, lookupObject } = await fakeDeps()
+    await deliverFeedChallengePost(deps, 'fiddur', completion())
+    expect(getDocumentLoader).toHaveBeenCalledWith({ identifier: 'fiddur' })
+    expect(lookupObject).toHaveBeenCalledWith(new URL(WINNER_ACTOR), { documentLoader: signedLoader })
   })
 
   test('an unresolvable winner is skipped with a warning instead of silently', async () => {

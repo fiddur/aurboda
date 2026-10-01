@@ -50,6 +50,9 @@ export const inboxContext = (
       // Only the DOCUMENT loader is stubbed: the context loader must stay the
       // real one, which serves the bundled AS2 `@context`.
       if (prop === 'documentLoader') return loader
+      // The ingest paths sign their fetches as the recipient; the signed loader
+      // must reach the same stub fediverse.
+      if (prop === 'getDocumentLoader') return async () => loader
       const value = Reflect.get(target, prop) as unknown
       // Bound to the PROXY, not the target: `ctx.lookupObject()` reads
       // `this.documentLoader`, so binding to the target would quietly reach past

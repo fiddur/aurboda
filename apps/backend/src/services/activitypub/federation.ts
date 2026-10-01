@@ -83,6 +83,7 @@ import {
 } from './deliver.ts'
 import { toCryptoKeyPair } from './keys.ts'
 import { AS_PUBLIC, isPubliclyVisible } from './object.ts'
+import { signedFetchOptions } from './signed-lookup.ts'
 import { temporalInstantToDate } from './temporal-interop.ts'
 import { capabilityTokenFrom, createAurbodaEnricher } from './timeline-enrich.ts'
 import {
@@ -141,9 +142,13 @@ const NO_PRESENTATION: ActorPresentation = { avatar_url: null, display_name: nul
  */
 const fetchActorPresentation = async (
   ctx: InboxContext<void>,
+  user: string,
   actorId: URL,
 ): Promise<ActorPresentation | null> => {
-  const actor = await withTimeout(ctx.lookupObject(actorId), ACTOR_LOOKUP_TIMEOUT_MS).catch(() => null)
+  const actor = await withTimeout(
+    signedFetchOptions(ctx, user).then((options) => ctx.lookupObject(actorId, options)),
+    ACTOR_LOOKUP_TIMEOUT_MS,
+  ).catch(() => null)
   if (!isActor(actor) || actor.id?.href !== actorId.href) return null
   return await extractActorPresentation(actor)
 }
@@ -176,7 +181,7 @@ const recordInboundFollow = async (
     const settings = await getUserSettings(user)
     const existing = await getFeedFollowerByActor(user, sender.id.href)
     const accepted = existing?.accepted === true || settings?.manually_approve_followers !== true
-    const presentation = (await fetchActorPresentation(ctx, sender.id)) ?? NO_PRESENTATION
+    const presentation = (await fetchActorPresentation(ctx, user, sender.id)) ?? NO_PRESENTATION
     await upsertFeedFollower(user, {
       accepted,
       actor_uri: sender.id.href,
@@ -300,7 +305,7 @@ const recordOwnPostReaction = async (
   if (postId == null) return
   try {
     if ((await getFeedPostById(me, postId)) == null) return
-    const presentation = (await fetchActorPresentation(ctx, activity.actorId)) ?? NO_PRESENTATION
+    const presentation = (await fetchActorPresentation(ctx, me, activity.actorId)) ?? NO_PRESENTATION
     await upsertFeedPostReaction(me, {
       activity_uri: activity.id?.href ?? null,
       actor_uri: activity.actorId.href,
@@ -335,7 +340,7 @@ const resolveBoostAuthor = async (
 ): Promise<TimelineAuthor | null> => {
   const followed = await getFeedFollowingByActor(me, attributionId.href)
   if (followed != null) return followed
-  const presentation = await fetchActorPresentation(ctx, attributionId)
+  const presentation = await fetchActorPresentation(ctx, me, attributionId)
   return presentation == null ? null : { ...presentation, actor_uri: attributionId.href }
 }
 
@@ -366,9 +371,13 @@ interface AnnouncedNote {
  */
 const resolveAnnouncedNote = async (
   ctx: InboxContext<void>,
+  me: string,
   objectId: URL,
 ): Promise<AnnouncedNote | null> => {
-  const note = await withTimeout(ctx.lookupObject(objectId), BOOST_OBJECT_TIMEOUT_MS).catch(() => null)
+  const note = await withTimeout(
+    signedFetchOptions(ctx, me).then((options) => ctx.lookupObject(objectId, options)),
+    BOOST_OBJECT_TIMEOUT_MS,
+  ).catch(() => null)
   if (!(note instanceof Note) || note.id == null || note.id.host !== objectId.host) return null
   const attributionId = note.attributionIds[0]
   return attributionId == null ? null : { attributionId, note, uri: note.id.href }
@@ -426,7 +435,7 @@ const ingestBoostedNote = async (
   try {
     const booster = await getFeedFollowingByActor(me, valid.actorId.href)
     if (booster == null || !booster.accepted) return
-    const announced = await resolveAnnouncedNote(ctx, valid.objectId)
+    const announced = await resolveAnnouncedNote(ctx, me, valid.objectId)
     if (announced == null) return
     if ((await getTimelineEntryByObjectUri(me, announced.uri)) != null) return
     const author = await resolveBoostAuthor(ctx, me, announced.attributionId)
@@ -602,7 +611,7 @@ const ingestStrangerInvolvement = async (
   // activity (see `fetchActorPresentation`). An unreadable actor drops the Note:
   // this whole branch exists to show who a stranger is, and an anonymous
   // stranger card in the timeline is worse than no card.
-  const presentation = await fetchActorPresentation(ctx, activity.actorId)
+  const presentation = await fetchActorPresentation(ctx, me, activity.actorId)
   if (presentation == null) return false
   return await ingestNoteForRecipient(
     me,
@@ -688,7 +697,7 @@ const refreshRemoteActorPresentation = async (ctx: InboxContext<void>, update: U
     if (isMissingDatabase(error)) return
     throw error
   }
-  const presentation = await fetchActorPresentation(ctx, update.actorId)
+  const presentation = await fetchActorPresentation(ctx, me, update.actorId)
   if (presentation == null) return
   try {
     await updateFeedFollowerPresentation(me, actorUri, presentation)
