@@ -37,6 +37,27 @@ export const chartDataAggregationSchema = z.enum(['count', 'sum', 'mean']).meta(
 
 export type ChartDataAggregation = z.infer<typeof chartDataAggregationSchema>
 
+const isKnownTimezone = (tz: string): boolean => {
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: tz })
+    return true
+  } catch {
+    return false
+  }
+}
+
+const chartDataTzSchema = z
+  .string()
+  .refine(isKnownTimezone, { message: 'tz must be a valid IANA timezone' })
+  .optional()
+  .meta({
+    description:
+      'IANA timezone for bucket alignment (e.g. "Europe/Stockholm"). Daily, weekly and monthly buckets ' +
+      'start at local midnight, local Monday and the local 1st; hourly buckets at the local hour. ' +
+      'Defaults to UTC.',
+    example: 'Europe/Stockholm',
+  })
+
 /**
  * Query schema for chart data endpoint (typed, for service layer).
  */
@@ -65,6 +86,7 @@ export const chartDataQuerySchema = z
       description:
         'Data fields to break down by (for activity_type source). Multiple fields produce compound series keys.',
     }),
+    tz: chartDataTzSchema,
   })
   .meta({ id: 'ChartDataQuery', description: 'Query parameters for bucketed chart data' })
 
@@ -96,6 +118,7 @@ export const chartDataHttpQuerySchema = z
       .uuid()
       .optional()
       .meta({ description: 'Deprecated: use activity_type_id instead' }),
+    tz: chartDataTzSchema,
   })
   .meta({ id: 'ChartDataHttpQuery', description: 'HTTP query parameters for chart data endpoint' })
 

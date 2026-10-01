@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import { query } from '../db/connection.ts'
-import { insertActivity } from '../db/index.ts'
+import { insertActivity, insertActivityTypeDefinition, insertTimeSeries } from '../db/index.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import { getChartData } from './chart-data.ts'
 import { createDefaultEngineDeps } from './deduction-deps.ts'
@@ -18,15 +18,15 @@ const span = (activity_type: string, category_path: string, start: string, end: 
   start_time: new Date(start),
 })
 
+beforeAll(async () => {
+  await startTestDb()
+}, CONTAINER_TIMEOUT)
+
+afterAll(async () => {
+  await stopTestDb()
+})
+
 describe('screentime category chart data', () => {
-  beforeAll(async () => {
-    await startTestDb()
-  }, CONTAINER_TIMEOUT)
-
-  afterAll(async () => {
-    await stopTestDb()
-  })
-
   beforeEach(async () => {
     await cleanTestDb()
     await query(getTestUser(), `DELETE FROM activity_type_definitions WHERE is_builtin = false`)
@@ -155,5 +155,133 @@ describe('screentime category chart data', () => {
     })
 
     expect(ranges).toHaveLength(1)
+  })
+})
+
+describe('chart data local-time buckets', () => {
+  beforeEach(async () => {
+    await cleanTestDb()
+    await query(getTestUser(), `DELETE FROM activity_type_definitions WHERE is_builtin = false`)
+  })
+
+  // 00:30 local on Sat 28 Mar (CET), Sun 29 Mar (CET, the spring-forward day) and Mon 30 Mar (CEST).
+  const times = ['2026-03-27T23:30:00Z', '2026-03-28T23:30:00Z', '2026-03-29T22:30:00Z']
+  const window = { end: '2026-04-01T00:00:00Z', start: '2026-03-20T00:00:00Z' }
+  const halfHourLater = (iso: string) => new Date(new Date(iso).getTime() + 30 * 60_000).toISOString()
+
+  const seed = async (user: string) => {
+    const cat = await createCategory(user, { name: ['Work'], rule_type: 'none' })
+    await insertActivityTypeDefinition(user, {
+      display_category: 'other',
+      display_name: 'Coffee',
+      name: 'coffee',
+    })
+    for (const t of times) {
+      await insertActivity(user, {
+        activity_type: 'coffee',
+        data: { size: 'large' },
+        end_time: new Date(halfHourLater(t)),
+        source: 'manual',
+        start_time: new Date(t),
+      })
+      await insertActivity(user, span(cat.activity_type_name!, 'Work', t, halfHourLater(t)))
+    }
+    await insertTimeSeries(
+      user,
+      times.map((t) => ({ metric: 'weight', source: 'manual' as const, time: new Date(t), value: 70 })),
+    )
+  }
+
+  const sources = [
+    { aggregation: 'count', pattern: 'coffee', source_type: 'tag', value: 1 },
+    { aggregation: 'count', pattern: 'coffee', source_type: 'activity_type', value: 1 },
+    { aggregation: 'count', pattern: 'weight', source_type: 'metric', value: 1 },
+    { aggregation: 'sum', pattern: 'Work', source_type: 'productivity_category', value: 0.5 },
+  ] as const
+
+  const values = (buckets: unknown[]) =>
+    (buckets as { bucket_start: string; value: number }[]).map((b) => [b.bucket_start, b.value])
+
+  for (const src of sources) {
+    test(`${src.source_type}: daily buckets split at local midnight with tz, UTC midnight without`, async () => {
+      const user = getTestUser()
+      await seed(user)
+      const input = { ...window, ...src, bucket_size: '1d' as const }
+
+      const utc = await getChartData(user, input)
+      const explicitUtc = await getChartData(user, { ...input, tz: 'UTC' })
+      const local = await getChartData(user, { ...input, tz: 'Europe/Stockholm' })
+
+      expect(values(utc.buckets)).toEqual([
+        ['2026-03-27T00:00:00.000Z', src.value],
+        ['2026-03-28T00:00:00.000Z', src.value],
+        ['2026-03-29T00:00:00.000Z', src.value],
+      ])
+      expect(explicitUtc).toEqual(utc)
+      expect(values(local.buckets)).toEqual([
+        ['2026-03-27T23:00:00.000Z', src.value],
+        ['2026-03-28T23:00:00.000Z', src.value],
+        ['2026-03-29T22:00:00.000Z', src.value],
+      ])
+    })
+
+    test(`${src.source_type}: weekly buckets start on local Monday`, async () => {
+      const user = getTestUser()
+      await seed(user)
+      const input = { ...window, ...src, bucket_size: '1w' as const }
+
+      const utc = await getChartData(user, input)
+      const local = await getChartData(user, { ...input, tz: 'Europe/Stockholm' })
+
+      expect(values(utc.buckets)).toEqual([['2026-03-23T00:00:00.000Z', 3 * src.value]])
+      expect(values(local.buckets)).toEqual([
+        ['2026-03-22T23:00:00.000Z', 2 * src.value],
+        ['2026-03-29T22:00:00.000Z', src.value],
+      ])
+    })
+  }
+
+  test('activity_type breakdown buckets by local day', async () => {
+    const user = getTestUser()
+    await seed(user)
+    const input = {
+      ...window,
+      aggregation: 'count' as const,
+      breakdown_fields: ['size'],
+      bucket_size: '1d' as const,
+      pattern: 'coffee',
+      source_type: 'activity_type' as const,
+    }
+
+    const local = await getChartData(user, { ...input, tz: 'Europe/Stockholm' })
+
+    expect(local.buckets).toEqual([
+      { bucket_start: '2026-03-27T23:00:00.000Z', series: { large: 1 } },
+      { bucket_start: '2026-03-28T23:00:00.000Z', series: { large: 1 } },
+      { bucket_start: '2026-03-29T22:00:00.000Z', series: { large: 1 } },
+    ])
+    expect(await getChartData(user, { ...input, tz: 'UTC' })).toEqual(await getChartData(user, input))
+  })
+
+  test('hourly buckets follow the local hour in a half-hour offset zone', async () => {
+    const user = getTestUser()
+    await insertTimeSeries(user, [
+      { metric: 'weight', source: 'manual', time: new Date('2026-01-10T10:29:00Z'), value: 70 },
+      { metric: 'weight', source: 'manual', time: new Date('2026-01-10T10:31:00Z'), value: 71 },
+    ])
+    const input = {
+      aggregation: 'count' as const,
+      bucket_size: '1h' as const,
+      end: '2026-01-11T00:00:00Z',
+      pattern: 'weight',
+      source_type: 'metric' as const,
+      start: '2026-01-10T00:00:00Z',
+    }
+
+    expect(values((await getChartData(user, input)).buckets)).toEqual([['2026-01-10T10:00:00.000Z', 2]])
+    expect(values((await getChartData(user, { ...input, tz: 'Asia/Kolkata' })).buckets)).toEqual([
+      ['2026-01-10T09:30:00.000Z', 1],
+      ['2026-01-10T10:30:00.000Z', 1],
+    ])
   })
 })

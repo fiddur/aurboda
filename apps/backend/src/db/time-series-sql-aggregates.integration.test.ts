@@ -58,6 +58,7 @@ const referenceHrZoneSecs = async (
   start: Date,
   end: Date,
   bucket: HrZoneBucket,
+  keyOf: (t: Date) => Date = (t) => utcBucketStart(t, bucket),
 ): Promise<ZoneRow[]> => {
   const rows = (await getTimeSeriesWithSource(user, 'heart_rate', start, end)).sort(
     (a, b) => a.time.getTime() - b.time.getTime() || (a.source < b.source ? -1 : a.source > b.source ? 1 : 0),
@@ -69,7 +70,7 @@ const referenceHrZoneSecs = async (
   }
   const groups = new Map<number, [Date, number][]>()
   for (const point of points) {
-    const key = utcBucketStart(point[0], bucket).getTime()
+    const key = keyOf(point[0]).getTime()
     groups.set(key, [...(groups.get(key) ?? []), point])
   }
   return [...groups.entries()]
@@ -225,6 +226,94 @@ describe('Time series SQL aggregates', () => {
 
       expect(await getHrZoneSecs(user, start, end, ZONES)).toEqual([])
       expect(await getHrZoneSecs(user, start, end, ZONES, '1d')).toEqual([])
+    })
+
+    describe('in a local time zone', () => {
+      // Stockholm springs forward 2024-03-31 01:00Z (CET +1 → CEST +2); that local day is 23 h long.
+      const dstSamples: Record<string, Partial<Record<HrZoneBucket, string>>> = {
+        '2024-03-24T22:59:30Z': { '1d': '2024-03-23T23:00:00Z', '1w': '2024-03-17T23:00:00Z' },
+        '2024-03-24T23:00:20Z': { '1d': '2024-03-24T23:00:00Z', '1w': '2024-03-24T23:00:00Z' },
+        '2024-03-30T23:00:10Z': { '1d': '2024-03-30T23:00:00Z', '1w': '2024-03-24T23:00:00Z' },
+        '2024-03-31T00:59:50Z': { '1d': '2024-03-30T23:00:00Z', '1w': '2024-03-24T23:00:00Z' },
+        '2024-03-31T01:00:20Z': { '1d': '2024-03-30T23:00:00Z', '1w': '2024-03-24T23:00:00Z' },
+        '2024-03-31T21:59:50Z': { '1d': '2024-03-30T23:00:00Z', '1w': '2024-03-24T23:00:00Z' },
+        '2024-03-31T22:00:10Z': { '1d': '2024-03-31T22:00:00Z', '1w': '2024-03-31T22:00:00Z' },
+      }
+      const dstMonth: Record<string, string> = {
+        '2024-02-29T22:59:40Z': '2024-01-31T23:00:00Z',
+        '2024-02-29T23:00:05Z': '2024-02-29T23:00:00Z',
+      }
+
+      for (const bucket of ['1d', '1w'] as const) {
+        test(`'${bucket}' buckets start at local midnight / Monday across a DST change`, async () => {
+          const user = getTestUser()
+          const times = Object.keys(dstSamples)
+          await insertTimeSeries(
+            user,
+            times.map((t, i) => hr(t, 95 + i * 15)),
+          )
+          const from = new Date('2024-03-20T00:00:00Z')
+          const to = new Date('2024-04-02T00:00:00Z')
+
+          const expected = await referenceHrZoneSecs(
+            user,
+            from,
+            to,
+            bucket,
+            (t) => new Date(dstSamples[t.toISOString().replace('.000Z', 'Z')]![bucket]!),
+          )
+          const actual = await getHrZoneSecs(user, from, to, ZONES, bucket, 'Europe/Stockholm')
+
+          expect(new Set(actual.map((r) => r.bucket_start!.toISOString())).size).toBe(
+            new Set(Object.values(dstSamples).map((b) => b[bucket])).size,
+          )
+          expectSameZoneRows(actual, expected)
+        })
+      }
+
+      test("'1M' buckets start on the local 1st", async () => {
+        const user = getTestUser()
+        await insertTimeSeries(
+          user,
+          Object.keys(dstMonth).map((t) => hr(t, 150)),
+        )
+        const from = new Date('2024-02-01T00:00:00Z')
+        const to = new Date('2024-03-02T00:00:00Z')
+
+        const actual = await getHrZoneSecs(user, from, to, ZONES, '1M', 'Europe/Stockholm')
+
+        expect(actual.map((r) => [r.bucket_start!.toISOString(), r.sample_count])).toEqual([
+          ['2024-01-31T23:00:00.000Z', 1],
+          ['2024-02-29T23:00:00.000Z', 1],
+        ])
+      })
+
+      test("'1h' buckets start at the local hour in a half-hour offset zone", async () => {
+        const user = getTestUser()
+        // Asia/Kolkata is +05:30: local hours start at :30 UTC.
+        await insertTimeSeries(user, [
+          hr('2024-01-29T10:29:50Z', 130),
+          hr('2024-01-29T10:30:10Z', 150),
+          hr('2024-01-29T11:29:00Z', 170),
+        ])
+
+        const actual = await getHrZoneSecs(user, start, end, ZONES, '1h', 'Asia/Kolkata')
+
+        expect(actual.map((r) => [r.bucket_start!.toISOString(), r.sample_count])).toEqual([
+          ['2024-01-29T09:30:00.000Z', 1],
+          ['2024-01-29T10:30:00.000Z', 2],
+        ])
+      })
+
+      test("an explicit 'UTC' matches the default for every bucket size", async () => {
+        const user = getTestUser()
+        await seed(user)
+        for (const bucket of buckets) {
+          expect(await getHrZoneSecs(user, start, end, ZONES, bucket, 'UTC')).toEqual(
+            await getHrZoneSecs(user, start, end, ZONES, bucket),
+          )
+        }
+      })
     })
   })
 
