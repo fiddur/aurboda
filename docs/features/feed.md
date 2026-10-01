@@ -349,7 +349,9 @@ flattened HTML: an activity share shows its title, the author's message, the act
 date, a stat grid, **one combined multi-metric chart** with per-metric toggle buttons, and a
 **time-synced interactive map** that marks the position at the hovered chart time — the same
 components the activity detail view uses (#1011) — while an article shows the full inline
-article. Each delivered image is kept unless its native counterpart actually draws: the
+article. The map (Leaflet and its OpenStreetMap tiles) is only started once its card comes
+within 200 px of the viewport, and is kept from then on, so a long timeline does not load
+tiles for every route in it (#1016). Each delivered image is kept unless its native counterpart actually draws: the
 chart PNG renders heart rate only, so it is skipped exactly when a drawable _heart-rate_
 series is present, and the route PNG is skipped when the payload carries a drawable route.
 A `followers`-only Aurboda share federates
