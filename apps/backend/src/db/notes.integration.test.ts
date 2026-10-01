@@ -654,6 +654,23 @@ describe('Notes Integration Tests', () => {
     })
   })
 
+  describe('upsertSyncedNote', () => {
+    test("clearing (content undefined) removes only that source's note on the entity", async () => {
+      const user = getTestUser()
+      const entityId = randomUUID()
+      const start = new Date('2024-01-15T08:00:00Z')
+
+      await upsertSyncedNote(user, 'activity', entityId, 'gravl', 'Bench 3x5', start)
+      await upsertSyncedNote(user, 'activity', entityId, 'health_connect', 'HC note', start)
+      await insertNote(user, 'activity', entityId, 'User comment', start)
+
+      await upsertSyncedNote(user, 'activity', entityId, 'gravl', undefined)
+
+      const remaining = await getNotesForEntity(user, 'activity', entityId)
+      expect(remaining.map((n) => n.content).sort()).toEqual(['HC note', 'User comment'])
+    })
+  })
+
   describe('deleteNotesForEntity', () => {
     test('removes every comment on the entity and their replies', async () => {
       const user = getTestUser()
