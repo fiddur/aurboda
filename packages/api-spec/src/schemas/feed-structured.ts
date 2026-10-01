@@ -12,6 +12,12 @@
  * The origin instance serves this at `GET /public/:username/feed/:postId`
  * (see the backend feed-public router); a following instance fetches it on
  * ingest (see `timeline-enrich.ts`) and stores it on the timeline entry.
+ *
+ * The activity payload is the QuantPub `0.2` wire payload (`docs/fep/quantpub.md`),
+ * so its field names and metric keys are lowerCamelCase by design: the one
+ * sanctioned exception to the snake_case convention. Aurboda's internal metric
+ * names stay snake_case and are converted at the boundary
+ * (`apps/backend/src/services/activitypub/quant-wire.ts`).
  */
 import { z } from 'zod'
 
@@ -44,7 +50,7 @@ export const feedStructuredMetricSchema = z
   .object({
     key: z
       .string()
-      .meta({ description: 'Machine key, e.g. `heart_rate_avg`, `distance`, `hr_zone_minutes`' }),
+      .meta({ description: 'Machine key, lowerCamelCase, e.g. `heartRateAvg`, `distance`, `hrZoneMinutes`' }),
     unit: z.string().optional().meta({ description: 'Unit for the scalar form (e.g. `bpm`, `km`)' }),
     value: z
       .union([z.number(), z.record(z.string(), z.number())])
@@ -57,7 +63,7 @@ export type FeedStructuredMetric = z.infer<typeof feedStructuredMetricSchema>
 export const feedStructuredSeriesSchema = z
   .object({
     bucket: z.string().meta({ description: 'Effective bucket granularity (e.g. `5s`)' }),
-    metric: z.string().meta({ description: 'The metric key, e.g. `heart_rate`' }),
+    metric: z.string().meta({ description: 'The metric key, lowerCamelCase, e.g. `heartRate`' }),
     samples: z
       .array(publicSeriesSampleSchema)
       .meta({ description: 'Bucketed samples over the activity window' }),
@@ -85,17 +91,14 @@ export type FeedStructuredRoutePoint = z.infer<typeof feedStructuredRoutePointSc
  */
 export const feedStructuredSchema = z
   .object({
-    activity_type: z.string().meta({ description: 'Activity type, e.g. `exercise`' }),
-    duration_seconds: z
-      .number()
-      .optional()
-      .meta({ description: 'Activity duration in seconds (present when the activity has an end)' }),
-    end_time: iso8601DateTimeSchema.optional().meta({ description: 'Activity end (ISO 8601), if any' }),
+    activityType: z.string().meta({ description: 'Activity type, e.g. `exercise`' }),
+    endTime: iso8601DateTimeSchema.optional().meta({ description: 'Activity end (ISO 8601), if any' }),
     message: z
       .string()
       .optional()
       .meta({ description: "The author's personal message for the post (plain text), if any" }),
     metrics: z.array(feedStructuredMetricSchema).meta({ description: 'Shared scalar summaries' }),
+    name: z.string().optional().meta({ description: 'Activity title, if any' }),
     route: z
       .array(feedStructuredRoutePointSchema)
       .optional()
@@ -108,8 +111,7 @@ export const feedStructuredSchema = z
     series: z
       .array(feedStructuredSeriesSchema)
       .meta({ description: 'Shared high-resolution series (may be empty)' }),
-    start_time: iso8601DateTimeSchema.meta({ description: 'Activity start (ISO 8601)' }),
-    title: z.string().optional().meta({ description: 'Activity title, if any' }),
+    startTime: iso8601DateTimeSchema.meta({ description: 'Activity start (ISO 8601)' }),
   })
   .meta({ id: 'FeedStructured' })
 

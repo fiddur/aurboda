@@ -19,6 +19,15 @@ describe('splitStats', () => {
     expect(zones).toEqual([])
   })
 
+  test('labels camelCase wire keys like their snake_case counterparts', () => {
+    const { cells, zones } = splitStats([
+      { key: 'heartRateAvg', unit: 'bpm', value: 107 },
+      { key: 'hrZoneMinutes', value: { z2: 61 } },
+    ])
+    expect(cells).toEqual([{ key: 'heartRateAvg', label: 'Avg HR', value: '107 bpm' }])
+    expect(zones).toEqual([{ minutes: 61, zone: 'Z2' }])
+  })
+
   test('splits an HR-zone record into the compact zones row', () => {
     const { cells, zones } = splitStats([{ key: 'hr_zone_minutes', value: { z0: 13, z1: 71, z2: 61 } }])
     expect(cells).toEqual([])

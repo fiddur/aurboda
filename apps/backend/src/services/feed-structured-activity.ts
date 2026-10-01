@@ -19,6 +19,7 @@ import {
 import type { ScalarMetric } from './activitypub/object.ts'
 
 import { getLocations } from '../db/index.ts'
+import { toWireKey } from './activitypub/quant-wire.ts'
 import { resolvePublicSeries } from './feed-series.ts'
 import { queryMetricsBucketed } from './queries/index.ts'
 
@@ -56,7 +57,7 @@ export const resolveStructuredSeries = async (
     if (result) {
       series.push({
         bucket: result.bucket,
-        metric: result.metric,
+        metric: toWireKey(result.metric),
         samples: result.samples,
         unit: result.unit,
       })
@@ -111,20 +112,19 @@ export const assembleStructuredActivity = (
   route: FeedStructuredRoutePoint[] = [],
 ): FeedStructuredActivity => {
   const structured: FeedStructuredActivity = {
-    activity_type: activity.activity_type,
+    activityType: activity.activity_type,
     kind: 'activity',
-    metrics: scalars.map(({ key, unit, value }) => ({ key, value, ...(unit === undefined ? {} : { unit }) })),
+    metrics: scalars.map(({ key, unit, value }) => ({
+      key: toWireKey(key),
+      value,
+      ...(unit === undefined ? {} : { unit }),
+    })),
     series,
-    start_time: activity.start_time.toISOString(),
+    startTime: activity.start_time.toISOString(),
   }
-  if (activity.title !== undefined) structured.title = activity.title
+  if (activity.title !== undefined) structured.name = activity.title
   if (message != null) structured.message = message
   if (route.length > 0) structured.route = route
-  if (activity.end_time) {
-    structured.end_time = activity.end_time.toISOString()
-    structured.duration_seconds = Math.round(
-      (activity.end_time.getTime() - activity.start_time.getTime()) / 1000,
-    )
-  }
+  if (activity.end_time) structured.endTime = activity.end_time.toISOString()
   return structured
 }

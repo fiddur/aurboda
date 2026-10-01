@@ -48,9 +48,9 @@ describe('well-known/quantpub (#896)', () => {
     const res = await supertest(app).get('/.well-known/quantpub')
     expect(res.status).toBe(200)
     expect(res.body).toEqual({
-      api_base: 'http://localhost:3000',
+      apiBase: 'http://localhost:3000',
       product: 'aurboda',
-      quantpub: '0.1',
+      quantpub: '0.2',
       version: 'test',
     })
     expect(res.headers['cache-control']).toMatch(/max-age=3600/)

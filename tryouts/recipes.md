@@ -328,9 +328,9 @@ post" (#1061).
 ### Enrichment: local-origin resolution and lazy retro-enrichment (#926, #1015)
 
 On inbound Create/Update whose Note id matches `/users/{user}/feed/{uuid}` (`FEED_OBJECT_PATH` —
-Mastodon `/statuses/` never matches), the app discovers the peer via `/.well-known/aurboda`
-(`api_base` + `federation: true`) and fetches `{api_base}/public/{user}/feed/{postId}` through
-SSRF-guarded `safeFetchGet`.
+Mastodon `/statuses/` never matches), the app discovers the peer via `/.well-known/quantpub`
+(`apiBase`; `api_base` from a QuantPub `0.1` peer is accepted) and fetches
+`{apiBase}/public/{user}/feed/{postId}` through SSRF-guarded `safeFetchGet`.
 
 **The A/B that proves "in-process, not HTTP"** (#1015): `safe-fetch` blocks 127.0.0.1, so calling
 `enrichFromAurboda(uri, {discover, fetchStructured})` _without_ the `local` dep throws

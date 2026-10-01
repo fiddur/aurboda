@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
-import { query } from './connection.ts'
+import { getDbForUser, query, rewriteLegacyQuantpubStructured } from './connection.ts'
 import {
   countTimelineRepliesTo,
   deleteBoostEntry,
@@ -81,18 +81,17 @@ describe('Timeline store integration', () => {
   test('stores + reads back the structured payload (JSONB); plain posts are null', async () => {
     const user = getTestUser()
     const structured = {
-      activity_type: 'exercise',
-      duration_seconds: 1800,
-      end_time: '2026-07-01T08:30:00.000Z',
+      activityType: 'exercise',
+      endTime: '2026-07-01T08:30:00.000Z',
       kind: 'activity' as const,
       metrics: [
-        { key: 'heart_rate_avg', unit: 'bpm', value: 142 },
-        { key: 'hr_zone_minutes', value: { z2: 22, z3: 8 } },
+        { key: 'heartRateAvg', unit: 'bpm', value: 142 },
+        { key: 'hrZoneMinutes', value: { z2: 22, z3: 8 } },
       ],
       series: [
         {
           bucket: '5s',
-          metric: 'heart_rate',
+          metric: 'heartRate',
           samples: [
             {
               avg: 140,
@@ -106,7 +105,7 @@ describe('Timeline store integration', () => {
           unit: 'bpm',
         },
       ],
-      start_time: '2026-07-01T08:00:00.000Z',
+      startTime: '2026-07-01T08:00:00.000Z',
     }
     const rec = await upsertTimelineEntry(user, entry(1, { structured }))
     expect(rec.structured).toEqual(structured)
@@ -115,6 +114,57 @@ describe('Timeline store integration', () => {
     // A post without structured data stores null (Mastodon / non-Aurboda).
     const plain = await upsertTimelineEntry(user, entry(2))
     expect(plain.structured).toBeNull()
+  })
+
+  test('rewrites stored QuantPub 0.1 activity payloads to 0.2, leaving 0.2 and articles alone', async () => {
+    const user = getTestUser()
+    const legacy = await upsertTimelineEntry(user, entry(1))
+    const current = await upsertTimelineEntry(user, entry(2))
+    const article = await upsertTimelineEntry(user, entry(3))
+    const currentPayload = {
+      activityType: 'exercise',
+      kind: 'activity',
+      metrics: [{ key: 'heartRateAvg', value: 140 }],
+      series: [],
+      startTime: '2026-07-01T08:00:00.000Z',
+    }
+    const articlePayload = { blocks: [], kind: 'article', title: 'Notes' }
+    const setRaw = (id: string, payload: unknown) =>
+      query(user, 'UPDATE timeline_entry SET structured = $1::jsonb WHERE id = $2', [
+        JSON.stringify(payload),
+        id,
+      ])
+    await setRaw(legacy.id, {
+      activity_type: 'exercise',
+      duration_seconds: 1800,
+      end_time: '2026-07-01T08:30:00.000Z',
+      metrics: [
+        { key: 'heart_rate_avg', unit: 'bpm', value: 142 },
+        { key: 'hr_zone_minutes', value: { z2: 22 } },
+      ],
+      series: [{ bucket: '5s', metric: 'heart_rate', samples: [], unit: 'bpm' }],
+      start_time: '2026-07-01T08:00:00.000Z',
+      title: 'Morning run',
+    })
+    await setRaw(current.id, currentPayload)
+    await setRaw(article.id, articlePayload)
+
+    expect(await rewriteLegacyQuantpubStructured(await getDbForUser(user))).toBe(1)
+
+    const byId = async (id: string) => (await getTimelineEntryById(user, id))?.structured
+    expect(await byId(legacy.id)).toEqual({
+      activityType: 'exercise',
+      endTime: '2026-07-01T08:30:00.000Z',
+      metrics: [
+        { key: 'heartRateAvg', unit: 'bpm', value: 142 },
+        { key: 'hrZoneMinutes', value: { z2: 22 } },
+      ],
+      name: 'Morning run',
+      series: [{ bucket: '5s', metric: 'heartRate', samples: [], unit: 'bpm' }],
+      startTime: '2026-07-01T08:00:00.000Z',
+    })
+    expect(await byId(current.id)).toEqual(currentPayload)
+    expect(await byId(article.id)).toEqual(articlePayload)
   })
 
   test('stores + reads back image attachments (JSONB); plain posts are null', async () => {
@@ -139,11 +189,11 @@ describe('Timeline store integration', () => {
   test('a re-delivery without structured keeps the last-known structured (COALESCE)', async () => {
     const user = getTestUser()
     const structured = {
-      activity_type: 'exercise',
+      activityType: 'exercise',
       kind: 'activity' as const,
       metrics: [{ key: 'distance', unit: 'km', value: 5 }],
       series: [],
-      start_time: '2026-07-01T08:00:00.000Z',
+      startTime: '2026-07-01T08:00:00.000Z',
     }
     await upsertTimelineEntry(user, entry(1, { structured }))
     // An edit/redelivery whose enrichment failed (structured undefined) must not
@@ -348,11 +398,11 @@ describe('Timeline store integration', () => {
   test('retro-enrichment: lists Aurboda-shaped unenriched entries, marks attempts (#996)', async () => {
     const user = getTestUser()
     const structured = {
-      activity_type: 'exercise',
+      activityType: 'exercise',
       kind: 'activity' as const,
       metrics: [{ key: 'distance', unit: 'km', value: 5 }],
       series: [],
-      start_time: '2026-07-01T08:00:00.000Z',
+      startTime: '2026-07-01T08:00:00.000Z',
     }
     const aurbodaUri = (n: number) =>
       `https://peer.example/users/bob/feed/00000000-0000-4000-8000-00000000000${n}`
@@ -393,11 +443,11 @@ describe('Timeline store integration', () => {
   test('retro-enrichment: setTimelineEntryStructured never wipes an existing payload with null', async () => {
     const user = getTestUser()
     const structured = {
-      activity_type: 'exercise',
+      activityType: 'exercise',
       kind: 'activity' as const,
       metrics: [],
       series: [],
-      start_time: '2026-07-01T08:00:00.000Z',
+      startTime: '2026-07-01T08:00:00.000Z',
     }
     const rec = await upsertTimelineEntry(user, entry(1, { structured }))
     await setTimelineEntryStructured(user, rec.id, null)
@@ -497,11 +547,11 @@ describe('Timeline store integration', () => {
     test('refreshBoostedCopies carries an author’s edit to the boost cards, keeping their sort order', async () => {
       const user = getTestUser()
       const structured = {
-        activity_type: 'exercise',
+        activityType: 'exercise',
         kind: 'activity' as const,
         metrics: [{ key: 'distance', unit: 'km', value: 5 }],
         series: [],
-        start_time: '2026-07-01T08:00:00.000Z',
+        startTime: '2026-07-01T08:00:00.000Z',
       }
       const direct = await upsertTimelineEntry(user, entry(1))
       await upsertTimelineEntry(user, boostOfAlice({ structured }))

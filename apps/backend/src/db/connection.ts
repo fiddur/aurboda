@@ -3,6 +3,7 @@ import { Client, type QueryResultRow } from 'pg'
 import format from 'pg-format'
 
 import { createTableStatements, schemaFingerprint, tableCreationOrder } from '../schema.ts'
+import { normalizeStructuredActivity } from '../services/activitypub/quant-wire.ts'
 import { createRolePool, type Queryable, type UserDb, withTransaction } from './pool.ts'
 import { repairGarminSleepStages } from './repair-garmin-sleep-stages.ts'
 
@@ -1615,8 +1616,47 @@ export const migrateSchema = async (user: string, opts?: { force?: boolean }) =>
     )
   }
 
+  await ensureSchemaMigrationsTable(db)
+  const quantpubApplied = await query(
+    db,
+    `SELECT 1 FROM schema_migrations WHERE name = 'quantpub_0_2_structured_camelcase'`,
+  )
+  if (quantpubApplied.rows.length === 0) {
+    await withTransaction(db, async (tx) => {
+      await rewriteLegacyQuantpubStructured(tx)
+      await query(
+        tx,
+        `INSERT INTO schema_migrations (name) VALUES ('quantpub_0_2_structured_camelcase') ON CONFLICT DO NOTHING`,
+      )
+    })
+  }
+
   // Last, and only on success: a sweep that threw must run again next time.
   await recordSchemaFingerprint(db, fingerprint)
+}
+
+/**
+ * Rewrite stored QuantPub `0.1` activity payloads on timeline entries to `0.2`
+ * (camelCase fields and metric keys). Article payloads are left alone.
+ * @internal Exported for testing.
+ */
+export const rewriteLegacyQuantpubStructured = async (db: Queryable): Promise<number> => {
+  const { rows } = await query<{ id: string; structured: unknown }>(
+    db,
+    `SELECT id, structured FROM timeline_entry
+      WHERE structured IS NOT NULL AND structured->>'kind' IS DISTINCT FROM 'article'`,
+  )
+  let rewritten = 0
+  for (const row of rows) {
+    const normalized = normalizeStructuredActivity(row.structured)
+    if (normalized === row.structured) continue
+    await query(db, `UPDATE timeline_entry SET structured = $1::jsonb WHERE id = $2`, [
+      JSON.stringify(normalized),
+      row.id,
+    ])
+    rewritten++
+  }
+  return rewritten
 }
 
 const migrateGoalsFromSettings = async (

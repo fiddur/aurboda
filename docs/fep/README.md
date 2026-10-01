@@ -9,10 +9,10 @@ federation code, before submission to the
   federated feed: the `quant:Exercise` / `quant:Observation` vocabulary, the
   out-of-band structured-payload pattern (well-known discovery, structured post
   endpoint, data-driven public series endpoint, capability tokens), and the
-  privacy model as normative requirements. Tracked in
-  [issue #905](https://github.com/fiddur/aurboda/issues/905); the working name
-  (QuantPub vs. Personal Metrics Vocabulary / MetricPub) is open for community
-  input. Aurboda's own implementation of the pattern is documented in
+  privacy model — scalar/series/geography sharing each a separate explicit
+  opt-in — as normative requirements. Tracked in
+  [issue #905](https://github.com/fiddur/aurboda/issues/905). Aurboda's own
+  implementation of the pattern is documented in
   [docs/features/feed.md](../features/feed.md).
 - **[quantpub-reddit-draft.md](./quantpub-reddit-draft.md)** — draft of the
   r/QuantifiedSelf outreach post (issue #905 step 3), kept in-repo for review;

@@ -22,6 +22,7 @@ import {
 
 import { isValidUsername } from '../api/auth-routes.ts'
 import { findCoveringSharedSeriesWindow, isMissingDatabase, listPublicFeedPostsKeyset } from '../db/index.ts'
+import { toWireKey, wireMetricToMetricType } from '../services/activitypub/quant-wire.ts'
 import { resolvePublicSeries } from '../services/feed-series.ts'
 import { loadAuthorizedStructuredPost, resolveStructuredContent } from '../services/feed-structured.ts'
 import { serializeFeedPost } from '../services/feed.ts'
@@ -66,7 +67,11 @@ export const createFeedPublicRouter = (): TypedRouter => {
       if (!isValidUsername(username)) {
         return res.status(404).json({ error: 'Not found', success: false })
       }
-      const { bucket, end, metric, start } = req.query
+      const { bucket, end, start } = req.query
+      const metric = wireMetricToMetricType(req.query.metric)
+      if (metric === null) {
+        return res.status(404).json({ error: 'Not found', success: false })
+      }
       try {
         const result = await resolvePublicSeries(metric, new Date(start), new Date(end), bucket, {
           findCoveringWindow: (m, s, e) => findCoveringSharedSeriesWindow(username, m, s, e),
@@ -80,7 +85,7 @@ export const createFeedPublicRouter = (): TypedRouter => {
         // effect immediately, so shared caches/CDNs must never serve a series
         // that was just un-shared.
         res.setHeader('Cache-Control', 'no-store')
-        res.json({ ...result, success: true })
+        res.json({ ...result, metric: toWireKey(result.metric), success: true })
       } catch (error) {
         if (isMissingDatabase(error)) {
           return res.status(404).json({ error: 'Not found', success: false })

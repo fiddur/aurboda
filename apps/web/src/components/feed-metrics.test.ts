@@ -129,4 +129,12 @@ describe('metric labels', () => {
     expect(seriesLabel('heart_rate')).toBe('Heart rate')
     expect(summaryLabel('unknown_key')).toBe('unknown_key')
   })
+
+  it('resolves the QuantPub 0.2 camelCase wire keys to the same labels', () => {
+    expect(summaryLabel('heartRateAvg')).toBe('Avg HR')
+    expect(summaryLabel('hrZoneMinutes')).toBe('HR zones')
+    expect(seriesLabel('heartRate')).toBe('Heart rate')
+    expect(seriesLabel('runCadence')).toBe('Cadence')
+    expect(summaryLabel('unknownKey')).toBe('unknownKey')
+  })
 })

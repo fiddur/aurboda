@@ -164,9 +164,9 @@ describe('feed service', () => {
       const dto = await serializeFeedPost(user, post, { includeStructured: true })
       expect(dto.structured?.kind).toBe('activity')
       if (dto.structured?.kind !== 'activity') throw new Error('expected an activity payload')
-      expect(dto.structured.activity_type).toBe('exercise')
+      expect(dto.structured.activityType).toBe('exercise')
       expect(dto.structured.message).toBe('Native!')
-      expect(dto.structured.start_time).toBe(ANCHOR_START.toISOString())
+      expect(dto.structured.startTime).toBe(ANCHOR_START.toISOString())
       // Same typed scalars as the flat `metrics` field — one resolution feeds both.
       expect(dto.structured.metrics).toEqual(dto.metrics)
       // No series opted in → empty, never undefined.
@@ -195,7 +195,7 @@ describe('feed service', () => {
       if (dto.structured?.kind !== 'activity') throw new Error('expected an activity payload')
       // The opted-in series actually resolves (not just the empty-series case).
       expect(dto.structured.series).toEqual([
-        expect.objectContaining({ metric: 'heart_rate', samples: expect.any(Array) }),
+        expect.objectContaining({ metric: 'heartRate', samples: expect.any(Array) }),
       ])
       expect(dto.structured.series[0]?.samples.length).toBeGreaterThan(0)
       // The route rides along under the include_map opt-in, endpoints intact.
