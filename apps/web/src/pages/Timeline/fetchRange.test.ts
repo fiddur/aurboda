@@ -1,7 +1,7 @@
 import { addDays, differenceInCalendarDays, endOfDay, parseISO, startOfDay, subDays } from 'date-fns'
 import { describe, expect, it } from 'vitest'
 
-import { fetchWindowFromRange, nextFetchRange } from './fetchRange'
+import { fetchWindowFromRange, nextFetchRange, padFetchWindow } from './fetchRange'
 
 const today = new Date('2026-09-26T12:00:00Z')
 const day = (iso: string) => ({ end: endOfDay(parseISO(iso)), start: startOfDay(parseISO(iso)) })
@@ -92,5 +92,16 @@ describe('fetchWindowFromRange', () => {
       2026, 8, 10, 0,
     ])
     expect([end.getFullYear(), end.getMonth(), end.getDate(), end.getHours()]).toEqual([2026, 8, 12, 23])
+  })
+})
+
+describe('padFetchWindow', () => {
+  it('pads twelve hours before the start and twelve hours after the end', () => {
+    const start = new Date('2026-09-10T00:00:00Z')
+    const end = new Date('2026-09-12T23:59:59.999Z')
+    expect(padFetchWindow(start, end)).toEqual([
+      new Date('2026-09-09T12:00:00Z'),
+      new Date('2026-09-13T11:59:59.999Z'),
+    ])
   })
 })
