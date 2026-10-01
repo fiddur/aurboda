@@ -9,6 +9,8 @@
  * callers must resolve visibility first and never pass a private resource in.
  */
 
+import type { ChallengeTimeStatus } from '@aurboda/api-spec'
+
 export const SITE_NAME = 'Aurboda'
 
 /** Path (relative to the web host) of the branded fallback preview image. */
@@ -144,16 +146,30 @@ interface ChallengeMetaInput {
   username: string
   name: string
   url: string
-  details?: { measure: string; range: string; phrase: string; members: number }
+  details?: {
+    measure: string
+    range: string
+    phrase: string
+    status: ChallengeTimeStatus
+    /** Members other than the host. */
+    joined: number
+    /** Every active member, host included. */
+    participants: number
+  }
 }
 
 const challengeDescription = ({ details, name, username }: ChallengeMetaInput): string => {
   if (!details) {
     return `${name} — a federated challenge hosted by ${username} on ${SITE_NAME}. Join from any Aurboda instance.`
   }
-  const { measure, members, phrase, range } = details
-  const joined = members === 0 ? 'Be the first to join' : `${members} joined`
-  return `${measure} challenge, ${range} · ${phrase} · ${joined}. Hosted by ${username} on ${SITE_NAME} — join from any instance.`
+  const { joined, measure, participants, phrase, range, status } = details
+  const lead = `${measure} challenge, ${range} · ${phrase}`
+  if (status === 'ended') {
+    const tookPart = participants === 0 ? '' : ` · ${participants} took part`
+    return `${lead}${tookPart}. Hosted by ${username} on ${SITE_NAME}.`
+  }
+  const joinedText = joined === 0 ? 'Be the first to join' : `${joined} joined`
+  return `${lead} · ${joinedText}. Hosted by ${username} on ${SITE_NAME} — join from any instance.`
 }
 
 export const buildChallengeShareMeta = (input: ChallengeMetaInput): ShareMeta => {

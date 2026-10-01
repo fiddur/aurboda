@@ -7,6 +7,7 @@ import {
   getMetricDisplayName,
 } from '@aurboda/api-spec'
 
+import type { ChallengeMemberRecord } from '../db/challenges.ts'
 import type { OgChallengeMember } from './og-image.ts'
 
 import { type ChallengeTheme, challengeTheme } from './og-challenge-theme.ts'
@@ -22,8 +23,8 @@ export interface ResolvedChallenge {
   timezone: string
   /** ISO time the host last set the banner; null when there is none. */
   banner_updated_at: string | null
-  /** Active members with their cached totals. */
-  members: { display_name: string; cached_total: number | null }[]
+  /** Active members with their cached totals; the host's own membership is flagged. */
+  members: { display_name: string; cached_total: number | null; is_host: boolean }[]
 }
 
 export interface ChallengeDescription {
@@ -32,8 +33,10 @@ export interface ChallengeDescription {
   range: string
   phrase: string
   status: ChallengeTimeStatus
-  /** Best total first; members without a total yet go last. */
+  /** Best total first; members without a total yet go last. Includes the host. */
   members: OgChallengeMember[]
+  /** Members other than the host: the host is a member from creation, so counting them would never read "nobody yet". */
+  joined: number
   theme: ChallengeTheme
 }
 
@@ -49,9 +52,29 @@ const humanizeActivityType = (pattern: string): string => {
   return words.charAt(0).toUpperCase() + words.slice(1)
 }
 
+/** Active members as a card shows them; the host is the local member named after the challenge's owner. */
+export const cardMembers = (
+  members: readonly Pick<
+    ChallengeMemberRecord,
+    'cached_total' | 'display_name' | 'kind' | 'local_user' | 'status'
+  >[],
+  host: string,
+): ResolvedChallenge['members'] =>
+  members
+    .filter((m) => m.status === 'active')
+    .map((m) => ({
+      cached_total: m.cached_total,
+      display_name: m.display_name,
+      is_host: m.kind === 'local' && m.local_user === host,
+    }))
+
+export const countJoined = (members: readonly { is_host: boolean }[]): number =>
+  members.filter((m) => !m.is_host).length
+
 export const describeChallenge = (resolved: ResolvedChallenge, now: Date): ChallengeDescription => {
   const { end_ts, spec, start_ts, timezone } = resolved
   return {
+    joined: countJoined(resolved.members),
     measure:
       spec.source_type === 'metric' ? getMetricDisplayName(spec.pattern) : humanizeActivityType(spec.pattern),
     members: resolved.members
