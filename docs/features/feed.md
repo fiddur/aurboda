@@ -381,6 +381,10 @@ backfilled post that later arrives live just updates in place). It's driven off 
 so it covers **remote** followees (on their server's Accept) and **local** ones alike (a local
 follow auto-accepts through the same handler). Only the **outbox** is read, so `followers`-only
 and older private posts are never backfilled — exactly what a non-follower could already see.
+Servers whose outbox lists no items get a fallback: [FitPub](https://codeberg.org/fitpub/fitpub)
+serves only a `totalItems` count, so for a FitPub server (detected via its NodeInfo
+`software.name`) the post ids come from its public web API, and each post is still fetched as an
+ActivityPub `Note` and checked like any other; only publicly addressed posts are kept.
 Backfill is **best-effort and bounded**: fire-and-forget (a slow or unreachable outbox never
 blocks the follow), capped at the latest ~20 posts, and time-boxed. Backfilled posts are
 historical, so they don't trigger the live **"N new posts"** pill — they simply appear in the

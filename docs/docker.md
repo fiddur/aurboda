@@ -192,6 +192,51 @@ docker run --rm \
   alpine tar xzf /backup/postgres-backup.tar.gz -C /
 ```
 
+## Database connections and tuning
+
+Each user has their own database, so the backend keeps one pool per user:
+
+| Pool                     | Max connections | Notes                                                    |
+| ------------------------ | --------------- | -------------------------------------------------------- |
+| Per-user pool            | 5 per user      | Idle connections close after 30 s; idle pools drain to 0 |
+| Live timeline (`LISTEN`) | +1 per user     | Only while that user has a live timeline open            |
+| Central database pool    | 5               | Users, settings, shared data                             |
+| pg-boss (job queue)      | 3               |                                                          |
+
+Only active users hold connections, so the bundled `max_connections=200` in
+`docker-compose.yml` covers roughly 30 users being active at the same moment
+(6 each, plus 8 for the central pool and pg-boss). Raise it if you host more.
+
+`connectionTimeoutMillis` (30 s) also bounds the wait for a free slot in a pool.
+When all 5 of a user's connections are busy for longer than that — a slow query
+holding them during a large sync, say — further queries for that user fail
+instead of queueing indefinitely. In the backend logs that shows up as
+`timeout exceeded when trying to connect` errors (and 500 responses) for that
+user only; other users are unaffected.
+
+### Postgres tuning
+
+`docker-compose.yml` sets only `max_connections`; size the rest to the host.
+Rough starting points:
+
+- `shared_buffers` ≈ 25 % of the RAM available to Postgres
+- `effective_cache_size` ≈ 50–75 % of that RAM
+- `work_mem` modest, e.g. 16–32 MB — it is per sort/hash operation per
+  connection, and there can be many connections
+- `shm_size` on the container large enough for `shared_buffers` and parallel
+  queries (Docker's default is 64 MB)
+
+Pass them as `-c` flags on the Postgres command, e.g. for a host giving
+Postgres 4 GB:
+
+```yaml
+postgres:
+  image: postgis/postgis:16-3.4-alpine
+  shm_size: 1g
+  command: >
+    postgres -c max_connections=200 -c shared_buffers=1GB -c effective_cache_size=3GB -c work_mem=16MB
+```
+
 ## Troubleshooting
 
 ### Check logs:

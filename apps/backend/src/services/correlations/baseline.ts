@@ -28,11 +28,19 @@ export async function getBaseline(user: string, referenceDate?: Date): Promise<B
   // Prefer the contextual sleep HRV signal; fall back to raw hrv_rmssd when no
   // samples overlap the user's tracked sleep windows so the widget mirrors what
   // /api/metrics/latest/hrv_rmssd surfaces (see #747).
+  //
+  // hrv_sleep is fetched once over the union of the three windows. A sample is
+  // sleep iff it lies in a sleep session, and widening the range only adds
+  // sessions, so each window's subset is what a per-window fetch would return.
+  const sleepHrvPromise = queryMetrics(user, 'hrv_sleep', prevStart30day, end30day).then((result) =>
+    result.data.map((d) => ({ time: new Date(d.time).getTime(), value: d.value })),
+  )
+
   const getHrvAvg = async (start: Date, end: Date): Promise<number | null> => {
-    const sleep = await queryMetrics(user, 'hrv_sleep', start, end)
-    if (sleep.count > 0) {
-      const sum = sleep.data.reduce((acc, d) => acc + d.value, 0)
-      return sum / sleep.count
+    const sleep = (await sleepHrvPromise).filter((d) => d.time >= start.getTime() && d.time <= end.getTime())
+    if (sleep.length > 0) {
+      const sum = sleep.reduce((acc, d) => acc + d.value, 0)
+      return sum / sleep.length
     }
     const rawStats = await getTimeSeriesStats(user, ['hrv_rmssd'], start, end)
     const raw = rawStats[0]

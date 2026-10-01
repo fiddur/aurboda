@@ -25,36 +25,22 @@ describe('getBaseline', () => {
   const emptyHrvResult = { count: 0, data: [], metric: 'hrv_sleep', unit: 'ms' }
 
   test('returns sleep HRV and resting HR baseline statistics', async () => {
-    // Mock queryMetrics for sleep HRV (3 calls: 7-day, 30-day, prev-30)
-    vi.mocked(queries.queryMetrics)
-      .mockResolvedValueOnce({
-        count: 3,
-        data: [
-          { time: '2024-01-13T02:00:00Z', value: 40 },
-          { time: '2024-01-14T02:00:00Z', value: 46 },
-          { time: '2024-01-15T02:00:00Z', value: 50.5 },
-        ],
-        metric: 'hrv_sleep',
-        unit: 'ms',
-      }) // 7-day sleep HRV (avg = 45.5)
-      .mockResolvedValueOnce({
-        count: 2,
-        data: [
-          { time: '2024-01-01T02:00:00Z', value: 42 },
-          { time: '2024-01-10T02:00:00Z', value: 46.4 },
-        ],
-        metric: 'hrv_sleep',
-        unit: 'ms',
-      }) // 30-day sleep HRV (avg = 44.2)
-      .mockResolvedValueOnce({
-        count: 2,
-        data: [
-          { time: '2023-12-01T02:00:00Z', value: 41 },
-          { time: '2023-12-15T02:00:00Z', value: 45 },
-        ],
-        metric: 'hrv_sleep',
-        unit: 'ms',
-      }) // previous 30-day sleep HRV (avg = 43.0)
+    // One hrv_sleep fetch over all three windows (reference 2024-01-15):
+    // 7-day from Jan 8, 30-day from Dec 16, previous 30-day Nov 16 – Dec 15.
+    vi.mocked(queries.queryMetrics).mockResolvedValueOnce({
+      count: 7,
+      data: [
+        { time: '2023-12-01T02:00:00Z', value: 41 },
+        { time: '2023-12-10T02:00:00Z', value: 45 },
+        { time: '2024-01-01T02:00:00Z', value: 42 },
+        { time: '2024-01-05T02:00:00Z', value: 46.4 },
+        { time: '2024-01-13T02:00:00Z', value: 40 },
+        { time: '2024-01-14T02:00:00Z', value: 46 },
+        { time: '2024-01-15T02:00:00Z', value: 50.5 },
+      ],
+      metric: 'hrv_sleep',
+      unit: 'ms',
+    })
 
     // Mock resting HR stats (3 calls: 7-day, 30-day, prev-30) and stress stats (3 calls)
     vi.mocked(db.getTimeSeriesStats)
@@ -77,16 +63,22 @@ describe('getBaseline', () => {
         { avg: 40.0, count: 400, max: 90, metric: 'stress_level', min: 12, stddev: 15, unit: '' },
       ]) // previous 30-day stress
 
-    const result = await getBaseline('testuser')
+    const result = await getBaseline('testuser', new Date('2024-01-15T12:00:00Z'))
 
-    // Verify HRV is fetched via queryMetrics('hrv_sleep'), not getTimeSeriesStats('hrv_rmssd')
-    expect(queries.queryMetrics).toHaveBeenCalledTimes(3)
-    for (const [, metric] of vi.mocked(queries.queryMetrics).mock.calls) {
-      expect(metric).toBe('hrv_sleep')
-    }
+    expect(queries.queryMetrics).toHaveBeenCalledTimes(1)
+    const [, metric, start] = vi.mocked(queries.queryMetrics).mock.calls[0]
+    expect(metric).toBe('hrv_sleep')
+    expect(start.getTime()).toBeLessThan(new Date('2023-11-17T00:00:00Z').getTime())
+    expect(db.getTimeSeriesStats).not.toHaveBeenCalledWith(
+      'testuser',
+      ['hrv_rmssd'],
+      expect.anything(),
+      expect.anything(),
+    )
 
     expect(result.hrv.avg7day).toBe(45.5) // (40 + 46 + 50.5) / 3
-    expect(result.hrv.avg30day).toBe(44.2) // (42 + 46.4) / 2
+    expect(result.hrv.avg30day).toBe(45) // (42 + 46.4 + 40 + 46 + 50.5) / 5 = 44.98
+    expect(result.hrv.trend_percent).toBe(4.6) // vs previous (41 + 45) / 2 = 43
     expect(result.resting_hr.avg7day).toBe(60.3)
     expect(result.resting_hr.avg30day).toBe(61.1)
     expect(result.stress.avg7day).toBe(35.2)
@@ -106,8 +98,7 @@ describe('getBaseline', () => {
 
     const result = await getBaseline('testuser')
 
-    // Should still call queryMetrics for sleep HRV even when empty
-    expect(queries.queryMetrics).toHaveBeenCalledTimes(3)
+    expect(queries.queryMetrics).toHaveBeenCalledTimes(1)
 
     expect(result.hrv.avg7day).toBeNull()
     expect(result.hrv.avg30day).toBeNull()
@@ -143,10 +134,38 @@ describe('getBaseline', () => {
     expect(hrvRmssdCalls).toHaveLength(3) // 7-day, 30-day, prev-30
   })
 
-  test('prefers contextual hrv_sleep over raw hrv_rmssd when both exist', async () => {
+  test('falls back to raw hrv_rmssd only for the windows with no sleep samples', async () => {
     vi.mocked(queries.queryMetrics).mockResolvedValue({
       count: 2,
       data: [
+        { time: '2023-12-01T02:00:00Z', value: 41 },
+        { time: '2023-12-10T02:00:00Z', value: 45 },
+      ],
+      metric: 'hrv_sleep',
+      unit: 'ms',
+    })
+    vi.mocked(db.getTimeSeriesStats).mockImplementation(async (_user, metrics) =>
+      metrics.includes('hrv_rmssd')
+        ? [{ avg: 47.3, count: 8, max: 50, metric: 'hrv_rmssd', min: 38, stddev: 3, unit: 'ms' }]
+        : [],
+    )
+
+    const result = await getBaseline('testuser', new Date('2024-01-15T12:00:00Z'))
+
+    expect(result.hrv.avg7day).toBe(47.3)
+    expect(result.hrv.avg30day).toBe(47.3)
+    expect(result.hrv.trend_percent).toBe(10) // 47.3 vs previous-window sleep avg 43
+    const hrvRmssdCalls = vi
+      .mocked(db.getTimeSeriesStats)
+      .mock.calls.filter((call) => call[1].includes('hrv_rmssd'))
+    expect(hrvRmssdCalls).toHaveLength(2) // 7-day and 30-day; previous window had sleep samples
+  })
+
+  test('prefers contextual hrv_sleep over raw hrv_rmssd when both exist', async () => {
+    vi.mocked(queries.queryMetrics).mockResolvedValue({
+      count: 3,
+      data: [
+        { time: '2023-12-05T02:00:00Z', value: 55 },
         { time: '2024-01-14T02:00:00Z', value: 50 },
         { time: '2024-01-15T02:00:00Z', value: 60 },
       ],
@@ -157,7 +176,7 @@ describe('getBaseline', () => {
       { avg: 100, count: 8, max: 110, metric: 'resting_heart_rate', min: 90, stddev: 5, unit: 'bpm' },
     ])
 
-    const result = await getBaseline('testuser')
+    const result = await getBaseline('testuser', new Date('2024-01-15T12:00:00Z'))
 
     expect(result.hrv.avg7day).toBe(55) // hrv_sleep avg, NOT 100 from any fallback
     // hrv_rmssd should NOT be queried when sleep HRV exists
@@ -177,7 +196,6 @@ describe('getBaseline', () => {
     // queryMetrics called for sleep HRV with dates from reference date
     expect(queries.queryMetrics).toHaveBeenCalled()
     const hrvCalls = vi.mocked(queries.queryMetrics).mock.calls
-    // First call: 7-day sleep HRV ending on reference date
     const [, metric, , endDate] = hrvCalls[0]
     expect(metric).toBe('hrv_sleep')
     expect(endDate.toISOString().split('T')[0]).toBe('2024-01-15')

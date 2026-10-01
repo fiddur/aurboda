@@ -740,6 +740,25 @@ describe('computeTrainingLoad', () => {
       expect(recomputeCount(deleteImpulseBuckets)).toBe(2)
     })
 
+    test('drops expired entries when remembering a new one', async () => {
+      const deps = makeDeps({ deleteImpulseBuckets: deleteSpy() })
+      const start = new Date('2024-01-01T00:00:00Z')
+      const end = new Date('2024-01-07T00:00:00Z')
+      const now = vi.spyOn(Date, 'now').mockReturnValue(1_000_000_000_000)
+
+      try {
+        await computeTrainingLoad(deps, 'alice', start, end)
+        now.mockReturnValue(1_000_000_000_000 + 30 * 60 * 1000)
+        await computeTrainingLoad(deps, 'bob', start, end)
+        now.mockReturnValue(1_000_000_000_000 + 61 * 60 * 1000)
+        await computeTrainingLoad(deps, 'carol', start, end)
+      } finally {
+        now.mockRestore()
+      }
+
+      expect([...deps.bootstrappedFrom.keys()].sort()).toEqual(['bob', 'carol'])
+    })
+
     test('is remembered per user', async () => {
       const deleteImpulseBuckets = deleteSpy()
       const deps = makeDeps({ deleteImpulseBuckets })
