@@ -120,6 +120,17 @@ export const buildShareBody = (sel: ShareSelection): ShareActivityBody => ({
   visibility: sel.visibility,
 })
 
+export type SharePreviewSelection = Pick<ShareActivityBody, 'included_metrics' | 'message'>
+
+/**
+ * The part of a share body the preview route reads: it renders the summary and
+ * message only, so series, image and visibility toggles must not refetch it.
+ */
+export const previewSelection = (body: ShareActivityBody): SharePreviewSelection => ({
+  included_metrics: body.included_metrics,
+  message: body.message,
+})
+
 /**
  * QuantPub `0.2` wire keys are lowerCamelCase (`heartRateAvg`); Aurboda's own
  * keys are snake_case. Idempotent on a snake_case key.

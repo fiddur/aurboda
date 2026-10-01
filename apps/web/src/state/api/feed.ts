@@ -62,7 +62,7 @@ export const fetchFeed = async (cursor?: string): Promise<FeedPostsResponse> => 
  */
 export const previewShare = async (
   activityId: string,
-  body: ShareActivityBody,
+  body: Pick<ShareActivityBody, 'included_metrics' | 'message'>,
 ): Promise<SharePreviewResponse> => {
   const response = await axios.post<SharePreviewResponse>(
     `${API_URL}/feed/activities/${activityId}/preview`,

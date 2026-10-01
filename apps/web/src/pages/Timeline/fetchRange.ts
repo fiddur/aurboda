@@ -1,11 +1,13 @@
 import {
   addDays,
+  addHours,
   differenceInCalendarDays,
   endOfDay,
   formatISO,
   parseISO,
   startOfDay,
   subDays,
+  subHours,
 } from 'date-fns'
 
 export interface FetchRange {
@@ -14,6 +16,7 @@ export interface FetchRange {
 }
 
 const MARGIN_DAYS = 3
+const EDGE_PAD_HOURS = 12
 const DAY_MS = 86_400_000
 
 const toIsoDate = (date: Date): string => formatISO(date, { representation: 'date' })
@@ -51,3 +54,10 @@ export const nextFetchRange = (
   }
   return desired.from === current.from && desired.to === current.to ? current : desired
 }
+
+/** The fetch window widened by half a day on each side, so items and buckets straddling an
+ * edge are fetched. Hours, not `subDays(x, 0.5)`: date-fns truncates fractional days. */
+export const padFetchWindow = (start: Date, end: Date): [Date, Date] => [
+  subHours(start, EDGE_PAD_HOURS),
+  addHours(end, EDGE_PAD_HOURS),
+]

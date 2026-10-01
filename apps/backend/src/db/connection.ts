@@ -291,13 +291,29 @@ export const createUserListenClient = (user: string): Client =>
 export const withUserTransaction = async <T>(user: string, fn: (tx: Queryable) => Promise<T>): Promise<T> =>
   withTransaction(await getDbForUser(user), fn)
 
-/** PostGIS extension is created in makeNewUserDb before this is called. */
+/**
+ * PostGIS extension is created in makeNewUserDb before this is called.
+ *
+ * On an empty database the creates alone produce this build's schema, so the
+ * fingerprint is recorded and the first `migrateSchema` skips its sweep. On a
+ * database that already held tables (the legacy importer in `migrate.ts`), the
+ * `IF NOT EXISTS` creates leave those tables as they were, so the sweep must
+ * still run and nothing is recorded.
+ */
 export const initializeSchema = async (user: string) => {
   const db = await getDbForUser(user)
+  const existing = await query(
+    db,
+    `SELECT 1 FROM information_schema.tables
+      WHERE table_schema = 'public' AND table_type = 'BASE TABLE' AND table_name <> 'spatial_ref_sys'
+      LIMIT 1`,
+  )
 
   for (const key of tableCreationOrder) {
     await query(db, createTableStatements[key])
   }
+
+  if (existing.rowCount === 0) await recordSchemaFingerprint(db, schemaFingerprint())
 }
 
 /**

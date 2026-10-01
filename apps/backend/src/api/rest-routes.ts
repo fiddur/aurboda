@@ -27,6 +27,7 @@ import type { AnyMiddleware } from '../typed-router.ts'
 
 import { getFeedPostById, getLocations, getTimeSeries, markActivityDetailSynced } from '../db/index.ts'
 import { processActivityDetail } from '../integrations/garmin/process.ts'
+import { gravlRedirectUri } from '../integrations/gravl/client.ts'
 import { createActivitiesRouter } from '../routes/activities-router.ts'
 import { createActivityTypesRouter } from '../routes/activity-types-router.ts'
 import { createAdminRouter } from '../routes/admin-router.ts'
@@ -265,6 +266,7 @@ export const mountRestRouters = ({
       centralDb,
       invitationAuth,
       webHost,
+      gravlRedirectUri(apiBaseUrl),
       ouraWebhookManager,
     ),
   )

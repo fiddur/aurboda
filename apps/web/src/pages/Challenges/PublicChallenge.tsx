@@ -13,10 +13,9 @@ import { TrendLineChart } from '../../components/charts/TrendLineChart'
 import { fetchPublicChallengeStandings, joinChallengeByUrl } from '../../state/api'
 import { auth } from '../../state/auth'
 import { competitionRanks, podiumMedal } from '../../utils/podium'
+import { memberColor } from './member-colors'
 import { formatDateInZone, formatUpdated, toCumulativeSeries } from './race-series'
 import './style.css'
-
-const COLORS = ['#8b5cf6', '#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#ec4899', '#14b8a6', '#a855f7']
 
 const shortHost = (identityBaseUrl: string): string => {
   try {
@@ -80,9 +79,7 @@ export function PublicChallenge({
       (standingsData ?? [])
         .filter((s) => s.status === 'active')
         // Falls back to daily if a cross-version host omits the resolved bucket size.
-        .map((s, i) =>
-          toCumulativeSeries(s, COLORS[i % COLORS.length], start_ts, effective_bucket_size ?? '1d'),
-        )
+        .map((s, i) => toCumulativeSeries(s, memberColor(i), start_ts, effective_bucket_size ?? '1d'))
         // Keep members with at least one real bucket (the start-line point alone is length 1).
         .filter((s) => s.data.length > 1),
     [standingsData, start_ts, effective_bucket_size],
@@ -134,7 +131,7 @@ export function PublicChallenge({
         ) : series.length > 0 ? (
           <TrendLineChart
             data={[]}
-            color={COLORS[0]}
+            color={memberColor(0)}
             multiSeries={series}
             height={280}
             // end_ts is the exclusive window end (midnight after the last day); step back
@@ -176,7 +173,7 @@ export function PublicChallenge({
                 <span
                   aria-hidden="true"
                   class="challenge-member-color"
-                  style={{ background: COLORS[i % COLORS.length] }}
+                  style={{ background: memberColor(i) }}
                 />
                 {s.display_name} <span class="challenge-member-host">· {shortHost(s.identity_base_url)}</span>
               </td>

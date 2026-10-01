@@ -57,8 +57,8 @@ describe('GET /u/:username/:slug/opengraph-image.png', () => {
       resolveChallenge: async () =>
         resolvedChallenge({
           members: [
-            { cached_total: null, display_name: 'Anna' },
-            { cached_total: 900, display_name: 'Bo' },
+            { cached_total: null, display_name: 'Anna', is_host: true },
+            { cached_total: 900, display_name: 'Bo', is_host: false },
           ],
         }),
     })
@@ -67,6 +67,7 @@ describe('GET /u/:username/:slug/opengraph-image.png', () => {
     expect(deps.renderImage).toHaveBeenCalledWith(
       expect.objectContaining({
         challenge: expect.objectContaining({
+          joined: 1,
           measure: 'Steps',
           members: [
             { name: 'Bo', total: 900 },
@@ -85,7 +86,7 @@ describe('GET /u/:username/:slug/opengraph-image.png', () => {
     let total = 100
     const { app, deps } = buildApp({
       resolveChallenge: async () =>
-        resolvedChallenge({ members: [{ cached_total: total, display_name: 'Bo' }] }),
+        resolvedChallenge({ members: [{ cached_total: total, display_name: 'Bo', is_host: false }] }),
     })
     await supertest(app).get('/u/fiddur/xyz/opengraph-image.png')
     await supertest(app).get('/u/fiddur/xyz/opengraph-image.png')

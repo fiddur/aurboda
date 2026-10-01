@@ -2,6 +2,7 @@ import type { CategoryInfo, ProductivityResult, SyncProvider } from './types.ts'
 
 import { getProductivity, type ProductivityRecord, type ScreentimeCategory } from '../../db/index.ts'
 import { getScreentimeCategories } from '../../db/screentime-categories.ts'
+import { pushAll } from '../../utils.ts'
 import { getCommentsMap } from './types.ts'
 
 /**
@@ -161,7 +162,7 @@ export const promoteOverlappingSubcategories = (
       if (next.start.getTime() <= currentEnd.getTime() + gapMs) {
         if (next.groupKey !== currentKey) multipleSubcats = true
         if (next.end > currentEnd) currentEnd = next.end
-        currentRecords.push(...next.records)
+        pushAll(currentRecords, next.records)
       } else {
         result.push({
           end: currentEnd,
@@ -239,7 +240,7 @@ export function mergeByCategorySpans(
 
   const categorySpans: CategoryMergedSpan[] = []
   for (const [key, recs] of byKey) {
-    categorySpans.push(...mergeAdjacentByCategory(recs, gapMs, key))
+    pushAll(categorySpans, mergeAdjacentByCategory(recs, gapMs, key))
   }
 
   const promoted = promoteOverlappingSubcategories(categorySpans, gapMs)

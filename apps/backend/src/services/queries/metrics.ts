@@ -23,6 +23,7 @@ import {
   type MetricType,
   metricUnits,
 } from '../../schema.ts'
+import { pushAll } from '../../utils.ts'
 import { classifyHrvByContext, getHrvContextWindows, type HrvContext } from '../hrv-context.ts'
 import { maxOf, minOf } from '../numeric-extremes.ts'
 
@@ -195,7 +196,7 @@ async function computeContextualHrvData(
     if (context) {
       const contextData = classified[context]
       const buckets = computeContextualHrvBuckets(contextData, metric, bucketMs, start, tz)
-      results.push(...buckets)
+      pushAll(results, buckets)
     }
   }
 

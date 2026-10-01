@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 
-import { reduceTimeSeries } from './utils.ts'
+import { pushAll, reduceTimeSeries } from './utils.ts'
 
 describe('reduceTimeSeries', () => {
   test('removes duplicate dates keeping first occurrence', () => {
@@ -72,5 +72,23 @@ describe('reduceTimeSeries', () => {
       [new Date('2024-01-01T10:00:00Z'), 1],
       [new Date('2024-01-01T12:00:00Z'), 2],
     ])
+  })
+})
+
+describe('pushAll', () => {
+  test('appends in order and returns the target', () => {
+    const target = [1, 2]
+    expect(pushAll(target, [3, 4])).toBe(target)
+    expect(target).toEqual([1, 2, 3, 4])
+  })
+
+  test('handles 200k items, where push(...items) overflows the call stack', () => {
+    const items = Array.from({ length: 200_000 }, (_, i) => i)
+    expect(() => [].push(...(items as never[]))).toThrow(RangeError)
+
+    const target: number[] = []
+    pushAll(target, items)
+    expect(target).toHaveLength(200_000)
+    expect(target[199_999]).toBe(199_999)
   })
 })

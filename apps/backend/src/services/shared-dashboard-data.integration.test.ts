@@ -11,7 +11,7 @@ import type { DashboardConfig } from '@aurboda/api-spec'
 
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
-import { insertActivity } from '../db/index.ts'
+import { insertActivity, upsertUserSettings } from '../db/index.ts'
 import { insertTimeSeries } from '../db/time-series.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import { resolveDashboardData } from './shared-dashboard-data.ts'
@@ -338,5 +338,87 @@ describe('resolveDashboardData integration', () => {
     expect(card.type).toBe('metric_card')
     if (card.type !== 'metric_card') return
     expect(card.data?.value).toBe(305)
+  })
+
+  describe("bar_chart buckets in the owner's timezone", () => {
+    const DAY = 24 * 60 * 60 * 1000
+    const HOUR = 60 * 60 * 1000
+    const barConfig: DashboardConfig = {
+      sections: [
+        {
+          id: 's',
+          title: 'x',
+          type: 'charts',
+          widgets: [
+            {
+              config: {
+                bucket_size: '1d',
+                lookback_days: 7,
+                pattern: 'exercise',
+                source_type: 'activity_type',
+              },
+              id: 'bar',
+              type: 'bar_chart',
+            },
+          ],
+        },
+      ],
+      version: 1,
+    }
+
+    /** 23:30 UTC three days ago — already the next calendar day in Stockholm. */
+    const seedLateEvening = async (user: string): Promise<Date> => {
+      const day = new Date(Date.now() - 3 * DAY).toISOString().slice(0, 10)
+      const start = new Date(`${day}T23:30:00Z`)
+      await insertActivity(user, {
+        activity_type: 'exercise',
+        end_time: new Date(start.getTime() + 10 * 60_000),
+        source: 'health_connect',
+        start_time: start,
+      })
+      return start
+    }
+
+    const stockholmMidnight = (instant: Date): string | undefined => {
+      const fmt = new Intl.DateTimeFormat('sv-SE', {
+        dateStyle: 'short',
+        timeStyle: 'short',
+        timeZone: 'Europe/Stockholm',
+      })
+      const localDay = fmt.format(instant).slice(0, 10)
+      const candidates = [1, 2].map((h) => new Date(Date.parse(`${localDay}T00:00:00Z`) - h * HOUR))
+      return candidates.find((c) => fmt.format(c) === `${localDay} 00:00`)?.toISOString()
+    }
+
+    const filledBucketStart = (
+      data: Awaited<ReturnType<typeof resolveDashboardData>>,
+    ): string | undefined => {
+      const bar = data['bar']
+      if (bar.type !== 'bar_chart' || !bar.data) return undefined
+      const start = bar.data.buckets.find((b) => b.value > 0)?.bucket_start
+      return start ? new Date(start).toISOString() : undefined
+    }
+
+    test("uses the owner's stored device_timezone", async () => {
+      const user = getTestUser()
+      await upsertUserSettings(user, { device_timezone: 'Europe/Stockholm' })
+      const start = await seedLateEvening(user)
+
+      const data = await resolveDashboardData(user, barConfig)
+
+      const expected = stockholmMidnight(start)
+      expect(expected).toBeDefined()
+      expect(filledBucketStart(data)).toBe(expected)
+    })
+
+    test('falls back to UTC when the stored timezone is unknown', async () => {
+      const user = getTestUser()
+      await upsertUserSettings(user, { device_timezone: 'Mars/Base' })
+      const start = await seedLateEvening(user)
+
+      const data = await resolveDashboardData(user, barConfig)
+
+      expect(filledBucketStart(data)).toBe(`${start.toISOString().slice(0, 10)}T00:00:00.000Z`)
+    })
   })
 })

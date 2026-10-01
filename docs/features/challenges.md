@@ -13,9 +13,10 @@ base-URL federation identity, and the bucketed-data engine behind dashboards.
 
 - **Spec (v1):** one `metric` (e.g. `steps`, summed) or `activity_type` (e.g.
   strength-training hours, summed) over `[start_ts, end_ts)` in a chosen timezone.
-  Scoring is the cumulative total. (Buckets are computed in UTC for v1 — totals over
-  a fixed window are exact and aligned across members; timezone-local bucketing is a
-  later refinement.)
+  Scoring is the cumulative total. Chart buckets (days, weeks, hours) follow the
+  **challenge's** timezone — the host's choice, copied into each member's
+  participation — not each member's own, so every member's days line up. An unknown
+  timezone falls back to UTC.
 - **Members** are identified by their full public base URL
   (`https://host/u/user`). The host is always a member. A member contributes data
   through a capability **data endpoint** on their own instance.
@@ -110,7 +111,9 @@ one). Only a _definite_ answer is remembered — a 404 for the well-known docume
 that isn't Aurboda's, a refused private address. Anything that says nothing about the
 host (no answer at all, a 5xx, a 429 or 403, a DNS failure or a timeout) is transient:
 it is not cached, the peer is retried next round, and it is counted instead in
-`peers_unreachable`.
+`peers_unreachable`. Within the round it is remembered, though: once a probe or listing
+of an instance has failed transiently, its other followees are skipped rather than each
+asking it again.
 
 An Aurboda peer's public challenges are read from its public-profile listing (a followee
 on the same instance in-process); ended ones, anything the user hosts, joined or left,
@@ -271,7 +274,7 @@ avatar.
 
 ## Out of scope (v1) / future hardening
 
-- Background polling, timezone-local bucketing, goals/consistency/teams.
+- Background polling, goals/consistency/teams.
 - **Signed instance-to-instance requests** (instance keypairs) — would bind a
   registering member's identity to the instance that vouches for it, closing the
   register-back gaps below.

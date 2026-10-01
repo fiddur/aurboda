@@ -239,6 +239,37 @@
   border-radius: 6px;
 }
 
+/* Same leak as Join: .btn-secondary is only defined in other routes' CSS, so a
+   fresh /challenges left the "Set banner" label as bare text next to UA-styled
+   buttons. The row owns its secondary box, whatever element carries the class. */
+.challenge-row-actions .btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0.375rem 0.75rem;
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.25;
+  color: #374151;
+  background: #fff;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.challenge-row-actions .btn-secondary:hover {
+  background: #f3f4f6;
+  border-color: #9ca3af;
+}
+
+.challenge-row-actions .btn-secondary:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
 .challenge-row-actions .btn-danger {
   background: #fef2f2;
   color: #b91c1c;
@@ -423,6 +454,17 @@
 
   .challenge-row-toggle {
     color: #d1d5db;
+  }
+
+  .challenge-row-actions .btn-secondary {
+    color: #e5e7eb;
+    background: #1f2937;
+    border-color: #4b5563;
+  }
+
+  .challenge-row-actions .btn-secondary:hover {
+    background: #374151;
+    border-color: #6b7280;
   }
 
   .challenge-create .challenge-checkbox small {

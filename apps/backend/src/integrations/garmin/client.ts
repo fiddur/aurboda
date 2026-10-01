@@ -13,6 +13,30 @@ const { GarminConnect } = garminConnectPkg
 import { getOAuthToken, upsertOAuthToken } from '../../db/index.ts'
 import { auditError, auditInfo } from '../../services/audit-log.ts'
 
+export const redactSecret = (message: string, secret: string): string => {
+  if (!secret) return message
+  const forms = [secret, JSON.stringify(secret).slice(1, -1), encodeURIComponent(secret)]
+  return forms.reduce((acc, form) => (form ? acc.split(form).join('[REDACTED]') : acc), message)
+}
+
+const errorStatus = (error: unknown): number | undefined => {
+  if (error === null || typeof error !== 'object') return undefined
+  const { response, status } = error as { response?: { status?: unknown }; status?: unknown }
+  const candidate = typeof status === 'number' ? status : response?.status
+  if (typeof candidate === 'number') return candidate
+  const fromMessage = error instanceof Error ? /^ERROR: \((\d{3})\)/.exec(error.message) : null
+  return fromMessage ? Number(fromMessage[1]) : undefined
+}
+
+/**
+ * The garmin-connect fork's login errors can embed the submitted request
+ * (including the password), so none of the original message is kept.
+ */
+export const sanitizeGarminLoginError = (error: unknown): Error => {
+  const status = errorStatus(error)
+  return new Error(status ? `Garmin SSO login failed (${status})` : 'Garmin SSO login failed')
+}
+
 /** Daily stress response from /wellness-service/wellness/dailyStress/{date} */
 export interface GarminStressData {
   calendarDate: string
@@ -336,8 +360,9 @@ export const garminClient = (deps: GarminClientDeps = defaultDeps) => {
       try {
         result = await gc.login()
       } catch (error) {
-        auditError(user, 'auth', 'Garmin login failed', { email, error: String(error) })
-        throw error
+        const sanitized = sanitizeGarminLoginError(error)
+        auditError(user, 'auth', 'Garmin login failed', { email, error: sanitized.message })
+        throw sanitized
       }
 
       auditInfo(user, 'auth', `Garmin login result: ${result.type}`)

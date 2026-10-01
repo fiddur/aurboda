@@ -216,7 +216,8 @@ export type GravlProcessOutcome = 'enriched' | 'updated' | 'created' | 'removed'
 /**
  * The soft delete is a tombstone: `insertActivity` only updates rows with
  * `deleted_at IS NULL`, so a re-delivered Health Connect record neither
- * resurrects nor updates it.
+ * resurrects nor updates it. The note Gravl synced for the row goes with it;
+ * comments the user wrote on it are left alone.
  */
 const tombstoneGravlActivity = async (
   user: string,
@@ -226,6 +227,7 @@ const tombstoneGravlActivity = async (
   deps: GravlProcessDeps,
 ): Promise<void> => {
   await deps.softDeleteActivityByExternalId(user, 'gravl', gravlWorkoutExternalId(workoutId))
+  if (existing.id) await deps.upsertSyncedNote(user, 'activity', existing.id, 'gravl', undefined)
   await deps.materializeSuperseded(user, existing.start_time)
   deps.auditInfo(user, 'sync', message, {
     activity_id: existing.id,

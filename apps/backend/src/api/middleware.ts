@@ -7,6 +7,7 @@ import type { AnyMiddleware } from '../typed-router.ts'
 import { migrateSchemaIfNeeded } from '../db/index.ts'
 import { auditError, auditInfo, auditWarn } from '../services/audit-log.ts'
 import { backfillScreentimeActivities } from '../services/backfill-screentime-activities.ts'
+import { redactGarminLoginAudit } from '../services/redact-garmin-login-audit.ts'
 import { retypeLegacyScreentime } from '../services/retype-legacy-screentime.ts'
 import { summarizeAuditBody } from './audit-body.ts'
 
@@ -94,6 +95,9 @@ export const createAuthMiddleware = (auth: Auth, unauthorized: Error): AnyMiddle
                 )
                 await retypeLegacyScreentime(user).catch((err) =>
                   console.error(`⚠️ Legacy screentime retype failed for ${user}:`, err),
+                )
+                await redactGarminLoginAudit(user).catch((err) =>
+                  console.error(`⚠️ Garmin login audit redaction failed for ${user}:`, err),
                 )
               })()
             })

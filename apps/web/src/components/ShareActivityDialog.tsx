@@ -7,7 +7,7 @@
 import type { FeedPost, FeedVisibility, MetricType } from '@aurboda/api-spec'
 
 import { feedPostMessageMaxLength } from '@aurboda/api-spec'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'preact/hooks'
 
 import {
@@ -21,6 +21,7 @@ import {
   buildShareBody,
   defaultsFromChart,
   initialSeriesSelection,
+  previewSelection,
   SERIES_METRICS,
   SUMMARY_METRICS,
 } from './feed-metrics'
@@ -166,16 +167,17 @@ export function ShareActivityDialog({
 
   // Live preview: the server resolves the EXACT federated content for
   // the current selection (same code path as delivery), debounced so typing in
-  // the message doesn't fire a request per keystroke. Keyed on the serialised
-  // body — identical selections hit the react-query cache.
+  // the message doesn't fire a request per keystroke. Keyed on only what the
+  // preview renders, and the last answer stays up while the next one loads.
   const [debouncedKey, setDebouncedKey] = useState('')
-  const bodyKey = JSON.stringify(currentBody())
+  const previewKey = JSON.stringify(previewSelection(currentBody()))
   useEffect(() => {
-    const timer = setTimeout(() => setDebouncedKey(bodyKey), 400)
+    const timer = setTimeout(() => setDebouncedKey(previewKey), 400)
     return () => clearTimeout(timer)
-  }, [bodyKey])
+  }, [previewKey])
   const previewQuery = useQuery({
     enabled: debouncedKey !== '',
+    placeholderData: keepPreviousData,
     queryFn: () => previewShare(activityId, JSON.parse(debouncedKey)),
     queryKey: ['share-preview', activityId, debouncedKey],
     staleTime: 60_000,

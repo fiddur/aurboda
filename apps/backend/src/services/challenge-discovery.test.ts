@@ -346,6 +346,60 @@ describe('createChallengeDiscovery', () => {
     expect(await discover('me')).toEqual({ challenges: [], peers_unreachable: 2 })
   })
 
+  test('probes a transiently failing instance once per round, however many followees live there', async () => {
+    const probe = vi.fn(async () => {
+      throw new AxiosError('throttled', '429')
+    })
+    const resolveApiBase = createApiBaseResolver(probe)
+    const discover = createChallengeDiscovery(
+      deps({
+        concurrency: 1,
+        listFollowing: async () => [
+          followee('https://slow.example/users/x1'),
+          followee('https://slow.example/users/x2'),
+          followee('https://slow.example/users/x3'),
+        ],
+        resolveApiBase,
+      }),
+    )
+
+    expect(await discover('me')).toEqual({ challenges: [], peers_unreachable: 1 })
+    expect(probe).toHaveBeenCalledTimes(1)
+
+    await discover('me')
+    expect(probe).toHaveBeenCalledTimes(2)
+  })
+
+  test('a followee missing on a reachable instance does not skip the others there', async () => {
+    const fetchPeerProfile = vi.fn(async (_apiBase: string, username: string) => {
+      if (username === 'gone') {
+        const error = new AxiosError('not found')
+        error.response = {
+          config: { headers: new AxiosHeaders() },
+          data: null,
+          headers: {},
+          status: 404,
+          statusText: '',
+        }
+        throw error
+      }
+      return { challenges: [], success: true }
+    })
+    const discover = createChallengeDiscovery(
+      deps({
+        concurrency: 1,
+        fetchPeerProfile,
+        listFollowing: async () => [
+          followee('https://peer.example/users/gone'),
+          followee('https://peer.example/users/alice'),
+        ],
+      }),
+    )
+
+    await discover('me')
+    expect(fetchPeerProfile).toHaveBeenCalledTimes(2)
+  })
+
   test('never suggests a challenge the user left, until they join it again', async () => {
     const base = 'https://peer.example'
     const discoverWith = (leftUrls: string[]) =>

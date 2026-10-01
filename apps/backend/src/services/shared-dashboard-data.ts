@@ -18,9 +18,14 @@ import type {
   WidgetDataMap,
 } from '@aurboda/api-spec'
 
-import { hrZoneMetrics, isExerciseActivityType, metricCardLookbackDays } from '@aurboda/api-spec'
+import {
+  hrZoneMetrics,
+  isExerciseActivityType,
+  isKnownTimezone,
+  metricCardLookbackDays,
+} from '@aurboda/api-spec'
 
-import { getAllActivityTypeNames } from '../db/index.ts'
+import { getAllActivityTypeNames, getUserSettings } from '../db/index.ts'
 import { maskBreakdownNames } from './breakdown-mask.ts'
 import { getChartData } from './chart-data.ts'
 import { getActivityImpact } from './correlations/activity-impact.ts'
@@ -152,6 +157,7 @@ const resolveTrendChart = async (
 const resolveBarChart = async (
   user: string,
   config: Extract<DashboardWidget, { type: 'bar_chart' }>['config'],
+  tz: string,
 ): Promise<WidgetData> => {
   const { end, start } = lookbackRange(config.lookback_days)
   const result = await getChartData(user, {
@@ -162,6 +168,7 @@ const resolveBarChart = async (
     pattern: config.pattern,
     source_type: config.source_type,
     start: start.toISOString(),
+    tz,
     ...(config.breakdown_fields?.length ? { breakdown_fields: config.breakdown_fields } : {}),
   })
 
@@ -294,7 +301,7 @@ const resolveGoalProgress = async (user: string): Promise<WidgetData> => {
 }
 
 /** Resolve one widget to its minimal data payload. */
-const resolveWidget = async (user: string, widget: DashboardWidget): Promise<WidgetData> => {
+const resolveWidget = async (user: string, widget: DashboardWidget, tz: string): Promise<WidgetData> => {
   switch (widget.type) {
     case 'metric_card':
       return resolveMetricCard(user, widget.config)
@@ -303,7 +310,7 @@ const resolveWidget = async (user: string, widget: DashboardWidget): Promise<Wid
     case 'trend_chart':
       return resolveTrendChart(user, widget.config)
     case 'bar_chart':
-      return resolveBarChart(user, widget.config)
+      return resolveBarChart(user, widget.config, tz)
     case 'correlation':
       return resolveCorrelation(user, widget.config)
     case 'activity_summary':
@@ -353,6 +360,12 @@ const nullData = (type: DashboardWidget['type']): WidgetData => {
  */
 const MAX_RESOLVED_WIDGETS = 60
 
+/** The owner's stored timezone, so a visitor sees the owner's calendar days. */
+const ownerTimezone = async (user: string): Promise<string> => {
+  const tz = (await getUserSettings(user))?.device_timezone
+  return tz && isKnownTimezone(tz) ? tz : 'UTC'
+}
+
 /**
  * Resolve all widget data for a stored dashboard config, keyed by widget id.
  * Each widget resolves independently; a failure yields a null-data entry rather
@@ -366,10 +379,11 @@ export const resolveDashboardData = async (user: string, config: DashboardConfig
     )
   }
   const widgets = allWidgets.slice(0, MAX_RESOLVED_WIDGETS)
+  const tz = await ownerTimezone(user)
   const entries = await Promise.all(
     widgets.map(async (widget): Promise<[string, WidgetData]> => {
       try {
-        return [widget.id, await resolveWidget(user, widget)]
+        return [widget.id, await resolveWidget(user, widget, tz)]
       } catch (error) {
         console.warn(`Failed to resolve widget ${widget.id} (${widget.type}):`, error)
         return [widget.id, nullData(widget.type)]

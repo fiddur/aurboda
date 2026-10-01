@@ -45,6 +45,7 @@ export const getChallengeStandings = async (
           challenge.spec,
           challenge.start_ts,
           challenge.end_ts,
+          challenge.timezone,
         )
         return { ...base, buckets, last_updated, stale: false, total }
       }

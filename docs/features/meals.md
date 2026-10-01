@@ -124,7 +124,7 @@ Logging on the base unit uses the legacy free-form `quantity` + `unit` path, unc
 - `GET /food-items/:id` -- detail; includes `portions[]`, `effective_default_portion_id`, composite ingredients/derived nutrients, reference enrichment, sensitivities
 - `POST /food-items` -- create a per-user food item
 - `PATCH /food-items/:id` -- update a per-user food item (does **not** accept `default_portion_id` -- use the dedicated endpoint below)
-- `DELETE /food-items/:id` -- delete a per-user food item
+- `DELETE /food-items/:id` -- delete a per-user food item (409 while it is an ingredient of a recipe: remove it from those recipes, or merge it into a replacement, first)
 - `POST /food-items/:id/duplicate` -- duplicate into a fresh per-user copy named `"<name> (copy)"` (deduped); copies nutrients, defaults, composite ingredients, portions, reference, and sensitivities. Works on per-user **and** central items (a central copy becomes an editable per-user fork). Returns the new copy's detail.
 - `GET /food-items/:id/portions` -- list portions
 - `POST /food-items/:id/portions` -- add a portion
@@ -212,4 +212,4 @@ The Meals page exposes a second tab, **Overview**, with averaged nutrient intake
 
 Each nutrient is rendered against a recommended min/max range using the same `ReferenceRangeBar` component reports use. The defaults come from a curated **NNR2023** seed in the central database; per-user overrides live in the `user_nutrient_recommendations` table and win whenever present. A user override can also explicitly suppress a nutrient's range (NULL/NULL) so the value is shown without a bar.
 
-Averaging ignores days with no meal data — a sparse log is not dragged toward zero. `calories_burned` is `null` when no `calories_total` metric exists in the window (the UI prompts to connect Garmin / Health Connect in that case).
+Averaging ignores days with no meal data — a sparse log is not dragged toward zero. A meal's nutrients come from its food items; a meal logged without items (quick-logged macros, or an import that only carries totals) contributes its own `calories`/`protein`/`carbs`/`fat`/`fiber` and any `micros` keyed by a nutrient field in that field's unit. `calories_burned` is `null` when no `calories_total` metric exists in the window (the UI prompts to connect Garmin / Health Connect in that case).

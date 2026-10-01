@@ -4,6 +4,7 @@ import { describe, expect, test } from 'vitest'
 import { generateIdenticon } from './avatar.ts'
 import { challengeTheme } from './og-challenge-theme.ts'
 import {
+  challengeCallToAction,
   clampTitle,
   createOgImageRenderer,
   OG_HEIGHT,
@@ -35,6 +36,7 @@ const stepsCard = (
 ): OgCard => ({
   challenge: {
     bannerDataUri,
+    joined: members.length,
     measure: 'Steps',
     members,
     phrase: status === 'upcoming' ? 'Starts in 3 days' : 'Ends in 12 days',
@@ -46,6 +48,36 @@ const stepsCard = (
   kind: 'challenge',
   title: 'October steps',
   username: 'fiddur',
+})
+
+describe('challengeCallToAction', () => {
+  const host = { name: 'fiddur', total: null }
+  const other = { name: 'anna', total: null }
+
+  test('invites the first joiner while only the host is in', () => {
+    expect(challengeCallToAction({ joined: 0, members: [host], status: 'upcoming' })).toEqual({
+      headline: 'Be the first to join',
+      invite: true,
+    })
+  })
+
+  test('counts who joined besides the host', () => {
+    expect(challengeCallToAction({ joined: 2, members: [host, other, other], status: 'ongoing' })).toEqual({
+      headline: '2 joined',
+      invite: true,
+    })
+  })
+
+  test('an ended challenge says who took part, without a join prompt', () => {
+    expect(challengeCallToAction({ joined: 1, members: [host, other], status: 'ended' })).toEqual({
+      headline: '2 took part',
+      invite: false,
+    })
+  })
+
+  test('an ended challenge with no members says nothing', () => {
+    expect(challengeCallToAction({ joined: 0, members: [], status: 'ended' })).toBeNull()
+  })
 })
 
 describe('clampTitle', () => {

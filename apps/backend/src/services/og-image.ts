@@ -35,8 +35,10 @@ export interface OgChallengeDetails {
   range: string
   phrase: string
   status: ChallengeTimeStatus
-  /** Active members, best total first; totals null while nothing has been fetched. */
+  /** Active members, host included, best total first; totals null while nothing has been fetched. */
   members: OgChallengeMember[]
+  /** Members other than the host. */
+  joined: number
   /** The host-set banner as a `data:` URI (JPEG/PNG — Satori cannot decode WebP), drawn behind the text. */
   bannerDataUri?: string
 }
@@ -173,10 +175,30 @@ const MAX_BAR_WIDTH = 500
 const mutedLine = (text: string, marginTop = 12): El =>
   el('div', { color: 'rgba(255,255,255,0.75)', display: 'flex', fontSize: 30, marginTop }, text)
 
-const callToAction = (headline: string): El =>
+export interface ChallengeCallToAction {
+  headline: string
+  invite: boolean
+}
+
+/** What a card without standings says: a join prompt while it can be joined, a plain count once it has ended. */
+export const challengeCallToAction = (
+  challenge: Pick<OgChallengeDetails, 'joined' | 'members' | 'status'>,
+): ChallengeCallToAction | null => {
+  if (challenge.status === 'ended') {
+    return challenge.members.length > 0
+      ? { headline: `${challenge.members.length} took part`, invite: false }
+      : null
+  }
+  return {
+    headline: challenge.joined === 0 ? 'Be the first to join' : `${challenge.joined} joined`,
+    invite: true,
+  }
+}
+
+const callToAction = ({ headline, invite }: ChallengeCallToAction): El =>
   el('div', { display: 'flex', flexDirection: 'column' }, [
     el('div', { display: 'flex', fontSize: 40, fontWeight: 700 }, headline),
-    mutedLine('Join from any Aurboda instance'),
+    ...(invite ? [mutedLine('Join from any Aurboda instance')] : []),
   ])
 
 const formatTotal = (total: number, unit: string): string =>
@@ -203,7 +225,7 @@ const standingRow = (member: OgChallengeMember & { total: number }, best: number
     ),
   ])
 
-/** Standings once there are numbers, a join prompt before; nothing for an ended challenge nobody joined. */
+/** Standings once there are numbers, otherwise the call to action. */
 const challengeMiddle = (challenge: OgChallengeDetails): El[] => {
   const scored = challenge.members.filter(
     (m): m is OgChallengeMember & { total: number } => m.total !== null && m.total > 0,
@@ -218,9 +240,8 @@ const challengeMiddle = (challenge: OgChallengeDetails): El[] => {
       ]),
     ]
   }
-  if (challenge.members.length > 0) return [callToAction(`${challenge.members.length} joined`)]
-  if (challenge.status === 'ended') return []
-  return [callToAction('Be the first to join')]
+  const action = challengeCallToAction(challenge)
+  return action ? [callToAction(action)] : []
 }
 
 /** A challenge card also carries standings, so a long name steps down rather than wrapping onto them. */

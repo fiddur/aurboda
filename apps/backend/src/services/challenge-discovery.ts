@@ -308,13 +308,19 @@ export const createChallengeDiscovery =
       const parsed = parseActorUri(followee.actor_uri)
       return parsed ? [{ followee, parsed }] : []
     })
+    // A transient failure is not cached by the resolver, and the pool walks
+    // followees mostly one after another, so without this every followee on a
+    // throttling or hanging instance would probe it again this round (#1102).
+    const failedBases = new Set<string>()
     const listings = await mapWithConcurrency(
       peers,
       deps.concurrency ?? DEFAULT_CONCURRENCY,
       async ({ followee, parsed }) => {
+        if (failedBases.has(parsed.base)) return { followee, items: undefined, parsed }
         try {
           return { followee, items: await listPeerChallenges(deps, parsed), parsed }
         } catch (error) {
+          if (isTransientFetchError(error)) failedBases.add(parsed.base)
           console.warn(
             `⚠️ Challenge discovery: could not list ${followee.actor_uri}:`,
             error instanceof Error ? error.message : error,

@@ -142,7 +142,14 @@ describe('builders', () => {
   })
 
   test('challenge meta with details says what, when and who has joined', () => {
-    const details = { measure: 'Steps', members: 0, phrase: 'Starts in 3 days', range: '1 Oct – 31 Oct 2026' }
+    const details = {
+      joined: 0,
+      measure: 'Steps',
+      participants: 1,
+      phrase: 'Starts in 3 days',
+      range: '1 Oct – 31 Oct 2026',
+      status: 'upcoming' as const,
+    }
     const m = buildChallengeShareMeta({
       details,
       name: 'October steps',
@@ -153,12 +160,41 @@ describe('builders', () => {
       'Steps challenge, 1 Oct – 31 Oct 2026 · Starts in 3 days · Be the first to join. Hosted by fiddur on Aurboda — join from any instance.',
     )
     const joined = buildChallengeShareMeta({
-      details: { ...details, members: 4 },
+      details: { ...details, joined: 4, participants: 5 },
       name: 'October steps',
       url: 'https://aurboda.net/u/fiddur/xyz',
       username: 'fiddur',
     })
     expect(joined.description).toContain('· 4 joined.')
+  })
+
+  test('ended challenge meta says who took part and does not invite to join', () => {
+    const details = {
+      joined: 2,
+      measure: 'Steps',
+      participants: 3,
+      phrase: 'Ended 31 Oct 2026',
+      range: '1 Oct – 31 Oct 2026',
+      status: 'ended' as const,
+    }
+    const m = buildChallengeShareMeta({
+      details,
+      name: 'October steps',
+      url: 'https://aurboda.net/u/fiddur/xyz',
+      username: 'fiddur',
+    })
+    expect(m.description).toBe(
+      'Steps challenge, 1 Oct – 31 Oct 2026 · Ended 31 Oct 2026 · 3 took part. Hosted by fiddur on Aurboda.',
+    )
+    const empty = buildChallengeShareMeta({
+      details: { ...details, joined: 0, participants: 0 },
+      name: 'October steps',
+      url: 'https://aurboda.net/u/fiddur/xyz',
+      username: 'fiddur',
+    })
+    expect(empty.description).toBe(
+      'Steps challenge, 1 Oct – 31 Oct 2026 · Ended 31 Oct 2026. Hosted by fiddur on Aurboda.',
+    )
   })
 
   test('default meta has no leaked resource specifics', () => {

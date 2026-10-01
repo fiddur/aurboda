@@ -22,10 +22,13 @@ vi.mock('@fiddur/garmin-connect', () => {
   }
 })
 
+vi.mock('../../services/audit-log.ts', () => ({ auditError: vi.fn(), auditInfo: vi.fn() }))
+
 import garminConnectPkg from '@fiddur/garmin-connect'
 const { GarminConnect } = garminConnectPkg
 
-import { garminClient, type GarminClientDeps } from './client.ts'
+import { auditError } from '../../services/audit-log.ts'
+import { garminClient, type GarminClientDeps, redactSecret } from './client.ts'
 
 const testUser = 'test-user'
 const storedTokens = { oauth1: 'stored-token1', oauth2: 'stored-token2' }
@@ -83,6 +86,60 @@ describe('garminClient', () => {
 
       expect(result).toEqual({ mfa_required: true })
       expect(deps.upsertOAuthToken).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('login failure', () => {
+    const password = 'p@ss "w/rd"&ü'
+    const forms = [password, JSON.stringify(password).slice(1, -1), encodeURIComponent(password)]
+    const leakyMessage = `ERROR: (401), Unauthorized, {"echo":"${forms[1]}","raw":"${forms[0]}","form":"${forms[2]}"}`
+
+    it('throws a message with the status and none of the password forms', async () => {
+      mockGarminConnect.login.mockRejectedValueOnce(Object.assign(new Error(leakyMessage), { status: 401 }))
+
+      const client = garminClient(deps)
+      const thrown = await client.login(testUser, 'user@example.com', password).catch((e: Error) => e)
+
+      expect(thrown).toBeInstanceOf(Error)
+      expect((thrown as Error).message).toBe('Garmin SSO login failed (401)')
+      for (const form of forms) expect((thrown as Error).message).not.toContain(form)
+    })
+
+    it('reads the status from the response or the message, and keeps the password out of the audit log', async () => {
+      mockGarminConnect.login.mockRejectedValueOnce(new Error(leakyMessage))
+
+      const client = garminClient(deps)
+      await expect(client.login(testUser, 'user@example.com', password)).rejects.toThrow(
+        'Garmin SSO login failed (401)',
+      )
+
+      const logged = JSON.stringify(vi.mocked(auditError).mock.calls)
+      for (const form of forms) expect(logged).not.toContain(form)
+    })
+
+    it('omits the status when none can be read', async () => {
+      mockGarminConnect.login.mockRejectedValueOnce(new Error(`SSO login failed: ${password}`))
+
+      const client = garminClient(deps)
+      await expect(client.login(testUser, 'user@example.com', password)).rejects.toThrow(
+        /^Garmin SSO login failed$/,
+      )
+    })
+  })
+
+  describe('redactSecret', () => {
+    it('removes the raw, JSON-escaped and URL-encoded forms of the secret', () => {
+      const secret = 'a"b\\c d&e'
+      const message = `raw=${secret} json=${JSON.stringify(secret)} url=${encodeURIComponent(secret)}`
+      const out = redactSecret(message, secret)
+      expect(out).not.toContain(secret)
+      expect(out).not.toContain(JSON.stringify(secret).slice(1, -1))
+      expect(out).not.toContain(encodeURIComponent(secret))
+      expect(out).toContain('[REDACTED]')
+    })
+
+    it('leaves the message alone for an empty secret', () => {
+      expect(redactSecret('nothing to see', '')).toBe('nothing to see')
     })
   })
 

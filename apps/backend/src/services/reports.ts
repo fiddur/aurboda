@@ -7,6 +7,7 @@
 import type { Confidence, ReportFlag } from '@aurboda/api-spec'
 
 import {
+  deleteNotesForEntity,
   deleteReport as dbDeleteReport,
   getLatestMetricValue as dbGetLatestMetricValue,
   getReportById as dbGetReportById,
@@ -272,7 +273,9 @@ export async function updateReport(
 }
 
 /**
- * Delete a report and its time_series metrics.
+ * Delete a report, its time_series metrics and its comment threads. Like a
+ * meal, a report is removed for good, so its comments have nothing left to
+ * hang off.
  */
 export async function deleteReportById(
   user: string,
@@ -280,22 +283,14 @@ export async function deleteReportById(
 ): Promise<{ success: boolean; error?: string }> {
   const entryMetrics = await getReportEntryMetrics(user, id)
 
-  if (entryMetrics.length === 0) {
-    // Report might not exist or has no entries — try deleting anyway
-    const deleted = await dbDeleteReport(user, id)
-    if (!deleted) {
-      return { error: 'Report not found', success: false }
-    }
-    return { success: true }
-  }
-
-  // Delete the report (CASCADE deletes entries)
+  // CASCADE deletes the entries
   const deleted = await dbDeleteReport(user, id)
   if (!deleted) {
     return { error: 'Report not found', success: false }
   }
 
-  await cleanupTimeSeries(user, entryMetrics)
+  if (entryMetrics.length > 0) await cleanupTimeSeries(user, entryMetrics)
+  await deleteNotesForEntity(user, 'report', id)
 
   return { success: true }
 }

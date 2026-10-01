@@ -7,6 +7,7 @@ import {
   DEFAULT_SUMMARY,
   defaultsFromChart,
   initialSeriesSelection,
+  previewSelection,
   seriesLabel,
   type ShareSelection,
   summaryLabel,
@@ -136,5 +137,31 @@ describe('metric labels', () => {
     expect(seriesLabel('heartRate')).toBe('Heart rate')
     expect(seriesLabel('runCadence')).toBe('Cadence')
     expect(summaryLabel('unknownKey')).toBe('unknownKey')
+  })
+})
+
+describe('previewSelection', () => {
+  const body = {
+    include_chart: false,
+    include_map: false,
+    included_metrics: ['duration'],
+    message: 'hi',
+    series_metrics: [],
+    visibility: 'public' as const,
+  }
+
+  it('keeps only what the preview renders: the summary metrics and the message', () => {
+    expect(previewSelection(body)).toEqual({ included_metrics: ['duration'], message: 'hi' })
+  })
+
+  it('is unchanged by series, image and visibility toggles', () => {
+    const toggled = {
+      ...body,
+      include_chart: true,
+      include_map: true,
+      series_metrics: ['heart_rate' as const],
+      visibility: 'followers' as const,
+    }
+    expect(JSON.stringify(previewSelection(toggled))).toBe(JSON.stringify(previewSelection(body)))
   })
 })

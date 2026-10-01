@@ -2,6 +2,8 @@ import express from 'express'
 import supertest from 'supertest'
 import { describe, expect, test } from 'vitest'
 
+import type { ResolvedChallenge } from '../services/challenge-card.ts'
+
 import { createShareHtmlRouter, type ShareHtmlDeps } from './share-html-router.ts'
 
 const template = `<!doctype html>
@@ -59,23 +61,50 @@ describe('GET /u/:username/:slug', () => {
     expect(res.headers['cache-control']).toBe('public, max-age=60')
   })
 
+  const publicChallenge = (overrides: Partial<ResolvedChallenge> = {}): ResolvedChallenge => ({
+    banner_updated_at: null,
+    end_ts: '2999-02-01T00:00:00.000Z',
+    id: 'c1',
+    is_public: true,
+    members: [{ cached_total: null, display_name: 'fiddur', is_host: true }],
+    name: 'Step Count',
+    spec: { pattern: 'steps', source_type: 'metric', unit: 'steps' },
+    start_ts: '2999-01-01T00:00:00.000Z',
+    timezone: 'UTC',
+    ...overrides,
+  })
+
   test('renders rich meta for a public challenge when no dashboard matches', async () => {
-    const app = buildApp({
-      resolveChallenge: async () => ({
-        banner_updated_at: null,
-        end_ts: '2999-02-01T00:00:00.000Z',
-        id: 'c1',
-        is_public: true,
-        members: [],
-        name: 'Step Count',
-        spec: { pattern: 'steps', source_type: 'metric', unit: 'steps' },
-        start_ts: '2999-01-01T00:00:00.000Z',
-        timezone: 'UTC',
-      }),
-    })
+    const app = buildApp({ resolveChallenge: async () => publicChallenge() })
     const res = await supertest(app).get('/u/fiddur/xyz')
     expect(res.text).toContain('<title>Step Count — Aurboda</title>')
     expect(res.text).toMatch(/og:description" content="Steps challenge, [^"]*Be the first to join/)
+  })
+
+  test('counts who joined besides the host', async () => {
+    const app = buildApp({
+      resolveChallenge: async () =>
+        publicChallenge({
+          members: [
+            { cached_total: null, display_name: 'fiddur', is_host: true },
+            { cached_total: null, display_name: 'anna', is_host: false },
+            { cached_total: null, display_name: 'bo', is_host: false },
+          ],
+        }),
+    })
+    const res = await supertest(app).get('/u/fiddur/xyz')
+    expect(res.text).toMatch(/og:description" content="[^"]*· 2 joined\./)
+  })
+
+  test('an ended challenge says who took part and no longer invites to join', async () => {
+    const app = buildApp({
+      resolveChallenge: async () =>
+        publicChallenge({ end_ts: '2000-02-01T00:00:00.000Z', start_ts: '2000-01-01T00:00:00.000Z' }),
+    })
+    const res = await supertest(app).get('/u/fiddur/xyz')
+    const description = /og:description" content="([^"]*)"/.exec(res.text)?.[1]
+    expect(description).toContain('· 1 took part.')
+    expect(description).not.toMatch(/join/i)
   })
 
   test('falls back to default meta for an unknown slug', async () => {

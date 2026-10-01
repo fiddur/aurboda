@@ -22,6 +22,7 @@ import type { CentralDb } from '../services/central-db.ts'
 import {
   clearIngredients,
   deleteFoodItem,
+  FOOD_ITEM_USED_AS_INGREDIENT_ERROR,
   getFoodItemById as getUserFoodItemById,
   getFoodItemPortionById,
   listFoodItems,
@@ -108,8 +109,9 @@ export const registerFoodItemTools = (server: McpServer, user: string, centralDb
     'Delete a per-user food item by ID. Returns "Cannot delete shared library item" for central rows.',
     { id: z.string().uuid().describe('Food item ID') },
     async ({ id }) => {
-      const deleted = await deleteFoodItem(user, id)
-      if (!deleted) {
+      const result = await deleteFoodItem(user, id)
+      if (result === 'used_as_ingredient') return errorResponse(FOOD_ITEM_USED_AS_INGREDIENT_ERROR)
+      if (result === 'not_found') {
         const fromCentral = await centralDb.getSharedFoodItemById(id)
         return errorResponse(fromCentral ? 'Cannot delete shared library item' : 'Food item not found')
       }

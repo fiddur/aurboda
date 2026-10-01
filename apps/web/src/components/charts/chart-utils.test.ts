@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 
-import { chartRightMargin, countRightAxes, findNearest, findStageAtTime } from './chart-utils'
+import { chartRightMargin, countRightAxes, findNearest, findStageAtTime, fitTicks } from './chart-utils'
 
 describe('findNearest', () => {
   test('returns undefined for empty data', () => {
@@ -121,5 +121,21 @@ describe('countRightAxes / chartRightMargin', () => {
   test('margin grows 45px per axis plus label headroom', () => {
     expect(chartRightMargin(1)).toBe(65)
     expect(chartRightMargin(2)).toBe(110)
+  })
+})
+
+describe('fitTicks', () => {
+  const ticks = [0, 1, 2, 3, 4, 5, 6, 7]
+
+  test('keeps every tick when the width fits them all', () => {
+    expect(fitTicks(ticks, 600, 60)).toEqual(ticks)
+  })
+
+  test('keeps every k-th tick when the width is narrow', () => {
+    expect(fitTicks(ticks, 200, 60)).toEqual([0, 3, 6])
+  })
+
+  test('keeps at least one tick on a very narrow card', () => {
+    expect(fitTicks(ticks, 10, 60)).toEqual([0])
   })
 })

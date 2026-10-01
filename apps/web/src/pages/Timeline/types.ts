@@ -32,4 +32,6 @@ export interface ChartItem {
   icon?: string
   /** Id of the comment thread root this item stands for — set only on Comments items. */
   comment_id?: string
+  /** Every thread root a grouped 💬 glyph stands for, when nearby comments share one glyph. */
+  comment_ids?: string[]
 }

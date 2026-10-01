@@ -149,6 +149,7 @@ describe('processGravlWorkout', () => {
       'gravl',
       'gravl-workout-97248067-7947-4715-8fc9-d0048369a0d0',
     )
+    expect(deps.upsertSyncedNote).toHaveBeenCalledWith('alice', 'activity', 'act-1', 'gravl', undefined)
     expect(deps.materializeSuperseded).toHaveBeenCalledWith('alice', new Date('2026-09-03T05:16:12Z'))
     expect(deps.auditInfo).toHaveBeenCalledWith(
       'alice',
@@ -181,6 +182,7 @@ describe('processGravlWorkout', () => {
       'gravl',
       'gravl-workout-97248067-7947-4715-8fc9-d0048369a0d0',
     )
+    expect(deps.upsertSyncedNote).toHaveBeenCalledWith('alice', 'activity', 'act-9', 'gravl', undefined)
     expect(deps.materializeSuperseded).toHaveBeenCalledWith('alice', startTime)
     expect(deps.auditInfo).toHaveBeenCalledWith(
       'alice',

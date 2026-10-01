@@ -29,10 +29,14 @@ vi.mock('../services/backfill-screentime-activities.ts', () => ({
 vi.mock('../services/retype-legacy-screentime.ts', () => ({
   retypeLegacyScreentime: vi.fn(async () => ({ deduplicated: 0, retyped: 0, skipped: true })),
 }))
+vi.mock('../services/redact-garmin-login-audit.ts', () => ({
+  redactGarminLoginAudit: vi.fn(async () => ({ redacted: 0, skipped: true })),
+}))
 
 const db = await import('../db/index.ts')
 const backfill = await import('../services/backfill-screentime-activities.ts')
 const retype = await import('../services/retype-legacy-screentime.ts')
+const redact = await import('../services/redact-garmin-login-audit.ts')
 const { createAuthMiddleware } = await import('./middleware.ts')
 
 /** Tokens are `token-<user>`; anything else is rejected, as a bad token is. */
@@ -65,6 +69,7 @@ beforeEach(() => {
   vi.mocked(db.migrateSchemaIfNeeded).mockResolvedValue(undefined)
   vi.mocked(backfill.backfillScreentimeActivities).mockResolvedValue({ created: 0, skipped: true })
   vi.mocked(retype.retypeLegacyScreentime).mockResolvedValue({ deduplicated: 0, retyped: 0, skipped: true })
+  vi.mocked(redact.redactGarminLoginAudit).mockResolvedValue({ redacted: 0, skipped: true })
 })
 
 describe('createAuthMiddleware', () => {
@@ -121,6 +126,12 @@ describe('createAuthMiddleware', () => {
     await vi.waitFor(() => expect(retype.retypeLegacyScreentime).toHaveBeenCalledWith('alice'))
     expect(order).toEqual(['backfill', 'retype'])
     errorSpy.mockRestore()
+  })
+
+  test('redacts leaked Garmin login audit entries after the screentime one-shots', async () => {
+    await get(buildApp(), 'alice')
+
+    await vi.waitFor(() => expect(redact.redactGarminLoginAudit).toHaveBeenCalledWith('alice'))
   })
 
   test('still serves the request when the schema check fails', async () => {

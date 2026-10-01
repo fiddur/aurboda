@@ -18,7 +18,7 @@ import {
   listChallengeMembers,
   listPublicSharedDashboards,
 } from '../db/index.ts'
-import { describeChallenge, type ResolvedChallenge } from '../services/challenge-card.ts'
+import { cardMembers, describeChallenge, type ResolvedChallenge } from '../services/challenge-card.ts'
 import {
   buildChallengeShareMeta,
   buildDashboardShareMeta,
@@ -82,9 +82,7 @@ export const createShareResolvers = (): Pick<
         end_ts: challenge.end_ts.toISOString(),
         id: challenge.id,
         is_public: challenge.is_public,
-        members: members
-          .filter((m) => m.status === 'active')
-          .map((m) => ({ cached_total: m.cached_total, display_name: m.display_name })),
+        members: cardMembers(members, username),
         name: challenge.name,
         spec: {
           pattern: challenge.spec.pattern,
@@ -182,12 +180,12 @@ export const createShareHtmlRouter = (deps: ShareHtmlDeps): Router => {
 
     const challenge = dashboard ? null : await resolveChallenge(username, slug)
     if (challenge?.is_public) {
-      const { measure, members, phrase, range } = describeChallenge(challenge, now())
+      const { joined, measure, members, phrase, range, status } = describeChallenge(challenge, now())
       return sendHtml(
         loadTemplate,
         withOembed(
           buildChallengeShareMeta({
-            details: { measure, members: members.length, phrase, range },
+            details: { joined, measure, participants: members.length, phrase, range, status },
             name: challenge.name,
             url,
             username,

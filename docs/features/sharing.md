@@ -62,6 +62,11 @@ render — never the owner's broader data API. This is enforced server-side:
 So even a crafted request with extra query parameters cannot widen the exposed data
 beyond the saved widgets.
 
+Bar-chart buckets (days, weeks, months, hours) follow the **owner's** stored timezone
+(`tz` in settings), not the visitor's, so every visitor sees the owner's calendar days.
+Without a stored timezone, or with one that is not a valid IANA name, they fall back
+to UTC.
+
 ## Using it in the web app
 
 - **Manage** your shared dashboards at `/shared-dashboards` ("Dashboards" under the
@@ -100,8 +105,10 @@ get the full SPA and hydrate normally — only the head is enriched.
   A dashboard's description uses the author-provided text when set (see
   [Dashboard → Descriptive text](./dashboard.md#descriptive-text)), else a generated
   fallback. A challenge's description says what it measures, its dates and where it
-  stands, and how many have joined ("Steps challenge, 1 Oct – 31 Oct 2026 · Starts in
-  3 days · Be the first to join. Hosted by … on Aurboda — join from any instance.").
+  stands, and how many have joined besides the host, who is a member from creation
+  ("Steps challenge, 1 Oct – 31 Oct 2026 · Starts in 3 days · Be the first to join.
+  Hosted by … on Aurboda — join from any instance."). Once the challenge has ended it
+  stops inviting: "… · Ended 31 Oct 2026 · 3 took part. Hosted by … on Aurboda."
 - Every public resource has a **dynamically rendered 1200×630 preview image** at
   `<resource-url>/opengraph-image.png`. Satori renders a branded card (title +
   DASHBOARD/CHALLENGE/PROFILE eyebrow + the owner's avatar + Aurboda wordmark +
@@ -115,7 +122,9 @@ get the full SPA and hydrate normally — only the head is enriched.
   ("1 Oct – 31 Oct 2026 · Starts in 3 days", "Ends tomorrow", "Ended …", in the
   challenge's timezone), and below it the top three members' totals as bars once there
   are numbers (`+N more` beyond that), "N joined" while totals are still being fetched,
-  or "Be the first to join" before anyone has. The gradient and a large faded emoji
+  or "Be the first to join" before anyone but the host has, both over "Join from any
+  Aurboda instance". An ended challenge without totals says only "N took part" (every
+  member, host included) and no join prompt. The gradient and a large faded emoji
   are themed by what is measured (steps, running, cycling, swimming, sleep, heart-rate
   zones, …; a purple trophy otherwise). A **host-set banner** replaces that themed
   background: the banner is drawn full-bleed under a darkening overlay with the same

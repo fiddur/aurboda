@@ -24,6 +24,13 @@ export const countRightAxes = (hasHypnogram: boolean, overlays: { showAxis: bool
   return rightAxisCount
 }
 
+/** Keep every k-th tick so at least `minPxPerTick` lies between labels — d3's `ticks(n)` is only a hint. */
+export const fitTicks = <T>(ticks: T[], availableWidth: number, minPxPerTick: number): T[] => {
+  const fits = Math.max(1, Math.floor(availableWidth / minPxPerTick))
+  const step = Math.ceil(ticks.length / fits)
+  return step <= 1 ? ticks : ticks.filter((_, i) => i % step === 0)
+}
+
 /**
  * The right chart margin for a given number of drawn right axes: axes sit
  * 45px apart, the outermost needs ~20px more for its tick + unit labels, and

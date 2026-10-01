@@ -1,9 +1,10 @@
 import type { Express } from 'express'
 
-import type { GarminClient } from '../integrations/garmin/client.ts'
 import type { GravlClient } from '../integrations/gravl/client.ts'
 import type { ouraClient } from '../integrations/oura/client.ts'
 import type { StravaClient } from '../integrations/strava/client.ts'
+
+import { type GarminClient, redactSecret } from '../integrations/garmin/client.ts'
 
 type OuraClient = ReturnType<typeof ouraClient>
 import type { CentralDb } from '../services/central-db.ts'
@@ -52,8 +53,10 @@ export const registerOAuthRoutes = ({
         res.json({ success: true })
       }
     } catch (error) {
-      auditError(user, 'auth', 'Garmin login endpoint error', { error: String(error) })
-      const message = error instanceof Error ? error.message : 'Login failed'
+      auditError(user, 'auth', 'Garmin login endpoint error', {
+        error: redactSecret(String(error), String(password)),
+      })
+      const message = error instanceof Error ? redactSecret(error.message, String(password)) : 'Login failed'
       res.status(401).json({ error: message, success: false })
     }
   })

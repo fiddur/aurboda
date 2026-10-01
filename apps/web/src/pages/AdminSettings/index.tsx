@@ -6,7 +6,6 @@ import type { InvitationResult, SignupMode } from '../../state/api'
 
 import { ImportPanel } from '../../components/ImportPanel'
 import { type SaveStatus, SaveStatusIndicator } from '../../components/SaveStatusIndicator'
-import { API_URL } from '../../config'
 import { fetchAdminSettings, generateInvitation, updateAdminSettings } from '../../state/api'
 import { auth } from '../../state/auth'
 import './style.css'
@@ -47,7 +46,7 @@ function GravlApiSection() {
 
   const idSet = settings?.gravl_client_id_set ?? false
   const secretSet = settings?.gravl_client_secret_set ?? false
-  const redirectUri = `${API_URL}/auth/gravlcb`
+  const redirectUri = settings?.gravl_redirect_uri
 
   const saveGravl = useCallback(
     async (params: { gravl_client_id?: string | null; gravl_client_secret?: string | null }) => {
@@ -124,8 +123,8 @@ function GravlApiSection() {
         <a href="https://gravl.ai/developers/oauth" target="_blank" rel="noopener noreferrer">
           gravl.ai/developers/oauth
         </a>
-        ); register the redirect URI <code>{redirectUri}</code> and request the <code>workouts:read</code>{' '}
-        scope.
+        ); register the redirect URI <code>{redirectUri ?? '…'}</code> and request the{' '}
+        <code>workouts:read</code> scope.
       </p>
     </div>
   )

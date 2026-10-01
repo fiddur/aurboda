@@ -95,6 +95,12 @@
   color: inherit;
 }
 
+.comment-panel-thread + .comment-panel-thread {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid #e5e7eb;
+}
+
 @media (prefers-color-scheme: dark) {
   .comment-panel {
     background: #1f2937;
@@ -106,5 +112,9 @@
 
   .comment-panel-times input {
     border-color: #4b5563;
+  }
+
+  .comment-panel-thread + .comment-panel-thread {
+    border-top-color: #4b5563;
   }
 }

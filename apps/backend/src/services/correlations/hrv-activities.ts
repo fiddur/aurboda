@@ -9,6 +9,7 @@ import type {
 } from './types.ts'
 
 import { getAllActivitiesInRange, getProductivity, getTimeSeries } from '../../db/index.ts'
+import { pushAll } from '../../utils.ts'
 import { getPlaceVisits } from '../locations.ts'
 import { triggerCorrelationSyncs } from './background-sync.ts'
 import { addBaselineDelta, calculateHrvStats, getDataInRange, pearsonCorrelation } from './utils.ts'
@@ -83,14 +84,17 @@ export async function getHrvActivitiesCorrelation(
     const hrInWindow = getDataInRange(hrData, record.start_time, record.end_time)
     const stressInWindow = getDataInRange(stressData, record.start_time, record.end_time)
     const contextInWindow = getDataInRange(contextData, record.start_time, record.end_time)
-    cat.hrvValues.push(...hrvInWindow)
-    cat.hrValues.push(...hrInWindow)
-    cat.stressValues.push(...stressInWindow)
-    cat.contextValues.push(...contextInWindow)
+    pushAll(cat.hrvValues, hrvInWindow)
+    pushAll(cat.hrValues, hrInWindow)
+    pushAll(cat.stressValues, stressInWindow)
+    pushAll(cat.contextValues, contextInWindow)
 
     if (record.productivity !== undefined && record.productivity !== null) {
       // One productivity score per context-metric value, for the correlation.
-      cat.scores.push(...contextInWindow.map(() => record.productivity!))
+      pushAll(
+        cat.scores,
+        contextInWindow.map(() => record.productivity!),
+      )
     }
   }
 
@@ -133,9 +137,9 @@ export async function getHrvActivitiesCorrelation(
     const hrvInWindow = getDataInRange(hrvData, visit.start_time, visit.end_time)
     const hrInWindow = getDataInRange(hrData, visit.start_time, visit.end_time)
     const stressInWindow = getDataInRange(stressData, visit.start_time, visit.end_time)
-    loc.hrvValues.push(...hrvInWindow)
-    loc.hrValues.push(...hrInWindow)
-    loc.stressValues.push(...stressInWindow)
+    pushAll(loc.hrvValues, hrvInWindow)
+    pushAll(loc.hrValues, hrInWindow)
+    pushAll(loc.stressValues, stressInWindow)
   }
 
   const locationCorrelations: LocationCorrelation[] = []
@@ -191,9 +195,9 @@ export async function getHrvActivitiesCorrelation(
       const hrvInWindow = getDataInRange(hrvData, activity.start_time, activity.end_time)
       const hrInWindow = getDataInRange(hrData, activity.start_time, activity.end_time)
       const stressInWindow = getDataInRange(stressData, activity.start_time, activity.end_time)
-      act.hrvValues.push(...hrvInWindow)
-      act.hrValues.push(...hrInWindow)
-      act.stressValues.push(...stressInWindow)
+      pushAll(act.hrvValues, hrvInWindow)
+      pushAll(act.hrValues, hrInWindow)
+      pushAll(act.stressValues, stressInWindow)
     } else {
       // Point activity — use ±30min contextual window
       const windowStart = new Date(activity.start_time.getTime() - 30 * 60 * 1000)
@@ -203,9 +207,9 @@ export async function getHrvActivitiesCorrelation(
       const hrvInWindow = getDataInRange(hrvData, windowStart, windowEnd)
       const hrInWindow = getDataInRange(hrData, windowStart, windowEnd)
       const stressInWindow = getDataInRange(stressData, windowStart, windowEnd)
-      act.hrvValues.push(...hrvInWindow)
-      act.hrValues.push(...hrInWindow)
-      act.stressValues.push(...stressInWindow)
+      pushAll(act.hrvValues, hrvInWindow)
+      pushAll(act.hrValues, hrInWindow)
+      pushAll(act.stressValues, stressInWindow)
     }
   }
 

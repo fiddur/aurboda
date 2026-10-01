@@ -5,7 +5,7 @@ import {
   type ScreentimeCategory,
 } from '@aurboda/api-spec'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
-import { addDays, format, subDays } from 'date-fns'
+import { format } from 'date-fns'
 import { useCallback, useMemo } from 'preact/hooks'
 
 import type { Activity, Place, Scrobble } from '../../state/api'
@@ -44,6 +44,7 @@ import { categorizeMusic } from './categorizeMusic'
 import { activityColors, getExerciseColor } from './colors'
 import { buildCommentItems } from './commentItems'
 import { parseBucketedData } from './drawActivitySparklines'
+import { padFetchWindow } from './fetchRange'
 import { getExerciseTypeName } from './formatting'
 import {
   BASE_COLUMNS,
@@ -113,6 +114,7 @@ export const useTimelineData = ({
   mergeGapMs,
   collapseDepth,
 }: UseTimelineDataOptions): TimelineData => {
+  const [paddedStart, paddedEnd] = padFetchWindow(fetchStart, fetchEnd)
   const { data: activityTypeDefs = [] } = useQuery({
     queryFn: fetchActivityTypeDefinitions,
     queryKey: ['activityTypeDefinitions'],
@@ -122,13 +124,7 @@ export const useTimelineData = ({
   const activitiesQuery = useQuery({
     enabled: !hiddenCategories.has('activity'),
     placeholderData: keepPreviousData,
-    queryFn: () =>
-      fetchActivities(
-        subDays(fetchStart, 0.5),
-        addDays(fetchEnd, 0.5),
-        undefined,
-        TIMELINE_EXCLUDED_ACTIVITY_TYPES,
-      ),
+    queryFn: () => fetchActivities(paddedStart, paddedEnd, undefined, TIMELINE_EXCLUDED_ACTIVITY_TYPES),
     queryKey: ['timeline-activities', fromDateKey, toDateKey],
     staleTime: 5 * 60 * 1000,
   })
@@ -159,8 +155,7 @@ export const useTimelineData = ({
   const bucketedMetricsQuery = useQuery({
     enabled: !hiddenCategories.has('metrics'),
     placeholderData: keepPreviousData,
-    queryFn: () =>
-      fetchBucketedMetrics(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5), TIMELINE_METRICS, bucketSize),
+    queryFn: () => fetchBucketedMetrics(paddedStart, paddedEnd, TIMELINE_METRICS, bucketSize),
     queryKey: ['timeline-bucketed-metrics', fromDateKey, toDateKey, bucketSize],
     staleTime: 5 * 60 * 1000,
   })
@@ -175,7 +170,7 @@ export const useTimelineData = ({
   const trainingLoadQuery = useQuery({
     enabled: !hiddenCategories.has('training_load'),
     placeholderData: keepPreviousData,
-    queryFn: () => fetchTrainingLoad(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5), barBucketSize),
+    queryFn: () => fetchTrainingLoad(paddedStart, paddedEnd, barBucketSize),
     queryKey: ['timeline-training-load', fromDateKey, toDateKey, barBucketSize],
     staleTime: 5 * 60 * 1000,
   })
@@ -183,8 +178,7 @@ export const useTimelineData = ({
   const screentimeBucketedQuery = useQuery({
     enabled: !hiddenCategories.has('screen_time_h') && !hiddenCategories.has('metrics'),
     placeholderData: keepPreviousData,
-    queryFn: () =>
-      fetchScreentimeBucketed(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5), barBucketSize, browserTz),
+    queryFn: () => fetchScreentimeBucketed(paddedStart, paddedEnd, barBucketSize, browserTz),
     queryKey: ['timeline-screentime-bucketed', fromDateKey, toDateKey, barBucketSize],
     staleTime: 5 * 60 * 1000,
   })

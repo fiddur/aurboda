@@ -8,11 +8,12 @@ import { fromDatetimeLocal, toDatetimeLocal } from '../../components/CommentThre
 import { MarkdownEditor } from '../../components/MarkdownEditor'
 import { SaveCancelRow } from '../../components/SaveCancelRow'
 import { addReply, addTimeComment, deleteComment, updateComment } from '../../state/api'
+import { entityHref } from './commentItems'
 import './CommentPanel.css'
 
 export type CommentPanelState =
-  /** An existing thread, looked up among the roots the range query already returned. */
-  | { kind: 'thread'; rootId: string }
+  /** Existing threads (several when their glyphs shared one), looked up among the roots the range query already returned. */
+  | { kind: 'thread'; rootIds: string[] }
   /** A comment about a moment that has nothing attached to it yet. */
   | { kind: 'new'; at: Date }
 
@@ -31,18 +32,13 @@ const ENTITY_LABELS: Partial<Record<EntityType, string>> = {
   report: 'report',
 }
 
-/** Where the thing a comment hangs off lives — meals have their own route. */
-const entityHref = (entityType: EntityType, entityId: string): string =>
-  entityType === 'meal'
-    ? `/meals/${encodeURIComponent(entityId)}`
-    : `/detail/${entityType}/${encodeURIComponent(entityId)}`
-
 const AnchorLine = ({ root }: { root: Note }) => {
-  if (root.entity_type === 'time' || !root.entity_id) return null
+  const href = root.entity_id ? entityHref(root.entity_type, root.entity_id) : undefined
+  if (!href) return null
   const label = ENTITY_LABELS[root.entity_type] ?? root.entity_type
   return (
     <p class="comment-panel-anchor">
-      On this <a href={entityHref(root.entity_type, root.entity_id)}>{label}</a>
+      On this <a href={href}>{label}</a>
     </p>
   )
 }
@@ -126,7 +122,8 @@ export const CommentPanel = ({ state, roots, onClose }: CommentPanelProps) => {
     return () => document.removeEventListener('keydown', onKeyDown)
   }, [onClose])
 
-  const root = state.kind === 'thread' ? roots.find((note) => note.id === state.rootId) : undefined
+  const threadRoots =
+    state.kind === 'thread' ? roots.filter((note) => note.id && state.rootIds.includes(note.id)) : []
 
   const replyMutation = useMutation({
     mutationFn: ({ rootId, content }: { rootId: string; content: string }) => addReply(rootId, content),
@@ -153,7 +150,7 @@ export const CommentPanel = ({ state, roots, onClose }: CommentPanelProps) => {
     mutationFn: (id: string) => deleteComment(id),
     onSuccess: (_data, id) => {
       invalidate()
-      if (state.kind === 'thread' && id === state.rootId) onClose()
+      if (state.kind === 'thread' && state.rootIds.length === 1 && id === state.rootIds[0]) onClose()
     },
   })
 
@@ -165,7 +162,7 @@ export const CommentPanel = ({ state, roots, onClose }: CommentPanelProps) => {
       <div class="comment-panel-backdrop" onClick={onClose} />
       <div class="comment-panel" role="dialog" aria-label="Comment">
         <div class="comment-panel-header">
-          <h3>{state.kind === 'new' ? 'New comment' : 'Comment'}</h3>
+          <h3>{state.kind === 'new' ? 'New comment' : threadRoots.length > 1 ? 'Comments' : 'Comment'}</h3>
           <button class="comment-panel-close" type="button" onClick={onClose} title="Close">
             ✕
           </button>
@@ -173,10 +170,12 @@ export const CommentPanel = ({ state, roots, onClose }: CommentPanelProps) => {
 
         {state.kind === 'new' && <NewCommentForm at={state.at} onDone={onClose} />}
 
-        {state.kind === 'thread' && !root && <p class="comment-panel-empty">This comment is gone.</p>}
+        {state.kind === 'thread' && threadRoots.length === 0 && (
+          <p class="comment-panel-empty">This comment is gone.</p>
+        )}
 
-        {root && (
-          <>
+        {threadRoots.map((root) => (
+          <div class="comment-panel-thread" key={root.id}>
             <AnchorLine root={root} />
             <CommentThread
               comments={[root]}
@@ -190,8 +189,8 @@ export const CommentPanel = ({ state, roots, onClose }: CommentPanelProps) => {
               onDelete={(id) => deleteMutation.mutate(id)}
               pending={pending}
             />
-          </>
-        )}
+          </div>
+        ))}
       </div>
     </>
   )

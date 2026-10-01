@@ -10,15 +10,45 @@
  * pages) — an unsanitised `<img src=x onerror=…>` in someone else's note would be
  * stored XSS.
  */
-import DOMPurify from 'dompurify'
+import DOMPurify, { type DOMPurify as Purifier } from 'dompurify'
 import { marked } from 'marked'
 
 // GFM + hard line breaks, shared by every sink. `async: false` keeps `parse`
 // returning a string, not a Promise.
 marked.setOptions({ breaks: true, gfm: true })
 
+// Brought in line with the outbound article sanitiser (backend
+// `services/activitypub/article-object.ts`), so what the web shows is what
+// federates (#1028): no form controls (a post could otherwise draw a
+// credential-looking form on this origin), no styling, and images from http(s)
+// only — no data: images and no same-origin GETs via a relative src.
+const OWN_FORBID_TAGS = ['form', 'input', 'button', 'select', 'textarea', 'style']
+const OWN_FORBID_ATTR = ['style', 'srcset']
+
+const isHttpUrl = (value: string): boolean => /^https?:\/\//i.test(value.trim())
+
+const keepHttpImagesOnly = (node: Element): void => {
+  if (node.nodeName === 'IMG' && !isHttpUrl(node.getAttribute('src') ?? '')) node.removeAttribute('src')
+}
+
+// Its own instance, because DOMPurify hooks are global to an instance and this
+// one must not touch `renderRemoteMarkdown` or any other sanitiser. Created on
+// first use: DOMPurify needs a window.
+let ownPurifier: Purifier | undefined
+const ownContentPurifier = (): Purifier => {
+  if (!ownPurifier) {
+    ownPurifier = DOMPurify(window)
+    ownPurifier.addHook('afterSanitizeAttributes', keepHttpImagesOnly)
+  }
+  return ownPurifier
+}
+
 /** Render user/AI-authored markdown to sanitised HTML safe for a `dangerouslySetInnerHTML` sink. */
-export const renderMarkdown = (md: string): string => DOMPurify.sanitize(marked.parse(md, { async: false }))
+export const renderMarkdown = (md: string): string =>
+  ownContentPurifier().sanitize(marked.parse(md, { async: false }), {
+    FORBID_ATTR: OWN_FORBID_ATTR,
+    FORBID_TAGS: OWN_FORBID_TAGS,
+  })
 
 // The allowlist for REMOTE (peer-authored) markdown — a stricter *superset* of the
 // backend's inbound `sanitizeRemoteHtml` allowlist (it adds the GFM table tags

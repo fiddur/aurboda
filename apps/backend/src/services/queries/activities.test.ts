@@ -182,6 +182,37 @@ describe('queryActivities with comments', () => {
     expect(a.avg_hr).toBe(140) // from time-series since data has no average_hr
   })
 
+  test('a window with only a typed exercise session (running) still gets avg_hr / max_hr', async () => {
+    vi.mocked(db.getActivities).mockResolvedValue([
+      {
+        activity_type: 'running',
+        end_time: new Date('2024-01-15T10:30:00Z'),
+        id: 'run-1',
+        source: 'health_connect',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+      },
+    ])
+    vi.mocked(db.getNotesByEntityIds).mockResolvedValue(new Map())
+    vi.mocked(db.getTimeSeries).mockResolvedValue([])
+    vi.mocked(db.getTimeSeriesMultiMetric).mockResolvedValue({
+      heart_rate: [
+        [new Date('2024-01-15T10:05:00Z'), 130],
+        [new Date('2024-01-15T10:15:00Z'), 160],
+      ],
+    })
+
+    const [run] = await queryActivities(
+      'testuser',
+      ['running'],
+      new Date('2024-01-15'),
+      new Date('2024-01-16'),
+    )
+
+    expect(vi.mocked(db.getTimeSeriesMultiMetric)).toHaveBeenCalledTimes(1)
+    expect(run.avg_hr).toBe(145)
+    expect(run.max_hr).toBe(160)
+  })
+
   test('HRV uses the samples inside [start, end], both ends included', async () => {
     vi.mocked(db.getActivities).mockResolvedValue([
       {

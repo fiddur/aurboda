@@ -12,6 +12,7 @@ import type {
 } from './types.ts'
 
 import { getAllActivitiesInRange, getProductivity, getTimeSeries } from '../../db/index.ts'
+import { pushAll } from '../../utils.ts'
 import { triggerCorrelationSyncs } from './background-sync.ts'
 import { getCompoundEventOutcome } from './explore.ts'
 import { chiSquaredTest, mean, stddev } from './utils.ts'
@@ -275,7 +276,7 @@ export async function getGenericCorrelation(
           .filter(([time]) => time > windowEnd && time <= lagEnd)
           .map(([, value]) => value)
 
-        valuesAfterTrigger.push(...valuesInWindow)
+        pushAll(valuesAfterTrigger, valuesInWindow)
       }
 
       const meanAfter = mean(valuesAfterTrigger)

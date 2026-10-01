@@ -21,9 +21,11 @@ vi.mock('../services/queries/index.ts', async () => {
 vi.mock('../db/index.ts', () => ({}))
 
 const queries = await import('../services/queries/index.ts')
+const service = await import('../services/activity-type-definitions.ts')
 
 const buildApp = () => {
   const app = express()
+  app.use(express.json())
   const auth = (req: express.Request, _res: express.Response, next: express.NextFunction) => {
     req.user = 'tester'
     next()
@@ -60,5 +62,34 @@ describe('GET /activity-types/:name/sessions', () => {
 
     expect(res.status).toBe(400)
     expect(queries.queryActivitySessions).not.toHaveBeenCalled()
+  })
+})
+
+describe('POST /activity-types', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  test('passes aliases through to the service', async () => {
+    vi.mocked(service.addActivityTypeDefinition).mockResolvedValue({
+      data: {
+        aliases: ['sauna', 'bastu'],
+        color: '#6b7280',
+        display_category: 'other',
+        display_name: 'Sauna',
+        is_builtin: false,
+        name: 'sauna',
+        show_on_timeline: true,
+      },
+      success: true,
+    })
+
+    const res = await supertest(buildApp())
+      .post('/activity-types')
+      .send({ aliases: ['bastu'], display_category: 'other', display_name: 'Sauna', name: 'sauna' })
+
+    expect(res.status).toBe(201)
+    expect(service.addActivityTypeDefinition).toHaveBeenCalledWith(
+      'tester',
+      expect.objectContaining({ aliases: ['bastu'], name: 'sauna' }),
+    )
   })
 })

@@ -11,6 +11,8 @@ vi.mock('../db/index.ts', () => ({
   clearIngredients: vi.fn(),
   deleteFoodItem: vi.fn(),
   deleteFoodItemPortion: vi.fn().mockResolvedValue(true),
+  FOOD_ITEM_USED_AS_INGREDIENT_ERROR:
+    'Cannot delete: this food item is used as an ingredient in one or more recipes.',
   findCompositeParentsOfIngredient: vi.fn().mockResolvedValue([]),
   getFoodItemById: vi.fn(),
   getFoodItemPortionById: vi.fn().mockResolvedValue(null),
@@ -119,6 +121,30 @@ const callTool = async (handler: ToolHandler, params: Record<string, unknown>) =
   const result = await handler(params)
   return result.content[0].text
 }
+
+describe('MCP delete_food_item', () => {
+  const id = '11111111-1111-4111-8111-111111111111'
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  test('returns the in-use message when the item is an ingredient', async () => {
+    vi.mocked(dbBarrel.deleteFoodItem).mockResolvedValue('used_as_ingredient')
+    const { server, tools } = buildFakeServer()
+    registerFoodItemTools(server, 'tester', fakeCentral())
+
+    expect(await callTool(tools.get('delete_food_item')!, { id })).toMatch(/used as an ingredient/)
+  })
+
+  test('succeeds when deleted', async () => {
+    vi.mocked(dbBarrel.deleteFoodItem).mockResolvedValue('deleted')
+    const { server, tools } = buildFakeServer()
+    registerFoodItemTools(server, 'tester', fakeCentral())
+
+    expect(JSON.parse(await callTool(tools.get('delete_food_item')!, { id }))).toEqual({ success: true })
+  })
+})
 
 describe('MCP set_food_item_reference', () => {
   const id = '11111111-1111-4111-8111-111111111111'

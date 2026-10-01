@@ -416,6 +416,7 @@ export {
 
 export {
   deleteFoodItem,
+  FOOD_ITEM_USED_AS_INGREDIENT_ERROR,
   findOrCreateFoodItem,
   getFoodItemById,
   getFoodItemByName,

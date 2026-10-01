@@ -4,9 +4,10 @@
  */
 import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
-import { useEffect, useRef } from 'preact/hooks'
+import { useCallback, useEffect, useRef } from 'preact/hooks'
 
 import { interpolatePosition } from './chart-utils'
+import { useInView } from './useInView'
 import './RouteMap.css'
 
 const MIN_POINTS_FOR_PATH = 2
@@ -14,6 +15,8 @@ const PATH_COLOR = '#673ab8'
 const PATH_WEIGHT = 3
 const PATH_OPACITY = 0.8
 const FIT_BOUNDS_PADDING = 20
+/** Start loading a map (Leaflet + OSM tiles) a little before it scrolls into view. */
+const PRELOAD_MARGIN = { rootMargin: '200px' }
 
 const HIGHLIGHT_MARKER_SIZE = 14
 const HIGHLIGHT_ICON = L.divIcon({
@@ -38,9 +41,19 @@ export const RouteMap = ({ points, hoverTime }: RouteMapProps) => {
   const mapContainerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<L.Map | null>(null)
   const highlightMarkerRef = useRef<L.Marker | null>(null)
+  // A feed of routes would otherwise mount a map and fetch tiles for every post,
+  // off-screen ones included (#1016). The container keeps its size while empty.
+  const { inView, ref: observeContainer } = useInView(PRELOAD_MARGIN)
+  const containerRef = useCallback(
+    (element: HTMLDivElement | null) => {
+      mapContainerRef.current = element
+      observeContainer(element)
+    },
+    [observeContainer],
+  )
 
   useEffect(() => {
-    if (!mapContainerRef.current || points.length < MIN_POINTS_FOR_PATH) return
+    if (!inView || !mapContainerRef.current || points.length < MIN_POINTS_FOR_PATH) return
 
     const map = L.map(mapContainerRef.current, { zoomControl: true })
 
@@ -64,7 +77,7 @@ export const RouteMap = ({ points, hoverTime }: RouteMapProps) => {
       mapRef.current = null
       highlightMarkerRef.current = null
     }
-  }, [points])
+  }, [inView, points])
 
   useEffect(() => {
     const map = mapRef.current
@@ -86,9 +99,9 @@ export const RouteMap = ({ points, hoverTime }: RouteMapProps) => {
     } else {
       highlightMarkerRef.current = L.marker([pos.lat, pos.lon], { icon: HIGHLIGHT_ICON }).addTo(map)
     }
-  }, [hoverTime, points])
+  }, [hoverTime, inView, points])
 
   if (points.length < MIN_POINTS_FOR_PATH) return null
 
-  return <div ref={mapContainerRef} class="activity-map-container" />
+  return <div ref={containerRef} class="activity-map-container" />
 }

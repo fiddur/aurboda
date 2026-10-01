@@ -11,6 +11,7 @@ import {
 } from './reports.ts'
 
 vi.mock('../db', () => ({
+  deleteNotesForEntity: vi.fn(),
   deleteReport: vi.fn(),
   getLatestMetricValue: vi.fn(),
   getReportById: vi.fn(),
@@ -226,6 +227,7 @@ describe('deleteReportById', () => {
 
     expect(result.success).toBe(true)
     expect(mockDeleteReport).toHaveBeenCalledWith('testuser', 'report-1')
+    expect(db.deleteNotesForEntity).toHaveBeenCalledWith('testuser', 'report', 'report-1')
 
     // Should clean up time_series entries
     expect(mockQuery).toHaveBeenCalledTimes(2)

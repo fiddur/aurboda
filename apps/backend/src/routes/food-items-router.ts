@@ -52,6 +52,7 @@ import type { SharedFoodItemEntity } from '../services/central-food-items.ts'
 import {
   clearIngredients as dbClearIngredients,
   deleteFoodItem,
+  FOOD_ITEM_USED_AS_INGREDIENT_ERROR,
   type FoodItemEntity as DbFoodItemEntity,
   type FoodItemPortionRow,
   getFoodItemById as getUserFoodItemById,
@@ -257,8 +258,11 @@ export const createFoodItemsRouter = (authMiddleware: AnyMiddleware, centralDb: 
   )
 
   router.delete<{ id: string }, DeleteFoodItemResponse>('/:id', authMiddleware, async (req, res) => {
-    const deleted = await deleteFoodItem(req.user!, req.params.id)
-    if (!deleted) {
+    const result = await deleteFoodItem(req.user!, req.params.id)
+    if (result === 'used_as_ingredient') {
+      return res.status(409).json({ error: FOOD_ITEM_USED_AS_INGREDIENT_ERROR, success: false })
+    }
+    if (result === 'not_found') {
       const fromCentral = await centralDb.getSharedFoodItemById(req.params.id)
       return res.status(fromCentral ? 403 : 404).json({
         error: fromCentral ? 'Cannot delete shared library item' : 'Food item not found',

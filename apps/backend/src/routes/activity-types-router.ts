@@ -63,8 +63,9 @@ export const createActivityTypesRouter = (authMiddleware: RequestHandler): Typed
     validateBody(addActivityTypeDefinitionBodySchema),
     async (req, res) => {
       const user = req.user!
-      const { name, display_name, display_category, color, icon, data_schema } = req.body
+      const { aliases, name, display_name, display_category, color, icon, data_schema } = req.body
       const result = await addActivityTypeDefinition(user, {
+        aliases,
         color,
         data_schema,
         display_category,

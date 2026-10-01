@@ -159,7 +159,7 @@ export async function queryActivities(
   // Determine which time-series we'll need based on the activity types present.
   // Batching fetches across the full activity span avoids one DB round-trip per
   // activity (was N+1 before).
-  const hasExerciseLike = activities.some((a) => a.activity_type === 'exercise' && a.end_time)
+  const hasExerciseLike = activities.some((a) => a.end_time && isExerciseLike(a.activity_type, categoryMap))
   const needsHrv = activities.some(
     (a) => (a.activity_type === 'sleep' || a.activity_type === 'meditation') && a.end_time,
   )
