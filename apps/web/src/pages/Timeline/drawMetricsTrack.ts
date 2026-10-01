@@ -6,6 +6,7 @@ import { format } from 'date-fns'
 import type { ScreentimeBucketParsed } from '../../state/api'
 
 import { stressBandColor } from '../../components/charts/stress-bands'
+import { BAR_BUCKET_NOMINAL_MS, type BarBucketSize } from '../../utils/barWindows'
 import { type MetricBucketParsed, aggregateBuckets, aggregateBucketsAligned } from '../../utils/chart'
 import { type BarLayoutResult, slotPixels } from './barLayout'
 import { buildScreentimeTooltipHtml, findScreentimeBucket } from './drawScreentimeTrack'
@@ -71,11 +72,11 @@ export interface MetricsTrackConfig {
   /** Screentime categories for tooltip rendering. */
   screentimeCategories?: ScreentimeCategory[]
   /**
-   * Target bar bucket size in ms. When set, steps/calories bars are re-aggregated
-   * to this bucket size so they align with training load and screentime bars.
-   * Defaults to native bucket size (no forced aggregation).
+   * Target bar bucket size. When set, steps/calories bars are re-aggregated into
+   * local calendar windows of this size so they align with training load and
+   * screentime bars. Defaults to native bucket size (no forced aggregation).
    */
-  barBucketMs?: number
+  barBucketSize?: BarBucketSize
 }
 
 /** A multiple of every factor `getAggregationFactor` returns: slicing the bucket
@@ -93,10 +94,10 @@ const getAggregationFactor = (pixelsPerHour: number, buckets: MetricBucketParsed
   return 6 // merge to ~30m
 }
 
-const needsBarAggregation = (buckets: MetricBucketParsed[], barBucketMs?: number): boolean => {
-  if (!barBucketMs || buckets.length < 2) return false
+const needsBarAggregation = (buckets: MetricBucketParsed[], barBucketSize?: BarBucketSize): boolean => {
+  if (!barBucketSize || buckets.length < 2) return false
   const bucketMs = buckets[1]!.start.getTime() - buckets[0]!.start.getTime()
-  return bucketMs < barBucketMs
+  return bucketMs < BAR_BUCKET_NOMINAL_MS[barBucketSize]
 }
 
 interface BandPoint {
@@ -702,8 +703,8 @@ export const drawMetricsTrack = (config: MetricsTrackConfig): void => {
   const buckets = aggregateBuckets(rawBuckets, lineFactor)
 
   // Aggregate for bar charts (steps/calories) — time-aligned to match screentime/training load
-  const barBuckets = needsBarAggregation(rawBuckets, config.barBucketMs)
-    ? aggregateBucketsAligned(rawBuckets, config.barBucketMs!)
+  const barBuckets = needsBarAggregation(rawBuckets, config.barBucketSize)
+    ? aggregateBucketsAligned(rawBuckets, config.barBucketSize!)
     : buckets
 
   const trackBottom = trackY + trackHeight

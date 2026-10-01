@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import type { LegendCategory } from './legendCategories'
 import type { ChartItem, Orientation } from './types'
 
+import { BAR_BUCKET_NOMINAL_MS } from '../../utils/barWindows'
 import { aggregateBucketsAligned } from '../../utils/chart'
 import { packLanes } from '../../utils/lanePacking'
 import { computeBarLayout, type BarSlot } from './barLayout'
@@ -477,12 +478,11 @@ export const Timeline = () => {
 
         const metricBuckets = horizontalMetricBuckets
         const metricsTrackBottom = trackMetricsS + metricsTrackHeightS
-        const barBucketMs =
-          barBucketSize === '1w' ? 7 * 86400000 : barBucketSize === '1d' ? 86400000 : 3600000
         const barAggBuckets =
           metricBuckets.length >= 2 &&
-          metricBuckets[1]!.start.getTime() - metricBuckets[0]!.start.getTime() < barBucketMs
-            ? aggregateBucketsAligned(metricBuckets, barBucketMs)
+          metricBuckets[1]!.start.getTime() - metricBuckets[0]!.start.getTime() <
+            BAR_BUCKET_NOMINAL_MS[barBucketSize]
+            ? aggregateBucketsAligned(metricBuckets, barBucketSize)
             : metricBuckets
         const metricsYScales =
           metricBuckets.length > 0
@@ -704,11 +704,11 @@ export const Timeline = () => {
       const trainingLoadData = trainingLoadQuery.data ?? null
 
       const metricsTrackBottom = trackMetrics + metricsTrackHeight
-      const barBucketMs = barBucketSize === '1w' ? 7 * 86400000 : barBucketSize === '1d' ? 86400000 : 3600000
       const barAggBuckets =
         metricBuckets.length >= 2 &&
-        metricBuckets[1]!.start.getTime() - metricBuckets[0]!.start.getTime() < barBucketMs
-          ? aggregateBucketsAligned(metricBuckets, barBucketMs)
+        metricBuckets[1]!.start.getTime() - metricBuckets[0]!.start.getTime() <
+          BAR_BUCKET_NOMINAL_MS[barBucketSize]
+          ? aggregateBucketsAligned(metricBuckets, barBucketSize)
           : metricBuckets
       const metricsYScales =
         metricBuckets.length > 0
@@ -960,7 +960,7 @@ export const Timeline = () => {
               metricBuckets,
               domainStartMs,
               domainEndMs,
-              barBucketMs,
+              barBucketSize,
               LINE_CHUNK_ALIGNMENT,
             ),
             chartGroup,
@@ -993,7 +993,7 @@ export const Timeline = () => {
               ? { yScales: metricsYScales }
               : { yScales: computeYScales([], trackMetrics, trackMetrics + metricsTrackHeight) }),
             xScale: currentXScale,
-            barBucketMs,
+            barBucketSize,
             barLayout,
             caloriesSlotId: 'calories',
             stepsSlotId: 'steps',
