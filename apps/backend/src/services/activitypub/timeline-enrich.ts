@@ -1,6 +1,6 @@
 /**
- * A delivered `Note` carries the QuantPub scalar summary in-band (#896, kept
- * through Fedify's outbound clone since #1040), but the high-resolution series
+ * A delivered `Note` carries the QuantPub scalar summary in-band (#896; it
+ * survives Fedify's outbound clone), but the high-resolution series
  * only as links. So when a followed *Aurboda* instance
  * posts, we fetch the richer structured payload it serves at
  * `GET /public/:user/feed/:postId` (the FEP §7 id-convention path — reliable
