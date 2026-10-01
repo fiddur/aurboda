@@ -23,6 +23,7 @@ export const createChartDataRouter = (authMiddleware: RequestHandler): TypedRout
         source_type,
         start,
         tag_definition_id,
+        tz,
       } = req.query
       const breakdown_fields = breakdownFieldsStr
         ? breakdownFieldsStr
@@ -47,6 +48,7 @@ export const createChartDataRouter = (authMiddleware: RequestHandler): TypedRout
         source_type,
         start,
         tag_definition_id,
+        tz,
       })
       res.json({
         data: {

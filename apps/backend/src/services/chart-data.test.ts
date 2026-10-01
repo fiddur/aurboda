@@ -190,6 +190,7 @@ describe('getChartData', () => {
       new Date('2026-06-25T00:00:00Z'),
       zones,
       '1d',
+      'UTC',
     )
     expect(result.buckets).toEqual([
       { bucket_start: '2026-06-24T00:00:00.000Z', value: 120 },
@@ -197,6 +198,53 @@ describe('getChartData', () => {
     ])
     // Plain metric query path is not used for zone metrics.
     expect(vi.mocked(db.query)).not.toHaveBeenCalled()
+  })
+
+  test('passes tz to hr_zone bucketing', async () => {
+    vi.mocked(db.getHrZoneSecs).mockResolvedValue([])
+    vi.mocked(settings.getEffectiveHrZones).mockResolvedValue({
+      source: 'default',
+      zones: { 1: 90, 2: 110, 3: 130, 4: 150, 5: 170 },
+    })
+
+    await getChartData('testuser', {
+      aggregation: 'sum',
+      bucket_size: '1d',
+      end: '2026-06-25T00:00:00Z',
+      pattern: 'hr_zone_1_sec',
+      source_type: 'metric',
+      start: '2026-06-01T00:00:00Z',
+      tz: 'Europe/Stockholm',
+    })
+
+    expect(vi.mocked(db.getHrZoneSecs).mock.calls[0][5]).toBe('Europe/Stockholm')
+  })
+
+  test.each([
+    ['tag', { pattern: 'coffee' }],
+    ['tag', { tag_definition_id: '550e8400-e29b-41d4-a716-446655440000' }],
+    ['metric', { pattern: 'weight' }],
+    ['productivity_category', { pattern: 'Work' }],
+    ['activity_type', { pattern: 'run' }],
+    ['activity_type', { breakdown_fields: ['device'], pattern: 'run' }],
+  ] as const)('%s query binds tz as a parameter (%o)', async (source_type, extra) => {
+    vi.mocked(db.query).mockResolvedValue({ rows: [] } as never)
+
+    await getChartData('testuser', {
+      aggregation: 'sum',
+      bucket_size: '1w',
+      end: '2026-01-31T23:59:59Z',
+      source_type,
+      start: '2026-01-01T00:00:00Z',
+      tz: 'Europe/Stockholm',
+      ...extra,
+      breakdown_fields: 'breakdown_fields' in extra ? [...extra.breakdown_fields] : undefined,
+    })
+
+    const [, sql, params] = vi.mocked(db.query).mock.calls[0]
+    expect(sql).toContain('date_trunc($1::text, ')
+    expect(sql).not.toContain('Europe/Stockholm')
+    expect(params!.slice(0, 2)).toEqual(['week', 'Europe/Stockholm'])
   })
 
   test('zone2_weekly aliases to hr_zone_2_sec (computed, not queried)', async () => {
@@ -265,8 +313,8 @@ describe('getChartData', () => {
     // to screentime activities as the source of truth.
     const call = vi.mocked(db.query).mock.calls[0]
     expect(call[1]).toContain('FROM activities')
-    expect(call[1]).toContain("data->>'category_path' = $2")
-    expect(call[1]).toContain("starts_with(data->>'category_path', $2 || ' > ')")
+    expect(call[1]).toContain("data->>'category_path' = $3")
+    expect(call[1]).toContain("starts_with(data->>'category_path', $3 || ' > ')")
     expect(call[1]).not.toMatch(/activity_type\s*(=|IN)/)
     expect(call[1]).not.toContain('FROM productivity')
   })
@@ -514,39 +562,40 @@ describe('getChartData', () => {
 })
 
 describe('buildBucketExpr', () => {
-  test('returns date_trunc for day bucket', () => {
-    const { expr, params } = buildBucketExpr('1d', 'time', 1)
-    expect(expr).toContain('date_trunc')
-    expect(params).toEqual(['day'])
+  test.each([
+    ['1d', 'day'],
+    ['1w', 'week'],
+    ['1M', 'month'],
+    ['1h', 'hour'],
+  ])('%s truncates to %s in the given zone, bound as a parameter', (size, unit) => {
+    const { expr, params } = buildBucketExpr(size, 'time', 1, 'Europe/Stockholm')
+    expect(expr).toBe('date_trunc($1::text, time, $2::text)')
+    expect(params).toEqual([unit, 'Europe/Stockholm'])
   })
 
-  test('returns date_trunc for week bucket', () => {
-    const { expr, params } = buildBucketExpr('1w', 'time', 1)
-    expect(expr).toContain('date_trunc')
-    expect(params).toEqual(['week'])
+  test('defaults the zone to UTC', () => {
+    expect(buildBucketExpr('1d', 'time', 1).params).toEqual(['day', 'UTC'])
   })
 
-  test('returns date_trunc for month bucket', () => {
-    const { expr, params } = buildBucketExpr('1M', 'time', 1)
-    expect(expr).toContain('date_trunc')
-    expect(params).toEqual(['month'])
+  test.each([
+    ['1m', '1 minute'],
+    ['5m', '5 minutes'],
+    ['15m', '15 minutes'],
+  ])('%s bins on a UTC origin and takes no zone', (size, interval) => {
+    const { expr, params } = buildBucketExpr(size, 'start_time', 1, 'Asia/Kathmandu')
+    expect(expr).toBe("date_bin($1::interval, start_time, '2000-01-01T00:00:00Z'::timestamptz)")
+    expect(params).toEqual([interval])
   })
 
-  test('returns date_trunc with hour for 1h bucket', () => {
-    const { expr, params } = buildBucketExpr('1h', 'time', 1)
-    expect(expr).toContain('date_trunc')
-    expect(params).toEqual(['hour'])
-  })
-
-  test('returns date_bin with 15 minutes for 15m bucket', () => {
-    const { expr, params } = buildBucketExpr('15m', 'start_time', 1)
-    expect(expr).toContain('date_bin')
-    expect(expr).toContain('start_time')
-    expect(params).toEqual(['15 minutes'])
+  test('never interpolates the zone into the SQL', () => {
+    const evil = "UTC'); DROP TABLE activities; --"
+    for (const size of ['1m', '5m', '15m', '1h', '1d', '1w', '1M']) {
+      expect(buildBucketExpr(size, 'time', 1, evil).expr).not.toContain('DROP')
+    }
   })
 
   test('uses correct placeholder index', () => {
     const { expr } = buildBucketExpr('1d', 'time', 3)
-    expect(expr).toContain('$3')
+    expect(expr).toBe('date_trunc($3::text, time, $4::text)')
   })
 })
