@@ -12,10 +12,10 @@ home-built trackers can follow each other (RFC — looking for collaborators)
 ---
 
 A lot of us run home-built or self-hosted tracking systems — and they're all
-islands. I've been experimenting with making mine *federated*: my workouts are
+islands. I've been experimenting with making mine _federated_: my workouts are
 ActivityPub posts (and the spec covers any observation — sleep, HRV, steps,
 mood, …), so anyone on Mastodon can follow me and see them. But between two tools that speak a small extra vocabulary,
-something better happens: the subscriber renders the *actual data* — an
+something better happens: the subscriber renders the _actual data_ — an
 interactive chart with real hoverable values, not a flattened text summary and
 a static PNG.
 
@@ -60,7 +60,7 @@ Privacy is a first-class part of the spec, because QS data is sensitive:
 
 Draft spec: **[link to docs/fep/quantpub.md on GitHub]**
 Running implementation (mine): **[https://aurboda.net]** — but the explicit
-goal is that you *don't* have to adopt my software. If you have a home-built
+goal is that you _don't_ have to adopt my software. If you have a home-built
 system and this sounds interesting, I'd love feedback on the vocabulary and
 endpoint contract before I submit the FEP upstream — especially from anyone
 willing to try implementing the Level 1 publishing side against their own
@@ -71,9 +71,9 @@ data. What metrics would you need that the recommended key set doesn't cover?
 > **Pre-post checklist**
 >
 > - [ ] Capture screenshot pair (same share): Mastodon web view + Aurboda
->   subscriber timeline card (enriched, hover chart visible). #996 shipped, so
->   any aurboda.net-to-aurboda.net follow renders the enriched card.
+>       subscriber timeline card (enriched, hover chart visible). #996 shipped, so
+>       any aurboda.net-to-aurboda.net follow renders the enriched card.
 > - [ ] Replace the two link placeholders (GitHub blob URL for the FEP; keep
->   aurboda.net).
+>       aurboda.net).
 > - [ ] Check r/QuantifiedSelf rules for self-promotion framing (post leads
->   with the open spec, not the product — keep it that way).
+>       with the open spec, not the product — keep it that way).

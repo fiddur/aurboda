@@ -104,7 +104,9 @@ get the full SPA and hydrate normally — only the head is enriched.
   `<resource-url>/opengraph-image.png`. Satori renders a branded card (title +
   DASHBOARD/CHALLENGE/PROFILE eyebrow + the owner's avatar + Aurboda wordmark) to
   SVG and sharp rasterizes it to PNG; fonts are bundled (no system fonts in the
-  image). Renders are memoised in-process and cached `public, max-age=3600`.
+  image), and emoji in titles are drawn from bundled Twemoji SVGs (`@twemoji/svg`),
+  so no system emoji font is needed. Renders are memoised in-process and cached
+  `public, max-age=3600`.
   Non-public / unknown resources fall back to the branded static default
   (`/og-default.png`).
 - **Visibility is respected**: rich meta and rendered images are emitted only for

@@ -50,6 +50,9 @@ importers:
       '@simplewebauthn/server':
         specifier: ^13.3.0
         version: 13.3.0
+      '@twemoji/svg':
+        specifier: 15.0.0
+        version: 15.0.0
       '@types/multer':
         specifier: ^2.1.0
         version: 2.1.0
@@ -1836,6 +1839,9 @@ packages:
 
   '@tsconfig/node24@24.0.4':
     resolution: {integrity: sha512-2A933l5P5oCbv6qSxHs7ckKwobs8BDAe9SJ/Xr2Hy+nDlwmLE1GhFh/g/vXGRZWgxBg9nX/5piDtHR9Dkw/XuA==}
+
+  '@twemoji/svg@15.0.0':
+    resolution: {integrity: sha512-ZSPef2B6nBaYnfgdTbAy4jgW95o7pi2xPGwGCU+WMTxo7J6B1lMPTWwSq/wTuiMq+N0khQ90CcvYp1wFoQpo/w==}
 
   '@types/body-parser@1.19.6':
     resolution: {integrity: sha512-HLFeCYgz89uk22N5Qg3dvGvsv46B8GLvKKo1zKG4NybA8U2DiEO3w9lqGg29t/tfLRJpJ6iQxnVw4OnB7MoM9g==}
@@ -5960,6 +5966,8 @@ snapshots:
   '@tootallnate/quickjs-emscripten@0.23.0': {}
 
   '@tsconfig/node24@24.0.4': {}
+
+  '@twemoji/svg@15.0.0': {}
 
   '@types/body-parser@1.19.6':
     dependencies:

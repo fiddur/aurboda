@@ -3,11 +3,14 @@
  *
  * Satori renders a branded card (HTML/flexbox subset → SVG) and sharp
  * rasterizes it to PNG. Fonts are bundled (see assets/fonts/README.md) because
- * the production image has no system fonts. Everything is a pure function of the
+ * the production image has no system fonts; emoji are drawn from the bundled
+ * Twemoji SVGs (`@twemoji/svg`). Everything is a pure function of the
  * passed-in card data — callers resolve visibility first and never render a
  * private resource.
  */
 import { readFile } from 'node:fs/promises'
+import { createRequire } from 'node:module'
+import { dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import satori, { type Font } from 'satori'
 import sharp from 'sharp'
@@ -39,6 +42,33 @@ const createFontLoader = (): (() => Promise<Font[]>) => {
       { data: bold, name: FONT_FAMILY, style: 'normal', weight: 700 },
     ])
     return fontsPromise
+  }
+}
+
+/**
+ * Twemoji file name for one emoji grapheme: its code points in lower-case hex,
+ * joined with `-`. Twemoji drops the U+FE0F variation selector from the name
+ * unless the sequence contains a zero-width joiner (U+200D).
+ */
+export const twemojiFileName = (segment: string): string => {
+  const codePoints = Array.from(segment, (char) => char.codePointAt(0)!.toString(16))
+  return (codePoints.includes('200d') ? codePoints : codePoints.filter((cp) => cp !== 'fe0f')).join('-')
+}
+
+const createEmojiLoader = (): ((segment: string) => Promise<string | []>) => {
+  const twemojiDir = dirname(createRequire(import.meta.url).resolve('@twemoji/svg/package.json'))
+  const cache = new Map<string, Promise<string | undefined>>()
+  return async (segment) => {
+    const fileName = twemojiFileName(segment)
+    let dataUri = cache.get(fileName)
+    if (!dataUri) {
+      dataUri = readFile(`${twemojiDir}/${fileName}.svg`).then(
+        (svg) => `data:image/svg+xml;base64,${svg.toString('base64')}`,
+        () => undefined,
+      )
+      cache.set(fileName, dataUri)
+    }
+    return (await dataUri) ?? []
   }
 }
 
@@ -154,8 +184,15 @@ const cardTree = (card: OgCard): El =>
   )
 
 /** Longest title that fits the card comfortably before Satori would overflow. */
-export const clampTitle = (title: string, max = 60): string =>
-  title.length <= max ? title : `${title.slice(0, max - 1).trimEnd()}…`
+export const clampTitle = (title: string, max = 60): string => {
+  const graphemes = Array.from(
+    new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(title),
+    (s) => s.segment,
+  )
+  if (graphemes.length <= max) return title
+  const kept = graphemes.slice(0, max - 1).join('')
+  return `${kept.trimEnd()}…`
+}
 
 /**
  * Create a renderer that turns card data into a branded 1200×630 PNG. Fonts are
@@ -163,11 +200,13 @@ export const clampTitle = (title: string, max = 60): string =>
  */
 export const createOgImageRenderer = (): ((card: OgCard) => Promise<Buffer>) => {
   const loadFonts = createFontLoader()
+  const loadEmoji = createEmojiLoader()
   return async (card) => {
     const fonts = await loadFonts()
     const svg = await satori(cardTree({ ...card, title: clampTitle(card.title) }), {
       fonts,
       height: OG_HEIGHT,
+      loadAdditionalAsset: (code, segment) => (code === 'emoji' ? loadEmoji(segment) : Promise.resolve([])),
       width: OG_WIDTH,
     })
     return sharp(Buffer.from(svg)).png().toBuffer()

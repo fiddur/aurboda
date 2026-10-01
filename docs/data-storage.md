@@ -279,7 +279,7 @@ CREATE TABLE notes (
 
 - **On an entity** -- `entity_type` names a real entity and `entity_id` points at
   it (a UUID, or for metrics the composite key `<iso_time>|<metric>|<source>`).
-  `start_time`/`end_time` are a *cache* of the parent's timing so comments can be
+  `start_time`/`end_time` are a _cache_ of the parent's timing so comments can be
   queried by time range; they are rewritten whenever the parent moves and are not
   editable directly.
 - **On a moment** -- `entity_type = 'time'`, `entity_id IS NULL`. `start_time` is

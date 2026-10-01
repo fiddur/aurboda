@@ -1,5 +1,5 @@
 ---
-slug: "xxxx"
+slug: 'xxxx'
 authors: Fredrik Liljegren
 status: DRAFT
 dateReceived: (not yet submitted)
@@ -50,7 +50,7 @@ into full federation later.
 
 The quantified-self community is full of hand-rolled, single-user systems:
 a database, some sync scripts, a dashboard. These tools will never converge on
-one product, but they *could* converge on a small wire contract — and then
+one product, but they _could_ converge on a small wire contract — and then
 their owners could follow each other, see each other's structured data rendered
 natively, and run cross-instance comparisons, the way single-vendor fitness
 platforms do behind walled gardens today.
@@ -64,7 +64,7 @@ delivery. What is missing is:
   frameworks such as Fedify) parse inbound objects into a fixed vocabulary and
   drop unknown terms; an extension-only design silently degrades to nothing.
 
-QuantPub therefore treats the in-band vocabulary as *progressive enhancement*
+QuantPub therefore treats the in-band vocabulary as _progressive enhancement_
 and standardises the out-of-band fetch: deliver a boring, Mastodon-compatible
 `Note` (flattened text plus rendered-image attachments), and serve the
 machine-readable payload at a discoverable public endpoint on the author's own
@@ -147,7 +147,7 @@ it appears in `quant:metrics` as the `duration` key (in seconds). AS2's
 (The §5 payload layer — plain JSON, not JSON-LD — still exposes a
 `duration_seconds` convenience field.)
 
-The `published` property carries the *share* time (timeline ordering); the
+The `published` property carries the _share_ time (timeline ordering); the
 workout time lives in `startTime` — a workout shared a week later MUST NOT be
 back-dated in followers' timelines.
 
@@ -174,8 +174,8 @@ Absence of a key means "not shared", never "zero".
 
 ### 3. `quant:Observation` — a measured metric over a window
 
-Exercise is one case of the general shape: *something was measured over a
-bounded window*. A `quant:Observation` covers sleep, HRV, steps, mood, weight,
+Exercise is one case of the general shape: _something was measured over a
+bounded window_. A `quant:Observation` covers sleep, HRV, steps, mood, weight,
 blood glucose — anything with a window and values. It is dual-typed
 `["Note", "quant:Observation"]` (RECOMMENDED, with the same single-type
 allowance as §2) and carries the same properties as §2 except
@@ -252,20 +252,21 @@ share, `kind: "activity"`:
         {
           "start": "2026-08-15T06:30:00+02:00",
           "end": "2026-08-15T06:30:05+02:00",
-          "avg": 121, "min": 118, "max": 124, "count": 5
+          "avg": 121,
+          "min": 118,
+          "max": 124,
+          "count": 5
         }
       ]
     }
   ],
-  "route": [
-    { "lat": 59.3251, "lon": 18.0710, "t": "2026-08-15T06:30:00+02:00" }
-  ]
+  "route": [{ "lat": 59.3251, "lon": 18.071, "t": "2026-08-15T06:30:00+02:00" }]
 }
 ```
 
 - `metrics` MUST contain exactly the shared scalars — the same set the
   delivered `Note` summarised.
-- `series` MUST contain only series the author *separately* opted to share
+- `series` MUST contain only series the author _separately_ opted to share
   (§8), inlined as bucketed samples (§6.1) over the activity window. It MAY be
   empty.
 - `route` (OPTIONAL) is the activity's GPS track as a time-ordered array of
@@ -328,7 +329,10 @@ that never existed. When the request resolves:
     {
       "start": "2026-08-15T06:30:00+02:00",
       "end": "2026-08-15T06:30:05+02:00",
-      "avg": 121, "min": 118, "max": 124, "count": 5
+      "avg": 121,
+      "min": 118,
+      "max": 124,
+      "count": 5
     }
   ]
 }
@@ -343,7 +347,7 @@ alike — only the metric key and bucket size differ.
 
 A consuming peer needs a defined path from a received object to its §5
 payload. Two mechanisms are specified; the id convention is the reliable
-baseline, since typed AS2 frameworks on the *consuming* side may drop unknown
+baseline, since typed AS2 frameworks on the _consuming_ side may drop unknown
 in-band properties before application code sees them:
 
 - **Object-id convention (normative baseline).** A Level 2 publisher SHOULD
@@ -362,7 +366,7 @@ On ingesting a `Create`/`Update` for a `Note`, a receiving peer:
    or an id matching the object-id convention (a Mastodon status id never
    does, avoiding needless requests);
 2. resolves the payload URL: a same-host `quant:structuredUrl` names it
-   directly, so no discovery fetch is needed to *locate* it; the id
+   directly, so no discovery fetch is needed to _locate_ it; the id
    convention instead requires `{api_base}`, taken from
    `/.well-known/quantpub` on the object's origin host (cacheable). A
    consumer MAY still fetch the discovery document in the
@@ -392,7 +396,7 @@ its own older versions:
   `type` is the one addition known to break some deployed consumers; a
   publisher whose install base predates array-type tolerance SHOULD start
   single-typed and add the second type once its consumers tolerate arrays.
-- Nothing in §7 requires the *object id* to change: a publisher keeping its
+- Nothing in §7 requires the _object id_ to change: a publisher keeping its
   existing id layout uses `quant:structuredUrl` instead of the id convention.
 
 ### 8. Privacy model (normative)
@@ -413,7 +417,7 @@ its own older versions:
    followers-only one). Only the discovery document (§4) is cacheable.
 5. **Bounded resolution.** The server-side bucket floor (§6) is a privacy
    floor, not only a payload bound: implementations MUST NOT serve raw
-   per-measurement *series* timestamps on public endpoints. (The one
+   per-measurement _series_ timestamps on public endpoints. (The one
    deliberate exception is the §5 `route`'s per-fix `t`, which is its own
    separately-opted-in geography share — item 6.)
 6. **Geography is its own explicit opt-in.** A GPS route MUST NOT be exposed
@@ -425,7 +429,7 @@ its own older versions:
 
 Mainstream fediverse media and data fetches are **unsigned**: Mastodon's
 "authorized fetch" signs ActivityPub object/actor requests, not media
-downloads, so an HTTP-Signature-*only* gate on data endpoints would leave
+downloads, so an HTTP-Signature-_only_ gate on data endpoints would leave
 Mastodon-class followers seeing broken content — and a Level 1 publisher has
 no actor keys to verify against at all. QuantPub therefore uses **capability
 URLs** as the baseline for followers-only posts:
@@ -458,7 +462,7 @@ URLs** as the baseline for followers-only posts:
   post's shared payload — never to the public series endpoint, which serves
   publicly-visible shares only.
 
-**Signed fetches as an additional grant.** Purpose-built peers *can* sign
+**Signed fetches as an additional grant.** Purpose-built peers _can_ sign
 their data fetches — FitPub already authorizes followers-only activity details
 by verifying an HTTP Signature on the detail `GET` against the requesting
 actor's key and follow state. A Level 2+ publisher MAY therefore additionally
@@ -484,8 +488,7 @@ routes and no ActivityPub stack:
 
 Any Level 3 peer that learns one of your post URLs (a link in a toot, a
 challenge, a directory) can now render your data natively. Adding a minimal
-ActivityPub actor (WebFinger + inbox/outbox + `Create{Note}` delivery — Level
-2) later makes you followable from Mastodon and every QuantPub peer, with the
+ActivityPub actor (WebFinger + inbox/outbox + `Create{Note}` delivery — Level 2) later makes you followable from Mastodon and every QuantPub peer, with the
 structured channel already in place.
 
 ## Examples
@@ -630,7 +633,7 @@ GET /api/public/freja/series?metric=stress&start=...&end=...&bucket=60s
 - **[FEP-67ff]** (FEDERATION.md) — documenting federation behaviour per
   implementation; a QuantPub implementation SHOULD document its supported
   metric keys and endpoints there.
-- **[FEP-400e]** — *Publicly appendable ActivityPub collections* (grishka;
+- **[FEP-400e]** — _Publicly appendable ActivityPub collections_ (grishka;
   received 2021-02-16, finalized 2022-02-04): lets foreign actors append
   objects to a collection another actor owns. Not used by this document, but
   the natural building block for the QuantPub-adjacent feature of federated

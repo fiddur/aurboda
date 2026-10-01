@@ -36,7 +36,10 @@ export const resolveChallengeShare = async (
     if (!webHost) return { error: 'Sharing is not available', ok: false, status: 503 }
     const challenge = await getChallengeById(user, challenge_id)
     if (!challenge) return { error: 'Challenge not found', ok: false, status: 404 }
-    return { challenge: { name: challenge.name, url: buildShareUrl(webHost, user, challenge.slug) }, ok: true }
+    return {
+      challenge: { name: challenge.name, url: buildShareUrl(webHost, user, challenge.slug) },
+      ok: true,
+    }
   }
   if (participation_id != null) {
     const participation = await getParticipationById(user, participation_id)

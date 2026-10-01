@@ -35,12 +35,12 @@ A per-user set of rules, each combining a **predicate** and a **share template**
   Deleting a post records the activity in `autoshare_suppressions` (post rows are
   hard-deleted), so **a share the user removed never comes back** either. Evaluation is
   idempotent; overlapping windows are safe.
-- **Never retroactive**, two gates: the anchor row must have been *ingested* after the
+- **Never retroactive**, two gates: the anchor row must have been _ingested_ after the
   rule's `enabled_at` (`activities.created_at`) AND the activity itself must have
-  *ended* after it. The ingest gate makes enabling affect new arrivals only; the
+  _ended_ after it. The ingest gate makes enabling affect new arrivals only; the
   activity-time gate keeps a first sync or full re-sync of a newly connected source —
   which ingests months of history as fresh rows — from mass-publishing that history.
-  A delayed sync of a workout done *after* enabling still shares.
+  A delayed sync of a workout done _after_ enabling still shares.
 - **Bounded blast radius**: at most 5 posts per evaluation run (logged when hit) —
   federated deliveries can't be recalled, so even an unexpected window can only leak a
   handful of posts, never a firehose.
@@ -63,6 +63,6 @@ A per-user set of rules, each combining a **predicate** and a **share template**
 
 ## Out of scope
 
-Retroactive sharing of historical activities — the preview shows what *would have*
+Retroactive sharing of historical activities — the preview shows what _would have_
 matched; enabling only affects new arrivals. Message-from-activity-notes and
 time-of-day/weekday predicates are possible follow-ups.
