@@ -32,7 +32,9 @@ A feed post has a **`kind`**:
   permalinks). The ordered blocks live in an `article` JSONB column. Authored via
   `POST /feed/articles` / `PATCH /feed/articles/:postId` (and the `create_article` /
   `update_article` MCP tools), or in the web app's article composer; prose renders
-  through the shared markdown sanitiser and each windowed block resolves its data live
+  through the shared markdown sanitiser — which, like the outbound one, drops form
+  controls, `style` and non-http(s) image sources, so the web shows what federates
+  (#1028) — and each windowed block resolves its data live
   over the locked window. An article **federates as a `Note`** (title in `name`, prose
   HTML in `content`, and a rendered PNG per chart/correlation block attached) so followers
   on Mastodon see the prose and images inline. (A `Note`, not an AS2 `Article`: Mastodon
