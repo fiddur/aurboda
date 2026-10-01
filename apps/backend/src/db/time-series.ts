@@ -553,14 +553,19 @@ export const getTimeSeriesBucketedAvgForWindows = async (
 
 export type HrZoneBucket = 'none' | '1m' | '5m' | '15m' | '1h' | '1d' | '1w' | '1M'
 
-/** Fixed-width bins count from 2000-01-01Z; calendar units truncate in UTC whatever the session TimeZone. */
-const hrZoneBucketExprs: Record<HrZoneBucket, string> = {
+/**
+ * Calendar units and hours truncate in the zone bound at `tz` (a placeholder such as `$11`),
+ * whatever the session TimeZone. Sub-hour bins count from 2000-01-01Z: every current offset is a
+ * whole number of quarter hours, so they already fall on local clock boundaries. Plain strings take
+ * no zone, so no zone parameter is bound for them (an unused placeholder's type is undeterminable).
+ */
+const hrZoneBucketExprs: Record<HrZoneBucket, ((tz: string) => string) | string> = {
   '15m': "date_bin('15 minutes', time, '2000-01-01T00:00:00Z'::timestamptz)",
-  '1M': "date_trunc('month', time, 'UTC')",
-  '1d': "date_trunc('day', time, 'UTC')",
-  '1h': "date_trunc('hour', time, 'UTC')",
+  '1M': (tz) => `date_trunc('month', time, ${tz}::text)`,
+  '1d': (tz) => `date_trunc('day', time, ${tz}::text)`,
+  '1h': (tz) => `date_trunc('hour', time, ${tz}::text)`,
   '1m': "date_bin('1 minute', time, '2000-01-01T00:00:00Z'::timestamptz)",
-  '1w': "date_trunc('week', time, 'UTC')",
+  '1w': (tz) => `date_trunc('week', time, ${tz}::text)`,
   '5m': "date_bin('5 minutes', time, '2000-01-01T00:00:00Z'::timestamptz)",
   none: 'NULL::timestamptz',
 }
@@ -630,15 +635,24 @@ export const getHrZoneSecs = async (
   end: Date,
   zones: HrZoneThresholds,
   bucket: HrZoneBucket = 'none',
+  tz = 'UTC',
 ): Promise<{ bucket_start: Date | null; sample_count: number; secs: HrZoneSecs }[]> => {
   const sources = getSourceFilter('heart_rate')
   const params: unknown[] = [start, end, ...hrZoneParams(zones)]
   if (sources) params.push(sources)
+  const bucketExpr = hrZoneBucketExprs[bucket]
+  let bucketSql: string
+  if (typeof bucketExpr === 'string') {
+    bucketSql = bucketExpr
+  } else {
+    params.push(tz)
+    bucketSql = bucketExpr(`$${params.length}`)
+  }
 
   const result = await query(
     user,
     `WITH hr AS (
-       SELECT ${hrZoneBucketExprs[bucket]} AS b, time, source, value
+       SELECT ${bucketSql} AS b, time, source, value
          FROM time_series
         WHERE metric = 'heart_rate' AND time >= $1 AND time <= $2 AND deleted_at IS NULL${sources ? ' AND source = ANY($10)' : ''}
      ), ${HR_ZONE_SECS_BY_B}`,

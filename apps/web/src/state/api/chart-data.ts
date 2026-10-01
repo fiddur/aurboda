@@ -4,6 +4,7 @@ import axios from 'axios'
 
 import { API_URL } from '../../config'
 import { auth } from '../auth'
+import { browserTz } from './client'
 
 export interface FetchChartDataParams {
   source_type: ChartDataSourceType
@@ -29,6 +30,7 @@ export const fetchChartData = async (params: FetchChartDataParams): Promise<Char
     source_type: params.source_type,
     start: params.start,
     end: params.end,
+    tz: browserTz,
   }
   if (params.pattern) query.pattern = params.pattern
   if (params.activity_type_id) query.tag_definition_id = params.activity_type_id

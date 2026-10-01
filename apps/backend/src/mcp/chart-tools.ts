@@ -11,6 +11,7 @@ Returns time-bucketed aggregated values suitable for bar charts.
 
 Bucket sizes: 1d (daily), 1w (weekly), 1M (monthly)
 Aggregation: count (number of occurrences), sum (total value), mean (average value)
+Time zone: pass tz (IANA, e.g. "Europe/Stockholm") so days, weeks and months start at the user's local midnight; omitted means UTC.
 
 Examples:
 - Daily coffee counts this month: source_type="tag", pattern="coffee", bucket_size="1d", aggregation="count"
@@ -28,6 +29,7 @@ Each screentime category is also an activity type (its activity_type_name), so s
       source_type,
       start,
       tag_definition_id,
+      tz,
     }) => {
       try {
         const buckets = await getChartData(user, {
@@ -39,6 +41,7 @@ Each screentime category is also an activity type (its activity_type_name), so s
           source_type,
           start,
           tag_definition_id,
+          tz,
         })
         return jsonResponse({ data: { buckets }, success: true })
       } catch (error) {
