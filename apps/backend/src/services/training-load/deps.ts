@@ -39,10 +39,9 @@ export interface TrainingLoadDeps {
   /** Update training load settings (for watermark) */
   updateTrainingLoadSettings: (user: string, update: Partial<TrainingLoadSettings>) => Promise<void>
   /**
-   * Per user, the earliest hour (epoch ms) an auto-bootstrap recompute has already covered, and when
-   * it ran (epoch ms). A user
-   * with no exercise or calorie data gets no buckets written, so without this every read would
-   * bootstrap again.
+   * Per user, the earliest hour (epoch ms) an auto-bootstrap recompute has already covered, and
+   * when it ran (epoch ms). A user with no exercise or calorie data gets no buckets written, so
+   * without this every read would bootstrap again.
    */
   bootstrappedFrom: Map<string, { at: number; fromHour: number }>
 }

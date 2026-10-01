@@ -8,10 +8,14 @@ import { migrateSchemaIfNeeded } from '../db/index.ts'
 import { auditError, auditInfo, auditWarn } from '../services/audit-log.ts'
 import { backfillScreentimeActivities } from '../services/backfill-screentime-activities.ts'
 import { retypeLegacyScreentime } from '../services/retype-legacy-screentime.ts'
+import { summarizeAuditBody } from './audit-body.ts'
+
+const summarizeResponse = (body: unknown): unknown =>
+  body !== null && typeof body === 'object' ? summarizeAuditBody(body) : body
 
 /**
  * Log level is based on response status: 4xx → warn, 5xx → error, otherwise → info.
- * Sanitizes `password` field from request bodies; captures response body for error logs.
+ * Redacts `password` and summarizes large request/response bodies (see `summarizeAuditBody`).
  */
 export const createAuditLogMiddleware =
   (auth: Auth): RequestHandler =>
@@ -28,14 +32,7 @@ export const createAuditLogMiddleware =
       })()
 
       if (user) {
-        const sanitizedBody =
-          req.body && typeof req.body === 'object'
-            ? Object.fromEntries(
-                Object.entries(req.body as Record<string, unknown>).map(([k, v]) =>
-                  k === 'password' ? [k, '[REDACTED]'] : [k, v],
-                ),
-              )
-            : undefined
+        const sanitizedBody = summarizeAuditBody(req.body)
 
         // Capture response body for error logging by intercepting res.json()
         let responseBody: unknown
@@ -50,13 +47,13 @@ export const createAuditLogMiddleware =
             auditError(user, 'data', `${req.method} ${req.path}`, {
               ...sanitizedBody,
               status: res.statusCode,
-              response: responseBody,
+              response: summarizeResponse(responseBody),
             })
           } else if (res.statusCode >= 400) {
             auditWarn(user, 'data', `${req.method} ${req.path}`, {
               ...sanitizedBody,
               status: res.statusCode,
-              response: responseBody,
+              response: summarizeResponse(responseBody),
             })
           } else {
             auditInfo(user, 'data', `${req.method} ${req.path}`, sanitizedBody)
