@@ -2,7 +2,14 @@ import type { Note } from '@aurboda/api-spec'
 
 import { describe, expect, it } from 'vitest'
 
-import { buildCommentItems, commentLabel, COMMENT_LABEL_MAX, stripMarkdown } from './commentItems'
+import {
+  buildCommentGroupItem,
+  buildCommentItems,
+  commentLabel,
+  COMMENT_LABEL_MAX,
+  groupOverlappingComments,
+  stripMarkdown,
+} from './commentItems'
 
 const note = (overrides: Partial<Note> = {}): Note => ({
   content: 'Felt dizzy right after this',
@@ -99,5 +106,40 @@ describe('buildCommentItems', () => {
     // No entity link on the bubble itself — the panel is what leads back.
     expect(item?.entity_id).toBeUndefined()
     expect(item?.href).toBeUndefined()
+  })
+})
+
+describe('groupOverlappingComments', () => {
+  const xs = (groups: { x: number }[][]) => groups.map((g) => g.map((p) => p.x))
+
+  it('keeps every comment on its own when none overlap', () => {
+    expect(xs(groupOverlappingComments([{ x: 40 }, { x: 0 }, { x: 20 }], 18))).toEqual([[0], [20], [40]])
+  })
+
+  it('chains comments whose neighbours overlap into one group', () => {
+    expect(xs(groupOverlappingComments([{ x: 0 }, { x: 10 }, { x: 20 }, { x: 60 }], 18))).toEqual([
+      [0, 10, 20],
+      [60],
+    ])
+  })
+
+  it('groups comments at exactly the same moment', () => {
+    expect(xs(groupOverlappingComments([{ x: 5 }, { x: 5 }], 18))).toEqual([[5, 5]])
+  })
+})
+
+describe('buildCommentGroupItem', () => {
+  it('stands for every grouped root and lists their first lines', () => {
+    const items = buildCommentItems([
+      note({ content: 'First one', id: 'a' }),
+      note({ content: 'Second one\nmore', id: 'b' }),
+    ])
+    const group = buildCommentGroupItem(items)
+    expect(group.comment_ids).toEqual(['a', 'b'])
+    expect(group.comment_id).toBe('a')
+    expect(group.tooltip.title).toBe('2 comments')
+    expect(group.tooltip.details).toHaveLength(2)
+    expect(group.tooltip.details[0]).toContain('First one')
+    expect(group.tooltip.details[1]).toContain('Second one')
   })
 })

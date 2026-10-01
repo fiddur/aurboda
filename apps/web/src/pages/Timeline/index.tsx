@@ -190,8 +190,9 @@ export const Timeline = () => {
   const showCommentsTrack = commentItems.length > 0
 
   const handleCommentClick = useCallback((item: ChartItem) => {
-    if (!item.comment_id) return
-    setCommentPanel({ kind: 'thread', rootId: item.comment_id })
+    const rootIds = item.comment_ids ?? (item.comment_id ? [item.comment_id] : [])
+    if (rootIds.length === 0) return
+    setCommentPanel({ kind: 'thread', rootIds })
   }, [])
 
   const containerRef = useRef<HTMLDivElement>(null)

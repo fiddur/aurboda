@@ -74,3 +74,33 @@ export const buildCommentItems = (notes: Note[]): ChartItem[] =>
       } satisfies ChartItem,
     ]
   })
+
+/**
+ * Chains of glyphs closer than `minPx` to their neighbour, in x order: each chain is
+ * drawn as one glyph, so no comment hides under another.
+ */
+export const groupOverlappingComments = <T extends { x: number }>(points: T[], minPx: number): T[][] => {
+  const groups: T[][] = []
+  for (const point of [...points].sort((a, b) => a.x - b.x)) {
+    const current = groups.at(-1)
+    if (current && point.x - current.at(-1)!.x < minPx) current.push(point)
+    else groups.push([point])
+  }
+  return groups
+}
+
+/** One glyph standing for several thread roots: its tooltip lists each one's first line. */
+export const buildCommentGroupItem = (items: ChartItem[]): ChartItem => {
+  const first = items[0]!
+  const title = `${items.length} comments`
+  return {
+    ...first,
+    comment_ids: items.flatMap((item) => (item.comment_id ? [item.comment_id] : [])),
+    label: title,
+    tooltip: {
+      details: items.map((item) => `${formatTime(item.start)} ${item.label}`),
+      time: formatTime(first.start),
+      title,
+    },
+  }
+}
