@@ -426,9 +426,18 @@ export function TrendLineChart({
 
   const effectiveData = multiSeries ? (multiSeries[0]?.data ?? []) : data
 
+  // Keyed on epoch values: callers commonly build `xDomain` inline, and a fresh
+  // tuple per render must not force a full redraw.
+  const xDomainStartMs = xDomain?.[0].getTime()
+  const xDomainEndMs = xDomain?.[1].getTime()
+
   useEffect(() => {
     if (!svgRef.current || !containerRef.current) return
 
+    const domain: [Date, Date] | undefined =
+      xDomainStartMs !== undefined && xDomainEndMs !== undefined
+        ? [new Date(xDomainStartMs), new Date(xDomainEndMs)]
+        : undefined
     const container = containerRef.current
     const chartWidth = width ?? container.clientWidth
     const chartHeight = height
@@ -443,7 +452,7 @@ export function TrendLineChart({
 
     if (multiSeries && multiSeries.length > 0) {
       const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`)
-      const result = renderMultiSeries(g, multiSeries, innerWidth, innerHeight, compact, xDomain)
+      const result = renderMultiSeries(g, multiSeries, innerWidth, innerHeight, compact, domain)
 
       if (!compact && tooltipRef.current && result) {
         attachMultiSeriesTooltip(
@@ -470,10 +479,10 @@ export function TrendLineChart({
         compact,
         container,
         tooltipRef.current,
-        xDomain,
+        domain,
       )
     }
-  }, [data, color, height, width, compact, multiSeries, xDomain])
+  }, [data, color, height, width, compact, multiSeries, xDomainStartMs, xDomainEndMs])
 
   if (effectiveData.length < 2) {
     return <div class="trend-line-chart-placeholder">Insufficient data for chart</div>

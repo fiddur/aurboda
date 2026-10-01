@@ -8,6 +8,7 @@
  */
 import { defaultArticleChartBucket } from '@aurboda/api-spec'
 import { useQuery } from '@tanstack/react-query'
+import { useMemo } from 'preact/hooks'
 
 import { TrendLineChart } from '../../components/charts/TrendLineChart'
 import { fetchBucketedMetrics } from '../../state/api'
@@ -37,9 +38,13 @@ export const ArticleChartBlock = ({
     queryKey: ['article-chart', metric, start, end, effectiveBucket],
   })
 
-  const points = (data?.buckets ?? [])
-    .map((b) => ({ date: b.start, value: b.metrics[metric]?.avg }))
-    .filter((p): p is { date: string; value: number } => p.value != null)
+  const points = useMemo(
+    () =>
+      (data?.buckets ?? [])
+        .map((b) => ({ date: b.start, value: b.metrics[metric]?.avg }))
+        .filter((p): p is { date: string; value: number } => p.value != null),
+    [data, metric],
+  )
 
   return (
     <figure class="article-chart">

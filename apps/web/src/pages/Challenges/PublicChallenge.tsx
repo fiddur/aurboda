@@ -7,7 +7,7 @@
 import type { PublicChallenge as PublicChallengeData } from '@aurboda/api-spec'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'preact/hooks'
+import { useMemo, useState } from 'preact/hooks'
 
 import { TrendLineChart } from '../../components/charts/TrendLineChart'
 import { fetchPublicChallengeStandings, joinChallengeByUrl } from '../../state/api'
@@ -73,18 +73,20 @@ export function PublicChallenge({
   // member) — late-syncing last-day data can still reorder it (#1076).
   const ended = Date.now() >= new Date(challenge.end_ts).getTime()
   const ranks = competitionRanks(standings.map((s) => s.total))
-  const series = standings
-    // Falls back to daily if a cross-version host omits the resolved bucket size.
-    .map((s, i) =>
-      toCumulativeSeries(
-        s,
-        COLORS[i % COLORS.length],
-        challenge.start_ts,
-        challenge.effective_bucket_size ?? '1d',
-      ),
-    )
-    // Keep members with at least one real bucket (the start-line point alone is length 1).
-    .filter((s) => s.data.length > 1)
+  const standingsData = standingsQuery.data
+  const { start_ts, effective_bucket_size } = challenge
+  const series = useMemo(
+    () =>
+      (standingsData ?? [])
+        .filter((s) => s.status === 'active')
+        // Falls back to daily if a cross-version host omits the resolved bucket size.
+        .map((s, i) =>
+          toCumulativeSeries(s, COLORS[i % COLORS.length], start_ts, effective_bucket_size ?? '1d'),
+        )
+        // Keep members with at least one real bucket (the start-line point alone is length 1).
+        .filter((s) => s.data.length > 1),
+    [standingsData, start_ts, effective_bucket_size],
+  )
 
   return (
     <div class="dashboard public-dashboard public-challenge">

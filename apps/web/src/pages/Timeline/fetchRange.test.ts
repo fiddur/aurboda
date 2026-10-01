@@ -1,7 +1,7 @@
 import { addDays, differenceInCalendarDays, endOfDay, parseISO, startOfDay, subDays } from 'date-fns'
 import { describe, expect, it } from 'vitest'
 
-import { nextFetchRange } from './fetchRange'
+import { fetchWindowFromRange, nextFetchRange } from './fetchRange'
 
 const today = new Date('2026-09-26T12:00:00Z')
 const day = (iso: string) => ({ end: endOfDay(parseISO(iso)), start: startOfDay(parseISO(iso)) })
@@ -74,5 +74,23 @@ describe('nextFetchRange', () => {
     const current = { from: '2026-09-22', to: '2026-09-26' }
     const view = { end: addDays(today, 1), start: startOfDay(subDays(today, 1)) }
     expect(nextFetchRange(view, current, today)).toBe(current)
+  })
+})
+
+describe('fetchWindowFromRange', () => {
+  it('spans local midnight of `from` to the end of local day `to`', () => {
+    const { start, end } = fetchWindowFromRange({ from: '2026-09-10', to: '2026-09-12' })
+    expect(start).toEqual(startOfDay(parseISO('2026-09-10')))
+    expect(end).toEqual(endOfDay(parseISO('2026-09-12')))
+  })
+
+  // Asserted in local calendar terms so it holds in any time zone; reading the
+  // strings with `new Date()` (UTC midnight) fails this west of UTC.
+  it('starts and ends on the named local calendar days', () => {
+    const { start, end } = fetchWindowFromRange({ from: '2026-09-10', to: '2026-09-12' })
+    expect([start.getFullYear(), start.getMonth(), start.getDate(), start.getHours()]).toEqual([
+      2026, 8, 10, 0,
+    ])
+    expect([end.getFullYear(), end.getMonth(), end.getDate(), end.getHours()]).toEqual([2026, 8, 12, 23])
   })
 })

@@ -23,6 +23,7 @@ import {
   fetchUserSettings,
   selectItemIcons,
 } from '../../state/api'
+import { browserTz } from '../../state/api/client'
 import { parseBucketedResponse } from '../../utils/chart'
 import { packLanes } from '../../utils/lanePacking'
 import {
@@ -182,7 +183,8 @@ export const useTimelineData = ({
   const screentimeBucketedQuery = useQuery({
     enabled: !hiddenCategories.has('screen_time_h') && !hiddenCategories.has('metrics'),
     placeholderData: keepPreviousData,
-    queryFn: () => fetchScreentimeBucketed(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5), barBucketSize),
+    queryFn: () =>
+      fetchScreentimeBucketed(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5), barBucketSize, browserTz),
     queryKey: ['timeline-screentime-bucketed', fromDateKey, toDateKey, barBucketSize],
     staleTime: 5 * 60 * 1000,
   })
@@ -388,19 +390,18 @@ export const useTimelineData = ({
     [activities, secondaryActivities, itemIcons, sleepMetricsByDate, scrobbles, typeDefsMap],
   )
 
-  const otherActivities = useMemo(
-    () =>
-      secondaryActivities.filter((a) => {
-        if (!a.end_time) return true
-        if (a.source && EXCLUDED_ACTIVITY_SOURCES.has(a.source)) return true
-        if (EXCLUDED_ACTIVITY_TYPES.has(a.activity_type)) return true
-        for (const prefix of EXCLUDED_ACTIVITY_PREFIXES) {
-          if (a.activity_type.startsWith(prefix)) return true
-        }
-        return !activityItems.some((i) => i.entity_id === a.id)
-      }),
-    [secondaryActivities, activityItems],
-  )
+  const otherActivities = useMemo(() => {
+    const shownIds = new Set(activityItems.map((i) => i.entity_id))
+    return secondaryActivities.filter((a) => {
+      if (!a.end_time) return true
+      if (a.source && EXCLUDED_ACTIVITY_SOURCES.has(a.source)) return true
+      if (EXCLUDED_ACTIVITY_TYPES.has(a.activity_type)) return true
+      for (const prefix of EXCLUDED_ACTIVITY_PREFIXES) {
+        if (a.activity_type.startsWith(prefix)) return true
+      }
+      return !shownIds.has(a.id)
+    })
+  }, [secondaryActivities, activityItems])
 
   // Comments sit last so the 💬 column is the rightmost one in vertical mode.
   const allColumns: Column[] = useMemo(
@@ -469,15 +470,25 @@ export const useTimelineData = ({
     [allChartItems, isItemHidden],
   )
 
+  const itemsByColumn = useMemo(() => {
+    const grouped = new Map<Column, ChartItem[]>()
+    for (const item of chartItems) {
+      const group = grouped.get(item.column)
+      if (group) group.push(item)
+      else grouped.set(item.column, [item])
+    }
+    return grouped
+  }, [chartItems])
+
   const columns = useMemo(
-    () => allColumns.filter((col) => chartItems.some((item) => item.column === col)),
-    [allColumns, chartItems],
+    () => allColumns.filter((col) => itemsByColumn.has(col)),
+    [allColumns, itemsByColumn],
   )
 
   const columnData = useMemo(
     () =>
       columns.map((col) => {
-        const colItems = chartItems.filter((i) => i.column === col)
+        const colItems = itemsByColumn.get(col) ?? []
         const packed = packLanes(
           colItems,
           (i) => i.start,
@@ -485,7 +496,7 @@ export const useTimelineData = ({
         )
         return { column: col, ...packed }
       }),
-    [columns, chartItems],
+    [columns, itemsByColumn],
   )
 
   const isFetching = activitiesQuery.isFetching || mealsQuery.isFetching || bucketedMetricsQuery.isFetching

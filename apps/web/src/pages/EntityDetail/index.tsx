@@ -479,7 +479,7 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
 
   const { data: typeDefinitions } = useQuery({
     queryFn: fetchActivityTypeDefinitions,
-    queryKey: ['activity-type-definitions'],
+    queryKey: ['activityTypeDefinitions'],
     staleTime: 30 * 60 * 1000,
   })
 

@@ -23,6 +23,7 @@ import {
   SyncStatusBar,
 } from './shared'
 import './style.css'
+import { refetchWhileSyncing } from './syncPolling'
 
 const DATA_TYPES: DataTypeItem[] = [
   { label: 'Strength workouts (as strength_training activities)' },
@@ -256,7 +257,7 @@ export function GravlSource() {
     enabled: !!isLoggedIn && isConnected,
     queryFn: fetchGravlSyncStatus,
     queryKey: ['gravlSyncStatus'],
-    refetchInterval: isConnected ? 5000 : false,
+    refetchInterval: (query) => refetchWhileSyncing(query.state.data),
   })
 
   const refreshSettings = useCallback(async () => {
