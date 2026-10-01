@@ -77,7 +77,8 @@ import {
 import { createFeedFederation, deliverActorUpdate } from './services/activitypub/federation.ts'
 import { createTimelineBackfiller } from './services/activitypub/timeline-backfill.ts'
 import { createAurbodaEnrichAttempt } from './services/activitypub/timeline-enrich.ts'
-import { auditError, auditInfo } from './services/audit-log.ts'
+import { createAuditLogPruneQueue } from './services/audit-log-prune-queue.ts'
+import { auditError, auditInfo, pruneAuditLog } from './services/audit-log.ts'
 import { createAutoshareDeps } from './services/autoshare-deps.ts'
 import { type AutoshareQueue, createAutoshareQueue } from './services/autoshare-queue.ts'
 import { evaluateAutoshareWindow } from './services/autoshare.ts'
@@ -600,6 +601,20 @@ const main = async () => {
     }
   } else {
     console.warn('⚠️ Challenge winner announcements disabled (no job queue)')
+  }
+
+  if (boss) {
+    try {
+      await createAuditLogPruneQueue(boss, {
+        getRetentionDays: () => centralDb.getAuditLogRetentionDays(),
+        listUsers: () => listUserNames(userDb),
+        prune: pruneAuditLog,
+      })
+    } catch (error) {
+      console.error('Failed to initialize audit log prune:', error)
+    }
+  } else {
+    console.warn('⚠️ Scheduled audit log pruning disabled (no job queue)')
   }
 
   // The network-requiring follow operations, bound to the same federation +
