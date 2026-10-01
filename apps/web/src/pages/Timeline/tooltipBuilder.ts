@@ -59,12 +59,12 @@ export const buildTooltipHtml = (item: ChartItem, music: string[], activities: A
     html += `<div class="tooltip-detail">${escapeHtml(d)}</div>`
   }
 
-  if (item.activity_type === 'exercise') {
+  if (item.activity_type) {
     const activity = activities.find(
-      (a) => a.activity_type === 'exercise' && a.start_time.getTime() === item.start.getTime(),
+      (a) => a.activity_type === item.activity_type && a.start_time.getTime() === item.start.getTime(),
     )
     const zones = activity?.hr_zone_secs as Record<number, number> | undefined
-    if (zones) html += buildHrZoneBarHtml(zones)
+    if (zones && Object.keys(zones).length > 0) html += buildHrZoneBarHtml(zones)
   }
 
   if (music.length > 0) {

@@ -115,4 +115,26 @@ describe('buildTooltipHtml', () => {
     const html = buildTooltipHtml(item, [], [activity])
     expect(html).toContain('hr-zone-bar')
   })
+
+  it('includes HR zone bar for a typed session (running) that has hr_zone_secs', () => {
+    const item = makeChartItem({ activity_type: 'running' })
+    const activity = {
+      activity_type: 'running',
+      hr_zone_secs: { 0: 0, 1: 60, 2: 600, 3: 300, 4: 0, 5: 0 },
+      start_time: new Date('2026-01-01T08:00:00Z'),
+    } as unknown as Activity
+    const html = buildTooltipHtml(item, [], [activity])
+    expect(html).toContain('hr-zone-bar')
+  })
+
+  it('omits the HR zone bar when the activity has no hr_zone_secs', () => {
+    const item = makeChartItem({ activity_type: 'running' })
+    const withoutZones = {
+      activity_type: 'running',
+      start_time: new Date('2026-01-01T08:00:00Z'),
+    } as Activity
+    const emptyZones = { ...withoutZones, hr_zone_secs: {} } as unknown as Activity
+    expect(buildTooltipHtml(item, [], [withoutZones])).not.toContain('hr-zone-bar')
+    expect(buildTooltipHtml(item, [], [emptyZones])).not.toContain('hr-zone-bar')
+  })
 })
