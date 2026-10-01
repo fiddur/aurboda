@@ -8,6 +8,7 @@ import { fromDatetimeLocal, toDatetimeLocal } from '../../components/CommentThre
 import { MarkdownEditor } from '../../components/MarkdownEditor'
 import { SaveCancelRow } from '../../components/SaveCancelRow'
 import { addReply, addTimeComment, deleteComment, updateComment } from '../../state/api'
+import { entityHref } from './commentItems'
 import './CommentPanel.css'
 
 export type CommentPanelState =
@@ -31,18 +32,13 @@ const ENTITY_LABELS: Partial<Record<EntityType, string>> = {
   report: 'report',
 }
 
-/** Where the thing a comment hangs off lives — meals have their own route. */
-const entityHref = (entityType: EntityType, entityId: string): string =>
-  entityType === 'meal'
-    ? `/meals/${encodeURIComponent(entityId)}`
-    : `/detail/${entityType}/${encodeURIComponent(entityId)}`
-
 const AnchorLine = ({ root }: { root: Note }) => {
-  if (root.entity_type === 'time' || !root.entity_id) return null
+  const href = root.entity_id ? entityHref(root.entity_type, root.entity_id) : undefined
+  if (!href) return null
   const label = ENTITY_LABELS[root.entity_type] ?? root.entity_type
   return (
     <p class="comment-panel-anchor">
-      On this <a href={entityHref(root.entity_type, root.entity_id)}>{label}</a>
+      On this <a href={href}>{label}</a>
     </p>
   )
 }

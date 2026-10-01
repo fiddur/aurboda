@@ -1,4 +1,4 @@
-import type { Note } from '@aurboda/api-spec'
+import type { EntityType, Note } from '@aurboda/api-spec'
 
 import type { ChartItem } from './types'
 
@@ -104,3 +104,17 @@ export const buildCommentGroupItem = (items: ChartItem[]): ChartItem => {
     },
   }
 }
+
+const ENTITY_HREFS: Record<EntityType, ((id: string) => string) | undefined> = {
+  activity: (id) => `/detail/activity/${id}`,
+  meal: (id) => `/meals/${id}`,
+  metric: (id) => `/detail/metric/${id}`,
+  note: undefined,
+  productivity: (id) => `/detail/productivity/${id}`,
+  report: (id) => `/reports/${id}`,
+  time: undefined,
+}
+
+/** The page of the thing a comment hangs off, or undefined when it has none (a moment, a reply). */
+export const entityHref = (entityType: EntityType, entityId: string): string | undefined =>
+  ENTITY_HREFS[entityType]?.(encodeURIComponent(entityId))

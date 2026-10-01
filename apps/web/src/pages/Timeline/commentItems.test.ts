@@ -1,4 +1,4 @@
-import type { Note } from '@aurboda/api-spec'
+import { type EntityType, entityTypes, type Note } from '@aurboda/api-spec'
 
 import { describe, expect, it } from 'vitest'
 
@@ -7,6 +7,7 @@ import {
   buildCommentItems,
   commentLabel,
   COMMENT_LABEL_MAX,
+  entityHref,
   groupOverlappingComments,
   stripMarkdown,
 } from './commentItems'
@@ -141,5 +142,22 @@ describe('buildCommentGroupItem', () => {
     expect(group.tooltip.details).toHaveLength(2)
     expect(group.tooltip.details[0]).toContain('First one')
     expect(group.tooltip.details[1]).toContain('Second one')
+  })
+})
+
+describe('entityHref', () => {
+  const expected: Record<EntityType, string | undefined> = {
+    activity: '/detail/activity/x%2Fy',
+    meal: '/meals/x%2Fy',
+    metric: '/detail/metric/x%2Fy',
+    note: undefined,
+    productivity: '/detail/productivity/x%2Fy',
+    report: '/reports/x%2Fy',
+    time: undefined,
+  }
+
+  it.each([...entityTypes])('links %s to its own page', (entityType) => {
+    expect(Object.keys(expected)).toContain(entityType)
+    expect(entityHref(entityType, 'x/y')).toBe(expected[entityType])
   })
 })
