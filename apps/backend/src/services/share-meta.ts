@@ -144,24 +144,35 @@ interface ChallengeMetaInput {
   username: string
   name: string
   url: string
+  details?: { measure: string; range: string; phrase: string; members: number }
 }
 
-export const buildChallengeShareMeta = ({ username, name, url }: ChallengeMetaInput): ShareMeta => ({
-  description: clampDescription(
-    `${name} — a federated challenge hosted by ${username} on ${SITE_NAME}. Join from any Aurboda instance.`,
-  ),
-  image: resourceOgImage(url),
-  imageAlt: `${SITE_NAME} challenge: ${name}`,
-  jsonLd: {
-    '@context': 'https://schema.org',
-    '@type': 'WebPage',
-    name,
+const challengeDescription = ({ details, name, username }: ChallengeMetaInput): string => {
+  if (!details) {
+    return `${name} — a federated challenge hosted by ${username} on ${SITE_NAME}. Join from any Aurboda instance.`
+  }
+  const { measure, members, phrase, range } = details
+  const joined = members === 0 ? 'Be the first to join' : `${members} joined`
+  return `${measure} challenge, ${range} · ${phrase} · ${joined}. Hosted by ${username} on ${SITE_NAME} — join from any instance.`
+}
+
+export const buildChallengeShareMeta = (input: ChallengeMetaInput): ShareMeta => {
+  const { name, url } = input
+  return {
+    description: clampDescription(challengeDescription(input)),
+    image: resourceOgImage(url),
+    imageAlt: `${SITE_NAME} challenge: ${name}`,
+    jsonLd: {
+      '@context': 'https://schema.org',
+      '@type': 'WebPage',
+      name,
+      url,
+    },
+    title: `${name} — ${SITE_NAME}`,
+    type: 'website',
     url,
-  },
-  title: `${name} — ${SITE_NAME}`,
-  type: 'website',
-  url,
-})
+  }
+}
 
 interface ProfileMetaInput {
   username: string

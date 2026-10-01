@@ -8,6 +8,8 @@
  * passed-in card data — callers resolve visibility first and never render a
  * private resource.
  */
+import type { ChallengeTimeStatus } from '@aurboda/api-spec'
+
 import { readFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { dirname } from 'node:path'
@@ -15,8 +17,29 @@ import { fileURLToPath } from 'node:url'
 import satori, { type Font } from 'satori'
 import sharp from 'sharp'
 
+import type { ChallengeTheme } from './og-challenge-theme.ts'
+
 export const OG_WIDTH = 1200
 export const OG_HEIGHT = 630
+
+export interface OgChallengeMember {
+  name: string
+  total: number | null
+}
+
+export interface OgChallengeDetails {
+  theme: ChallengeTheme
+  /** "Steps", "Running" — what is measured, for the eyebrow. */
+  measure: string
+  unit: string
+  /** "1 Oct – 31 Oct 2026" */
+  range: string
+  /** "Starts in 3 days" / "Ends tomorrow" / "Ended 31 Oct 2026" */
+  phrase: string
+  status: ChallengeTimeStatus
+  /** Active members, best total first; totals null while nothing has been fetched. */
+  members: OgChallengeMember[]
+}
 
 /** What the card should say. `kind` drives the small uppercase eyebrow label. */
 export interface OgCard {
@@ -25,6 +48,9 @@ export interface OgCard {
   subtitle?: string
   /** Optional `data:` URI for the owner's avatar, shown next to the wordmark. */
   avatarDataUri?: string
+  /** Who owns the resource, shown next to the wordmark as "@name". */
+  username?: string
+  challenge?: OgChallengeDetails
 }
 
 const FONT_FAMILY = 'Liberation Sans'
@@ -119,13 +145,111 @@ const avatarBadge = (dataUri: string): El => ({
   type: 'img',
 })
 
-/** Build the Satori element tree for a card. */
-const cardTree = (card: OgCard): El =>
+const DEFAULT_GRADIENT: ChallengeTheme['gradient'] = ['#4c1d95', '#673ab8', '#8b5cf6']
+
+const MAX_STANDINGS_ROWS = 3
+// Name column (260) + bar + gap (20) + total label must fit the 1040px content width.
+const MAX_BAR_WIDTH = 500
+
+const mutedLine = (text: string, marginTop = 12): El =>
+  el('div', { color: 'rgba(255,255,255,0.75)', display: 'flex', fontSize: 30, marginTop }, text)
+
+const callToAction = (headline: string): El =>
+  el('div', { display: 'flex', flexDirection: 'column' }, [
+    el('div', { display: 'flex', fontSize: 40, fontWeight: 700 }, headline),
+    mutedLine('Join from any Aurboda instance'),
+  ])
+
+const formatTotal = (total: number, unit: string): string =>
+  `${total.toLocaleString('en-US', { maximumFractionDigits: 1 })} ${unit}`.trimEnd()
+
+const standingRow = (member: OgChallengeMember & { total: number }, best: number, unit: string): El =>
+  el('div', { alignItems: 'center', display: 'flex', marginTop: 8 }, [
+    el(
+      'div',
+      { display: 'flex', flexShrink: 0, fontSize: 30, fontWeight: 700, width: 260 },
+      clampTitle(member.name, 18),
+    ),
+    el('div', {
+      backgroundColor: 'rgba(255,255,255,0.9)',
+      borderRadius: 14,
+      display: 'flex',
+      height: 28,
+      width: Math.max(4, Math.round((MAX_BAR_WIDTH * member.total) / best)),
+    }),
+    el(
+      'div',
+      { display: 'flex', flexShrink: 0, fontSize: 30, marginLeft: 20, whiteSpace: 'nowrap' },
+      formatTotal(member.total, unit),
+    ),
+  ])
+
+/** Standings once there are numbers, a join prompt before; nothing for an ended challenge nobody joined. */
+const challengeMiddle = (challenge: OgChallengeDetails): El[] => {
+  const scored = challenge.members.filter(
+    (m): m is OgChallengeMember & { total: number } => m.total !== null && m.total > 0,
+  )
+  if (scored.length > 0) {
+    const shown = scored.slice(0, MAX_STANDINGS_ROWS)
+    const more = challenge.members.length - shown.length
+    return [
+      el('div', { display: 'flex', flexDirection: 'column' }, [
+        ...shown.map((m) => standingRow(m, shown[0].total, challenge.unit)),
+        ...(more > 0 ? [mutedLine(`+${more} more`, 4)] : []),
+      ]),
+    ]
+  }
+  if (challenge.members.length > 0) return [callToAction(`${challenge.members.length} joined`)]
+  if (challenge.status === 'ended') return []
+  return [callToAction('Be the first to join')]
+}
+
+/** A challenge card also carries standings, so a long name steps down rather than wrapping onto them. */
+const challengeTitleSize = (title: string): number => {
+  const length = graphemesOf(title).length
+  if (length <= 20) return 82
+  if (length <= 30) return 64
+  return 52
+}
+
+const motif = (emoji: string): El =>
   el(
     'div',
+    { display: 'flex', fontSize: 300, opacity: 0.28, position: 'absolute', right: 60, top: 40 },
+    emoji,
+  )
+
+/** Build the Satori element tree for a card. */
+const cardTree = (card: OgCard): El => {
+  const { challenge } = card
+  const [dark, mid, light] = challenge?.theme.gradient ?? DEFAULT_GRADIENT
+  const eyebrow = challenge
+    ? `${KIND_LABEL[card.kind]} · ${clampTitle(challenge.measure, 24)}`
+    : KIND_LABEL[card.kind]
+  const underTitle = challenge
+    ? el(
+        'div',
+        { color: 'rgba(255,255,255,0.85)', display: 'flex', fontSize: 36, marginTop: 16 },
+        `${challenge.range} · ${challenge.phrase}`,
+      )
+    : card.subtitle
+      ? el(
+          'div',
+          {
+            color: 'rgba(255,255,255,0.85)',
+            display: 'flex',
+            fontSize: 38,
+            marginTop: 28,
+          },
+          card.subtitle,
+        )
+      : null
+
+  return el(
+    'div',
     {
-      backgroundColor: '#4c1d95',
-      backgroundImage: 'linear-gradient(135deg, #4c1d95 0%, #673ab8 55%, #8b5cf6 100%)',
+      backgroundColor: dark,
+      backgroundImage: `linear-gradient(135deg, ${dark} 0%, ${mid} 55%, ${light} 100%)`,
       color: '#ffffff',
       display: 'flex',
       flexDirection: 'column',
@@ -136,6 +260,7 @@ const cardTree = (card: OgCard): El =>
       width: '100%',
     },
     [
+      ...(challenge ? [motif(challenge.theme.emoji)] : []),
       el('div', { display: 'flex', flexDirection: 'column' }, [
         el(
           'div',
@@ -147,13 +272,13 @@ const cardTree = (card: OgCard): El =>
             letterSpacing: 4,
             textTransform: 'uppercase',
           },
-          KIND_LABEL[card.kind],
+          eyebrow,
         ),
         el(
           'div',
           {
             display: 'flex',
-            fontSize: 82,
+            fontSize: challenge ? challengeTitleSize(card.title) : 82,
             fontWeight: 700,
             lineHeight: 1.1,
             marginTop: 24,
@@ -161,34 +286,32 @@ const cardTree = (card: OgCard): El =>
           },
           card.title,
         ),
-        ...(card.subtitle
+        ...(underTitle ? [underTitle] : []),
+      ]),
+      ...(challenge ? challengeMiddle(challenge) : []),
+      el('div', { alignItems: 'center', display: 'flex' }, [
+        card.avatarDataUri ? avatarBadge(card.avatarDataUri) : ringBadge(),
+        el('div', { display: 'flex', fontSize: 44, fontWeight: 700, marginLeft: 24 }, 'Aurboda'),
+        ...(card.username
           ? [
               el(
                 'div',
-                {
-                  color: 'rgba(255,255,255,0.85)',
-                  display: 'flex',
-                  fontSize: 38,
-                  marginTop: 28,
-                },
-                card.subtitle,
+                { color: 'rgba(255,255,255,0.75)', display: 'flex', fontSize: 36, marginLeft: 16 },
+                `· @${card.username}`,
               ),
             ]
           : []),
       ]),
-      el('div', { alignItems: 'center', display: 'flex' }, [
-        card.avatarDataUri ? avatarBadge(card.avatarDataUri) : ringBadge(),
-        el('div', { display: 'flex', fontSize: 44, fontWeight: 700, marginLeft: 24 }, 'Aurboda'),
-      ]),
     ],
   )
+}
+
+const graphemesOf = (text: string): string[] =>
+  Array.from(new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(text), (s) => s.segment)
 
 /** Longest title that fits the card comfortably before Satori would overflow. */
 export const clampTitle = (title: string, max = 60): string => {
-  const graphemes = Array.from(
-    new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(title),
-    (s) => s.segment,
-  )
+  const graphemes = graphemesOf(title)
   if (graphemes.length <= max) return title
   const kept = graphemes.slice(0, max - 1).join('')
   return `${kept.trimEnd()}…`

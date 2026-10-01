@@ -1,15 +1,13 @@
-import type { Challenge, ChallengeParticipation } from '@aurboda/api-spec'
-
-import { describe, expect, test } from 'vitest'
-
 import {
-  challengeItemKey,
+  type Challenge,
+  type ChallengeParticipation,
   challengeRangeLabel,
   challengeTimePhrase,
   challengeTimeStatus,
-  discoveredHostLabel,
-  groupChallengeItems,
-} from './challenge-status'
+} from '@aurboda/api-spec'
+import { describe, expect, test } from 'vitest'
+
+import { challengeItemKey, discoveredHostLabel, groupChallengeItems } from './challenge-status'
 
 // Fixed instants; construction without timezone suffix uses the runner's local
 // timezone consistently on both sides, so the tests are tz-independent.

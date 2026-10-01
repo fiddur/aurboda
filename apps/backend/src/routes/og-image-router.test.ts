@@ -2,13 +2,27 @@ import express from 'express'
 import supertest from 'supertest'
 import { describe, expect, test, vi } from 'vitest'
 
+import type { ResolvedChallenge } from '../services/challenge-card.ts'
+
 import { createOgImageRouter, type OgImageDeps } from './og-image-router.ts'
 
 const fakePng = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
 
+const resolvedChallenge = (overrides: Partial<ResolvedChallenge> = {}): ResolvedChallenge => ({
+  end_ts: '2026-11-01T00:00:00.000Z',
+  is_public: true,
+  members: [],
+  name: 'Step count',
+  spec: { pattern: 'steps', source_type: 'metric', unit: 'steps' },
+  start_ts: '2026-10-04T00:00:00.000Z',
+  timezone: 'UTC',
+  ...overrides,
+})
+
 const buildApp = (overrides: Partial<OgImageDeps> = {}) => {
   const deps: OgImageDeps = {
     loadAvatarDataUri: async () => 'data:image/png;base64,AAAA',
+    now: () => new Date('2026-10-01T12:00:00Z'),
     profileExists: async () => false,
     renderImage: vi.fn(async () => fakePng),
     resolveChallenge: async () => null,
@@ -31,19 +45,51 @@ describe('GET /u/:username/:slug/opengraph-image.png', () => {
     expect(res.type).toBe('image/png')
     expect(res.headers['cache-control']).toBe('public, max-age=3600')
     expect(deps.renderImage).toHaveBeenCalledWith(
-      expect.objectContaining({ kind: 'dashboard', title: 'Training' }),
+      expect.objectContaining({ kind: 'dashboard', title: 'Training', username: 'fiddur' }),
     )
   })
 
   test('renders a challenge card when no dashboard matches', async () => {
     const { app, deps } = buildApp({
-      resolveChallenge: async () => ({ is_public: true, name: 'Step count' }),
+      resolveChallenge: async () =>
+        resolvedChallenge({
+          members: [
+            { cached_total: null, display_name: 'Anna' },
+            { cached_total: 900, display_name: 'Bo' },
+          ],
+        }),
     })
     const res = await supertest(app).get('/u/fiddur/xyz/opengraph-image.png')
     expect(res.status).toBe(200)
     expect(deps.renderImage).toHaveBeenCalledWith(
-      expect.objectContaining({ kind: 'challenge', title: 'Step count' }),
+      expect.objectContaining({
+        challenge: expect.objectContaining({
+          measure: 'Steps',
+          members: [
+            { name: 'Bo', total: 900 },
+            { name: 'Anna', total: null },
+          ],
+          phrase: 'Starts in 3 days',
+        }),
+        kind: 'challenge',
+        title: 'Step count',
+        username: 'fiddur',
+      }),
     )
+  })
+
+  test('re-renders a challenge card when member totals change', async () => {
+    let total = 100
+    const { app, deps } = buildApp({
+      resolveChallenge: async () =>
+        resolvedChallenge({ members: [{ cached_total: total, display_name: 'Bo' }] }),
+    })
+    await supertest(app).get('/u/fiddur/xyz/opengraph-image.png')
+    await supertest(app).get('/u/fiddur/xyz/opengraph-image.png')
+    expect(deps.renderImage).toHaveBeenCalledTimes(1)
+    total = 250
+    await supertest(app).get('/u/fiddur/xyz/opengraph-image.png')
+    expect(deps.renderImage).toHaveBeenCalledTimes(2)
   })
 
   test('redirects unlisted resources to the default image', async () => {

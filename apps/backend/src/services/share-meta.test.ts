@@ -141,6 +141,26 @@ describe('builders', () => {
     expect(m.description.toLowerCase()).toContain('challenge')
   })
 
+  test('challenge meta with details says what, when and who has joined', () => {
+    const details = { measure: 'Steps', members: 0, phrase: 'Starts in 3 days', range: '1 Oct – 31 Oct 2026' }
+    const m = buildChallengeShareMeta({
+      details,
+      name: 'October steps',
+      url: 'https://aurboda.net/u/fiddur/xyz',
+      username: 'fiddur',
+    })
+    expect(m.description).toBe(
+      'Steps challenge, 1 Oct – 31 Oct 2026 · Starts in 3 days · Be the first to join. Hosted by fiddur on Aurboda — join from any instance.',
+    )
+    const joined = buildChallengeShareMeta({
+      details: { ...details, members: 4 },
+      name: 'October steps',
+      url: 'https://aurboda.net/u/fiddur/xyz',
+      username: 'fiddur',
+    })
+    expect(joined.description).toContain('· 4 joined.')
+  })
+
   test('default meta has no leaked resource specifics', () => {
     const m = buildDefaultShareMeta('https://aurboda.net', 'https://aurboda.net/u/x/y')
     expect(m.title).toBe('Aurboda')

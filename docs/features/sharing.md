@@ -99,14 +99,26 @@ get the full SPA and hydrate normally — only the head is enriched.
   a canonical URL; profiles get a `profile`-typed card with `ProfilePage` JSON-LD.
   A dashboard's description uses the author-provided text when set (see
   [Dashboard → Descriptive text](./dashboard.md#descriptive-text)), else a generated
-  fallback.
+  fallback. A challenge's description says what it measures, its dates and where it
+  stands, and how many have joined ("Steps challenge, 1 Oct – 31 Oct 2026 · Starts in
+  3 days · Be the first to join. Hosted by … on Aurboda — join from any instance.").
 - Every public resource has a **dynamically rendered 1200×630 preview image** at
   `<resource-url>/opengraph-image.png`. Satori renders a branded card (title +
-  DASHBOARD/CHALLENGE/PROFILE eyebrow + the owner's avatar + Aurboda wordmark) to
-  SVG and sharp rasterizes it to PNG; fonts are bundled (no system fonts in the
-  image), and emoji in titles are drawn from bundled Twemoji SVGs (`@twemoji/svg`),
-  so no system emoji font is needed. Renders are memoised in-process and cached
+  DASHBOARD/CHALLENGE/PROFILE eyebrow + the owner's avatar + Aurboda wordmark +
+  `@owner`, except on the profile card whose title already is the name) to SVG and
+  sharp rasterizes it to PNG; fonts are bundled (no system fonts in the image), and
+  emoji in titles are drawn from bundled Twemoji SVGs (`@twemoji/svg`), so no system
+  emoji font is needed. Renders are memoised in-process and cached
   `public, max-age=3600`.
+- A **challenge card** says what the challenge is: the eyebrow names what is measured
+  (`CHALLENGE · STEPS`), a line under the title gives the dates and status
+  ("1 Oct – 31 Oct 2026 · Starts in 3 days", "Ends tomorrow", "Ended …", in the
+  challenge's timezone), and below it the top three members' totals as bars once there
+  are numbers (`+N more` beyond that), "N joined" while totals are still being fetched,
+  or "Be the first to join" before anyone has. The gradient and a large faded emoji
+  are themed by what is measured (steps, running, cycling, swimming, sleep, heart-rate
+  zones, …; a purple trophy otherwise). The memo key includes the status phrase and
+  the totals, so a new day or a data sync re-renders the card.
   Non-public / unknown resources fall back to the branded static default
   (`/og-default.png`).
 - **Visibility is respected**: rich meta and rendered images are emitted only for
