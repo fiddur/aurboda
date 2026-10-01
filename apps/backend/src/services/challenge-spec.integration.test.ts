@@ -179,6 +179,29 @@ describe('resolveMemberSeries integration', () => {
     expect(series.last_updated).toBe('2026-06-01T06:00:00.000Z')
   })
 
+  test('metric: a daily aggregate stamped exactly at the exclusive end is outside the window', async () => {
+    const user = getTestUser()
+    const lastDay = new Date('2026-09-29T22:00:00Z')
+    const dayAfter = new Date('2026-09-30T22:00:00Z')
+    await insertTimeSeries(user, [
+      { metric: 'steps', source: 'health_connect_aggregate', time: lastDay, value: 1000 },
+      { metric: 'steps', source: 'health_connect_aggregate', time: dayAfter, value: 5000 },
+    ])
+    await query(user, `UPDATE time_series SET updated_at = $1 WHERE time = $2`, [
+      new Date('2026-09-30T20:00:00Z'),
+      lastDay,
+    ])
+    await query(user, `UPDATE time_series SET updated_at = $1 WHERE time = $2`, [
+      new Date('2026-10-01T16:30:00Z'),
+      dayAfter,
+    ])
+
+    const series = await resolveMemberSeries(user, metricSpec, new Date('2026-08-31T22:00:00Z'), dayAfter)
+    expect(series.total).toBe(1000)
+    expect(series.last_updated).toBe('2026-09-30T20:00:00.000Z')
+    expect(series.buckets.map((b) => b.value)).toEqual([1000])
+  })
+
   test('activity_type: last_updated is the most recent matching activity start', async () => {
     const user = getTestUser()
     await insertActivity(user, {

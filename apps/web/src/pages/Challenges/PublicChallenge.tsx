@@ -13,7 +13,7 @@ import { TrendLineChart } from '../../components/charts/TrendLineChart'
 import { fetchPublicChallengeStandings, joinChallengeByUrl } from '../../state/api'
 import { auth } from '../../state/auth'
 import { competitionRanks, podiumMedal } from '../../utils/podium'
-import { formatDateInZone, toCumulativeSeries } from './race-series'
+import { formatDateInZone, formatUpdated, toCumulativeSeries } from './race-series'
 import './style.css'
 
 const COLORS = ['#8b5cf6', '#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#ec4899', '#14b8a6', '#a855f7']
@@ -182,7 +182,7 @@ export function PublicChallenge({
               </td>
               <td>{Math.round(s.total).toLocaleString()}</td>
               <td class="challenge-member-updated">
-                {s.stale ? '⚠ stale' : s.last_updated ? new Date(s.last_updated).toLocaleTimeString() : '—'}
+                {s.stale ? '⚠ stale' : s.last_updated ? formatUpdated(s.last_updated) : '—'}
               </td>
             </tr>
           ))}
