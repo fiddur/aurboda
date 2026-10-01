@@ -31,6 +31,13 @@ export const countRightAxes = (hasHypnogram: boolean, overlays: { showAxis: bool
  * maximum instead squeezed the plot to half a phone card's width when only
  * one metric was shown (the common feed-card case).
  */
+/** Keep every k-th tick so at least `minPxPerTick` lies between labels — d3's `ticks(n)` is only a hint. */
+export const fitTicks = <T>(ticks: T[], availableWidth: number, minPxPerTick: number): T[] => {
+  const fits = Math.max(1, Math.floor(availableWidth / minPxPerTick))
+  const step = Math.ceil(ticks.length / fits)
+  return step <= 1 ? ticks : ticks.filter((_, i) => i % step === 0)
+}
+
 export const chartRightMargin = (rightAxes: number): number => (rightAxes === 0 ? 14 : rightAxes * 45 + 20)
 
 export const findNearest = (data: [Date, number][], targetTime: Date): [Date, number] | undefined => {

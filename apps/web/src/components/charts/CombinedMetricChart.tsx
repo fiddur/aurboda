@@ -7,7 +7,14 @@ import * as d3 from 'd3'
 import { format } from 'date-fns'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 
-import { chartRightMargin, countRightAxes, findNearest, findStageAtTime, MAX_RIGHT_AXES } from './chart-utils'
+import {
+  chartRightMargin,
+  countRightAxes,
+  findNearest,
+  findStageAtTime,
+  fitTicks,
+  MAX_RIGHT_AXES,
+} from './chart-utils'
 import { STAGE_COLORS, STAGE_LABELS, STAGE_Y_ORDER, type SleepStage } from './sleep-utils'
 import { barWidth, type BarChartStyle, METRIC_CHART_STYLES } from './stress-bands'
 import './CombinedMetricChart.css'
@@ -31,6 +38,8 @@ interface CombinedMetricChartProps {
 }
 
 const CHART_HEIGHT = 260
+/** Width an "HH:mm" x-tick label needs to stay legible. */
+const HH_MM_TICK_PX = 60
 /**
  * Exported so callers sizing their fetch to the drawable width use the same
  * margins. `right` is the MAXIMUM (two right axes drawn); the rendered chart
@@ -388,15 +397,15 @@ const renderChart = ({
   const g = svg.append('g').attr('transform', `translate(${CHART_MARGIN.left},${CHART_MARGIN.top})`)
 
   const xScale = d3.scaleTime().domain([start, end]).range([0, innerWidth])
+  const wantedTicks = Math.max(3, Math.min(6, Math.floor(innerWidth / HH_MM_TICK_PX)))
+  const xTicks = fitTicks(xScale.ticks(wantedTicks), innerWidth, HH_MM_TICK_PX)
 
   g.append('g')
     .attr('transform', `translate(0,${innerHeight})`)
     .call(
       d3
         .axisBottom(xScale)
-        // A "HH:mm" tick needs ~60px to stay legible; d3 treats this as a
-        // hint, so clamp instead of letting a narrow phone card overlap them.
-        .ticks(Math.max(3, Math.min(6, Math.floor(innerWidth / 60))))
+        .tickValues(xTicks)
         .tickFormat((d) => format(d as Date, 'HH:mm')),
     )
     .selectAll('text')
