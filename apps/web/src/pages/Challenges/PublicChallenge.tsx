@@ -88,6 +88,7 @@ export function PublicChallenge({
 
   return (
     <div class="dashboard public-dashboard public-challenge">
+      {challenge.banner_url && <img class="challenge-banner" src={challenge.banner_url} alt="" />}
       <div class="dashboard-header">
         <h1>{challenge.name}</h1>
         <a class="public-attribution" href={`/u/${encodeURIComponent(username)}`}>

@@ -77,6 +77,17 @@ export const socialTables: Record<string, string> = {
     CREATE INDEX IF NOT EXISTS idx_challenge_members_challenge ON challenge_members (challenge_id)
   `,
 
+  // The host-set banner image of a challenge, apart from `challenges` so listing
+  // challenges never loads image bytes.
+  challenge_banner: `
+    CREATE TABLE IF NOT EXISTS challenge_banner (
+      challenge_id  UUID PRIMARY KEY REFERENCES challenges(id) ON DELETE CASCADE,
+      content_type  TEXT NOT NULL,
+      data          BYTEA NOT NULL,
+      updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `,
+
   // Challenges this user has joined on other (or the same) instances.
   challenge_participations: `
     CREATE TABLE IF NOT EXISTS challenge_participations (

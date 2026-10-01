@@ -15,3 +15,7 @@ export const buildProfileUrl = (webHost: string, username: string): string =>
 /** Absolute URL of a single shared dashboard. */
 export const buildShareUrl = (webHost: string, username: string, slug: string): string =>
   joinUrl(webHost, `u/${encodeURIComponent(username)}/${encodeURIComponent(slug)}`)
+
+/** Absolute URL of a challenge's banner image, versioned so a replacement busts caches. */
+export const buildBannerUrl = (webHost: string, username: string, slug: string, version: Date): string =>
+  `${buildShareUrl(webHost, username, slug)}/banner.webp?v=${version.getTime()}`

@@ -19,7 +19,11 @@ const ALLOWED_UPLOAD_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', '
 // real bytes regardless of the claimed mimetype.
 const ALLOWED_DETECTED_FORMATS = new Set(['png', 'jpeg', 'webp', 'gif'])
 
-export const isAllowedAvatarType = (contentType: string): boolean => ALLOWED_UPLOAD_TYPES.has(contentType)
+export const isAllowedImageType = (contentType: string): boolean => ALLOWED_UPLOAD_TYPES.has(contentType)
+
+/** Output size (px) of processed challenge banners — the Open Graph card size. */
+export const BANNER_WIDTH = 1200
+export const BANNER_HEIGHT = 630
 
 export interface StoredImage {
   content_type: string
@@ -32,13 +36,30 @@ export interface StoredImage {
  * 400) — the format is checked against what sharp actually detects, not the
  * client-claimed mimetype, so SVG can't slip through by Content-Type spoofing.
  */
-export const processAvatar = async (buffer: Buffer): Promise<StoredImage> => {
+const assertAllowedFormat = async (buffer: Buffer): Promise<void> => {
   const { format } = await sharp(buffer).metadata()
   if (!format || !ALLOWED_DETECTED_FORMATS.has(format)) {
     throw new Error(`Unsupported image format: ${format ?? 'unknown'}`)
   }
+}
+
+export const processAvatar = async (buffer: Buffer): Promise<StoredImage> => {
+  await assertAllowedFormat(buffer)
   const data = await sharp(buffer)
     .resize(AVATAR_SIZE, AVATAR_SIZE, { fit: 'cover', position: 'attention' })
+    .webp({ quality: 82 })
+    .toBuffer()
+  return { content_type: 'image/webp', data }
+}
+
+/**
+ * Normalize an uploaded challenge banner to a 1200×630 WebP (cropped to cover),
+ * under the same format guard as avatars.
+ */
+export const processBanner = async (buffer: Buffer): Promise<StoredImage> => {
+  await assertAllowedFormat(buffer)
+  const data = await sharp(buffer)
+    .resize(BANNER_WIDTH, BANNER_HEIGHT, { fit: 'cover' })
     .webp({ quality: 82 })
     .toBuffer()
   return { content_type: 'image/webp', data }

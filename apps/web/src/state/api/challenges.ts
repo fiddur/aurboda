@@ -40,6 +40,24 @@ export const updateChallenge = async (id: string, body: UpdateChallengeBody): Pr
   return res.data.challenge
 }
 
+export const uploadChallengeBanner = async (id: string, file: File): Promise<Challenge> => {
+  const formData = new FormData()
+  formData.append('banner', file)
+  const res = await axios.post<ChallengeResponse>(`${API_URL}/challenges/${id}/banner`, formData, {
+    headers: authHeaders(),
+  })
+  if (!res.data.challenge) throw new Error(res.data.error ?? 'Failed to upload banner')
+  return res.data.challenge
+}
+
+export const deleteChallengeBanner = async (id: string): Promise<Challenge> => {
+  const res = await axios.delete<ChallengeResponse>(`${API_URL}/challenges/${id}/banner`, {
+    headers: authHeaders(),
+  })
+  if (!res.data.challenge) throw new Error(res.data.error ?? 'Failed to remove banner')
+  return res.data.challenge
+}
+
 export const deleteChallenge = async (id: string): Promise<void> => {
   await axios.delete(`${API_URL}/challenges/${id}`, { headers: authHeaders() })
 }

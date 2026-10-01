@@ -3,7 +3,9 @@ import { describe, expect, test } from 'vitest'
 import { describeChallenge, type ResolvedChallenge } from './challenge-card.ts'
 
 const october = (overrides: Partial<ResolvedChallenge> = {}): ResolvedChallenge => ({
+  banner_updated_at: null,
   end_ts: '2026-11-01T00:00:00.000Z',
+  id: 'c1',
   is_public: true,
   members: [],
   name: 'October steps',

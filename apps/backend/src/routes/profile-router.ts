@@ -4,7 +4,7 @@ import type { RequestHandler } from 'express'
 import multer from 'multer'
 
 import { deleteProfileAvatar, upsertProfileAvatar } from '../db/index.ts'
-import { isAllowedAvatarType, processAvatar } from '../services/avatar.ts'
+import { isAllowedImageType, processAvatar } from '../services/avatar.ts'
 import { buildProfileUrl } from '../services/share-urls.ts'
 import { type TypedRouter, typedRouter } from '../typed-router.ts'
 
@@ -36,7 +36,7 @@ export const createProfileRouter = (
         res.status(400).json({ error: 'No file uploaded', success: false })
         return
       }
-      if (!isAllowedAvatarType(file.mimetype)) {
+      if (!isAllowedImageType(file.mimetype)) {
         res.status(400).json({
           error: `Unsupported file type: ${file.mimetype}. Allowed: PNG, JPEG, WebP, GIF`,
           success: false,

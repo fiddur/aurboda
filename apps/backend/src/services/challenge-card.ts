@@ -13,12 +13,15 @@ import { type ChallengeTheme, challengeTheme } from './og-challenge-theme.ts'
 
 /** A public challenge resolved far enough to describe it on a share card or in meta. */
 export interface ResolvedChallenge {
+  id: string
   name: string
   is_public: boolean
   spec: { source_type: ChallengeSourceType; pattern: string; unit: string }
   start_ts: string
   end_ts: string
   timezone: string
+  /** ISO time the host last set the banner; null when there is none. */
+  banner_updated_at: string | null
   /** Active members with their cached totals. */
   members: { display_name: string; cached_total: number | null }[]
 }

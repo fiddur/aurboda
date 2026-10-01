@@ -103,6 +103,10 @@ export const challengeSchema = z
       description:
         'Whether the completion announcement can still happen: not yet made or skipped, and the challenge either has not ended or ended within the announce window (3 days). The web shows the "Announce winner" toggle only while this is true.',
     }),
+    banner_url: z.string().nullable().optional().meta({
+      description:
+        'Absolute URL of the host-set banner image (1200×630 WebP), versioned by a query parameter; null when none is set',
+    }),
     created_at: z.string().meta({ description: 'Creation timestamp (ISO 8601)' }),
     end_ts: z.string().meta({ description: 'End instant, exclusive (ISO 8601)' }),
     id: z.string().uuid().meta({ description: 'Challenge ID' }),
@@ -259,6 +263,10 @@ export type RegisterChallengeMemberBody = z.infer<typeof registerChallengeMember
 
 export const publicChallengeSchema = z
   .object({
+    banner_url: z.string().nullable().optional().meta({
+      description:
+        'Absolute URL of the host-set banner image (1200×630 WebP), versioned by a query parameter; null when none is set',
+    }),
     effective_bucket_size: challengeEffectiveBucketSizeSchema.optional().meta({
       description:
         'Concrete bucket size the race chart is rendered with (resolved from spec.bucket_size + window). ' +

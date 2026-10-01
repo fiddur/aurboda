@@ -5,7 +5,7 @@
  */
 import sharp from 'sharp'
 
-import { getProfileAvatar, isMissingDatabase } from '../db/index.ts'
+import { getChallengeBanner, getProfileAvatar, isMissingDatabase } from '../db/index.ts'
 import { generateIdenticon, type StoredImage } from './avatar.ts'
 
 export const loadAvatarImage = async (username: string): Promise<StoredImage> => {
@@ -27,4 +27,18 @@ export const loadAvatarDataUri = async (username: string): Promise<string> => {
   const image = await loadAvatarImage(username)
   const png = image.content_type === 'image/png' ? image.data : await sharp(image.data).png().toBuffer()
   return `data:image/png;base64,${png.toString('base64')}`
+}
+
+/**
+ * A challenge's banner as a JPEG `data:` URI for the OG card (Satori cannot
+ * decode the stored WebP); undefined when the challenge has no banner.
+ */
+export const loadChallengeBannerDataUri = async (
+  username: string,
+  challengeId: string,
+): Promise<string | undefined> => {
+  const banner = await getChallengeBanner(username, challengeId)
+  if (!banner) return undefined
+  const jpeg = await sharp(banner.data).jpeg({ quality: 85 }).toBuffer()
+  return `data:image/jpeg;base64,${jpeg.toString('base64')}`
 }

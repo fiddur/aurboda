@@ -27,6 +27,7 @@ import {
   listPublicSharedDashboards,
   upsertChallengeMember,
 } from '../db/index.ts'
+import { bannerUrlFor } from '../services/challenge-banner.ts'
 import { toPublicChallengeListItem } from '../services/challenge-discovery.ts'
 import { fetchMemberData } from '../services/challenge-federation.ts'
 import { effectiveBucketSize, specToApi } from '../services/challenge-spec.ts'
@@ -211,6 +212,7 @@ export const createPublicSharesRouter = (webHost: string): TypedRouter => {
           res.setHeader('Cache-Control', 'public, max-age=60')
           return res.json({
             challenge: {
+              banner_url: bannerUrlFor(challenge, webHost, username),
               effective_bucket_size: effectiveBucketSize(
                 challenge.spec.bucket_size,
                 challenge.start_ts,

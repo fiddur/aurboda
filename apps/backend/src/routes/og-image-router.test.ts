@@ -9,7 +9,9 @@ import { createOgImageRouter, type OgImageDeps } from './og-image-router.ts'
 const fakePng = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
 
 const resolvedChallenge = (overrides: Partial<ResolvedChallenge> = {}): ResolvedChallenge => ({
+  banner_updated_at: null,
   end_ts: '2026-11-01T00:00:00.000Z',
+  id: 'c1',
   is_public: true,
   members: [],
   name: 'Step count',
@@ -22,6 +24,7 @@ const resolvedChallenge = (overrides: Partial<ResolvedChallenge> = {}): Resolved
 const buildApp = (overrides: Partial<OgImageDeps> = {}) => {
   const deps: OgImageDeps = {
     loadAvatarDataUri: async () => 'data:image/png;base64,AAAA',
+    loadBannerDataUri: vi.fn(async () => 'data:image/jpeg;base64,BBBB'),
     now: () => new Date('2026-10-01T12:00:00Z'),
     profileExists: async () => false,
     renderImage: vi.fn(async () => fakePng),
@@ -90,6 +93,46 @@ describe('GET /u/:username/:slug/opengraph-image.png', () => {
     total = 250
     await supertest(app).get('/u/fiddur/xyz/opengraph-image.png')
     expect(deps.renderImage).toHaveBeenCalledTimes(2)
+  })
+
+  test('loads no banner for a challenge without one', async () => {
+    const { app, deps } = buildApp({ resolveChallenge: async () => resolvedChallenge() })
+    await supertest(app).get('/u/fiddur/xyz/opengraph-image.png')
+    expect(deps.loadBannerDataUri).not.toHaveBeenCalled()
+    expect(deps.renderImage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        challenge: expect.not.objectContaining({ bannerDataUri: expect.anything() }),
+      }),
+    )
+  })
+
+  test('draws the host-set banner and re-renders when it changes', async () => {
+    let bannerUpdatedAt = '2026-10-01T08:00:00.000Z'
+    const { app, deps } = buildApp({
+      resolveChallenge: async () => resolvedChallenge({ banner_updated_at: bannerUpdatedAt }),
+    })
+    await supertest(app).get('/u/fiddur/xyz/opengraph-image.png')
+    expect(deps.loadBannerDataUri).toHaveBeenCalledWith('fiddur', 'c1')
+    expect(deps.renderImage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        challenge: expect.objectContaining({ bannerDataUri: 'data:image/jpeg;base64,BBBB' }),
+      }),
+    )
+    bannerUpdatedAt = '2026-10-01T09:00:00.000Z'
+    await supertest(app).get('/u/fiddur/xyz/opengraph-image.png')
+    expect(deps.renderImage).toHaveBeenCalledTimes(2)
+  })
+
+  test('renders the themed card when the banner fails to load', async () => {
+    const { app, deps } = buildApp({
+      loadBannerDataUri: vi.fn(async () => Promise.reject(new Error('db down'))),
+      resolveChallenge: async () => resolvedChallenge({ banner_updated_at: '2026-10-01T08:00:00.000Z' }),
+    })
+    const res = await supertest(app).get('/u/fiddur/xyz/opengraph-image.png')
+    expect(res.status).toBe(200)
+    expect(deps.renderImage).toHaveBeenCalledWith(
+      expect.objectContaining({ challenge: expect.objectContaining({ bannerDataUri: undefined }) }),
+    )
   })
 
   test('redirects unlisted resources to the default image', async () => {

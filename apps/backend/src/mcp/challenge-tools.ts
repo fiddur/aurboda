@@ -19,6 +19,7 @@ import {
   updateChallenge,
   upsertChallengeMember,
 } from '../db/index.ts'
+import { bannerUrlFor } from '../services/challenge-banner.ts'
 import { joinChallenge } from '../services/challenge-federation.ts'
 import { announcementPending } from '../services/challenge-results.ts'
 import { specToApi } from '../services/challenge-spec.ts'
@@ -38,6 +39,7 @@ const toSpecFields = (spec: ChallengeSpec): ChallengeSpecFields => ({
 const serialize = (record: ChallengeRecord, webHost: string | undefined, user: string) => ({
   announce_winner: record.announce_winner,
   announcement_pending: announcementPending(record, new Date()),
+  banner_url: webHost ? bannerUrlFor(record, webHost, user) : undefined,
   created_at: record.created_at.toISOString(),
   end_ts: record.end_ts.toISOString(),
   id: record.id,

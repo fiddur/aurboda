@@ -77,7 +77,9 @@ export const createShareResolvers = (): Pick<
       if (!challenge) return null
       const members = challenge.is_public ? await listChallengeMembers(username, challenge.id) : []
       return {
+        banner_updated_at: challenge.banner_updated_at?.toISOString() ?? null,
         end_ts: challenge.end_ts.toISOString(),
+        id: challenge.id,
         is_public: challenge.is_public,
         members: members
           .filter((m) => m.status === 'active')
