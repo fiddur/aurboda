@@ -286,6 +286,23 @@ export const drawItem = (
   drawBlockOverlay(parent, item, x, y1, laneWidth, blockHeight)
 }
 
+/** Every item left at `xOffset` 0 keeps its packed lane, points included, so the lane count
+ * covers them too: a point overlapping two spans sits in a third lane inside the column. */
+export const columnLaneWidth = (
+  stackedItems: { item: ChartItem; lane: number; xOffset: number }[],
+  laneCount: number,
+  hasMerged: boolean,
+  usableWidth: number,
+  colPadding: number,
+): number => {
+  const hasStacked = stackedItems.some((s) => s.xOffset > 0)
+  const unstackedLanes = hasStacked
+    ? Math.max(1, ...stackedItems.filter((s) => s.xOffset === 0).map((s) => s.lane + 1))
+    : laneCount
+  const lanes = hasMerged ? 1 : Math.max(unstackedLanes, 1)
+  return (usableWidth - (lanes - 1) * colPadding) / lanes
+}
+
 export const drawColumnItems = (
   chartGroup: d3.Selection<SVGGElement, unknown, null, undefined>,
   columnData: ColumnDataEntry[],
@@ -308,12 +325,7 @@ export const drawColumnItems = (
 
     const stackedItems = stackIconPoints(mergedItems, usableWidth)
 
-    const hasStacked = stackedItems.some((s) => s.xOffset > 0)
-    const nonStackedLanes = hasStacked
-      ? Math.max(1, ...stackedItems.filter((s) => s.xOffset === 0 && !s.item.isPoint).map((s) => s.lane + 1))
-      : laneCount
-    const effectiveLanes = hasMerged ? 1 : Math.max(nonStackedLanes, 1)
-    const laneWidth = (usableWidth - (effectiveLanes - 1) * colPadding) / effectiveLanes
+    const laneWidth = columnLaneWidth(stackedItems, laneCount, hasMerged, usableWidth, colPadding)
 
     for (const { item, lane, xOffset } of stackedItems) {
       const effectiveLane = hasMerged ? 0 : lane

@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { ChartItem } from './types'
 
-import { mergeSmallItems, stackIconPoints } from './drawVerticalHelpers'
+import { columnLaneWidth, mergeSmallItems, stackIconPoints } from './drawVerticalHelpers'
 
 const makeItem = (start: string, end: string, overrides: Partial<ChartItem> = {}): ChartItem => ({
   color: '#333',
@@ -119,5 +119,40 @@ describe('stackIconPoints', () => {
     const result = stackIconPoints(items, 100)
     expect(result).toHaveLength(1)
     expect(result[0]!.xOffset).toBe(0)
+  })
+})
+
+describe('columnLaneWidth', () => {
+  const usableWidth = 120
+  const colPadding = 4
+
+  it('keeps a point overlapping two spans inside the column when other points are stacked', () => {
+    const packed = [
+      { item: makeItem('2026-01-01T08:00:00Z', '2026-01-01T10:00:00Z'), lane: 0 },
+      { item: makeItem('2026-01-01T08:30:00Z', '2026-01-01T10:00:00Z'), lane: 1 },
+      { item: makeItem('2026-01-01T09:00:00Z', '2026-01-01T09:00:00Z', { isPoint: true, label: 'c' }), lane: 2 },
+      { item: makeItem('2026-01-01T12:00:00Z', '2026-01-01T12:00:00Z', { isPoint: true, label: 'a' }), lane: 0 },
+      { item: makeItem('2026-01-01T12:00:00Z', '2026-01-01T12:00:00Z', { isPoint: true, label: 'b' }), lane: 1 },
+    ]
+    const stacked = stackIconPoints(packed, usableWidth)
+    expect(stacked.some((s) => s.xOffset > 0)).toBe(true)
+
+    const laneWidth = columnLaneWidth(stacked, 3, false, usableWidth, colPadding)
+    const commentLane = stacked.find((s) => s.item.label === 'c')!.lane
+    expect(commentLane).toBe(2)
+    expect(commentLane * (laneWidth + colPadding) + laneWidth).toBeLessThanOrEqual(usableWidth)
+  })
+
+  it('uses the packed lane count when nothing is stacked', () => {
+    const packed = [
+      { item: makeItem('2026-01-01T08:00:00Z', '2026-01-01T10:00:00Z'), lane: 0, xOffset: 0 },
+      { item: makeItem('2026-01-01T08:30:00Z', '2026-01-01T10:00:00Z'), lane: 1, xOffset: 0 },
+    ]
+    expect(columnLaneWidth(packed, 2, false, usableWidth, colPadding)).toBe((usableWidth - colPadding) / 2)
+  })
+
+  it('uses one full-width lane when small items were merged', () => {
+    const packed = [{ item: makeItem('2026-01-01T08:00:00Z', '2026-01-01T10:00:00Z'), lane: 1, xOffset: 0 }]
+    expect(columnLaneWidth(packed, 2, true, usableWidth, colPadding)).toBe(usableWidth)
   })
 })
