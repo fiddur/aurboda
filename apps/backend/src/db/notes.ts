@@ -1,5 +1,6 @@
 import type { DataSource } from '@aurboda/api-spec'
 
+import type { Queryable } from './pool.ts'
 import type { EntityType, Note } from './types.ts'
 
 import { query, withUserTransaction } from './connection.ts'
@@ -183,23 +184,29 @@ export const deleteNote = async (user: string, id: string): Promise<boolean> => 
  * nothing left to hang off: they would keep drawing a Timeline bubble linking
  * to a page that 404s. Returns how many thread roots were removed.
  */
+/** Inside a caller's transaction, so the entity and its threads go together. */
+export const deleteNotesForEntityIn = async (
+  tx: Queryable,
+  entityType: EntityType,
+  entityId: string,
+): Promise<number> => {
+  const deleted = await query<{ id: string }>(
+    tx,
+    `DELETE FROM notes WHERE entity_type = $1 AND entity_id = $2 RETURNING id`,
+    [entityType, entityId],
+  )
+  const deletedIds = deleted.rows.map((r) => r.id)
+  if (deletedIds.length > 0) {
+    await query(tx, `DELETE FROM notes WHERE entity_type = 'note' AND entity_id = ANY($1)`, [deletedIds])
+  }
+  return deletedIds.length
+}
+
 export const deleteNotesForEntity = async (
   user: string,
   entityType: EntityType,
   entityId: string,
-): Promise<number> =>
-  withUserTransaction(user, async (tx) => {
-    const deleted = await query<{ id: string }>(
-      tx,
-      `DELETE FROM notes WHERE entity_type = $1 AND entity_id = $2 RETURNING id`,
-      [entityType, entityId],
-    )
-    const deletedIds = deleted.rows.map((r) => r.id)
-    if (deletedIds.length > 0) {
-      await query(tx, `DELETE FROM notes WHERE entity_type = 'note' AND entity_id = ANY($1)`, [deletedIds])
-    }
-    return deletedIds.length
-  })
+): Promise<number> => withUserTransaction(user, (tx) => deleteNotesForEntityIn(tx, entityType, entityId))
 
 /**
  * Replace all user-authored notes (`source IS NULL`) for an entity with a

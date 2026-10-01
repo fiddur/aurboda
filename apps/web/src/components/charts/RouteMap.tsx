@@ -42,7 +42,7 @@ export const RouteMap = ({ points, hoverTime }: RouteMapProps) => {
   const mapRef = useRef<L.Map | null>(null)
   const highlightMarkerRef = useRef<L.Marker | null>(null)
   // A feed of routes would otherwise mount a map and fetch tiles for every post,
-  // off-screen ones included (#1016). The container keeps its size while empty.
+  // off-screen ones included. The container keeps its size while empty.
   const { inView, ref: observeContainer } = useInView(PRELOAD_MARGIN)
   const containerRef = useCallback(
     (element: HTMLDivElement | null) => {

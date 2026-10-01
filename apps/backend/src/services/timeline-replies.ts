@@ -26,10 +26,9 @@ import { renderReplyContent } from './activitypub/reply-object.ts'
 import { loadReactionsForRows, ownActorUri, ownObjectPrefix, serializeTimelineEntry } from './timeline.ts'
 
 /**
- * Cap on the comments listed under one of the owner's own posts. The list is
- * OLDEST-first (`listTimelineRepliesTo` orders by `published_at ASC`), so past
- * this many comments it is the NEWEST that never load — pagination is the fix,
- * and it isn't built yet.
+ * Cap on the comments listed under one of the owner's own posts: the latest
+ * this many, so past it the oldest never load (the web says so, comparing with
+ * the post's `reply_count`) — pagination is the fix, and it isn't built yet.
  */
 export const MAX_POST_REPLIES = 100
 
@@ -138,8 +137,8 @@ export const getThreadSnapshot = async (
 }
 
 /**
- * The comments this instance holds under one of the owner's own posts, oldest
- * first. Full timeline entries, so each carries the reader's like/boost state
+ * The latest comments this instance holds under one of the owner's own posts,
+ * oldest first. Full timeline entries, so each carries the reader's like/boost state
  * and can be replied to in turn.
  */
 export const listOwnPostReplies = async (

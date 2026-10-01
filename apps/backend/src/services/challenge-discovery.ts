@@ -310,7 +310,7 @@ export const createChallengeDiscovery =
     })
     // A transient failure is not cached by the resolver, and the pool walks
     // followees mostly one after another, so without this every followee on a
-    // throttling or hanging instance would probe it again this round (#1102).
+    // throttling or hanging instance would probe it again this round.
     const failedBases = new Set<string>()
     const listings = await mapWithConcurrency(
       peers,

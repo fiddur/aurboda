@@ -3,7 +3,8 @@
  * `federation.fetch` against a real per-user database (no Express/nginx needed).
  */
 import { integrateFederation } from '@fedify/express'
-import { Create, Follow, Mention, Note, Person, Update } from '@fedify/fedify/vocab'
+import { getDefaultActivityTransformers } from '@fedify/fedify'
+import { type Activity, Create, Follow, Mention, Note, Person, Update } from '@fedify/fedify/vocab'
 import express from 'express'
 import supertest from 'supertest'
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
@@ -30,8 +31,8 @@ import { listTimelineEntries, upsertTimelineEntry } from '../../db/timeline.ts'
 import { createActorHtmlRouter } from '../../routes/actor-html-router.ts'
 import { createFeedTombstoneRouter } from '../../routes/feed-tombstone-router.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../../test/db-test-helper.ts'
-import { actorDocument, inboxContext } from '../../test/inbox-context.ts'
-import { buildFeedUpdate } from './deliver.ts'
+import { actorDocument, inboxContext, stubDocumentLoader } from '../../test/inbox-context.ts'
+import { buildFeedCreate, buildFeedUpdate } from './deliver.ts'
 import {
   buildActorPerson,
   createFeedFederation,
@@ -376,6 +377,38 @@ describe('Feed federation actor + WebFinger', () => {
     )
     // The public /series endpoint would 404 a followers-only post, so no links.
     expect(doc.object?.['quant:series']).toBeUndefined()
+  })
+
+  test('the quant extension survives the transformers Fedify applies before sending (#1040)', async () => {
+    const user = getTestUser()
+    const activityId = await insertExercise(user)
+    const post = await sharePost(user, activityId, { included_metrics: ['duration'] })
+    const ctx = await fed.createContext(new URL(ORIGIN))
+    const activity = {
+      activity_type: 'exercise',
+      end_time: new Date('2026-07-01T07:11:00Z'),
+      start_time: new Date('2026-07-01T06:30:00Z'),
+      title: 'Morning run',
+    }
+    type Delivered = { object?: { type?: unknown; 'quant:activityType'?: string; 'quant:metrics'?: unknown } }
+
+    for (const build of [buildFeedCreate, buildFeedUpdate]) {
+      const built = await build(ctx, user, post, activity, `${ORIGIN}/api`)
+      // `sendActivity` runs every default transformer (`actorDehydrator` clones
+      // the activity unconditionally once it has an actor) before serialising.
+      const sent = getDefaultActivityTransformers<void>().reduce<Activity>(
+        (a, transform) => transform(a, ctx),
+        built,
+      )
+      expect(sent).not.toBe(built)
+
+      const delivered = (await sent.toJsonLd({ format: 'compact' })) as Delivered
+      expect(delivered.object?.type).toEqual(['Note', 'quant:Exercise'])
+      expect(delivered.object?.['quant:activityType']).toBe('exercise')
+      expect(delivered.object?.['quant:metrics']).toEqual([{ key: 'duration', unit: 'seconds', value: 2460 }])
+      // The un-cloned activity serialises to exactly the same wire document.
+      expect(await built.toJsonLd({ format: 'compact' })).toEqual(delivered)
+    }
   })
 
   test('federates an article as a Create{Note} in the outbox and serves its object (#937)', async () => {
@@ -735,6 +768,26 @@ describe('Feed federation actor + WebFinger', () => {
         display_name: 'Alice',
         handle: '@alice@mastodon.example',
       })
+    })
+
+    test('the follower’s actor document is fetched signed as the followed user (authorized fetch)', async () => {
+      const user = getTestUser()
+      await upsertUserSettings(user, { manually_approve_followers: true })
+      const base = inboxContext(fed, ORIGIN, user, aliceServes())
+      const identities: unknown[] = []
+      const ctx = new Proxy(base, {
+        get: (target, prop) =>
+          prop === 'getDocumentLoader'
+            ? async (identity: unknown) => {
+                identities.push(identity)
+                return stubDocumentLoader(aliceServes())
+              }
+            : (Reflect.get(target, prop) as unknown),
+      })
+      await handleInboundFollow(ctx, followUs(user))
+
+      expect(identities).toEqual([{ identifier: user }])
+      expect(await getFeedFollowerByActor(user, ALICE)).toMatchObject({ display_name: 'Alice' })
     })
 
     test('a Follow whose actor id serves nothing is still recorded, with no byline', async () => {

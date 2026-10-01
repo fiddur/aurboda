@@ -1,9 +1,11 @@
+import type { Federation } from '@fedify/fedify'
+
 import { Endpoints, Image, Person } from '@fedify/fedify/vocab'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 
 import type { FeedFollowingRecord } from '../db/index.ts'
 
-import { actorToFollowingInput, serializeFollowing, withTimeout } from './following.ts'
+import { actorToFollowingInput, followActor, serializeFollowing, withTimeout } from './following.ts'
 
 describe('actorToFollowingInput', () => {
   test('extracts uri, inbox, shared inbox, handle, name, and avatar from a full actor', async () => {
@@ -89,5 +91,26 @@ describe('withTimeout', () => {
   test('rejects when the promise does not settle within the timeout', async () => {
     // A never-settling promise (like a hung icon deref) must not hang the follow.
     await expect(withTimeout(new Promise(() => {}), 20)).rejects.toThrow('timeout')
+  })
+})
+
+describe('followActor', () => {
+  test('resolves the handle with a fetch signed as the following user (authorized fetch)', async () => {
+    const signedLoader = async () => ({ contextUrl: null, document: {}, documentUrl: '' })
+    const getDocumentLoader = vi.fn(async () => signedLoader)
+    const lookupObject = vi.fn(async () => null)
+    const federation = {
+      createContext: () => ({ getDocumentLoader, lookupObject }),
+    } as unknown as Federation<void>
+
+    const result = await followActor(
+      { federation, origin: 'https://aurboda.example' },
+      'bob',
+      '@Gargron@mastodon.social',
+    )
+
+    expect(result.ok).toBe(false)
+    expect(getDocumentLoader).toHaveBeenCalledWith({ identifier: 'bob' })
+    expect(lookupObject).toHaveBeenCalledWith('@Gargron@mastodon.social', { documentLoader: signedLoader })
   })
 })

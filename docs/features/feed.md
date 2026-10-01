@@ -232,6 +232,11 @@ posts into your timeline). Resolving the actor's avatar is bounded by a short ti
 icon host can't hang the (synchronous) follow. When a follow fails, the web panel surfaces the
 server's specific reason (e.g. an unresolvable handle) rather than a generic message.
 
+Every remote fetch made on a user's behalf — resolving a followee, the backfill's outbox walk,
+the actor documents behind inbound bylines and boosts, mention and reaction delivery lookups —
+is **signed with that user's actor key**, so instances running authorized fetch (Mastodon
+secure mode, GoToSocial) answer instead of refusing with a 401.
+
 When the followee's server answers with an `Accept`, the inbox marks the follow
 **accepted**; a `Reject` drops it. Unfollowing sends an `Undo{Follow}` to the cached inbox
 and removes the row. Local follows use the exact same path (delivered to the local inbox
@@ -436,12 +441,13 @@ renders, under a "🔄 X boosted" line. Guards: only an **accepted** followee ca
 timeline; the announced object must resolve to a `Note` **on the same host as the announced
 id** and declare `attributedTo` (whose host must match the Note's, as for any ingest); and a
 post that is **already in the timeline directly** gets no boost card (Mastodon likewise hides a
-reblog of a post you already have).
+reblog of a post you already have). The dedupe holds in both arrival orders: when the boost
+lands first and the post itself arrives directly later (its author's `Create`/`Update`, or the
+on-follow backfill), storing the direct entry removes the boost cards of that Note, so the
+timeline ends up with the direct entry alone either way.
 
-A boost card tracks the post it shows: the author's `Update{Note}` refreshes the **boost cards
-of that Note** as well as the direct entry (the card is keyed on the `Announce` id, so the
-ingest upsert alone would leave it showing pre-edit content), while its `published_at` stays at
-boost time so it doesn't jump on an edit. And a boost is never treated as a _reply_, even when
+A boost card's `published_at` is the boost time, so it sorts where the boost happened. And a
+boost is never treated as a _reply_, even when
 the boosted Note is one: it stays visible with `timeline_show_replies` off (Mastodon shows
 reblogs of replies), and it is left out of an own post's comment list + `reply_count`, which
 would otherwise show the same comment twice under someone else's byline.
@@ -520,11 +526,12 @@ replies, and a bare comment lifted out of its thread reads as noise on a profile
 **Own-post comments (inbound).** Nothing new is ingested: a reply to one of the owner's still
 existing posts is already admitted to the timeline from **any** actor (#1060, above), so the
 comments under a post are simply the `timeline_entry` rows whose `in_reply_to_uri` is that
-post's object id. `GET /feed/:postId/replies` (MCP `get_feed_post_replies`) returns them
-oldest-first as full `TimelineEntry`s — carrying the reader's own like/boost state and
-repliable in turn — with **no network fetch at all**. The owner's feed listing carries a
-`reply_count` per post from one batched count query per page (like the reaction counts beside
-it), so the web shows a `🗨 n` chip that expands the comments in place.
+post's object id. `GET /feed/:postId/replies` (MCP `get_feed_post_replies`) returns the
+**latest 100** of them oldest-first as full `TimelineEntry`s — carrying the reader's own
+like/boost state and repliable in turn — with **no network fetch at all**. The owner's feed
+listing carries a `reply_count` per post from one batched count query per page (like the
+reaction counts beside it), so the web shows a `🗨 n` chip that expands the comments in place,
+noting "Showing the latest N of M replies" when the count exceeds what was listed.
 
 **Web.** Each timeline card's action row gains a 🗨 button opening an inline composer
 (textarea capped at `feedPostMessageMaxLength`, a compact visibility selector defaulting to
@@ -825,7 +832,7 @@ Owner-facing (authenticated, scoped to the caller):
 | `GET /feed/timeline/:id/replies`                  | Bounded snapshot of a timeline post's thread (origin's `replies` + my own replies merged); `fetched`/`partial`                                                                                               |
 | `POST /feed/timeline/:id/reply`                   | Reply 🗨 to a timeline post — publishes a `reply` post (`Create{Note inReplyTo}` + `Mention`); `visibility` defaults to `unlisted`                                                                           |
 | `GET /feed/:postId/reactions`                     | Who favourited or boosted one of MY posts (newest first, max 100)                                                                                                                                            |
-| `GET /feed/:postId/replies`                       | The comments received under one of MY posts (oldest first, max 100), as full timeline entries — no network fetch                                                                                             |
+| `GET /feed/:postId/replies`                       | The comments received under one of MY posts (the latest 100, oldest first), as full timeline entries — no network fetch                                                                                      |
 
 Public / federation (unauthenticated):
 

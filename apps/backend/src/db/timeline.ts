@@ -158,43 +158,15 @@ export const upsertTimelineEntry = async (
   return result.rows[0]
 }
 
-/** What an author's edit propagates to the boost cards of that Note. */
-export interface BoostedCopyFields {
-  content: string
-  url: string | null
-  images: TimelineImage[] | null
-  structured: FeedStructuredPost | null
-}
-
 /**
- * Propagate an author's edit to every BOOST card of one Note, returning how many
- * cards were refreshed. An `Update{Note}` upserts on `object_uri`, which on a
- * boost card is the `Announce` id — so without this the direct entry is edited
- * and every boost of it keeps showing the pre-edit content for good.
- *
- * `published_at` is deliberately untouched: a boost card sorts at BOOST time,
- * not at the original post's (or the edit's) timestamp. `structured` is
- * COALESCEd for the same reason as in the upsert — a transient enrich failure
- * must not wipe a working chart.
+ * Remove every boost card of one Note, returning how many went — run when the
+ * Note itself is stored directly, so the timeline ends up identical whichever
+ * of the boost and the author's own delivery arrived first: the direct entry
+ * alone (the other order never creates the card, see
+ * `getTimelineEntryByObjectUri`).
  */
-export const refreshBoostedCopies = async (
-  user: string,
-  noteUri: string,
-  fields: BoostedCopyFields,
-): Promise<number> => {
-  const result = await query(
-    user,
-    `UPDATE timeline_entry
-     SET content = $2, url = $3, images = $4, structured = COALESCE($5, structured)
-     WHERE boost_of_uri = $1`,
-    [
-      noteUri,
-      fields.content,
-      fields.url,
-      fields.images == null ? null : JSON.stringify(fields.images),
-      fields.structured == null ? null : JSON.stringify(fields.structured),
-    ],
-  )
+export const deleteBoostCardsOf = async (user: string, noteUri: string): Promise<number> => {
+  const result = await query(user, `DELETE FROM timeline_entry WHERE boost_of_uri = $1`, [noteUri])
   return result.rowCount ?? 0
 }
 
@@ -371,8 +343,9 @@ export const getTimelineEntryByObjectUri = async (
 }
 
 /**
- * The replies this instance holds for one object, oldest first — the comments
- * under one of the owner's own posts. These are ordinary timeline rows: any
+ * The latest `limit` replies this instance holds for one object, oldest first —
+ * the comments under one of the owner's own posts. Past the cap it is the
+ * OLDEST that drop out, so a new comment always shows. These are ordinary timeline rows: any
  * actor's Note that replied to an existing own post is admitted on ingest
  * (#1060), so no network is involved in reading them back.
  *
@@ -387,10 +360,13 @@ export const listTimelineRepliesTo = async (
 ): Promise<TimelineEntryRecord[]> => {
   const result = await query<TimelineEntryRecord>(
     user,
-    `SELECT ${TIMELINE_COLUMNS} FROM timeline_entry
-     WHERE in_reply_to_uri = $1 AND boost_of_uri IS NULL
-     ORDER BY published_at ASC, id ASC
-     LIMIT $2`,
+    `SELECT * FROM (
+       SELECT ${TIMELINE_COLUMNS} FROM timeline_entry
+       WHERE in_reply_to_uri = $1 AND boost_of_uri IS NULL
+       ORDER BY published_at DESC, id DESC
+       LIMIT $2
+     ) latest
+     ORDER BY published_at ASC, id ASC`,
     [objectUri, limit],
   )
   return result.rows

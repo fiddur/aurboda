@@ -314,7 +314,7 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
 
   server.tool(
     'get_feed_post_replies',
-    'List the comments this instance holds under one of YOUR feed posts (by feed post id), oldest first. These are the replies remote actors delivered to you — no network fetch. Each is a full timeline entry, so it carries your like/boost state and can itself be replied to with `reply_to_timeline_post`.',
+    'List the comments this instance holds under one of YOUR feed posts (by feed post id): the latest 100, oldest first. These are the replies remote actors delivered to you — no network fetch. Each is a full timeline entry, so it carries your like/boost state and can itself be replied to with `reply_to_timeline_post`.',
     { id: z.string().uuid().describe('Feed post ID') },
     async ({ id }) => {
       if (!webHost) return errorResponse('Replies are not available')

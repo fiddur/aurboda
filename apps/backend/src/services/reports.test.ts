@@ -10,8 +10,10 @@ import {
   updateReport,
 } from './reports.ts'
 
+const TX = vi.hoisted(() => ({ tx: true }))
+
 vi.mock('../db', () => ({
-  deleteNotesForEntity: vi.fn(),
+  deleteNotesForEntityIn: vi.fn(),
   deleteReport: vi.fn(),
   getLatestMetricValue: vi.fn(),
   getReportById: vi.fn(),
@@ -22,6 +24,7 @@ vi.mock('../db', () => ({
   query: vi.fn(),
   updateNoteTimesForEntity: vi.fn(),
   updateReport: vi.fn(),
+  withUserTransaction: vi.fn((_user: string, fn: (tx: unknown) => Promise<unknown>) => fn(TX)),
 }))
 
 const mockInsertReport = vi.mocked(db.insertReport)
@@ -176,6 +179,7 @@ describe('getReport', () => {
 
     expect(result.success).toBe(false)
     expect(result.error).toBe('Report not found')
+    expect(db.deleteNotesForEntityIn).not.toHaveBeenCalled()
   })
 })
 
@@ -226,13 +230,14 @@ describe('deleteReportById', () => {
     const result = await deleteReportById('testuser', 'report-1')
 
     expect(result.success).toBe(true)
-    expect(mockDeleteReport).toHaveBeenCalledWith('testuser', 'report-1')
-    expect(db.deleteNotesForEntity).toHaveBeenCalledWith('testuser', 'report', 'report-1')
+    expect(db.withUserTransaction).toHaveBeenCalledWith('testuser', expect.any(Function))
+    expect(mockDeleteReport).toHaveBeenCalledWith(TX, 'report-1')
+    expect(db.deleteNotesForEntityIn).toHaveBeenCalledWith(TX, 'report', 'report-1')
 
     // Should clean up time_series entries
     expect(mockQuery).toHaveBeenCalledTimes(2)
     expect(mockQuery).toHaveBeenCalledWith(
-      'testuser',
+      TX,
       `DELETE FROM time_series WHERE metric = $1 AND time = $2 AND source = 'lab_report'`,
       ['weight', new Date('2025-05-08T09:23:00Z')],
     )

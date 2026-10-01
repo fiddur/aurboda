@@ -218,6 +218,7 @@ export {
 export {
   deleteNote,
   deleteNotesForEntity,
+  deleteNotesForEntityIn,
   getNoteById,
   getNoteRoot,
   getNotesByEntityIds,
@@ -340,8 +341,8 @@ export {
 } from './feed-reactions.ts'
 
 export {
-  type BoostedCopyFields,
   countTimelineRepliesTo,
+  deleteBoostCardsOf,
   deleteBoostEntry,
   deleteTimelineEntriesByActor,
   deleteTimelineEntryByUri,
@@ -355,7 +356,6 @@ export {
   listUnenrichedAurbodaEntries,
   markEnrichTransientFailure,
   markTimelineEntryReplyChecked,
-  refreshBoostedCopies,
   setTimelineEntryReplyInfo,
   setTimelineEntryStructured,
   type TimelineCursor,

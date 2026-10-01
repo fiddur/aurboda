@@ -7,7 +7,7 @@
 import type { Confidence, ReportFlag } from '@aurboda/api-spec'
 
 import {
-  deleteNotesForEntity,
+  deleteNotesForEntityIn,
   deleteReport as dbDeleteReport,
   getLatestMetricValue as dbGetLatestMetricValue,
   getReportById as dbGetReportById,
@@ -18,6 +18,8 @@ import {
   insertTimeSeries,
   query,
   updateNoteTimesForEntity,
+  withUserTransaction,
+  type Queryable,
   type Report,
   type ReportEntry,
 } from '../db/index.ts'
@@ -132,11 +134,11 @@ const toTimeSeriesPoints = (entries: AddReportEntryInput[], time: Date) =>
   }))
 
 const cleanupTimeSeries = async (
-  user: string,
+  db: Queryable | string,
   entryMetrics: Array<{ metric: string; report_date: Date }>,
 ): Promise<void> => {
   for (const { metric, report_date } of entryMetrics) {
-    await query(user, `DELETE FROM time_series WHERE metric = $1 AND time = $2 AND source = 'lab_report'`, [
+    await query(db, `DELETE FROM time_series WHERE metric = $1 AND time = $2 AND source = 'lab_report'`, [
       metric,
       report_date,
     ])
@@ -283,16 +285,15 @@ export async function deleteReportById(
 ): Promise<{ success: boolean; error?: string }> {
   const entryMetrics = await getReportEntryMetrics(user, id)
 
-  // CASCADE deletes the entries
-  const deleted = await dbDeleteReport(user, id)
-  if (!deleted) {
-    return { error: 'Report not found', success: false }
-  }
+  const deleted = await withUserTransaction(user, async (tx) => {
+    // CASCADE deletes the entries
+    if (!(await dbDeleteReport(tx, id))) return false
+    await cleanupTimeSeries(tx, entryMetrics)
+    await deleteNotesForEntityIn(tx, 'report', id)
+    return true
+  })
 
-  if (entryMetrics.length > 0) await cleanupTimeSeries(user, entryMetrics)
-  await deleteNotesForEntity(user, 'report', id)
-
-  return { success: true }
+  return deleted ? { success: true } : { error: 'Report not found', success: false }
 }
 
 /**

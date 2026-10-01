@@ -4,6 +4,7 @@ import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-te
 import { getDbForUser, query, rewriteLegacyQuantpubStructured } from './connection.ts'
 import {
   countTimelineRepliesTo,
+  deleteBoostCardsOf,
   deleteBoostEntry,
   deleteTimelineEntriesByActor,
   deleteTimelineEntryByUri,
@@ -16,7 +17,6 @@ import {
   listTimelineRepliesTo,
   listUnenrichedAurbodaEntries,
   markEnrichTransientFailure,
-  refreshBoostedCopies,
   setTimelineEntryReplyInfo,
   setTimelineEntryStructured,
   type TimelineEntryInput,
@@ -544,38 +544,31 @@ describe('Timeline store integration', () => {
       ])
     })
 
-    test('refreshBoostedCopies carries an author’s edit to the boost cards, keeping their sort order', async () => {
+    test('deleteBoostCardsOf removes every boost card of one Note and nothing else (#1106)', async () => {
       const user = getTestUser()
-      const structured = {
-        activityType: 'exercise',
-        kind: 'activity' as const,
-        metrics: [{ key: 'distance', unit: 'km', value: 5 }],
-        series: [],
-        startTime: '2026-07-01T08:00:00.000Z',
-      }
-      const direct = await upsertTimelineEntry(user, entry(1))
-      await upsertTimelineEntry(user, boostOfAlice({ structured }))
-      const images = [{ url: 'https://mastodon.example/media/1.png' }]
-
-      expect(
-        await refreshBoostedCopies(user, 'https://mastodon.example/notes/1', {
-          content: '<p>edited</p>',
-          images,
-          structured: null,
-          url: 'https://mastodon.example/@alice/1',
+      await upsertTimelineEntry(user, boostOfAlice())
+      await upsertTimelineEntry(
+        user,
+        boostOfAlice({
+          boosted_by_actor_uri: 'https://third.example/users/carol',
+          object_uri: 'https://third.example/users/carol/statuses/3/activity',
         }),
-      ).toBe(1)
+      )
+      await upsertTimelineEntry(
+        user,
+        boostOfAlice({
+          boost_of_uri: 'https://mastodon.example/notes/2',
+          object_uri: 'https://remote.example/users/bob/statuses/10/activity',
+        }),
+      )
+      await upsertTimelineEntry(user, entry(1))
 
-      const rows = await listTimelineEntries(user, 10)
-      const boost = rows.find((e) => e.object_uri === ANNOUNCE)
-      expect(boost?.content).toBe('<p>edited</p>')
-      expect(boost?.images).toEqual(images)
-      // A boost card sorts at BOOST time — an edit must not move it.
-      expect(boost?.published_at.toISOString()).toBe('2026-07-01T12:00:00.000Z')
-      // A refresh that couldn't re-fetch the payload keeps the working chart.
-      expect(boost?.structured).toEqual(structured)
-      // The direct entry is the ingest's own upsert, not this statement's job.
-      expect(rows.find((e) => e.id === direct.id)?.content).toBe('<p>post 1</p>')
+      expect(await deleteBoostCardsOf(user, 'https://mastodon.example/notes/1')).toBe(2)
+      expect((await listTimelineEntries(user, 10)).map((e) => e.object_uri).sort()).toEqual([
+        'https://mastodon.example/notes/1',
+        'https://remote.example/users/bob/statuses/10/activity',
+      ])
+      expect(await deleteBoostCardsOf(user, 'https://mastodon.example/notes/1')).toBe(0)
     })
 
     test('updateTimelineActorPresentation refreshes an actor as author AND as booster (#1057)', async () => {
@@ -659,6 +652,24 @@ describe('Timeline store integration', () => {
       await upsertTimelineEntry(user, entry(1, { in_reply_to_uri: TARGET }))
       await upsertTimelineEntry(user, entry(2, { in_reply_to_uri: TARGET }))
       expect(await listTimelineRepliesTo(user, TARGET, 1)).toHaveLength(1)
+    })
+
+    test('past the limit it keeps the LATEST replies, still oldest first (#1109)', async () => {
+      const user = getTestUser()
+      const base = Date.parse('2026-07-01T10:00:00Z')
+      for (let i = 0; i < 105; i++) {
+        await upsertTimelineEntry(user, {
+          ...entry(1),
+          in_reply_to_uri: TARGET,
+          object_uri: `https://mastodon.example/notes/reply-${i}`,
+          published_at: new Date(base + i * 60_000),
+        })
+      }
+
+      const replies = await listTimelineRepliesTo(user, TARGET, 100)
+      expect(replies.map((r) => r.object_uri)).toEqual(
+        Array.from({ length: 100 }, (_, i) => `https://mastodon.example/notes/reply-${i + 5}`),
+      )
     })
 
     test('countTimelineRepliesTo tallies many targets in one query, omitting empty ones', async () => {

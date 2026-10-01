@@ -5,6 +5,7 @@
  */
 import format from 'pg-format'
 
+import type { Queryable } from './pool.ts'
 import type { Report, ReportEntry } from './types.ts'
 
 import { query } from './connection.ts'
@@ -177,8 +178,8 @@ export const getReports = async (user: string, filter: QueryReportsFilter): Prom
 }
 
 /** CASCADE removes the entries. */
-export const deleteReport = async (user: string, id: string): Promise<boolean> => {
-  const result = await query(user, `DELETE FROM reports WHERE id = $1`, [id])
+export const deleteReport = async (db: Queryable | string, id: string): Promise<boolean> => {
+  const result = await query(db, `DELETE FROM reports WHERE id = $1`, [id])
   return (result.rowCount ?? 0) > 0
 }
 

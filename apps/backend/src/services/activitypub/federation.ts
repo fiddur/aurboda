@@ -37,6 +37,7 @@ import {
   deleteBoostEntry,
   deleteTimelineEntryByUri,
   getFeedFollowerByActor,
+  deleteBoostCardsOf,
   getFeedFollowingByActor,
   getFeedPostById,
   getOrCreateActorKeyPair,
@@ -50,7 +51,6 @@ import {
   listFeedFollowers,
   listPublicFeedPostsPage,
   markFeedFollowingAccepted,
-  refreshBoostedCopies,
   removeFeedFollower,
   removeFeedFollowingByActor,
   removeFeedPostReaction,
@@ -83,6 +83,7 @@ import {
 } from './deliver.ts'
 import { toCryptoKeyPair } from './keys.ts'
 import { AS_PUBLIC, isPubliclyVisible } from './object.ts'
+import { signedFetchOptions } from './signed-lookup.ts'
 import { temporalInstantToDate } from './temporal-interop.ts'
 import { capabilityTokenFrom, createAurbodaEnricher } from './timeline-enrich.ts'
 import {
@@ -141,9 +142,13 @@ const NO_PRESENTATION: ActorPresentation = { avatar_url: null, display_name: nul
  */
 const fetchActorPresentation = async (
   ctx: InboxContext<void>,
+  user: string,
   actorId: URL,
 ): Promise<ActorPresentation | null> => {
-  const actor = await withTimeout(ctx.lookupObject(actorId), ACTOR_LOOKUP_TIMEOUT_MS).catch(() => null)
+  const actor = await withTimeout(
+    signedFetchOptions(ctx, user).then((options) => ctx.lookupObject(actorId, options)),
+    ACTOR_LOOKUP_TIMEOUT_MS,
+  ).catch(() => null)
   if (!isActor(actor) || actor.id?.href !== actorId.href) return null
   return await extractActorPresentation(actor)
 }
@@ -176,7 +181,7 @@ const recordInboundFollow = async (
     const settings = await getUserSettings(user)
     const existing = await getFeedFollowerByActor(user, sender.id.href)
     const accepted = existing?.accepted === true || settings?.manually_approve_followers !== true
-    const presentation = (await fetchActorPresentation(ctx, sender.id)) ?? NO_PRESENTATION
+    const presentation = (await fetchActorPresentation(ctx, user, sender.id)) ?? NO_PRESENTATION
     await upsertFeedFollower(user, {
       accepted,
       actor_uri: sender.id.href,
@@ -254,6 +259,9 @@ export const ingestNoteForRecipient = async (
     mentions_me: mentionsMe,
     structured,
   })
+  // The Note itself now stands in the timeline, so a boost card of it that
+  // arrived first goes — the mirror of `ingestBoostedNote`'s dedupe.
+  if (input.boost_of_uri == null) await deleteBoostCardsOf(user, input.object_uri)
   if (inserted && onNewEntry != null && (await isVisibleToReader(user, id, origin))) onNewEntry(user)
   return true
 }
@@ -300,7 +308,7 @@ const recordOwnPostReaction = async (
   if (postId == null) return
   try {
     if ((await getFeedPostById(me, postId)) == null) return
-    const presentation = (await fetchActorPresentation(ctx, activity.actorId)) ?? NO_PRESENTATION
+    const presentation = (await fetchActorPresentation(ctx, me, activity.actorId)) ?? NO_PRESENTATION
     await upsertFeedPostReaction(me, {
       activity_uri: activity.id?.href ?? null,
       actor_uri: activity.actorId.href,
@@ -335,7 +343,7 @@ const resolveBoostAuthor = async (
 ): Promise<TimelineAuthor | null> => {
   const followed = await getFeedFollowingByActor(me, attributionId.href)
   if (followed != null) return followed
-  const presentation = await fetchActorPresentation(ctx, attributionId)
+  const presentation = await fetchActorPresentation(ctx, me, attributionId)
   return presentation == null ? null : { ...presentation, actor_uri: attributionId.href }
 }
 
@@ -366,9 +374,13 @@ interface AnnouncedNote {
  */
 const resolveAnnouncedNote = async (
   ctx: InboxContext<void>,
+  me: string,
   objectId: URL,
 ): Promise<AnnouncedNote | null> => {
-  const note = await withTimeout(ctx.lookupObject(objectId), BOOST_OBJECT_TIMEOUT_MS).catch(() => null)
+  const note = await withTimeout(
+    signedFetchOptions(ctx, me).then((options) => ctx.lookupObject(objectId, options)),
+    BOOST_OBJECT_TIMEOUT_MS,
+  ).catch(() => null)
   if (!(note instanceof Note) || note.id == null || note.id.host !== objectId.host) return null
   const attributionId = note.attributionIds[0]
   return attributionId == null ? null : { attributionId, note, uri: note.id.href }
@@ -426,7 +438,7 @@ const ingestBoostedNote = async (
   try {
     const booster = await getFeedFollowingByActor(me, valid.actorId.href)
     if (booster == null || !booster.accepted) return
-    const announced = await resolveAnnouncedNote(ctx, valid.objectId)
+    const announced = await resolveAnnouncedNote(ctx, me, valid.objectId)
     if (announced == null) return
     if ((await getTimelineEntryByObjectUri(me, announced.uri)) != null) return
     const author = await resolveBoostAuthor(ctx, me, announced.attributionId)
@@ -602,7 +614,7 @@ const ingestStrangerInvolvement = async (
   // activity (see `fetchActorPresentation`). An unreadable actor drops the Note:
   // this whole branch exists to show who a stranger is, and an anonymous
   // stranger card in the timeline is worse than no card.
-  const presentation = await fetchActorPresentation(ctx, activity.actorId)
+  const presentation = await fetchActorPresentation(ctx, me, activity.actorId)
   if (presentation == null) return false
   return await ingestNoteForRecipient(
     me,
@@ -633,33 +645,16 @@ const ingestFeedActivity = async (
     const follow = await getFeedFollowingByActor(me, activity.actorId.href)
     const object = await activity.getObject({ suppressError: true })
     if (!(object instanceof Note)) return
-    const admitted =
-      follow != null && follow.accepted
-        ? await ingestNoteForRecipient(me, object, follow, enrich, origin, onNewEntry)
-        : await ingestStrangerInvolvement(ctx, activity, object, me, origin, enrich, onNewEntry)
-    // Only an edit we actually took carries outward: a dropped Note (host or
-    // attribution mismatch, uninvolved stranger) has no card of ours to update.
-    if (admitted && activity instanceof Update) await refreshBoostCardsOfNote(me, object)
+    if (follow != null && follow.accepted) {
+      await ingestNoteForRecipient(me, object, follow, enrich, origin, onNewEntry)
+    } else {
+      await ingestStrangerInvolvement(ctx, activity, object, me, origin, enrich, onNewEntry)
+    }
   } catch (error) {
     // A missing DB is not an error worth a 500: that would invite redelivery retries.
     if (isMissingDatabase(error)) return
     throw error
   }
-}
-
-/**
- * Carry an author's edit over to the BOOST cards of that Note — see
- * `refreshBoostedCopies` for why an edit reaches them at all.
- *
- * The refreshed fields are read back from the direct entry the edit just wrote,
- * so a boost card can never show anything the direct card doesn't (including a
- * dropped attachment); nothing happens when the Note isn't stored directly at
- * all. `Create` never needs it — a brand-new Note has no boosts yet.
- */
-const refreshBoostCardsOfNote = async (user: string, note: Note): Promise<void> => {
-  if (note.id == null) return
-  const stored = await getTimelineEntryByObjectUri(user, note.id.href)
-  if (stored != null) await refreshBoostedCopies(user, note.id.href, stored)
 }
 
 /**
@@ -688,7 +683,7 @@ const refreshRemoteActorPresentation = async (ctx: InboxContext<void>, update: U
     if (isMissingDatabase(error)) return
     throw error
   }
-  const presentation = await fetchActorPresentation(ctx, update.actorId)
+  const presentation = await fetchActorPresentation(ctx, me, update.actorId)
   if (presentation == null) return
   try {
     await updateFeedFollowerPresentation(me, actorUri, presentation)

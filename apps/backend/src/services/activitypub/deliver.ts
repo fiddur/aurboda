@@ -42,6 +42,7 @@ import { resolveActivityScalars } from './feed-activity.ts'
 import { addressingFor, feedPostContent, formatActivityWindow, isPubliclyVisible } from './object.ts'
 import { quantExerciseExtension, withQuantJsonLd } from './quant-extension.ts'
 import { type ReplyContentSource, renderReplyContent, replyMentionName } from './reply-object.ts'
+import { signedFetchOptions } from './signed-lookup.ts'
 import { dateToTemporalInstant } from './temporal-interop.ts'
 
 /**
@@ -632,7 +633,10 @@ const deliverToMentioned = async (
   for (const mention of mentions) {
     if (mention.actorUri.href === self) continue
     try {
-      const recipient = mention.inbox == null ? await ctx.lookupObject(mention.actorUri) : mention.inbox
+      const recipient =
+        mention.inbox == null
+          ? await ctx.lookupObject(mention.actorUri, await signedFetchOptions(ctx, user))
+          : mention.inbox
       if (recipient != null && 'inbox_uri' in recipient) {
         await ctx.sendActivity({ identifier: user }, inboxRecipient(mention.actorUri, recipient), activity)
         continue
