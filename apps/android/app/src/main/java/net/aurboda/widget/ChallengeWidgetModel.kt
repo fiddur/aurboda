@@ -22,7 +22,7 @@ import kotlin.math.roundToLong
 
 /**
  * Member line colours, in leaderboard order — the same palette (and order) as the
- * web race chart / leaderboard (`apps/web/src/pages/Challenges/PublicChallenge.tsx`),
+ * web race chart / leaderboard (`apps/web/src/pages/Challenges/member-colors.ts`),
  * so a member has the same colour on the phone as on the web page.
  */
 val CHALLENGE_MEMBER_COLORS: IntArray =
@@ -34,10 +34,30 @@ val CHALLENGE_MEMBER_COLORS: IntArray =
         0xFFEF4444.toInt(),
         0xFFEC4899.toInt(),
         0xFF14B8A6.toInt(),
-        0xFFA855F7.toInt(),
+        0xFF84CC16.toInt(),
     )
 
-fun challengeMemberColor(index: Int): Int = CHALLENGE_MEMBER_COLORS[index % CHALLENGE_MEMBER_COLORS.size]
+private const val MEMBER_COLOR_LIGHTEN_PERCENT = 35
+
+/** Integer arithmetic so it rounds exactly as the web twin does. */
+private fun towardWhite(channel: Int): Int =
+    (channel * (100 - MEMBER_COLOR_LIGHTEN_PERCENT) + 255 * MEMBER_COLOR_LIGHTEN_PERCENT + 50) / 100
+
+private fun lightenColor(color: Int): Int {
+    val r = towardWhite((color shr 16) and 0xFF)
+    val g = towardWhite((color shr 8) and 0xFF)
+    val b = towardWhite(color and 0xFF)
+    return (0xFF shl 24) or (r shl 16) or (g shl 8) or b
+}
+
+/**
+ * The palette, then the same hues lightened for the next round of members, then
+ * around again, so a ninth member does not share the first one's colour.
+ */
+fun challengeMemberColor(index: Int): Int {
+    val base = CHALLENGE_MEMBER_COLORS[index % CHALLENGE_MEMBER_COLORS.size]
+    return if ((index / CHALLENGE_MEMBER_COLORS.size) % 2 == 1) lightenColor(base) else base
+}
 
 const val DAY_MILLIS: Long = 24L * 60 * 60 * 1000
 

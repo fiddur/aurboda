@@ -283,6 +283,19 @@ class ChallengeWidgetModelTest {
     }
 
     @Test
+    fun `member colours match the web palette, lightened for the second round, then cycle`() {
+        val firstRound = (0 until 8).map { challengeMemberColor(it) }
+        assertEquals(CHALLENGE_MEMBER_COLORS.toList(), firstRound)
+        assertEquals(8, firstRound.toSet().size)
+        assertEquals(0xFFB495F9.toInt(), challengeMemberColor(8))
+        assertEquals(0xFF64D2AD.toInt(), challengeMemberColor(9))
+        assertEquals(0xFFAFDE68.toInt(), challengeMemberColor(15))
+        assertEquals(16, (0 until 16).map { challengeMemberColor(it) }.toSet().size)
+        assertEquals(CHALLENGE_MEMBER_COLORS[0], challengeMemberColor(16))
+        assertEquals(challengeMemberColor(8), challengeMemberColor(24))
+    }
+
+    @Test
     fun `visibleRows keeps the top rows but swaps the user in when they would be cut`() {
         val rows =
             (1..6).map { i ->
