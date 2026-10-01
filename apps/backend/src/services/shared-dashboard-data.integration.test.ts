@@ -379,7 +379,7 @@ describe('resolveDashboardData integration', () => {
       return start
     }
 
-    const stockholmMidnight = (instant: Date): string => {
+    const stockholmMidnight = (instant: Date): string | undefined => {
       const fmt = new Intl.DateTimeFormat('sv-SE', {
         dateStyle: 'short',
         timeStyle: 'short',
@@ -387,7 +387,7 @@ describe('resolveDashboardData integration', () => {
       })
       const localDay = fmt.format(instant).slice(0, 10)
       const candidates = [1, 2].map((h) => new Date(Date.parse(`${localDay}T00:00:00Z`) - h * HOUR))
-      return candidates.find((c) => fmt.format(c) === `${localDay} 00:00`)!.toISOString()
+      return candidates.find((c) => fmt.format(c) === `${localDay} 00:00`)?.toISOString()
     }
 
     const filledBucketStart = (
@@ -406,7 +406,9 @@ describe('resolveDashboardData integration', () => {
 
       const data = await resolveDashboardData(user, barConfig)
 
-      expect(filledBucketStart(data)).toBe(stockholmMidnight(start))
+      const expected = stockholmMidnight(start)
+      expect(expected).toBeDefined()
+      expect(filledBucketStart(data)).toBe(expected)
     })
 
     test('falls back to UTC when the stored timezone is unknown', async () => {
