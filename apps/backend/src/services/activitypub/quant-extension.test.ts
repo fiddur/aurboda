@@ -156,6 +156,18 @@ describe('withQuantJsonLd', () => {
     if (typeof doc !== 'object' || doc === null || !('@context' in doc)) throw new Error('no @context')
     expect(doc['@context']).toContainEqual(quantContextEntry)
   })
+
+  test('a clone (and a clone of a clone) of a wrapped object keeps the extension', async () => {
+    const note = new Note({ id: new URL('https://aurboda.net/users/fiddur/feed/abc123'), name: 'Morning run' })
+    const wrapped = withQuantJsonLd(note, quantExerciseExtension(base))
+    const cloned = wrapped.clone({ name: 'Evening run' }).clone()
+    expect(cloned).not.toBe(wrapped)
+    expect(await cloned.toJsonLd()).toMatchObject({
+      name: 'Evening run',
+      'quant:activityType': 'running',
+      type: ['Note', 'quant:Exercise'],
+    })
+  })
 })
 
 describe('quantContextDocument', () => {

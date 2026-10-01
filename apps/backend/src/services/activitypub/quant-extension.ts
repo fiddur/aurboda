@@ -18,11 +18,10 @@
  * delivery and the outbox): an embedded child's splice would be re-compacted
  * against the parent's context and mangled into expanded-IRI form.
  *
- * Caveat: the wrapper is an instance patch, so anything that CLONES the object
- * afterwards (e.g. Fedify's Ed25519 `signObject`, unused here — Aurboda only
- * provisions RSA keys) would silently drop the extension. The RSA Linked-Data
- * signature and HTTP signatures both operate on the spliced document, so they
- * stay valid.
+ * The wrapper is an instance patch that also re-wraps every `clone`, so Fedify's
+ * outbound transformers (and an Ed25519 `signObject`) keep the extension. The
+ * RSA Linked-Data signature and HTTP signatures both operate on the spliced
+ * document, so they stay valid.
  */
 import type { FeedVisibility } from '@aurboda/api-spec'
 import type { Object as APObject } from '@fedify/fedify/vocab'
@@ -153,11 +152,15 @@ export const spliceQuantExtension = (doc: unknown, props: JsonRecord): unknown =
 /**
  * Wrap a locally-built Fedify object so its serialized JSON-LD carries the
  * `quant:` extension. Returns the same instance, with `toJsonLd` patched to
- * post-process its own output.
+ * post-process its own output and `clone` patched to wrap every clone the same
+ * way — `sendActivity`'s default transformers clone the activity before
+ * serialising it (#1040).
  */
 export const withQuantJsonLd = <T extends APObject>(obj: T, props: JsonRecord): T => {
-  const base = obj.toJsonLd.bind(obj)
+  const baseToJsonLd = obj.toJsonLd.bind(obj)
+  const baseClone = obj.clone.bind(obj)
   obj.toJsonLd = async (options?: Parameters<APObject['toJsonLd']>[0]): Promise<unknown> =>
-    spliceQuantExtension(await base(options), props)
+    spliceQuantExtension(await baseToJsonLd(options), props)
+  obj.clone = (...args: Parameters<APObject['clone']>) => withQuantJsonLd(baseClone(...args), props)
   return obj
 }
