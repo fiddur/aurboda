@@ -62,6 +62,11 @@ render — never the owner's broader data API. This is enforced server-side:
 So even a crafted request with extra query parameters cannot widen the exposed data
 beyond the saved widgets.
 
+Bar-chart buckets (days, weeks, months, hours) follow the **owner's** stored timezone
+(`tz` in settings), not the visitor's, so every visitor sees the owner's calendar days.
+Without a stored timezone, or with one that is not a valid IANA name, they fall back
+to UTC.
+
 ## Using it in the web app
 
 - **Manage** your shared dashboards at `/shared-dashboards` ("Dashboards" under the
