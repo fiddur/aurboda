@@ -130,9 +130,18 @@ describe('columnLaneWidth', () => {
     const packed = [
       { item: makeItem('2026-01-01T08:00:00Z', '2026-01-01T10:00:00Z'), lane: 0 },
       { item: makeItem('2026-01-01T08:30:00Z', '2026-01-01T10:00:00Z'), lane: 1 },
-      { item: makeItem('2026-01-01T09:00:00Z', '2026-01-01T09:00:00Z', { isPoint: true, label: 'c' }), lane: 2 },
-      { item: makeItem('2026-01-01T12:00:00Z', '2026-01-01T12:00:00Z', { isPoint: true, label: 'a' }), lane: 0 },
-      { item: makeItem('2026-01-01T12:00:00Z', '2026-01-01T12:00:00Z', { isPoint: true, label: 'b' }), lane: 1 },
+      {
+        item: makeItem('2026-01-01T09:00:00Z', '2026-01-01T09:00:00Z', { isPoint: true, label: 'c' }),
+        lane: 2,
+      },
+      {
+        item: makeItem('2026-01-01T12:00:00Z', '2026-01-01T12:00:00Z', { isPoint: true, label: 'a' }),
+        lane: 0,
+      },
+      {
+        item: makeItem('2026-01-01T12:00:00Z', '2026-01-01T12:00:00Z', { isPoint: true, label: 'b' }),
+        lane: 1,
+      },
     ]
     const stacked = stackIconPoints(packed, usableWidth)
     expect(stacked.some((s) => s.xOffset > 0)).toBe(true)

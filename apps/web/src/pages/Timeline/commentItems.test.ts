@@ -1,5 +1,4 @@
 import { type EntityType, entityTypes, type Note } from '@aurboda/api-spec'
-
 import { describe, expect, it } from 'vitest'
 
 import {
