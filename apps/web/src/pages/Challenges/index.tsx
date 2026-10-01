@@ -9,15 +9,17 @@
  * challenges hosted by people you follow that you haven't joined are listed
  * for one-click joining. Federation happens server-side.
  */
-import type {
-  Challenge,
-  ChallengeBucketSizeChoice,
-  ChallengeParticipation,
-  CreateChallengeBody,
-  DiscoveredChallenge,
-  ShareVisibility,
+import {
+  type Challenge,
+  type ChallengeBucketSizeChoice,
+  type ChallengeParticipation,
+  challengeRangeLabel,
+  challengeTimePhrase,
+  challengeTimeStatus,
+  type CreateChallengeBody,
+  type DiscoveredChallenge,
+  type ShareVisibility,
 } from '@aurboda/api-spec'
-
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'preact/hooks'
 
@@ -38,9 +40,6 @@ import {
 import {
   type ChallengeItem,
   challengeItemKey,
-  challengeRangeLabel,
-  challengeTimePhrase,
-  challengeTimeStatus,
   discoveredHostLabel,
   groupChallengeItems,
 } from './challenge-status'

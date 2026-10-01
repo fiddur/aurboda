@@ -61,10 +61,19 @@ describe('GET /u/:username/:slug', () => {
 
   test('renders rich meta for a public challenge when no dashboard matches', async () => {
     const app = buildApp({
-      resolveChallenge: async () => ({ is_public: true, name: 'Step Count' }),
+      resolveChallenge: async () => ({
+        end_ts: '2999-02-01T00:00:00.000Z',
+        is_public: true,
+        members: [],
+        name: 'Step Count',
+        spec: { pattern: 'steps', source_type: 'metric', unit: 'steps' },
+        start_ts: '2999-01-01T00:00:00.000Z',
+        timezone: 'UTC',
+      }),
     })
     const res = await supertest(app).get('/u/fiddur/xyz')
     expect(res.text).toContain('<title>Step Count — Aurboda</title>')
+    expect(res.text).toMatch(/og:description" content="Steps challenge, [^"]*Be the first to join/)
   })
 
   test('falls back to default meta for an unknown slug', async () => {

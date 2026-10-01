@@ -2,7 +2,17 @@ import sharp from 'sharp'
 import { describe, expect, test } from 'vitest'
 
 import { generateIdenticon } from './avatar.ts'
-import { clampTitle, createOgImageRenderer, OG_HEIGHT, OG_WIDTH, twemojiFileName } from './og-image.ts'
+import { challengeTheme } from './og-challenge-theme.ts'
+import {
+  clampTitle,
+  createOgImageRenderer,
+  OG_HEIGHT,
+  OG_WIDTH,
+  type OgCard,
+  type OgChallengeMember,
+  twemojiFileCandidates,
+  twemojiFileName,
+} from './og-image.ts'
 
 const renderOgImage = createOgImageRenderer()
 
@@ -17,6 +27,21 @@ const hasLeafOrangePixel = async (png: Buffer): Promise<boolean> => {
   }
   return false
 }
+
+const stepsCard = (members: OgChallengeMember[], status: 'ongoing' | 'upcoming'): OgCard => ({
+  challenge: {
+    measure: 'Steps',
+    members,
+    phrase: status === 'upcoming' ? 'Starts in 3 days' : 'Ends in 12 days',
+    range: '1 Oct – 31 Oct 2026',
+    status,
+    theme: challengeTheme({ pattern: 'steps', source_type: 'metric' }),
+    unit: 'steps',
+  },
+  kind: 'challenge',
+  title: 'October steps',
+  username: 'fiddur',
+})
 
 describe('clampTitle', () => {
   test('leaves short titles untouched', () => {
@@ -46,6 +71,16 @@ describe('twemojiFileName', () => {
     ['👍🏽', '1f44d-1f3fd'],
   ])('%s → %s', (emoji, fileName) => {
     expect(twemojiFileName(emoji)).toBe(fileName)
+  })
+})
+
+describe('twemojiFileCandidates', () => {
+  test('falls back to the name without fe0f for ZWJ sequences', () => {
+    expect(twemojiFileCandidates('👁️‍🗨️')).toEqual(['1f441-fe0f-200d-1f5e8-fe0f', '1f441-200d-1f5e8'])
+  })
+
+  test('has a single candidate when nothing can be stripped', () => {
+    expect(twemojiFileCandidates('🍂')).toEqual(['1f342'])
   })
 })
 
@@ -83,5 +118,33 @@ describe('renderOgImage', () => {
 
   test('renders an emoji Twemoji does not have without throwing', async () => {
     await expect(renderOgImage({ kind: 'challenge', title: 'New 🫩' })).resolves.toBeInstanceOf(Buffer)
+  })
+
+  test('renders a challenge card with standings at 1200x630', async () => {
+    const png = await renderOgImage(
+      stepsCard(
+        [
+          { name: 'Fredrik', total: 123456 },
+          { name: 'Anna', total: 98765 },
+          { name: 'Bo', total: 45000 },
+        ],
+        'ongoing',
+      ),
+    )
+    const meta = await sharp(png).metadata()
+    expect(meta.width).toBe(OG_WIDTH)
+    expect(meta.height).toBe(OG_HEIGHT)
+  })
+
+  test('renders an upcoming challenge nobody has joined yet', async () => {
+    await expect(renderOgImage(stepsCard([], 'upcoming'))).resolves.toBeInstanceOf(Buffer)
+  })
+
+  test('paints the challenge in its theme gradient', async () => {
+    const png = await renderOgImage(stepsCard([], 'upcoming'))
+    const { data, info } = await sharp(png).raw().toBuffer({ resolveWithObject: true })
+    const offset = (10 * info.width + 10) * info.channels
+    const [r, g] = [data[offset], data[offset + 1]]
+    expect(g).toBeGreaterThan(r)
   })
 })

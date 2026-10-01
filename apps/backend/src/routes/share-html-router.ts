@@ -12,7 +12,13 @@
 import { type Response, Router } from 'express'
 
 import { isValidUsername } from '../api/auth-routes.ts'
-import { getChallengeBySlug, getSharedDashboardBySlug, listPublicSharedDashboards } from '../db/index.ts'
+import {
+  getChallengeBySlug,
+  getSharedDashboardBySlug,
+  listChallengeMembers,
+  listPublicSharedDashboards,
+} from '../db/index.ts'
+import { describeChallenge, type ResolvedChallenge } from '../services/challenge-card.ts'
 import {
   buildChallengeShareMeta,
   buildDashboardShareMeta,
@@ -39,7 +45,7 @@ export interface ShareHtmlDeps {
   /** Loads the SPA index.html template, or null if unavailable. */
   loadTemplate: () => Promise<string | null>
   resolveDashboard: (username: string, slug: string) => Promise<ResolvedResource | null>
-  resolveChallenge: (username: string, slug: string) => Promise<ResolvedResource | null>
+  resolveChallenge: (username: string, slug: string) => Promise<ResolvedChallenge | null>
   /** True if the user's public profile exists (db reachable). */
   profileExists: (username: string) => Promise<boolean>
 }
@@ -68,7 +74,23 @@ export const createShareResolvers = (): Pick<
   resolveChallenge: async (username, slug) => {
     try {
       const challenge = await getChallengeBySlug(username, slug)
-      return challenge ? { is_public: challenge.is_public, name: challenge.name } : null
+      if (!challenge) return null
+      const members = challenge.is_public ? await listChallengeMembers(username, challenge.id) : []
+      return {
+        end_ts: challenge.end_ts.toISOString(),
+        is_public: challenge.is_public,
+        members: members
+          .filter((m) => m.status === 'active')
+          .map((m) => ({ cached_total: m.cached_total, display_name: m.display_name })),
+        name: challenge.name,
+        spec: {
+          pattern: challenge.spec.pattern,
+          source_type: challenge.spec.source_type,
+          unit: challenge.spec.unit,
+        },
+        start_ts: challenge.start_ts.toISOString(),
+        timezone: challenge.timezone,
+      }
     } catch (error) {
       if (isMissingDatabase(error)) return null
       throw error
@@ -156,9 +178,18 @@ export const createShareHtmlRouter = (deps: ShareHtmlDeps): Router => {
 
     const challenge = dashboard ? null : await resolveChallenge(username, slug)
     if (challenge?.is_public) {
+      const { measure, members, phrase, range } = describeChallenge(challenge, new Date())
       return sendHtml(
         loadTemplate,
-        withOembed(buildChallengeShareMeta({ name: challenge.name, url, username }), url),
+        withOembed(
+          buildChallengeShareMeta({
+            details: { measure, members: members.length, phrase, range },
+            name: challenge.name,
+            url,
+            username,
+          }),
+          url,
+        ),
         true,
         res,
       )

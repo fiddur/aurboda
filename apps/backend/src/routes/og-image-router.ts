@@ -13,6 +13,7 @@ import { type Response, Router } from 'express'
 import type { OgCard } from '../services/og-image.ts'
 
 import { isValidUsername } from '../api/auth-routes.ts'
+import { describeChallenge, type ResolvedChallenge } from '../services/challenge-card.ts'
 import { defaultOgImage } from '../services/share-meta.ts'
 
 interface ResolvedResource {
@@ -23,11 +24,12 @@ interface ResolvedResource {
 export interface OgImageDeps {
   webHost: string
   resolveDashboard: (username: string, slug: string) => Promise<ResolvedResource | null>
-  resolveChallenge: (username: string, slug: string) => Promise<ResolvedResource | null>
+  resolveChallenge: (username: string, slug: string) => Promise<ResolvedChallenge | null>
   profileExists: (username: string) => Promise<boolean>
   renderImage: (card: OgCard) => Promise<Buffer>
   /** The owner's avatar as a `data:` URI, embedded in the rendered card. */
   loadAvatarDataUri: (username: string) => Promise<string>
+  now?: () => Date
 }
 
 /** How many rendered cards to keep in memory before evicting the oldest. */
@@ -35,6 +37,7 @@ const MAX_CACHE_ENTRIES = 200
 
 export const createOgImageRouter = (deps: OgImageDeps): Router => {
   const { loadAvatarDataUri, profileExists, renderImage, resolveChallenge, resolveDashboard, webHost } = deps
+  const now = deps.now ?? (() => new Date())
   const router = Router()
 
   // The avatar is decorative, so a transient avatar-load failure must not drop
@@ -111,16 +114,27 @@ export const createOgImageRouter = (deps: OgImageDeps): Router => {
         avatarDataUri: await avatarOrUndefined(username),
         kind: 'dashboard',
         title: dashboard.name,
+        username,
       }))
     }
 
     const challenge = dashboard ? null : await resolveChallenge(username, slug)
     if (challenge?.is_public) {
-      return sendImage(res, `c:${username}/${slug}:${challenge.name}`, async () => ({
-        avatarDataUri: await avatarOrUndefined(username),
-        kind: 'challenge',
-        title: challenge.name,
-      }))
+      const details = describeChallenge(challenge, now())
+      // The phrase moves daily and totals move as data syncs; keying on both
+      // re-renders the memoised card instead of serving stale standings.
+      const standings = details.members.map((m) => `${m.name}=${m.total}`).join(',')
+      return sendImage(
+        res,
+        `c:${username}/${slug}:${challenge.name}:${details.phrase}:${standings}`,
+        async () => ({
+          avatarDataUri: await avatarOrUndefined(username),
+          challenge: details,
+          kind: 'challenge',
+          title: challenge.name,
+          username,
+        }),
+      )
     }
 
     return redirectToDefault(res)
