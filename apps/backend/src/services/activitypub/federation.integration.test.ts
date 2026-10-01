@@ -396,7 +396,10 @@ describe('Feed federation actor + WebFinger', () => {
       const built = await build(ctx, user, post, activity, `${ORIGIN}/api`)
       // `sendActivity` runs every default transformer (`actorDehydrator` clones
       // the activity unconditionally once it has an actor) before serialising.
-      const sent = getDefaultActivityTransformers<void>().reduce<Activity>((a, transform) => transform(a, ctx), built)
+      const sent = getDefaultActivityTransformers<void>().reduce<Activity>(
+        (a, transform) => transform(a, ctx),
+        built,
+      )
       expect(sent).not.toBe(built)
 
       const delivered = (await sent.toJsonLd({ format: 'compact' })) as Delivered
