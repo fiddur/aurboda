@@ -177,13 +177,16 @@ GET /.well-known/quantpub
 {
   "product": "my-qs-tool",
   "version": "1.0.0",
-  "quantpub": "0.1",
+  "quantpub": "0.2",
   "apiBase": "https://qs.example.net/api"
 }
 ```
 
 - `product` / `version`: free-form implementation identity.
-- `quantpub`: the spec version implemented.
+- `quantpub`: the spec version implemented. `0.2` is this document; `0.1`
+  differed only in snake_case payload field names and metric keys
+  (`api_base`, `start_time`, `heart_rate_avg`). Consumers MAY accept both
+  forms during the transition.
 - `apiBase`: the absolute base URL under which the §5/§6 endpoints live.
 
 One cacheable request (responses SHOULD carry e.g. `max-age=3600`) tells a
@@ -584,9 +587,8 @@ GET /api/public/freja/series?metric=stress&start=...&end=...&bucket=60s
   discovery document and structured activity shares, and follows FitPub
   actors alongside.
 
-Both implementations' payload fields predate this document's lowerCamelCase
-alignment and still serve the earlier snake_case forms (`api_base`,
-`start_time`, …); they will follow once naming settles in review.
+VertMatch serves the `0.1` snake_case field names at the time of writing;
+Aurboda serves `0.2` and accepts both on ingest.
 
 ## References
 
