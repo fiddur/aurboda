@@ -57,7 +57,7 @@ export const normalizeStructuredActivity = (input: unknown): unknown => {
   let changed = false
   const out: JsonRecord = {}
   for (const [k, v] of Object.entries(input)) {
-    if (k in LEGACY_FIELDS) {
+    if (Object.hasOwn(LEGACY_FIELDS, k)) {
       changed = true
       const renamed = LEGACY_FIELDS[k]
       if (renamed !== null && renamed !== undefined) out[renamed] = v
