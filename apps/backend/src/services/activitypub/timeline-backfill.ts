@@ -3,21 +3,25 @@
  * posts from their ActivityPub outbox and ingest them into the follower's home
  * timeline — so the timeline isn't empty until the followee next posts. The
  * outbox only carries `public`/`unlisted` posts, so followers-only and older
- * private posts are correctly never backfilled.
+ * private posts are correctly never backfilled. Servers whose outbox lists no
+ * items get a fallback: for FitPub (detected via NodeInfo) the post ids come
+ * from its public web API — see `fitpub-backfill.ts`.
  *
  * Best-effort throughout: a followee whose outbox is unreachable, private, or
  * slow simply yields no backfill — it never blocks or fails the follow. The
  * orchestration (`backfillFolloweeTimeline`) is Fedify- and DB-free via injected
  * deps, so it unit-tests without network or a database; the thin Fedify outbox
- * fetch is the only piece that talks to the wire.
+ * fetch and the FitPub fallback are the only pieces that talk to the wire.
  */
-import type { Federation } from '@fedify/fedify'
+import type { Context, Federation } from '@fedify/fedify'
 
-import { Collection, Create, isActor, Note } from '@fedify/fedify/vocab'
+import { type Actor, Collection, Create, isActor, Note } from '@fedify/fedify/vocab'
 
 import { type FeedFollowingRecord, getFeedFollowingByActor } from '../../db/index.ts'
+import { safeFetchGet } from '../safe-fetch.ts'
 import { withTimeout } from '../with-timeout.ts'
 import { ingestNoteForRecipient } from './federation.ts'
+import { fetchFitpubRecentNotes } from './fitpub-backfill.ts'
 import { createAurbodaEnricher } from './timeline-enrich.ts'
 
 /** Most recent posts pulled from a followee's outbox on backfill. */
@@ -81,15 +85,8 @@ export const backfillFolloweeTimeline = async (
  * Outbox entries are usually `Create` activities wrapping the Note; some servers
  * also list bare Notes. Boosts and other activities are ignored.
  */
-const fetchRecentOutboxNotes = async (
-  federation: Federation<void>,
-  origin: string,
-  actorUri: string,
-  limit: number,
-): Promise<Note[]> => {
-  const ctx = await federation.createContext(new URL(origin))
-  const actor = await ctx.lookupObject(actorUri)
-  if (!isActor(actor) || actor.outboxId == null) return []
+const fetchRecentOutboxNotes = async (ctx: Context<void>, actor: Actor, limit: number): Promise<Note[]> => {
+  if (actor.outboxId == null) return []
   const outbox = await ctx.lookupObject(actor.outboxId)
   if (!(outbox instanceof Collection)) return []
 
@@ -112,7 +109,42 @@ const fetchRecentOutboxNotes = async (
 }
 
 /**
- * Production backfiller wired to Fedify (outbox fetch), the real enricher, and
+ * The outbox first; only when it yields no Notes (FitPub serves a count-only
+ * outbox) fall back to the FitPub post listing, which itself returns `[]` for
+ * any server that isn't FitPub.
+ */
+const fetchRecentPublicNotes = async (
+  federation: Federation<void>,
+  origin: string,
+  actorUri: string,
+  limit: number,
+): Promise<Note[]> => {
+  const ctx = await federation.createContext(new URL(origin))
+  const actor = await ctx.lookupObject(actorUri)
+  if (!isActor(actor)) return []
+  const outboxNotes = await fetchRecentOutboxNotes(ctx, actor, limit).catch((): Note[] => [])
+  if (outboxNotes.length > 0) return outboxNotes
+
+  try {
+    return await fetchFitpubRecentNotes(
+      {
+        fetchJson: async (url) => (await safeFetchGet(url, { headers: { Accept: 'application/json' } })).data,
+        lookupNote: async (url) => {
+          const object = await ctx.lookupObject(url)
+          return object instanceof Note ? object : null
+        },
+      },
+      actorUri,
+      actor.preferredUsername?.toString() ?? null,
+      limit,
+    )
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Production backfiller wired to Fedify (outbox fetch, FitPub fallback), the real enricher, and
  * the DB. Returns the fire-and-forget trigger to pass as `createFeedFederation`'s
  * `onFollowAccepted`: it time-boxes the whole backfill and swallows every error,
  * so a slow or hostile outbox can never affect inbox processing.
@@ -123,7 +155,7 @@ export const createTimelineBackfiller = (
 ): ((user: string, actorUri: string) => void) => {
   const enrich = createAurbodaEnricher(origin)
   const deps: BackfillDeps = {
-    fetchRecentNotes: (actorUri, limit) => fetchRecentOutboxNotes(federation, origin, actorUri, limit),
+    fetchRecentNotes: (actorUri, limit) => fetchRecentPublicNotes(federation, origin, actorUri, limit),
     getFollowee: getFeedFollowingByActor,
     ingestNote: async (user, note, followee) => {
       await ingestNoteForRecipient(user, note, followee, enrich, origin)
