@@ -11,6 +11,18 @@ const summarizeValue = (value: unknown): unknown => {
 }
 
 /**
+ * Skips stringifying a (up to 10 MB) body whose size is already settled: an
+ * array of n items serializes to at least 2n + 1 chars and a string of n chars
+ * to at least n + 2, so either one alone takes the body over the limit.
+ */
+const certainlyOverLimit = (values: unknown[]): boolean =>
+  values.some(
+    (v) =>
+      (Array.isArray(v) && v.length > FULL_DETAIL_MAX_CHARS / 2) ||
+      (typeof v === 'string' && v.length > FULL_DETAIL_MAX_CHARS),
+  )
+
+/**
  * Audit `details` for a request or response body. Small bodies are kept whole;
  * bulk uploads (sync chunks up to 10 MB) are reduced to a shallow summary so
  * the audit log does not store every upload a second time.
@@ -24,7 +36,12 @@ export const summarizeAuditBody = (body: unknown): Record<string, unknown> | und
       k === 'password' ? [k, '[REDACTED]'] : [k, v],
     ),
   )
-  if (JSON.stringify(redacted).length <= FULL_DETAIL_MAX_CHARS) return redacted
+  if (
+    !certainlyOverLimit(Object.values(redacted)) &&
+    JSON.stringify(redacted).length <= FULL_DETAIL_MAX_CHARS
+  ) {
+    return redacted
+  }
 
   return {
     ...Object.fromEntries(Object.entries(redacted).map(([k, v]) => [k, summarizeValue(v)])),

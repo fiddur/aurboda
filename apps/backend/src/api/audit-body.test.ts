@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 
 import { summarizeAuditBody } from './audit-body.ts'
 
@@ -57,5 +57,37 @@ describe('summarizeAuditBody', () => {
 
   test('reduces an array body to its length', () => {
     expect(summarizeAuditBody([1, 2, 3])).toEqual({ items: 3 })
+  })
+})
+
+describe('summarizeAuditBody early-out', () => {
+  test.each([
+    ['2049 tiny items', { values: Array.from({ length: 2049 }, () => 0) }, { values: { count: 2049 } }],
+    ['a 4097-char string', { text: 'x'.repeat(4097) }, { text: `${'x'.repeat(200)}…` }],
+  ])('skips stringifying for %s, with the summary the full check gives', (_label, body, summary) => {
+    expect(JSON.stringify(body).length).toBeGreaterThan(4096)
+
+    const spy = vi.spyOn(JSON, 'stringify')
+    const result = summarizeAuditBody(body)
+    expect(spy).not.toHaveBeenCalled()
+    spy.mockRestore()
+
+    expect(result).toEqual({ ...summary, _truncated: true })
+  })
+
+  test('the bounds are tight: 2048 tiny items and a 4096-char string still go through the full check', () => {
+    expect(summarizeAuditBody({ values: Array.from({ length: 2048 }, () => 0) })).toEqual({
+      _truncated: true,
+      values: { count: 2048 },
+    })
+    expect(summarizeAuditBody({ text: 'x'.repeat(4096) })).toEqual({
+      _truncated: true,
+      text: `${'x'.repeat(200)}…`,
+    })
+  })
+
+  test('keeps a small body whose array is long but tiny', () => {
+    const body = { values: Array.from({ length: 201 }, () => 0) }
+    expect(summarizeAuditBody(body)).toEqual(body)
   })
 })
