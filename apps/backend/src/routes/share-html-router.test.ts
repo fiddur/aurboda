@@ -62,7 +62,9 @@ describe('GET /u/:username/:slug', () => {
   test('renders rich meta for a public challenge when no dashboard matches', async () => {
     const app = buildApp({
       resolveChallenge: async () => ({
+        banner_updated_at: null,
         end_ts: '2999-02-01T00:00:00.000Z',
+        id: 'c1',
         is_public: true,
         members: [],
         name: 'Step Count',

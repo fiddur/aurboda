@@ -13,12 +13,15 @@ import { type ChallengeTheme, challengeTheme } from './og-challenge-theme.ts'
 
 /** A public challenge resolved far enough to describe it on a share card or in meta. */
 export interface ResolvedChallenge {
+  id: string
   name: string
   is_public: boolean
   spec: { source_type: ChallengeSourceType; pattern: string; unit: string }
   start_ts: string
   end_ts: string
   timezone: string
+  /** ISO time the host last set the banner; null when there is none. */
+  banner_updated_at: string | null
   /** Active members with their cached totals. */
   members: { display_name: string; cached_total: number | null }[]
 }
@@ -40,10 +43,17 @@ const byTotalDesc = (a: OgChallengeMember, b: OgChallengeMember): number => {
   return b.total - a.total
 }
 
+/** `trail_running` → `Trail running`; activity-type ids have no display name yet. */
+const humanizeActivityType = (pattern: string): string => {
+  const words = pattern.replaceAll(/[_-]+/g, ' ').trim()
+  return words.charAt(0).toUpperCase() + words.slice(1)
+}
+
 export const describeChallenge = (resolved: ResolvedChallenge, now: Date): ChallengeDescription => {
   const { end_ts, spec, start_ts, timezone } = resolved
   return {
-    measure: spec.source_type === 'metric' ? getMetricDisplayName(spec.pattern) : spec.pattern,
+    measure:
+      spec.source_type === 'metric' ? getMetricDisplayName(spec.pattern) : humanizeActivityType(spec.pattern),
     members: resolved.members
       .map((m) => ({ name: m.display_name, total: m.cached_total }))
       .toSorted(byTotalDesc),

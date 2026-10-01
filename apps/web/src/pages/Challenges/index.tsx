@@ -30,12 +30,14 @@ import { SHARE_VISIBILITY_OPTIONS, VisibilitySelector } from '../../components/V
 import {
   createChallenge,
   deleteChallenge,
+  deleteChallengeBanner,
   discoverChallenges,
   joinChallengeByUrl,
   leaveChallenge,
   listChallenges,
   listMyChallengeParticipations,
   updateChallenge,
+  uploadChallengeBanner,
 } from '../../state/api'
 import {
   type ChallengeItem,
@@ -279,7 +281,25 @@ function HostedRow({ challenge, now }: { challenge: Challenge; now: Date }) {
     onError: () => alert('Failed to update the challenge.'),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['challenges'] }),
   })
+  const uploadBanner = useMutation({
+    mutationFn: (file: File) => uploadChallengeBanner(challenge.id, file),
+    onError: () => alert('Failed to upload the banner. Use a PNG, JPEG, WebP or GIF image up to 10 MB.'),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['challenges'] }),
+  })
+  const removeBanner = useMutation({
+    mutationFn: () => deleteChallengeBanner(challenge.id),
+    onError: () => alert('Failed to remove the banner.'),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['challenges'] }),
+  })
   const canToggleAnnounce = challenge.announcement_pending
+
+  const onBannerChange = (e: Event) => {
+    const input = e.target as HTMLInputElement
+    const file = input.files?.[0]
+    if (file) uploadBanner.mutate(file)
+    // Reset so re-picking the same file (e.g. retry after a failure) re-fires onChange.
+    input.value = ''
+  }
 
   const copy = async () => {
     try {
@@ -306,6 +326,7 @@ function HostedRow({ challenge, now }: { challenge: Challenge; now: Date }) {
         url={challenge.share_url}
       />
       <div class="challenge-row-actions">
+        {challenge.banner_url && <img class="challenge-row-banner" src={challenge.banner_url} alt="" />}
         <a class="btn-secondary" href={challenge.share_url}>
           View
         </a>
@@ -315,6 +336,24 @@ function HostedRow({ challenge, now }: { challenge: Challenge; now: Date }) {
         <button class="btn-secondary" onClick={() => setSharing(true)}>
           Share to feed
         </button>
+        <label class="btn-secondary challenge-row-upload">
+          {uploadBanner.isPending ? 'Uploading…' : challenge.banner_url ? 'Replace banner' : 'Set banner'}
+          <input
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif"
+            onChange={onBannerChange}
+            disabled={uploadBanner.isPending}
+          />
+        </label>
+        {challenge.banner_url && (
+          <button
+            class="btn-secondary"
+            disabled={removeBanner.isPending}
+            onClick={() => removeBanner.mutate()}
+          >
+            Remove banner
+          </button>
+        )}
         <button class="btn-danger" onClick={() => confirm(`Delete "${challenge.name}"?`) && del.mutate()}>
           Delete
         </button>

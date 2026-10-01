@@ -21,6 +21,7 @@ import {
   type UpdateChallengeBody,
   updateChallengeBodySchema,
 } from '@aurboda/api-spec'
+import multer from 'multer'
 
 import type { DiscoverChallenges } from '../services/challenge-discovery.ts'
 
@@ -29,6 +30,7 @@ import {
   type ChallengeRecord,
   createChallenge,
   deleteChallenge,
+  deleteChallengeBanner,
   deleteChallengeParticipation,
   getChallengeById,
   listChallengeMembers,
@@ -36,8 +38,11 @@ import {
   listChallenges,
   removeChallengeMember,
   updateChallenge,
+  upsertChallengeBanner,
   upsertChallengeMember,
 } from '../db/index.ts'
+import { isAllowedImageType, processBanner } from '../services/avatar.ts'
+import { bannerUrlFor } from '../services/challenge-banner.ts'
 import { JoinChallengeError, joinChallenge } from '../services/challenge-federation.ts'
 import { announcementPending } from '../services/challenge-results.ts'
 import { effectiveBucketSize, specToApi } from '../services/challenge-spec.ts'
@@ -46,6 +51,11 @@ import { buildProfileUrl, buildShareUrl } from '../services/share-urls.ts'
 import { isPublicToVisibility, visibilityToIsPublic } from '../services/visibility.ts'
 import { type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody } from '../validation.ts'
+
+const bannerUpload = multer({
+  limits: { fileSize: 10 * 1024 * 1024 },
+  storage: multer.memoryStorage(),
+})
 
 const serializeParticipation = (p: ChallengeParticipationRecord) => ({
   challenge_url: p.challenge_url,
@@ -63,6 +73,7 @@ const serializeParticipation = (p: ChallengeParticipationRecord) => ({
 const serialize = (record: ChallengeRecord, webHost: string, username: string): Challenge => ({
   announce_winner: record.announce_winner,
   announcement_pending: announcementPending(record, new Date()),
+  banner_url: bannerUrlFor(record, webHost, username),
   created_at: record.created_at.toISOString(),
   end_ts: record.end_ts.toISOString(),
   id: record.id,
@@ -176,6 +187,49 @@ export const createChallengesRouter = (
     const deleted = await deleteChallenge(user, req.params.id)
     if (!deleted) return res.status(404).json({ error: 'Challenge not found', success: false })
     res.json({ success: true })
+  })
+
+  router.post<{ id: string }, ChallengeResponse>(
+    '/:id/banner',
+    authMiddleware,
+    bannerUpload.single('banner'),
+    async (req, res) => {
+      const user = req.user!
+      const file = req.file
+      if (!file) return res.status(400).json({ error: 'No file uploaded', success: false })
+      if (!isAllowedImageType(file.mimetype)) {
+        return res.status(400).json({
+          error: `Unsupported file type: ${file.mimetype}. Allowed: PNG, JPEG, WebP, GIF`,
+          success: false,
+        })
+      }
+      if (!(await getChallengeById(user, req.params.id))) {
+        return res.status(404).json({ error: 'Challenge not found', success: false })
+      }
+
+      let processed
+      try {
+        processed = await processBanner(file.buffer)
+      } catch {
+        return res.status(400).json({ error: 'Could not process image', success: false })
+      }
+
+      await upsertChallengeBanner(user, req.params.id, processed.content_type, processed.data)
+      const record = await getChallengeById(user, req.params.id)
+      if (!record) return res.status(404).json({ error: 'Challenge not found', success: false })
+      res.json({ challenge: serialize(record, webHost, user), success: true })
+    },
+  )
+
+  router.delete<{ id: string }, ChallengeResponse>('/:id/banner', authMiddleware, async (req, res) => {
+    const user = req.user!
+    if (!(await getChallengeById(user, req.params.id))) {
+      return res.status(404).json({ error: 'Challenge not found', success: false })
+    }
+    await deleteChallengeBanner(user, req.params.id)
+    const record = await getChallengeById(user, req.params.id)
+    if (!record) return res.status(404).json({ error: 'Challenge not found', success: false })
+    res.json({ challenge: serialize(record, webHost, user), success: true })
   })
 
   router.get<{ id: string }, ChallengeStandingsResponse>(

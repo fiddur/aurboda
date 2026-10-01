@@ -57,6 +57,7 @@ import { createOgImageRouter } from '../routes/og-image-router.ts'
 import { createProductivityRouter } from '../routes/productivity-router.ts'
 import { createProfileRouter } from '../routes/profile-router.ts'
 import { createPublicAvatarRouter } from '../routes/public-avatar-router.ts'
+import { createPublicBannerRouter } from '../routes/public-banner-router.ts'
 import { createPublicSharesRouter } from '../routes/public-shares-router.ts'
 import { createRawRecordsRouter } from '../routes/raw-records-router.ts'
 import { createReportsRouter } from '../routes/reports-router.ts'
@@ -72,7 +73,7 @@ import { createWellKnownRouter, type WellKnownConfig } from '../routes/well-know
 import { renderChartPng, renderRoutePng, renderScatterPng } from '../services/activitypub/feed-images.ts'
 import { fetchOsmTile } from '../services/activitypub/osm-tiles.ts'
 import { getArticleChartSeriesData, getArticleCorrelationScatter } from '../services/article-block-data.ts'
-import { loadAvatarDataUri } from '../services/avatar-resolve.ts'
+import { loadAvatarDataUri, loadChallengeBannerDataUri } from '../services/avatar-resolve.ts'
 import { buildChartSvg } from '../services/charts/chart-svg.ts'
 import { buildScatterSvg } from '../services/charts/scatter-svg.ts'
 import { resolveFeedActivity } from '../services/feed.ts'
@@ -229,13 +230,16 @@ export const mountRestRouters = ({
     }),
   )
   httpd.use(createPublicSharesRouter(webHost))
-  // Mounted before the share-html router so `/u/.../opengraph-image.png` and
-  // `/u/:username/avatar.png` win over the generic `/u/:username/:slug` HTML route.
+  // Mounted before the share-html router so `/u/.../opengraph-image.png`,
+  // `/u/:username/avatar.png` and `/u/:username/:slug/banner.webp` win over the
+  // generic `/u/:username/:slug` HTML route.
   httpd.use(createPublicAvatarRouter())
+  httpd.use(createPublicBannerRouter())
   httpd.use(createOEmbedRouter({ webHost, ...createShareResolvers() }))
   httpd.use(
     createOgImageRouter({
       loadAvatarDataUri,
+      loadBannerDataUri: loadChallengeBannerDataUri,
       renderImage: createOgImageRenderer(),
       webHost,
       ...createShareResolvers(),

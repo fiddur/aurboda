@@ -143,6 +143,7 @@ export const tableCreationOrder = [
   'challenges_result_columns',
   'challenge_members',
   'challenge_members_indexes',
+  'challenge_banner',
   'challenge_participations',
   'challenge_participations_indexes',
   'challenge_left',

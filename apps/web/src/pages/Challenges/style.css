@@ -167,6 +167,46 @@
   min-width: 0;
 }
 
+.challenge-row-banner {
+  height: 48px;
+  aspect-ratio: 1200 / 630;
+  object-fit: cover;
+  border-radius: 6px;
+}
+
+.challenge-row-upload {
+  position: relative;
+  cursor: pointer;
+}
+
+/* Visually hidden but still focusable, so keyboard users reach the picker; the label shows the focus ring. */
+.challenge-row-upload input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.challenge-row-upload:focus-within {
+  outline: 2px solid #8b5cf6;
+  outline-offset: 2px;
+}
+
+.challenge-banner {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1200 / 630;
+  max-height: 280px;
+  object-fit: cover;
+  border-radius: 12px;
+  margin-bottom: 16px;
+}
+
 /* Open challenges from people you follow (discovery) */
 .challenge-row-badge-open {
   color: #92400e;

@@ -35,12 +35,23 @@ base-URL federation identity, and the bucketed-data engine behind dashboards.
   (`1d`/`1w`/`1M`) for very long challenges. The resolved size is exposed to viewers as
   `effective_bucket_size` on the public challenge; because it derives purely from the
   window, every instance resolves the same size, so members' series stay aligned.
+- **Banner (optional):** the host can set one banner image per challenge. It is
+  normalised to a 1200×630 WebP (cropped to cover, metadata stripped) and stored in
+  the host's DB (`challenge_banner`, one row per challenge, apart from `challenges` so
+  listing never loads image bytes; deleted with the challenge). It becomes the
+  background of the challenge's Open Graph card (text drawn over a darkening overlay,
+  in place of the themed gradient) and the hero at the top of the public challenge
+  page. Removing it brings back the themed card.
 
 ## URLs & storage
 
 - A challenge lives at `<public-base>/u/<username>/<slug>` — the **same namespace**
   as shared dashboards. The public resolver `/public/:username/:slug` returns a
   `type` (`dashboard` | `challenge`); slugs are unique across both per user.
+- The banner is served at `<public-base>/u/<username>/<slug>/banner.webp` for public
+  **and** unlisted challenges (anyone with the link sees the page that shows it); 404
+  when there is none. `banner_url` carries a `?v=<updated-at>` version, and a
+  versioned request is cached `immutable` for a year (unversioned: 5 minutes).
 - Challenges + members live in the **host's** per-user DB; a joiner's
   _participations_ live in the **joiner's** DB, each backed by an unguessable
   `data_token`. No central-DB tables.
@@ -192,7 +203,9 @@ the backend directly need no extra config.
 
 - **Manage** at `/challenges` ("Challenges" under the sidebar **Sharing** section): create a challenge (name,
   metric or activity type, sum/count, unit, date range with This-week/This-month
-  quick-sets, public/unlisted), copy its link, delete it; see challenges you've
+  quick-sets, public/unlisted), copy its link, delete it, and **Set / Replace / Remove
+  banner** (PNG, JPEG, WebP or GIF up to 10 MB; a thumbnail shows on the row once one
+  is set); see challenges you've
   joined; and **join by URL** (paste any challenge link — local or remote).
 - **From people you follow:** open challenges hosted by followed users (any Aurboda
   instance) that you haven't joined, each with a one-click **Join** — see _Discovery_
@@ -200,7 +213,7 @@ the backend directly need no extra config.
   followed instance couldn't be reached.
 - **View** at `/u/<username>/<slug>`: a cumulative **race chart** (one line per
   member) + a **leaderboard** (rank, colour dot matching the member's chart line,
-  `@member · host`, total, freshness). This is
+  `@member · host`, total, freshness), under the host's banner when one is set. This is
   the same `/u/:username/:slug` page as shared dashboards — the server returns a
   `type` and the page renders the right view.
 - **Join buttons:** logged-in users on the host instance get a one-click **Join**;
@@ -245,6 +258,14 @@ See `docs/android-app.md` → _Home-screen widgets_.
 `DELETE /challenges/participations/:id`. The same CRUD + join is available over MCP
 (`create/list/update/delete_challenge`, `join_challenge`). A hosted challenge carries
 `announce_winner` (create/update/read; see _Completion & winner announcement_).
+
+Banner: `POST /challenges/:id/banner` (multipart, field `banner`; 400 for a missing,
+unsupported or undecodable file, 404 for a challenge that isn't yours) and
+`DELETE /challenges/:id/banner` both answer with the `Challenge`. `banner_url`
+(absolute, versioned; `null` when none) is on `Challenge` (REST and the MCP
+`list/update_challenge` output) and on the public `PublicChallenge`. There is no MCP
+tool for the upload itself: a binary upload has no MCP counterpart, as with the profile
+avatar.
 
 ## Out of scope (v1) / future hardening
 

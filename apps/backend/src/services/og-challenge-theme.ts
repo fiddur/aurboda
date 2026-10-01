@@ -61,12 +61,13 @@ export const DEFAULT_CHALLENGE_THEME: ChallengeTheme = {
   key: 'default',
 }
 
-/** Pick a card theme from what the challenge measures (metric name or activity type). */
+// Activity-type ids are snake_case, so underscores become spaces before the
+// word-boundary rules run: `trail_running` must still read as running.
 export const challengeTheme = (spec: {
   source_type: ChallengeSourceType
   pattern: string
 }): ChallengeTheme => {
-  const pattern = spec.pattern.toLowerCase()
+  const pattern = spec.pattern.toLowerCase().replaceAll(/[_-]+/g, ' ')
   const rule = THEME_RULES.find(({ test }) => test.test(pattern))
   return rule ? { emoji: rule.emoji, gradient: rule.gradient, key: rule.key } : DEFAULT_CHALLENGE_THEME
 }

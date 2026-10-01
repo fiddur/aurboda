@@ -3,6 +3,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 import type { ChallengeSpecFields } from './challenges.ts'
 
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
+import { upsertChallengeBanner } from './challenge-banner.ts'
 import {
   createChallenge,
   createChallengeParticipation,
@@ -75,6 +76,20 @@ describe('Challenges integration', () => {
     const bySlug = await getChallengeBySlug(user, created.slug)
     expect(bySlug?.id).toBe(created.id)
     expect(await getChallengeBySlug(user, 'nope')).toBeNull()
+  })
+
+  test('reports banner_updated_at once a banner is set', async () => {
+    const user = getTestUser()
+    const created = await createChallenge(user, sampleInput('Bannered'))
+    expect(created.banner_updated_at).toBeNull()
+    expect((await getChallengeBySlug(user, created.slug))?.banner_updated_at).toBeNull()
+
+    await upsertChallengeBanner(user, created.id, 'image/webp', Buffer.from([1, 2, 3]))
+    expect((await getChallengeBySlug(user, created.slug))?.banner_updated_at).toBeInstanceOf(Date)
+    expect((await listChallenges(user))[0].banner_updated_at).toBeInstanceOf(Date)
+    expect((await updateChallenge(user, created.id, { name: 'Renamed' }))?.banner_updated_at).toBeInstanceOf(
+      Date,
+    )
   })
 
   test('slug does not collide with a shared dashboard slug', async () => {

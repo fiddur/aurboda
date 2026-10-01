@@ -279,6 +279,13 @@ export {
   upsertChallengeMember,
 } from './challenges.ts'
 
+export {
+  type ChallengeBanner,
+  deleteChallengeBanner,
+  getChallengeBanner,
+  upsertChallengeBanner,
+} from './challenge-banner.ts'
+
 export { isMissingDatabase } from './pg-errors.ts'
 
 export { type ActorKeyPair, getOrCreateActorKeyPair } from './feed-actor.ts'

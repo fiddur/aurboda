@@ -29,6 +29,8 @@ export interface OgImageDeps {
   renderImage: (card: OgCard) => Promise<Buffer>
   /** The owner's avatar as a `data:` URI, embedded in the rendered card. */
   loadAvatarDataUri: (username: string) => Promise<string>
+  /** The challenge's banner as a `data:` URI, or undefined when it has none. */
+  loadBannerDataUri: (username: string, challengeId: string) => Promise<string | undefined>
   now?: () => Date
 }
 
@@ -36,7 +38,15 @@ export interface OgImageDeps {
 const MAX_CACHE_ENTRIES = 200
 
 export const createOgImageRouter = (deps: OgImageDeps): Router => {
-  const { loadAvatarDataUri, profileExists, renderImage, resolveChallenge, resolveDashboard, webHost } = deps
+  const {
+    loadAvatarDataUri,
+    loadBannerDataUri,
+    profileExists,
+    renderImage,
+    resolveChallenge,
+    resolveDashboard,
+    webHost,
+  } = deps
   const now = deps.now ?? (() => new Date())
   const router = Router()
 
@@ -48,6 +58,15 @@ export const createOgImageRouter = (deps: OgImageDeps): Router => {
       return await loadAvatarDataUri(username)
     } catch (error) {
       console.error('OG avatar load failed, rendering card without it:', error)
+      return undefined
+    }
+  }
+  // Decorative too: a failed banner load renders the themed card instead.
+  const bannerOrUndefined = async (username: string, challengeId: string): Promise<string | undefined> => {
+    try {
+      return await loadBannerDataUri(username, challengeId)
+    } catch (error) {
+      console.error('OG banner load failed, rendering the themed card:', error)
       return undefined
     }
   }
@@ -126,10 +145,12 @@ export const createOgImageRouter = (deps: OgImageDeps): Router => {
       const standings = details.members.map((m) => `${m.name}=${m.total}`).join(',')
       return sendImage(
         res,
-        `c:${username}/${slug}:${challenge.name}:${details.phrase}:${standings}`,
+        `c:${username}/${slug}:${challenge.name}:${details.phrase}:${standings}:${challenge.banner_updated_at ?? ''}`,
         async () => ({
           avatarDataUri: await avatarOrUndefined(username),
-          challenge: details,
+          challenge: challenge.banner_updated_at
+            ? { ...details, bannerDataUri: await bannerOrUndefined(username, challenge.id) }
+            : details,
           kind: 'challenge',
           title: challenge.name,
           username,

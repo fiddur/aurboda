@@ -28,8 +28,13 @@ const hasLeafOrangePixel = async (png: Buffer): Promise<boolean> => {
   return false
 }
 
-const stepsCard = (members: OgChallengeMember[], status: 'ongoing' | 'upcoming'): OgCard => ({
+const stepsCard = (
+  members: OgChallengeMember[],
+  status: 'ongoing' | 'upcoming',
+  bannerDataUri?: string,
+): OgCard => ({
   challenge: {
+    bannerDataUri,
     measure: 'Steps',
     members,
     phrase: status === 'upcoming' ? 'Starts in 3 days' : 'Ends in 12 days',
@@ -146,5 +151,23 @@ describe('renderOgImage', () => {
     const offset = (10 * info.width + 10) * info.channels
     const [r, g] = [data[offset], data[offset + 1]]
     expect(g).toBeGreaterThan(r)
+  })
+
+  test('draws a host-set banner full-bleed under a darkening overlay instead of the theme', async () => {
+    const jpeg = await sharp({
+      create: { background: { b: 0, g: 140, r: 255 }, channels: 3, height: OG_HEIGHT, width: OG_WIDTH },
+    })
+      .jpeg()
+      .toBuffer()
+    const png = await renderOgImage(
+      stepsCard([], 'upcoming', `data:image/jpeg;base64,${jpeg.toString('base64')}`),
+    )
+    const { data, info } = await sharp(png).raw().toBuffer({ resolveWithObject: true })
+    const [r, g, b] = data.subarray(0, 3)
+    expect(r).toBeGreaterThan(150)
+    expect(r).toBeLessThan(230)
+    expect(g).toBeLessThan(r)
+    expect(b).toBeLessThan(40)
+    expect(info.width).toBe(OG_WIDTH)
   })
 })

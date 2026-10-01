@@ -38,6 +38,8 @@ export interface ChallengeRecord {
   announce_winner: boolean
   /** When the completion sweep published (or deliberately skipped) the result; null while pending. */
   result_published_at: Date | null
+  /** When the host last set the banner image; null when none is set. */
+  banner_updated_at: Date | null
   created_at: Date
   updated_at: Date
 }
@@ -115,6 +117,8 @@ export interface ChallengeParticipationInput {
 const CHALLENGE_COLUMNS =
   'id, slug, name, is_public, source_type, pattern, activity_type_id, aggregation, unit, bucket_size, start_ts, end_ts, timezone, join_token, announce_winner, result_published_at, created_at, updated_at'
 
+const CHALLENGE_SELECT_COLUMNS = `${CHALLENGE_COLUMNS}, (SELECT b.updated_at FROM challenge_banner b WHERE b.challenge_id = challenges.id) AS banner_updated_at`
+
 const MEMBER_COLUMNS =
   'id, challenge_id, identity_base_url, display_name, kind, local_user, data_endpoint_url, status, joined_at, last_fetched_at, data_last_updated, cached_total, cached_buckets, last_error'
 
@@ -138,6 +142,7 @@ interface ChallengeRow {
   join_token: string
   announce_winner: boolean
   result_published_at: Date | null
+  banner_updated_at?: Date | null
   created_at: Date
   updated_at: Date
 }
@@ -153,6 +158,7 @@ const toSpec = (row: ChallengeRow | ParticipationRow): ChallengeSpecFields => ({
 
 const mapChallenge = (row: ChallengeRow): ChallengeRecord => ({
   announce_winner: row.announce_winner,
+  banner_updated_at: row.banner_updated_at ?? null,
   created_at: row.created_at,
   end_ts: row.end_ts,
   id: row.id,
@@ -214,7 +220,7 @@ const isUniqueViolation = (error: unknown): boolean =>
 export const listChallenges = async (user: string): Promise<ChallengeRecord[]> => {
   const result = await query<ChallengeRow>(
     user,
-    `SELECT ${CHALLENGE_COLUMNS} FROM challenges ORDER BY created_at DESC`,
+    `SELECT ${CHALLENGE_SELECT_COLUMNS} FROM challenges ORDER BY created_at DESC`,
   )
   return result.rows.map(mapChallenge)
 }
@@ -222,7 +228,7 @@ export const listChallenges = async (user: string): Promise<ChallengeRecord[]> =
 export const listPublicChallenges = async (user: string): Promise<ChallengeRecord[]> => {
   const result = await query<ChallengeRow>(
     user,
-    `SELECT ${CHALLENGE_COLUMNS} FROM challenges WHERE is_public = true ORDER BY created_at DESC`,
+    `SELECT ${CHALLENGE_SELECT_COLUMNS} FROM challenges WHERE is_public = true ORDER BY created_at DESC`,
   )
   return result.rows.map(mapChallenge)
 }
@@ -230,7 +236,7 @@ export const listPublicChallenges = async (user: string): Promise<ChallengeRecor
 export const getChallengeById = async (user: string, id: string): Promise<ChallengeRecord | null> => {
   const result = await query<ChallengeRow>(
     user,
-    `SELECT ${CHALLENGE_COLUMNS} FROM challenges WHERE id = $1`,
+    `SELECT ${CHALLENGE_SELECT_COLUMNS} FROM challenges WHERE id = $1`,
     [id],
   )
   return result.rows.length ? mapChallenge(result.rows[0]) : null
@@ -239,7 +245,7 @@ export const getChallengeById = async (user: string, id: string): Promise<Challe
 export const getChallengeBySlug = async (user: string, slug: string): Promise<ChallengeRecord | null> => {
   const result = await query<ChallengeRow>(
     user,
-    `SELECT ${CHALLENGE_COLUMNS} FROM challenges WHERE slug = $1`,
+    `SELECT ${CHALLENGE_SELECT_COLUMNS} FROM challenges WHERE slug = $1`,
     [slug],
   )
   return result.rows.length ? mapChallenge(result.rows[0]) : null
@@ -320,12 +326,12 @@ export const updateChallenge = async (
 
   sets.push('updated_at = NOW()')
   params.push(id)
-  const result = await query<ChallengeRow>(
+  const result = await query(
     user,
-    `UPDATE challenges SET ${sets.join(', ')} WHERE id = $${idx} RETURNING ${CHALLENGE_COLUMNS}`,
+    `UPDATE challenges SET ${sets.join(', ')} WHERE id = $${idx} RETURNING id`,
     params,
   )
-  return result.rows.length ? mapChallenge(result.rows[0]) : null
+  return result.rows.length ? getChallengeById(user, id) : null
 }
 
 export const deleteChallenge = async (user: string, id: string): Promise<boolean> => {
@@ -348,7 +354,7 @@ export const listChallengesAwaitingResult = async (
 ): Promise<ChallengeRecord[]> => {
   const result = await query<ChallengeRow>(
     user,
-    `SELECT ${CHALLENGE_COLUMNS} FROM challenges
+    `SELECT ${CHALLENGE_SELECT_COLUMNS} FROM challenges
      WHERE announce_winner = true AND result_published_at IS NULL
        AND end_ts <= $1 AND end_ts > $2
      ORDER BY end_ts ASC`,

@@ -3,7 +3,9 @@ import { describe, expect, test } from 'vitest'
 import { describeChallenge, type ResolvedChallenge } from './challenge-card.ts'
 
 const october = (overrides: Partial<ResolvedChallenge> = {}): ResolvedChallenge => ({
+  banner_updated_at: null,
   end_ts: '2026-11-01T00:00:00.000Z',
+  id: 'c1',
   is_public: true,
   members: [],
   name: 'October steps',
@@ -49,10 +51,15 @@ describe('describeChallenge', () => {
 
   test('an ended activity-type challenge is measured by the activity name', () => {
     const d = describeChallenge(
-      october({ spec: { pattern: 'Running', source_type: 'activity_type', unit: 'km' } }),
+      october({ spec: { pattern: 'trail_running', source_type: 'activity_type', unit: 'km' } }),
       new Date('2026-11-05T12:00:00Z'),
     )
-    expect(d).toMatchObject({ measure: 'Running', phrase: 'Ended 31 Oct 2026', status: 'ended', unit: 'km' })
+    expect(d).toMatchObject({
+      measure: 'Trail running',
+      phrase: 'Ended 31 Oct 2026',
+      status: 'ended',
+      unit: 'km',
+    })
     expect(d.theme.key).toBe('running')
   })
 })

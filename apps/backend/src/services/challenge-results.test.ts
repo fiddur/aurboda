@@ -35,6 +35,7 @@ const standing = (
 
 const challenge = (overrides: Partial<ChallengeRecord> = {}): ChallengeRecord => ({
   announce_winner: true,
+  banner_updated_at: null,
   created_at: new Date('2026-08-01T00:00:00Z'),
   end_ts: new Date('2026-08-31T22:00:00Z'),
   id: 'c1',

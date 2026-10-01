@@ -32,13 +32,13 @@ export interface OgChallengeDetails {
   /** "Steps", "Running" — what is measured, for the eyebrow. */
   measure: string
   unit: string
-  /** "1 Oct – 31 Oct 2026" */
   range: string
-  /** "Starts in 3 days" / "Ends tomorrow" / "Ended 31 Oct 2026" */
   phrase: string
   status: ChallengeTimeStatus
   /** Active members, best total first; totals null while nothing has been fetched. */
   members: OgChallengeMember[]
+  /** The host-set banner as a `data:` URI (JPEG/PNG — Satori cannot decode WebP), drawn behind the text. */
+  bannerDataUri?: string
 }
 
 /** What the card should say. `kind` drives the small uppercase eyebrow label. */
@@ -238,6 +238,27 @@ const motif = (emoji: string): El =>
     emoji,
   )
 
+const bannerBackground = (dataUri: string): El[] => [
+  {
+    props: {
+      height: OG_HEIGHT,
+      src: dataUri,
+      style: { left: 0, objectFit: 'cover', position: 'absolute', top: 0 },
+      width: OG_WIDTH,
+    },
+    type: 'img',
+  },
+  el('div', {
+    backgroundImage: 'linear-gradient(180deg, rgba(0,0,0,0.25) 0%, rgba(0,0,0,0.78) 100%)',
+    display: 'flex',
+    height: OG_HEIGHT,
+    left: 0,
+    position: 'absolute',
+    top: 0,
+    width: OG_WIDTH,
+  }),
+]
+
 /** Build the Satori element tree for a card. */
 const cardTree = (card: OgCard): El => {
   const { challenge } = card
@@ -279,7 +300,11 @@ const cardTree = (card: OgCard): El => {
       width: '100%',
     },
     [
-      ...(challenge ? [motif(challenge.theme.emoji)] : []),
+      ...(challenge?.bannerDataUri
+        ? bannerBackground(challenge.bannerDataUri)
+        : challenge
+          ? [motif(challenge.theme.emoji)]
+          : []),
       el('div', { display: 'flex', flexDirection: 'column' }, [
         el(
           'div',

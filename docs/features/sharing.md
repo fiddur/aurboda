@@ -117,8 +117,11 @@ get the full SPA and hydrate normally — only the head is enriched.
   are numbers (`+N more` beyond that), "N joined" while totals are still being fetched,
   or "Be the first to join" before anyone has. The gradient and a large faded emoji
   are themed by what is measured (steps, running, cycling, swimming, sleep, heart-rate
-  zones, …; a purple trophy otherwise). The memo key includes the status phrase and
-  the totals, so a new day or a data sync re-renders the card.
+  zones, …; a purple trophy otherwise). A **host-set banner** replaces that themed
+  background: the banner is drawn full-bleed under a darkening overlay with the same
+  text over it, and no emoji motif (see [Challenges](./challenges.md#model)). The memo
+  key includes the status phrase, the totals and the banner's version, so a new day, a
+  data sync or a new banner re-renders the card.
   Non-public / unknown resources fall back to the branded static default
   (`/og-default.png`).
 - **Visibility is respected**: rich meta and rendered images are emitted only for

@@ -50,6 +50,7 @@ const followee = (actorUri: string, overrides: Partial<FeedFollowingRecord> = {}
 
 const record = (slug: string, overrides: Partial<ChallengeRecord> = {}): ChallengeRecord => ({
   announce_winner: true,
+  banner_updated_at: null,
   created_at: NOW,
   end_ts: new Date('2026-09-30T22:00:00Z'),
   id: `c-${slug}`,
