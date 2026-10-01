@@ -162,7 +162,7 @@ export const upsertTimelineEntry = async (
  * Remove every boost card of one Note, returning how many went — run when the
  * Note itself is stored directly, so the timeline ends up identical whichever
  * of the boost and the author's own delivery arrived first: the direct entry
- * alone (#1106; the other order never creates the card, see
+ * alone (the other order never creates the card, see
  * `getTimelineEntryByObjectUri`).
  */
 export const deleteBoostCardsOf = async (user: string, noteUri: string): Promise<number> => {
@@ -345,7 +345,7 @@ export const getTimelineEntryByObjectUri = async (
 /**
  * The latest `limit` replies this instance holds for one object, oldest first —
  * the comments under one of the owner's own posts. Past the cap it is the
- * OLDEST that drop out, so a new comment always shows (#1109). These are ordinary timeline rows: any
+ * OLDEST that drop out, so a new comment always shows. These are ordinary timeline rows: any
  * actor's Note that replied to an existing own post is admitted on ingest
  * (#1060), so no network is involved in reading them back.
  *

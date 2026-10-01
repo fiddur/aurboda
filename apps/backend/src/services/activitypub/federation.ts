@@ -260,7 +260,7 @@ export const ingestNoteForRecipient = async (
     structured,
   })
   // The Note itself now stands in the timeline, so a boost card of it that
-  // arrived first goes — the mirror of `ingestBoostedNote`'s dedupe (#1106).
+  // arrived first goes — the mirror of `ingestBoostedNote`'s dedupe.
   if (input.boost_of_uri == null) await deleteBoostCardsOf(user, input.object_uri)
   if (inserted && onNewEntry != null && (await isVisibleToReader(user, id, origin))) onNewEntry(user)
   return true

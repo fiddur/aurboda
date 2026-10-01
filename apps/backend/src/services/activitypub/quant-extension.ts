@@ -154,7 +154,7 @@ export const spliceQuantExtension = (doc: unknown, props: JsonRecord): unknown =
  * `quant:` extension. Returns the same instance, with `toJsonLd` patched to
  * post-process its own output and `clone` patched to wrap every clone the same
  * way — `sendActivity`'s default transformers clone the activity before
- * serialising it (#1040).
+ * serialising it.
  */
 export const withQuantJsonLd = <T extends APObject>(obj: T, props: JsonRecord): T => {
   const baseToJsonLd = obj.toJsonLd.bind(obj)
