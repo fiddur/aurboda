@@ -19,7 +19,7 @@ const base: QuantExerciseInput = {
   postId: 'abc123',
   scalars: [
     { key: 'distance', label: 'Distance', unit: 'km', value: 8.2 },
-    { key: 'hr_zone_minutes', value: { z2: 22, z3: 11 } },
+    { key: 'hrZoneMinutes', value: { z2: 22, z3: 11 } },
   ],
   seriesMetrics: ['heart_rate'],
   startTime: new Date('2026-07-01T06:30:00Z'),
@@ -34,7 +34,7 @@ describe('quantExerciseExtension', () => {
     // Labels are content-only; a unit-less scalar omits the unit key entirely.
     expect(props['quant:metrics']).toEqual([
       { key: 'distance', unit: 'km', value: 8.2 },
-      { key: 'hr_zone_minutes', value: { z2: 22, z3: 11 } },
+      { key: 'hrZoneMinutes', value: { z2: 22, z3: 11 } },
     ])
   })
 
@@ -54,9 +54,9 @@ describe('quantExerciseExtension', () => {
     const props = quantExerciseExtension(base)
     expect(props['quant:series']).toEqual([
       {
-        href: 'https://aurboda.net/api/public/fiddur/series?bucket=5s&end=2026-07-01T07%3A11%3A03.000Z&metric=heart_rate&start=2026-07-01T06%3A30%3A00.000Z',
+        href: 'https://aurboda.net/api/public/fiddur/series?bucket=5s&end=2026-07-01T07%3A11%3A03.000Z&metric=heartRate&start=2026-07-01T06%3A30%3A00.000Z',
         mediaType: 'application/json',
-        metric: 'heart_rate',
+        metric: 'heartRate',
       },
     ])
   })

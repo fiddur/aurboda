@@ -69,21 +69,21 @@ describe('resolveStructuredPost', () => {
     const structured = await resolveStructuredPost(user, post.id)
     expect(structured).not.toBeNull()
     if (structured?.kind !== 'activity') throw new Error('expected an activity payload')
-    expect(structured.activity_type).toBe('exercise')
+    expect(structured.activityType).toBe('exercise')
     // The author's personal message rides the structured payload.
     expect(structured.message).toBe('Lovely morning!')
-    expect(structured.start_time).toBe(START.toISOString())
-    expect(structured.end_time).toBe(END.toISOString())
-    expect(structured.duration_seconds).toBe(2400)
+    expect(structured.startTime).toBe(START.toISOString())
+    expect(structured.endTime).toBe(END.toISOString())
+    expect(structured).not.toHaveProperty('durationSeconds')
 
     const byKey = Object.fromEntries(structured.metrics.map((m) => [m.key, m.value]))
-    expect(byKey.heart_rate_avg).toBe(150)
+    expect(byKey.heartRateAvg).toBe(150)
     expect(byKey.duration).toBe(2400)
 
     // The opted-in series is inlined with non-empty samples at the floored bucket.
     expect(structured.series).toHaveLength(1)
     const hr = structured.series[0]
-    expect(hr?.metric).toBe('heart_rate')
+    expect(hr?.metric).toBe('heartRate')
     expect(hr?.bucket).toBe('5s')
     expect(hr?.samples.length).toBeGreaterThan(0)
     expect(hr?.samples[0].avg).toBe(150)
@@ -102,7 +102,7 @@ describe('resolveStructuredPost', () => {
     })
     const structured = await resolveStructuredPost(user, post.id)
     if (structured?.kind !== 'activity') throw new Error('expected an activity payload')
-    expect(structured.metrics.map((m) => m.key)).toEqual(['heart_rate_avg'])
+    expect(structured.metrics.map((m) => m.key)).toEqual(['heartRateAvg'])
     expect(structured.series).toEqual([])
   })
 
@@ -123,8 +123,8 @@ describe('resolveStructuredPost', () => {
     // The post's own capability token (delivered to followers) → resolves.
     const structured = await resolveStructuredPost(user, post.id, post.image_token)
     if (structured?.kind !== 'activity') throw new Error('expected an activity payload')
-    expect(structured.series.map((s) => s.metric)).toEqual(['heart_rate'])
-    expect(structured.metrics.map((m) => m.key)).toEqual(['heart_rate_avg'])
+    expect(structured.series.map((s) => s.metric)).toEqual(['heartRate'])
+    expect(structured.metrics.map((m) => m.key)).toEqual(['heartRateAvg'])
   })
 
   test('returns null for an unknown post id', async () => {

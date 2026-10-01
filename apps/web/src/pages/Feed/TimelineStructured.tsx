@@ -38,17 +38,17 @@ function ActivityStructured({ structured }: { structured: FeedStructuredActivity
   return (
     <div class="timeline-structured">
       <p class="feed-post-title">
-        <strong>{structured.title ?? 'Shared activity'}</strong>
+        <strong>{structured.name ?? 'Shared activity'}</strong>
       </p>
       {structured.message && <p class="feed-post-message">{structured.message}</p>}
-      <p class="feed-post-window">{formatEntryWindow(structured.start_time, structured.end_time)}</p>
+      <p class="feed-post-window">{formatEntryWindow(structured.startTime, structured.endTime)}</p>
       <ActivityStatGrid metrics={structured.metrics} />
-      {series.length > 0 && structured.end_time && (
+      {series.length > 0 && structured.endTime && (
         <div class="timeline-chart">
           <CombinedMetricChart
             series={series}
-            start={new Date(structured.start_time)}
-            end={new Date(structured.end_time)}
+            start={new Date(structured.startTime)}
+            end={new Date(structured.endTime)}
             onHoverTime={setHoverTime}
             // Axis priority goes to the LAST metrics in toggle order, so without
             // a default the card's axes fall to whatever the payload happens to

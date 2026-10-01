@@ -14,11 +14,11 @@ import {
 const UUID = '11111111-2222-4333-8444-555555555555'
 
 const structured: FeedStructuredPost = {
-  activity_type: 'exercise',
+  activityType: 'exercise',
   kind: 'activity',
   metrics: [],
   series: [],
-  start_time: '2026-07-01T08:00:00.000Z',
+  startTime: '2026-07-01T08:00:00.000Z',
 }
 
 const aurbodaEntry = (

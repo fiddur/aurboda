@@ -333,8 +333,9 @@ describe('Feed federation actor + WebFinger', () => {
     expect(doc['quant:structuredUrl']).toBe(`${ORIGIN}/api/public/${user}/feed/${post.id}`)
     const series = doc['quant:series'] ?? []
     expect(series).toHaveLength(1)
-    expect(series[0].metric).toBe('heart_rate')
+    expect(series[0].metric).toBe('heartRate')
     expect(series[0].href).toContain(`${ORIGIN}/api/public/${user}/series?`)
+    expect(series[0].href).toContain('metric=heartRate')
     // The inline @context defines the quant prefix and the @json literal terms.
     expect(doc['@context']).toContainEqual({
       quant: 'https://w3id.org/quantpub#',

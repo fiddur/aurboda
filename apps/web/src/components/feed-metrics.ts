@@ -120,6 +120,14 @@ export const buildShareBody = (sel: ShareSelection): ShareActivityBody => ({
   visibility: sel.visibility,
 })
 
-export const summaryLabel = (key: string): string => SUMMARY_METRICS.find((m) => m.key === key)?.label ?? key
+/**
+ * QuantPub `0.2` wire keys are lowerCamelCase (`heartRateAvg`); Aurboda's own
+ * keys are snake_case. Idempotent on a snake_case key.
+ */
+export const fromWireKey = (key: string): string => key.replaceAll(/[A-Z]/g, (c) => `_${c.toLowerCase()}`)
 
-export const seriesLabel = (key: string): string => SERIES_METRICS.find((m) => m.key === key)?.label ?? key
+export const summaryLabel = (key: string): string =>
+  SUMMARY_METRICS.find((m) => m.key === fromWireKey(key))?.label ?? key
+
+export const seriesLabel = (key: string): string =>
+  SERIES_METRICS.find((m) => m.key === fromWireKey(key))?.label ?? key

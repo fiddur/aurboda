@@ -57,6 +57,7 @@ Use `.meta({ id: 'SchemaName', description: '...' })` on schemas — the `id` dr
 ### Naming convention
 
 All field names use **snake_case** everywhere: schemas, REST API, MCP tools, DB columns, JSONB keys, frontend types. The only exception is Kotlin, which uses camelCase properties internally with `@SerialName("snake_case")` for serialization.
+The QuantPub wire payload schemas (`packages/api-spec/src/schemas/feed-structured.ts`'s activity payload and `wellKnownQuantpubSchema`) are lowerCamelCase because the spec (`docs/fep/quantpub.md`) defines them so; Aurboda converts to and from them at the boundary.
 
 ### How each layer uses api-spec
 

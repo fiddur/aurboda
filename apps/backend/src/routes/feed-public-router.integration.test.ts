@@ -12,6 +12,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
  */
 import { insertActivity } from '../db/activities/index.ts'
 import { createArticlePost, createFeedPost } from '../db/feed.ts'
+import { insertTimeSeries } from '../db/time-series.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import { createFeedPublicRouter } from './feed-public-router.ts'
 
@@ -32,7 +33,11 @@ const startApp = () => {
   return { close, request: supertest(`http://127.0.0.1:${port}`) }
 }
 
-const seedPost = async (user: string, visibility: 'public' | 'unlisted' | 'followers'): Promise<string> => {
+const seedPost = async (
+  user: string,
+  visibility: 'public' | 'unlisted' | 'followers',
+  seriesMetrics: 'heart_rate'[] = [],
+): Promise<string> => {
   const activityId = await insertActivity(user, {
     activity_type: 'exercise',
     end_time: END,
@@ -45,7 +50,7 @@ const seedPost = async (user: string, visibility: 'public' | 'unlisted' | 'follo
     include_chart: false,
     include_map: false,
     included_metrics: ['duration'],
-    series_metrics: [],
+    series_metrics: seriesMetrics,
     visibility,
   })
   return post.id
@@ -97,12 +102,12 @@ describe('GET /public/:username/posts', () => {
       expect(res.status).toBe(200)
       const post = res.body.posts.find((p: { id: string }) => p.id === id)
       expect(post.structured).toMatchObject({
-        activity_type: 'exercise',
+        activityType: 'exercise',
         kind: 'activity',
         metrics: [{ key: 'duration', unit: 'seconds', value: 2400 }],
+        name: 'Morning run',
         series: [],
-        start_time: START.toISOString(),
-        title: 'Morning run',
+        startTime: START.toISOString(),
       })
     } finally {
       await close()
@@ -176,6 +181,62 @@ describe('GET /public/:username/posts', () => {
       const res = await request.get('/public/Invalid/posts')
       expect(res.status).toBe(404)
       expect(res.body).toEqual({ error: 'Not found', posts: [], success: false })
+    } finally {
+      await close()
+    }
+  })
+})
+
+describe('GET /public/:username/series (QuantPub 0.2)', () => {
+  beforeAll(async () => {
+    await startTestDb()
+  }, CONTAINER_TIMEOUT)
+
+  afterAll(async () => {
+    await stopTestDb()
+  })
+
+  beforeEach(async () => {
+    await cleanTestDb()
+  })
+
+  const seedSharedHeartRate = async (user: string): Promise<void> => {
+    await seedPost(user, 'public', ['heart_rate'])
+    await insertTimeSeries(
+      user,
+      Array.from({ length: 60 }, (_, i) => ({
+        metric: 'heart_rate' as const,
+        source: 'garmin' as const,
+        time: new Date(START.getTime() + i * 5_000),
+        value: 150,
+      })),
+    )
+  }
+
+  const window = { bucket: '5s', end: END.toISOString(), start: START.toISOString() }
+
+  test.each(['heartRate', 'heart_rate'])('accepts metric=%s and echoes the camelCase key', async (metric) => {
+    const user = getTestUser()
+    await seedSharedHeartRate(user)
+    const { request, close } = startApp()
+    try {
+      const res = await request.get(`/public/${user}/series`).query({ ...window, metric })
+      expect(res.status).toBe(200)
+      expect(res.body.metric).toBe('heartRate')
+      expect(res.body.samples.length).toBeGreaterThan(0)
+    } finally {
+      await close()
+    }
+  })
+
+  test('an unknown metric key is a plain 404', async () => {
+    const user = getTestUser()
+    await seedSharedHeartRate(user)
+    const { request, close } = startApp()
+    try {
+      const res = await request.get(`/public/${user}/series`).query({ ...window, metric: 'heartRateAvg' })
+      expect(res.status).toBe(404)
+      expect(res.body).toEqual({ error: 'Not found', success: false })
     } finally {
       await close()
     }
