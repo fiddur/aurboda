@@ -5,6 +5,7 @@ import axios from 'axios'
 
 import { API_URL } from '../config'
 import { readNativeAuth } from '../embed'
+import { clearCachedDashboards } from './dashboardCache'
 
 export type SignupMode = 'open' | 'invite_only' | 'closed'
 
@@ -92,7 +93,10 @@ export const signup = async (
   }
 }
 
-export const logout = () => (auth.value = {})
+export const logout = () => {
+  clearCachedDashboards(() => localStorage)
+  auth.value = {}
+}
 
 /**
  * Map browser WebAuthn errors to user-friendly strings. The raw DOMException

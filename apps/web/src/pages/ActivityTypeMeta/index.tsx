@@ -122,7 +122,6 @@ function SettingsSection({
     onError: () => setSaveStatus({ status: 'error' }),
     onSuccess: () => {
       setSaveStatus({ status: 'saved' })
-      queryClient.invalidateQueries({ queryKey: ['activity-type-definitions'] })
       queryClient.invalidateQueries({ queryKey: ['activityTypeDefinitions'] })
       queryClient.invalidateQueries({ queryKey: ['userSettings'] })
       setIconValue(undefined)
@@ -134,20 +133,19 @@ function SettingsSection({
   const timelineToggleMutation = useMutation({
     mutationFn: () => updateActivityTypeDefinition(name, { show_on_timeline: !showOnTimeline }),
     onMutate: async () => {
-      await queryClient.cancelQueries({ queryKey: ['activity-type-definitions'] })
-      const previous = queryClient.getQueryData<ActivityTypeDefinition[]>(['activity-type-definitions'])
-      queryClient.setQueryData<ActivityTypeDefinition[]>(['activity-type-definitions'], (old) =>
+      await queryClient.cancelQueries({ queryKey: ['activityTypeDefinitions'] })
+      const previous = queryClient.getQueryData<ActivityTypeDefinition[]>(['activityTypeDefinitions'])
+      queryClient.setQueryData<ActivityTypeDefinition[]>(['activityTypeDefinitions'], (old) =>
         old?.map((t) => (t.name === name ? { ...t, show_on_timeline: !showOnTimeline } : t)),
       )
       return { previous }
     },
     onError: (_err, _vars, context) => {
       if (context?.previous) {
-        queryClient.setQueryData(['activity-type-definitions'], context.previous)
+        queryClient.setQueryData(['activityTypeDefinitions'], context.previous)
       }
     },
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ['activity-type-definitions'] })
       queryClient.invalidateQueries({ queryKey: ['activityTypeDefinitions'] })
     },
   })
@@ -243,7 +241,6 @@ function RenameSection({ name }: { name: string }) {
       setError(msg ?? 'Rename failed')
     },
     onSuccess: (result) => {
-      queryClient.invalidateQueries({ queryKey: ['activity-type-definitions'] })
       queryClient.invalidateQueries({ queryKey: ['activityTypeDefinitions'] })
       queryClient.invalidateQueries({ queryKey: ['activity-sessions'] })
       route(`/activity-type/${encodeURIComponent(newName)}`)
@@ -324,7 +321,6 @@ function MergeActivityTypeSection({
   const mergeMutation = useMutation({
     mutationFn: () => mergeActivityTypeApi(name, target),
     onSuccess: (result) => {
-      queryClient.invalidateQueries({ queryKey: ['activity-type-definitions'] })
       queryClient.invalidateQueries({ queryKey: ['activityTypeDefinitions'] })
       queryClient.invalidateQueries({ queryKey: ['activity-sessions'] })
       route(`/activity-type/${encodeURIComponent(target)}`)
@@ -437,7 +433,6 @@ function DataSchemaSection({
     onError: () => setSaveStatus({ status: 'error' }),
     onSuccess: () => {
       setSaveStatus({ status: 'saved' })
-      queryClient.invalidateQueries({ queryKey: ['activity-type-definitions'] })
       queryClient.invalidateQueries({ queryKey: ['activityTypeDefinitions'] })
     },
   })
@@ -610,7 +605,7 @@ export function ActivityTypeMeta() {
 
   const { data: definitions } = useQuery({
     queryFn: fetchActivityTypeDefinitions,
-    queryKey: ['activity-type-definitions'],
+    queryKey: ['activityTypeDefinitions'],
     staleTime: 5 * 60 * 1000,
   })
 

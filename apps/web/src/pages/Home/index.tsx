@@ -5,21 +5,38 @@ import { auth, ensureStatusLoaded, signupAllowed } from '../../state/auth'
 import { Dashboard } from '../Dashboard'
 import './style.css'
 
+/** Every screenshot has a `.webp` sibling in `public/screenshots/`; the original is the fallback. */
 function Screenshot({
   src,
   alt,
   caption,
   className,
+  width,
+  height,
+  eager = false,
 }: {
   src: string
   alt: string
   caption: string
   className?: string
+  width: number
+  height: number
+  eager?: boolean
 }) {
   return (
     <figure class={className}>
       <a href={src} target="_blank" rel="noopener noreferrer">
-        <img src={src} alt={alt} />
+        <picture>
+          <source type="image/webp" srcset={src.replace(/\.(jpg|png)$/, '.webp')} />
+          <img
+            src={src}
+            alt={alt}
+            width={width}
+            height={height}
+            loading={eager ? 'eager' : 'lazy'}
+            decoding="async"
+          />
+        </picture>
       </a>
       <figcaption>{caption}</figcaption>
     </figure>
@@ -54,16 +71,25 @@ function GuestHome({ canSignup }: { canSignup: boolean }) {
         <div class="screenshots">
           <Screenshot
             src="/screenshots/timeline-detail.jpg"
+            width={1899}
+            height={867}
+            eager
             alt="Timeline with strength training details, heart rate, and location"
             caption="Timeline: activity details, HR, location"
           />
           <Screenshot
             src="/screenshots/timeline-sleep.jpg"
+            width={1861}
+            height={653}
+            eager
             alt="Timeline showing sleep details with Oura scores"
             caption="Timeline: sleep details and scores"
           />
           <Screenshot
             src="/screenshots/timeline-mobile.jpg"
+            width={1080}
+            height={2404}
+            eager
             alt="Timeline on mobile"
             caption="Mobile timeline"
             className="narrow"
@@ -73,12 +99,16 @@ function GuestHome({ canSignup }: { canSignup: boolean }) {
         <div class="screenshots">
           <Screenshot
             src="/screenshots/hr-zones.jpg"
+            width={1080}
+            height={1338}
             alt="HR zone minutes breakdown"
             caption="HR zone tracking"
             className="narrow"
           />
           <Screenshot
             src="/screenshots/trends.jpg"
+            width={1850}
+            height={489}
             alt="Trend cards showing metrics over time"
             caption="Trends with EMA smoothing"
           />
@@ -87,11 +117,15 @@ function GuestHome({ canSignup }: { canSignup: boolean }) {
         <div class="screenshots">
           <Screenshot
             src="/screenshots/places.jpg"
+            width={1919}
+            height={778}
             alt="Places view with location timeline and map"
             caption="Places and location history"
           />
           <Screenshot
             src="/screenshots/ai-chat.png"
+            width={1080}
+            height={1697}
             alt="AI analyzing health data"
             caption="AI health insights via MCP"
           />
@@ -100,18 +134,24 @@ function GuestHome({ canSignup }: { canSignup: boolean }) {
         <div class="screenshots">
           <Screenshot
             src="/screenshots/app.jpg"
+            width={1080}
+            height={1338}
             alt="Aurboda Android app showing HR zone minutes"
             caption="Android app: HR zones"
             className="narrow"
           />
           <Screenshot
             src="/screenshots/app-live.png"
+            width={1080}
+            height={761}
             alt="Live BLE sensor data"
             caption="Live BLE sensors"
             className="narrow"
           />
           <Screenshot
             src="/screenshots/widget.jpg"
+            width={532}
+            height={325}
             alt="Aurboda home screen widget"
             caption="Home screen widget"
             className="narrow"

@@ -19,6 +19,7 @@ import {
   hrZoneColors,
   hrZoneWeeklyTargetMinutes,
 } from '../../utils/hrZones'
+import { HEAVY_QUERY_OPTIONS } from './heavyQuery'
 
 const hrZoneMetrics = [
   'hr_zone_0_sec',
@@ -117,6 +118,7 @@ export function HrZonesWidget({ config }: HrZonesWidgetProps) {
     enabled: !!isLoggedIn,
     queryFn: () => fetchPeriodSummary(new Date(dateRange.start), new Date(dateRange.end), hrZoneMetrics),
     queryKey: ['periodSummary', dateRange.start, dateRange.end],
+    ...HEAVY_QUERY_OPTIONS,
     staleTime: 5 * 60 * 1000,
   })
 

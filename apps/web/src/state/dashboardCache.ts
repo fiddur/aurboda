@@ -2,8 +2,10 @@ import type { DashboardConfig } from '@aurboda/api-spec'
 
 type ReadStorage = Pick<Storage, 'getItem'>
 type WriteStorage = Pick<Storage, 'setItem'>
+type ClearStorage = Pick<Storage, 'key' | 'length' | 'removeItem'>
 
-const cacheKey = (user: string) => `aurboda:dashboard:${user}`
+const CACHE_PREFIX = 'aurboda:dashboard:'
+const cacheKey = (user: string) => `${CACHE_PREFIX}${user}`
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -47,5 +49,20 @@ export const writeCachedDashboard = (
     storage().setItem(cacheKey(user), JSON.stringify(config))
   } catch {
     // Quota or disabled storage only costs the next visit its head start.
+  }
+}
+
+/** Drops every user's cached dashboard, not just the current one: the browser may be shared. */
+export const clearCachedDashboards = (storage: () => ClearStorage): void => {
+  try {
+    const store = storage()
+    const keys: string[] = []
+    for (let i = 0; i < store.length; i++) {
+      const key = store.key(i)
+      if (key?.startsWith(CACHE_PREFIX)) keys.push(key)
+    }
+    for (const key of keys) store.removeItem(key)
+  } catch {
+    // Unreadable storage holds nothing to clear.
   }
 }

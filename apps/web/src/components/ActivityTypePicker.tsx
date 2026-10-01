@@ -105,7 +105,7 @@ export function ActivityTypePicker({
 
   const { data: typeDefs, isLoading } = useQuery({
     queryFn: fetchActivityTypeDefinitions,
-    queryKey: ['activity-type-definitions'],
+    queryKey: ['activityTypeDefinitions'],
     staleTime: 30 * 60 * 1000,
   })
 

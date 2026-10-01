@@ -1,9 +1,9 @@
 import { signal } from '@preact/signals'
-import { addDays, differenceInCalendarDays, endOfDay, format, formatISO, startOfDay, subDays } from 'date-fns'
+import { addDays, differenceInCalendarDays, endOfDay, format, formatISO, subDays } from 'date-fns'
 import { useCallback, useMemo } from 'preact/hooks'
 
 import { collapseDepthForPixelsPerHour, computePixelsPerHour, mergeGapForZoom } from './collapseTier'
-import { nextFetchRange } from './fetchRange'
+import { fetchWindowFromRange, nextFetchRange } from './fetchRange'
 import { getDefaultViewEnd, getDefaultViewStart, parseViewHash } from './viewHash'
 
 const fromDate = signal(formatISO(subDays(new Date(), 1), { representation: 'date' }))
@@ -67,8 +67,10 @@ export const useTimelineNavigation = (options: TimelineNavigationOptions = {}): 
   const effectiveViewStart = viewStart.value ?? getDefaultViewStart()
   const effectiveViewEnd = viewEnd.value ?? getDefaultViewEnd()
 
-  const fetchStart = startOfDay(new Date(fromDate.value))
-  const fetchEnd = endOfDay(new Date(toDate.value))
+  const { start: fetchStart, end: fetchEnd } = fetchWindowFromRange({
+    from: fromDate.value,
+    to: toDate.value,
+  })
 
   const bucketSize = useMemo(() => {
     const days = differenceInCalendarDays(effectiveViewEnd, effectiveViewStart)

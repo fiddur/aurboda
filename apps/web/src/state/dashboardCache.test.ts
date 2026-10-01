@@ -1,13 +1,18 @@
 import { type DashboardConfig, defaultDashboardConfig } from '@aurboda/api-spec'
 import { describe, expect, it } from 'vitest'
 
-import { readCachedDashboard, writeCachedDashboard } from './dashboardCache'
+import { clearCachedDashboards, readCachedDashboard, writeCachedDashboard } from './dashboardCache'
 
 const memoryStorage = (initial: Record<string, string> = {}) => {
   const data = new Map(Object.entries(initial))
   return {
     data,
     getItem: (key: string) => data.get(key) ?? null,
+    key: (index: number) => [...data.keys()][index] ?? null,
+    get length() {
+      return data.size
+    },
+    removeItem: (key: string) => void data.delete(key),
     setItem: (key: string, value: string) => void data.set(key, value),
   }
 }
@@ -68,5 +73,28 @@ describe('dashboard cache', () => {
     }
     const config: DashboardConfig = { sections: [], version: 1 }
     expect(() => writeCachedDashboard(() => full, 'alice', config)).not.toThrow()
+  })
+})
+
+describe('clearCachedDashboards', () => {
+  it('removes every cached dashboard and leaves other keys alone', () => {
+    const storage = memoryStorage({
+      auth: '{}',
+      'aurboda:dashboard:alice': '{}',
+      'aurboda:dashboard:bob': '{}',
+      'aurboda:other': 'x',
+    })
+    clearCachedDashboards(() => storage)
+    expect([...storage.data.keys()].sort()).toEqual(['aurboda:other', 'auth'])
+  })
+
+  it('is a no-op on empty storage', () => {
+    const storage = memoryStorage()
+    expect(() => clearCachedDashboards(() => storage)).not.toThrow()
+    expect(storage.data.size).toBe(0)
+  })
+
+  it('survives storage that throws', () => {
+    expect(() => clearCachedDashboards(throwingStorage)).not.toThrow()
   })
 })

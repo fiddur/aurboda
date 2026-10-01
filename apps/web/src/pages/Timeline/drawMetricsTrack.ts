@@ -78,6 +78,10 @@ export interface MetricsTrackConfig {
   barBucketMs?: number
 }
 
+/** A multiple of every factor `getAggregationFactor` returns: slicing the bucket
+ * array at a multiple of this index keeps the line-chart chunks unchanged. */
+export const LINE_CHUNK_ALIGNMENT = 6
+
 /** Only merges small (5m/15m) buckets — if buckets are already >= 1h, skip. */
 const getAggregationFactor = (pixelsPerHour: number, buckets: MetricBucketParsed[]): number => {
   if (buckets.length >= 2) {

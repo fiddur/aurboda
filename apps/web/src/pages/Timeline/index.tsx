@@ -1,6 +1,6 @@
 import { useSignalEffect } from '@preact/signals'
 import * as d3 from 'd3'
-import { endOfDay, format, startOfDay } from 'date-fns'
+import { endOfDay, format, parseISO, startOfDay } from 'date-fns'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 
 import type { LegendCategory } from './legendCategories'
@@ -13,7 +13,13 @@ import { CommentPanel, type CommentPanelState } from './CommentPanel'
 import { drawActivitySparklines } from './drawActivitySparklines'
 import { COMMENTS_TRACK_HEIGHT, drawCommentsTrack } from './drawCommentsTrack'
 import { attachHoverHandlers, clampLabelLayout, drawItemIcon, getDetailUrl, truncateLabel } from './drawItems'
-import { computeYScales, drawMetricsTrack, HR_COLOR, HRV_COLOR } from './drawMetricsTrack'
+import {
+  computeYScales,
+  drawMetricsTrack,
+  HR_COLOR,
+  HRV_COLOR,
+  LINE_CHUNK_ALIGNMENT,
+} from './drawMetricsTrack'
 import {
   buildMusicTooltipHtml,
   drawMusicSessions,
@@ -24,6 +30,7 @@ import {
 import { drawScreentimeBars } from './drawScreentimeTrack'
 import { drawTrainingLoadTrack } from './drawTrainingLoadTrack'
 import { drawColumnItems, drawHorizontalNowLine, drawNowLine } from './drawVerticalHelpers'
+import { fetchWindowFromRange } from './fetchRange'
 import { findOverlappingScrobbles } from './findOverlappingScrobbles'
 import { TimelineContextMenu } from './TimelineContextMenu'
 import { TimelineControls } from './TimelineControls'
@@ -34,6 +41,7 @@ import { useTimelineData } from './useTimelineData'
 import { _initialHash, useTimelineNavigation } from './useTimelineNavigation'
 import { HORIZONTAL_MARGIN, useTimelineZoom, VERTICAL_MARGIN } from './useTimelineZoom'
 import { buildViewHash, getDefaultOrientation } from './viewHash'
+import { visibleBuckets } from './visibleBuckets'
 import './style.css'
 
 // eslint-disable-next-line complexity -- D3 visualization component
@@ -200,7 +208,7 @@ export const Timeline = () => {
 
   const todayKey = format(new Date(), 'yyyy-MM-dd')
   const baseScaleDomain = useMemo(
-    () => [startOfDay(new Date(todayKey)), endOfDay(new Date(todayKey))] as [Date, Date],
+    () => [startOfDay(parseISO(todayKey)), endOfDay(parseISO(todayKey))] as [Date, Date],
     [todayKey],
   )
 
@@ -497,9 +505,8 @@ export const Timeline = () => {
             .style('fill', HRV_COLOR)
         }
 
-        const hFetchStart = startOfDay(new Date(fromDate.value))
-        const hFetchEnd = endOfDay(new Date(toDate.value))
-        const baseScale = d3.scaleTime().domain([hFetchStart, hFetchEnd]).range([0, chartWidth])
+        const hFetch = fetchWindowFromRange({ from: fromDate.value, to: toDate.value })
+        const baseScale = d3.scaleTime().domain([hFetch.start, hFetch.end]).range([0, chartWidth])
         attachZoom(baseScale, effectiveViewStart, effectiveViewEnd, chartWidth)
       }
 
@@ -949,7 +956,13 @@ export const Timeline = () => {
 
         if (showMetricsTrackH && (metricsYScales || (showTL && trainingLoadData) || screentimeHasData)) {
           drawMetricsTrack({
-            buckets: metricBuckets,
+            buckets: visibleBuckets(
+              metricBuckets,
+              domainStartMs,
+              domainEndMs,
+              barBucketMs,
+              LINE_CHUNK_ALIGNMENT,
+            ),
             chartGroup,
             chartWidth,
             hideTooltip,

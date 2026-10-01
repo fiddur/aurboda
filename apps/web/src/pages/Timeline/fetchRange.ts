@@ -18,6 +18,14 @@ const DAY_MS = 86_400_000
 
 const toIsoDate = (date: Date): string => formatISO(date, { representation: 'date' })
 
+/** The fetched window as instants: local midnight of `from` to the end of local day `to`.
+ * `parseISO` reads a date-only string as local time; `new Date('yyyy-mm-dd')` would read
+ * UTC midnight and shift the window a day early west of UTC. */
+export const fetchWindowFromRange = (range: FetchRange): { start: Date; end: Date } => ({
+  end: endOfDay(parseISO(range.to)),
+  start: startOfDay(parseISO(range.from)),
+})
+
 /**
  * The fetch range follows the view rather than accumulating: once the view leaves the
  * fetched range, or the range is far wider than the view (after zooming in), it is
