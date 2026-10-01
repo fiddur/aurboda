@@ -218,6 +218,7 @@ export {
 export {
   deleteNote,
   deleteNotesForEntity,
+  deleteNotesForEntityIn,
   getNoteById,
   getNoteRoot,
   getNotesByEntityIds,

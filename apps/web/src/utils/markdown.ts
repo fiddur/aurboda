@@ -19,7 +19,7 @@ marked.setOptions({ breaks: true, gfm: true })
 
 // Brought in line with the outbound article sanitiser (backend
 // `services/activitypub/article-object.ts`), so what the web shows is what
-// federates (#1028): no form controls (a post could otherwise draw a
+// federates: no form controls (a post could otherwise draw a
 // credential-looking form on this origin), no styling, and images from http(s)
 // only — no data: images and no same-origin GETs via a relative src.
 const OWN_FORBID_TAGS = ['form', 'input', 'button', 'select', 'textarea', 'style']

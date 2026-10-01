@@ -53,10 +53,9 @@ export const registerOAuthRoutes = ({
         res.json({ success: true })
       }
     } catch (error) {
-      auditError(user, 'auth', 'Garmin login endpoint error', {
-        error: redactSecret(String(error), String(password)),
-      })
-      const message = error instanceof Error ? redactSecret(error.message, String(password)) : 'Login failed'
+      const secret = typeof password === 'string' ? password : ''
+      auditError(user, 'auth', 'Garmin login endpoint error', { error: redactSecret(String(error), secret) })
+      const message = error instanceof Error ? redactSecret(error.message, secret) : 'Login failed'
       res.status(401).json({ error: message, success: false })
     }
   })
