@@ -61,6 +61,7 @@ import {
   type SourceIdentity,
   toArrival,
 } from '../services/source-identity.ts'
+import { pushAll } from '../utils.ts'
 import { adoptLegacyActivity, insertActivities, insertActivity } from './activities/index.ts'
 import { query } from './connection.ts'
 import { insertMeal } from './meals.ts'
@@ -201,7 +202,7 @@ export const processHealthConnectBatch = async (
     const metric = healthConnectMetricMapping[recordType]
     if (metric) {
       const points = extractTimeSeriesPoints(recordType, metric, data)
-      allTimeSeriesPoints.push(...points)
+      pushAll(allTimeSeriesPoints, points)
     }
 
     if (recordType === 'BloodPressureRecord') {

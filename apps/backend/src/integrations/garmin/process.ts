@@ -31,6 +31,7 @@ import {
   garminActivityExternalId,
   garminSleepExternalId,
 } from '../../services/source-identity.ts'
+import { pushAll } from '../../utils.ts'
 import { activityTrackSources, gpsPrecedenceSpan } from '../gps-precedence.ts'
 import { garminSleepLevelsToStages, parseGarminGmt } from './sleep-stages.ts'
 
@@ -799,7 +800,7 @@ const extractMetricsAndGps = (
     if (!ts || ts <= 0) continue
     const time = new Date(ts)
 
-    points.push(...extractDetailPoints(entry.metrics, time, indexMap))
+    pushAll(points, extractDetailPoints(entry.metrics, time, indexMap))
 
     // Extract GPS, downsampled to ~1 point per minute
     if (latIdx !== undefined && lonIdx !== undefined && ts - lastGpsTime >= GPS_DOWNSAMPLE_MS) {
@@ -812,7 +813,7 @@ const extractMetricsAndGps = (
   }
 
   if (gpsPoints.length === 0) {
-    gpsPoints.push(...extractPolylineGps(data))
+    pushAll(gpsPoints, extractPolylineGps(data))
   }
 
   return { gpsPoints, points }
