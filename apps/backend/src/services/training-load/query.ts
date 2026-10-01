@@ -31,6 +31,19 @@ type TrainingLoadBucketSize = (typeof trainingLoadBucketSizes)[number]
 
 const BOOTSTRAP_MEMO_MS = 60 * 60 * 1000
 
+/** Also drops expired entries, which keeps the process-global memo bounded. */
+const rememberBootstrap = (
+  memo: TrainingLoadDeps['bootstrappedFrom'],
+  user: string,
+  now: number,
+  fromHour: number,
+) => {
+  for (const [memoUser, entry] of memo) {
+    if (now - entry.at >= BOOTSTRAP_MEMO_MS) memo.delete(memoUser)
+  }
+  memo.set(user, { at: now, fromHour })
+}
+
 const mergeLiveHourImpulses = async (
   deps: TrainingLoadDeps,
   user: string,
@@ -150,7 +163,7 @@ export const computeTrainingLoad = async (
     extendedStartHour.getTime() >= covered.fromHour
   if (!watermark && trainingBuckets.length === 0 && activityBuckets.length === 0 && !alreadyCovered) {
     await recomputeImpulseBuckets(deps, user, extendedStartHour)
-    deps.bootstrappedFrom.set(user, { at: now, fromHour: extendedStartHour.getTime() })
+    rememberBootstrap(deps.bootstrappedFrom, user, now, extendedStartHour.getTime())
     ;[trainingBuckets, activityBuckets] = await Promise.all([
       deps.getImpulseBuckets(user, 'training_impulse', extendedStartHour, effectiveEnd),
       deps.getImpulseBuckets(user, 'activity_impulse', extendedStartHour, effectiveEnd),
