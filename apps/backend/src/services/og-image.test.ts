@@ -10,6 +10,7 @@ import {
   OG_WIDTH,
   type OgCard,
   type OgChallengeMember,
+  twemojiFileCandidates,
   twemojiFileName,
 } from './og-image.ts'
 
@@ -75,6 +76,16 @@ describe('twemojiFileName', () => {
     ['👍🏽', '1f44d-1f3fd'],
   ])('%s → %s', (emoji, fileName) => {
     expect(twemojiFileName(emoji)).toBe(fileName)
+  })
+})
+
+describe('twemojiFileCandidates', () => {
+  test('falls back to the name without fe0f for ZWJ sequences', () => {
+    expect(twemojiFileCandidates('👁️‍🗨️')).toEqual(['1f441-fe0f-200d-1f5e8-fe0f', '1f441-200d-1f5e8'])
+  })
+
+  test('has a single candidate when nothing can be stripped', () => {
+    expect(twemojiFileCandidates('🍂')).toEqual(['1f342'])
   })
 })
 

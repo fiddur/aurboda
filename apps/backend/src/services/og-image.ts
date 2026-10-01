@@ -83,18 +83,37 @@ export const twemojiFileName = (segment: string): string => {
   return (codePoints.includes('200d') ? codePoints : codePoints.filter((cp) => cp !== 'fe0f')).join('-')
 }
 
+/**
+ * File names to try, in order. A few ZWJ sequences (👁️‍🗨️, for one) are named
+ * without their `fe0f` even though the RGI sequence carries it, so the fully
+ * stripped name is the fallback.
+ */
+export const twemojiFileCandidates = (segment: string): string[] => {
+  const fileName = twemojiFileName(segment)
+  const stripped = fileName.replaceAll('-fe0f', '')
+  return stripped === fileName ? [fileName] : [fileName, stripped]
+}
+
 const createEmojiLoader = (): ((segment: string) => Promise<string | []>) => {
   const twemojiDir = dirname(createRequire(import.meta.url).resolve('@twemoji/svg/package.json'))
   const cache = new Map<string, Promise<string | undefined>>()
+  const readSvg = async (candidates: string[]): Promise<string | undefined> => {
+    for (const fileName of candidates) {
+      try {
+        const svg = await readFile(`${twemojiDir}/${fileName}.svg`)
+        return `data:image/svg+xml;base64,${svg.toString('base64')}`
+      } catch {
+        continue
+      }
+    }
+    return undefined
+  }
   return async (segment) => {
-    const fileName = twemojiFileName(segment)
-    let dataUri = cache.get(fileName)
+    const candidates = twemojiFileCandidates(segment)
+    let dataUri = cache.get(candidates[0])
     if (!dataUri) {
-      dataUri = readFile(`${twemojiDir}/${fileName}.svg`).then(
-        (svg) => `data:image/svg+xml;base64,${svg.toString('base64')}`,
-        () => undefined,
-      )
-      cache.set(fileName, dataUri)
+      dataUri = readSvg(candidates)
+      cache.set(candidates[0], dataUri)
     }
     return (await dataUri) ?? []
   }
