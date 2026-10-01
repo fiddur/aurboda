@@ -376,6 +376,7 @@ a.garmin-data-type-label:hover {
 
 .data-sources-page .form-field input[type='date'],
 .data-sources-page .form-field input[type='email'],
+.data-sources-page .form-field input[type='number'],
 .data-sources-page .form-field input[type='password'],
 .data-sources-page .form-field input[type='text'],
 .data-sources-page .form-field input[type='url'] {
@@ -818,6 +819,7 @@ a.garmin-data-type-label:hover {
 
   .data-sources-page .form-field input[type='date'],
   .data-sources-page .form-field input[type='email'],
+  .data-sources-page .form-field input[type='number'],
   .data-sources-page .form-field input[type='password'],
   .data-sources-page .form-field input[type='text'],
   .data-sources-page .form-field input[type='url'] {
