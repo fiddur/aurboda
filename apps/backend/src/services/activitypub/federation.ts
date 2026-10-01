@@ -37,6 +37,7 @@ import {
   deleteBoostEntry,
   deleteTimelineEntryByUri,
   getFeedFollowerByActor,
+  deleteBoostCardsOf,
   getFeedFollowingByActor,
   getFeedPostById,
   getOrCreateActorKeyPair,
@@ -50,7 +51,6 @@ import {
   listFeedFollowers,
   listPublicFeedPostsPage,
   markFeedFollowingAccepted,
-  refreshBoostedCopies,
   removeFeedFollower,
   removeFeedFollowingByActor,
   removeFeedPostReaction,
@@ -259,6 +259,9 @@ export const ingestNoteForRecipient = async (
     mentions_me: mentionsMe,
     structured,
   })
+  // The Note itself now stands in the timeline, so a boost card of it that
+  // arrived first goes — the mirror of `ingestBoostedNote`'s dedupe (#1106).
+  if (input.boost_of_uri == null) await deleteBoostCardsOf(user, input.object_uri)
   if (inserted && onNewEntry != null && (await isVisibleToReader(user, id, origin))) onNewEntry(user)
   return true
 }
@@ -642,33 +645,16 @@ const ingestFeedActivity = async (
     const follow = await getFeedFollowingByActor(me, activity.actorId.href)
     const object = await activity.getObject({ suppressError: true })
     if (!(object instanceof Note)) return
-    const admitted =
-      follow != null && follow.accepted
-        ? await ingestNoteForRecipient(me, object, follow, enrich, origin, onNewEntry)
-        : await ingestStrangerInvolvement(ctx, activity, object, me, origin, enrich, onNewEntry)
-    // Only an edit we actually took carries outward: a dropped Note (host or
-    // attribution mismatch, uninvolved stranger) has no card of ours to update.
-    if (admitted && activity instanceof Update) await refreshBoostCardsOfNote(me, object)
+    if (follow != null && follow.accepted) {
+      await ingestNoteForRecipient(me, object, follow, enrich, origin, onNewEntry)
+    } else {
+      await ingestStrangerInvolvement(ctx, activity, object, me, origin, enrich, onNewEntry)
+    }
   } catch (error) {
     // A missing DB is not an error worth a 500: that would invite redelivery retries.
     if (isMissingDatabase(error)) return
     throw error
   }
-}
-
-/**
- * Carry an author's edit over to the BOOST cards of that Note — see
- * `refreshBoostedCopies` for why an edit reaches them at all.
- *
- * The refreshed fields are read back from the direct entry the edit just wrote,
- * so a boost card can never show anything the direct card doesn't (including a
- * dropped attachment); nothing happens when the Note isn't stored directly at
- * all. `Create` never needs it — a brand-new Note has no boosts yet.
- */
-const refreshBoostCardsOfNote = async (user: string, note: Note): Promise<void> => {
-  if (note.id == null) return
-  const stored = await getTimelineEntryByObjectUri(user, note.id.href)
-  if (stored != null) await refreshBoostedCopies(user, note.id.href, stored)
 }
 
 /**

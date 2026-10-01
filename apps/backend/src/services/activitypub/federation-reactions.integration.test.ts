@@ -1,4 +1,4 @@
-import { Announce, Like, Note, Person, Undo, Update } from '@fedify/fedify/vocab'
+import { Announce, Create, Like, Note, Person, Undo, Update } from '@fedify/fedify/vocab'
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 /**
@@ -21,6 +21,7 @@ import { actorDocument, inboxContext, type StubDocuments } from '../../test/inbo
 import {
   createFeedFederation,
   handleInboundAnnounce,
+  handleInboundCreate,
   handleInboundLike,
   handleInboundUndo,
   handleInboundUpdate,
@@ -368,37 +369,73 @@ describe('Inbound likes and boosts', () => {
     expect(entries.map((e) => e.object_uri)).toEqual([CAROL_NOTE])
   })
 
-  test('an author’s Update{Note} refreshes the boost cards of that post too', async () => {
-    const user = getTestUser()
-    // Alice boosts Carol's post first (so a boost card exists), and only then do
-    // we follow Carol — the order that leaves a boost card beside a direct entry.
-    await acceptFollow(user, ALICE, '@alice@mastodon.example')
-    await handleInboundAnnounce(inboxCtx(user), boostOfCarol(`${ALICE}/statuses/9/activity`), ORIGIN)
-    await acceptFollow(user, CAROL, '@carol@third.example')
-
-    await handleInboundUpdate(
-      inboxCtx(user),
-      new Update({
+  describe('a boost and the author’s own delivery of one post, in either order (#1106)', () => {
+    const carolsNote = (content: string) =>
+      new Note({
+        attribution: new URL(CAROL),
+        content,
+        id: new URL(CAROL_NOTE),
+        published: dateToTemporalInstant(new Date('2026-07-01T08:00:00Z')),
+      })
+    const carolCreates = () =>
+      new Create({
         actor: new URL(CAROL),
-        id: new URL(`${CAROL_NOTE}#update-1`),
-        object: new Note({
-          attribution: new URL(CAROL),
-          content: '<p>Carol’s edited post</p>',
-          id: new URL(CAROL_NOTE),
-          published: dateToTemporalInstant(new Date('2026-07-01T08:00:00Z')),
-        }),
-      }),
-      ORIGIN,
-    )
+        id: new URL(`${CAROL_NOTE}#create`),
+        object: carolsNote('<p>Carol’s post</p>'),
+      })
+    const aliceBoosts = (user: string) =>
+      handleInboundAnnounce(inboxCtx(user), boostOfCarol(`${ALICE}/statuses/9/activity`), ORIGIN)
+    const timeline = async (user: string) =>
+      (await listTimelineEntries(user, 10)).map((e) => ({
+        boost_of_uri: e.boost_of_uri,
+        object_uri: e.object_uri,
+      }))
+    const followBoth = async (user: string) => {
+      await acceptFollow(user, ALICE, '@alice@mastodon.example')
+      await acceptFollow(user, CAROL, '@carol@third.example')
+    }
+    const directOnly = [{ boost_of_uri: null, object_uri: CAROL_NOTE }]
 
-    const entries = await listTimelineEntries(user, 10)
-    // The edit reaches the direct entry AND the boost card (keyed on the
-    // Announce id, so the upsert alone never touches it).
-    expect(entries).toHaveLength(2)
-    for (const entry of entries) expect(entry.content).toContain('edited')
-    // The boost card still sorts at boost time, not at the post's timestamp.
-    const boost = entries.find((e) => e.boost_of_uri === CAROL_NOTE)
-    expect(boost?.published_at.toISOString()).toBe('2026-07-01T11:00:00.000Z')
+    test('boost first: the author’s Create replaces the boost card with the direct entry', async () => {
+      const user = getTestUser()
+      await followBoth(user)
+      await aliceBoosts(user)
+      expect(await timeline(user)).toEqual([
+        { boost_of_uri: CAROL_NOTE, object_uri: `${ALICE}/statuses/9/activity` },
+      ])
+
+      await handleInboundCreate(inboxCtx(user), carolCreates(), ORIGIN)
+      expect(await timeline(user)).toEqual(directOnly)
+    })
+
+    test('direct first: the later boost adds no card', async () => {
+      const user = getTestUser()
+      await followBoth(user)
+      await handleInboundCreate(inboxCtx(user), carolCreates(), ORIGIN)
+      await aliceBoosts(user)
+      expect(await timeline(user)).toEqual(directOnly)
+    })
+
+    test('boost first, author followed later: their Update leaves only the edited direct entry', async () => {
+      const user = getTestUser()
+      await acceptFollow(user, ALICE, '@alice@mastodon.example')
+      await aliceBoosts(user)
+      await acceptFollow(user, CAROL, '@carol@third.example')
+
+      await handleInboundUpdate(
+        inboxCtx(user),
+        new Update({
+          actor: new URL(CAROL),
+          id: new URL(`${CAROL_NOTE}#update-1`),
+          object: carolsNote('<p>Carol’s edited post</p>'),
+        }),
+        ORIGIN,
+      )
+      const entries = await listTimelineEntries(user, 10)
+      expect(entries).toHaveLength(1)
+      expect(entries[0]).toMatchObject({ boost_of_uri: null, object_uri: CAROL_NOTE })
+      expect(entries[0].content).toContain('edited')
+    })
   })
 
   test('an Announce whose id is off the booster’s host can’t overwrite another entry', async () => {

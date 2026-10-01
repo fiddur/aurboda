@@ -441,12 +441,13 @@ renders, under a "🔄 X boosted" line. Guards: only an **accepted** followee ca
 timeline; the announced object must resolve to a `Note` **on the same host as the announced
 id** and declare `attributedTo` (whose host must match the Note's, as for any ingest); and a
 post that is **already in the timeline directly** gets no boost card (Mastodon likewise hides a
-reblog of a post you already have).
+reblog of a post you already have). The dedupe holds in both arrival orders: when the boost
+lands first and the post itself arrives directly later (its author's `Create`/`Update`, or the
+on-follow backfill), storing the direct entry removes the boost cards of that Note, so the
+timeline ends up with the direct entry alone either way.
 
-A boost card tracks the post it shows: the author's `Update{Note}` refreshes the **boost cards
-of that Note** as well as the direct entry (the card is keyed on the `Announce` id, so the
-ingest upsert alone would leave it showing pre-edit content), while its `published_at` stays at
-boost time so it doesn't jump on an edit. And a boost is never treated as a _reply_, even when
+A boost card's `published_at` is the boost time, so it sorts where the boost happened. And a
+boost is never treated as a _reply_, even when
 the boosted Note is one: it stays visible with `timeline_show_replies` off (Mastodon shows
 reblogs of replies), and it is left out of an own post's comment list + `reply_count`, which
 would otherwise show the same comment twice under someone else's byline.
