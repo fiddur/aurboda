@@ -17,6 +17,7 @@ import { z } from 'zod'
 
 import { baseResponseSchema, dateOnlySchema } from './common.ts'
 import { NUTRIENT_FIELD_NAMES } from './nutrients.ts'
+import { ianaTimezoneSchema } from './timezone.ts'
 
 /**
  * Names of nutrients we accept on the recommendation API. Constraining via
@@ -134,31 +135,11 @@ const dayCount = (start: string, end: string): number => {
   return Math.floor((b - a) / 86_400_000) + 1
 }
 
-/**
- * IANA tz validation. `Intl.supportedValuesOf('timeZone')` is available in
- * modern Node and browsers; if it isn't, fall back to a try/catch on
- * `DateTimeFormat` which is the actual consumer downstream.
- */
-const isValidTimezone = (tz: string): boolean => {
-  try {
-    const supported = Intl.supportedValuesOf?.('timeZone')
-    if (supported) return supported.includes(tz)
-  } catch {}
-  try {
-    new Intl.DateTimeFormat('en-US', { timeZone: tz })
-    return true
-  } catch {
-    return false
-  }
-}
-
 export const nutrientPeriodSummaryQuerySchema = z
   .object({
     start: dateOnlySchema.meta({ description: 'Inclusive start date (YYYY-MM-DD)' }),
     end: dateOnlySchema.meta({ description: 'Inclusive end date (YYYY-MM-DD)' }),
-    tz: z
-      .string()
-      .refine(isValidTimezone, { message: 'tz must be a valid IANA timezone' })
+    tz: ianaTimezoneSchema
       .optional()
       .meta({ description: 'IANA timezone (e.g. "Europe/Stockholm") for bucketing meals into local days' }),
     count_only_completed: z

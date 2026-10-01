@@ -8,6 +8,7 @@
 import { z } from 'zod'
 
 import { baseResponseSchema } from './common.ts'
+import { ianaTimezoneSchema } from './timezone.ts'
 
 export const chartDataSourceTypeSchema = z
   .enum(['tag', 'metric', 'productivity_category', 'activity_type'])
@@ -37,26 +38,13 @@ export const chartDataAggregationSchema = z.enum(['count', 'sum', 'mean']).meta(
 
 export type ChartDataAggregation = z.infer<typeof chartDataAggregationSchema>
 
-const isKnownTimezone = (tz: string): boolean => {
-  try {
-    new Intl.DateTimeFormat('en-US', { timeZone: tz })
-    return true
-  } catch {
-    return false
-  }
-}
-
-const chartDataTzSchema = z
-  .string()
-  .refine(isKnownTimezone, { message: 'tz must be a valid IANA timezone' })
-  .optional()
-  .meta({
-    description:
-      'IANA timezone for bucket alignment (e.g. "Europe/Stockholm"). Daily, weekly and monthly buckets ' +
-      'start at local midnight, local Monday and the local 1st; hourly buckets at the local hour. ' +
-      'Defaults to UTC.',
-    example: 'Europe/Stockholm',
-  })
+const chartDataTzSchema = ianaTimezoneSchema.optional().meta({
+  description:
+    'IANA timezone for bucket alignment (e.g. "Europe/Stockholm"). Daily, weekly and monthly buckets ' +
+    'start at local midnight, local Monday and the local 1st; hourly buckets at the local hour. ' +
+    'Defaults to UTC.',
+  example: 'Europe/Stockholm',
+})
 
 /**
  * Query schema for chart data endpoint (typed, for service layer).
