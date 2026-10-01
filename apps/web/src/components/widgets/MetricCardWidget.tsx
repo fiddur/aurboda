@@ -15,6 +15,7 @@ import {
   type BaselineData,
   type PeriodMetricStats,
 } from '../../state/api'
+import { HEAVY_QUERY_OPTIONS } from './heavyQuery'
 import { TrendIndicator } from './TrendIndicator'
 
 // Baseline metrics that come from the baseline API
@@ -130,6 +131,7 @@ export function MetricCardWidget({ config }: MetricCardWidgetProps) {
     enabled: isBaseline,
     queryFn: () => fetchBaseline(),
     queryKey: ['baseline'],
+    ...HEAVY_QUERY_OPTIONS,
     staleTime: 5 * 60 * 1000,
   })
 
@@ -141,6 +143,7 @@ export function MetricCardWidget({ config }: MetricCardWidgetProps) {
     enabled: !isBaseline,
     queryFn: () => fetchPeriodSummary(start, end, [apiMetric]),
     queryKey: ['periodSummary', metric],
+    ...HEAVY_QUERY_OPTIONS,
     staleTime: 5 * 60 * 1000,
   })
 

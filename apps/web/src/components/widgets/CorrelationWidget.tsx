@@ -9,6 +9,7 @@ import * as d3 from 'd3'
 import { useEffect, useRef } from 'preact/hooks'
 
 import { fetchActivityImpact } from '../../state/api'
+import { HEAVY_QUERY_OPTIONS } from './heavyQuery'
 
 interface PhaseData {
   phase: string
@@ -140,6 +141,7 @@ export function CorrelationWidget({ config }: CorrelationWidgetProps) {
   const impactQuery = useQuery({
     queryFn: () => fetchActivityImpact(activity, activity_type, period_days, window_minutes),
     queryKey: ['activityImpact', activity, activity_type, period_days, window_minutes],
+    ...HEAVY_QUERY_OPTIONS,
     staleTime: 5 * 60 * 1000,
   })
 

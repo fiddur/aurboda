@@ -6,11 +6,13 @@
 import type { BarChartConfig, BarChartData } from '@aurboda/api-spec'
 
 import { useQuery } from '@tanstack/react-query'
+import { useMemo } from 'preact/hooks'
 
 import { fetchChartData } from '../../state/api'
 import { buildChartUrl, type ChartOrigin } from '../../utils/chart-url'
 import { BarChart } from '../charts/BarChart'
 import { BreakdownLegend, SERIES_COLORS } from '../charts/breakdown'
+import { HEAVY_QUERY_OPTIONS } from './heavyQuery'
 
 /** Compute start/end ISO strings from lookback_days. */
 function lookbackToRange(lookbackDays: number): { start: string; end: string } {
@@ -19,6 +21,8 @@ function lookbackToRange(lookbackDays: number): { start: string; end: string } {
   start.setDate(start.getDate() - lookbackDays)
   return { end: end.toISOString(), start: start.toISOString() }
 }
+
+const NO_BUCKETS: BarChartData['buckets'] = []
 
 interface BarChartViewProps {
   config: BarChartConfig
@@ -33,28 +37,31 @@ export function BarChartView({ config, data, href }: BarChartViewProps) {
 
   const breakdownSeries = data?.breakdown_series
   const breakdownBuckets = data?.breakdown_buckets
+  const multiSeries = useMemo(
+    () =>
+      breakdownSeries && breakdownSeries.length > 0 && breakdownBuckets
+        ? breakdownSeries.map((name, i) => ({
+            color: SERIES_COLORS[i % SERIES_COLORS.length],
+            data: breakdownBuckets.map((b) => ({
+              bucket_start: b.bucket_start,
+              value: b.series[name] ?? 0,
+            })),
+            name,
+          }))
+        : null,
+    [breakdownSeries, breakdownBuckets],
+  )
 
   const body = (
     <>
       <h4>{displayTitle}</h4>
-      {breakdownSeries && breakdownSeries.length > 0 && breakdownBuckets ? (
+      {breakdownSeries && multiSeries ? (
         <>
           <BreakdownLegend series={breakdownSeries} />
-          <BarChart
-            data={[]}
-            height={200}
-            multiSeries={breakdownSeries.map((name, i) => ({
-              color: SERIES_COLORS[i % SERIES_COLORS.length],
-              data: breakdownBuckets.map((b) => ({
-                bucket_start: b.bucket_start,
-                value: b.series[name] ?? 0,
-              })),
-              name,
-            }))}
-          />
+          <BarChart data={NO_BUCKETS} height={200} multiSeries={multiSeries} />
         </>
       ) : (
-        <BarChart data={data?.buckets ?? []} color="#8b5cf6" height={200} />
+        <BarChart data={data?.buckets ?? NO_BUCKETS} color="#8b5cf6" height={200} />
       )}
     </>
   )
@@ -111,8 +118,26 @@ export function BarChartWidget({ config, origin }: BarChartWidgetProps) {
       aggregation,
       breakdown_fields,
     ],
+    ...HEAVY_QUERY_OPTIONS,
     staleTime: 5 * 60 * 1000,
   })
+
+  const chartData = chartQuery.data
+  const data = useMemo<BarChartData | null>(
+    () =>
+      chartData
+        ? {
+            buckets: chartData.buckets,
+            ...(chartData.breakdown_series?.length
+              ? {
+                  breakdown_buckets: chartData.breakdown_buckets,
+                  breakdown_series: chartData.breakdown_series,
+                }
+              : {}),
+          }
+        : null,
+    [chartData],
+  )
 
   const displayTitle = title ?? `${pattern ?? 'chart'} (${bucket_size})`
   const chartUrl = buildChartUrl({
@@ -136,23 +161,13 @@ export function BarChartWidget({ config, origin }: BarChartWidgetProps) {
     )
   }
 
-  if (chartQuery.isError || !chartQuery.data) {
+  if (chartQuery.isError || !data) {
     return (
       <div class="chart-widget">
         <h4>{displayTitle}</h4>
         <div class="chart-error">Unable to load chart data</div>
       </div>
     )
-  }
-
-  const data: BarChartData = {
-    buckets: chartQuery.data.buckets,
-    ...(chartQuery.data.breakdown_series?.length
-      ? {
-          breakdown_buckets: chartQuery.data.breakdown_buckets,
-          breakdown_series: chartQuery.data.breakdown_series,
-        }
-      : {}),
   }
 
   return <BarChartView config={config} data={data} href={chartUrl} />

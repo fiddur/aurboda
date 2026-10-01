@@ -161,7 +161,7 @@ function SourcePicker({
 }) {
   const { data: activityTypes = [] } = useQuery({
     queryFn: fetchActivityTypeDefinitions,
-    queryKey: ['activity-type-definitions'],
+    queryKey: ['activityTypeDefinitions'],
     staleTime: 5 * 60 * 1000,
   })
 
@@ -346,6 +346,9 @@ function ChartControls({
   )
 }
 
+const NO_TREND_POINTS: { date: string; value: number }[] = []
+const NO_BAR_BUCKETS: { bucket_start: string; value: number }[] = []
+
 function TrendDisplay({ params }: { params: FetchTrendParams }) {
   const trendQuery = useQuery({
     enabled: Boolean(params.pattern),
@@ -354,26 +357,29 @@ function TrendDisplay({ params }: { params: FetchTrendParams }) {
     staleTime: 5 * 60 * 1000,
   })
 
+  const trendData = trendQuery.data
+  const multiSeries = useMemo(() => {
+    const names = trendData?.breakdown_series
+    const histories = trendData?.breakdown_histories
+    if (!names?.length || !histories) return null
+    return names.map((name, i) => ({
+      color: SERIES_COLORS[i % SERIES_COLORS.length],
+      data: (histories[name] ?? []).map((p) => ({ date: p.date, value: p.value })),
+      name,
+    }))
+  }, [trendData])
+
   if (!params.pattern) return <div class="chart-empty">Select a source to view trend data.</div>
   if (trendQuery.isLoading) return <div class="chart-loading">Loading trend data...</div>
   if (trendQuery.isError || !trendQuery.data) return <div class="chart-error">Failed to load trend data.</div>
 
-  const { breakdown_histories, breakdown_series, current_value, display_unit, history } = trendQuery.data
+  const { breakdown_series, current_value, display_unit, history } = trendQuery.data
 
-  if (breakdown_series?.length && breakdown_histories) {
+  if (breakdown_series && multiSeries) {
     return (
       <div class="chart-display">
         <BreakdownLegend series={breakdown_series} />
-        <TrendLineChart
-          data={[]}
-          color="#8b5cf6"
-          height={350}
-          multiSeries={breakdown_series.map((name, i) => ({
-            color: SERIES_COLORS[i % SERIES_COLORS.length],
-            data: (breakdown_histories[name] ?? []).map((p) => ({ date: p.date, value: p.value })),
-            name,
-          }))}
-        />
+        <TrendLineChart data={NO_TREND_POINTS} color="#8b5cf6" height={350} multiSeries={multiSeries} />
       </div>
     )
   }
@@ -443,11 +449,14 @@ const buildBarDataHref = (
 }
 
 function BarDisplay({ params }: { params: FetchChartDataParams }) {
-  const getBarHref =
-    params.source_type === 'activity_type' && params.pattern
-      ? (info: BarClickInfo) =>
-          buildBarDataHref(info, params.pattern!, params.bucket_size ?? '1d', params.breakdown_fields)
-      : undefined
+  const { source_type, pattern, bucket_size, breakdown_fields } = params
+  const getBarHref = useMemo(
+    () =>
+      source_type === 'activity_type' && pattern
+        ? (info: BarClickInfo) => buildBarDataHref(info, pattern, bucket_size ?? '1d', breakdown_fields)
+        : undefined,
+    [source_type, pattern, bucket_size, breakdown_fields],
+  )
 
   const barQuery = useQuery({
     enabled: Boolean(params.pattern || params.activity_type_id),
@@ -455,6 +464,20 @@ function BarDisplay({ params }: { params: FetchChartDataParams }) {
     queryKey: ['chart-data', params],
     staleTime: 5 * 60 * 1000,
   })
+
+  const result = barQuery.data
+  const multiSeries = useMemo(() => {
+    const breakdownBuckets = result?.breakdown_buckets
+    if (!breakdownBuckets?.length) return null
+    return (result?.breakdown_series ?? []).map((name, i) => ({
+      color: SERIES_COLORS[i % SERIES_COLORS.length],
+      data: breakdownBuckets.map((b) => ({
+        bucket_start: b.bucket_start,
+        value: b.series[name] ?? 0,
+      })),
+      name,
+    }))
+  }, [result])
 
   if (!params.pattern && !params.activity_type_id) {
     return <div class="chart-empty">Select a source to view chart data.</div>
@@ -468,34 +491,24 @@ function BarDisplay({ params }: { params: FetchChartDataParams }) {
     return <div class="chart-error">Failed to load chart data.</div>
   }
 
-  const result = barQuery.data
-
-  if (result?.breakdown_buckets?.length) {
-    const series = result.breakdown_series ?? []
+  if (multiSeries) {
     return (
       <div class="chart-display">
-        <BreakdownLegend series={series} />
+        <BreakdownLegend series={result?.breakdown_series ?? []} />
         <BarChart
-          data={[]}
+          data={NO_BAR_BUCKETS}
           height={350}
           bucketSize={params.bucket_size}
           rangeStart={params.start}
           rangeEnd={params.end}
           getBarHref={getBarHref}
-          multiSeries={series.map((name, i) => ({
-            color: SERIES_COLORS[i % SERIES_COLORS.length],
-            data: result.breakdown_buckets!.map((b) => ({
-              bucket_start: b.bucket_start,
-              value: b.series[name] ?? 0,
-            })),
-            name,
-          }))}
+          multiSeries={multiSeries}
         />
       </div>
     )
   }
 
-  const buckets = result?.buckets ?? []
+  const buckets = result?.buckets ?? NO_BAR_BUCKETS
 
   return (
     <div class="chart-display">

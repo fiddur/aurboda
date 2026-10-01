@@ -1,5 +1,7 @@
 import type { QueryMetricsBucketedResponse } from '@aurboda/api-spec'
 
+import { type BarBucketSize, barWindowStart, nextBarWindowStart } from './barWindows'
+
 /**
  * Preprocesses time series data to insert nulls at gaps, allowing
  * the line chart to show breaks in the data.
@@ -104,32 +106,29 @@ export const aggregateBuckets = (buckets: MetricBucketParsed[], factor: number):
 }
 
 /**
- * Aggregate buckets into time-aligned windows (e.g., align to hour boundaries).
+ * Aggregate buckets into local calendar windows (hour, day, or Monday-started week).
  * Unlike `aggregateBuckets` which groups by consecutive index, this groups buckets
- * by which target window they fall into, ensuring alignment with other data sources
- * (screentime, training load) that use clean time boundaries.
+ * by which window they fall into, ensuring alignment with other data sources
+ * (screentime, training load) that the backend buckets in the same local calendar.
  *
  * @param buckets - Pre-sorted array of metric buckets
- * @param windowMs - Target window size in ms (e.g. 3600000 for 1 hour)
  */
 export const aggregateBucketsAligned = (
   buckets: MetricBucketParsed[],
-  windowMs: number,
+  size: BarBucketSize,
 ): MetricBucketParsed[] => {
   if (buckets.length === 0) return []
 
   const result: MetricBucketParsed[] = []
-  let currentWindowStart = Math.floor(buckets[0]!.start.getTime() / windowMs) * windowMs
+  let currentWindowStart = barWindowStart(buckets[0]!.start, size)
   let chunk: MetricBucketParsed[] = []
 
   for (const bucket of buckets) {
-    const bucketWindowStart = Math.floor(bucket.start.getTime() / windowMs) * windowMs
+    const bucketWindowStart = barWindowStart(bucket.start, size)
 
-    if (bucketWindowStart !== currentWindowStart) {
+    if (bucketWindowStart.getTime() !== currentWindowStart.getTime()) {
       if (chunk.length > 0) {
-        result.push(
-          mergeBucketChunk(chunk, new Date(currentWindowStart), new Date(currentWindowStart + windowMs)),
-        )
+        result.push(mergeBucketChunk(chunk, currentWindowStart, nextBarWindowStart(currentWindowStart, size)))
       }
       currentWindowStart = bucketWindowStart
       chunk = []
@@ -138,9 +137,7 @@ export const aggregateBucketsAligned = (
   }
 
   if (chunk.length > 0) {
-    result.push(
-      mergeBucketChunk(chunk, new Date(currentWindowStart), new Date(currentWindowStart + windowMs)),
-    )
+    result.push(mergeBucketChunk(chunk, currentWindowStart, nextBarWindowStart(currentWindowStart, size)))
   }
 
   return result

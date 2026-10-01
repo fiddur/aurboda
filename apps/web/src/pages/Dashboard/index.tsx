@@ -7,7 +7,7 @@ import { useState } from 'preact/hooks'
 import { EditableDashboard } from '../../components/EditableDashboard'
 import { fetchDashboard, resetDashboard, saveDashboard } from '../../state/api'
 import { auth } from '../../state/auth'
-import { readCachedDashboard, writeCachedDashboard } from './dashboardCache'
+import { readCachedDashboard, writeCachedDashboard } from '../../state/dashboardCache'
 import './style.css'
 
 const browserStorage = () => window.localStorage

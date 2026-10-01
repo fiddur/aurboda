@@ -15,6 +15,8 @@
  */
 import type { FeedStructuredArticle, FeedStructuredArticleBlock } from '@aurboda/api-spec'
 
+import { useMemo } from 'preact/hooks'
+
 import { TrendLineChart } from '../../components/charts/TrendLineChart'
 import { renderRemoteMarkdown } from '../../utils/markdown'
 import { getMetricDisplayName } from '../../utils/metricLabels'
@@ -23,6 +25,33 @@ import './FeedPostCard.css' // `.article-prose` / `.article-chart*` / `.article-
 
 const CHART_COLOR = '#673ab8'
 
+type ChartBlock = Extract<FeedStructuredArticleBlock, { type: 'chart' }>
+
+const TimelineArticleChart = ({ block }: { block: ChartBlock }) => {
+  const points = useMemo(
+    () =>
+      block.samples
+        .map((s) => ({ date: s.start, value: s.avg }))
+        .filter((p): p is { date: string; value: number } => p.value != null),
+    [block.samples],
+  )
+  return (
+    <figure class="article-chart">
+      <div class="article-chart-title">{getMetricDisplayName(block.metric)}</div>
+      {points.length < 2 ? (
+        <p class="article-chart-note">Not enough data in this window.</p>
+      ) : (
+        <TrendLineChart
+          color={CHART_COLOR}
+          data={points}
+          xDomain={[new Date(block.start), new Date(block.end)]}
+        />
+      )}
+      {block.caption && <figcaption class="article-chart-caption">{block.caption}</figcaption>}
+    </figure>
+  )
+}
+
 const TimelineArticleBlock = ({ block }: { block: FeedStructuredArticleBlock }) => {
   if (block.type === 'prose') {
     return (
@@ -30,26 +59,7 @@ const TimelineArticleBlock = ({ block }: { block: FeedStructuredArticleBlock }) 
     )
   }
 
-  if (block.type === 'chart') {
-    const points = block.samples
-      .map((s) => ({ date: s.start, value: s.avg }))
-      .filter((p): p is { date: string; value: number } => p.value != null)
-    return (
-      <figure class="article-chart">
-        <div class="article-chart-title">{getMetricDisplayName(block.metric)}</div>
-        {points.length < 2 ? (
-          <p class="article-chart-note">Not enough data in this window.</p>
-        ) : (
-          <TrendLineChart
-            color={CHART_COLOR}
-            data={points}
-            xDomain={[new Date(block.start), new Date(block.end)]}
-          />
-        )}
-        {block.caption && <figcaption class="article-chart-caption">{block.caption}</figcaption>}
-      </figure>
-    )
-  }
+  if (block.type === 'chart') return <TimelineArticleChart block={block} />
 
   return (
     <figure class="article-chart">
