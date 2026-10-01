@@ -10,3 +10,7 @@ production image has no system fonts).
 
 - Upstream: https://github.com/liberationfonts/liberation-fonts
 - License: https://github.com/liberationfonts/liberation-fonts/blob/main/LICENSE
+
+Emoji are not font-based: `services/og-image.ts` draws each emoji as an SVG from the
+[`@twemoji/svg`](https://www.npmjs.com/package/@twemoji/svg) npm package (Twemoji
+graphics licensed CC-BY 4.0; package code MIT).

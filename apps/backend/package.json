@@ -21,6 +21,7 @@
     "@modelcontextprotocol/sdk": "^1.25.2",
     "@sentry/node": "^10.52.0",
     "@simplewebauthn/server": "^13.3.0",
+    "@twemoji/svg": "15.0.0",
     "@types/multer": "^2.1.0",
     "axios": "^1.11.0",
     "cors": "^2.8.5",
