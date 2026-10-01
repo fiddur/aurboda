@@ -512,6 +512,12 @@ successful sweep appends a `schema@<fingerprint>` row to the user's
 already present. The rows are append-only, so what is left behind reads as the
 database's migration history.
 
+A new user's database records the fingerprint at signup: `initializeSchema`
+runs every create statement on an empty database, which is exactly the schema
+the fingerprint describes, so the first sweep is skipped. On a database that
+already held tables (the legacy importer, `migrate.ts`) it records nothing,
+because `IF NOT EXISTS` leaves those tables as they were.
+
 Two halves, because migrations have two kinds of content:
 
 - **DDL is covered automatically.** Any change to a statement in
