@@ -97,6 +97,9 @@ export const adminSettingsResponseSchema = baseResponseSchema
     gravl_client_secret_set: z
       .boolean()
       .meta({ description: 'Whether a Gravl OAuth client secret is configured' }),
+    gravl_redirect_uri: z.string().meta({
+      description: 'Absolute OAuth redirect URI to register with Gravl (derived from API_BASE_URL)',
+    }),
     lastfm_api_key_set: z.boolean().meta({ description: 'Whether a Last.fm API key is configured' }),
     oura_client_id_set: z.boolean().meta({ description: 'Whether an Oura client ID is configured' }),
     oura_client_secret_set: z.boolean().meta({ description: 'Whether an Oura client secret is configured' }),

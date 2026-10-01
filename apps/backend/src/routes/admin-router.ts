@@ -22,6 +22,7 @@ export const createAdminRouter = (
   centralDb: CentralDb,
   invitationAuth: InvitationAuth,
   webHost: string,
+  gravlRedirectUri: string,
   ouraWebhookManager?: OuraWebhookManager | null,
 ): TypedRouter => {
   const router = typedRouter()
@@ -64,6 +65,7 @@ export const createAdminRouter = (
         audit_log_retention_days: auditLogRetentionDays,
         gravl_client_id_set: !!gravlClientId,
         gravl_client_secret_set: !!gravlClientSecret,
+        gravl_redirect_uri: gravlRedirectUri,
         lastfm_api_key_set: !!lastFmApiKey,
         oura_client_id_set: !!ouraClientId,
         oura_client_secret_set: !!ouraClientSecret,
@@ -174,6 +176,7 @@ export const createAdminRouter = (
         audit_log_retention_days: currentRetentionDays,
         gravl_client_id_set: !!currentGravlClientId,
         gravl_client_secret_set: !!currentGravlClientSecret,
+        gravl_redirect_uri: gravlRedirectUri,
         lastfm_api_key_set: !!lastFmApiKey,
         oura_client_id_set: !!currentOuraClientId,
         oura_client_secret_set: !!currentOuraClientSecret,

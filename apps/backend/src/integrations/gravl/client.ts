@@ -174,13 +174,16 @@ const defaultDeps = (): GravlClientDeps => ({
   upsertOAuthToken,
 })
 
+/** The OAuth callback URL — also the redirect URI the admin registers with Gravl. */
+export const gravlRedirectUri = (apiBaseUrl: string): string => `${apiBaseUrl}/auth/gravlcb`
+
 export const gravlClient = (
   getCredentials: GravlCredentialGetter,
   apiBaseUrl: string,
   overrides: Partial<GravlClientDeps> = {},
 ) => {
   const deps: GravlClientDeps = { ...defaultDeps(), ...overrides }
-  const redirectUri = `${apiBaseUrl}/auth/gravlcb`
+  const redirectUri = gravlRedirectUri(apiBaseUrl)
   /**
    * Refresh tokens are single-use: the scheduler, a pre-query auto-sync and an
    * enrichment job can all need a token for the same user at once, and the
