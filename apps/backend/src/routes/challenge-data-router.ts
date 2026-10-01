@@ -31,6 +31,7 @@ export const createChallengeDataRouter = (): TypedRouter => {
           participation.spec,
           participation.start_ts,
           participation.end_ts,
+          participation.timezone,
         )
         res.setHeader('Cache-Control', 'public, max-age=60')
         res.json({

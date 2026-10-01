@@ -190,4 +190,38 @@ describe('getChallengeStandings integration', () => {
     await getChallengeStandings(user, challenge)
     expect(vi.mocked(fetchMemberData)).toHaveBeenCalledTimes(1)
   })
+
+  test("buckets a local member's data in the challenge's timezone", async () => {
+    const user = getTestUser()
+    // 00:30 on 2 June in Stockholm (CEST), still 1 June in UTC.
+    await insertTimeSeries(user, [
+      { metric: 'resting_heart_rate', source: 'manual', time: new Date('2026-06-01T22:30:00Z'), value: 50 },
+    ])
+    const challenge = await createChallenge(user, {
+      announce_winner: false,
+      end_ts: new Date('2026-06-02T22:00:00Z'),
+      is_public: true,
+      name: 'RHR sum',
+      spec: {
+        activity_type_id: null,
+        aggregation: 'sum',
+        bucket_size: '1d',
+        pattern: 'resting_heart_rate',
+        source_type: 'metric',
+        unit: 'bpm',
+      },
+      start_ts: new Date('2026-05-31T22:00:00Z'),
+      timezone: 'Europe/Stockholm',
+    })
+    await upsertChallengeMember(user, challenge.id, {
+      display_name: user,
+      identity_base_url: `https://local/u/${user}`,
+      kind: 'local',
+      local_user: user,
+    })
+
+    const [standing] = await getChallengeStandings(user, challenge)
+
+    expect(standing.buckets).toEqual([{ bucket_start: '2026-06-01T22:00:00.000Z', value: 50 }])
+  })
 })

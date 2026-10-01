@@ -1,5 +1,7 @@
 import type { ChallengeEffectiveBucketSize, ChallengeSpec, ChartDataBucket } from '@aurboda/api-spec'
 
+import { isKnownTimezone } from '@aurboda/api-spec'
+
 /**
  * Translate a stored challenge spec into a chart-data query and compute a
  * member's series + cumulative total. Reuses the same `getChartData` engine the
@@ -124,13 +126,16 @@ const resolveLastDataTime = async (
 
 /**
  * Resolve a member's series for a challenge window. `user` is the *local* user
- * whose data is being measured (the member, on this instance).
+ * whose data is being measured (the member, on this instance). Buckets follow
+ * the challenge's `timezone` (UTC when unknown), not the member's, so every
+ * member's days line up.
  */
 export const resolveMemberSeries = async (
   user: string,
   spec: ChallengeSpecFields,
   start: Date,
   end: Date,
+  timezone: string,
 ): Promise<MemberSeries> => {
   // `end` is exclusive but the queries below use an inclusive BETWEEN, and daily aggregates
   // sit at local midnight — exactly at `end` — so without this step back the day after the
@@ -145,6 +150,7 @@ export const resolveMemberSeries = async (
       pattern: spec.pattern ?? undefined,
       source_type: spec.source_type,
       start: start.toISOString(),
+      tz: isKnownTimezone(timezone) ? timezone : 'UTC',
     }),
     resolveLastDataTime(user, spec, start, lastInstant),
   ])

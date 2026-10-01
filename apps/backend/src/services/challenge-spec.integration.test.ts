@@ -58,6 +58,7 @@ describe('resolveMemberSeries integration', () => {
       metricSpec,
       new Date('2026-06-01T00:00:00Z'),
       new Date('2026-06-03T00:00:00Z'),
+      'UTC',
     )
     expect(series.total).toBe(12000)
     // Both points were written just now, so that — not their 2026 sample times — is the answer.
@@ -83,15 +84,17 @@ describe('resolveMemberSeries integration', () => {
       unit: 'steps',
     }
 
-    const before = await resolveMemberSeries(user, spec, ...window)
+    const before = await resolveMemberSeries(user, spec, ...window, 'UTC')
     expect(before.last_updated).toBe('2026-06-02T06:00:00.000Z')
 
     // The same total re-sent leaves it alone; a higher total moves it to now.
     await insertTimeSeries(user, [{ ...point, value: 5000 }])
-    expect((await resolveMemberSeries(user, spec, ...window)).last_updated).toBe('2026-06-02T06:00:00.000Z')
+    expect((await resolveMemberSeries(user, spec, ...window, 'UTC')).last_updated).toBe(
+      '2026-06-02T06:00:00.000Z',
+    )
 
     await insertTimeSeries(user, [{ ...point, value: 8200 }])
-    const after = await resolveMemberSeries(user, spec, ...window)
+    const after = await resolveMemberSeries(user, spec, ...window, 'UTC')
     expect(after.total).toBe(8200)
     expect(Date.now() - new Date(after.last_updated!).getTime()).toBeLessThan(60_000)
   })
@@ -120,6 +123,7 @@ describe('resolveMemberSeries integration', () => {
       },
       new Date('2026-06-01T00:00:00Z'),
       new Date('2026-06-03T00:00:00Z'),
+      'UTC',
     )
     expect(series.last_updated).toBe('2026-06-02T18:30:00.000Z')
   })
@@ -141,6 +145,7 @@ describe('resolveMemberSeries integration', () => {
       metricSpec,
       new Date('2026-06-01T00:00:00Z'),
       new Date('2026-06-03T00:00:00Z'),
+      'UTC',
     )
     expect(series.total).toBe(0)
     expect(series.last_updated).toBeNull()
@@ -173,6 +178,7 @@ describe('resolveMemberSeries integration', () => {
       metricSpec,
       new Date('2026-06-01T00:00:00Z'),
       new Date('2026-06-03T00:00:00Z'),
+      'UTC',
     )
     // strava steps are excluded from the total; last_updated agrees with it.
     expect(series.total).toBe(5000)
@@ -196,10 +202,50 @@ describe('resolveMemberSeries integration', () => {
       dayAfter,
     ])
 
-    const series = await resolveMemberSeries(user, metricSpec, new Date('2026-08-31T22:00:00Z'), dayAfter)
+    const series = await resolveMemberSeries(
+      user,
+      metricSpec,
+      new Date('2026-08-31T22:00:00Z'),
+      dayAfter,
+      'Europe/Stockholm',
+    )
     expect(series.total).toBe(1000)
     expect(series.last_updated).toBe('2026-09-30T20:00:00.000Z')
-    expect(series.buckets.map((b) => b.value)).toEqual([1000])
+    expect(series.buckets).toEqual([{ bucket_start: lastDay.toISOString(), value: 1000 }])
+  })
+
+  test("daily buckets follow the challenge's timezone, so a row just after local midnight is the next day", async () => {
+    const user = getTestUser()
+    await insertActivity(user, {
+      activity_type: 'exercise',
+      source: 'strava',
+      start_time: new Date('2026-06-01T10:00:00Z'),
+    })
+    // 00:30 on 2 June in Stockholm (CEST, UTC+2), still 1 June in UTC.
+    await insertActivity(user, {
+      activity_type: 'exercise',
+      source: 'strava',
+      start_time: new Date('2026-06-01T22:30:00Z'),
+    })
+    const spec: ChallengeSpecFields = {
+      ...metricSpec,
+      aggregation: 'count',
+      pattern: 'exercise',
+      source_type: 'activity_type',
+      unit: 'sessions',
+    }
+    const window = [new Date('2026-05-31T22:00:00Z'), new Date('2026-06-02T22:00:00Z')] as const
+
+    const local = await resolveMemberSeries(user, spec, ...window, 'Europe/Stockholm')
+    expect(local.buckets).toEqual([
+      { bucket_start: '2026-05-31T22:00:00.000Z', value: 1 },
+      { bucket_start: '2026-06-01T22:00:00.000Z', value: 1 },
+    ])
+
+    const fallback = await resolveMemberSeries(user, spec, ...window, 'Mars/Base')
+    expect(fallback.buckets.filter((b) => b.value > 0)).toEqual([
+      { bucket_start: '2026-06-01T00:00:00.000Z', value: 2 },
+    ])
   })
 
   test('activity_type: last_updated is the most recent matching activity start', async () => {
@@ -226,6 +272,7 @@ describe('resolveMemberSeries integration', () => {
       },
       new Date('2026-06-01T00:00:00Z'),
       new Date('2026-06-03T00:00:00Z'),
+      'UTC',
     )
     expect(series.total).toBe(2)
     expect(series.last_updated).toBe('2026-06-02T19:45:00.000Z')
