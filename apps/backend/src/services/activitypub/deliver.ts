@@ -221,6 +221,9 @@ const buildFeedNoteParts = async (
     published: dateToTemporalInstant(post.created_at),
     startTime: dateToTemporalInstant(activity.start_time),
     tos: to,
+    // Mastodon applies an Update's content and attachments only when the object
+    // says it was edited after the stored copy; without `updated` it re-reads polls only.
+    updated: dateToTemporalInstant(post.updated_at),
     url: noteId,
   })
   const quant = quantExerciseExtension({

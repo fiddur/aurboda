@@ -19,8 +19,6 @@ import type { Job, PgBoss } from './pg-boss.ts'
 import { auditError } from './audit-log.ts'
 import { STABILISATION_SECONDS } from './autoshare.ts'
 
-export { STABILISATION_SECONDS }
-
 export interface AutoshareJobData {
   user: string
   /** ISO window of the triggering mutation. */
