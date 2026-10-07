@@ -1,8 +1,10 @@
 /**
  * Auto-share rule evaluation: when activities in a mutation window have
- * SETTLED (the queue delays evaluation past the merge/enrich/re-sync churn),
- * publish the ones matching an enabled rule to the federated feed — exactly as
- * a manual share with the rule's template would.
+ * SETTLED (every merge-group member ingested at least
+ * {@link STABILISATION_SECONDS} ago and, for a Garmin-backed group, its detail
+ * synced or {@link DETAIL_WAIT_SECONDS} passed; unsettled groups re-queue the
+ * window), publish the ones matching an enabled rule to the federated feed —
+ * exactly as a manual share with the rule's template would.
  *
  * Safety properties, in order of importance:
  * - **Hard dedupe**: at most one post per activity/merge-group EVER. The whole
@@ -77,6 +79,37 @@ export interface AutoshareDeps {
   createPost: (user: string, anchor: AutoshareCandidate, rule: AutoshareRuleRecord) => Promise<FeedPostRecord>
   /** Fan the created post out to followers (fire-and-forget, like a manual share). */
   onCreated: (user: string, post: FeedPostRecord, anchor: AutoshareCandidate) => void
+  /** Evaluate the window again no sooner than `notBefore` (some group in it was not settled yet). */
+  requeue?: (user: string, start: Date, end: Date, notBefore: Date) => Promise<void>
+}
+
+/**
+ * How long after its newest member was ingested a merge group counts as
+ * settled. Health Connect pushes roughly once a minute, so a window delay alone
+ * never ages anything: some job always matures within the next minute.
+ */
+export const STABILISATION_SECONDS = 10 * 60
+
+/**
+ * How long a Garmin-backed group waits for its detail sync (GPS, per-second HR,
+ * distance) before it is shared as is.
+ */
+export const DETAIL_WAIT_SECONDS = 2 * 3600
+
+/** When an unsettled group should be looked at again, or null when it is ready now. */
+export const groupNotBefore = (
+  group: AutoshareCandidate[],
+  anchor: AutoshareCandidate,
+  now: Date,
+): Date | null => {
+  const youngest = Math.max(...group.map((member) => member.created_at.getTime()))
+  const settledAt = youngest + STABILISATION_SECONDS * 1000
+  if (settledAt > now.getTime()) return new Date(settledAt)
+  const detailPending = group.some((member) => member.detail_pending)
+  if (detailPending && now.getTime() - anchor.created_at.getTime() < DETAIL_WAIT_SECONDS * 1000) {
+    return new Date(now.getTime() + STABILISATION_SECONDS * 1000)
+  }
+  return null
 }
 
 /**
@@ -98,6 +131,7 @@ export const evaluateAutoshareWindow = async (
   start: Date,
   end: Date,
   deps: AutoshareDeps,
+  now: Date = new Date(),
 ): Promise<number> => {
   const rules = await deps.getEnabledRules(user)
   if (rules.length === 0) return 0
@@ -107,6 +141,7 @@ export const evaluateAutoshareWindow = async (
 
   const processedAnchors = new Set<string>()
   let created = 0
+  let requeueAt: Date | null = null
   for (const candidate of candidates) {
     // An empty group means the candidate vanished since listing (deleted) — skip.
     const group = await deps.getGroup(user, candidate)
@@ -123,6 +158,12 @@ export const evaluateAutoshareWindow = async (
       deps.suppressedActivityIds(user, groupIds),
     ])
     if (existing.length > 0 || suppressed.length > 0) continue
+
+    const notBefore = groupNotBefore(group, anchor, now)
+    if (notBefore != null) {
+      if (requeueAt == null || notBefore < requeueAt) requeueAt = notBefore
+      continue
+    }
 
     // New-arrivals-only, gate 1: the anchor row was ingested after the enable.
     const ingestEligible = rules.filter(
@@ -167,6 +208,7 @@ export const evaluateAutoshareWindow = async (
       break
     }
   }
+  if (requeueAt != null) await deps.requeue?.(user, start, end, requeueAt)
   return created
 }
 

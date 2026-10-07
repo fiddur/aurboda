@@ -194,6 +194,35 @@ export const findAdjacentActivity = async (
   return result.rows.length > 0 ? mapActivityRow(result.rows[0]) : null
 }
 
+export interface ActivityFieldValueRow {
+  value: string
+  count: number
+  last_used: Date
+}
+
+export const getActivityFieldValues = async (
+  user: string,
+  activityTypes: string[],
+  field: string,
+  limit = 200,
+): Promise<ActivityFieldValueRow[]> => {
+  const result = await query(
+    user,
+    `SELECT btrim(data->>$2) AS value, COUNT(*)::int AS count, MAX(start_time) AS last_used
+     FROM activities
+     WHERE activity_type = ANY($1) AND deleted_at IS NULL AND btrim(data->>$2) <> ''
+     GROUP BY 1
+     ORDER BY last_used DESC, value
+     LIMIT $3`,
+    [activityTypes, field, limit],
+  )
+  return result.rows.map((row) => ({
+    count: row.count,
+    last_used: new Date(row.last_used),
+    value: row.value,
+  }))
+}
+
 /**
  * Get sleep sessions that overlap with a date range.
  * Uses date overlap logic so overnight sleep (starting 11pm, ending 7am)

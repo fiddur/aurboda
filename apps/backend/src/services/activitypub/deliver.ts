@@ -34,6 +34,7 @@ import {
 
 import type { FeedPostRecord } from '../../db/index.ts'
 
+import { hasLocations, hasTimeSeries } from '../../db/index.ts'
 import { challengeWinners } from '../challenge-results.ts'
 import { getSettings } from '../settings.ts'
 import { articleImageAttachments, renderArticleContentHtml } from './article-object.ts'
@@ -94,14 +95,27 @@ export interface DeliverablePost {
  * endpoint can't verify a signed request — the token is what lets a follower's
  * server fetch the image while an untoken'd guess 404s. The token is only ever
  * embedded in the Note delivered to followers, never in the public object/outbox.
+ *
+ * Only images with data behind them are attached (`available`): a remote server
+ * that fails to fetch one drops the attachment for good. Each URL carries the
+ * post's version (`v=updated_at`), since Mastodon re-downloads an attachment on
+ * an Update only when its URL changed; the endpoint itself ignores `v`.
  */
-export const imageAttachments = (apiBaseUrl: string, user: string, post: DeliverablePost): Image[] => {
+export const imageAttachments = (
+  apiBaseUrl: string,
+  user: string,
+  post: DeliverablePost,
+  available: ImageAvailability,
+): Image[] => {
   // Same base as the series links (feed-activity.ts) — the configured API base,
   // NOT a hardcoded `<origin>/api`, so it stays correct if the two ever diverge.
   const base = `${apiBaseUrl.replace(/\/+$/, '')}/public/${encodeURIComponent(user)}/feed/${post.id}`
-  const query = isPubliclyVisible(post.visibility) ? '' : `?token=${encodeURIComponent(post.image_token)}`
+  const params = new URLSearchParams()
+  if (!isPubliclyVisible(post.visibility)) params.set('token', post.image_token)
+  params.set('v', String(post.updated_at.getTime()))
+  const query = `?${params.toString()}`
   const images: Image[] = []
-  if (post.include_chart) {
+  if (post.include_chart && available.chart) {
     images.push(
       new Image({
         height: 420,
@@ -112,7 +126,7 @@ export const imageAttachments = (apiBaseUrl: string, user: string, post: Deliver
       }),
     )
   }
-  if (post.include_map) {
+  if (post.include_map && available.map) {
     images.push(
       new Image({
         height: 700,
@@ -132,6 +146,34 @@ export interface DeliverableActivity {
   end_time?: Date
   title?: string
 }
+
+export interface ImageAvailability {
+  chart: boolean
+  map: boolean
+}
+
+export interface ImageDataLookups {
+  hasSeries: (user: string, metric: string, start: Date, end: Date) => Promise<boolean>
+  hasRoute: (user: string, start: Date, end: Date) => Promise<boolean>
+}
+
+/** Which opted-in images would render: the same window and data the image endpoints use. */
+export const imageAvailability = async (
+  user: string,
+  post: Pick<DeliverablePost, 'include_chart' | 'include_map'>,
+  activity: DeliverableActivity,
+  lookups: ImageDataLookups,
+): Promise<ImageAvailability> => {
+  const end = activity.end_time
+  if (end == null) return { chart: false, map: false }
+  const [chart, map] = await Promise.all([
+    post.include_chart ? lookups.hasSeries(user, 'heart_rate', activity.start_time, end) : false,
+    post.include_map ? lookups.hasRoute(user, activity.start_time, end) : false,
+  ])
+  return { chart, map }
+}
+
+const dbImageLookups: ImageDataLookups = { hasRoute: hasLocations, hasSeries: hasTimeSeries }
 
 /**
  * Build the Fedify `Note` for a shared post: the Mastodon-compatible object
@@ -166,8 +208,9 @@ const buildFeedNoteParts = async (
   const actorUri = ctx.getActorUri(user)
   const noteId = ctx.getObjectUri(Note, { identifier: user, postId: post.id })
   const { cc, to } = recipients(post.visibility, ctx.getFollowersUri(user))
+  const available = await imageAvailability(user, post, activity, dbImageLookups)
   const note = new Note({
-    attachments: imageAttachments(apiBaseUrl, user, post),
+    attachments: imageAttachments(apiBaseUrl, user, post, available),
     attribution: actorUri,
     ccs: cc,
     content,
@@ -178,6 +221,9 @@ const buildFeedNoteParts = async (
     published: dateToTemporalInstant(post.created_at),
     startTime: dateToTemporalInstant(activity.start_time),
     tos: to,
+    // Mastodon applies an Update's content and attachments only when the object
+    // says it was edited after the stored copy; without `updated` it re-reads polls only.
+    updated: dateToTemporalInstant(post.updated_at),
     url: noteId,
   })
   const quant = quantExerciseExtension({

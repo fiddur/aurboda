@@ -51,6 +51,8 @@ export interface SourceEnrichDeps {
   /** Run an incremental Garmin sync for one data type (activities also fetches detail); null when Garmin is off. */
   syncGarmin: ((user: string, dataType: 'activities' | 'sleep') => Promise<void>) | null
   isGarminConnected: (user: string) => Promise<boolean>
+  /** Whether the stored Garmin activity still lacks its detail (a missing row is not pending). */
+  garminDetailPending?: (user: string, garminActivityId: string) => Promise<boolean>
   /** Fired after a successful enrichment so deduction / auto-share rules see the new data. */
   onEnriched?: (user: string) => void
 }
@@ -94,6 +96,11 @@ export const runSourceEnrichment = async (
 
   if (!deps.syncGarmin || !(await deps.isGarminConnected(job.user))) return 'skipped'
   await deps.syncGarmin(job.user, job.kind === 'sleep' ? 'sleep' : 'activities')
+  // Garmin often lists the activity before it serves the detail (the fetch 404s);
+  // throwing lets pg-boss retry with backoff until it lands.
+  if (job.kind === 'activity' && (await deps.garminDetailPending?.(job.user, job.key))) {
+    throw new Error(`Garmin activity ${job.key} detail not yet available`)
+  }
   auditInfo(job.user, 'sync', `Garmin ${job.kind} synced from Health Connect arrival`, { key: job.key })
   deps.onEnriched?.(job.user)
   return 'enriched'

@@ -105,3 +105,54 @@ describe('getPlaceVisits — unknown stay segmentation (issue #811)', () => {
     expect(morningHome!.end_time.getTime()).toBeLessThanOrEqual(Date.UTC(2026, 5, 14, 11, 30, 0))
   })
 })
+
+describe('getPlaceVisits — last known place (lastKnownHours)', () => {
+  beforeAll(async () => {
+    await startTestDb()
+  }, CONTAINER_TIMEOUT)
+
+  afterAll(async () => {
+    await stopTestDb()
+  })
+
+  beforeEach(async () => {
+    await cleanTestDb()
+  })
+
+  const start = new Date(Date.UTC(2026, 5, 14, 10, 5, 0))
+  const end = new Date(Date.UTC(2026, 5, 14, 10, 25, 0))
+
+  test('carries the last fix before a range without fixes forward, only when asked', async () => {
+    const user = getTestUser()
+    await insertNamedLocation(user, { lat: HOME.lat, lon: HOME.lon, name: 'Hökås', radius: 200 })
+    await insertLocations(user, [at(6, 0, HOSPITAL.lat, HOSPITAL.lon), at(9, 16, HOME.lat, HOME.lon)])
+
+    expect(await getPlaceVisits(user, start, end)).toEqual([])
+
+    const visits = await getPlaceVisits(user, start, end, { lastKnownHours: 6 })
+    expect(visits).toHaveLength(1)
+    expect(visits[0]).toMatchObject({
+      duration_minutes: 20,
+      end_time: end,
+      inferred_from: new Date(Date.UTC(2026, 5, 14, 9, 16, 0)),
+      name: 'Hökås',
+      start_time: start,
+    })
+  })
+
+  test('ignores a last fix older than the lookback', async () => {
+    const user = getTestUser()
+    await insertLocations(user, [at(3, 0, HOME.lat, HOME.lon)])
+
+    expect(await getPlaceVisits(user, start, end, { lastKnownHours: 6 })).toEqual([])
+  })
+
+  test('does not carry anything forward when the range opens with a fix', async () => {
+    const user = getTestUser()
+    await insertNamedLocation(user, { lat: HOME.lat, lon: HOME.lon, name: 'Hökås', radius: 200 })
+    await insertLocations(user, [at(9, 16, HOSPITAL.lat, HOSPITAL.lon), at(10, 5, HOME.lat, HOME.lon)])
+
+    const visits = await getPlaceVisits(user, start, end, { lastKnownHours: 6 })
+    expect(visits.map((v) => [v.name, v.inferred_from])).toEqual([['Hökås', undefined]])
+  })
+})

@@ -28,7 +28,11 @@ import {
   requeueOutboundSync,
   resetSyncState,
 } from '../db/index.ts'
-import { type GarminDataType, syncAllGarminData } from '../integrations/garmin/sync.ts'
+import {
+  type DetailSyncedCallback,
+  type GarminDataType,
+  syncAllGarminData,
+} from '../integrations/garmin/sync.ts'
 import { syncGravlWorkouts } from '../integrations/gravl/sync.ts'
 import { syncAllCalendars } from '../integrations/ical/sync.ts'
 import { DEFAULT_SYNC_HISTORY_DAYS, syncLastFmData } from '../integrations/lastfm/sync.ts'
@@ -50,6 +54,7 @@ export const registerSyncTools = (
   stravaQueue?: StravaQueue,
   notifier?: ActivityNotifier,
   gravl?: GravlClient,
+  onDetailSynced?: DetailSyncedCallback,
 ) => {
   server.tool(
     'sync_oura',
@@ -100,6 +105,7 @@ export const registerSyncTools = (
         const results = await syncAllGarminData(user, garmin, {
           disabledTypes: settings.garmin_disabled_data_types as GarminDataType[],
           fullResync: full_resync,
+          onDetailSynced,
           startDate: start_date ? new Date(start_date) : undefined,
         })
 

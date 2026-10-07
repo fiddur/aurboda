@@ -213,6 +213,7 @@ export interface PlaceSummary {
   lon?: number
   address?: string
   detected_location_id?: string
+  inferred_from?: string
 }
 
 export interface ProductivitySummary {

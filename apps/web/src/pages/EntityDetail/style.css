@@ -158,6 +158,59 @@ a.entity-type-badge:hover {
   white-space: pre-wrap;
 }
 
+.activity-stats-table td a {
+  color: inherit;
+}
+
+.activity-stat-missing th {
+  font-style: italic;
+}
+
+.link-button {
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: #673ab8;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.link-button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.location-inferred {
+  color: #9ca3af;
+  font-size: 0.8rem;
+}
+
+.source-data {
+  margin-top: 1rem;
+  font-size: 0.85rem;
+}
+
+.source-data summary {
+  cursor: pointer;
+  color: #6b7280;
+}
+
+.source-data .activity-stats-table {
+  margin-top: 0.5rem;
+  font-size: 0.8rem;
+}
+
+.source-data td {
+  overflow-wrap: anywhere;
+}
+
+.source-data pre {
+  margin: 0;
+  font-size: 0.75rem;
+  white-space: pre-wrap;
+}
+
 .field-row {
   display: flex;
   gap: 1rem;
@@ -555,6 +608,13 @@ a.entity-type-badge:hover {
   background: #f3f4f6;
 }
 
+a.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  line-height: normal;
+  text-decoration: none;
+}
+
 .btn-edit {
   background: #f3f4f6;
   border: 1px solid #e5e7eb;
@@ -743,6 +803,19 @@ a.entity-type-badge:hover {
 
   .field-value {
     color: #d1d5db;
+  }
+
+  .activity-stats-table th,
+  .source-data summary {
+    color: #9ca3af;
+  }
+
+  .activity-stats-table td {
+    color: #d1d5db;
+  }
+
+  .link-button {
+    color: #a78bfa;
   }
 
   .location-link {
@@ -1013,6 +1086,15 @@ a.entity-type-badge:hover {
 
   .field-label {
     min-width: auto;
+  }
+
+  .activity-stats-table {
+    width: 100%;
+  }
+
+  .activity-stats-table th {
+    width: 40%;
+    white-space: normal;
   }
 
   .detail-grid {

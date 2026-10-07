@@ -31,6 +31,7 @@ const toCandidate = (
 ): AutoshareCandidate => ({
   activity_type: activity.activity_type,
   created_at: (activity.id != null ? ingestTimes[activity.id] : undefined) ?? fallback.created_at,
+  detail_pending: activity.data?.garmin_activity_id != null && activity.data.detail_synced == null,
   end_time: activity.end_time ?? fallback.end_time,
   id: activity.id ?? fallback.id,
   source: activity.source ?? null,

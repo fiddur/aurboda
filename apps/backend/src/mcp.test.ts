@@ -19,6 +19,7 @@ vi.mock('./services/queries/index', async () => ({
   parseDataFilter: (await vi.importActual<typeof ActivityQueries>('./services/queries/activities.ts'))
     .parseDataFilter,
   queryActivities: vi.fn(),
+  queryActivityFieldValues: vi.fn(),
   queryActivitySessions: vi.fn(),
   sessionsOptionsFromQuery: (
     await vi.importActual<typeof SessionQueries>('./services/queries/activity-sessions.ts')
@@ -759,6 +760,25 @@ describe('MCP Server', () => {
       const missing = await callTool(app, token, 'get_activity_neighbors', { id: 'y', tz: 'UTC' })
       expect(missing.text).toBe('Activity not found')
     })
+
+    test('list_activity_field_values returns the values of the field', async () => {
+      const app = createTestApp()
+      const token = auth.createToken('testuser')
+      vi.mocked(queries.queryActivityFieldValues).mockResolvedValue({
+        activity_type: 'yoga',
+        field: 'session_name',
+        values: [{ count: 3, last_used: '2024-01-14T07:00:00.000Z', value: 'Flow' }],
+      })
+
+      const response = await callTool(app, token, 'list_activity_field_values', {
+        activity_type: 'yoga',
+        field: 'session_name',
+        tz: 'UTC',
+      })
+
+      expect(JSON.parse(response.text).data.values[0]).toMatchObject({ count: 3, value: 'Flow' })
+      expect(queries.queryActivityFieldValues).toHaveBeenCalledWith('testuser', 'yoga', 'session_name')
+    })
   })
 
   describe('Tool: query_productivity', () => {
@@ -893,7 +913,29 @@ describe('MCP Server', () => {
       expect(response.toolResult.data[0].name).toBe('Office')
       expect(response.toolResult.data[0].source).toBe('named')
       expect(response.toolResult.data[1].name).toBe('Gym')
-      expect(queries.queryLocations).toHaveBeenCalledWith('testuser', expect.any(Date), expect.any(Date))
+      expect(queries.queryLocations).toHaveBeenCalledWith('testuser', expect.any(Date), expect.any(Date), {
+        lastKnownHours: undefined,
+      })
+    })
+
+    test('passes last_known_hours through', async () => {
+      const app = createTestApp()
+      const token = auth.createToken('testuser')
+      vi.mocked(queries.queryLocations).mockResolvedValue([])
+
+      await callTool(app, token, 'query_locations', {
+        end: '2024-01-15T10:25:00Z',
+        last_known_hours: 6,
+        start: '2024-01-15T10:05:00Z',
+        tz: 'UTC',
+      })
+
+      expect(queries.queryLocations).toHaveBeenCalledWith(
+        'testuser',
+        new Date('2024-01-15T10:05:00Z'),
+        new Date('2024-01-15T10:25:00Z'),
+        { lastKnownHours: 6 },
+      )
     })
 
     test('returns empty array when no visits exist', async () => {

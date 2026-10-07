@@ -11,6 +11,7 @@ import { type Request, type Response, Router } from 'express'
 
 import type { Auth } from './auth.ts'
 import type { GarminClient } from './integrations/garmin/client.ts'
+import type { DetailSyncedCallback } from './integrations/garmin/sync.ts'
 import type { GravlClient } from './integrations/gravl/client.ts'
 import type { ouraClient } from './integrations/oura/client.ts'
 import type { AutosharePreviewDeps } from './mcp/autoshare-rule-tools.ts'
@@ -70,6 +71,7 @@ interface McpDeps {
   garmin?: GarminClient
   gravl?: GravlClient
   onActivityMutated?: ActivityNotifier
+  onActivityDetailSynced?: DetailSyncedCallback
   oura?: OuraClientType
   reactionActions?: ReactionActions
   retroEnrichTimeline?: RetroEnrichTrigger
@@ -100,6 +102,7 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
     deps.stravaQueue,
     deps.onActivityMutated,
     deps.gravl,
+    deps.onActivityDetailSynced,
   )
   registerSettingsTools(server, user)
   registerLocationTools(server, user)

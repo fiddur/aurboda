@@ -131,6 +131,18 @@ export const getLocations = async (user: string, start: Date, end: Date) => {
   return { locations, places }
 }
 
+/** Whether any GPS point falls in the window (what a route image would draw). */
+export const hasLocations = async (user: string, start: Date, end: Date): Promise<boolean> => {
+  const result = await query<{ exists: boolean }>(
+    user,
+    `SELECT EXISTS (
+       SELECT 1 FROM locations WHERE time >= $1 AND time <= $2 AND deleted_at IS NULL
+     ) AS exists`,
+    [start, end],
+  )
+  return result.rows[0]?.exists === true
+}
+
 export const insertPlace = async (user: string, place: Place) => {
   await query(
     user,

@@ -278,6 +278,8 @@ export interface PlaceVisit {
   detected_location_id?: string
   /** Set when source='named' — the id of the matched named_location. */
   named_location_id?: string
+  /** Time of the fix before the range this visit was carried forward from; see `getPlaceVisits`. */
+  inferred_from?: Date
 }
 
 export const matchLocationToNamed = (
@@ -432,41 +434,21 @@ const finalizeVisit = (v: VisitAccumulator): PlaceVisit => ({
   start_time: v.start_time,
 })
 
-export const getPlaceVisits = async (user: string, start: Date, end: Date): Promise<PlaceVisit[]> => {
-  const result = await query(
-    user,
-    `SELECT ST_Y(location::geometry) as lat, ST_X(location::geometry) as lon, time, regions
-     FROM locations
-     WHERE time >= $1 AND time <= $2 AND deleted_at IS NULL
-     ORDER BY time`,
-    [start, end],
-  )
+export interface PlaceFix extends LocationPoint {
+  regions: string[]
+}
 
-  if (result.rows.length === 0) return []
-
-  const [namedLocations, detectedLocations] = await Promise.all([
-    getNamedLocations(user),
-    getStoredDetectedLocations(user),
-  ])
-
-  interface LocationWithRegion extends LocationPoint {
-    regions: string[]
-  }
-
-  const locations: LocationWithRegion[] = result.rows.map((row) => ({
-    lat: row.lat,
-    lon: row.lon,
-    regions: row.regions || [],
-    time: new Date(row.time),
-  }))
-
-  // Group consecutive locations at the same place. named_location_id is part
-  // of the identity key (see continuesVisit) so two named locations with the
-  // same display name correctly split into separate visits.
+export const groupFixesIntoVisits = (
+  fixes: PlaceFix[],
+  namedLocations: NamedLocation[],
+  detectedLocations: StoredDetectedLocation[],
+): PlaceVisit[] => {
+  // named_location_id is part of the identity key (see continuesVisit) so two
+  // named locations with the same display name correctly split into separate visits.
   const visits: PlaceVisit[] = []
   let currentVisit: VisitAccumulator | null = null
 
-  for (const loc of locations) {
+  for (const loc of fixes) {
     const cls = classifyFix(loc.lat, loc.lon, loc.regions, namedLocations, detectedLocations)
 
     if (currentVisit && continuesVisit(currentVisit, cls, loc)) {
@@ -489,9 +471,121 @@ export const getPlaceVisits = async (user: string, start: Date, end: Date): Prom
     }
   }
 
-  if (currentVisit) {
-    visits.push(finalizeVisit(currentVisit))
-  }
+  if (currentVisit) visits.push(finalizeVisit(currentVisit))
+  return visits
+}
+
+/**
+ * Visits for `[start, end]` when the range's first fix comes after `start`: `lastKnown` (the
+ * latest fix before the range) is moved to `start` and grouped with the rest. A visit made of
+ * that fix alone is marked `inferred_from`, and lasts until the range's first fix, which places
+ * you elsewhere, or the whole range when there is none. A visit it merely extends is observed in
+ * the range, so it is not marked.
+ */
+export const visitsWithLastKnown = (
+  inRange: PlaceFix[],
+  lastKnown: PlaceFix,
+  start: Date,
+  end: Date,
+  namedLocations: NamedLocation[],
+  detectedLocations: StoredDetectedLocation[],
+): PlaceVisit[] => {
+  const visits = groupFixesIntoVisits(
+    [{ ...lastKnown, time: start }, ...inRange],
+    namedLocations,
+    detectedLocations,
+  )
+  const [first, ...rest] = visits
+  if (!first || first.end_time.getTime() !== start.getTime()) return visits
+  const carriedEnd = inRange[0]?.time ?? end
+  return [
+    {
+      ...first,
+      duration_minutes: Math.round((carriedEnd.getTime() - start.getTime()) / 60_000),
+      end_time: carriedEnd,
+      inferred_from: lastKnown.time,
+    },
+    ...rest,
+  ]
+}
+
+interface FixRow {
+  lat: number
+  lon: number
+  time: Date | string
+  regions: string[] | null
+}
+
+const fixesFromRows = (rows: FixRow[]) =>
+  rows.map(
+    (row): PlaceFix => ({
+      lat: row.lat,
+      lon: row.lon,
+      regions: row.regions || [],
+      time: new Date(row.time),
+    }),
+  )
+
+const FIX_COLUMNS = 'ST_Y(location::geometry) as lat, ST_X(location::geometry) as lon, time, regions'
+
+const getLastFixBefore = async (
+  user: string,
+  before: Date,
+  notBefore: Date,
+): Promise<PlaceFix | undefined> => {
+  const result = await query<FixRow>(
+    user,
+    `SELECT ${FIX_COLUMNS}
+     FROM locations
+     WHERE time < $1 AND time >= $2 AND deleted_at IS NULL
+     ORDER BY time DESC
+     LIMIT 1`,
+    [before, notBefore],
+  )
+  return fixesFromRows(result.rows)[0]
+}
+
+export interface PlaceVisitOptions {
+  /**
+   * When the range starts before its first fix, carry the last fix from up to this many hours
+   * earlier forward to `start`: a phone at rest reports nothing, so a stay with no fix in the
+   * range otherwise vanishes. Never feed such visits to anything that persists them.
+   */
+  lastKnownHours?: number
+}
+
+export const getPlaceVisits = async (
+  user: string,
+  start: Date,
+  end: Date,
+  options: PlaceVisitOptions = {},
+): Promise<PlaceVisit[]> => {
+  const result = await query<FixRow>(
+    user,
+    `SELECT ${FIX_COLUMNS}
+     FROM locations
+     WHERE time >= $1 AND time <= $2 AND deleted_at IS NULL
+     ORDER BY time`,
+    [start, end],
+  )
+  const inRange = fixesFromRows(result.rows)
+
+  const lookbackMs = (options.lastKnownHours ?? 0) * 3_600_000
+  const needsLastKnown = lookbackMs > 0 && (inRange[0]?.time ?? end) > start
+  const lastKnown = needsLastKnown
+    ? await getLastFixBefore(user, start, new Date(start.getTime() - lookbackMs))
+    : undefined
+
+  if (inRange.length === 0 && !lastKnown) return []
+
+  const [namedLocations, detectedLocations] = await Promise.all([
+    getNamedLocations(user),
+    getStoredDetectedLocations(user),
+  ])
+
+  const visits = lastKnown
+    ? visitsWithLastKnown(inRange, lastKnown, start, end, namedLocations, detectedLocations)
+    : groupFixesIntoVisits(inRange, namedLocations, detectedLocations)
 
   return mergeShortUnknownVisits(visits)
 }
@@ -525,7 +619,7 @@ export const mergeShortUnknownVisits = (visits: PlaceVisit[], minDurationMinutes
   for (let i = 0; i < visits.length; i++) {
     const visit = visits[i]
 
-    if (visit.source !== 'unknown' || visit.duration_minutes >= minDurationMinutes) {
+    if (visit.source !== 'unknown' || visit.inferred_from || visit.duration_minutes >= minDurationMinutes) {
       result.push(visit)
       continue
     }

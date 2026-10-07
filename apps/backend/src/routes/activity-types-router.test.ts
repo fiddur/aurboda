@@ -15,7 +15,7 @@ vi.mock('../services/activity-type-definitions.ts', () => ({
 
 vi.mock('../services/queries/index.ts', async () => {
   const { sessionsOptionsFromQuery } = await import('../services/queries/activity-sessions.ts')
-  return { queryActivitySessions: vi.fn(), sessionsOptionsFromQuery }
+  return { queryActivityFieldValues: vi.fn(), queryActivitySessions: vi.fn(), sessionsOptionsFromQuery }
 })
 
 vi.mock('../db/index.ts', () => ({}))
@@ -62,6 +62,32 @@ describe('GET /activity-types/:name/sessions', () => {
 
     expect(res.status).toBe(400)
     expect(queries.queryActivitySessions).not.toHaveBeenCalled()
+  })
+})
+
+describe('GET /activity-types/:name/field-values', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  test('returns the values of the field', async () => {
+    const data = {
+      activity_type: 'yoga',
+      field: 'session_name',
+      values: [{ count: 2, last_used: '2026-10-01T07:00:00.000Z', value: 'Flow' }],
+    }
+    vi.mocked(queries.queryActivityFieldValues).mockResolvedValue(data)
+
+    const res = await supertest(buildApp()).get('/activity-types/yoga/field-values?field=session_name')
+
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ data, success: true })
+    expect(queries.queryActivityFieldValues).toHaveBeenCalledWith('tester', 'yoga', 'session_name')
+  })
+
+  test('400s on a missing or malformed field name', async () => {
+    const app = buildApp()
+    expect((await supertest(app).get('/activity-types/yoga/field-values')).status).toBe(400)
+    expect((await supertest(app).get("/activity-types/yoga/field-values?field=a'b")).status).toBe(400)
+    expect(queries.queryActivityFieldValues).not.toHaveBeenCalled()
   })
 })
 

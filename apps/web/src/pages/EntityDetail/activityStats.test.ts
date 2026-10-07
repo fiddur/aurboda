@@ -1,8 +1,17 @@
+import type { ActivitySessionGroup, ActivitySessions } from '@aurboda/api-spec'
+
 import { describe, expect, test } from 'vitest'
 
 import type { Activity } from '../../state/api'
 
-import { buildActivityStatRows } from './activityStats'
+import {
+  buildActivityStatRows,
+  buildFieldRows,
+  buildMetricRows,
+  garminConnectActivityUrl,
+  sourceDataEntries,
+  typicalAvgHr,
+} from './activityStats'
 
 const baseActivity = (overrides: Partial<Activity> = {}): Activity =>
   ({
@@ -83,5 +92,179 @@ describe('buildActivityStatRows', () => {
   test('emits Asleep row when sleepMinutes provided', () => {
     const rows = buildActivityStatRows(input({ sleepMinutes: 425 }))
     expect(rows.find((r) => r.label === 'Asleep')?.value).toBe('7h 5m')
+  })
+})
+
+describe('buildActivityStatRows: source summary fields', () => {
+  test('total calories with the active part, steps only when walked, body battery and elevation', () => {
+    const rows = buildActivityStatRows(
+      input({
+        activity: baseActivity({
+          body_battery_after: 54,
+          body_battery_before: 56,
+          calories: 51,
+          elevation_gain: 120.4,
+          elevation_loss: 118,
+          steps: 0,
+        }),
+        totalCalories: 12,
+      }),
+    )
+    const value = (label: string) => rows.find((r) => r.label === label)?.value
+    expect(value('Calories')).toBe('51 kcal · 12 active')
+    expect(value('Active Calories')).toBeUndefined()
+    expect(value('Steps')).toBeUndefined()
+    expect(value('Body Battery')).toBe('56 → 54')
+    expect(value('Elevation')).toBe('+120 m / −118 m')
+  })
+})
+
+describe('buildMetricRows: typical Avg HR', () => {
+  const activity = baseActivity({ avg_hr: 124.6 })
+
+  test("without a typical value the row is the activity's own", () => {
+    const row = buildMetricRows({ activity, sleepMinutes: undefined, totalCalories: undefined }).find(
+      (r) => r.label === 'Avg HR',
+    )
+    expect(row).toEqual({ label: 'Avg HR', value: '125 bpm' })
+  })
+
+  test('with a typical value it follows, with the group and how it was built', () => {
+    const row = buildMetricRows({
+      activity,
+      sleepMinutes: undefined,
+      totalCalories: undefined,
+      typicalAvgHr: { count: 12, field: 'Session name', label: 'Yin yoga', median: 117.6 },
+    }).find((r) => r.label === 'Avg HR')
+    expect(row).toEqual({
+      label: 'Avg HR',
+      title: 'Median average heart rate over 12 sessions with the same Session name',
+      value: '125 bpm · typically 118 (12 Yin yoga)',
+    })
+  })
+
+  test("a typical value equal to the activity's is still shown", () => {
+    const row = buildMetricRows({
+      activity,
+      sleepMinutes: undefined,
+      totalCalories: undefined,
+      typicalAvgHr: { count: 3, field: 'Session name', label: 'Flow', median: 125 },
+    }).find((r) => r.label === 'Avg HR')
+    expect(row?.value).toBe('125 bpm · typically 125 (3 Flow)')
+  })
+})
+
+describe('typicalAvgHr', () => {
+  const group = (overrides: Partial<ActivitySessionGroup>): ActivitySessionGroup => ({
+    count: 5,
+    first_start_time: '2026-01-01T10:00:00Z',
+    last_start_time: '2026-10-01T10:00:00Z',
+    session_ids: [],
+    value: 'Yin',
+    ...overrides,
+  })
+  const sessions = (groups: ActivitySessionGroup[], group_by = 'session_name'): ActivitySessions => ({
+    activity_type: 'yoga',
+    group_by,
+    groups,
+    sessions: [],
+  })
+
+  test('the median and count of the group with the same value', () => {
+    const data = sessions([
+      group({ avg_hr_median: 90, value: 'Flow' }),
+      group({ avg_hr_median: 80, count: 4 }),
+    ])
+    expect(typicalAvgHr(data, 'session_name', 'Yin')).toEqual({ count: 4, median: 80 })
+  })
+
+  test('matches a non-string group value by its string form', () => {
+    const data = sessions([group({ avg_hr_median: 80, value: 2 })], 'level')
+    expect(typicalAvgHr(data, 'level', '2')).toEqual({ count: 5, median: 80 })
+  })
+
+  test('nothing for a group of fewer than three sessions', () => {
+    expect(typicalAvgHr(sessions([group({ avg_hr_median: 80, count: 2 })]), 'session_name', 'Yin')).toBe(
+      undefined,
+    )
+  })
+
+  test('nothing for a group without a median', () => {
+    expect(typicalAvgHr(sessions([group({})]), 'session_name', 'Yin')).toBeUndefined()
+  })
+
+  test('nothing without a matching group, or for groups by another field', () => {
+    const data = sessions([
+      group({ avg_hr_median: 80, value: 'Flow' }),
+      group({ avg_hr_median: 70, value: null }),
+    ])
+    expect(typicalAvgHr(data, 'session_name', 'Yin')).toBeUndefined()
+    expect(typicalAvgHr(sessions([group({ avg_hr_median: 80 })]), 'partner', 'Yin')).toBeUndefined()
+    expect(typicalAvgHr(undefined, 'session_name', 'Yin')).toBeUndefined()
+  })
+})
+
+describe('garminConnectActivityUrl', () => {
+  test('links to the activity on Garmin Connect', () => {
+    expect(garminConnectActivityUrl(24637616891)).toBe(
+      'https://connect.garmin.com/modern/activity/24637616891',
+    )
+  })
+})
+
+describe('buildFieldRows', () => {
+  const schema = {
+    fields: [
+      { is_categorical: true, label: 'Session name', name: 'session_name', type: 'string' as const },
+      { name: 'props', type: 'boolean' as const },
+      { name: 'weight', type: 'number' as const, unit: 'kg' },
+      { is_categorical: true, name: 'partner', type: 'string' as const },
+    ],
+  }
+
+  test('declared values in schema order, an empty categorical field to fill in, and rule links', () => {
+    const rows = buildFieldRows(
+      schema,
+      { _enriched_by: 'rule-1234567890', partner: '  ', props: true, session_name: 'Flow', weight: 4 },
+      { 'rule-1234567890': 'Morning yoga' },
+    )
+    expect(rows).toEqual([
+      { label: 'Session name', value: 'Flow' },
+      { label: 'Props', value: 'Yes' },
+      { label: 'Weight', value: '4 kg' },
+      { label: 'Partner', missingField: 'partner', value: '' },
+      { href: '/deduction-rules/rule-1234567890', label: 'Enriched by', value: 'Morning yoga' },
+    ])
+  })
+
+  test('no schema and no rules: nothing', () => {
+    expect(buildFieldRows(undefined, { anything: 1 }, undefined)).toEqual([])
+  })
+})
+
+describe('sourceDataEntries', () => {
+  test('drops declared fields, values the summary shows and blanks; formats objects and long arrays', () => {
+    const entries = sourceDataEntries(
+      {
+        average_hr: 71,
+        calories: 51,
+        detail_synced: true,
+        endTime: '2026-10-07T10:25:31.094Z',
+        garmin_activity_id: 24637616891,
+        max_hr: 97,
+        metadata: { device: { type: 1 } },
+        note: '',
+        session_name: 'Flow',
+        stages: Array.from({ length: 40 }, (_, i) => i),
+        startTime: '2026-10-07T10:05:01Z',
+        steps: 0,
+      },
+      { fields: [{ name: 'session_name', type: 'string' }] },
+    )
+    expect(entries).toEqual([
+      { key: 'garmin_activity_id', label: 'Garmin activity id', value: '24637616891' },
+      { key: 'metadata', label: 'Metadata', value: '{\n  "device": {\n    "type": 1\n  }\n}' },
+      { key: 'stages', label: 'Stages', value: '40 items' },
+    ])
   })
 })
