@@ -10,9 +10,11 @@ import {
   createRenderCache,
   type FeedImageDeps,
   type ImageActivity,
+  type ImageWindow,
   renderArticleBlockImage,
   resolveArticleBlock,
   type ResolvedArticleBlock,
+  imageCacheKey,
   resolveImageWindow,
 } from './feed-image-router.ts'
 
@@ -46,6 +48,12 @@ const makePost = (overrides: Partial<FeedPostRecord> = {}): FeedPostRecord => ({
   ...overrides,
 })
 
+const window: ImageWindow = {
+  end_time: new Date('2026-07-01T07:11:00Z'),
+  start_time: new Date('2026-07-01T06:30:00Z'),
+  updated_at: new Date('2026-07-01T08:00:00Z'),
+}
+
 const deps = (post: FeedPostRecord | null, act: ImageActivity | null = activity) => ({
   getActivity: async () => act,
   getPost: async () => post,
@@ -53,7 +61,7 @@ const deps = (post: FeedPostRecord | null, act: ImageActivity | null = activity)
 
 describe('resolveImageWindow', () => {
   test('resolves the activity window for an eligible public opted-in post', async () => {
-    expect(await resolveImageWindow(deps(makePost()), 'fiddur', POST_ID, 'include_chart')).toEqual(activity)
+    expect(await resolveImageWindow(deps(makePost()), 'fiddur', POST_ID, 'include_chart')).toEqual(window)
   })
 
   test('null for an invalid username or non-UUID post id (no DB hit)', async () => {
@@ -80,27 +88,41 @@ describe('resolveImageWindow', () => {
   test('resolves a followers-only post when the capability token matches (#893)', async () => {
     const post = makePost({ image_token: 'secret-token', visibility: 'followers' })
     expect(await resolveImageWindow(deps(post), 'fiddur', POST_ID, 'include_chart', 'secret-token')).toEqual(
-      activity,
+      window,
     )
   })
 
   test('a token is ignored for a public post (already unauthenticated)', async () => {
     expect(
       await resolveImageWindow(deps(makePost()), 'fiddur', POST_ID, 'include_chart', 'anything'),
-    ).toEqual(activity)
+    ).toEqual(window)
   })
 
   test('null when the requested attachment was not opted into', async () => {
     const post = makePost({ include_chart: false })
     expect(await resolveImageWindow(deps(post), 'fiddur', POST_ID, 'include_chart')).toBeNull()
     // ...but the map flag is still on for the same post.
-    expect(await resolveImageWindow(deps(post), 'fiddur', POST_ID, 'include_map')).toEqual(activity)
+    expect(await resolveImageWindow(deps(post), 'fiddur', POST_ID, 'include_map')).toEqual(window)
   })
 
   test('null when the post has no linked activity', async () => {
     expect(
       await resolveImageWindow(deps(makePost({ activity_id: null })), 'fiddur', POST_ID, 'include_chart'),
     ).toBeNull()
+  })
+
+  test('carries the post version, so a bumped updated_at renders afresh', async () => {
+    const updated_at = new Date('2026-07-01T09:15:00Z')
+    const resolved = await resolveImageWindow(
+      deps(makePost({ updated_at })),
+      'fiddur',
+      POST_ID,
+      'include_map',
+    )
+    expect(resolved?.updated_at).toEqual(updated_at)
+    expect(imageCacheKey('route', 'fiddur', POST_ID, window)).not.toBe(
+      imageCacheKey('route', 'fiddur', POST_ID, { ...window, updated_at }),
+    )
   })
 
   test('null for an open-ended activity (no bounded window)', async () => {

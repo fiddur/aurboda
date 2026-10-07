@@ -89,6 +89,7 @@ export {
   getTimeSeriesStats,
   getTimeSeriesWithSource,
   getValueHistogramsForWindows,
+  hasTimeSeries,
   type HrZoneBucket,
   insertTimeSeries,
 } from './time-series.ts'
@@ -181,6 +182,7 @@ export {
   getLocations,
   getNamedLocationById,
   getNamedLocations,
+  hasLocations,
   insertDetectedLocation,
   insertLocation,
   insertLocations,
@@ -396,6 +398,7 @@ export {
   listReplyPostsTo,
   type PublicFeedPageOpts,
   type ReplyPostInput,
+  touchFeedPost,
   updateFeedPost,
 } from './feed.ts'
 

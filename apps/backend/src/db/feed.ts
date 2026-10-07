@@ -381,6 +381,16 @@ export const updateFeedPost = async (
   return result.rows.length ? mapFeedPost(result.rows[0]) : null
 }
 
+/** Bump a post's `updated_at` (its federated version) without changing its content. */
+export const touchFeedPost = async (user: string, id: string): Promise<FeedPostRecord | null> => {
+  const result = await query<FeedPostRow>(
+    user,
+    `UPDATE feed_posts SET updated_at = NOW() WHERE id = $1 RETURNING ${FEED_POST_COLUMNS}`,
+    [id],
+  )
+  return result.rows.length ? mapFeedPost(result.rows[0]) : null
+}
+
 /**
  * Delete a feed post and, if it was `public`/`unlisted` (so its object id was
  * publicly dereferenceable), record a tombstone in the same statement so a later

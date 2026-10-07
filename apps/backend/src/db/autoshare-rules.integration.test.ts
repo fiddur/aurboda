@@ -200,4 +200,30 @@ describe('Auto-share rules integration', () => {
     const times = await getActivityIngestTimes(user, [inWindow])
     expect(times[inWindow]).toBeInstanceOf(Date)
   })
+
+  test('candidates: detail_pending marks Garmin-backed rows whose detail has not synced', async () => {
+    const user = getTestUser()
+    const insertRun = (hour: number, data: Record<string, unknown> | undefined) =>
+      insertActivity(user, {
+        activity_type: 'running',
+        data,
+        end_time: new Date(`2026-08-01T${String(hour).padStart(2, '0')}:30:00Z`),
+        source: 'garmin',
+        start_time: new Date(`2026-08-01T${String(hour).padStart(2, '0')}:00:00Z`),
+      })
+    const pending = await insertRun(6, { garmin_activity_id: 101 })
+    const synced = await insertRun(8, { detail_synced: true, garmin_activity_id: 102 })
+    const plain = await insertRun(10, undefined)
+
+    const candidates = await listAutoshareCandidates(
+      user,
+      new Date('2026-08-01T00:00:00Z'),
+      new Date('2026-08-01T23:59:59Z'),
+    )
+    expect(candidates.map((c) => [c.id, c.detail_pending])).toEqual([
+      [pending, true],
+      [synced, false],
+      [plain, false],
+    ])
+  })
 })

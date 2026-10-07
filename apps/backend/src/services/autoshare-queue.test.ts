@@ -3,7 +3,8 @@ import { describe, expect, test } from 'vitest'
 import type { AutoshareJobData } from './autoshare-queue.ts'
 import type { Job } from './pg-boss.ts'
 
-import { groupAutoshareJobs, STABILISATION_SECONDS } from './autoshare-queue.ts'
+import { groupAutoshareJobs } from './autoshare-queue.ts'
+import { STABILISATION_SECONDS } from './autoshare.ts'
 
 const job = (user: string, start: string, end: string): Job<AutoshareJobData> =>
   ({ data: { user, window_end: end, window_start: start }, id: 'j' }) as Job<AutoshareJobData>
