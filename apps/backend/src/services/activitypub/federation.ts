@@ -38,6 +38,8 @@ import {
   deleteTimelineEntryByUri,
   getFeedFollowerByActor,
   deleteBoostCardsOf,
+  getBoostCardAuthor,
+  updateBoostCardsOf,
   getFeedFollowingByActor,
   getFeedPostById,
   getOrCreateActorKeyPair,
@@ -646,13 +648,45 @@ const ingestFeedActivity = async (
     if (follow != null && follow.accepted) {
       await ingestNoteForRecipient(me, object, follow, enrich, origin, onNewEntry)
     } else {
-      await ingestStrangerInvolvement(ctx, activity, object, me, origin, enrich, onNewEntry)
+      const admitted = await ingestStrangerInvolvement(ctx, activity, object, me, origin, enrich, onNewEntry)
+      if (!admitted && activity instanceof Update) await applyEditToBoostCards(me, activity, object, enrich)
     }
   } catch (error) {
     // A missing DB is not an error worth a 500: that would invite redelivery retries.
     if (isMissingDatabase(error)) return
     throw error
   }
+}
+
+/**
+ * Carry a non-followee author's edit over to the boost cards of their Note,
+ * whenever their server delivers the `Update` to us (who it reaches is the
+ * author's server's choice, e.g. everyone who interacted with the post).
+ *
+ * Only the card's own author may rewrite it: the card is looked up by the
+ * signature-verified sender as well as the Note, and `noteToTimelineInput`
+ * then requires the Note to be on that author's host and attributed to them —
+ * the same checks `resolveBoostAuthor` passed when the card was made.
+ */
+const applyEditToBoostCards = async (
+  me: string,
+  update: Update,
+  note: Note,
+  enrich: (objectUri: string, token?: string) => Promise<FeedStructuredPost | null>,
+): Promise<void> => {
+  if (note.id == null || update.actorId == null) return
+  const author = await getBoostCardAuthor(me, note.id.href, update.actorId.href)
+  if (author == null) return
+  const input = noteToTimelineInput(note, author)
+  if (input == null) return
+  const images = await extractNoteImages(note)
+  const structured = await enrich(note.id.href, capabilityTokenFrom(images))
+  await updateBoostCardsOf(me, note.id.href, author.actor_uri, {
+    content: input.content,
+    images,
+    structured,
+    url: input.url ?? null,
+  })
 }
 
 /**
@@ -719,8 +753,8 @@ export const handleInboundCreate = (
 /**
  * Inbound `Update`. Two meanings share the type: an actor editing **themselves**
  * refreshes our cached copies of their presentation (#1057); anything else is an
- * edited `Note` and re-runs the ingest (which upserts in place, and now also
- * refreshes the boost cards of that Note).
+ * edited `Note` and re-runs the ingest, which upserts it in place — or, for an
+ * author we don't follow, updates the boost cards of it.
  */
 export const handleInboundUpdate = async (
   ctx: InboxContext<void>,

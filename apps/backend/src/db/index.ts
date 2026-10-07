@@ -346,6 +346,8 @@ export {
 export {
   countTimelineRepliesTo,
   deleteBoostCardsOf,
+  getBoostCardAuthor,
+  updateBoostCardsOf,
   deleteBoostEntry,
   deleteTimelineEntriesByActor,
   deleteTimelineEntryByUri,
@@ -362,6 +364,8 @@ export {
   setTimelineEntryReplyInfo,
   setTimelineEntryStructured,
   type TimelineCursor,
+  type BoostCardAuthor,
+  type BoostCardEdit,
   type TimelineEntryInput,
   type TimelineEntryRecord,
   type TimelinePageRow,

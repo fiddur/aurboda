@@ -170,6 +170,65 @@ export const deleteBoostCardsOf = async (user: string, noteUri: string): Promise
   return result.rowCount ?? 0
 }
 
+export interface BoostCardAuthor {
+  actor_uri: string
+  avatar_url: string | null
+  display_name: string | null
+  handle: string
+}
+
+/** The author byline of a boost card of a Note by `authorUri`, or null when there is none. */
+export const getBoostCardAuthor = async (
+  user: string,
+  noteUri: string,
+  authorUri: string,
+): Promise<BoostCardAuthor | null> => {
+  const result = await query<BoostCardAuthor>(
+    user,
+    `SELECT actor_uri, avatar_url, display_name, handle FROM timeline_entry
+     WHERE boost_of_uri = $1 AND actor_uri = $2 LIMIT 1`,
+    [noteUri, authorUri],
+  )
+  return result.rows[0] ?? null
+}
+
+/** What an author's edit carries over to the boost cards of their Note. */
+export interface BoostCardEdit {
+  content: string
+  url: string | null
+  images: TimelineImage[] | null
+  structured: FeedStructuredPost | null
+}
+
+/**
+ * Apply an author's edit to every boost card of their Note, returning how many
+ * changed. Keyed on the card's author as well as the Note, so only the actor the
+ * card was built for can rewrite it. `published_at` stays: a card sorts at boost
+ * time. `structured` is COALESCEd so a transient enrich failure keeps the chart.
+ */
+export const updateBoostCardsOf = async (
+  user: string,
+  noteUri: string,
+  authorUri: string,
+  edit: BoostCardEdit,
+): Promise<number> => {
+  const result = await query(
+    user,
+    `UPDATE timeline_entry
+     SET content = $3, url = $4, images = $5, structured = COALESCE($6, structured)
+     WHERE boost_of_uri = $1 AND actor_uri = $2`,
+    [
+      noteUri,
+      authorUri,
+      edit.content,
+      edit.url,
+      edit.images == null ? null : JSON.stringify(edit.images),
+      edit.structured == null ? null : JSON.stringify(edit.structured),
+    ],
+  )
+  return result.rowCount ?? 0
+}
+
 /**
  * Refresh a remote actor's cached presentation on every timeline row that shows
  * them — as a post's AUTHOR and as the BOOSTER of a boost card — after an

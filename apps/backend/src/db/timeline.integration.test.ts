@@ -8,6 +8,7 @@ import {
   deleteBoostEntry,
   deleteTimelineEntriesByActor,
   deleteTimelineEntryByUri,
+  getBoostCardAuthor,
   getTimelineEntryById,
   getTimelineEntryByObjectUri,
   hasCachedActorPresentation,
@@ -20,6 +21,7 @@ import {
   setTimelineEntryReplyInfo,
   setTimelineEntryStructured,
   type TimelineEntryInput,
+  updateBoostCardsOf,
   updateTimelineActorPresentation,
   upsertTimelineEntry,
 } from './timeline.ts'
@@ -569,6 +571,40 @@ describe('Timeline store integration', () => {
         'https://remote.example/users/bob/statuses/10/activity',
       ])
       expect(await deleteBoostCardsOf(user, 'https://mastodon.example/notes/1')).toBe(0)
+    })
+
+    test('getBoostCardAuthor / updateBoostCardsOf touch only cards of that Note by that author', async () => {
+      const user = getTestUser()
+      const ALICE_URI = 'https://mastodon.example/users/alice'
+      const NOTE = 'https://mastodon.example/notes/1'
+      await upsertTimelineEntry(user, boostOfAlice())
+      await upsertTimelineEntry(user, entry(1))
+      await upsertTimelineEntry(
+        user,
+        boostOfAlice({ boost_of_uri: 'https://mastodon.example/notes/2', object_uri: `${ANNOUNCE}-2` }),
+      )
+
+      expect(await getBoostCardAuthor(user, NOTE, ALICE_URI)).toMatchObject({
+        actor_uri: ALICE_URI,
+        handle: '@alice@mastodon.example',
+      })
+      expect(await getBoostCardAuthor(user, NOTE, 'https://elsewhere.example/users/eve')).toBeNull()
+      expect(await getBoostCardAuthor(user, 'https://mastodon.example/notes/9', ALICE_URI)).toBeNull()
+
+      const edit = {
+        content: '<p>edited</p>',
+        images: null,
+        structured: null,
+        url: 'https://mastodon.example/@alice/1e',
+      }
+      expect(await updateBoostCardsOf(user, NOTE, 'https://elsewhere.example/users/eve', edit)).toBe(0)
+      expect(await updateBoostCardsOf(user, NOTE, ALICE_URI, edit)).toBe(1)
+
+      const byObject = Object.fromEntries((await listTimelineEntries(user, 10)).map((e) => [e.object_uri, e]))
+      expect(byObject[ANNOUNCE]).toMatchObject({ content: '<p>edited</p>', url: edit.url })
+      expect(byObject[ANNOUNCE].published_at).toEqual(new Date('2026-07-01T12:00:00Z'))
+      expect(byObject[NOTE].content).toBe('<p>post 1</p>')
+      expect(byObject[`${ANNOUNCE}-2`].content).toBe('<p>post 1</p>')
     })
 
     test('updateTimelineActorPresentation refreshes an actor as author AND as booster (#1057)', async () => {

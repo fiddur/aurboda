@@ -453,6 +453,12 @@ lands first and the post itself arrives directly later (its author's `Create`/`U
 on-follow backfill), storing the direct entry removes the boost cards of that Note, so the
 timeline ends up with the direct entry alone either way.
 
+An edit by a boosted author **we don't follow** updates their boost cards in place, whenever
+their server delivers the `Update` to us (which recipients it reaches is up to that server).
+Only the card's own author can do this: the card is matched on the signature-verified sender
+as well as the Note, and the edited Note must still be on that author's host and attributed to
+them. The card keeps its boost time.
+
 A boost card's `published_at` is the boost time, so it sorts where the boost happened. And a
 boost is never treated as a _reply_, even when
 the boosted Note is one: it stays visible with `timeline_show_replies` off (Mastodon shows
