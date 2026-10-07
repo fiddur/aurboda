@@ -10,6 +10,7 @@
  */
 import type { FeedStructuredPost, TimelineImage } from '@aurboda/api-spec'
 
+import type { FeedFollowingRecord } from './feed-following.ts'
 import type { CachedActorPresentation } from './types.ts'
 
 import { query } from './connection.ts'
@@ -170,20 +171,15 @@ export const deleteBoostCardsOf = async (user: string, noteUri: string): Promise
   return result.rowCount ?? 0
 }
 
-export interface BoostCardAuthor {
-  actor_uri: string
-  avatar_url: string | null
-  display_name: string | null
-  handle: string
-}
+/** The author fields the timeline snapshot needs — a followee row, or a stranger-replier's fetched presentation. */
+export type TimelineAuthor = Pick<FeedFollowingRecord, 'actor_uri' | 'avatar_url' | 'display_name' | 'handle'>
 
-/** The author byline of a boost card of a Note by `authorUri`, or null when there is none. */
 export const getBoostCardAuthor = async (
   user: string,
   noteUri: string,
   authorUri: string,
-): Promise<BoostCardAuthor | null> => {
-  const result = await query<BoostCardAuthor>(
+): Promise<TimelineAuthor | null> => {
+  const result = await query<TimelineAuthor>(
     user,
     `SELECT actor_uri, avatar_url, display_name, handle FROM timeline_entry
      WHERE boost_of_uri = $1 AND actor_uri = $2 LIMIT 1`,
@@ -192,7 +188,6 @@ export const getBoostCardAuthor = async (
   return result.rows[0] ?? null
 }
 
-/** What an author's edit carries over to the boost cards of their Note. */
 export interface BoostCardEdit {
   content: string
   url: string | null
