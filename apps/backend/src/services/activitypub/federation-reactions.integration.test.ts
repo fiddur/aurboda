@@ -438,6 +438,69 @@ describe('Inbound likes and boosts', () => {
     })
   })
 
+  describe('an author we do not follow edits a post a followee boosted', () => {
+    const MALLORY = 'https://mallory.example/users/mallory'
+    const carolUpdates = (content: string, actor = CAROL, attributedTo = CAROL) =>
+      new Update({
+        actor: new URL(actor),
+        id: new URL(`${CAROL_NOTE}#update-${content.length}`),
+        object: new Note({
+          attribution: new URL(attributedTo),
+          content,
+          id: new URL(CAROL_NOTE),
+          published: dateToTemporalInstant(new Date('2026-07-01T08:00:00Z')),
+          url: new URL('https://third.example/@carol/1'),
+        }),
+      })
+    const boostedCard = async () => {
+      const user = getTestUser()
+      await acceptFollow(user, ALICE, '@alice@mastodon.example')
+      await handleInboundAnnounce(inboxCtx(user), boostOfCarol(`${ALICE}/statuses/9/activity`), ORIGIN)
+      return user
+    }
+    const cards = async (user: string) =>
+      (await listTimelineEntries(user, 10)).map((e) => ({
+        boost_of_uri: e.boost_of_uri,
+        content: e.content,
+        published_at: e.published_at.toISOString(),
+      }))
+
+    test('her signed Update refreshes the card in place and adds no direct entry', async () => {
+      const user = await boostedCard()
+      const [before] = await cards(user)
+
+      await handleInboundUpdate(inboxCtx(user), carolUpdates('<p>Carol’s edited post</p>'), ORIGIN)
+
+      expect(await cards(user)).toEqual([
+        {
+          boost_of_uri: CAROL_NOTE,
+          content: '<p>Carol’s edited post</p>',
+          published_at: before.published_at,
+        },
+      ])
+    })
+
+    test('an Update sent by anyone but the card’s author changes nothing', async () => {
+      const user = await boostedCard()
+      const before = await cards(user)
+
+      await handleInboundUpdate(inboxCtx(user), carolUpdates('<p>forged</p>', MALLORY, MALLORY), ORIGIN)
+      await handleInboundUpdate(inboxCtx(user), carolUpdates('<p>forged</p>', MALLORY, CAROL), ORIGIN)
+      await handleInboundUpdate(inboxCtx(user), carolUpdates('<p>forged</p>', ALICE, ALICE), ORIGIN)
+
+      expect(await cards(user)).toEqual(before)
+    })
+
+    test('her Update claiming another author changes nothing', async () => {
+      const user = await boostedCard()
+      const before = await cards(user)
+
+      await handleInboundUpdate(inboxCtx(user), carolUpdates('<p>forged</p>', CAROL, MALLORY), ORIGIN)
+
+      expect(await cards(user)).toEqual(before)
+    })
+  })
+
   test('an Announce whose id is off the booster’s host can’t overwrite another entry', async () => {
     const user = getTestUser()
     await acceptFollow(user, ALICE, '@alice@mastodon.example')
