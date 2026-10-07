@@ -1,9 +1,11 @@
 import {
+  activityFieldValuesQuerySchema,
   activityNeighborsQuerySchema,
   activitySessionsQuerySchema,
   activityTypeSchema,
   bucketSizeSchema,
   dateOnlySchema,
+  locationsQuerySchema,
   locationSummaryQuerySchema,
   mediaPlaysQuerySchema,
   type MetricType,
@@ -28,6 +30,7 @@ import {
   parseDataFilter,
   parseMetricsParam,
   queryActivities,
+  queryActivityFieldValues,
   queryActivitySessions,
   sessionsOptionsFromQuery,
   queryLocations,
@@ -212,6 +215,16 @@ Pass group_by (a data field, typically one marked is_categorical, e.g. session_n
   )
 
   server.tool(
+    'list_activity_field_values',
+    'The values a data field (e.g. session_name) has taken across an activity type and its subtypes, most recently used first, with how often each was used. For reusing an existing value when filling the field instead of spelling a new variant.',
+    { activity_type: activityTypeSchema, ...activityFieldValuesQuerySchema.shape, tz: tzSchema },
+    async ({ activity_type, field, tz }) => {
+      const values = await queryActivityFieldValues(user, activity_type, field)
+      return tzJsonResponse({ data: values, success: true }, tz)
+    },
+  )
+
+  server.tool(
     'get_activity_neighbors',
     'The previous and next activity of the same type as a given activity (plain or "merged:" id), skipping its other merged sources. With same_field, only activities sharing its value of that data field (e.g. the same session_name).',
     { id: z.string().describe('Activity ID'), ...activityNeighborsQuerySchema.shape, tz: tzSchema },
@@ -340,10 +353,12 @@ Each play has url, title, artist, album, player, device, started_at/ended_at, pl
 
   server.tool(
     'query_locations',
-    'Query location/place visits for a time range. Returns places visited with names, coordinates, duration, and source (named, detected, or owntracks).',
-    { ...timeRangeQuerySchema.shape, tz: tzSchema },
-    async ({ end, start, tz }) => {
-      const places = await queryLocations(user, new Date(start), new Date(end))
+    'Query location/place visits for a time range. Returns places visited with names, coordinates, duration, and source (named, detected, or owntracks). With last_known_hours, a range that starts before its first GPS fix gets the place of the last earlier fix, marked inferred_from.',
+    { ...locationsQuerySchema.shape, tz: tzSchema },
+    async ({ end, last_known_hours, start, tz }) => {
+      const places = await queryLocations(user, new Date(start), new Date(end), {
+        lastKnownHours: last_known_hours,
+      })
       return tzJsonResponse({ data: places, success: true }, tz)
     },
   )

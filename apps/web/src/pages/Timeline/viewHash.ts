@@ -61,3 +61,14 @@ export const buildViewHash = (
   const str = params.toString()
   return str ? `#${str}` : ''
 }
+
+const LINKED_SPAN_MS = 24 * 3_600_000
+
+export const timelineHref = (start: Date, end?: Date): string => {
+  const mid = end ? (start.getTime() + end.getTime()) / 2 : start.getTime()
+  const params = new URLSearchParams({
+    from: new Date(mid - LINKED_SPAN_MS / 2).toISOString(),
+    to: new Date(mid + LINKED_SPAN_MS / 2).toISOString(),
+  })
+  return `/timeline#${params.toString()}`
+}

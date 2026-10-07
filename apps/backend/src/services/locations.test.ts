@@ -5,8 +5,10 @@ import {
   detectStays,
   type LocationPoint,
   mergeShortUnknownVisits,
+  type PlaceFix,
   type PlaceVisit,
   type Stay,
+  visitsWithLastKnown,
 } from './locations.ts'
 
 describe('detectStays', () => {
@@ -338,5 +340,77 @@ describe('mergeShortUnknownVisits', () => {
     expect(result[0].name).toBe('Home')
     expect(result[0].duration_minutes).toBe(60) // NOT stretched to 242
     expect(result[1].name).toBe('Office')
+  })
+})
+
+describe('visitsWithLastKnown', () => {
+  const HOME = { lat: 57.5768, lon: 12.6182 }
+  const named = [
+    {
+      auto_create_activity: false,
+      created_at: new Date(0),
+      id: 'home-id',
+      lat: HOME.lat,
+      lon: HOME.lon,
+      name: 'Hökås',
+      radius: 200,
+      updated_at: new Date(0),
+    },
+  ]
+  const at = (h: number, m: number) => new Date(Date.UTC(2026, 9, 7, h, m))
+  const fix = (h: number, m: number, lat = HOME.lat, lon = HOME.lon): PlaceFix => ({
+    lat,
+    lon,
+    regions: [],
+    time: at(h, m),
+  })
+  const start = at(10, 5)
+  const end = at(10, 25)
+
+  test('no fix in the range: the last known place spans the whole range, marked inferred', () => {
+    const visits = visitsWithLastKnown([], fix(9, 16), start, end, named, [])
+
+    expect(visits).toHaveLength(1)
+    expect(visits[0]).toMatchObject({
+      duration_minutes: 20,
+      end_time: end,
+      inferred_from: at(9, 16),
+      name: 'Hökås',
+      named_location_id: 'home-id',
+      start_time: start,
+    })
+  })
+
+  test('a fix in the range at the same place extends the visit, which is then observed', () => {
+    const visits = visitsWithLastKnown([fix(10, 20)], fix(9, 16), start, end, named, [])
+
+    expect(visits).toHaveLength(1)
+    expect(visits[0]).toMatchObject({ end_time: at(10, 20), start_time: start })
+    expect(visits[0]!.inferred_from).toBeUndefined()
+  })
+
+  test('a fix in the range elsewhere ends the carried visit at the start of the range', () => {
+    const visits = visitsWithLastKnown([fix(10, 15, 57.7, 12.9)], fix(9, 16), start, end, named, [])
+
+    expect(visits.map((v) => [v.name, v.inferred_from, v.duration_minutes])).toEqual([
+      ['Hökås', at(9, 16), 0],
+      ['Somewhere', undefined, 0],
+    ])
+  })
+})
+
+describe('mergeShortUnknownVisits with a carried-forward visit', () => {
+  test('keeps a short unknown visit that was carried forward', () => {
+    const visit: PlaceVisit = {
+      duration_minutes: 2,
+      end_time: new Date(Date.UTC(2026, 0, 1, 10, 2)),
+      inferred_from: new Date(Date.UTC(2026, 0, 1, 8, 0)),
+      lat: 57.7,
+      lon: 12.9,
+      name: 'Somewhere',
+      source: 'unknown',
+      start_time: new Date(Date.UTC(2026, 0, 1, 10, 0)),
+    }
+    expect(mergeShortUnknownVisits([visit])).toEqual([visit])
   })
 })

@@ -134,6 +134,7 @@ export {
   softDeleteActivityByExternalId,
   findActivityByExternalId,
   findAdjacentActivity,
+  getActivityFieldValues,
   type DataFilter,
   findDeletedActivityByExternalId,
   findMergeableActivity,

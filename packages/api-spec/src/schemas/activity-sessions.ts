@@ -165,3 +165,41 @@ export const activityNeighborsResponseSchema = createDataResponseSchema(activity
 })
 
 export type ActivityNeighborsResponse = z.infer<typeof activityNeighborsResponseSchema>
+
+export const activityFieldValuesQuerySchema = z
+  .object({
+    field: dataFieldNameSchema.meta({ description: 'Data field name, e.g. session_name' }),
+  })
+  .meta({ description: 'Which data field to list the values of', id: 'ActivityFieldValuesQuery' })
+
+export type ActivityFieldValuesQuery = z.infer<typeof activityFieldValuesQuerySchema>
+
+export const activityFieldValueSchema = z
+  .object({
+    count: z.number().int().meta({ description: 'Number of activities with this value' }),
+    last_used: iso8601DateTimeSchema.meta({ description: 'Start time of the latest activity with it' }),
+    value: z.string(),
+  })
+  .meta({ id: 'ActivityFieldValue' })
+
+export type ActivityFieldValue = z.infer<typeof activityFieldValueSchema>
+
+export const activityFieldValuesSchema = z
+  .object({
+    activity_type: z.string(),
+    field: z.string(),
+    values: z.array(activityFieldValueSchema).meta({ description: 'Most recently used first' }),
+  })
+  .meta({
+    description:
+      'Values a data field has taken across an activity type and its subtypes, for picking a value already in use',
+    id: 'ActivityFieldValues',
+  })
+
+export type ActivityFieldValues = z.infer<typeof activityFieldValuesSchema>
+
+export const activityFieldValuesResponseSchema = createDataResponseSchema(activityFieldValuesSchema).meta({
+  id: 'ActivityFieldValuesResponse',
+})
+
+export type ActivityFieldValuesResponse = z.infer<typeof activityFieldValuesResponseSchema>

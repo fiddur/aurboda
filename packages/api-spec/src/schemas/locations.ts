@@ -61,6 +61,10 @@ export const placeVisitSchema = z
     detected_location_id: detectedLocationIdSchema.optional(),
     duration: durationMinutesSchema,
     end_time: iso8601DateTimeSchema,
+    inferred_from: iso8601DateTimeSchema.optional().meta({
+      description:
+        'Set when no GPS fix in the range placed the visit: the time of the last fix before the range, which it was carried forward from (see last_known_hours)',
+    }),
     lat: latSchema.optional(),
     lon: lonSchema.optional(),
     name: z.string().meta({ description: 'Place name' }),
@@ -87,9 +91,20 @@ export const rawLocationsResponseSchema = createDataArrayResponseSchema(rawLocat
 
 export type RawLocationsResponse = z.infer<typeof rawLocationsResponseSchema>
 
-export const locationsQuerySchema = timeRangeQuerySchema.meta({ id: 'LocationsQuery' })
+export const locationsQuerySchema = timeRangeQuerySchema
+  .extend({
+    last_known_hours: z.coerce.number().min(0).max(24).optional().meta({
+      description:
+        'When the range starts before its first GPS fix (a phone at rest reports nothing), carry the last fix from up to this many hours earlier forward to the start of the range. Off by default.',
+    }),
+  })
+  .meta({ id: 'LocationsQuery' })
 
 export type LocationsQuery = z.infer<typeof locationsQuerySchema>
+
+export const rawLocationsQuerySchema = timeRangeQuerySchema.meta({ id: 'RawLocationsQuery' })
+
+export type RawLocationsQuery = z.infer<typeof rawLocationsQuerySchema>
 
 export const locationsResponseSchema = createDataArrayResponseSchema(placeVisitSchema).meta({
   id: 'LocationsResponse',
