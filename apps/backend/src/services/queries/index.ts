@@ -51,6 +51,7 @@ export {
   sessionsOptionsFromQuery,
 } from './activity-sessions.ts'
 
+export { queryActivityFieldValues } from './activity-field-values.ts'
 export { getActivityNeighbors } from './activity-neighbors.ts'
 
 export {

@@ -1,5 +1,3 @@
-import type { RequestHandler } from 'express'
-
 import {
   type AddNamedLocationBody,
   addNamedLocationBodySchema,
@@ -17,6 +15,8 @@ import {
   type OvernightStaysQuery,
   overnightStaysQuerySchema,
   type OvernightStaysResponse,
+  type RawLocationsQuery,
+  rawLocationsQuerySchema,
   type RawLocationsResponse,
   type PromoteDetectedLocationBody,
   promoteDetectedLocationBodySchema,
@@ -34,10 +34,10 @@ import {
   updateNamedLocation,
 } from '../services/locations.ts'
 import { getLocationSummary, queryLocations, queryOvernightStays } from '../services/queries/index.ts'
-import { type TypedRouter, typedRouter } from '../typed-router.ts'
+import { type AnyMiddleware, type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody, validateQuery } from '../validation.ts'
 
-export const createLocationsRouter = (authMiddleware: RequestHandler): TypedRouter => {
+export const createLocationsRouter = (authMiddleware: AnyMiddleware): TypedRouter => {
   const router = typedRouter()
 
   router.get<Record<string, never>, LocationsResponse, unknown, LocationsQuery>(
@@ -45,10 +45,12 @@ export const createLocationsRouter = (authMiddleware: RequestHandler): TypedRout
     authMiddleware,
     validateQuery(locationsQuerySchema),
     async (req, res) => {
-      const { start, end } = req.query
+      const { start, end, last_known_hours } = req.query
       const user = req.user!
 
-      const places = await queryLocations(user, new Date(start), new Date(end))
+      const places = await queryLocations(user, new Date(start), new Date(end), {
+        lastKnownHours: last_known_hours,
+      })
       res.json({ data: places, success: true })
     },
   )
@@ -88,10 +90,10 @@ export const createLocationsRouter = (authMiddleware: RequestHandler): TypedRout
     },
   )
 
-  router.get<Record<string, never>, RawLocationsResponse, unknown, LocationsQuery>(
+  router.get<Record<string, never>, RawLocationsResponse, unknown, RawLocationsQuery>(
     '/raw',
     authMiddleware,
-    validateQuery(locationsQuerySchema),
+    validateQuery(rawLocationsQuerySchema),
     async (req, res) => {
       const { start, end } = req.query
       const points = await getRawLocationPoints(req.user!, new Date(start), new Date(end))

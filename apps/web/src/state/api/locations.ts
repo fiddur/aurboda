@@ -7,6 +7,7 @@ import type {
   NamedLocation,
   NamedLocationsResponse,
   PromoteDetectedLocationBody,
+  RawLocationsQuery,
   RawLocationsResponse,
   UpdateNamedLocationBody,
 } from '@aurboda/api-spec'
@@ -37,10 +38,15 @@ export const fetchPlaces = async (start: Date, end: Date): Promise<Place[]> => {
   }))
 }
 
-export const fetchPlaceVisits = async (start: Date, end: Date): Promise<PlaceVisit[]> => {
+export const fetchPlaceVisits = async (
+  start: Date,
+  end: Date,
+  lastKnownHours?: number,
+): Promise<PlaceVisit[]> => {
   const { token } = auth.value
   const params: LocationsQuery = {
     end: end.toISOString(),
+    last_known_hours: lastKnownHours,
     start: start.toISOString(),
   }
   const response = await axios.get<LocationsResponse>(`${API_URL}/locations`, {
@@ -52,6 +58,7 @@ export const fetchPlaceVisits = async (start: Date, end: Date): Promise<PlaceVis
     ...place,
     durationMinutes: place.duration,
     end_time: new Date(place.end_time),
+    inferred_from: place.inferred_from ? new Date(place.inferred_from) : undefined,
     start_time: new Date(place.start_time),
   }))
 }
@@ -61,7 +68,7 @@ export const fetchRawLocations = async (
   end: Date,
 ): Promise<{ lat: number; lon: number; time: Date }[]> => {
   const { token } = auth.value
-  const params: LocationsQuery = {
+  const params: RawLocationsQuery = {
     end: end.toISOString(),
     start: start.toISOString(),
   }

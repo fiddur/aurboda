@@ -118,9 +118,10 @@ export interface Place {
   end_time: Date
 }
 
-export interface PlaceVisit extends Omit<ApiPlaceVisit, 'start_time' | 'end_time'> {
+export interface PlaceVisit extends Omit<ApiPlaceVisit, 'start_time' | 'end_time' | 'inferred_from'> {
   start_time: Date
   end_time: Date
+  inferred_from?: Date
   durationMinutes: number
 }
 

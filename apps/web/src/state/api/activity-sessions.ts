@@ -1,4 +1,6 @@
 import type {
+  ActivityFieldValues,
+  ActivityFieldValuesResponse,
   ActivityNeighbors,
   ActivityNeighborsQuery,
   ActivityNeighborsResponse,
@@ -32,4 +34,15 @@ export const fetchActivityNeighbors = async (
     { headers: { Authorization: `Bearer ${auth.value.token}` }, params: query },
   )
   return response.data.data ?? { activity_type: '' }
+}
+
+export const fetchActivityFieldValues = async (
+  activityType: string,
+  field: string,
+): Promise<ActivityFieldValues> => {
+  const response = await axios.get<ActivityFieldValuesResponse>(
+    `${API_URL}/activity-types/${encodeURIComponent(activityType)}/field-values`,
+    { headers: { Authorization: `Bearer ${auth.value.token}` }, params: { field } },
+  )
+  return response.data.data ?? { activity_type: activityType, field, values: [] }
 }

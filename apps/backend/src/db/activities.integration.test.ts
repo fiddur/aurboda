@@ -10,6 +10,7 @@ import {
   findAdjacentActivity,
   findDeletedActivityByExternalId,
   getActivities,
+  getActivityFieldValues,
   getActivityById,
   getActivitiesNeedingDetail,
   getAllActivityTypeNames,
@@ -414,6 +415,44 @@ describe('Activities Integration Tests', () => {
       expect((await findAdjacentActivity(user, 'yoga', 'next', time, [ids.sameGroup], none))?.id).toBe(
         ids.after,
       )
+    })
+  })
+
+  describe('getActivityFieldValues', () => {
+    test('distinct trimmed non-blank values over the given types, most recently used first', async () => {
+      const user = getTestUser()
+      const add = (activityType: string, startIso: string, data: Record<string, unknown>) =>
+        insertActivity(user, {
+          activity_type: activityType,
+          data,
+          id: randomUUID(),
+          source: 'aurboda',
+          start_time: new Date(startIso),
+        })
+      await add('yoga', '2024-02-01T07:00:00Z', { session_name: 'Flow' })
+      await add('yoga', '2024-02-03T07:00:00Z', { session_name: ' Flow ' })
+      await add('yoga', '2024-02-02T07:00:00Z', { session_name: 'Yin' })
+      await add('yoga', '2024-02-04T07:00:00Z', { session_name: '  ' })
+      await add('yoga', '2024-02-05T07:00:00Z', {})
+      await add('running', '2024-02-06T07:00:00Z', { session_name: 'Intervals' })
+      const deleted = randomUUID()
+      await insertActivity(user, {
+        activity_type: 'yoga',
+        data: { session_name: 'Gone' },
+        id: deleted,
+        source: 'aurboda',
+        start_time: new Date('2024-02-07T07:00:00Z'),
+      })
+      await deleteActivity(user, deleted)
+
+      expect(await getActivityFieldValues(user, ['yoga'], 'session_name')).toEqual([
+        { count: 2, last_used: new Date('2024-02-03T07:00:00Z'), value: 'Flow' },
+        { count: 1, last_used: new Date('2024-02-02T07:00:00Z'), value: 'Yin' },
+      ])
+      expect(
+        (await getActivityFieldValues(user, ['yoga', 'running'], 'session_name')).map((v) => v.value),
+      ).toEqual(['Intervals', 'Flow', 'Yin'])
+      expect(await getActivityFieldValues(user, ['yoga'], 'other')).toEqual([])
     })
   })
 

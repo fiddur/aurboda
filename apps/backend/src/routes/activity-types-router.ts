@@ -3,6 +3,9 @@ import type { RequestHandler } from 'express'
 import {
   type ActivityTypeDefinitionResponse,
   type ActivityTypeDefinitionsResponse,
+  type ActivityFieldValuesQuery,
+  activityFieldValuesQuerySchema,
+  type ActivityFieldValuesResponse,
   type ActivitySessionsQuery,
   activitySessionsQuerySchema,
   type ActivitySessionsResponse,
@@ -26,7 +29,11 @@ import {
   renameActivityTypeDefinition,
   updateActivityTypeDefinition,
 } from '../services/activity-type-definitions.ts'
-import { queryActivitySessions, sessionsOptionsFromQuery } from '../services/queries/index.ts'
+import {
+  queryActivityFieldValues,
+  queryActivitySessions,
+  sessionsOptionsFromQuery,
+} from '../services/queries/index.ts'
 import { type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody, validateQuery } from '../validation.ts'
 
@@ -54,6 +61,16 @@ export const createActivityTypesRouter = (authMiddleware: RequestHandler): Typed
         sessionsOptionsFromQuery(req.query),
       )
       res.json({ data: sessions, success: true })
+    },
+  )
+
+  router.get<{ name: string }, ActivityFieldValuesResponse, unknown, ActivityFieldValuesQuery>(
+    '/:name/field-values',
+    authMiddleware,
+    validateQuery(activityFieldValuesQuerySchema),
+    async (req, res) => {
+      const values = await queryActivityFieldValues(req.user!, req.params.name, req.query.field)
+      res.json({ data: values, success: true })
     },
   )
 

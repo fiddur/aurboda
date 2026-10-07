@@ -60,7 +60,16 @@ On an activity's detail page:
 
 - **Previous/next**: links to the neighbouring activities of the same type (also on the ← and →
   keys), skipping the other sources of a merged session, and a second row per categorical value
-  the activity has (e.g. the previous/next time the same yoga video was done).
+  the activity has (e.g. the previous/next time the same yoga video was done). The type row also
+  links to the timeline, showing the 24 hours centred on the activity.
+- **Summary table**: the type's data fields, time, duration, location, then the source's
+  summary metrics (HR, calories with the active part, steps when walked, Body Battery before and
+  after, elevation, power). An empty categorical field shows as a row with **Set…**, which opens
+  the editor on that field. When editing, a categorical text field suggests the values already
+  used on the type (`GET /activity-types/:name/field-values`), so a repeat is picked rather than
+  retyped.
+- **Source data**: the rest of the source's `data` -- what neither the fields nor the summary
+  show -- folded away at the bottom.
 - **Other sessions with the same value**: for each categorical value, every session sharing it,
   this one highlighted, with a one-line summary, once it has been done at least twice.
 
@@ -78,10 +87,12 @@ types in the `exercise` display category.
 - `GET /activity-types/:name/sessions` -- Sessions with HR summaries; `start`/`end` (default all
   time), `group_by=<field>` for groups, `filter_field` + `filter_value` for one value (`(none)`
   for sessions without one)
+- `GET /activity-types/:name/field-values?field=<field>` -- The values a data field has taken
+  across the type and its subtypes, most recently used first, with counts
 - `GET /activities/:id/neighbors` -- Previous and next activity of the same type; `same_field`
   to keep to the same value of a data field
 
-MCP tools: `list_activity_types`, `add_activity_type`, `update_activity_type`, `delete_activity_type`, `query_activity_sessions`, `get_activity_neighbors`.
+MCP tools: `list_activity_types`, `add_activity_type`, `update_activity_type`, `delete_activity_type`, `query_activity_sessions`, `list_activity_field_values`, `get_activity_neighbors`.
 
 ## Garmin Meditation Recognition
 

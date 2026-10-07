@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { format } from 'date-fns'
+import { format, isSameDay } from 'date-fns'
 
 import { fetchPlaceVisits, type PlaceVisit } from '../../state/api'
 
@@ -7,6 +7,9 @@ import { fetchPlaceVisits, type PlaceVisit } from '../../state/api'
 export const MEAL_LOCATION_WINDOW_MS = 60 * 60_000 // 1 hour
 
 const LOCATION_STALE_TIME_MS = 5 * 60_000 // 5 minutes
+
+/** A phone at rest reports no fixes, so a stay may only show up as the last fix before it. */
+const LAST_KNOWN_HOURS = 6
 
 const SOURCE_COLORS: Record<string, string> = {
   detected: '#f97316',
@@ -22,61 +25,93 @@ const formatDuration = (minutes: number): string => {
   return m > 0 ? `${h}h ${m}m` : `${h}h`
 }
 
-const PlaceEntry = ({ place }: { place: PlaceVisit }) => {
-  const color = SOURCE_COLORS[place.source] ?? SOURCE_COLORS.unknown
-  const dateStr = format(place.start_time, 'yyyy-MM-dd')
-  const href = `/places?date=${dateStr}&name=${encodeURIComponent(place.name)}`
+const placeHref = (place: PlaceVisit) =>
+  `/places?date=${format(place.start_time, 'yyyy-MM-dd')}&name=${encodeURIComponent(place.name)}`
 
+const placeName = (place: PlaceVisit) => (place.source === 'unknown' ? 'Unknown' : place.name)
+
+const LastSeen = ({ place }: { place: PlaceVisit }) => {
+  if (!place.inferred_from) return null
+  const time = place.inferred_from
   return (
-    <a href={href} class="location-entry" title={place.address ?? undefined}>
-      <span class="location-dot" style={{ backgroundColor: color }} />
-      <span class="location-name">{place.source === 'unknown' ? 'Unknown' : place.name}</span>
-      <span class="location-duration">{formatDuration(place.durationMinutes)}</span>
-    </a>
+    <span class="location-inferred" title="No GPS fix in this time; this is where the last one before it was">
+      {' '}
+      last seen {format(time, isSameDay(time, place.start_time) ? 'HH:mm' : 'd MMM HH:mm')}
+    </span>
   )
 }
 
-export const LocationInfo = ({ start, end }: { start: Date; end: Date }) => {
-  const { data: places } = useQuery({
+const PlaceEntry = ({ place }: { place: PlaceVisit }) => (
+  <a href={placeHref(place)} class="location-entry" title={place.address ?? undefined}>
+    <span
+      class="location-dot"
+      style={{ backgroundColor: SOURCE_COLORS[place.source] ?? SOURCE_COLORS.unknown }}
+    />
+    <span class="location-name">{placeName(place)}</span>
+    {place.inferred_from ? (
+      <LastSeen place={place} />
+    ) : (
+      <span class="location-duration">{formatDuration(place.durationMinutes)}</span>
+    )}
+  </a>
+)
+
+const SinglePlace = ({ place }: { place: PlaceVisit }) => (
+  <>
+    <a href={placeHref(place)} class="location-link" title={place.address ?? undefined}>
+      <span
+        class="location-dot"
+        style={{ backgroundColor: SOURCE_COLORS[place.source] ?? SOURCE_COLORS.unknown }}
+      />
+      {placeName(place)}
+    </a>
+    <LastSeen place={place} />
+  </>
+)
+
+const Places = ({ places }: { places: PlaceVisit[] }) =>
+  places.length === 1 && places[0] ? (
+    <SinglePlace place={places[0]} />
+  ) : (
+    <div class="location-list">
+      {places.map((p, i) => (
+        <PlaceEntry key={i} place={p} />
+      ))}
+    </div>
+  )
+
+const usePlaceVisits = (start: Date, end: Date) =>
+  useQuery({
     enabled: end > start,
-    queryFn: () => fetchPlaceVisits(start, end),
-    queryKey: ['entity-places', start.toISOString(), end.toISOString()],
+    queryFn: () => fetchPlaceVisits(start, end, LAST_KNOWN_HOURS),
+    queryKey: ['entity-places', start.toISOString(), end.toISOString(), LAST_KNOWN_HOURS],
     staleTime: LOCATION_STALE_TIME_MS,
-  })
+  }).data ?? []
 
-  if (!places || places.length === 0) return null
-
-  if (places.length === 1) {
-    const p = places[0]
-    const color = SOURCE_COLORS[p.source] ?? SOURCE_COLORS.unknown
-    const dateStr = format(p.start_time, 'yyyy-MM-dd')
-    const href = `/places?date=${dateStr}&name=${encodeURIComponent(p.name)}`
-
-    return (
-      <div class="entity-fields">
-        <div class="field-row">
-          <span class="field-label">Location</span>
-          <span class="field-value">
-            <a href={href} class="location-link">
-              <span class="location-dot" style={{ backgroundColor: color }} />
-              {p.source === 'unknown' ? 'Unknown' : p.name}
-            </a>
-          </span>
-        </div>
-      </div>
-    )
-  }
-
+export const LocationInfo = ({ start, end }: { start: Date; end: Date }) => {
+  const places = usePlaceVisits(start, end)
+  if (places.length === 0) return null
   return (
     <div class="entity-fields">
-      <div class="field-row field-row-top">
-        <span class="field-label">Locations</span>
-        <div class="location-list">
-          {places.map((p, i) => (
-            <PlaceEntry key={i} place={p} />
-          ))}
-        </div>
+      <div class={places.length === 1 ? 'field-row' : 'field-row field-row-top'}>
+        <span class="field-label">{places.length === 1 ? 'Location' : 'Locations'}</span>
+        <span class="field-value">
+          <Places places={places} />
+        </span>
       </div>
     </div>
+  )
+}
+
+export const LocationStatRow = ({ start, end }: { start: Date; end: Date }) => {
+  const places = usePlaceVisits(start, end)
+  if (places.length === 0) return null
+  return (
+    <tr>
+      <th scope="row">{places.length === 1 ? 'Location' : 'Locations'}</th>
+      <td>
+        <Places places={places} />
+      </td>
+    </tr>
   )
 }

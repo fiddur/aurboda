@@ -7,6 +7,7 @@ import { useEffect } from 'preact/hooks'
 
 import { fieldLabel } from '../../components/sessions/sessionView'
 import { fetchActivityNeighbors } from '../../state/api'
+import { timelineHref } from '../Timeline/viewHash'
 import '../../components/sessions/sessions.css'
 
 const neighborDate = (n: ActivityNeighbor) => format(new Date(n.start_time), 'd MMM yyyy')
@@ -29,11 +30,14 @@ const NeighborsRow = ({
   scope,
   sameField,
   keyboard,
+  timeline,
 }: {
   activityId: string
   scope: string
   sameField?: string
   keyboard?: boolean
+  /** Link to the timeline around the activity; the row then shows even without neighbors. */
+  timeline?: string
 }) => {
   const { route } = useLocation()
   const { data } = useQuery({
@@ -57,7 +61,7 @@ const NeighborsRow = ({
     return () => window.removeEventListener('keydown', onKey)
   }, [keyboard, previous, next, route])
 
-  if (!previous && !next) return null
+  if (!previous && !next && !timeline) return null
 
   return (
     <div class="activity-neighbors-row">
@@ -70,6 +74,18 @@ const NeighborsRow = ({
       )}
       <span class="activity-neighbors-scope" title={scope}>
         {scope}
+        {timeline && (
+          <>
+            {' · '}
+            <a
+              href={timeline}
+              class="activity-neighbors-timeline"
+              title="Show the 24 hours around it on the timeline"
+            >
+              Timeline
+            </a>
+          </>
+        )}
       </span>
       {next ? (
         <a href={`/detail/activity/${next.id}`} title={`Next: ${neighborLabel(next)}`}>
@@ -90,13 +106,17 @@ export const ActivityNeighborsNav = ({
   activityId,
   typeLabel,
   values,
+  start,
+  end,
 }: {
   activityId: string
   typeLabel: string
   values: { field: DataFieldDefinition; value: string }[]
+  start: Date
+  end?: Date
 }) => (
   <nav class="activity-neighbors-nav" aria-label="Previous and next activities">
-    <NeighborsRow activityId={activityId} scope={typeLabel} keyboard />
+    <NeighborsRow activityId={activityId} scope={typeLabel} keyboard timeline={timelineHref(start, end)} />
     {values.map(({ field, value }) => (
       <NeighborsRow
         key={field.name}
