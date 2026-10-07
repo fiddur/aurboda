@@ -28,7 +28,7 @@ import {
 import { getProfileAvatarVersion, upsertProfileAvatar } from '../../db/profile-avatar.ts'
 import { upsertUserSettings } from '../../db/settings.ts'
 import { listTimelineEntries, upsertTimelineEntry } from '../../db/timeline.ts'
-import { createActorHtmlRouter } from '../../routes/actor-html-router.ts'
+import { createActorAcceptNormalizer, createActorHtmlRouter } from '../../routes/actor-html-router.ts'
 import { createFeedTombstoneRouter } from '../../routes/feed-tombstone-router.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../../test/db-test-helper.ts'
 import { actorDocument, inboxContext, stubDocumentLoader } from '../../test/inbox-context.ts'
@@ -614,13 +614,14 @@ describe('Feed federation actor + WebFinger', () => {
     supertest(app).get(path).set('Accept', 'application/activity+json')
 
   /**
-   * The actor-URL negotiation end to end (#1051): Fedify answers the request
-   * first and only next()s what it won't serve, so the HTML fallback's reach is
-   * only observable through the same mount order production uses.
+   * The actor-URL negotiation end to end: Fedify answers the request first and
+   * only next()s what it won't serve, so both halves are only observable
+   * through the same mount order production uses.
    */
   const buildActorApp = (users: string[]) => {
     const app = express()
     app.set('trust proxy', 'loopback')
+    app.use(createActorAcceptNormalizer())
     app.use(integrateFederation(fed, () => undefined))
     app.use(
       createActorHtmlRouter({
@@ -640,14 +641,38 @@ describe('Feed federation actor + WebFinger', () => {
     expect(res.headers.location).toBe(`${ORIGIN}/u/${user}`)
   })
 
-  test('a wildcard Accept on an actor URL is not redirected to HTML', async () => {
+  test('a wildcard or absent Accept on an actor URL gets the actor document', async () => {
+    const user = getTestUser()
+    for (const accept of ['*/*', '']) {
+      const res = await supertest(buildActorApp([user]))
+        .get(`/users/${user}`)
+        .set('Accept', accept)
+        .buffer(true)
+        .parse((response, done) => {
+          let body = ''
+          response.on('data', (chunk: Buffer) => (body += chunk.toString()))
+          response.on('end', () => done(null, body))
+        })
+      expect(res.status).toBe(200)
+      expect(res.headers['content-type']).toMatch(/application\/activity\+json/)
+      expect(res.headers.vary).toMatch(/Accept/)
+      expect(JSON.parse(res.body as string)).toMatchObject({ id: `${ORIGIN}/users/${user}`, type: 'Person' })
+    }
+  })
+
+  test('a wildcard Accept on an UNKNOWN actor is still a 404', async () => {
+    const res = await supertest(buildActorApp([getTestUser()]))
+      .get('/users/nosuchuser')
+      .set('Accept', '*/*')
+    expect(res.status).toBe(404)
+  })
+
+  test('an existing actor answers 406 when no representation is acceptable', async () => {
     const user = getTestUser()
     const res = await supertest(buildActorApp([user]))
       .get(`/users/${user}`)
-      .set('Accept', '*/*')
-    // Whatever Fedify decides for a non-negotiating client (a 406 today), it is
-    // never our HTML redirect.
-    expect(res.status).not.toBe(302)
+      .set('Accept', 'image/png')
+    expect(res.status).toBe(406)
   })
 
   test('a browser navigation to an UNKNOWN actor is not redirected either', async () => {
