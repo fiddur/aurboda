@@ -170,7 +170,7 @@ export const activityFieldValuesQuerySchema = z
   .object({
     field: dataFieldNameSchema.meta({ description: 'Data field name, e.g. session_name' }),
   })
-  .meta({ id: 'ActivityFieldValuesQuery' })
+  .meta({ description: 'Which data field to list the values of', id: 'ActivityFieldValuesQuery' })
 
 export type ActivityFieldValuesQuery = z.infer<typeof activityFieldValuesQuerySchema>
 

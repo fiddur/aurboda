@@ -60,8 +60,8 @@ the `query_locations` MCP tool) take `last_known_hours`: when the range starts b
 fix, the last fix from up to that many hours earlier is carried forward to the start of the
 range. The visit it yields is marked `inferred_from` with that fix's time. With no fix in the
 range at all it spans the whole range, otherwise it ends where the next fix places you
-elsewhere. It is off by default, and carried-forward visits never create `location_visit`
-activities. Detail pages ask for 6 hours and show such a place as "last seen 11:16".
+elsewhere. It is off by default, and a query that asks for it never creates `location_visit` activities:
+its first visit starts at the queried range rather than at a fix. Detail pages ask for 6 hours and show such a place as "last seen 11:16".
 
 ## Integration with Other Features
 

@@ -20,15 +20,16 @@ export async function queryLocations(
   options: PlaceVisitOptions = {},
 ): Promise<PlaceSummary[]> {
   const visits = await getPlaceVisits(user, start, end, options)
-  // A carried-forward visit starts at the queried range, so materializing it would mint a new
-  // location_visit for every range asked about.
-  const observed = visits.filter((v) => !v.inferred_from)
 
-  // Fire-and-forget. Don't let materialization failures surface to the user —
-  // the /locations response is still valid GPS data either way.
-  void materializeFromVisits(user, observed, { getNamedLocations, insertActivities }).catch((err) => {
-    console.error('location_visit activity materialization failed:', err)
-  })
+  // A visit the last known fix starts or extends begins at the queried range, not at a fix, so
+  // materializing it would mint a location_visit for every range asked about.
+  if (!options.lastKnownHours) {
+    // Fire-and-forget. Don't let materialization failures surface to the user —
+    // the /locations response is still valid GPS data either way.
+    void materializeFromVisits(user, visits, { getNamedLocations, insertActivities }).catch((err) => {
+      console.error('location_visit activity materialization failed:', err)
+    })
+  }
 
   return visits.map((p) => ({
     address: p.address,

@@ -218,12 +218,15 @@ const ActivityStatsTable = ({
 }) => (
   <table class="activity-stats-table">
     <tbody>
-      {[...fieldRows, ...timeRows].map((row) => (
-        <StatRow key={row.label} row={row} onFill={onFill} />
+      {fieldRows.map((row, i) => (
+        <StatRow key={`field-${i}`} row={row} onFill={onFill} />
+      ))}
+      {timeRows.map((row) => (
+        <StatRow key={`time-${row.label}`} row={row} />
       ))}
       {location && <LocationStatRow start={location.start} end={location.end} />}
       {metricRows.map((row) => (
-        <StatRow key={row.label} row={row} />
+        <StatRow key={`metric-${row.label}`} row={row} />
       ))}
     </tbody>
   </table>
