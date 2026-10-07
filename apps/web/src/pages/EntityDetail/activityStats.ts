@@ -1,4 +1,4 @@
-import type { DataSchemaDefinition } from '@aurboda/api-spec'
+import type { ActivitySessions, DataSchemaDefinition } from '@aurboda/api-spec'
 
 import type { Activity } from '../../state/api'
 
@@ -17,6 +17,7 @@ export interface ActivityStatRow {
   label: string
   value: string
   href?: string
+  title?: string
   /** Name of a categorical schema field without a value, shown so it can be filled in. */
   missingField?: string
 }
@@ -66,12 +67,50 @@ const formatElevation = (gain: number | undefined, loss: number | undefined): st
   return parts.length > 0 ? parts.join(' / ') : undefined
 }
 
+export const garminConnectActivityUrl = (id: number | string): string =>
+  `https://connect.garmin.com/modern/activity/${id}`
+
+const MIN_TYPICAL_SESSIONS = 3
+
+export const typicalAvgHr = (
+  sessions: ActivitySessions | undefined,
+  field: string,
+  value: string,
+): { median: number; count: number } | undefined => {
+  if (sessions?.group_by !== field) return undefined
+  const group = sessions.groups?.find((g) => g.value !== null && String(g.value) === value)
+  if (!group || group.count < MIN_TYPICAL_SESSIONS || group.avg_hr_median === undefined) return undefined
+  return { count: group.count, median: group.avg_hr_median }
+}
+
+export interface TypicalAvgHr {
+  median: number
+  count: number
+  /** The categorical value the sessions share. */
+  label: string
+  /** Label of the field that holds it. */
+  field: string
+}
+
+const avgHrRow = (avgHr: number, typical: TypicalAvgHr | undefined): ActivityStatRow => {
+  const own = `${Math.round(avgHr)} bpm`
+  if (!typical) return { label: 'Avg HR', value: own }
+  return {
+    label: 'Avg HR',
+    title: `Median average heart rate over ${typical.count} sessions with the same ${typical.field}`,
+    value: `${own} · typically ${Math.round(typical.median)} (${typical.count} ${typical.label})`,
+  }
+}
+
 // eslint-disable-next-line complexity -- one optional row per summary metric
 export const buildMetricRows = ({
   activity,
   totalCalories,
   sleepMinutes,
-}: Pick<BuildActivityStatRowsInput, 'activity' | 'totalCalories' | 'sleepMinutes'>): ActivityStatRow[] => {
+  typicalAvgHr: typical,
+}: Pick<BuildActivityStatRowsInput, 'activity' | 'totalCalories' | 'sleepMinutes'> & {
+  typicalAvgHr?: TypicalAvgHr
+}): ActivityStatRow[] => {
   const rows: ActivityStatRow[] = []
   const add = (label: string, value: string | undefined) => {
     if (value !== undefined) rows.push({ label, value })
@@ -82,7 +121,7 @@ export const buildMetricRows = ({
   add('Avg Cadence', a.avg_cadence === undefined ? undefined : formatCadence(a.avg_cadence))
   add('Avg Power', a.avg_power === undefined ? undefined : `${Math.round(a.avg_power)} W`)
   add('Elevation', formatElevation(a.elevation_gain, a.elevation_loss))
-  add('Avg HR', a.avg_hr === undefined ? undefined : `${Math.round(a.avg_hr)} bpm`)
+  if (a.avg_hr !== undefined) rows.push(avgHrRow(a.avg_hr, typical))
   add('Max HR', a.max_hr === undefined ? undefined : `${Math.round(a.max_hr)} bpm`)
   const calories = formatCalories(a.calories, totalCalories)
   if (calories) rows.push(calories)

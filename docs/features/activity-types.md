@@ -64,10 +64,15 @@ On an activity's detail page:
   links to the timeline, showing the 24 hours centred on the activity.
 - **Summary table**: the type's data fields, time, duration, location, then the source's
   summary metrics (HR, calories with the active part, steps when walked, Body Battery before and
-  after, elevation, power). An empty categorical field shows as a row with **Set…**, which opens
-  the editor on that field. When editing, a categorical text field suggests the values already
-  used on the type (`GET /activity-types/:name/field-values`), so a repeat is picked rather than
-  retyped.
+  after, elevation, power). When the activity has a categorical value shared by at least three
+  sessions, Avg HR adds what is typical for it, e.g. `125 bpm · typically 118 (12 Yin yoga)`: the
+  median of those sessions' average heart rates, from the first categorical field with a value
+  (`GET /activity-types/:name/sessions?group_by=<field>`). An empty categorical field shows as a
+  row with **Set…**, which opens the editor on that field; a deleted activity leaves such rows
+  out. When editing, a categorical text field suggests the values already used on the type
+  (`GET /activity-types/:name/field-values`), so a repeat is picked rather than retyped.
+- **Garmin**: an activity with a `garmin_activity_id` has **Re-sync Garmin Detail** and **Open
+  in Garmin Connect**, which opens the activity on connect.garmin.com in a new tab.
 - **Source data**: the rest of the source's `data` -- what neither the fields nor the summary
   show -- folded away at the bottom.
 - **Other sessions with the same value**: for each categorical value, every session sharing it,

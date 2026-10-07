@@ -389,13 +389,14 @@ describe('visitsWithLastKnown', () => {
     expect(visits[0]!.inferred_from).toBeUndefined()
   })
 
-  test('a fix in the range elsewhere ends the carried visit at the start of the range', () => {
+  test('a fix in the range elsewhere ends the carried visit at that fix', () => {
     const visits = visitsWithLastKnown([fix(10, 15, 57.7, 12.9)], fix(9, 16), start, end, named, [])
 
     expect(visits.map((v) => [v.name, v.inferred_from, v.duration_minutes])).toEqual([
-      ['Hökås', at(9, 16), 0],
+      ['Hökås', at(9, 16), 10],
       ['Somewhere', undefined, 0],
     ])
+    expect(visits[0]!.end_time).toEqual(at(10, 15))
   })
 })
 
