@@ -1,8 +1,17 @@
+import type { ActivitySessionGroup, ActivitySessions } from '@aurboda/api-spec'
+
 import { describe, expect, test } from 'vitest'
 
 import type { Activity } from '../../state/api'
 
-import { buildActivityStatRows, buildFieldRows, sourceDataEntries } from './activityStats'
+import {
+  buildActivityStatRows,
+  buildFieldRows,
+  buildMetricRows,
+  garminConnectActivityUrl,
+  sourceDataEntries,
+  typicalAvgHr,
+} from './activityStats'
 
 const baseActivity = (overrides: Partial<Activity> = {}): Activity =>
   ({
@@ -107,6 +116,99 @@ describe('buildActivityStatRows: source summary fields', () => {
     expect(value('Steps')).toBeUndefined()
     expect(value('Body Battery')).toBe('56 → 54')
     expect(value('Elevation')).toBe('+120 m / −118 m')
+  })
+})
+
+describe('buildMetricRows: typical Avg HR', () => {
+  const activity = baseActivity({ avg_hr: 124.6 })
+
+  test("without a typical value the row is the activity's own", () => {
+    const row = buildMetricRows({ activity, sleepMinutes: undefined, totalCalories: undefined }).find(
+      (r) => r.label === 'Avg HR',
+    )
+    expect(row).toEqual({ label: 'Avg HR', value: '125 bpm' })
+  })
+
+  test('with a typical value it follows, with the group and how it was built', () => {
+    const row = buildMetricRows({
+      activity,
+      sleepMinutes: undefined,
+      totalCalories: undefined,
+      typicalAvgHr: { count: 12, field: 'Session name', label: 'Yin yoga', median: 117.6 },
+    }).find((r) => r.label === 'Avg HR')
+    expect(row).toEqual({
+      label: 'Avg HR',
+      title: 'Median average heart rate over 12 sessions with the same Session name',
+      value: '125 bpm · typically 118 (12 Yin yoga)',
+    })
+  })
+
+  test("a typical value equal to the activity's is still shown", () => {
+    const row = buildMetricRows({
+      activity,
+      sleepMinutes: undefined,
+      totalCalories: undefined,
+      typicalAvgHr: { count: 3, field: 'Session name', label: 'Flow', median: 125 },
+    }).find((r) => r.label === 'Avg HR')
+    expect(row?.value).toBe('125 bpm · typically 125 (3 Flow)')
+  })
+})
+
+describe('typicalAvgHr', () => {
+  const group = (overrides: Partial<ActivitySessionGroup>): ActivitySessionGroup => ({
+    count: 5,
+    first_start_time: '2026-01-01T10:00:00Z',
+    last_start_time: '2026-10-01T10:00:00Z',
+    session_ids: [],
+    value: 'Yin',
+    ...overrides,
+  })
+  const sessions = (groups: ActivitySessionGroup[], group_by = 'session_name'): ActivitySessions => ({
+    activity_type: 'yoga',
+    group_by,
+    groups,
+    sessions: [],
+  })
+
+  test('the median and count of the group with the same value', () => {
+    const data = sessions([
+      group({ avg_hr_median: 90, value: 'Flow' }),
+      group({ avg_hr_median: 80, count: 4 }),
+    ])
+    expect(typicalAvgHr(data, 'session_name', 'Yin')).toEqual({ count: 4, median: 80 })
+  })
+
+  test('matches a non-string group value by its string form', () => {
+    const data = sessions([group({ avg_hr_median: 80, value: 2 })], 'level')
+    expect(typicalAvgHr(data, 'level', '2')).toEqual({ count: 5, median: 80 })
+  })
+
+  test('nothing for a group of fewer than three sessions', () => {
+    expect(typicalAvgHr(sessions([group({ avg_hr_median: 80, count: 2 })]), 'session_name', 'Yin')).toBe(
+      undefined,
+    )
+  })
+
+  test('nothing for a group without a median', () => {
+    expect(typicalAvgHr(sessions([group({})]), 'session_name', 'Yin')).toBeUndefined()
+  })
+
+  test('nothing without a matching group, or for groups by another field', () => {
+    const data = sessions([
+      group({ avg_hr_median: 80, value: 'Flow' }),
+      group({ avg_hr_median: 70, value: null }),
+    ])
+    expect(typicalAvgHr(data, 'session_name', 'Yin')).toBeUndefined()
+    expect(typicalAvgHr(sessions([group({ avg_hr_median: 80 })]), 'partner', 'Yin')).toBeUndefined()
+    expect(typicalAvgHr(undefined, 'session_name', 'Yin')).toBeUndefined()
+  })
+})
+
+describe('garminConnectActivityUrl', () => {
+  test('links to the activity on Garmin Connect', () => {
+    expect(garminConnectActivityUrl(24637616891)).toBe(
+      'https://connect.garmin.com/modern/activity/24637616891',
+    )
   })
 })
 

@@ -200,7 +200,6 @@ export interface ActivityFieldValueRow {
   last_used: Date
 }
 
-/** Distinct non-blank values of `data->>field` across `activityTypes`, most recently used first. */
 export const getActivityFieldValues = async (
   user: string,
   activityTypes: string[],

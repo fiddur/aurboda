@@ -608,6 +608,13 @@ a.entity-type-badge:hover {
   background: #f3f4f6;
 }
 
+a.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  line-height: normal;
+  text-decoration: none;
+}
+
 .btn-edit {
   background: #f3f4f6;
   border: 1px solid #e5e7eb;

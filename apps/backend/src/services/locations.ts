@@ -438,7 +438,6 @@ export interface PlaceFix extends LocationPoint {
   regions: string[]
 }
 
-/** Group time-ordered fixes into visits: consecutive fixes at the same place form one visit. */
 export const groupFixesIntoVisits = (
   fixes: PlaceFix[],
   namedLocations: NamedLocation[],
@@ -479,8 +478,9 @@ export const groupFixesIntoVisits = (
 /**
  * Visits for `[start, end]` when the range's first fix comes after `start`: `lastKnown` (the
  * latest fix before the range) is moved to `start` and grouped with the rest. A visit made of
- * that fix alone is marked `inferred_from`, and spans the whole range when no fix in it says
- * otherwise. A visit it merely extends is observed in the range, so it is not marked.
+ * that fix alone is marked `inferred_from`, and lasts until the range's first fix, which places
+ * you elsewhere, or the whole range when there is none. A visit it merely extends is observed in
+ * the range, so it is not marked.
  */
 export const visitsWithLastKnown = (
   inRange: PlaceFix[],
@@ -497,7 +497,7 @@ export const visitsWithLastKnown = (
   )
   const [first, ...rest] = visits
   if (!first || first.end_time.getTime() !== start.getTime()) return visits
-  const carriedEnd = inRange.length === 0 ? end : first.end_time
+  const carriedEnd = inRange[0]?.time ?? end
   return [
     {
       ...first,

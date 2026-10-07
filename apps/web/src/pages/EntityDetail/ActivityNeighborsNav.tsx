@@ -36,7 +36,6 @@ const NeighborsRow = ({
   scope: string
   sameField?: string
   keyboard?: boolean
-  /** Link to the timeline around the activity; the row then shows even without neighbors. */
   timeline?: string
 }) => {
   const { route } = useLocation()

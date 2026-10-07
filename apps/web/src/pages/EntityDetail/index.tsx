@@ -14,9 +14,10 @@ import {
   type SleepMetricKey,
   parseSleepStages,
 } from '../../components/charts/sleep-utils'
-import { categoricalFields, categoricalValues } from '../../components/sessions/sessionView'
+import { categoricalFields, categoricalValues, fieldLabel } from '../../components/sessions/sessionView'
 import {
   fetchActivityById,
+  fetchActivitySessions,
   fetchActivityTypeDefinitions,
   fetchBucketedMetrics,
   fetchUserSettings,
@@ -41,7 +42,9 @@ import {
   buildFieldRows,
   buildMetricRows,
   buildTimeRows,
+  garminConnectActivityUrl,
   sourceDataEntries,
+  typicalAvgHr,
 } from './activityStats'
 import { type ActivityDraft, EditableActivityFields } from './EditableActivityFields'
 import { EntityActions, type EntityType } from './EntityActions'
@@ -186,13 +189,11 @@ const StatRow = ({ row, onFill }: { row: ActivityStatRow; onFill?: (field: strin
   return (
     <tr class={missingField ? 'activity-stat-missing' : undefined}>
       <th scope="row">{row.label}</th>
-      <td>
-        {missingField ? (
-          onFill && (
-            <button type="button" class="link-button" onClick={() => onFill(missingField)}>
-              Set…
-            </button>
-          )
+      <td title={row.title}>
+        {missingField && onFill ? (
+          <button type="button" class="link-button" onClick={() => onFill(missingField)}>
+            Set…
+          </button>
         ) : row.href ? (
           <a href={row.href}>{row.value}</a>
         ) : (
@@ -218,7 +219,7 @@ const ActivityStatsTable = ({
 }) => (
   <table class="activity-stats-table">
     <tbody>
-      {fieldRows.map((row, i) => (
+      {(onFill ? fieldRows : fieldRows.filter((row) => !row.missingField)).map((row, i) => (
         <StatRow key={`field-${i}`} row={row} onFill={onFill} />
       ))}
       {timeRows.map((row) => (
@@ -344,6 +345,17 @@ const ActivityDetailContent = ({
       ? Math.round(caloriesQuery.data.reduce((sum, [, val]) => sum + val, 0))
       : undefined
 
+  const ownTypeDef = typeDefinitions?.find((d) => d.name === activity.activity_type)
+  const [groupValue] = categoricalValues(categoricalFields(ownTypeDef?.data_schema), activityData)
+  const groupField = groupValue?.field.name
+  const typicalQuery = useQuery({
+    enabled: Boolean(groupField) && activity.avg_hr !== undefined,
+    queryFn: () => fetchActivitySessions(activity.activity_type, { group_by: groupField }),
+    queryKey: ['activity-sessions', activity.activity_type, 'group', groupField],
+    staleTime: 5 * 60 * 1000,
+  })
+  const typical = groupValue && typicalAvgHr(typicalQuery.data, groupValue.field.name, groupValue.value)
+
   const badgeHref = `/activity-type/${encodeURIComponent(exerciseType ?? activity.activity_type)}`
 
   const description = getUserNotesContent(activity)
@@ -410,7 +422,16 @@ const ActivityDetailContent = ({
                 displayStart,
                 durationLabel: hasSleepStages ? 'In Bed' : 'Duration',
               })}
-              metricRows={buildMetricRows({ activity, sleepMinutes, totalCalories })}
+              metricRows={buildMetricRows({
+                activity,
+                sleepMinutes,
+                totalCalories,
+                typicalAvgHr: typical && {
+                  ...typical,
+                  field: fieldLabel(groupValue.field),
+                  label: groupValue.value,
+                },
+              })}
               location={hasEndTime ? { end: displayEnd, start: displayStart } : undefined}
               onFill={activity.deleted_at ? undefined : onFillField}
             />
@@ -475,8 +496,12 @@ const ResyncDetailButton = ({
     onSuccess,
   })
 
-  const hasGarminId = Boolean((activity.data as Record<string, unknown> | undefined)?.garmin_activity_id)
-  if (!hasGarminId || isEditing) return null
+  const rawGarminId = (activity.data as Record<string, unknown> | undefined)?.garmin_activity_id
+  const garminId =
+    typeof rawGarminId === 'number' || (typeof rawGarminId === 'string' && rawGarminId !== '')
+      ? rawGarminId
+      : undefined
+  if (garminId === undefined || isEditing) return null
 
   return (
     <div class="entity-actions">
@@ -488,6 +513,14 @@ const ResyncDetailButton = ({
       >
         {mutation.isPending ? 'Re-syncing...' : 'Re-sync Garmin Detail'}
       </button>
+      <a
+        class="btn-secondary"
+        href={garminConnectActivityUrl(garminId)}
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        Open in Garmin Connect
+      </a>
       {mutation.isSuccess && <span class="sync-result done">Synced {mutation.data.points} data points</span>}
       {mutation.isError && (
         <span class="sync-result error">
