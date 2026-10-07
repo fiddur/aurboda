@@ -149,6 +149,13 @@ is a later slice):
 | Edit    | `Update{Note}`      | Their stored copy is replaced             |
 | Unshare | `Delete{Tombstone}` | The post is retracted from their timeline |
 
+A post whose activity gains its **Garmin detail** after it was shared (GPS, per-second
+HR, distance — the detail sync often lands minutes after a Health Connect session) is
+re-delivered as an `Update{Note}` with a bumped `updated_at`, so followers get the
+settled scalars and the attachments that now have data. A manual detail re-sync of the
+activity does the same; a full Garmin re-sync does not (it only refreshes posts whose
+activity had no detail before).
+
 The `Note` is Mastodon-compatible: a structured HTML `content` — the bold title
 headline, the author's personal message (if any), a line saying when the **activity**
 happened (rendered in the author's device timezone, since AS2 `published` stays the
@@ -643,6 +650,15 @@ GET /api/public/:username/feed/:postId/chart.png
 GET /api/public/:username/feed/:postId/chart.svg
 GET /api/public/:username/feed/:postId/route.png
 ```
+
+An opted-in image is only **attached when its data exists** (heart-rate samples or GPS
+points in the activity's window): Mastodon drops an attachment whose URL fails to fetch
+for good, so a promise of `route.png` before the route has synced would never recover.
+The attachment URLs carry the post's version (`?v=<updated_at>`, beside `token` for a
+`followers`-only post) because Mastodon re-downloads an attachment on an `Update` only
+when its URL changed; the endpoints ignore `v` and key their render cache on the post's
+stored `updated_at`, so an edit or a detail sync renders afresh and a guessed `v` cannot
+bust the cache.
 
 The chart is offered in two formats over the same series and window: the **PNG** is
 what Mastodon and other peers attach, while **`chart.svg`** serves the same chart as

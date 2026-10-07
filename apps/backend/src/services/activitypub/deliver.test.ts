@@ -21,6 +21,7 @@ import {
   deliverFeedReplyPost,
   type FeedDeliveryDeps,
   imageAttachments,
+  imageAvailability,
   recipients,
   toDeliverableReply,
 } from './deliver.ts'
@@ -98,6 +99,9 @@ describe('imageAttachments', () => {
   const apiBaseUrl = 'https://aurboda.example/api'
   const POST_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
   const base = `https://aurboda.example/api/public/fiddur/feed/${POST_ID}`
+  const UPDATED = new Date('2026-07-02T00:00:00Z')
+  const v = `v=${UPDATED.getTime()}`
+  const all = { chart: true, map: true }
   const post = (overrides: Partial<DeliverablePost>): DeliverablePost => ({
     created_at: new Date('2026-07-01T00:00:00Z'),
     id: POST_ID,
@@ -106,22 +110,27 @@ describe('imageAttachments', () => {
     include_map: false,
     included_metrics: [],
     series_metrics: [],
-    updated_at: new Date('2026-07-01T00:00:00Z'),
+    updated_at: UPDATED,
     visibility: 'public',
     ...overrides,
   })
 
   test('attaches only the opted-in images, at the public endpoints (no token for public)', () => {
-    const chartOnly = imageAttachments(apiBaseUrl, 'fiddur', post({ include_chart: true }))
-    expect(chartOnly.map((a) => a.url?.href)).toEqual([`${base}/chart.png`])
+    const chartOnly = imageAttachments(apiBaseUrl, 'fiddur', post({ include_chart: true }), all)
+    expect(chartOnly.map((a) => a.url?.href)).toEqual([`${base}/chart.png?${v}`])
 
-    const both = imageAttachments(apiBaseUrl, 'fiddur', post({ include_chart: true, include_map: true }))
-    expect(both.map((a) => a.url?.href)).toEqual([`${base}/chart.png`, `${base}/route.png`])
+    const both = imageAttachments(apiBaseUrl, 'fiddur', post({ include_chart: true, include_map: true }), all)
+    expect(both.map((a) => a.url?.href)).toEqual([`${base}/chart.png?${v}`, `${base}/route.png?${v}`])
   })
 
   test('attaches unlisted images without a token', () => {
-    const atts = imageAttachments(apiBaseUrl, 'fiddur', post({ include_chart: true, visibility: 'unlisted' }))
-    expect(atts.map((a) => a.url?.href)).toEqual([`${base}/chart.png`])
+    const atts = imageAttachments(
+      apiBaseUrl,
+      'fiddur',
+      post({ include_chart: true, visibility: 'unlisted' }),
+      all,
+    )
+    expect(atts.map((a) => a.url?.href)).toEqual([`${base}/chart.png?${v}`])
   })
 
   test('attaches followers-only images carrying the capability token (#893)', () => {
@@ -129,15 +138,78 @@ describe('imageAttachments', () => {
       apiBaseUrl,
       'fiddur',
       post({ include_chart: true, include_map: true, visibility: 'followers' }),
+      all,
     )
     expect(atts.map((a) => a.url?.href)).toEqual([
-      `${base}/chart.png?token=secret-token`,
-      `${base}/route.png?token=secret-token`,
+      `${base}/chart.png?token=secret-token&${v}`,
+      `${base}/route.png?token=secret-token&${v}`,
     ])
   })
 
+  test('the URL changes with the post version, so an Update re-downloads it', () => {
+    const later = new Date(UPDATED.getTime() + 60_000)
+    const atts = imageAttachments(apiBaseUrl, 'fiddur', post({ include_map: true, updated_at: later }), all)
+    expect(atts.map((a) => a.url?.href)).toEqual([`${base}/route.png?v=${later.getTime()}`])
+  })
+
+  test('an opted-in image without data behind it is not attached', () => {
+    const both = post({ include_chart: true, include_map: true })
+    expect(imageAttachments(apiBaseUrl, 'fiddur', both, { chart: false, map: false })).toEqual([])
+    expect(
+      imageAttachments(apiBaseUrl, 'fiddur', both, { chart: true, map: false }).map((a) => a.url?.href),
+    ).toEqual([`${base}/chart.png?${v}`])
+  })
+
   test('attaches nothing when neither flag is set', () => {
-    expect(imageAttachments(apiBaseUrl, 'fiddur', post({}))).toEqual([])
+    expect(imageAttachments(apiBaseUrl, 'fiddur', post({}), all)).toEqual([])
+  })
+})
+
+describe('imageAvailability', () => {
+  const start = new Date('2026-07-01T08:00:00Z')
+  const end = new Date('2026-07-01T09:00:00Z')
+  const activity = { activity_type: 'running', end_time: end, start_time: start }
+
+  const lookups = (series: boolean, route: boolean) => {
+    const calls: string[] = []
+    return {
+      calls,
+      lookups: {
+        hasRoute: async (_user: string, s: Date, e: Date) => {
+          calls.push(`route ${s.toISOString()} ${e.toISOString()}`)
+          return route
+        },
+        hasSeries: async (_user: string, metric: string, s: Date, e: Date) => {
+          calls.push(`${metric} ${s.toISOString()} ${e.toISOString()}`)
+          return series
+        },
+      },
+    }
+  }
+
+  test('looks up heart rate and the route over the activity window', async () => {
+    const l = lookups(true, false)
+    const flags = { include_chart: true, include_map: true }
+    expect(await imageAvailability('fiddur', flags, activity, l.lookups)).toEqual({ chart: true, map: false })
+    expect(l.calls).toEqual([
+      `heart_rate ${start.toISOString()} ${end.toISOString()}`,
+      `route ${start.toISOString()} ${end.toISOString()}`,
+    ])
+  })
+
+  test('skips the lookup for an image that is not opted in', async () => {
+    const l = lookups(true, true)
+    const flags = { include_chart: false, include_map: true }
+    expect(await imageAvailability('fiddur', flags, activity, l.lookups)).toEqual({ chart: false, map: true })
+    expect(l.calls).toHaveLength(1)
+  })
+
+  test('an open-ended activity has nothing to draw', async () => {
+    const l = lookups(true, true)
+    const flags = { include_chart: true, include_map: true }
+    const open = { activity_type: 'running', start_time: start }
+    expect(await imageAvailability('fiddur', flags, open, l.lookups)).toEqual({ chart: false, map: false })
+    expect(l.calls).toEqual([])
   })
 })
 

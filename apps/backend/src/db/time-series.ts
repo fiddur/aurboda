@@ -92,6 +92,26 @@ export const getTimeSeries = async (
   return result.rows.map((row) => [new Date(row.time), row.value])
 }
 
+/** Whether `getTimeSeries` would return any point for the metric in the window. */
+export const hasTimeSeries = async (
+  user: string,
+  metric: string,
+  start: Date,
+  end: Date,
+): Promise<boolean> => {
+  const sources = getSourceFilter(metric)
+  const result = await query<{ exists: boolean }>(
+    user,
+    `SELECT EXISTS (
+       SELECT 1 FROM time_series
+       WHERE metric = $1 AND time >= $2 AND time <= $3 AND deleted_at IS NULL
+         ${sources ? 'AND source = ANY($4)' : ''}
+     ) AS exists`,
+    sources ? [metric, start, end, sources] : [metric, start, end],
+  )
+  return result.rows[0]?.exists === true
+}
+
 export const getTimeSeriesWithSource = async (
   user: string,
   metric: string,

@@ -12,6 +12,7 @@ import {
   getTimeSeriesBucketed,
   getTimeSeriesEntriesMultiMetric,
   getTimeSeriesWithSource,
+  hasTimeSeries,
   insertTimeSeries,
 } from './time-series.ts'
 
@@ -242,6 +243,54 @@ describe('Time Series Integration Tests', () => {
       )
 
       expect(data).toHaveLength(2)
+    })
+  })
+
+  describe('hasTimeSeries', () => {
+    const start = new Date('2024-01-15T10:00:00Z')
+    const end = new Date('2024-01-15T11:00:00Z')
+
+    test('is true only when a point of the metric falls in the window', async () => {
+      const user = getTestUser()
+      expect(await hasTimeSeries(user, 'heart_rate', start, end)).toBe(false)
+
+      await insertTimeSeries(user, [
+        { metric: 'heart_rate', source: 'garmin', time: new Date('2024-01-15T12:00:00Z'), value: 72 },
+        { metric: 'stress_level', source: 'garmin', time: new Date('2024-01-15T10:30:00Z'), value: 30 },
+      ])
+      expect(await hasTimeSeries(user, 'heart_rate', start, end)).toBe(false)
+
+      await insertTimeSeries(user, [
+        { metric: 'heart_rate', source: 'garmin', time: new Date('2024-01-15T10:30:00Z'), value: 72 },
+      ])
+      expect(await hasTimeSeries(user, 'heart_rate', start, end)).toBe(true)
+    })
+
+    test('honours the same source filter as getTimeSeries', async () => {
+      const user = getTestUser()
+      await insertTimeSeries(user, [
+        { metric: 'steps', source: 'health_connect', time: new Date('2024-01-15T10:30:00Z'), value: 500 },
+      ])
+      expect(await hasTimeSeries(user, 'steps', start, end)).toBe(false)
+
+      await insertTimeSeries(user, [
+        {
+          metric: 'steps',
+          source: 'health_connect_aggregate',
+          time: new Date('2024-01-15T10:30:00Z'),
+          value: 500,
+        },
+      ])
+      expect(await hasTimeSeries(user, 'steps', start, end)).toBe(true)
+    })
+
+    test('ignores soft-deleted points', async () => {
+      const user = getTestUser()
+      await insertTimeSeries(user, [
+        { metric: 'heart_rate', source: 'garmin', time: new Date('2024-01-15T10:30:00Z'), value: 72 },
+      ])
+      await query(user, `UPDATE time_series SET deleted_at = NOW()`)
+      expect(await hasTimeSeries(user, 'heart_rate', start, end)).toBe(false)
     })
   })
 

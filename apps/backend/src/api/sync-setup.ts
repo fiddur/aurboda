@@ -32,7 +32,7 @@ import {
   upsertUserSettings,
 } from '../db/index.ts'
 import { processActivityWatchEvents } from '../integrations/activitywatch/sync.ts'
-import { syncAllGarminData } from '../integrations/garmin/sync.ts'
+import { type DetailSyncedCallback, syncAllGarminData } from '../integrations/garmin/sync.ts'
 import { getGravlSyncStates, resetGravlSyncState, syncGravlWorkouts } from '../integrations/gravl/sync.ts'
 import { syncAllCalendars } from '../integrations/ical/sync.ts'
 import { syncLastFmData } from '../integrations/lastfm/sync.ts'
@@ -56,6 +56,7 @@ interface SyncSetupDeps {
   calorieQueue: CalorieQueue | null
   sourceEnrichQueue: SourceEnrichQueue | null
   activityNotifier: ActivityNotifier
+  onActivityDetailSynced: DetailSyncedCallback
 }
 
 export const mountSyncRouter = ({
@@ -69,6 +70,7 @@ export const mountSyncRouter = ({
   calorieQueue,
   sourceEnrichQueue,
   activityNotifier,
+  onActivityDetailSynced,
 }: SyncSetupDeps): void => {
   const transformSyncStates = async (user: string, provider: string) => {
     const states = await getAllSyncStates(user, provider)
@@ -150,7 +152,10 @@ export const mountSyncRouter = ({
         },
         syncCalendars: (user, calendars) => syncAllCalendars(user, calendars),
         syncGarmin: async (user, options) => {
-          const results = await syncAllGarminData(user, garmin, options)
+          const results = await syncAllGarminData(user, garmin, {
+            ...options,
+            onDetailSynced: onActivityDetailSynced,
+          })
           return results.map((r) => ({
             ...r,
             retry_after: r.retry_after?.toISOString(),

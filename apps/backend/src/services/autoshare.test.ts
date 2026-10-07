@@ -5,9 +5,11 @@ import type { AutoshareDeps } from './autoshare.ts'
 
 import {
   activityMatchesRule,
+  DETAIL_WAIT_SECONDS,
   evaluateAutoshareWindow,
   MAX_POSTS_PER_RUN,
   previewAutoshareRule,
+  STABILISATION_SECONDS,
 } from './autoshare.ts'
 
 const T0 = new Date('2026-08-01T00:00:00Z')
@@ -58,6 +60,7 @@ const fakePost = (id: string, activityId: string, ruleId: string): FeedPostRecor
 const candidate = (id: string, over: Partial<AutoshareCandidate> = {}): AutoshareCandidate => ({
   activity_type: 'running',
   created_at: new Date(T0.getTime() + HOUR),
+  detail_pending: false,
   end_time: new Date(T0.getTime() + 2 * HOUR),
   id,
   source: 'garmin',
@@ -240,6 +243,103 @@ describe('evaluateAutoshareWindow', () => {
     })
     expect(await evaluateAutoshareWindow('u', T0, T0, h.deps)).toBe(0)
     expect(listed).toBe(false)
+  })
+})
+
+describe('evaluateAutoshareWindow: settling', () => {
+  const MINUTE = 60_000
+  const STABILISATION = STABILISATION_SECONDS * 1000
+  const windowEnd = new Date(T0.getTime() + 3 * HOUR)
+  const ingested = new Date(T0.getTime() + 2 * HOUR)
+
+  interface Requeued {
+    start: Date
+    end: Date
+    notBefore: Date
+  }
+
+  const withRequeue = (over: Partial<AutoshareDeps> = {}) => {
+    const requeued: Requeued[] = []
+    const h = harness({
+      requeue: async (_user, start, end, notBefore) => {
+        requeued.push({ end, notBefore, start })
+      },
+      ...over,
+    })
+    return { ...h, requeued }
+  }
+
+  test('a candidate ingested a minute ago waits, re-queued for when it settles, and shares then', async () => {
+    const h = withRequeue({ listCandidates: async () => [candidate('a1', { created_at: ingested })] })
+    const now = new Date(ingested.getTime() + MINUTE)
+    expect(await evaluateAutoshareWindow('u', T0, windowEnd, h.deps, now)).toBe(0)
+    expect(h.createdPosts).toEqual([])
+    const settled = new Date(ingested.getTime() + STABILISATION)
+    expect(h.requeued).toEqual([{ end: windowEnd, notBefore: settled, start: T0 }])
+
+    expect(await evaluateAutoshareWindow('u', T0, windowEnd, h.deps, settled)).toBe(1)
+    expect(h.createdPosts).toEqual([{ anchorId: 'a1', ruleId: 'rule-1' }])
+    expect(h.requeued).toHaveLength(1)
+  })
+
+  test('the youngest merge-group member decides when the group settles', async () => {
+    const young = new Date(ingested.getTime() + 5 * MINUTE)
+    const h = withRequeue({
+      getGroup: async () => [
+        candidate('anchor', { created_at: ingested }),
+        candidate('a1', { created_at: young }),
+      ],
+    })
+    const now = new Date(ingested.getTime() + STABILISATION)
+    expect(await evaluateAutoshareWindow('u', T0, windowEnd, h.deps, now)).toBe(0)
+    expect(h.requeued.map((r) => r.notBefore)).toEqual([new Date(young.getTime() + STABILISATION)])
+  })
+
+  test('a Garmin-backed candidate waits for its detail, up to the cap', async () => {
+    const pending = candidate('a1', { created_at: ingested, detail_pending: true })
+    const h = withRequeue({ listCandidates: async () => [pending] })
+    const now = new Date(ingested.getTime() + 30 * MINUTE)
+    expect(await evaluateAutoshareWindow('u', T0, windowEnd, h.deps, now)).toBe(0)
+    expect(h.requeued).toEqual([
+      { end: windowEnd, notBefore: new Date(now.getTime() + STABILISATION), start: T0 },
+    ])
+
+    const late = new Date(ingested.getTime() + 3 * HOUR)
+    expect(late.getTime() - ingested.getTime()).toBeGreaterThan(DETAIL_WAIT_SECONDS * 1000)
+    expect(await evaluateAutoshareWindow('u', T0, windowEnd, h.deps, late)).toBe(1)
+    expect(h.requeued).toHaveLength(1)
+  })
+
+  test('an already-shared young group neither shares nor re-queues', async () => {
+    const h = withRequeue({
+      listCandidates: async () => [candidate('a1', { created_at: ingested, detail_pending: true })],
+      postIdsForActivities: async () => ['existing-post'],
+    })
+    const now = new Date(ingested.getTime() + MINUTE)
+    expect(await evaluateAutoshareWindow('u', T0, windowEnd, h.deps, now)).toBe(0)
+    expect(h.createdPosts).toEqual([])
+    expect(h.requeued).toEqual([])
+  })
+
+  test('several deferred groups re-queue the window once, for the earliest of them', async () => {
+    const h = withRequeue({
+      listCandidates: async () => [
+        candidate('a1', { created_at: ingested, start_time: new Date(T0.getTime() + HOUR / 2) }),
+        candidate('a2', { created_at: new Date(ingested.getTime() - 4 * MINUTE) }),
+      ],
+    })
+    const now = new Date(ingested.getTime() + MINUTE)
+    expect(await evaluateAutoshareWindow('u', T0, windowEnd, h.deps, now)).toBe(0)
+    expect(h.requeued).toEqual([
+      { end: windowEnd, notBefore: new Date(ingested.getTime() - 4 * MINUTE + STABILISATION), start: T0 },
+    ])
+  })
+
+  test('without a requeue dep a deferral is just a skip', async () => {
+    const h = harness({ listCandidates: async () => [candidate('a1', { created_at: ingested })] })
+    const now = new Date(ingested.getTime() + MINUTE)
+    expect(await evaluateAutoshareWindow('u', T0, windowEnd, h.deps, now)).toBe(0)
+    expect(h.createdPosts).toEqual([])
   })
 })
 

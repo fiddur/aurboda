@@ -1056,5 +1056,6 @@ describe('Feed federation actor + WebFinger', () => {
     const object = await update.getObject()
     expect(object).toBeInstanceOf(Note)
     expect(object?.id?.href).toBe(noteId)
+    expect((object as Note).updated?.epochMilliseconds).toBe(post.updated_at.getTime())
   })
 })

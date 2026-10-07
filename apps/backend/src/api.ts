@@ -27,6 +27,7 @@ import {
   insertLocation,
   insertLocations,
   insertPlace,
+  findActivityByExternalId,
   insertRawRecord,
   insertTimeSeries,
   listChallengesAwaitingResult,
@@ -99,6 +100,7 @@ import {
 import { createDetectionTrigger, type DetectionTrigger } from './services/detection-trigger.ts'
 import { runDetectionForUser } from './services/detection-worker.ts'
 import { createReactionActions } from './services/feed-reactions.ts'
+import { createFeedRefreshDeps, refreshFeedPostsForActivity } from './services/feed-refresh.ts'
 import { expandFeedActivityWindow, resolveFeedActivity } from './services/feed.ts'
 import {
   approveFollower,
@@ -115,6 +117,7 @@ import { installProcessGuards } from './services/process-guards.ts'
 import { safeFetchGet } from './services/safe-fetch.ts'
 import { initSentry, Sentry } from './services/sentry.ts'
 import { createSourceEnrichQueue, type SourceEnrichQueue } from './services/source-enrich-queue.ts'
+import { garminActivityExternalId } from './services/source-identity.ts'
 import { createStravaQueue, type StravaQueue } from './services/strava-queue.ts'
 import { createSyncProvider } from './services/sync-provider.ts'
 import { createSyncScheduler } from './services/sync-scheduler.ts'
@@ -277,6 +280,16 @@ const main = async () => {
     void autoshareQueue?.enqueueEvaluation(user, start, end)
   }
 
+  // A Garmin detail sync that lands after an activity was shared re-federates
+  // its posts as an Update. The feed fan-out is built further down, hence the let.
+  let feedUpdated: FeedDeliver['updated'] | null = null
+  const onActivityDetailSynced = (user: string, activityId: string): void => {
+    if (!feedUpdated) return
+    refreshFeedPostsForActivity(user, activityId, createFeedRefreshDeps(feedUpdated)).catch((err: unknown) =>
+      console.warn(`⚠️ feed refresh after detail sync failed for ${user}/${activityId}:`, err),
+    )
+  }
+
   // Create sync provider for auto-syncing data before queries. onActivitySynced
   // lets background scrobble syncs trigger deduction rules (e.g. auto-tagging),
   // like the REST /sync routes — here fired only when a sync ingests new data.
@@ -285,6 +298,7 @@ const main = async () => {
     getLastFmApiKey: () => centralDb.getLastFmApiKey(),
     gravl,
     oura,
+    onActivityDetailSynced,
     onActivitySynced: activityNotifier,
   })
 
@@ -519,6 +533,7 @@ const main = async () => {
       }
     },
   }
+  feedUpdated = feedDeliver.updated
   // Auto-share rules (#903): evaluate settled activities against enabled rules
   // after a stabilisation delay, publishing matches through the SAME
   // feedDeliver.created fan-out a manual share fires. The deps double as the
@@ -527,7 +542,8 @@ const main = async () => {
   if (boss) {
     try {
       autoshareQueue = await createAutoshareQueue(boss, {
-        evaluateWindow: (user, start, end) => evaluateAutoshareWindow(user, start, end, autoshareDeps),
+        evaluateWindow: (user, start, end, requeue) =>
+          evaluateAutoshareWindow(user, start, end, { ...autoshareDeps, requeue }),
       })
     } catch (error) {
       console.error('Failed to initialize auto-share queue:', error)
@@ -544,6 +560,14 @@ const main = async () => {
     try {
       sourceEnrichQueue = await createSourceEnrichQueue(boss, {
         enrichGravl: (user, workoutId) => enrichGravlWorkout(user, gravl, workoutId),
+        garminDetailPending: async (user, garminActivityId) => {
+          const row = await findActivityByExternalId(
+            user,
+            'garmin',
+            garminActivityExternalId(garminActivityId),
+          )
+          return row != null && row.data?.detail_synced !== true
+        },
         isGarminConnected: async (user) => {
           const token = await getOAuthToken(user, 'garmin')
           return token !== null && token.access_token !== ''
@@ -552,7 +576,9 @@ const main = async () => {
         onEnriched: (user) => activityNotifier(user, '*', new Date(Date.now() - 86_400_000), new Date()),
         syncGarmin: async (user, dataType) => {
           await syncGarminDataType(user, garmin, dataType)
-          if (dataType === 'activities') await syncActivityDetails(user, garmin)
+          if (dataType === 'activities') {
+            await syncActivityDetails(user, garmin, { onDetailSynced: onActivityDetailSynced })
+          }
         },
       })
     } catch (error) {
@@ -654,6 +680,7 @@ const main = async () => {
       followerActions,
       garmin,
       gravl,
+      onActivityDetailSynced,
       onActivityMutated: activityNotifier,
       oura,
       reactionActions,
@@ -726,6 +753,7 @@ const main = async () => {
     calorieQueue,
     sourceEnrichQueue,
     activityNotifier,
+    onActivityDetailSynced,
   })
 
   registerOAuthRoutes({
@@ -809,6 +837,7 @@ const main = async () => {
     garmin,
     httpd,
     invitationAuth,
+    onActivityDetailSynced,
     // Tell followers' servers the profile changed — they cache the avatar and
     // re-download only on an Update{Person} or a changed icon URL.
     onAvatarChanged: (user) => {

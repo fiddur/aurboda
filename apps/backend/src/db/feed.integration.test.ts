@@ -20,6 +20,7 @@ import {
   listPublicFeedPostsPage,
   listReplyPostsTo,
   type ReplyPostInput,
+  touchFeedPost,
   updateFeedPost,
 } from './feed.ts'
 
@@ -194,6 +195,20 @@ describe('Feed posts integration', () => {
     const noop = await updateFeedPost(user, created.id, {})
     expect(noop?.id).toBe(created.id)
     expect(await updateFeedPost(user, '00000000-0000-0000-0000-000000000000', {})).toBeNull()
+  })
+
+  test('touch bumps updated_at and nothing else', async () => {
+    const user = getTestUser()
+    const created = await createFeedPost(user, postInput({ series_metrics: ['heart_rate'] }))
+    await getTestDbClient().query(
+      `UPDATE feed_posts SET updated_at = '2026-07-01T00:00:00Z'::timestamptz WHERE id = $1`,
+      [created.id],
+    )
+
+    const touched = await touchFeedPost(user, created.id)
+    expect(touched?.updated_at.getTime()).toBeGreaterThan(new Date('2026-07-01T00:00:00Z').getTime())
+    expect({ ...touched, updated_at: created.updated_at }).toEqual(created)
+    expect(await touchFeedPost(user, '00000000-0000-0000-0000-000000000000')).toBeNull()
   })
 
   test('deletes a post', async () => {
