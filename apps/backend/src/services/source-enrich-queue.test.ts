@@ -95,6 +95,31 @@ describe('runSourceEnrichment', () => {
     expect(deps.onEnriched).toHaveBeenCalledTimes(2)
   })
 
+  it('throws while the Garmin activity detail is pending, so pg-boss retries', async () => {
+    const garminDetailPending = vi.fn().mockResolvedValue(true)
+    const deps = makeDeps({ garminDetailPending })
+    await expect(runSourceEnrichment(job({ key: '24218667980', provider: 'garmin' }), deps)).rejects.toThrow(
+      'Garmin activity 24218667980 detail not yet available',
+    )
+    expect(garminDetailPending).toHaveBeenCalledWith('alice', '24218667980')
+    expect(deps.onEnriched).not.toHaveBeenCalled()
+  })
+
+  it('reports enriched once the Garmin activity detail has landed', async () => {
+    const deps = makeDeps({ garminDetailPending: vi.fn().mockResolvedValue(false) })
+    expect(await runSourceEnrichment(job({ key: '24218667980', provider: 'garmin' }), deps)).toBe('enriched')
+    expect(deps.onEnriched).toHaveBeenCalledWith('alice')
+  })
+
+  it('never consults the detail state for a sleep job', async () => {
+    const garminDetailPending = vi.fn().mockResolvedValue(true)
+    const deps = makeDeps({ garminDetailPending })
+    expect(
+      await runSourceEnrichment(job({ key: '2026-09-03', kind: 'sleep', provider: 'garmin' }), deps),
+    ).toBe('enriched')
+    expect(garminDetailPending).not.toHaveBeenCalled()
+  })
+
   it('skips Garmin jobs for users without a Garmin session', async () => {
     const deps = makeDeps({ isGarminConnected: vi.fn().mockResolvedValue(false) })
     expect(await runSourceEnrichment(job({ provider: 'garmin' }), deps)).toBe('skipped')

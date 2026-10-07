@@ -148,7 +148,12 @@ export const syncGarminDataType = async (
 export const syncAllGarminData = async (
   user: string,
   garmin: GarminClient,
-  options?: { disabledTypes?: GarminDataType[]; fullResync?: boolean; startDate?: Date },
+  options?: {
+    disabledTypes?: GarminDataType[]
+    fullResync?: boolean
+    startDate?: Date
+    onDetailSynced?: DetailSyncedCallback
+  },
 ): Promise<SyncResult[]> => {
   const results: SyncResult[] = []
   let hitRateLimit = false
@@ -173,23 +178,34 @@ export const syncAllGarminData = async (
     }
 
     if (dataType === 'activities' && result.status === 'success' && !hitRateLimit) {
-      await syncActivityDetails(user, garmin, { fullResync: options?.fullResync })
+      await syncActivityDetails(user, garmin, {
+        fullResync: options?.fullResync,
+        onDetailSynced: options?.onDetailSynced,
+      })
     }
   }
 
   return results
 }
 
+/** Told about an activity whose detail just landed for the first time. */
+export type DetailSyncedCallback = (user: string, activityId: string) => void
+
 /**
  * Fetch granular per-second metrics (stress, HR, respiration, body battery)
  * from Garmin activity details for activities that haven't been processed yet.
  * When fullResync is true, re-fetches detail for all activities (e.g. to pick up
- * newly added data extraction like GPS locations).
+ * newly added data extraction like GPS locations); `onDetailSynced` still fires
+ * only for activities that had no detail before, so a full re-sync does not
+ * re-federate every share.
  */
 export const syncActivityDetails = async (
   user: string,
   garmin: GarminClient,
-  { fullResync = false }: { fullResync?: boolean } = {},
+  {
+    fullResync = false,
+    onDetailSynced,
+  }: { fullResync?: boolean; onDetailSynced?: DetailSyncedCallback } = {},
 ): Promise<void> => {
   const activities = await getActivitiesNeedingDetail(user, { forceAll: fullResync })
   if (activities.length === 0) return
@@ -206,6 +222,7 @@ export const syncActivityDetails = async (
       const activitySpan = activity.end_time ? { end: activity.end_time, start: activity.start_time } : null
       const pointCount = await processActivityDetail(user, detail, { activitySpan })
       await markActivityDetailSynced(user, activity.id)
+      if (activity.data?.detail_synced !== true) onDetailSynced?.(user, activity.id)
 
       auditInfo(
         user,

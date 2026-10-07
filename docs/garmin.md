@@ -79,7 +79,9 @@ Rate limiting (HTTP 429 or similar errors) is handled automatically with exponen
 
 Garmin is polled by the background scheduler and topped up before queries, both governed by the user's `sync_intervals` setting (`garmin`, else `default`; server fallback 30 minutes) — see [Data Sources → Sync Behavior](./data-sources.md#sync-behavior). Every data type keeps its own sync state, so each is checked against the interval separately.
 
-When the Android app delivers a Health Connect exercise or sleep session written by the Garmin Connect app, an enrichment job runs the Garmin `activities` (plus activity detail) or `sleep` sync for that user within about a minute, so the session gets its Garmin data without waiting for the poll.
+When the Android app delivers a Health Connect exercise or sleep session written by the Garmin Connect app, an enrichment job runs the Garmin `activities` (plus activity detail) or `sleep` sync for that user within about a minute, so the session gets its Garmin data without waiting for the poll. Garmin often lists a fresh activity before it serves the activity's detail; while the stored row is still without detail (`data.detail_synced`), the activity job fails and is retried with backoff (3 retries, from 2 minutes) instead of reporting success.
+
+When an activity's detail lands for the first time (the poll, a manual sync, the enrichment job) or is re-synced by hand, any feed post sharing it is re-federated as an `Update`, so followers get the settled distance, heart-rate chart and route map — see [Feed](./features/feed.md#publishing--lifecycle-delivery). Auto-share rules wait for the detail before sharing a Garmin-backed activity, for up to two hours — see [Auto-share rules](./features/auto-share-rules.md#evaluation--timing).
 
 ## Disconnecting
 

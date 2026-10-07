@@ -36,6 +36,14 @@ export interface ImageActivity {
   end_time?: Date
 }
 
+/** An eligible image request: the bounded window it renders over and the post's version. */
+export interface ImageWindow {
+  start_time: Date
+  end_time: Date
+  /** The post's `updated_at`; keys the render cache, matching the URL's `v`. */
+  updated_at: Date
+}
+
 /** Optional chart styling — an article block labels its chart with the metric. */
 export interface ChartRenderOpts {
   label?: string
@@ -155,7 +163,7 @@ export const resolveImageWindow = async (
   postId: string,
   flag: 'include_chart' | 'include_map',
   token?: string,
-): Promise<ImageActivity | null> => {
+): Promise<ImageWindow | null> => {
   if (!isValidUsername(username) || !UUID_RE.test(postId)) return null
   let post: FeedPostRecord | null
   try {
@@ -169,7 +177,7 @@ export const resolveImageWindow = async (
   }
   const activity = await deps.getActivity(username, post.activity_id)
   if (activity?.end_time == null) return null
-  return activity
+  return { end_time: activity.end_time, start_time: activity.start_time, updated_at: post.updated_at }
 }
 
 /**
@@ -300,6 +308,13 @@ const sendSvg = (res: Response, svg: Buffer) => {
   res.type('image/svg+xml').send(svg)
 }
 
+/**
+ * Keyed on the post's stored version, not the URL's `v`: a detail sync or an
+ * edit bumps `updated_at` and re-renders, while a guessed `v` cannot bust the cache.
+ */
+export const imageCacheKey = (kind: string, username: string, postId: string, window: ImageWindow): string =>
+  `${kind}:${username}:${postId}:${window.updated_at.getTime()}`
+
 export const createFeedImageRouter = (deps: FeedImageDeps): Router => {
   const router = Router()
   const cached = createRenderCache()
@@ -307,10 +322,10 @@ export const createFeedImageRouter = (deps: FeedImageDeps): Router => {
   router.get('/public/:username/feed/:postId/chart.png', async (req, res) => {
     const { postId, username } = req.params
     const token = typeof req.query.token === 'string' ? req.query.token : undefined
-    const activity = await resolveImageWindow(deps, username, postId, 'include_chart', token)
-    if (!activity?.end_time) return notFound(res)
-    const { end_time, start_time } = activity
-    const png = await cached(`chart:${username}:${postId}`, async () => {
+    const window = await resolveImageWindow(deps, username, postId, 'include_chart', token)
+    if (!window) return notFound(res)
+    const { end_time, start_time } = window
+    const png = await cached(imageCacheKey('chart', username, postId, window), async () => {
       const series = await deps.getSeries(username, 'heart_rate', start_time, end_time)
       return series.length === 0 ? null : deps.renderChart(series)
     })
@@ -321,13 +336,13 @@ export const createFeedImageRouter = (deps: FeedImageDeps): Router => {
   router.get('/public/:username/feed/:postId/chart.svg', async (req, res) => {
     const { postId, username } = req.params
     const token = typeof req.query.token === 'string' ? req.query.token : undefined
-    const activity = await resolveImageWindow(deps, username, postId, 'include_chart', token)
-    if (!activity?.end_time) return notFound(res)
-    const { end_time, start_time } = activity
+    const window = await resolveImageWindow(deps, username, postId, 'include_chart', token)
+    if (!window) return notFound(res)
+    const { end_time, start_time } = window
     // Cached under a distinct key from the PNG; the built SVG string is stored as
     // its UTF-8 bytes so it shares the same buffer LRU (the DB series fetch is the
     // cost worth caching, not the string build).
-    const svg = await cached(`chartsvg:${username}:${postId}`, async () => {
+    const svg = await cached(imageCacheKey('chartsvg', username, postId, window), async () => {
       const series = await deps.getSeries(username, 'heart_rate', start_time, end_time)
       return series.length === 0 ? null : Buffer.from(deps.renderChartSvg(series), 'utf8')
     })
@@ -338,10 +353,10 @@ export const createFeedImageRouter = (deps: FeedImageDeps): Router => {
   router.get('/public/:username/feed/:postId/route.png', async (req, res) => {
     const { postId, username } = req.params
     const token = typeof req.query.token === 'string' ? req.query.token : undefined
-    const activity = await resolveImageWindow(deps, username, postId, 'include_map', token)
-    if (!activity?.end_time) return notFound(res)
-    const { end_time, start_time } = activity
-    const png = await cached(`route:${username}:${postId}`, async () => {
+    const window = await resolveImageWindow(deps, username, postId, 'include_map', token)
+    if (!window) return notFound(res)
+    const { end_time, start_time } = window
+    const png = await cached(imageCacheKey('route', username, postId, window), async () => {
       const coords = await deps.getRoute(username, start_time, end_time)
       return coords.length === 0 ? null : deps.renderRoute(coords)
     })

@@ -21,10 +21,24 @@ A per-user set of rules, each combining a **predicate** and a **share template**
 
 - Activity mutations (sync, insert, update, merge) already fire a window-based
   notification; auto-share enqueues an evaluation job for that window on the shared
-  pg-boss instance with a **stabilisation delay** (`startAfter`, 10 minutes), so the
-  created post's scalars and window reflect the settled activity (synced activities are
-  frequently merged, enriched, or re-synced shortly after first landing). Evaluation
-  reads current state at run time, so churn within the delay is naturally absorbed.
+  pg-boss instance (`startAfter`, 10 minutes). Evaluation reads current state at run
+  time, so churn within the delay is naturally absorbed.
+- **Settled means settled per activity**, not per window: Health Connect pushes about
+  once a minute, so some job always matures within the next minute. A merge group is
+  only evaluated once its **youngest member was ingested** at least 10 minutes earlier
+  (the stabilisation delay, measured from `activities.created_at`), so the created
+  post's scalars and window reflect the settled activity (synced activities are
+  frequently merged, enriched, or re-synced shortly after first landing).
+- **Garmin-backed activities wait for their detail.** A group with a member carrying
+  `data.garmin_activity_id` but no `data.detail_synced` (GPS, per-second HR and
+  distance not fetched yet) is deferred and re-checked every 10 minutes, for up to
+  **two hours** after the anchor was ingested; past that it is shared as is.
+- A deferred group **re-queues the window**: one new job per run, starting at the
+  earliest time any deferred group can settle. A group that already has a post is
+  skipped before either gate, so it never re-queues.
+- A post whose activity gains its Garmin detail later (or whose detail is re-synced by
+  hand) is **re-federated as an `Update`**, so remote servers pick up the new scalars
+  and attachments — see [Feed](feed.md).
 - **Merge-group aware**: matching and the created post both use the group's **anchor**
   (earliest start) and its merged span — the same window a manual share of the merged
   activity covers.

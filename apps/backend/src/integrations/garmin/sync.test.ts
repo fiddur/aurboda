@@ -307,6 +307,52 @@ describe('syncActivityDetails', () => {
     expect(db.getActivitiesNeedingDetail).toHaveBeenCalledWith(user, { forceAll: true })
   })
 
+  const garminActivity = (id: string, data: Record<string, unknown>) => ({
+    activity_type: 'running' as const,
+    data,
+    end_time: new Date(),
+    id,
+    source: 'garmin' as const,
+    start_time: new Date(),
+  })
+
+  test('reports an activity whose detail landed for the first time', async () => {
+    vi.mocked(db.getActivitiesNeedingDetail).mockResolvedValue([
+      garminActivity('a1', { garmin_activity_id: 1 }),
+    ])
+    const onDetailSynced = vi.fn()
+
+    await syncActivityDetails(user, createMockGarmin() as never, { onDetailSynced })
+
+    expect(onDetailSynced).toHaveBeenCalledWith(user, 'a1')
+  })
+
+  test('does not report a failed detail fetch', async () => {
+    vi.mocked(db.getActivitiesNeedingDetail).mockResolvedValue([
+      garminActivity('a1', { garmin_activity_id: 1 }),
+    ])
+    const mockGarmin = createMockGarmin()
+    mockGarmin.getActivityDetail.mockRejectedValue(new Error('404'))
+    const onDetailSynced = vi.fn()
+
+    await syncActivityDetails(user, mockGarmin as never, { onDetailSynced })
+
+    expect(db.markActivityDetailSynced).not.toHaveBeenCalled()
+    expect(onDetailSynced).not.toHaveBeenCalled()
+  })
+
+  test('a full re-sync does not report activities that already had their detail', async () => {
+    vi.mocked(db.getActivitiesNeedingDetail).mockResolvedValue([
+      garminActivity('a1', { detail_synced: true, garmin_activity_id: 1 }),
+    ])
+    const onDetailSynced = vi.fn()
+
+    await syncActivityDetails(user, createMockGarmin() as never, { fullResync: true, onDetailSynced })
+
+    expect(db.markActivityDetailSynced).toHaveBeenCalledWith(user, 'a1')
+    expect(onDetailSynced).not.toHaveBeenCalled()
+  })
+
   test('skips activities without garmin_activity_id', async () => {
     const activity = {
       activity_type: 'exercise' as const,

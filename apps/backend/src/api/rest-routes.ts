@@ -9,6 +9,7 @@ import type { Client } from 'pg'
 
 import type { Auth } from '../auth.ts'
 import type { GarminClient } from '../integrations/garmin/client.ts'
+import type { DetailSyncedCallback } from '../integrations/garmin/sync.ts'
 import type { AutoshareDeps } from '../services/autoshare.ts'
 import type { CentralDb } from '../services/central-db.ts'
 import type { DiscoverChallenges } from '../services/challenge-discovery.ts'
@@ -93,6 +94,8 @@ interface RestRoutesDeps {
   /** Open challenges from followed peers (`GET /challenges/discover`). */
   discoverChallenges: DiscoverChallenges
   garmin: GarminClient
+  /** Fire-and-forget: re-federate the shares of an activity whose detail was (re)synced. */
+  onActivityDetailSynced: DetailSyncedCallback
   syncProvider: SyncProvider
   activityNotifier: ActivityNotifier
   engineDeps: DeductionEngineDeps
@@ -129,6 +132,7 @@ export const mountRestRouters = ({
   apiBaseUrl,
   discoverChallenges,
   garmin,
+  onActivityDetailSynced,
   syncProvider,
   activityNotifier,
   engineDeps,
@@ -166,6 +170,7 @@ export const mountRestRouters = ({
         const detail = await garmin.getActivityDetail(user, garminActivityId)
         const points = await processActivityDetail(user, detail, { activitySpan })
         await markActivityDetailSynced(user, activityId)
+        onActivityDetailSynced(user, activityId)
         return points
       },
     ),

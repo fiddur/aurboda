@@ -180,6 +180,8 @@ export interface AutoshareCandidate {
   title: string | null
   /** When the row was INGESTED (not when the activity happened) — gates `enabled_at`. */
   created_at: Date
+  /** A Garmin-backed row whose detail (GPS, per-second HR, distance) has not been synced yet. */
+  detail_pending: boolean
 }
 
 /**
@@ -198,7 +200,8 @@ export const listAutoshareCandidates = async (
 ): Promise<AutoshareCandidate[]> => {
   const result = await query<AutoshareCandidate>(
     user,
-    `SELECT id, activity_type, source, start_time, end_time, title, created_at
+    `SELECT id, activity_type, source, start_time, end_time, title, created_at,
+       (data->>'garmin_activity_id') IS NOT NULL AND (data->>'detail_synced') IS NULL AS detail_pending
      FROM activities
      WHERE deleted_at IS NULL AND superseded_by IS NULL AND end_time IS NOT NULL
        AND start_time <= $2 AND end_time >= $1
