@@ -1,20 +1,19 @@
 /**
- * Fedify's actor dispatcher content-negotiates: an ActivityPub client gets the
- * actor document, but a browser (`Accept: text/html`) makes `@fedify/express`
- * fall through (`next()`) and then answer `406 Not acceptable` — unless a later
- * Express route claims the request. This router — mounted right AFTER
- * `integrateFederation`, like the feed tombstone router — is that route: it
- * redirects a human clicking an actor link (e.g. from a Mastodon profile that
- * didn't use the actor's `url` property) to the public profile page the SPA
- * serves at `/u/:username`.
+ * Content negotiation for the actor URL `/users/:username` (RFC 9110 §12.5.1).
+ * Its two representations are the ActivityPub actor document and, for a human,
+ * the public profile page the SPA serves at `/u/:username` (a 302).
  *
- * Only a request that EXPLICITLY prefers HTML is claimed, and only for a user
- * that exists. Everything else falls through untouched — a non-negotiating
- * machine client (a wildcard `Accept`, or none at all) keeps getting Fedify's
- * `406`, and an unknown actor its plain `404`, rather than a 200 HTML page
- * (#1051).
+ * Fedify serves the actor only to a request that NAMES an ActivityPub type and
+ * `next()`s everything else, so a wildcard or absent `Accept` — which by the
+ * spec accepts any representation — would fall through to a 404 as though the
+ * account didn't exist. `createActorAcceptNormalizer`, mounted BEFORE the
+ * Fedify integration, rewrites such a request's `Accept` to the actor type so
+ * Fedify answers it. `createActorHtmlRouter`, mounted AFTER it, redirects a
+ * request whose best match is HTML and answers `406` when an existing actor has
+ * no acceptable representation. An unknown actor falls through to its 404 in
+ * every case.
  */
-import { Router } from 'express'
+import { Router, type RequestHandler } from 'express'
 
 import { isValidUsername } from '../api/auth-routes.ts'
 import { buildProfileUrl } from '../services/share-urls.ts'
@@ -26,10 +25,10 @@ export interface ActorHtmlDeps {
   userExists: (username: string) => Promise<boolean>
 }
 
-/** The ActivityPub media types this router must never take a request away from. */
 const AP_TYPES = ['application/activity+json', 'application/ld+json']
-/** The media types a browser navigation names. */
 const HTML_TYPES = ['text/html', 'application/xhtml+xml']
+const ACTOR_TYPE = 'application/activity+json'
+const ACTOR_PATH = /^\/users\/([^/]+)$/
 
 /** One `Accept` entry: its media type (lowercased) and quality weight. */
 const parseAcceptEntry = (raw: string): { type: string; q: number } => {
@@ -39,20 +38,46 @@ const parseAcceptEntry = (raw: string): { type: string; q: number } => {
   return { q: Number.isFinite(q) ? q : 0, type: type.toLowerCase() }
 }
 
+export type ActorRepresentation = 'activitypub' | 'html' | 'none'
+
 /**
- * Whether the request EXPLICITLY asks for HTML: it names `text/html` or
- * `application/xhtml+xml` with a non-zero q, and no ActivityPub media type
- * outranks it. Wildcards never count — a full wildcard, `text` or `application`
- * wildcards, and a missing header are all machine clients as far as an actor URL
- * is concerned, and belong to the federation layer's own negotiation (#1051).
+ * Which representation of the actor to serve. Each one is weighted by the most
+ * specific matching range (exact type, then `type/*`, then the full wildcard); an absent
+ * header accepts anything. The higher weight wins. On a tie the actor document
+ * is the default — unless the request names an HTML type outright, which is
+ * what a browser navigation does (`text/html,…;q=0.8` with a full wildcard last).
  */
-export const prefersHtml = (acceptHeader: string | undefined): boolean => {
-  if (acceptHeader == null || acceptHeader.trim() === '') return false
+export const negotiateActor = (acceptHeader: string | undefined): ActorRepresentation => {
+  if (acceptHeader == null || acceptHeader.trim() === '') return 'activitypub'
   const entries = acceptHeader.split(',').map(parseAcceptEntry)
-  const best = (types: string[]): number =>
-    entries.filter((entry) => types.includes(entry.type)).reduce((max, entry) => Math.max(max, entry.q), 0)
-  const html = best(HTML_TYPES)
-  return html > 0 && html >= best(AP_TYPES)
+  const weight = (types: string[]): { q: number; explicit: boolean } => {
+    const exact = entries.filter((entry) => types.includes(entry.type))
+    if (exact.length > 0) return { explicit: true, q: Math.max(...exact.map((entry) => entry.q)) }
+    const families = new Set(types.map((type) => `${type.split('/')[0]}/*`))
+    const family = entries.filter((entry) => families.has(entry.type))
+    if (family.length > 0) return { explicit: false, q: Math.max(...family.map((entry) => entry.q)) }
+    const any = entries.filter((entry) => entry.type === '*/*')
+    return { explicit: false, q: any.length > 0 ? Math.max(...any.map((entry) => entry.q)) : 0 }
+  }
+  const html = weight(HTML_TYPES)
+  const ap = weight(AP_TYPES)
+  if (html.q === 0 && ap.q === 0) return 'none'
+  if (html.q > ap.q || (html.q === ap.q && html.explicit)) return 'html'
+  return 'activitypub'
+}
+
+/**
+ * Hand a request whose best representation is the actor document to Fedify
+ * with the `Accept` it recognises. Only the bare actor path: its sub-resources
+ * (outbox, posts) negotiate on their own.
+ */
+export const createActorAcceptNormalizer = (): RequestHandler => (req, res, next) => {
+  const match = ACTOR_PATH.exec(req.path)
+  if ((req.method === 'GET' || req.method === 'HEAD') && match && isValidUsername(match[1])) {
+    res.setHeader('Vary', 'Accept')
+    if (negotiateActor(req.headers.accept) === 'activitypub') req.headers.accept = ACTOR_TYPE
+  }
+  next()
 }
 
 export const createActorHtmlRouter = (deps: ActorHtmlDeps): Router => {
@@ -60,15 +85,18 @@ export const createActorHtmlRouter = (deps: ActorHtmlDeps): Router => {
 
   router.get('/users/:username', (req, res, next) => {
     const { username } = req.params
-    if (!isValidUsername(username) || !prefersHtml(req.headers.accept)) return next()
+    if (!isValidUsername(username)) return next()
+    const representation = negotiateActor(req.headers.accept)
+    if (representation === 'activitypub') return next()
     void deps
       .userExists(username)
       .then((exists) => {
         if (!exists) return next()
         // The answer depends on the Accept header, so a shared cache must not
-        // serve this redirect to an ActivityPub client asking for the same URL.
+        // serve it to a client asking for the same URL with another one.
         res.setHeader('Vary', 'Accept')
-        res.redirect(302, buildProfileUrl(deps.origin, username))
+        if (representation === 'html') return res.redirect(302, buildProfileUrl(deps.origin, username))
+        res.status(406).json({ accepts: [ACTOR_TYPE, ...HTML_TYPES], error: 'Not Acceptable' })
       })
       .catch(next)
   })

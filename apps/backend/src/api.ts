@@ -57,7 +57,7 @@ import { ouraClient } from './integrations/oura/client.ts'
 import { createOwnTracksRouter } from './integrations/owntracks/router.ts'
 import { stravaClient } from './integrations/strava/client.ts'
 import { createMcpRouter } from './mcp.ts'
-import { createActorHtmlRouter } from './routes/actor-html-router.ts'
+import { createActorAcceptNormalizer, createActorHtmlRouter } from './routes/actor-html-router.ts'
 import { createFeedTombstoneRouter } from './routes/feed-tombstone-router.ts'
 import { createOAuthRouter } from './routes/oauth-router.ts'
 import {
@@ -676,6 +676,9 @@ const main = async () => {
   // the immediate peer is loopback — a direct remote client isn't, so it can't
   // spoof them.
   httpd.set('trust proxy', 'loopback')
+  // Any representation will do for a wildcard or absent Accept on an actor URL,
+  // and the default is the actor document: hand Fedify the type it serves.
+  httpd.use(createActorAcceptNormalizer())
   httpd.use(gateFederation(integrateFederation(feedFederation, () => undefined)))
 
   // `410 Gone` Tombstone for dereferenced deleted objects. Mounted right after
@@ -683,10 +686,11 @@ const main = async () => {
   // since-deleted post, `@fedify/express` calls next(), and this catches it.
   httpd.use(createFeedTombstoneRouter({ getTombstone: getFeedTombstone, origin: webHost }))
 
-  // Browser-facing actor URLs (#1047): Fedify answers 406 to `Accept: text/html`
-  // via the same next() fall-through, and this redirects humans to /u/:username.
-  // An account is one with a per-user database — the same existence test the
-  // background sweeps use — so an unknown actor keeps its 404 (#1051).
+  // The actor URL's other representation: Fedify next()s whatever doesn't ask
+  // for the actor document, and this redirects a request that prefers HTML to
+  // /u/:username (or answers 406 when nothing it serves is acceptable). An
+  // account is one with a per-user database — the same existence test the
+  // background sweeps use — so an unknown actor keeps its 404.
   httpd.use(
     createActorHtmlRouter({
       origin: webHost,

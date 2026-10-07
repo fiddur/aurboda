@@ -182,9 +182,9 @@ export const deleteNote = async (user: string, id: string): Promise<boolean> => 
  * Delete every comment on an entity, replies included. For an entity that is
  * removed for good (a meal, unlike a soft-deleted activity), its comments have
  * nothing left to hang off: they would keep drawing a Timeline bubble linking
- * to a page that 404s. Returns how many thread roots were removed.
+ * to a page that 404s. Returns how many thread roots were removed. Runs inside
+ * the caller's transaction, so the entity and its threads go together.
  */
-/** Inside a caller's transaction, so the entity and its threads go together. */
 export const deleteNotesForEntityIn = async (
   tx: Queryable,
   entityType: EntityType,
@@ -202,6 +202,7 @@ export const deleteNotesForEntityIn = async (
   return deletedIds.length
 }
 
+/** `deleteNotesForEntityIn` in a transaction of its own. */
 export const deleteNotesForEntity = async (
   user: string,
   entityType: EntityType,
