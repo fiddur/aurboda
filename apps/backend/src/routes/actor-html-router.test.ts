@@ -41,6 +41,7 @@ describe('negotiateActor', () => {
       'activitypub',
     )
     expect(negotiateActor('text/html;q=0.5, */*')).toBe('activitypub')
+    expect(negotiateActor('application/json')).toBe('activitypub')
   })
 
   test('on a tie a named HTML type wins over the default', () => {
@@ -52,7 +53,7 @@ describe('negotiateActor', () => {
   test('nothing acceptable when every representation is excluded', () => {
     expect(negotiateActor('image/png')).toBe('none')
     expect(negotiateActor('text/html;q=0')).toBe('none')
-    expect(negotiateActor('text/plain, application/json')).toBe('none')
+    expect(negotiateActor('text/plain')).toBe('none')
   })
 })
 

@@ -25,7 +25,8 @@ export interface ActorHtmlDeps {
   userExists: (username: string) => Promise<boolean>
 }
 
-const AP_TYPES = ['application/activity+json', 'application/ld+json']
+/** What Fedify serves the actor document for, so both negotiations agree. */
+const AP_TYPES = ['application/activity+json', 'application/ld+json', 'application/json']
 const HTML_TYPES = ['text/html', 'application/xhtml+xml']
 const ACTOR_TYPE = 'application/activity+json'
 const ACTOR_PATH = /^\/users\/([^/]+)$/
