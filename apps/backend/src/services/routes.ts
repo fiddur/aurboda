@@ -49,8 +49,11 @@ export const isForward = (fractions: number[]): boolean => {
   return increasing >= FORWARD_SHARE * (fractions.length - 1)
 }
 
+/** Keeps the name inside routes.name's VARCHAR(255) whatever the place is called. */
+const MAX_PLACE_CHARS = 200
+
 export const routeName = (nearby: { name: string } | null, lengthM: number): string =>
-  `${nearby?.name ?? 'Route'} · ${(lengthM / 1000).toFixed(1)} km`
+  `${(nearby?.name ?? 'Route').slice(0, MAX_PLACE_CHARS)} · ${(lengthM / 1000).toFixed(1)} km`
 
 export interface RouteMatchDeps {
   isActivityRouted: (user: string, activityId: string) => Promise<boolean>

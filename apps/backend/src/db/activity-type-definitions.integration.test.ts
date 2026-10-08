@@ -321,6 +321,26 @@ describe('Hierarchical activity types', () => {
       expect(deleted?.deleted_at).toBeDefined()
     })
 
+    test('moves routes of the source type too, so their FK does not block the delete', async () => {
+      const user = getTestUser()
+      await seed(user, 'yin')
+      const line = `ST_GeomFromText('LINESTRING(18.07 59.3, 18.08 59.3)', 4326)`
+      const inserted = await query(
+        user,
+        `INSERT INTO routes (name, activity_type, geom, buffer, length_m, start_pt, end_pt)
+         VALUES ('Loop', 'yinyoga', ${line}, ST_Buffer(${line}::geography, 25)::geometry, 500,
+                 ST_StartPoint(${line})::geography, ST_EndPoint(${line})::geography)
+         RETURNING id`,
+      )
+
+      const result = await mergeActivityTypeDefinition(user, 'yinyoga', 'yoga')
+
+      expect(result?.activities_reassigned).toBe(1)
+      expect(await getActivityTypeDefinition(user, 'yinyoga')).toBeNull()
+      const route = await query(user, `SELECT activity_type FROM routes WHERE id = $1`, [inserted.rows[0].id])
+      expect(route.rows[0]?.activity_type).toBe('yoga')
+    })
+
     test('a deleted source row that duplicates a target row is dropped rather than colliding', async () => {
       const user = getTestUser()
       await seed(user, 'yin')

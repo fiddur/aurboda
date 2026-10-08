@@ -46,6 +46,12 @@ describe('routeName', () => {
     expect(routeName({ name: 'Söderhallarna' }, 8240)).toBe('Söderhallarna · 8.2 km')
     expect(routeName(null, 5000)).toBe('Route · 5.0 km')
   })
+
+  test('truncates a very long place name so the whole fits the column', () => {
+    const name = routeName({ name: 'x'.repeat(300) }, 5000)
+    expect(name.length).toBeLessThanOrEqual(255)
+    expect(name.endsWith(' · 5.0 km')).toBe(true)
+  })
 })
 
 describe('paceSecondsPerKm', () => {
