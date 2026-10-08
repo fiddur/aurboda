@@ -6,8 +6,16 @@ vi.mock('./audit-log', () => ({
   auditWarn: vi.fn(),
 }))
 
+const processResult = {
+  activity_id: 'act-1',
+  activity_type: 'running',
+  end_time: new Date('2024-06-15T08:00:00Z'),
+  point_count: 42,
+  start_time: new Date('2024-06-15T07:00:00Z'),
+}
+
 vi.mock('../integrations/strava/process', () => ({
-  processStravaActivity: vi.fn().mockResolvedValue(42),
+  processStravaActivity: vi.fn(async () => processResult),
 }))
 
 import { createStravaQueue } from './strava-queue.ts'
@@ -41,9 +49,37 @@ describe('createStravaQueue', () => {
       insertTimeSeries: vi.fn(),
       resolveOrCreateActivityType: vi.fn(async (_user: string, name: string) => name),
       softDeleteSupersededLocations: vi.fn(async () => 0),
+      upsertActivityTrack: vi.fn(),
     },
     updateSyncState: vi.fn(),
   }
+
+  test('a processed activity is reported to onActivityProcessed', async () => {
+    vi.useFakeTimers()
+    try {
+      const boss = createMockBoss()
+      const onActivityProcessed = vi.fn()
+      const rateLimit = { reads_15min: 0, reads_daily: 0 }
+      await createStravaQueue(boss as never, {
+        ...mockDeps,
+        getActivity: vi.fn().mockResolvedValue({ data: {}, rateLimit }),
+        getActivityStreams: vi.fn().mockResolvedValue({ data: {}, rateLimit }),
+        processDeps: { ...mockDeps.processDeps, onActivityProcessed },
+      })
+      const mainCall = boss.work.mock.calls.find((args) => args[0] === 'strava-sync')
+      const handler = mainCall?.[2] as (jobs: { data: unknown }[]) => Promise<void>
+
+      const run = handler([
+        { data: { request_type: 'fetch_activity', strava_activity_id: 7, user: 'alice' } },
+      ])
+      await vi.runAllTimersAsync()
+      await run
+
+      expect(onActivityProcessed).toHaveBeenCalledWith('alice', processResult)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 
   test('creates main queue + dead-letter queue and registers both workers', async () => {
     const boss = createMockBoss()

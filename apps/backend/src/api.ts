@@ -46,6 +46,7 @@ import {
   setTimelineEntryStructured,
   softDeleteSupersededLocations,
   updateDetectedLocation,
+  upsertActivityTrack,
   upsertSyncState,
 } from './db/index.ts'
 import { httpError, isHttpError } from './http-error.ts'
@@ -128,6 +129,13 @@ import {
   retroEnrichTimelineEntries,
 } from './services/timeline-retro-enrich.ts'
 import { ownActorUri } from './services/timeline.ts'
+import { defaultTrackBackfillDeps } from './services/track-backfill.ts'
+import {
+  createTrackAnalyseQueue,
+  createTrackBackfillQueue,
+  type TrackAnalyseQueue,
+  type TrackBackfillQueue,
+} from './services/track-queues.ts'
 import { createWebAuthnService } from './services/webauthn.ts'
 
 const SHUTDOWN_DRAIN_MS = 3000
@@ -280,6 +288,13 @@ const main = async () => {
     void autoshareQueue?.enqueueEvaluation(user, start, end)
   }
 
+  // Track post-processing (#1231): the queue is created with the others below.
+  let trackAnalyseQueue: TrackAnalyseQueue | null = null
+  let trackBackfillQueue: TrackBackfillQueue | null = null
+  const onTrackWritten = (user: string, activityId: string): void => {
+    trackAnalyseQueue?.enqueue(user, activityId)
+  }
+
   // A Garmin detail sync that lands after an activity was shared re-federates
   // its posts as an Update. The feed fan-out is built further down, hence the let.
   let feedUpdated: FeedDeliver['updated'] | null = null
@@ -300,6 +315,7 @@ const main = async () => {
     oura,
     onActivityDetailSynced,
     onActivitySynced: activityNotifier,
+    onTrackWritten,
   })
 
   // Initialize shared pg-boss instance and job queues (before MCP mount)
@@ -354,8 +370,12 @@ const main = async () => {
           insertLocations,
           insertRawRecord,
           insertTimeSeries,
+          onActivityProcessed: (user, result) =>
+            activityNotifier(user, result.activity_type, result.start_time, result.end_time),
+          onTrackWritten,
           resolveOrCreateActivityType,
           softDeleteSupersededLocations,
+          upsertActivityTrack,
         },
         updateSyncState: async (user, dataType, updates) => {
           await upsertSyncState(user, {
@@ -384,6 +404,10 @@ const main = async () => {
   postListenCallbacks.push(async () => {
     const { migrated, skipped, failed } = await migrateAllUsers(userDb)
     console.info(`🗃️ Schema sweep done: ${migrated} migrated, ${skipped} already current, ${failed} failed`)
+    // Incremental: only activities with a usable raw record and no track yet.
+    if (trackBackfillQueue) {
+      for (const user of await listUserNames(userDb)) await trackBackfillQueue.enqueue(user, 120)
+    }
   })
 
   // CORS must come first for preflight requests
@@ -552,6 +576,18 @@ const main = async () => {
   if (!autoshareQueue) {
     console.warn('⚠️ Auto-share evaluation disabled (no job queue)')
   }
+  if (boss) {
+    try {
+      // Phase 1 registers the hook; route, feature and segment analysis land here later.
+      trackAnalyseQueue = await createTrackAnalyseQueue(boss, { analyse: async () => {} })
+      trackBackfillQueue = await createTrackBackfillQueue(boss, defaultTrackBackfillDeps)
+    } catch (error) {
+      console.error('Failed to initialize track queues:', error)
+    }
+  }
+  if (!trackBackfillQueue) {
+    console.warn('⚠️ Activity track backfill disabled (no job queue) - run it on demand')
+  }
   // Source enrichment (#1080): a Health Connect session from Garmin or Gravl
   // triggers that provider's own sync for it, so the row Health Connect just
   // created gets its sets / detail within minutes instead of at the next poll.
@@ -577,7 +613,10 @@ const main = async () => {
         syncGarmin: async (user, dataType) => {
           await syncGarminDataType(user, garmin, dataType)
           if (dataType === 'activities') {
-            await syncActivityDetails(user, garmin, { onDetailSynced: onActivityDetailSynced })
+            await syncActivityDetails(user, garmin, {
+              onDetailSynced: onActivityDetailSynced,
+              onTrackWritten,
+            })
           }
         },
       })
@@ -682,6 +721,7 @@ const main = async () => {
       gravl,
       onActivityDetailSynced,
       onActivityMutated: activityNotifier,
+      onTrackWritten,
       oura,
       reactionActions,
       retroEnrichTimeline,
@@ -754,6 +794,7 @@ const main = async () => {
     sourceEnrichQueue,
     activityNotifier,
     onActivityDetailSynced,
+    onTrackWritten,
   })
 
   registerOAuthRoutes({
@@ -838,6 +879,7 @@ const main = async () => {
     httpd,
     invitationAuth,
     onActivityDetailSynced,
+    onTrackWritten,
     // Tell followers' servers the profile changed — they cache the avatar and
     // re-download only on an Update{Person} or a changed icon URL.
     onAvatarChanged: (user) => {

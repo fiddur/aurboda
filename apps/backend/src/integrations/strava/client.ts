@@ -177,7 +177,7 @@ export const stravaClient = (
       activityId: number,
     ): Promise<StravaApiResponse<StravaStreamsResponse>> {
       return apiGet(
-        `/activities/${activityId}/streams?keys=heartrate,latlng,altitude,time,distance,cadence,watts,temp&key_by_type=true`,
+        `/activities/${activityId}/streams?keys=heartrate,latlng,altitude,time,distance,velocity_smooth,cadence,watts,temp&key_by_type=true`,
         token,
       )
     },

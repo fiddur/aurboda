@@ -15,6 +15,7 @@ import {
 import type { Activity as ActivityRow } from '../../db/types.ts'
 
 import {
+  getActivityTrack,
   getDistinctMetrics,
   getLocations,
   getOverlappingActivities,
@@ -22,6 +23,7 @@ import {
   getTimeSeriesMultiMetric,
 } from '../../db/index.ts'
 import { computeHrZoneSecs, getEffectiveHrZones } from '../settings.ts'
+import { trackToGps } from '../tracks.ts'
 import { computeActivitySummaryMetrics, SUMMARY_METRICS } from './activity-summary-metrics.ts'
 
 /**
@@ -73,6 +75,8 @@ export interface ActivityFullDetailOptions {
 
 /**
  * Fetch deep-dive detail for an activity: GPS trace + per-metric time-series.
+ * The GPS trace is the activity's stored track when it has one (`id` given),
+ * else the locations in its time range.
  *
  * Source-agnostic: works for any activity that has time-series and/or GPS
  * locations populated within its time range, regardless of which integration
@@ -80,7 +84,7 @@ export interface ActivityFullDetailOptions {
  */
 export const getActivityFullDetail = async (
   user: string,
-  activity: { start_time: Date; end_time?: Date },
+  activity: { id?: string; start_time: Date; end_time?: Date },
   options: ActivityFullDetailOptions,
 ): Promise<Pick<ActivityFullDetail, 'gps' | 'metric_series'>> => {
   const end = activity.end_time
@@ -89,7 +93,10 @@ export const getActivityFullDetail = async (
 
   const result: Pick<ActivityFullDetail, 'gps' | 'metric_series'> = {}
 
-  if (includeGps) {
+  const track = includeGps && activity.id ? await getActivityTrack(user, activity.id) : null
+  if (track) {
+    result.gps = trackToGps(track)
+  } else if (includeGps) {
     const { locations } = await getLocations(user, activity.start_time, end)
     if (locations.length > 0) {
       result.gps = locations.map((l) => ({

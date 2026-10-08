@@ -16,6 +16,10 @@ vi.mock('./services/queries/index', async () => ({
   getActivityNeighbors: vi.fn(),
   getDailySummary: vi.fn(),
   getPeriodSummary: vi.fn(),
+  parseActivityId: (raw: string) => ({
+    id: raw.replace(/^merged:/, ''),
+    isMerged: raw.startsWith('merged:'),
+  }),
   parseDataFilter: (await vi.importActual<typeof ActivityQueries>('./services/queries/activities.ts'))
     .parseDataFilter,
   queryActivities: vi.fn(),
@@ -58,6 +62,7 @@ vi.mock('./db', () => ({
   getActivityTypeDefinitions: vi.fn().mockResolvedValue([]),
   getActivityTypeNames: vi.fn().mockResolvedValue(['sleep', 'exercise', 'meditation', 'nap', 'rest']),
   getAllActivityTypeNames: vi.fn().mockResolvedValue(['sleep', 'exercise', 'meditation', 'nap', 'rest']),
+  getActivityTrack: vi.fn().mockResolvedValue(null),
   getAllSyncStates: vi.fn(),
   getDeductionRule: vi.fn().mockResolvedValue(null),
   getDeductionRules: vi.fn().mockResolvedValue([]),
@@ -88,6 +93,7 @@ vi.mock('./db', () => ({
   softDeleteSupersededLocations: vi.fn().mockResolvedValue(0),
   updateActivityTypeDefinition: vi.fn(),
   updateDeductionRule: vi.fn().mockResolvedValue(null),
+  upsertActivityTrack: vi.fn().mockResolvedValue(undefined),
   upsertSyncState: vi.fn().mockResolvedValue(undefined),
   upsertUserSettings: vi.fn(),
   adoptLegacyActivity: vi.fn(),
@@ -759,6 +765,40 @@ describe('MCP Server', () => {
       vi.mocked(queries.getActivityNeighbors).mockResolvedValueOnce(null)
       const missing = await callTool(app, token, 'get_activity_neighbors', { id: 'y', tz: 'UTC' })
       expect(missing.text).toBe('Activity not found')
+    })
+
+    test('get_activity_track returns the track without its start time, or an error without one', async () => {
+      const app = createTestApp()
+      const token = auth.createToken('testuser')
+      vi.mocked(db.getActivityTrack).mockResolvedValueOnce({
+        activity_id: 'act-1',
+        full_resolution: true,
+        length_m: 1112,
+        point_count: 2,
+        points: [
+          { alt: 0, lat: 59, lon: 18, t: 0 },
+          { alt: 0, lat: 59.01, lon: 18, t: 60 },
+        ],
+        source: 'garmin',
+        start_time: new Date('2024-01-14T07:00:00Z'),
+      })
+
+      const found = await callTool(app, token, 'get_activity_track', { id: 'merged:act-1' })
+      expect(JSON.parse(found.text)).toEqual({
+        activity_id: 'act-1',
+        full_resolution: true,
+        length_m: 1112,
+        point_count: 2,
+        points: [
+          { alt: 0, lat: 59, lon: 18, t: 0 },
+          { alt: 0, lat: 59.01, lon: 18, t: 60 },
+        ],
+        source: 'garmin',
+      })
+      expect(db.getActivityTrack).toHaveBeenCalledWith('testuser', 'act-1')
+
+      const missing = await callTool(app, token, 'get_activity_track', { id: 'act-2' })
+      expect(missing.text).toBe('No track for activity')
     })
 
     test('list_activity_field_values returns the values of the field', async () => {

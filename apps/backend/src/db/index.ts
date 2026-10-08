@@ -633,3 +633,17 @@ export {
   parseMetricType,
   parseSyncStatus,
 } from './row-mappers.ts'
+
+export {
+  getActivityTrack,
+  getGarminTrackBackfillCandidates,
+  getStravaTrackBackfillCandidates,
+  hasActivityTrack,
+  upsertActivityTrack,
+  type ActivityTrackInput,
+  type ActivityTrackPoint,
+  type ActivityTrackRecord,
+  type GarminBackfillCandidate,
+  type StravaBackfillCandidate,
+  type TrackBackfillPage,
+} from './tracks.ts'

@@ -11,15 +11,18 @@ import type { GarminActivityDetailResponse } from './client.ts'
 import {
   activityTypeExists,
   adoptLegacyActivity,
+  getActivityTrack,
   getTimeSeries,
+  insertActivity,
   insertLocations,
   insertRawRecord,
   insertTimeSeries,
 } from '../../db/index.ts'
 import { softDeleteSupersededLocations } from '../../db/locations.ts'
+import { upsertActivityTrack } from '../../db/tracks.ts'
 import { auditError, auditInfo, auditWarn } from '../../services/audit-log.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../../test/db-test-helper.ts'
-import { processActivityDetail } from './process.ts'
+import { extractTrackPoints, processActivityDetail } from './process.ts'
 
 const garminDetailFixture = JSON.parse(
   readFileSync(resolve(__dirname, '../../test/fixtures/garmin-activity-detail.json'), 'utf-8'),
@@ -52,6 +55,7 @@ describe('Garmin resync integration', () => {
     insertRawRecord,
     insertTimeSeries,
     softDeleteSupersededLocations,
+    upsertActivityTrack,
   }
 
   test('processActivityDetail inserts time series and GPS from real Garmin response', async () => {
@@ -116,6 +120,35 @@ describe('Garmin resync integration', () => {
     const firstLoc = result.rows[0]
     expect(Number(firstLoc.lat)).toBeCloseTo(57.65, 1)
     expect(Number(firstLoc.lon)).toBeCloseTo(12.63, 1)
+  })
+
+  test('processActivityDetail writes the full-resolution track for the activity', async () => {
+    const user = getTestUser()
+    const data = garminDetailFixture as unknown as GarminActivityDetailResponse
+    const samples = extractTrackPoints(data)
+    const start = samples[0]!.time
+    const activityId = await insertActivity(user, {
+      activity_type: 'running',
+      data: { garmin_activity_id: data.activityId },
+      end_time: samples[samples.length - 1]!.time,
+      external_id: `garmin-test-${data.activityId}`,
+      source: 'garmin',
+      start_time: start,
+    })
+
+    await processActivityDetail(user, data, {
+      activityId,
+      activitySpan: { end: samples[samples.length - 1]!.time, start },
+      deps: realDeps,
+    })
+    await processActivityDetail(user, data, { activityId, deps: realDeps })
+
+    const track = await getActivityTrack(user, activityId)
+    expect(track).toMatchObject({ activity_id: activityId, full_resolution: true, source: 'garmin' })
+    expect(track!.point_count).toBe(new Set(samples.map((p) => p.time.getTime())).size)
+    expect(track!.points[0]!.t).toBe(0)
+    expect(track!.points[0]!.lat).toBeCloseTo(57.65, 1)
+    expect(track!.length_m).toBeGreaterThan(0)
   })
 
   test('processActivityDetail is idempotent (can be called twice)', async () => {

@@ -52,7 +52,7 @@ See [docs/data-sources.md](docs/data-sources.md) for setup overview.
 
 Everything above feeds a common data model, so every feature works across every source:
 
-- **Explore** -- [timeline](docs/features/timeline.md), [dashboards](docs/features/dashboard.md), and [maps of where you've been](docs/features/places.md)
+- **Explore** -- [timeline](docs/features/timeline.md), [dashboards](docs/features/dashboard.md), [maps of where you've been](docs/features/places.md), and full-resolution [activity tracks, routes and segments](docs/features/routes-and-segments.md)
 - **Analyze** -- [trends with EMA smoothing](docs/features/trends.md), [correlations](docs/features/correlations.md) (Pearson, chi-squared, relative risk), and [goals](docs/features/goals.md)
 - **Track health** -- [sleep](docs/features/sleep.md), [HR zones](docs/features/hr-zones.md), [training load](docs/features/training-load.md), [lab results](docs/features/lab-reports.md), and [active-calorie computation](docs/features/calories.md)
 - **Organize life** -- [activities](docs/features/activity-types.md), [meals & nutrition](docs/features/meals.md), places, and [screen time](docs/features/screentime-categories.md)

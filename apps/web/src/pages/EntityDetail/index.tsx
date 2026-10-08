@@ -452,7 +452,13 @@ const ActivityDetailContent = ({
             onHoverTime={setHoverTime}
             onEnabledMetricsChange={onChartMetricsChange}
           />
-          <ActivityMap start={displayStart} end={displayEnd} hoverTime={hoverTime} />
+          <ActivityMap
+            activityId={activity.id}
+            activityStart={activity.start_time}
+            start={displayStart}
+            end={displayEnd}
+            hoverTime={hoverTime}
+          />
         </div>
       )}
 

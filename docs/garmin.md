@@ -37,7 +37,9 @@ A degraded type is recorded in the audit log as a warning (once per distinct key
 
 ## GPS
 
-Activity GPS comes from the activity detail API, downsampled to 60-second intervals. It supersedes coarser tracking from other sources (e.g. OwnTracks phone positions) for the activity's whole span -- see [GPS Precedence](./data-sources.md#gps-precedence).
+Activity GPS comes from the activity detail API, every sample kept (`geoPolylineDTO` is the fallback when the per-second metrics carry no coordinates). It supersedes coarser tracking from other sources (e.g. OwnTracks phone positions) for the activity's whole span -- see [GPS Precedence](./data-sources.md#gps-precedence).
+
+The same samples, with `directElevation` as altitude, are also written as the activity's track in `activity_tracks` -- see [Routes and segments](./features/routes-and-segments.md). Activities synced before tracks existed get theirs from the stored detail by the track backfill.
 
 ## Admin Setup
 

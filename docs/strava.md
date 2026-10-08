@@ -4,14 +4,16 @@
 
 ## Data Synced
 
-| Strava Data | Stored As   | Details                                                                       |
-| ----------- | ----------- | ----------------------------------------------------------------------------- |
-| Activities  | activity    | Type, distance, duration, calories, elevation, average/max HR                 |
-| Heart Rate  | time_series | Per-second `heart_rate` from activity streams                                 |
-| Cadence     | time_series | Per-second `cadence` from activity streams                                    |
-| Power       | time_series | Per-second `power` (watts) from activity streams                              |
-| Altitude    | time_series | Per-second `altitude` from activity streams                                   |
-| GPS Routes  | locations   | Latitude/longitude from activity streams (downsampled to 60-second intervals) |
+| Strava Data | Stored As       | Details                                                                                                                 |
+| ----------- | --------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Activities  | activity        | Type, distance, duration, calories, elevation, average/max HR                                                           |
+| Heart Rate  | time_series     | Per-second `heart_rate` from activity streams                                                                           |
+| Cadence     | time_series     | Per-second `cadence` from activity streams                                                                              |
+| Power       | time_series     | Per-second `power` (watts) from activity streams                                                                        |
+| Altitude    | time_series     | Per-second `elevation` from activity streams                                                                            |
+| Speed       | time_series     | Per-second `speed` (m/s) from the `velocity_smooth` stream                                                              |
+| GPS Routes  | locations       | Latitude/longitude from activity streams, downsampled to 60-second intervals                                            |
+| GPS Track   | activity_tracks | Every `latlng`/`altitude` sample as the activity's line -- see [Routes and segments](./features/routes-and-segments.md) |
 
 All data is also preserved as raw JSON in the `raw_records` table.
 
@@ -126,4 +128,5 @@ This removes OAuth tokens and the athlete mapping. Webhook events for the discon
 
 - **Shared rate limits:** All users share the same API budget. Large historical backfills from multiple users may take days to complete.
 - **Stream availability:** Not all activities have stream data (HR, GPS). Older or manually-entered activities may lack streams.
-- **GPS downsampling:** GPS coordinates are stored at 60-second intervals to manage storage, not at full per-second resolution.
+- **GPS downsampling:** `locations` holds GPS at 60-second intervals; the full-resolution track is in `activity_tracks`. Activities synced before tracks existed have no stored streams, so their backfilled track comes from the activity's `map.polyline`: the shape only, with times spread evenly over the elapsed time (`full_resolution = false`).
+- **Distance stream:** The cumulative `distance` stream is fetched but not stored in `time_series`.
