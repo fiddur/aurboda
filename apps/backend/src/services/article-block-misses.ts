@@ -39,8 +39,8 @@ export const articleBlockCacheKey = (
   postId: string,
   index: number,
   updatedAt: Date,
-  now: number = Date.now(),
-): string => `${kind}:${username}:${postId}:${index}:${updatedAt.getTime()}:${Math.floor(now / 3_600_000)}`
+): string =>
+  `${kind}:${username}:${postId}:${index}:${updatedAt.getTime()}:${Math.floor(Date.now() / 3_600_000)}`
 
 /** Forget every remembered miss of one block, in both image formats. */
 export const forgetArticleBlockMisses = (
