@@ -117,6 +117,7 @@ import { createInvitationAuth } from './services/invitation.ts'
 import { getPlaceVisits } from './services/locations.ts'
 import { createPgBoss } from './services/pg-boss.ts'
 import { installProcessGuards } from './services/process-guards.ts'
+import { defaultRouteMatchDeps, matchActivityRoute } from './services/routes.ts'
 import { safeFetchGet } from './services/safe-fetch.ts'
 import { initSentry, Sentry } from './services/sentry.ts'
 import {
@@ -137,7 +138,7 @@ import {
   retroEnrichTimelineEntries,
 } from './services/timeline-retro-enrich.ts'
 import { ownActorUri } from './services/timeline.ts'
-import { defaultTrackBackfillDeps } from './services/track-backfill.ts'
+import { defaultTrackBackfillJobDeps } from './services/track-backfill.ts'
 import {
   createTrackAnalyseQueue,
   createTrackBackfillQueue,
@@ -295,7 +296,6 @@ const main = async () => {
     void autoshareQueue?.enqueueEvaluation(user, start, end)
   }
 
-  // Track post-processing (#1231): the queue is created with the others below.
   let trackAnalyseQueue: TrackAnalyseQueue | null = null
   let trackBackfillQueue: TrackBackfillQueue | null = null
   const onTrackWritten = (user: string, activityId: string): void => {
@@ -414,7 +414,6 @@ const main = async () => {
       `🗃️ Schema sweep done: ${migrated} migrated, ${skipped} already current, ${failed} failed ` +
         `(${process.uptime().toFixed(1)} s after process start)`,
     )
-    // Incremental: only activities with a usable raw record and no track yet.
     if (trackBackfillQueue) {
       for (const user of await listUserNames(userDb)) await trackBackfillQueue.enqueue(user, 120)
     }
@@ -588,9 +587,12 @@ const main = async () => {
   }
   if (boss) {
     try {
-      // Phase 1 registers the hook; route, feature and segment analysis land here later.
-      trackAnalyseQueue = await createTrackAnalyseQueue(boss, { analyse: async () => {} })
-      trackBackfillQueue = await createTrackBackfillQueue(boss, defaultTrackBackfillDeps)
+      trackAnalyseQueue = await createTrackAnalyseQueue(boss, {
+        analyse: async (user, activityId) => {
+          await matchActivityRoute(user, activityId, defaultRouteMatchDeps)
+        },
+      })
+      trackBackfillQueue = await createTrackBackfillQueue(boss, defaultTrackBackfillJobDeps)
     } catch (error) {
       console.error('Failed to initialize track queues:', error)
     }

@@ -75,8 +75,9 @@ export interface ActivityFullDetailOptions {
 
 /**
  * Fetch deep-dive detail for an activity: GPS trace + per-metric time-series.
- * The GPS trace is the activity's stored track when it has one (`id` given),
- * else the locations in its time range.
+ * The GPS trace is the activity's full-resolution track when it has one (`id`
+ * given), else the locations in its time range, else a shape-only track: its
+ * evenly spread timestamps are worse for the hover highlight than real ones.
  *
  * Source-agnostic: works for any activity that has time-series and/or GPS
  * locations populated within its time range, regardless of which integration
@@ -93,17 +94,21 @@ export const getActivityFullDetail = async (
 
   const result: Pick<ActivityFullDetail, 'gps' | 'metric_series'> = {}
 
-  const track = includeGps && activity.id ? await getActivityTrack(user, activity.id) : null
-  if (track) {
-    result.gps = trackToGps(track)
-  } else if (includeGps) {
-    const { locations } = await getLocations(user, activity.start_time, end)
-    if (locations.length > 0) {
-      result.gps = locations.map((l) => ({
-        lat: l.coordinates[1],
-        lon: l.coordinates[0],
-        time: l.time.toISOString(),
-      }))
+  if (includeGps) {
+    const track = activity.id ? await getActivityTrack(user, activity.id) : null
+    if (track?.full_resolution) {
+      result.gps = trackToGps(track)
+    } else {
+      const { locations } = await getLocations(user, activity.start_time, end)
+      if (locations.length > 0) {
+        result.gps = locations.map((l) => ({
+          lat: l.coordinates[1],
+          lon: l.coordinates[0],
+          time: l.time.toISOString(),
+        }))
+      } else if (track) {
+        result.gps = trackToGps(track)
+      }
     }
   }
 

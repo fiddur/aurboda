@@ -12,6 +12,7 @@ import {
 } from '../db/tracks.ts'
 import { extractTrackPoints } from '../integrations/garmin/process.ts'
 import { auditError } from './audit-log.ts'
+import { defaultRouteMatchDeps, matchUnroutedTracks } from './routes.ts'
 import { buildTrack, decodePolyline, polylineToTrackPoints, type TrackPoint } from './tracks.ts'
 
 export interface TrackBackfillDeps {
@@ -24,6 +25,16 @@ export const defaultTrackBackfillDeps: TrackBackfillDeps = {
   getGarminCandidates: getGarminTrackBackfillCandidates,
   getStravaCandidates: getStravaTrackBackfillCandidates,
   upsertActivityTrack,
+}
+
+/** The queued backfill also matches routes for the tracks it wrote (and any left unmatched). */
+export interface TrackBackfillJobDeps extends TrackBackfillDeps {
+  matchRoutes: (user: string) => Promise<{ matched: number; created: number }>
+}
+
+export const defaultTrackBackfillJobDeps: TrackBackfillJobDeps = {
+  ...defaultTrackBackfillDeps,
+  matchRoutes: (user) => matchUnroutedTracks(user, defaultRouteMatchDeps),
 }
 
 export interface TrackBackfillResult {

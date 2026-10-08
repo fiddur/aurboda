@@ -684,7 +684,27 @@ describe('MCP Server', () => {
         expect.any(Date),
         undefined,
         undefined,
+        undefined,
+        undefined,
       )
+    })
+
+    test('passes a route filter through', async () => {
+      const app = createTestApp()
+      const token = auth.createToken('testuser')
+      vi.mocked(queries.queryActivities).mockResolvedValue([])
+      const routeId = '6f1c3b2a-4d5e-4f60-8a7b-9c0d1e2f3a4b'
+
+      const response = await callTool(app, token, 'query_activities', {
+        end: '2024-01-31T23:59:59Z',
+        route_id: routeId,
+        start: '2024-01-01T00:00:00Z',
+        types: ['running'],
+        tz: 'UTC',
+      })
+
+      expect(response.status).toBe(200)
+      expect(vi.mocked(queries.queryActivities).mock.calls.at(-1)?.[7]).toBe(routeId)
     })
   })
 

@@ -68,7 +68,7 @@ export const createTableStatements: Record<string, string> = {
  *  - meals + food_items before meal_food_items (FK)
  *  - deduction_rules before deduction_rule_runs (FK)
  *  - tag_definitions before tags (FK)
- *  - activities before activity_tracks (FK)
+ *  - activities before activity_tracks, routes, activity_routes (FK)
  */
 export const tableCreationOrder = [
   'raw_records',
@@ -87,6 +87,10 @@ export const tableCreationOrder = [
   'activity_override_targets_trigger',
   'activity_tracks',
   'activity_tracks_indexes',
+  'routes',
+  'routes_indexes',
+  'activity_routes',
+  'activity_routes_indexes',
   'meals',
   'meals_indexes',
   'meal_log_completed',

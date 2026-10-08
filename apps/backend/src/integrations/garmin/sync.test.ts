@@ -320,6 +320,7 @@ describe('syncActivityDetails', () => {
     expect(processActivityDetail).toHaveBeenCalledWith(user, expect.anything(), {
       activityId: 'test-id',
       activitySpan: { end, start },
+      activityStart: start,
       onTrackWritten,
     })
   })

@@ -387,6 +387,13 @@ const ActivityDetailContent = ({
           {activity.source && <span class="entity-source">Source: {activity.source}</span>}
         </div>
 
+        {activity.route && (
+          <div class="entity-route">
+            Route: <a href={`/routes/${activity.route.id}`}>{activity.route.name}</a> ·{' '}
+            {activity.route.activity_count} {activity.route.activity_count === 1 ? 'run' : 'runs'}
+          </div>
+        )}
+
         <EditableActivityFields
           title={activity.title || exerciseDisplayName || typeDisplayName}
           isEditing={isEditing}

@@ -170,8 +170,16 @@ const createJobHandler = (deps: StravaQueueDeps, boss: PgBoss) => {
     }
 
     const result = await processStravaActivity(user, detailResult.data, streams, deps.processDeps)
-    auditInfo(user, 'sync', `✅ Strava: processed activity ${activityId} (${result.point_count} data points)`)
-    deps.processDeps.onActivityProcessed?.(user, result)
+    if (result) {
+      auditInfo(
+        user,
+        'sync',
+        `✅ Strava: processed activity ${activityId} (${result.point_count} data points)`,
+      )
+      deps.processDeps.onActivityProcessed?.(user, result)
+    } else {
+      auditInfo(user, 'sync', `📊 Strava: activity ${activityId} was deleted here, not re-created`)
+    }
 
     await deps.updateSyncState(user, 'activity_details', { last_sync_time: new Date(), status: 'idle' })
   }

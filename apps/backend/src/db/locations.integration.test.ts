@@ -2,7 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import { query } from './connection.ts'
-import { hasLocations, insertLocations } from './locations.ts'
+import { findNearbyNamedLocation, hasLocations, insertLocations, insertNamedLocation } from './locations.ts'
 
 const CONTAINER_TIMEOUT = 120_000
 
@@ -45,6 +45,17 @@ describe('Locations integration', () => {
       ])
       await query(user, `UPDATE locations SET deleted_at = NOW()`)
       expect(await hasLocations(user, start, end)).toBe(false)
+    })
+  })
+
+  describe('findNearbyNamedLocation', () => {
+    test('returns the nearest named location within the distance', async () => {
+      const user = getTestUser()
+      await insertNamedLocation(user, { lat: 59.3, lon: 18.07, name: 'Near' })
+      await insertNamedLocation(user, { lat: 59.302, lon: 18.07, name: 'Farther' })
+
+      expect((await findNearbyNamedLocation(user, 59.3001, 18.07, 500))?.name).toBe('Near')
+      expect(await findNearbyNamedLocation(user, 59.31, 18.07, 500)).toBeNull()
     })
   })
 })

@@ -445,9 +445,11 @@ describe('activity-type-definitions db', () => {
       .mockResolvedValueOnce({ command: 'UPDATE', fields: [], oid: 0, rowCount: 1, rows: [] })
       // 8. Update deduction rules conditions
       .mockResolvedValueOnce({ command: 'UPDATE', fields: [], oid: 0, rowCount: 0, rows: [] })
-      // 9. Delete source
+      // 9. Retype routes of the source
+      .mockResolvedValueOnce({ command: 'UPDATE', fields: [], oid: 0, rowCount: 0, rows: [] })
+      // 10. Delete source
       .mockResolvedValueOnce({ command: 'DELETE', fields: [], oid: 0, rowCount: 1, rows: [] })
-      // 10. Get updated target
+      // 11. Get updated target
       .mockResolvedValueOnce({
         command: 'SELECT',
         fields: [],
