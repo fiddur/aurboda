@@ -73,4 +73,10 @@ ENV BUILD_SHA=${BUILD_SHA}
 ENV WEB_INDEX_PATH=/usr/share/nginx/html/index.html
 EXPOSE 80
 
+# /api/status goes through nginx to the backend, which only listens once startup
+# is done, and reads the central DB — so healthy means all three answer.
+HEALTHCHECK --interval=10s --timeout=3s --start-period=60s --retries=3 \
+  CMD wget -qO- http://127.0.0.1/api/status >/dev/null || exit 1
+
+STOPSIGNAL SIGTERM
 CMD ["/entrypoint.sh"]

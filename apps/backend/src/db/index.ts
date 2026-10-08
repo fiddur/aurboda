@@ -104,6 +104,7 @@ export {
   getEnabledDeductionRules,
   insertDeductionRule,
   insertDeductionRuleRun,
+  pruneDeductionRuleRuns,
   updateDeductionRule,
 } from './deduction-rules.ts'
 
@@ -170,6 +171,8 @@ export {
   updateActivityEndTimeByExternalId,
   updateActivityTypeByTagKey,
   updateScreentimeActivityCategoryPath,
+  upsertActivity,
+  type UpsertActivityResult,
 } from './activities/index.ts'
 
 export {

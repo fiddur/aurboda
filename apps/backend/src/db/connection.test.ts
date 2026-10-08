@@ -4,7 +4,14 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 import type { UserDb } from './pool.ts'
 
-import { _isSchemaError, _runMigrationOnce, _setDbForUser, query } from './connection.ts'
+import {
+  _isSchemaError,
+  _runMigrationOnce,
+  _setDbForUser,
+  closeAllUserPools,
+  getDbForUser,
+  query,
+} from './connection.ts'
 
 describe('isSchemaError', () => {
   test('returns true for undefined_table (42P01)', () => {
@@ -111,7 +118,7 @@ const mockQueryResult = <T extends QueryResultRow>(rows: T[] = []): QueryResult<
 
 describe('query retry on schema error', () => {
   const makeClient = (queryFn: (...args: unknown[]) => Promise<QueryResult>) =>
-    ({ query: queryFn }) as unknown as UserDb
+    ({ end: async () => {}, query: queryFn }) as unknown as UserDb
 
   test('retries on schema error when called with username', async () => {
     const mockMigrate = vi.fn<(user: string) => Promise<void>>().mockResolvedValue(undefined)
@@ -168,5 +175,23 @@ describe('query retry on schema error', () => {
       'relation "metrics" does not exist',
     )
     expect(mockMigrate).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('closeAllUserPools', () => {
+  const makePool = () => ({ connect: vi.fn(), end: vi.fn().mockResolvedValue(undefined), query: vi.fn() })
+
+  test('ends every cached pool once and forgets them', async () => {
+    const a = makePool()
+    const b = makePool()
+    _setDbForUser('closea', a)
+    _setDbForUser('closeb', b)
+
+    await closeAllUserPools()
+    await closeAllUserPools()
+
+    expect(a.end).toHaveBeenCalledTimes(1)
+    expect(b.end).toHaveBeenCalledTimes(1)
+    expect(await getDbForUser('closea')).not.toBe(a)
   })
 })

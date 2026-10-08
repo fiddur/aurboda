@@ -147,6 +147,54 @@ networks:
     external: true
 ```
 
+### Health check
+
+The image declares a `HEALTHCHECK` that fetches `/api/status` through nginx
+every 10 s (60 s start period, 3 retries). The backend only starts listening
+once startup is done, and `/api/status` reads the central database, so the
+container turns `healthy` only when nginx, the backend and Postgres all answer.
+
+```bash
+docker inspect --format '{{.State.Health.Status}}' aurboda   # starting → healthy
+```
+
+A deploy script or proxy can wait for `healthy` before sending traffic to a new
+container.
+
+### Graceful shutdown and stop timeout
+
+On `docker stop` (SIGTERM to the entrypoint):
+
+1. The entrypoint forwards SIGTERM to the Node backend and waits for it.
+2. The backend stops accepting connections, then in parallel lets in-flight
+   requests finish (up to 3 s, after which open streams such as the live
+   timeline are cut) and stops pg-boss (running jobs get up to 10 s; unfinished
+   ones are failed and retried by the next instance). Then it closes its
+   database pools and exits. The whole sequence is bounded at 25 s.
+3. nginx quits gracefully, and the container exits with status 0.
+
+Docker's default stop timeout is 10 s, after which it SIGKILLs the container.
+Give it room for the 25 s bound:
+
+```bash
+docker run --stop-timeout 30 ...
+```
+
+or `stop_grace_period: 30s` in Compose (the bundled `docker-compose.yml` sets
+it). The backend logs `Shutting down...` and `Shutdown complete in <n> ms`; a
+`Process exited unexpectedly` line instead means a process died on its own.
+Startup logs how many seconds after process start the central DB, pg-boss and
+the HTTP listener became ready.
+
+### Overlapping deploys: expand-only schema changes
+
+A zero-downtime (blue/green) deploy starts the new container before stopping
+the old one, so for a short while two versions run against the same databases.
+Schema changes must therefore be expand-only: add tables and nullable (or
+defaulted) columns, never drop or rename a column in the same release that
+stops writing it. Remove the old column in a later release, once no running
+version uses it.
+
 ## Building Locally
 
 ### Build the Docker image:
@@ -269,7 +317,7 @@ If the service fails to start, check that:
 
 ### Process crashes:
 
-The container monitors both nginx and the backend. If either process crashes, the container exits and will be restarted by Docker's restart policy.
+The container monitors both nginx and the backend. If either process crashes, the container exits (logging `Process exited unexpectedly`) and will be restarted by Docker's restart policy.
 
 ## CI/CD
 

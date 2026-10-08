@@ -21,12 +21,9 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    healthcheck:
-      test: ['CMD', 'wget', '--quiet', '--spider', 'http://localhost/api/version']
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
+    # The image's HEALTHCHECK (/api/status) applies. The backend drains for up
+    # to 25 s on SIGTERM; Docker's default 10 s would SIGKILL it mid-drain.
+    stop_grace_period: 30s
     restart: unless-stopped
 
   postgres:

@@ -220,7 +220,6 @@ export const mountRestRouters = ({
   // public/unlisted posts. Mounted alongside the series router (same guard).
   httpd.use(
     createFeedImageRouter({
-      // Shared with the markdown export, which forgets a block's misses once it draws.
       articleBlockMisses,
       // Merged-span window so the rendered chart/route cover what the user
       // shared, matching the Note's duration/metrics (#881).

@@ -177,4 +177,10 @@ MCP tools: `list_deduction_rules`, `add_deduction_rule`, `update_deduction_rule`
 - The unique constraint `(source, activity_type, start_time)` prevents duplicate activities
 - Stale activities (from previous evaluations that no longer match) are automatically cleaned up
 - Rule evaluation is debounced per-user (5-second window) when triggered by data syncs
+- A rule's output re-triggers evaluation of the other rules (and auto-share) only when it actually
+  changed an activity. Re-evaluating a window whose generated activities are already in place writes
+  nothing and triggers nothing, so rules that match the same history settle instead of re-running each
+  other.
+- Each evaluation records a run per rule (`deduction_rule_runs`); runs older than 30 days are deleted
+  by the daily prune job, together with the audit log
 - The `output_activity_type` must reference an existing [custom activity type](activity-types.md)

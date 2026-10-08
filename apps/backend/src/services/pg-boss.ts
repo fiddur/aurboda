@@ -82,7 +82,9 @@ export const createPgBoss = async (): Promise<PgBoss | null> => {
   })
 
   await boss.start()
-  console.info(`📋 pg-boss started (database: ${getDbParams().database})`)
+  console.info(
+    `📋 pg-boss started (database: ${getDbParams().database}, ${process.uptime().toFixed(1)} s after process start)`,
+  )
 
   return boss
 }

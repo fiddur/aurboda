@@ -736,6 +736,13 @@ const getCentralDbClient = (): Promise<UserDb> => {
   return centralPool
 }
 
+/** Ends the central pool, if one was opened. A later query opens a fresh one. */
+export const closeCentralDb = async (): Promise<void> => {
+  const pool = centralPool
+  centralPool = null
+  if (pool) await (await pool).end()
+}
+
 /**
  * Call initializeCentralDb() before using other methods.
  */
