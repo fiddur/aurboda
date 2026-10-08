@@ -103,7 +103,7 @@ export function PublicProfile() {
         ) : posts.length === 0 ? (
           <p class="public-muted">This user has no public posts.</p>
         ) : (
-          posts.map((post) => <FeedPostCard key={post.id} post={post} author={author} />)
+          posts.map((post) => <FeedPostCard key={post.id} post={post} author={author} visitor />)
         )}
         {postsQuery.hasNextPage && (
           <button

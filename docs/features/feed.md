@@ -789,9 +789,13 @@ resolving.
   what they shared. The listing is **keyset-paginated** (20 per page, "Load more" — the same
   cursor style as the home timeline), so the inline payload weight stays bounded per request
   however many posts exist (#1012). The **public profile** (`/u/:username`) attaches the same
-  full structured payload per post (through the per-post LRU the structured endpoint shares),
-  and pages the same way — 20 per page with a "Load more" driven by `next_cursor` (#1055) — so
-  visitors see the identical native card and can reach every public post. The MCP `list_feed`
+  full structured payload per activity **and article** post (through the per-post LRU the
+  structured endpoint shares), and pages the same way — 20 per page with a "Load more" driven
+  by `next_cursor` (#1055) — so visitors see the identical native card and can reach every
+  public post. An article renders from that server-resolved payload for a visitor (the same
+  `TimelineArticle` a follower's timeline uses), since its live chart/correlation blocks fetch
+  the owner-authenticated metric endpoints a visitor can't reach; the owner's own feed keeps
+  the live render (#1054). The MCP `list_feed`
   tool remains the one surface that omits `structured` (an intentional payload-weight divergence
   from `GET /feed`, not a capability gap: the underlying data is all reachable via the
   metric-query tools).
