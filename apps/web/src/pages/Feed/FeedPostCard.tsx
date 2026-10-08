@@ -110,7 +110,7 @@ const ReplyPostBody = ({ post }: { post: FeedPost }) => {
 /**
  * The card body. An article renders its own title + prose/chart blocks (prose sanitised
  * via the shared sanitiser) — live for the owner, server-resolved for a
- * visitor (#1054). An activity post with the full structured
+ * visitor. An activity post with the full structured
  * payload renders the SAME `TimelineStructured` component a subscribing
  * Aurboda peer's home timeline uses (#1008) — interactive hover charts
  * included — so the owner and public-profile visitors see exactly what

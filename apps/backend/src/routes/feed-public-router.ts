@@ -102,7 +102,7 @@ export const createFeedPublicRouter = (): TypedRouter => {
   // opt-ins, the same payload `/public/:username/feed/:postId` serves. An
   // article's live blocks fetch the owner-authenticated metric endpoints, which
   // a visitor can't reach, so the page renders its server-resolved blocks
-  // instead (#1054). Structured resolution is
+  // instead. Structured resolution is
   // expensive (bucketed series queries + a GPS-track load per opted-in post, a
   // bucketed query per article chart block, a correlation per correlation block),
   // so it goes through the shared LRU above — same key shape as the sibling
