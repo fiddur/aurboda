@@ -486,7 +486,7 @@ export const createFeedRouter = (
         post.updated_at,
         post.article,
         // Blocks whose image would 404 (no data) get a note, not a dead link (#974).
-        await renderableArticleBlocks(user, post.article),
+        await renderableArticleBlocks(user, post.id, post.article),
       )
       res.json({ markdown, success: true })
     },

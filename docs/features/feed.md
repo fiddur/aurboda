@@ -693,7 +693,9 @@ article (unlike a shared activity) is editable **and** its locked window can lat
 backfilled data, the render cache keys on the post's `updated_at` **and** a coarse hourly
 bucket, so an edit or new data serves a fresh image within ≤ 1h; a `null` (no-data) render
 is remembered under the same key so a sparse public block can't re-run the render engine
-on every hit. The AS2 `Image` attachment URL also carries `?v=<updated_at>` so a remote
+on every hit. The markdown export clears that remembered miss for every block it finds
+drawable, so the image link it emits works at once rather than 404ing until the hour rolls
+over. The AS2 `Image` attachment URL also carries `?v=<updated_at>` so a remote
 media cache (which re-hosts the PNG at receipt) re-fetches after an edit.
 
 A block image endpoint **404s** when the block is too sparse to draw (a chart with < 2

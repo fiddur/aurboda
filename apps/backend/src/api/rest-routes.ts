@@ -75,6 +75,7 @@ import { createWellKnownRouter, type WellKnownConfig } from '../routes/well-know
 import { renderChartPng, renderRoutePng, renderScatterPng } from '../services/activitypub/feed-images.ts'
 import { fetchOsmTile } from '../services/activitypub/osm-tiles.ts'
 import { getArticleChartSeriesData, getArticleCorrelationScatter } from '../services/article-block-data.ts'
+import { articleBlockMisses } from '../services/article-block-misses.ts'
 import { loadAvatarDataUri, loadChallengeBannerDataUri } from '../services/avatar-resolve.ts'
 import { buildChartSvg } from '../services/charts/chart-svg.ts'
 import { buildScatterSvg } from '../services/charts/scatter-svg.ts'
@@ -215,6 +216,8 @@ export const mountRestRouters = ({
   // public/unlisted posts. Mounted alongside the series router (same guard).
   httpd.use(
     createFeedImageRouter({
+      // Shared with the markdown export, which forgets a block's misses once it draws.
+      articleBlockMisses,
       // Merged-span window so the rendered chart/route cover what the user
       // shared, matching the Note's duration/metrics (#881).
       getActivity: resolveFeedActivity,

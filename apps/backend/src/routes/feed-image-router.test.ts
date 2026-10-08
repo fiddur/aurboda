@@ -1,12 +1,15 @@
 import type { ArticleContent } from '@aurboda/api-spec'
 
+import express from 'express'
+import supertest from 'supertest'
 import { describe, expect, test, vi } from 'vitest'
 
 import type { FeedPostRecord } from '../db/index.ts'
 import type { ScatterSvgData } from '../services/charts/scatter-svg.ts'
 
+import { createNegativeCache, forgetArticleBlockMisses } from '../services/article-block-misses.ts'
 import {
-  createNegativeCache,
+  createFeedImageRouter,
   createRenderCache,
   type FeedImageDeps,
   type ImageActivity,
@@ -396,5 +399,51 @@ describe('createRenderCache', () => {
     await cached('k2', produce) // evicts k1
     await cached('k1', produce) // re-renders (was evicted)
     expect(produce).toHaveBeenCalledTimes(3)
+  })
+})
+
+describe('article block image misses', () => {
+  const post = articlePost(
+    article([{ end: WINDOW.end, metric: 'heart_rate', start: WINDOW.start, type: 'chart' }]),
+  )
+  const appWith = (misses: ReturnType<typeof createNegativeCache>, points: () => [Date, number][]) => {
+    const app = express()
+    app.use(
+      createFeedImageRouter({
+        articleBlockMisses: misses,
+        getActivity: async () => null,
+        getArticleChartSeries: async () => points(),
+        getCorrelationScatter: async () => null,
+        getPost: async () => post,
+        getRoute: async () => [],
+        getSeries: async () => [],
+        renderChart: async () => Buffer.from('chart-png'),
+        renderChartSvg: () => '<svg>chart</svg>',
+        renderRoute: async () => Buffer.from(''),
+        renderScatter: async () => Buffer.from(''),
+        renderScatterSvg: () => '',
+      }),
+    )
+    return app
+  }
+  const path = `/public/fiddur/feed/${POST_ID}/blocks/0/image.png`
+
+  test('a remembered 404 holds until the export forgets it once the block draws', async () => {
+    const misses = createNegativeCache()
+    let points: [Date, number][] = []
+    const app = appWith(misses, () => points)
+
+    expect((await supertest(app).get(path)).status).toBe(404)
+    points = [
+      [new Date('2026-07-01T06:00:00Z'), 60],
+      [new Date('2026-07-01T07:00:00Z'), 62],
+    ]
+    expect((await supertest(app).get(path)).status).toBe(404)
+
+    forgetArticleBlockMisses(misses, 'fiddur', POST_ID, 0)
+
+    const res = await supertest(app).get(path)
+    expect(res.status).toBe(200)
+    expect(res.headers['content-type']).toMatch(/image\/png/)
   })
 })

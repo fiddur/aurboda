@@ -23,6 +23,11 @@ import type { ScatterSvgData } from '../services/charts/scatter-svg.ts'
 
 import { isValidUsername } from '../api/auth-routes.ts'
 import { isMissingDatabase } from '../db/index.ts'
+import {
+  articleBlockCacheKey,
+  createNegativeCache,
+  type NegativeCache,
+} from '../services/article-block-misses.ts'
 import { blockWindow, isZeroDurationBucket } from '../services/article.ts'
 import { isCapabilityAuthorized } from '../services/feed-capability.ts'
 
@@ -71,6 +76,8 @@ export interface FeedImageDeps {
   getCorrelationScatter: (user: string, params: CorrelationBlockParams) => Promise<ScatterSvgData | null>
   renderScatter: (data: ScatterSvgData) => Promise<Buffer>
   renderScatterSvg: (data: ScatterSvgData) => string
+  /** Remembered block-image misses, shared with the markdown export (a fresh one when omitted). */
+  articleBlockMisses?: NegativeCache
 }
 
 /**
@@ -124,29 +131,6 @@ export const createRenderCache = <T = Buffer>(maxEntries = 200) => {
     } finally {
       inFlight.delete(key)
     }
-  }
-}
-
-/**
- * A bounded set of cache keys whose render produced NO image (a sparse block →
- * 404). `createRenderCache` deliberately never caches a `null`, so a
- * publicly-listed sparse correlation block would otherwise re-run the full
- * `getContinuousCorrelation` (two selector resolutions over the whole window) on
- * every unauthenticated hit, uncached and unthrottled. Remembering the negative
- * under the same hourly-bucketed key bounds that to one render per hour — the key
- * rolls over hourly, so a block that later gains data re-renders.
- */
-export const createNegativeCache = (maxEntries = 500) => {
-  const seen = new Map<string, true>()
-  return {
-    add: (key: string) => {
-      if (seen.size >= maxEntries) {
-        const oldest = seen.keys().next().value
-        if (oldest !== undefined) seen.delete(oldest)
-      }
-      seen.set(key, true)
-    },
-    has: (key: string) => seen.has(key),
   }
 }
 
@@ -366,21 +350,11 @@ export const createFeedImageRouter = (deps: FeedImageDeps): Router => {
 
   // Article chart/correlation block images. Gated by post visibility + capability
   // token only (no `include_chart` flag — a block can embed any metric, so
-  // visibility is the whole boundary, #943). Cache key includes the post's
-  // `updated_at` (busts on an edit) AND a coarse hourly bucket, so a locked
-  // window that later gains backfilled data can't serve a stale render for the
-  // whole process lifetime — the block re-resolves its data live (#934), matching
-  // the web inline render within ≤ 1h. Articles, unlike shared activities, are
-  // mutable and their windows can gain data after publish.
-  // Cache key uses the NORMALISED numeric index (not the raw path string), so
-  // `Number`-equivalent spellings (`0`, `00`, `1e0`, `0x0`) collapse to one entry
-  // and can't each dodge the hourly-bucket rate limit on this unauthenticated,
-  // comparatively expensive render.
-  const blockCacheKey = (kind: string, username: string, postId: string, index: number, updatedAt: Date) =>
-    `${kind}:${username}:${postId}:${index}:${updatedAt.getTime()}:${Math.floor(Date.now() / 3_600_000)}`
-  // Remembers the "no image" outcome (a sparse block 404s) under the same hourly
-  // key, so a public sparse block doesn't re-run the render engine on every hit.
-  const negativeBlocks = createNegativeCache()
+  // visibility is the whole boundary, #943). See `articleBlockCacheKey` for why
+  // the key carries `updated_at` and an hourly bucket: the block re-resolves its
+  // data live (#934), and articles, unlike shared activities, are mutable and
+  // their windows can gain data after publish.
+  const negativeBlocks = deps.articleBlockMisses ?? createNegativeCache()
 
   router.get('/public/:username/feed/:postId/blocks/:index/image.png', async (req, res) => {
     const { index, postId, username } = req.params
@@ -388,7 +362,7 @@ export const createFeedImageRouter = (deps: FeedImageDeps): Router => {
     const idx = Number(index)
     const block = await resolveArticleBlock(deps, username, postId, idx, token)
     if (!block) return notFound(res)
-    const key = blockCacheKey('blockpng', username, postId, idx, block.updatedAt)
+    const key = articleBlockCacheKey('blockpng', username, postId, idx, block.updatedAt)
     if (negativeBlocks.has(key)) return notFound(res)
     const png = await cached(key, () => renderArticleBlockImage(deps, username, block, 'png'))
     if (!png) {
@@ -404,7 +378,7 @@ export const createFeedImageRouter = (deps: FeedImageDeps): Router => {
     const idx = Number(index)
     const block = await resolveArticleBlock(deps, username, postId, idx, token)
     if (!block) return notFound(res)
-    const key = blockCacheKey('blocksvg', username, postId, idx, block.updatedAt)
+    const key = articleBlockCacheKey('blocksvg', username, postId, idx, block.updatedAt)
     if (negativeBlocks.has(key)) return notFound(res)
     const svg = await cached(key, () => renderArticleBlockImage(deps, username, block, 'svg'))
     if (!svg) {
