@@ -30,6 +30,7 @@ import {
 } from '../db/index.ts'
 import {
   type DetailSyncedCallback,
+  type TrackWrittenCallback,
   type GarminDataType,
   syncAllGarminData,
 } from '../integrations/garmin/sync.ts'
@@ -55,6 +56,7 @@ export const registerSyncTools = (
   notifier?: ActivityNotifier,
   gravl?: GravlClient,
   onDetailSynced?: DetailSyncedCallback,
+  onTrackWritten?: TrackWrittenCallback,
 ) => {
   server.tool(
     'sync_oura',
@@ -106,6 +108,7 @@ export const registerSyncTools = (
           disabledTypes: settings.garmin_disabled_data_types as GarminDataType[],
           fullResync: full_resync,
           onDetailSynced,
+          onTrackWritten,
           startDate: start_date ? new Date(start_date) : undefined,
         })
 

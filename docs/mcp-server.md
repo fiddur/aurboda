@@ -38,6 +38,15 @@ See [Activity types -- sessions overview](features/activity-types.md#sessions-ov
 | `get_activity_neighbors`     | The previous and next activity of the same type, optionally only those sharing a data field value (`same_field`, e.g. `session_name`)                                                                                                        |
 | `list_activity_field_values` | The values a data field (e.g. `session_name`) has taken across a type and its subtypes, most recently used first, with counts -- for reusing a value instead of spelling a new variant                                                       |
 
+### Activity track tools
+
+See [Routes and segments](features/routes-and-segments.md).
+
+| Tool                       | What it does                                                                                                                                         |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `get_activity_track`       | An activity's full-resolution GPS track: `lat`, `lon`, `alt` and `t` (seconds since the activity start) per point, with `length_m` and `point_count` |
+| `backfill_activity_tracks` | Build missing tracks from stored raw records (Garmin details at full resolution, Strava polylines shape-only) and return the counts                  |
+
 ### Comment tools
 
 Comments (stored as "notes") hang off anything, or off a bare point in time, and

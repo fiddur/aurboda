@@ -10,6 +10,7 @@ import type { SyncProvider } from './queries/index.ts'
 import { getSyncState } from '../db/index.ts'
 import {
   type DetailSyncedCallback,
+  type TrackWrittenCallback,
   type GarminDataType,
   isRateLimited as isGarminRateLimited,
   syncActivityDetails,
@@ -92,6 +93,8 @@ export interface SyncProviderConfig {
   onActivitySynced?: ActivityNotifier
   /** Fired when a Garmin activity's detail lands for the first time (re-federates its shares). */
   onActivityDetailSynced?: DetailSyncedCallback
+  /** Fired when a Garmin detail sync writes an activity's GPS track. */
+  onTrackWritten?: TrackWrittenCallback
   /** Sync threshold in minutes when the user has no `sync_intervals` entry (default: 30) */
   syncThresholdMinutes?: number
   /** Minimum time between two checks of the same method/user/data type (default: SYNC_RECHECK_MS) */
@@ -196,7 +199,10 @@ export function createSyncProvider(config: SyncProviderConfig): SyncProvider {
 
           // After syncing activities, also fetch per-second detail data (GPS, HR, etc.)
           if (dataType === 'activities') {
-            await syncActivityDetails(user, config.garmin, { onDetailSynced: config.onActivityDetailSynced })
+            await syncActivityDetails(user, config.garmin, {
+              onDetailSynced: config.onActivityDetailSynced,
+              onTrackWritten: config.onTrackWritten,
+            })
           }
 
           triggerDeductionAfterSync(user, syncState, result)

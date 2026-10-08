@@ -113,6 +113,7 @@ export const cleanTestDb = async (): Promise<void> => {
     'tags',
     'tag_definitions',
     'time_series',
+    'activity_tracks',
     'activities',
     'productivity',
     'places',

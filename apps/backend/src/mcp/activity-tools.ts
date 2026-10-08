@@ -15,6 +15,7 @@ import {
   restoreActivity,
   updateActivity,
 } from '../services/mutations.ts'
+import { backfillUserTracks, defaultTrackBackfillDeps } from '../services/track-backfill.ts'
 import { errorResponse, jsonResponse, type McpServer, tzJsonResponse } from './helpers.ts'
 
 export const registerActivityTools = (
@@ -123,5 +124,12 @@ export const registerActivityTools = (
 
       return tzJsonResponse(result, tz)
     },
+  )
+
+  server.tool(
+    'backfill_activity_tracks',
+    'Build missing activity GPS tracks from stored raw records: Garmin activity details at full resolution, Strava polylines as shape-only tracks. Incremental: only activities without a track. Returns counts written per source and skipped.',
+    {},
+    async () => jsonResponse(await backfillUserTracks(user, defaultTrackBackfillDeps)),
   )
 }

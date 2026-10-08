@@ -17,6 +17,7 @@ import {
   insertTimeSeries,
 } from '../../db/index.ts'
 import { softDeleteSupersededLocations } from '../../db/locations.ts'
+import { upsertActivityTrack } from '../../db/tracks.ts'
 import { auditError, auditInfo, auditWarn } from '../../services/audit-log.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../../test/db-test-helper.ts'
 import { processGarminData } from './process.ts'
@@ -35,6 +36,7 @@ const realDeps = {
   insertRawRecord,
   insertTimeSeries,
   softDeleteSupersededLocations,
+  upsertActivityTrack,
 }
 
 const makeActivity = (overrides: Record<string, unknown> = {}) => ({

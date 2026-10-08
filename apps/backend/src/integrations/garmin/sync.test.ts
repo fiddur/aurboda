@@ -2,6 +2,7 @@ import { subDays } from 'date-fns'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 import * as db from '../../db/index.ts'
+import { processActivityDetail } from './process.ts'
 import {
   calculateRetryAfter,
   garminDataTypes,
@@ -24,6 +25,7 @@ vi.mock('../../db/index.ts', () => ({
   insertTimeSeries: vi.fn(),
   markActivityDetailSynced: vi.fn().mockResolvedValue(undefined),
   softDeleteSupersededLocations: vi.fn().mockResolvedValue(0),
+  upsertActivityTrack: vi.fn().mockResolvedValue(undefined),
   upsertSyncState: vi.fn(),
 }))
 
@@ -296,6 +298,30 @@ describe('syncActivityDetails', () => {
     expect(db.getActivitiesNeedingDetail).toHaveBeenCalledWith(user, { forceAll: false })
     expect(mockGarmin.getActivityDetail).toHaveBeenCalledWith(user, 12345)
     expect(db.markActivityDetailSynced).toHaveBeenCalledWith(user, 'test-id')
+  })
+
+  test('passes the activity id and the track callback to the detail processor', async () => {
+    const start = new Date('2026-05-01T08:00:00Z')
+    const end = new Date('2026-05-01T09:00:00Z')
+    vi.mocked(db.getActivitiesNeedingDetail).mockResolvedValue([
+      {
+        activity_type: 'running' as const,
+        data: { garmin_activity_id: 12345 },
+        end_time: end,
+        id: 'test-id',
+        source: 'garmin' as const,
+        start_time: start,
+      },
+    ])
+    const onTrackWritten = vi.fn()
+
+    await syncActivityDetails(user, createMockGarmin() as never, { onTrackWritten })
+
+    expect(processActivityDetail).toHaveBeenCalledWith(user, expect.anything(), {
+      activityId: 'test-id',
+      activitySpan: { end, start },
+      onTrackWritten,
+    })
   })
 
   test('passes forceAll when fullResync is true', async () => {

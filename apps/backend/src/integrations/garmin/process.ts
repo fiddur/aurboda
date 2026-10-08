@@ -24,6 +24,7 @@ import {
   insertRawRecord,
   insertTimeSeries,
   softDeleteSupersededLocations,
+  upsertActivityTrack,
 } from '../../db/index.ts'
 import { auditError, auditInfo, auditWarn } from '../../services/audit-log.ts'
 import {
@@ -31,6 +32,7 @@ import {
   garminActivityExternalId,
   garminSleepExternalId,
 } from '../../services/source-identity.ts'
+import { buildTrack, type TrackPoint } from '../../services/tracks.ts'
 import { pushAll } from '../../utils.ts'
 import { activityTrackSources, gpsPrecedenceSpan } from '../gps-precedence.ts'
 import { garminSleepLevelsToStages, parseGarminGmt } from './sleep-stages.ts'
@@ -76,6 +78,7 @@ export interface GarminProcessDeps {
   insertRawRecord: typeof insertRawRecord
   insertTimeSeries: typeof insertTimeSeries
   softDeleteSupersededLocations: typeof softDeleteSupersededLocations
+  upsertActivityTrack: typeof upsertActivityTrack
 }
 
 export interface ProcessActivityDetailOptions {
@@ -85,6 +88,9 @@ export interface ProcessActivityDetailOptions {
    * the downsampled track covers.
    */
   activitySpan?: ActivitySpan | null
+  /** The activity row the detail belongs to; without it no track is written. */
+  activityId?: string
+  onTrackWritten?: (user: string, activityId: string) => void
   deps?: GarminProcessDeps
 }
 
@@ -100,6 +106,7 @@ const defaultDeps: GarminProcessDeps = {
   insertRawRecord,
   insertTimeSeries,
   softDeleteSupersededLocations,
+  upsertActivityTrack,
 }
 
 /**
@@ -757,7 +764,7 @@ const extractGpsPoint = (metrics: unknown[], time: Date, latIdx: number, lonIdx:
   return { lat, lon, source: 'garmin' as const, time }
 }
 
-/** GPS downsampling interval in milliseconds (0 = no downsampling, keep all points). */
+/** GPS downsampling interval for `locations` in milliseconds (0 = keep every sample). */
 const GPS_DOWNSAMPLE_MS = 0
 
 /** Extract GPS locations from geoPolylineDTO (fallback when metrics lack lat/lon). */
@@ -802,7 +809,6 @@ const extractMetricsAndGps = (
 
     pushAll(points, extractDetailPoints(entry.metrics, time, indexMap))
 
-    // Extract GPS, downsampled to ~1 point per minute
     if (latIdx !== undefined && lonIdx !== undefined && ts - lastGpsTime >= GPS_DOWNSAMPLE_MS) {
       const gps = extractGpsPoint(entry.metrics, time, latIdx, lonIdx)
       if (gps) {
@@ -819,11 +825,59 @@ const extractMetricsAndGps = (
   return { gpsPoints, points }
 }
 
+const polylineTrackPoints = (data: GarminActivityDetailResponse): TrackPoint[] =>
+  (data.geoPolylineDTO?.polyline ?? []).flatMap((point) =>
+    point.timestampGMT && point.timestampGMT > 0
+      ? [{ alt: point.altitude ?? null, lat: point.lat, lon: point.lon, time: new Date(point.timestampGMT) }]
+      : [],
+  )
+
+/** Every GPS sample of an activity detail, for the activity track; geoPolylineDTO when the metrics carry none. */
+export const extractTrackPoints = (data: GarminActivityDetailResponse): TrackPoint[] => {
+  const indexMap = buildMetricIndexMap(data.metricDescriptors)
+  const tsIdx = indexMap.get('directTimestamp')
+  const latIdx = indexMap.get('directLatitude')
+  const lonIdx = indexMap.get('directLongitude')
+  const altIdx = indexMap.get('directElevation')
+
+  const points: TrackPoint[] = []
+  if (tsIdx !== undefined && latIdx !== undefined && lonIdx !== undefined) {
+    for (const entry of data.activityDetailMetrics ?? []) {
+      const ts = extractNumericValue(entry.metrics[tsIdx])
+      const lat = extractNumericValue(entry.metrics[latIdx])
+      const lon = extractNumericValue(entry.metrics[lonIdx])
+      if (!ts || ts <= 0 || lat == null || lon == null) continue
+      const alt = altIdx === undefined ? null : extractNumericValue(entry.metrics[altIdx])
+      points.push({ alt, lat, lon, time: new Date(ts) })
+    }
+  }
+  return points.length > 0 ? points : polylineTrackPoints(data)
+}
+
+const writeTrack = async (
+  user: string,
+  data: GarminActivityDetailResponse,
+  activityId: string,
+  originFallback: Date,
+  { activitySpan, deps = defaultDeps, onTrackWritten }: ProcessActivityDetailOptions,
+): Promise<void> => {
+  const track = buildTrack(extractTrackPoints(data), activitySpan?.start ?? originFallback)
+  if (!track) return
+  await deps.upsertActivityTrack(user, {
+    activity_id: activityId,
+    ewkt: track.ewkt,
+    full_resolution: true,
+    source: 'garmin',
+  })
+  onTrackWritten?.(user, activityId)
+}
+
 export const processActivityDetail = async (
   user: string,
   data: GarminActivityDetailResponse,
-  { activitySpan, deps = defaultDeps }: ProcessActivityDetailOptions = {},
+  options: ProcessActivityDetailOptions = {},
 ): Promise<number> => {
+  const { activityId, activitySpan, deps = defaultDeps } = options
   if (!data.activityDetailMetrics?.length) return 0
 
   const indexMap = buildMetricIndexMap(data.metricDescriptors)
@@ -863,6 +917,8 @@ export const processActivityDetail = async (
       )
     }
   }
+
+  if (activityId) await writeTrack(user, data, activityId, new Date(firstTs), options)
 
   return points.length
 }

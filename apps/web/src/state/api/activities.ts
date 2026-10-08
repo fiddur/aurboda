@@ -4,6 +4,7 @@ import {
   type ActivitiesResponse,
   type AddActivityBody,
   type AddActivityResponse,
+  type ActivityTrackResponse,
   type ResyncActivityDetailResponse,
   type UpdateActivityBody,
   type UpdateActivityResponse,
@@ -186,4 +187,27 @@ export const resyncActivityDetail = async (activityId: string): Promise<ResyncAc
     { headers: { Authorization: `Bearer ${token}` } },
   )
   return response.data
+}
+
+/**
+ * The activity's stored GPS track as timestamped fixes, or null when it has none.
+ * `start` is the activity's own start_time, the origin of the track's `t`.
+ */
+export const fetchActivityTrack = async (
+  id: string,
+  start: Date,
+): Promise<{ lat: number; lon: number; time: Date }[] | null> => {
+  const { token } = auth.value
+  try {
+    const response = await axios.get<ActivityTrackResponse>(
+      `${API_URL}/activities/${encodeURIComponent(id)}/track`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    )
+    const track = response.data.data
+    if (!track) return null
+    return track.points.map((p) => ({ lat: p.lat, lon: p.lon, time: new Date(start.getTime() + p.t * 1000) }))
+  } catch (error) {
+    if (axios.isAxiosError(error) && error.response?.status === 404) return null
+    throw error
+  }
 }

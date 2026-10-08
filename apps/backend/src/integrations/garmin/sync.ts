@@ -153,6 +153,7 @@ export const syncAllGarminData = async (
     fullResync?: boolean
     startDate?: Date
     onDetailSynced?: DetailSyncedCallback
+    onTrackWritten?: TrackWrittenCallback
   },
 ): Promise<SyncResult[]> => {
   const results: SyncResult[] = []
@@ -181,6 +182,7 @@ export const syncAllGarminData = async (
       await syncActivityDetails(user, garmin, {
         fullResync: options?.fullResync,
         onDetailSynced: options?.onDetailSynced,
+        onTrackWritten: options?.onTrackWritten,
       })
     }
   }
@@ -190,6 +192,9 @@ export const syncAllGarminData = async (
 
 /** Told about an activity whose detail just landed for the first time. */
 export type DetailSyncedCallback = (user: string, activityId: string) => void
+
+/** Told about an activity whose GPS track was just written. */
+export type TrackWrittenCallback = (user: string, activityId: string) => void
 
 /**
  * Fetch granular per-second metrics (stress, HR, respiration, body battery)
@@ -205,7 +210,12 @@ export const syncActivityDetails = async (
   {
     fullResync = false,
     onDetailSynced,
-  }: { fullResync?: boolean; onDetailSynced?: DetailSyncedCallback } = {},
+    onTrackWritten,
+  }: {
+    fullResync?: boolean
+    onDetailSynced?: DetailSyncedCallback
+    onTrackWritten?: TrackWrittenCallback
+  } = {},
 ): Promise<void> => {
   const activities = await getActivitiesNeedingDetail(user, { forceAll: fullResync })
   if (activities.length === 0) return
@@ -220,7 +230,11 @@ export const syncActivityDetails = async (
       // precedence range to a few minutes around the start. Fall back to the
       // track's own range instead.
       const activitySpan = activity.end_time ? { end: activity.end_time, start: activity.start_time } : null
-      const pointCount = await processActivityDetail(user, detail, { activitySpan })
+      const pointCount = await processActivityDetail(user, detail, {
+        activityId: activity.id,
+        activitySpan,
+        onTrackWritten,
+      })
       await markActivityDetailSynced(user, activity.id)
       if (activity.data?.detail_synced !== true) onDetailSynced?.(user, activity.id)
 
