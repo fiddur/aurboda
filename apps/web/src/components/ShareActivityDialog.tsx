@@ -11,6 +11,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { useEffect, useState } from 'preact/hooks'
 
 import {
+  fetchActivityById,
   fetchBucketedMetrics,
   fetchRawLocations,
   previewShare,
@@ -23,7 +24,7 @@ import {
   initialSeriesSelection,
   previewSelection,
   SERIES_METRICS,
-  SUMMARY_METRICS,
+  shareableSummaryOptions,
 } from './feed-metrics'
 import { FEED_VISIBILITY_OPTIONS, VisibilitySelector } from './VisibilitySelector'
 import './ShareActivityDialog.css'
@@ -56,14 +57,17 @@ const toggle = <T extends string>(set: Set<T>, key: T): Set<T> => {
 
 /**
  * Which summary/series options to offer for an activity: those whose source
- * metric has data in the given window (e.g. no Distance on a yoga session),
- * plus `keepSummary`/`keepSeries` — metrics the post already shares, always kept
+ * metric has data in the given window (e.g. no Distance on a yoga session) or,
+ * for distance/calories, whose summary field the shared activity carries (the
+ * backend's fallback for Garmin/Strava, which store them only there), plus
+ * `keepSummary`/`keepSeries` — metrics the post already shares, always kept
  * so an edit over a narrower window can never silently drop an existing choice.
  * One coarse bucketed fetch; while it loads (or without a window) every option
  * is offered.
  */
 // eslint-disable-next-line complexity -- availability gating across summary/series/chart/map
 const useShareableMetricOptions = (
+  activityId: string,
   activityStart?: Date,
   activityEnd?: Date,
   keepSummary: string[] = [],
@@ -89,6 +93,15 @@ const useShareableMetricOptions = (
     staleTime: 5 * 60 * 1000,
   })
   const hasGps = (locationsQuery.data?.length ?? 0) > 0
+  // The post's own activity (never a merged span), whose `data` the backend's
+  // distance/calories fallback reads. Shares the activity detail page's cache.
+  // Summaries stay all-offered until it settles, so Distance/Calories never
+  // blink out between the two fetches.
+  const activityQuery = useQuery({
+    queryFn: () => fetchActivityById(activityId),
+    queryKey: ['entity-detail', 'activity', activityId],
+    staleTime: 60_000,
+  })
 
   const present = availabilityQuery.data?.buckets
     ? new Set(availabilityQuery.data.buckets.flatMap((b) => Object.keys(b.metrics)))
@@ -101,11 +114,11 @@ const useShareableMetricOptions = (
     seriesOptions: present
       ? SERIES_METRICS.filter((m) => present.has(m.key) || keepSeries.includes(m.key))
       : SERIES_METRICS,
-    summaryOptions: present
-      ? SUMMARY_METRICS.filter(
-          (m) => m.source === undefined || present.has(m.source) || keepSummary.includes(m.key),
-        )
-      : SUMMARY_METRICS,
+    summaryOptions: shareableSummaryOptions(
+      activityQuery.isPending ? undefined : present,
+      activityQuery.data?.activity.data,
+      keepSummary,
+    ),
   }
 }
 
@@ -138,6 +151,7 @@ export function ShareActivityDialog({
   const [includeMap, setIncludeMap] = useState(post?.include_map ?? false)
   const [message, setMessage] = useState(post ? (post.message ?? '') : (defaultMessage ?? ''))
   const { summaryOptions, seriesOptions, canChart, canMap } = useShareableMetricOptions(
+    activityId,
     activityStart,
     activityEnd,
     post?.included_metrics,

@@ -9,6 +9,7 @@ import {
   initialSeriesSelection,
   previewSelection,
   seriesLabel,
+  shareableSummaryOptions,
   type ShareSelection,
   summaryLabel,
 } from './feed-metrics'
@@ -163,5 +164,77 @@ describe('previewSelection', () => {
       visibility: 'followers' as const,
     }
     expect(JSON.stringify(previewSelection(toggled))).toBe(JSON.stringify(previewSelection(body)))
+  })
+})
+
+describe('shareableSummaryOptions', () => {
+  const keys = (opts: { key: string }[]) => opts.map((m) => m.key)
+
+  it('offers every summary while availability is unknown', () => {
+    expect(keys(shareableSummaryOptions(undefined, undefined))).toEqual([
+      'duration',
+      'distance',
+      'heart_rate_avg',
+      'heart_rate_max',
+      'hr_zone_minutes',
+      'calories',
+      'stress_avg',
+    ])
+  })
+
+  it('offers Distance/Calories from the window series', () => {
+    const opts = shareableSummaryOptions(new Set(['distance', 'calories_active']), undefined)
+    expect(keys(opts)).toEqual(['duration', 'distance', 'calories'])
+  })
+
+  it("offers Distance/Calories from the activity's summary fields when the window has no series (#1026)", () => {
+    const opts = shareableSummaryOptions(new Set(['heart_rate']), { calories: 612, distance: 8420 })
+    expect(keys(opts)).toEqual([
+      'duration',
+      'distance',
+      'heart_rate_avg',
+      'heart_rate_max',
+      'hr_zone_minutes',
+      'calories',
+    ])
+  })
+
+  it.each([
+    ['missing', {}],
+    ['zero', { calories: 0, distance: 0 }],
+    ['negative', { calories: -1, distance: -1 }],
+    ['non-numeric', { calories: '612', distance: '8420' }],
+    ['non-finite', { calories: Number.NaN, distance: Number.POSITIVE_INFINITY }],
+  ])('ignores %s summary fields', (_label, data) => {
+    expect(keys(shareableSummaryOptions(new Set<string>(), data))).toEqual(['duration'])
+  })
+
+  it('never offers other summaries from activity data', () => {
+    expect(keys(shareableSummaryOptions(new Set<string>(), { average_hr: 150, max_hr: 170 }))).toEqual([
+      'duration',
+    ])
+  })
+
+  it('keeps metrics the post already shares', () => {
+    expect(keys(shareableSummaryOptions(new Set<string>(), undefined, ['calories']))).toEqual([
+      'duration',
+      'calories',
+    ])
+  })
+
+  it('lets the chart-mirrored defaults precheck Distance/Calories offered from summary fields', () => {
+    const { summary } = defaultsFromChart(['heart_rate'])
+    const body = buildShareBody({
+      canChart: true,
+      canMap: false,
+      includeMap: false,
+      message: '',
+      series: new Set<MetricType>(),
+      seriesOptions: [],
+      summary: new Set(summary),
+      summaryOptions: shareableSummaryOptions(new Set(['heart_rate']), { calories: 612, distance: 8420 }),
+      visibility: 'public',
+    })
+    expect(body.included_metrics).toEqual(expect.arrayContaining(['distance', 'calories']))
   })
 })

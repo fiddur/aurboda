@@ -16,9 +16,11 @@ import { API_URL } from '../../config'
 import { renderMarkdown } from '../../utils/markdown'
 import { formatEntryWindow } from './activity-stats'
 import { ActivityStatGrid } from './ActivityStatGrid'
+import { articleRenderSource } from './article-render-source'
 import { ArticleContent } from './ArticleContent'
 import { ChallengeShareContent } from './ChallengeShareContent'
 import { structuredHasNativeHrChart, structuredHasNativeMap } from './timeline-structured'
+import { TimelineArticle } from './TimelineArticle'
 import { TimelineStructured } from './TimelineStructured'
 import './FeedPostCard.css'
 
@@ -105,14 +107,49 @@ const ReplyPostBody = ({ post }: { post: FeedPost }) => {
   )
 }
 
+/**
+ * The card body. An article renders its own title + prose/chart blocks (prose sanitised
+ * via the shared sanitiser) — live for the owner, server-resolved for a
+ * visitor. An activity post with the full structured
+ * payload renders the SAME `TimelineStructured` component a subscribing
+ * Aurboda peer's home timeline uses (#1008) — interactive hover charts
+ * included — so the owner and public-profile visitors see exactly what
+ * a follower sees. Without it (a post whose structured resolve returned
+ * nothing), the stat-grid `ActivityPostBody`; older payloads fall back
+ * to the server-built, HTML-escaped `content`.
+ */
+const FeedPostBody = ({ post, visitor }: { post: FeedPost; visitor: boolean }) => {
+  const articleSource = articleRenderSource(post, visitor)
+  return articleSource?.kind === 'resolved' ? (
+    <TimelineArticle article={articleSource.article} />
+  ) : articleSource?.kind === 'live' ? (
+    <ArticleContent article={articleSource.article} />
+  ) : post.kind === 'challenge' && post.challenge ? (
+    <ChallengeShareContent challenge={post.challenge} message={post.message} />
+  ) : post.kind === 'reply' ? (
+    <ReplyPostBody post={post} />
+  ) : post.structured ? (
+    <TimelineStructured structured={post.structured} />
+  ) : post.metrics ? (
+    <ActivityPostBody post={post} />
+  ) : post.content ? (
+    <div class="feed-post-content" dangerouslySetInnerHTML={{ __html: post.content }} />
+  ) : (
+    <div class="feed-post-content">{post.activity_title ?? 'Shared activity'}</div>
+  )
+}
+
 export const FeedPostCard = ({
   post,
   author,
   footer,
+  visitor = false,
 }: {
   post: FeedPost
   author: PostAuthor
   footer?: ComponentChildren
+  /** Rendered for an unauthenticated visitor (the public profile), who can't fetch the owner's live data. */
+  visitor?: boolean
 }) => {
   const vis = VISIBILITY[post.visibility]
   const when = formatDistanceToNow(new Date(post.created_at), { addSuffix: true })
@@ -133,29 +170,7 @@ export const FeedPostCard = ({
         </div>
       </header>
 
-      {/* An article renders its own title + prose/chart blocks (prose sanitised
-          via the shared sanitiser). An activity post with the full structured
-          payload renders the SAME `TimelineStructured` component a subscribing
-          Aurboda peer's home timeline uses (#1008) — interactive hover charts
-          included — so the owner and public-profile visitors see exactly what
-          a follower sees. Without it (a post whose structured resolve returned
-          nothing), the stat-grid `ActivityPostBody`; older payloads fall back
-          to the server-built, HTML-escaped `content`. */}
-      {post.kind === 'article' && post.article ? (
-        <ArticleContent article={post.article} />
-      ) : post.kind === 'challenge' && post.challenge ? (
-        <ChallengeShareContent challenge={post.challenge} message={post.message} />
-      ) : post.kind === 'reply' ? (
-        <ReplyPostBody post={post} />
-      ) : post.structured ? (
-        <TimelineStructured structured={post.structured} />
-      ) : post.metrics ? (
-        <ActivityPostBody post={post} />
-      ) : post.content ? (
-        <div class="feed-post-content" dangerouslySetInnerHTML={{ __html: post.content }} />
-      ) : (
-        <div class="feed-post-content">{post.activity_title ?? 'Shared activity'}</div>
-      )}
+      <FeedPostBody post={post} visitor={visitor} />
 
       {(chart || route) && (
         <div class="feed-post-media">

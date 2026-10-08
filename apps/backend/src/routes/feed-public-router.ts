@@ -98,9 +98,13 @@ export const createFeedPublicRouter = (): TypedRouter => {
   // A user's public feed for their profile page: the most recent `public`/
   // `unlisted` posts, newest-first (the ActivityPub outbox's set), serialized
   // like the authenticated `/feed` with the structured payload attached per
-  // post — `structured` carries only the author's per-post opt-ins, the same
-  // payload `/public/:username/feed/:postId` serves. Structured resolution is
-  // expensive (bucketed series queries + a GPS-track load per opted-in post),
+  // activity and article post — `structured` carries only the author's per-post
+  // opt-ins, the same payload `/public/:username/feed/:postId` serves. An
+  // article's live blocks fetch the owner-authenticated metric endpoints, which
+  // a visitor can't reach, so the page renders its server-resolved blocks
+  // instead. Structured resolution is
+  // expensive (bucketed series queries + a GPS-track load per opted-in post, a
+  // bucketed query per article chart block, a correlation per correlation block),
   // so it goes through the shared LRU above — same key shape as the sibling
   // endpoint — while the per-request visibility filter keeps un-sharing
   // immediate despite the cache.
@@ -140,7 +144,7 @@ export const createFeedPublicRouter = (): TypedRouter => {
         const posts = await Promise.all(
           records.map(async (record) => {
             const post = await serializeFeedPost(username, record, { settings })
-            if (record.kind === 'activity') {
+            if (record.kind === 'activity' || record.kind === 'article') {
               const key = `structured:${username}:${record.id}:${record.updated_at.getTime()}:${hourBucket}`
               post.structured =
                 (await structuredCache(key, () => resolveStructuredContent(username, record))) ?? undefined

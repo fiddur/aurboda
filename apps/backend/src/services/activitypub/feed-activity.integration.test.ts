@@ -69,4 +69,17 @@ describe('resolveActivityScalars', () => {
     ])
     expect(scalars.map((s) => s.key)).toEqual(['heart_rate_avg'])
   })
+
+  test("falls back to the activity's summary distance/calories when the window has no series (#1026)", async () => {
+    const user = getTestUser()
+    const scalars = await resolveActivityScalars(
+      user,
+      { data: { calories: 612, distance: 8_420 }, end_time: END, start_time: START },
+      ['distance', 'calories'],
+    )
+    expect(scalars).toEqual([
+      { key: 'distance', label: 'Distance', unit: 'km', value: 8.42 },
+      { key: 'calories', label: 'Calories', unit: 'kcal', value: 612 },
+    ])
+  })
 })

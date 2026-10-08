@@ -215,11 +215,7 @@ export const resolveStructuredContent = async (
   const activity = await resolveFeedActivity(user, post.activity_id)
   if (activity == null) return null
 
-  const scalars = await resolveActivityScalars(
-    user,
-    { end_time: activity.end_time, start_time: activity.start_time },
-    post.included_metrics,
-  )
+  const scalars = await resolveActivityScalars(user, activity, post.included_metrics)
 
   const series = activity.end_time
     ? await resolveStructuredSeries(user, post.series_metrics, activity.start_time, activity.end_time)

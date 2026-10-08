@@ -404,7 +404,7 @@ export const feedPostSchema = z
     series_metrics: z.array(z.string()).meta({ description: 'Explicitly-shared series metrics' }),
     structured: feedStructuredPostSchema.optional().meta({
       description:
-        "The post's native structured payload (typed metrics + inline series), identical to what a subscribing peer receives — drives the owner's native card render",
+        "The post's native structured payload (an activity's typed metrics + inline series; on the public profile listing also an article's resolved blocks), identical to what a subscribing peer receives — drives the native card render",
     }),
     updated_at: z.string().meta({ description: 'Last update timestamp (ISO 8601)' }),
     visibility: feedVisibilitySchema,

@@ -114,9 +114,57 @@ describe('GET /public/:username/posts', () => {
     }
   })
 
+  test('attaches the resolved structured article so a visitor sees its charts (#1054)', async () => {
+    const user = getTestUser()
+    await insertTimeSeries(
+      user,
+      Array.from({ length: 4 }, (_, i) => ({
+        metric: 'heart_rate' as const,
+        source: 'garmin' as const,
+        time: new Date(START.getTime() + i * 600_000),
+        value: 60 + i,
+      })),
+    )
+    const article = await createArticlePost(user, {
+      article: {
+        blocks: [
+          { markdown: 'Intro', type: 'prose' },
+          {
+            bucket: '1h',
+            end: END.toISOString(),
+            metric: 'heart_rate',
+            start: START.toISOString(),
+            type: 'chart',
+          },
+        ],
+        title: 'My resting HR',
+      },
+      visibility: 'public',
+    })
+
+    const { request, close } = startApp()
+    try {
+      const res = await request.get(`/public/${user}/posts`)
+      expect(res.status).toBe(200)
+      const post = res.body.posts.find((p: { id: string }) => p.id === article.id)
+      expect(post.structured).toMatchObject({
+        blocks: [
+          { markdown: 'Intro', type: 'prose' },
+          { bucket: '1h', metric: 'heart_rate', type: 'chart' },
+        ],
+        kind: 'article',
+        title: 'My resting HR',
+      })
+      expect(post.structured.blocks[1].samples.length).toBeGreaterThan(0)
+    } finally {
+      await close()
+    }
+  })
+
   test('pages past the fixed page size with next_cursor (#1055)', async () => {
     const user = getTestUser()
-    // Articles: no activity anchor, so the page costs no structured resolution.
+    // Prose-only articles: no activity anchor and no chart block, so each post's
+    // structured resolution is a single settings read.
     const ids: string[] = []
     for (let i = 0; i < 21; i++) {
       const post = await createArticlePost(user, {
