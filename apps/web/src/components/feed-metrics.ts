@@ -10,16 +10,42 @@ import type { FeedPost, FeedVisibility, MetricType, ShareActivityBody } from '@a
  * services/activitypub/scalars.ts). `source` is the time-series metric a
  * summary is derived from — used to offer only metrics the activity actually
  * has. `duration` has no source (it comes from the activity's window).
+ * `summaryField` is the `activity.data` key the backend falls back to when the
+ * window has no `source` series (Garmin/Strava store distance and calories only
+ * as summary fields).
  */
-export const SUMMARY_METRICS: { key: string; label: string; source?: MetricType }[] = [
+export const SUMMARY_METRICS: { key: string; label: string; source?: MetricType; summaryField?: string }[] = [
   { key: 'duration', label: 'Duration' },
-  { key: 'distance', label: 'Distance', source: 'distance' },
+  { key: 'distance', label: 'Distance', source: 'distance', summaryField: 'distance' },
   { key: 'heart_rate_avg', label: 'Avg HR', source: 'heart_rate' },
   { key: 'heart_rate_max', label: 'Max HR', source: 'heart_rate' },
   { key: 'hr_zone_minutes', label: 'HR zones', source: 'heart_rate' },
-  { key: 'calories', label: 'Calories', source: 'calories_active' },
+  { key: 'calories', label: 'Calories', source: 'calories_active', summaryField: 'calories' },
   { key: 'stress_avg', label: 'Avg stress', source: 'stress_level' },
 ]
+
+const isPositiveNumber = (v: unknown): boolean => typeof v === 'number' && Number.isFinite(v) && v > 0
+
+/**
+ * The summaries to offer for an activity: those whose source series has data in
+ * the window (`present`), or — for distance/calories — whose summary field the
+ * activity carries as a positive number, plus `keep` (what the post already
+ * shares). Every summary while `present` is unknown (loading, or no window).
+ */
+export const shareableSummaryOptions = (
+  present: ReadonlySet<string> | undefined,
+  activityData: Record<string, unknown> | undefined,
+  keep: readonly string[] = [],
+): typeof SUMMARY_METRICS => {
+  if (!present) return SUMMARY_METRICS
+  return SUMMARY_METRICS.filter(
+    (m) =>
+      m.source === undefined ||
+      present.has(m.source) ||
+      (m.summaryField !== undefined && isPositiveNumber(activityData?.[m.summaryField])) ||
+      keep.includes(m.key),
+  )
+}
 
 /** High-resolution series a user can explicitly opt into sharing. */
 export const SERIES_METRICS: { key: MetricType; label: string }[] = [

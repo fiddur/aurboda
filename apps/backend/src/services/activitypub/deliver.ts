@@ -145,6 +145,7 @@ export interface DeliverableActivity {
   start_time: Date
   end_time?: Date
   title?: string
+  data?: Record<string, unknown>
 }
 
 export interface ImageAvailability {

@@ -87,7 +87,12 @@ explicit metric selection that bounds what is shared:
 - **`included_metrics`** — the scalar summaries the user opted to share (e.g.
   `duration`, `distance`, `heart_rate_avg`, `heart_rate_max`, `hr_zone_minutes`,
   `calories`, `stress_avg`). This is the single source of truth for the human-readable
-  summary and the machine-readable scalars a remote Aurboda instance reads.
+  summary and the machine-readable scalars a remote Aurboda instance reads. Each scalar
+  aggregates its time-series over the activity window; `distance` and `calories` fall back
+  to the activity's own summary fields (`data.distance` in metres, `data.calories` in kcal)
+  when the window has no such series — Garmin and Strava store them only there (#1026).
+  The share dialog offers them on the same terms, and the preview, the delivered `Note`, the
+  owner card and the structured payload all go through the one resolver, so they agree.
 - **`series_metrics`** — a **separate, explicit opt-in** for high-resolution continuous
   series (e.g. per-5-second heart rate or stress). A per-sample trace is far more
   revealing than an average, so series are **off unless deliberately chosen**, even for
@@ -789,9 +794,13 @@ resolving.
   what they shared. The listing is **keyset-paginated** (20 per page, "Load more" — the same
   cursor style as the home timeline), so the inline payload weight stays bounded per request
   however many posts exist (#1012). The **public profile** (`/u/:username`) attaches the same
-  full structured payload per post (through the per-post LRU the structured endpoint shares),
-  and pages the same way — 20 per page with a "Load more" driven by `next_cursor` (#1055) — so
-  visitors see the identical native card and can reach every public post. The MCP `list_feed`
+  full structured payload per activity **and article** post (through the per-post LRU the
+  structured endpoint shares), and pages the same way — 20 per page with a "Load more" driven
+  by `next_cursor` (#1055) — so visitors see the identical native card and can reach every
+  public post. An article renders from that server-resolved payload for a visitor (the same
+  `TimelineArticle` a follower's timeline uses), since its live chart/correlation blocks fetch
+  the owner-authenticated metric endpoints a visitor can't reach; the owner's own feed keeps
+  the live render (#1054). The MCP `list_feed`
   tool remains the one surface that omits `structured` (an intentional payload-weight divergence
   from `GET /feed`, not a capability gap: the underlying data is all reachable via the
   metric-query tools).

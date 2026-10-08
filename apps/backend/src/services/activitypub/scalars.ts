@@ -29,15 +29,28 @@ const roundTo = (n: number, decimals = 0): number => {
   return Math.round(n * f) / f
 }
 
-/** Scalar keys resolved from a single metric aggregate. */
+/**
+ * Scalar keys resolved from a single metric aggregate. `summaryField` names the
+ * `activity.data` key (same raw unit as the aggregate) used when the window has
+ * no series: Garmin and Strava store distance and calories only as summary
+ * fields on the activity, not as time-series inside its window.
+ */
 const METRIC_SCALARS: Record<
   string,
-  { metric: MetricType; stat: ScalarStat; unit?: string; label: string; transform?: (raw: number) => number }
+  {
+    metric: MetricType
+    stat: ScalarStat
+    unit?: string
+    label: string
+    transform?: (raw: number) => number
+    summaryField?: string
+  }
 > = {
   calories: {
     label: 'Calories',
     metric: 'calories_active',
     stat: 'sum',
+    summaryField: 'calories',
     transform: (v) => roundTo(v),
     unit: 'kcal',
   },
@@ -45,6 +58,7 @@ const METRIC_SCALARS: Record<
     label: 'Distance',
     metric: 'distance',
     stat: 'sum',
+    summaryField: 'distance',
     transform: (v) => roundTo(v / 1000, 2),
     unit: 'km',
   },
@@ -82,6 +96,15 @@ export const SCALAR_SOURCE_METRICS: MetricType[] = [
   ...new Set<MetricType>(Object.values(METRIC_SCALARS).map((c) => c.metric)),
 ]
 
+/** A summary field's value when it is a usable positive number, else undefined. */
+const positiveSummaryValue = (
+  summary: Record<string, unknown> | undefined,
+  field: string,
+): number | undefined => {
+  const v = summary?.[field]
+  return typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : undefined
+}
+
 /** Build the `hr_zone_minutes` record (minutes per zone with data) from zone-second sums. */
 const hrZoneMinutes = (metricStat: MetricStat): Record<string, number> => {
   const zones: Record<string, number> = {}
@@ -96,11 +119,14 @@ const hrZoneMinutes = (metricStat: MetricStat): Record<string, number> => {
  * Resolve the requested scalar keys into `ScalarMetric[]`, in the order given.
  * Supported keys: `duration`, `hr_zone_minutes`, plus the `METRIC_SCALARS` set
  * (`heart_rate_avg`/`heart_rate_max`, `stress_avg`, `distance`, `calories`).
+ * `summary` is the activity's `data` (its source summary fields), consulted for
+ * `distance`/`calories` only when the window aggregate is missing.
  */
 export const resolveSharedScalars = (
   window: ActivityWindow,
   includedMetrics: string[],
   metricStat: MetricStat,
+  summary?: Record<string, unknown>,
 ): ScalarMetric[] => {
   const out: ScalarMetric[] = []
   for (const key of includedMetrics) {
@@ -118,7 +144,9 @@ export const resolveSharedScalars = (
     }
     const cfg = METRIC_SCALARS[key]
     if (cfg === undefined) continue
-    const raw = metricStat(cfg.metric, cfg.stat)
+    const raw =
+      metricStat(cfg.metric, cfg.stat) ??
+      (cfg.summaryField === undefined ? undefined : positiveSummaryValue(summary, cfg.summaryField))
     if (raw === undefined) continue
     out.push({ key, label: cfg.label, unit: cfg.unit, value: cfg.transform ? cfg.transform(raw) : raw })
   }

@@ -23,7 +23,7 @@ stop_process() {
     ( sleep "$3"; kill -KILL "$pid" 2>/dev/null ) &
     watchdog=$!
     wait "$pid" 2>/dev/null || true
-    kill "$watchdog" 2>/dev/null || true
+    kill -KILL "$watchdog" 2>/dev/null || true
 }
 
 shutdown() {
