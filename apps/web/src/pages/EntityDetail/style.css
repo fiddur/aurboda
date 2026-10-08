@@ -70,6 +70,12 @@ a.entity-type-badge:hover {
   color: #6b7280;
 }
 
+.entity-route {
+  font-size: 0.85rem;
+  color: #6b7280;
+  margin: 0.25rem 0 0.5rem;
+}
+
 .entity-info h2 {
   margin: 0 0 1rem;
   font-size: 1.5rem;

@@ -47,6 +47,21 @@ See [Routes and segments](features/routes-and-segments.md).
 | `get_activity_track`       | An activity's full-resolution GPS track: `lat`, `lon`, `alt` and `t` (seconds since the activity start) per point, with `length_m` and `point_count` |
 | `backfill_activity_tracks` | Build missing tracks from stored raw records (Garmin details at full resolution, Strava polylines shape-only) and return the counts                  |
 
+### Route tools
+
+A route is a course run more than once, recognised from the tracks. See
+[Routes and segments](features/routes-and-segments.md#phase-2-routes). `query_activities`
+takes a `route_id` to list a route's activities.
+
+| Tool           | What it does                                                                                                                              |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `list_routes`  | Every route with its activity type, length, run count and latest run, most recently run first                                             |
+| `get_route`    | One route with its line and its runs, newest first: elapsed seconds, average heart rate and pace (s/km) per run                           |
+| `update_route` | Rename a route                                                                                                                            |
+| `delete_route` | Delete a route; its activities are kept and become unrouted                                                                               |
+| `merge_routes` | Move every run of `source_route_id` onto the route `id` and delete the source                                                             |
+| `match_routes` | Match every tracked activity without a route (attach to a covering route, or pair two unrouted tracks into a new one); returns the counts |
+
 ### Comment tools
 
 Comments (stored as "notes") hang off anything, or off a bare point in time, and

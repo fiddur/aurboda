@@ -47,6 +47,41 @@ describe('getActivityFullDetail GPS', () => {
     expect(db.getLocations).not.toHaveBeenCalled()
   })
 
+  const shapeOnlyTrack = {
+    activity_id: 'a1',
+    full_resolution: false,
+    length_m: 1112,
+    point_count: 2,
+    points: [
+      { alt: 0, lat: 59, lon: 18, t: 0 },
+      { alt: 0, lat: 59.01, lon: 18, t: 3600 },
+    ],
+    source: 'strava',
+    start_time: start,
+  }
+
+  test('prefers locations with real timestamps over a shape-only track', async () => {
+    vi.mocked(db.getActivityTrack).mockResolvedValue(shapeOnlyTrack)
+
+    const result = await getActivityFullDetail('u', { end_time: end, id: 'a1', start_time: start }, {})
+
+    expect(result.gps).toEqual([{ lat: 59.5, lon: 18.5, time: '2026-06-08T10:30:00.000Z' }])
+  })
+
+  test('uses a shape-only track when the window has no locations', async () => {
+    vi.mocked(db.getActivityTrack).mockResolvedValue(shapeOnlyTrack)
+    vi.mocked(db.getLocations).mockResolvedValue({ locations: [] } as unknown as Awaited<
+      ReturnType<typeof db.getLocations>
+    >)
+
+    const result = await getActivityFullDetail('u', { end_time: end, id: 'a1', start_time: start }, {})
+
+    expect(result.gps).toEqual([
+      { lat: 59, lon: 18, time: '2026-06-08T10:00:00.000Z' },
+      { lat: 59.01, lon: 18, time: '2026-06-08T11:00:00.000Z' },
+    ])
+  })
+
   test('falls back to locations in the time range without a track', async () => {
     vi.mocked(db.getActivityTrack).mockResolvedValue(null)
 

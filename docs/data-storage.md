@@ -177,6 +177,41 @@ Garmin writes a track when an activity's detail is synced, Strava when its strea
 
 History is backfilled from `raw_records` without new API calls: Garmin from the stored activity detail (full resolution), Strava from the stored activity's `map.polyline` (a shape without timestamps, so M is spread evenly over `elapsed_time` and `full_resolution` is false). The backfill is incremental -- activities with a usable raw record and no track -- and runs per user in the `track-backfill` queue after each startup's schema sweep, or on demand through `POST /tracks/backfill` / the `backfill_activity_tracks` MCP tool.
 
+#### `routes` and `activity_routes` - Recognised Courses (PostGIS)
+
+A route is a course run more than once: its line is the simplified track of the older of the
+first two runs that matched. See [Routes and segments](./features/routes-and-segments.md#phase-2-routes).
+
+```sql
+CREATE TABLE routes (
+    id                     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name                   VARCHAR(255) NOT NULL,
+    activity_type          VARCHAR(100) NOT NULL REFERENCES activity_type_definitions(name) ON UPDATE CASCADE,
+    geom                   GEOMETRY(LINESTRING, 4326) NOT NULL,   -- the canonical track's `simplified`
+    buffer                 GEOMETRY(GEOMETRY, 4326) NOT NULL,     -- ST_Buffer(geom::geography, 25)::geometry, stored at creation
+    length_m               DOUBLE PRECISION NOT NULL,
+    start_pt               GEOGRAPHY(POINT, 4326) NOT NULL,
+    end_pt                 GEOGRAPHY(POINT, 4326) NOT NULL,
+    canonical_activity_id  UUID REFERENCES activities(id) ON DELETE SET NULL,
+    created_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at             TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX idx_routes_geom ON routes USING GIST (geom);
+
+CREATE TABLE activity_routes (
+    activity_id  UUID PRIMARY KEY REFERENCES activities(id) ON DELETE CASCADE,
+    route_id     UUID NOT NULL REFERENCES routes(id) ON DELETE CASCADE,
+    coverage     REAL NOT NULL,          -- the lower of the two buffer coverages when matched
+    matched_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX idx_activity_routes_route ON activity_routes (route_id);
+```
+
+An activity is on at most one route. The run count is derived, never stored: attached,
+non-deleted activities, where rows of the same session from several sources (they overlap in
+time) count once. Deleting a route keeps its activities; merging moves the `activity_routes`
+rows and deletes the source route.
+
 #### `places` - Named Locations/Geofences
 
 ```sql

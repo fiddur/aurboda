@@ -13,6 +13,7 @@ import {
   timeRangeQuerySchema,
 } from './common.ts'
 import { commentSchema } from './notes.ts'
+import { activityRouteSummarySchema } from './routes.ts'
 import { hrZoneSecsSchema } from './settings.ts'
 
 /**
@@ -248,6 +249,9 @@ export const activityDetailSchema = activitySchema
     merged_start_time: iso8601DateTimeSchema
       .optional()
       .meta({ description: 'Merged start time across all overlapping sources' }),
+    route: activityRouteSummarySchema.optional().meta({
+      description: 'The route the activity was matched to, when it has one',
+    }),
     source_records: z
       .array(sourceRecordSchema)
       .optional()
@@ -274,6 +278,9 @@ export const activitiesQuerySchema = timeRangeQuerySchema
     }),
     deduction_rule_id: z.string().uuid().optional().meta({
       description: 'Filter to activities created, enriched or retyped by a specific deduction rule',
+    }),
+    route_id: z.string().uuid().optional().meta({
+      description: 'Filter to the activities matched to a route',
     }),
   })
   .meta({ id: 'ActivitiesQuery' })
@@ -418,7 +425,7 @@ export const nearbyActivitiesResponseSchema = createDataArrayResponseSchema(acti
 
 export type NearbyActivitiesResponse = z.infer<typeof nearbyActivitiesResponseSchema>
 
-export const activityDetailResponseSchema = createDataResponseSchema(activitySchema)
+export const activityDetailResponseSchema = createDataResponseSchema(activityDetailSchema)
   .extend({
     referenced_rules: z
       .record(z.string(), z.string())

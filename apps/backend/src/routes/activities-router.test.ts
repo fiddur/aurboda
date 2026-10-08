@@ -11,6 +11,8 @@ vi.mock('../db/index.ts', () => ({
   getActivityTrack: vi.fn(),
   getDeductionRule: vi.fn().mockResolvedValue(null),
   getOverlappingActivities: vi.fn().mockResolvedValue([]),
+  getAllActivityTypeNames: vi.fn().mockResolvedValue(['running']),
+  getRouteForActivity: vi.fn().mockResolvedValue(null),
 }))
 
 vi.mock('../services/queries/index.ts', () => ({
@@ -100,6 +102,22 @@ describe('GET /activities/:id', () => {
     expect(vi.mocked(queries.getCommentsMap)).toHaveBeenCalledWith('tester', 'activity', [ACTIVITY_ID])
   })
 
+  test('includes the route the activity was matched to', async () => {
+    vi.mocked(queries.getCommentsMap).mockResolvedValue(
+      new Map() as Awaited<ReturnType<typeof queries.getCommentsMap>>,
+    )
+    vi.mocked(db.getRouteForActivity).mockResolvedValueOnce({
+      activity_count: 5,
+      id: 'route-1',
+      name: 'Söderhallarna · 8.2 km',
+    } as Awaited<ReturnType<typeof db.getRouteForActivity>>)
+
+    const res = await supertest(buildApp()).get(`/activities/${ACTIVITY_ID}`)
+
+    expect(res.body.data.route).toEqual({ activity_count: 5, id: 'route-1', name: 'Söderhallarna · 8.2 km' })
+    expect(db.getRouteForActivity).toHaveBeenCalledWith('tester', ACTIVITY_ID)
+  })
+
   test('returns an empty comments array when the activity has no notes', async () => {
     vi.mocked(queries.getCommentsMap).mockResolvedValue(
       new Map() as Awaited<ReturnType<typeof queries.getCommentsMap>>,
@@ -109,6 +127,23 @@ describe('GET /activities/:id', () => {
 
     expect(res.status).toBe(200)
     expect(res.body.data.comments).toEqual([])
+  })
+})
+
+describe('GET /activities', () => {
+  test('passes a route filter to the query', async () => {
+    vi.mocked(queries.queryActivities).mockResolvedValue([])
+    const routeId = '6f1c3b2a-4d5e-4f60-8a7b-9c0d1e2f3a4b'
+
+    const res = await supertest(buildApp()).get('/activities').query({
+      end: '2026-06-30T00:00:00Z',
+      route_id: routeId,
+      start: '2026-06-01T00:00:00Z',
+      types: 'running',
+    })
+
+    expect(res.status).toBe(200)
+    expect(vi.mocked(queries.queryActivities).mock.calls.at(-1)?.[7]).toBe(routeId)
   })
 })
 
@@ -186,10 +221,13 @@ describe('POST /activities/:id/resync-detail', () => {
 
     expect(res.status).toBe(200)
     expect(res.body).toEqual({ points: 42, success: true })
-    expect(resync).toHaveBeenCalledWith('tester', ACTIVITY_ID, 999, {
-      end: new Date('2026-06-08T11:00:00Z'),
-      start: new Date('2026-06-08T10:00:00Z'),
-    })
+    expect(resync).toHaveBeenCalledWith(
+      'tester',
+      ACTIVITY_ID,
+      999,
+      { end: new Date('2026-06-08T11:00:00Z'), start: new Date('2026-06-08T10:00:00Z') },
+      new Date('2026-06-08T10:00:00Z'),
+    )
   })
 
   test('passes the Garmin source’s span, not the merged activity’s', async () => {
@@ -212,10 +250,13 @@ describe('POST /activities/:id/resync-detail', () => {
     const res = await supertest(buildApp(resync)).post(`/activities/${ACTIVITY_ID}/resync-detail`)
 
     expect(res.status).toBe(200)
-    expect(resync).toHaveBeenCalledWith('tester', GARMIN_SOURCE_ID, 777, {
-      end: new Date('2026-06-08T11:30:00Z'),
-      start: new Date('2026-06-08T11:00:00Z'),
-    })
+    expect(resync).toHaveBeenCalledWith(
+      'tester',
+      GARMIN_SOURCE_ID,
+      777,
+      { end: new Date('2026-06-08T11:30:00Z'), start: new Date('2026-06-08T11:00:00Z') },
+      new Date('2026-06-08T11:00:00Z'),
+    )
   })
 
   test('passes a null span when the activity has no end_time', async () => {
@@ -226,7 +267,7 @@ describe('POST /activities/:id/resync-detail', () => {
 
     await supertest(buildApp(resync)).post(`/activities/${ACTIVITY_ID}/resync-detail`)
 
-    expect(resync).toHaveBeenCalledWith('tester', ACTIVITY_ID, 999, null)
+    expect(resync).toHaveBeenCalledWith('tester', ACTIVITY_ID, 999, null, new Date('2026-06-08T10:00:00Z'))
   })
 
   test('400s without touching the resync when no Garmin id can be found', async () => {

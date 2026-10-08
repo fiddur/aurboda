@@ -60,7 +60,7 @@ export const getActivityTrack = async (
             (SELECT json_agg(json_build_array(ST_Y(d.geom), ST_X(d.geom), ST_Z(d.geom), ST_M(d.geom)) ORDER BY d.path)
                FROM ST_DumpPoints(t.geom) d) AS coords
      FROM activity_tracks t
-     JOIN activities a ON a.id = t.activity_id
+     JOIN activities a ON a.id = t.activity_id AND a.deleted_at IS NULL
      WHERE t.activity_id = $1
      ORDER BY t.full_resolution DESC, t.point_count DESC, t.source
      LIMIT 1`,

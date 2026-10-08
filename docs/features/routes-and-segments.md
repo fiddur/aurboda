@@ -9,7 +9,7 @@ which parts exist.
 | Phase | What                                                | Status          |
 | ----- | --------------------------------------------------- | --------------- |
 | 1     | `activity_tracks`: full-resolution tracks, backfill | shipped (#1231) |
-| 2     | Routes: matching, efforts over time                 | planned (#1232) |
+| 2     | Routes: matching, efforts over time                 | shipped (#1232) |
 | 3     | Run features and rule-based categories              | planned (#1233) |
 | 4     | Segments: manual, timed efforts, suggestions        | planned (#1234) |
 | 5     | Federated segment challenges                        | planned (#1235) |
@@ -79,50 +79,100 @@ per user in the `track-backfill` queue at startup, and on demand through
 - `GET /activities/:id/track` and `get_activity_track`: `{ source, points: [{lat, lon,
 alt, t}], length_m, point_count, full_resolution }`, `t` in seconds since the
   activity's start.
-- `/activities/:id/full` (and `get_activity_detail`) use the track for `gps` when one
-  exists and fall back to `locations` by time window otherwise; so does the web
-  activity map. The Android app embeds the web page.
+- `/activities/:id/full` (and `get_activity_detail`) use a full-resolution track for
+  `gps`; otherwise the `locations` in the time window, whose real timestamps suit the
+  chart hover better than a shape-only track's evenly spread ones, which are used only
+  when the window has no locations. The web activity map follows the same rule. The
+  Android app embeds the web page.
 
 ### Post-processing hook
 
 Writing a track enqueues a `track-analyse` job (one per activity, `stately` so a
 re-sync collapses into one run, after a ten-minute stabilisation delay like
-auto-share). Phase 1 registers the queue with nothing in it; later phases add route
-matching, features and segment matching there. Strava ingest now also fires the
+auto-share). Route matching (phase 2) runs there; features and segment matching are
+added there later. Strava ingest now also fires the
 activity notifier, so a Strava activity gets deduction and auto-share evaluation like a
 Garmin one.
 
 ## Phase 2: routes
 
-**Buffer coverage, not Fréchet.** For a new track T and a candidate route R:
+A route is a course run more than once. A new track either joins an existing route or,
+with an earlier run of the same course, creates one; a single run never makes a route, so
+one-offs do not litter the list.
+
+### Matching
+
+**Buffer coverage, not Fréchet.** For a new track T (its `simplified` line) and a
+candidate route R:
 
 ```
-coverage(T,R) = ST_Length(ST_Intersection(T.simplified, R.buffer)) / ST_Length(T.simplified)
-coverage(R,T) = ST_Length(ST_Intersection(R.geom,       T.buffer)) / ST_Length(R.geom)
+coverage_track = ST_Length(ST_Intersection(T, R.buffer)) / ST_Length(T)
+coverage_route = ST_Length(ST_Intersection(R.geom, ST_Buffer(T, 25 m))) / ST_Length(R.geom)
 ```
 
-match when both are ≥ 0.9, with `R.buffer = ST_Buffer(R.geom::geography, 25 m)`
-precomputed. Coverage tolerates GPS noise and a 100 m detour; `ST_FrechetDistance` is a
-max-deviation measure and calls a single wrong turn a different route.
+both measured on the geography, a match when both are ≥ 0.9, with
+`R.buffer = ST_Buffer(R.geom::geography, 25 m)` stored at creation. Coverage tolerates GPS
+noise and a 100 m detour; `ST_FrechetDistance` is a max-deviation measure and calls a
+single wrong turn a different route. Among several matching routes the one with the
+highest lower coverage wins.
 
-**Direction matters**: reverse direction is a different route (uphill one way,
-downhill the other). After the coverage test, T's matched vertices must project onto
-R (`ST_LineLocatePoint`) monotonically forward. No direction flag is stored.
+**Direction matters**: reverse direction is a different route (uphill one way, downhill
+the other), and no direction flag is stored. After the coverage test, 24 points evenly
+spaced along T that fall inside R's buffer are projected onto R (`ST_LineLocatePoint`);
+the run is forward when at least 80 % of consecutive projections increase (at least four
+samples needed). A loop started elsewhere on it wraps once, which that tolerates; a
+reversed run decreases almost everywhere.
 
-Cost per new activity: GiST bbox prefilter → a handful of candidates → one
-`ST_Intersection` each on simplified lines, about a millisecond per candidate.
+**Same activity type only**: a route carries the activity type of its canonical
+activity, and a track is matched only against routes of its own type.
 
-Tables: `routes (id, name, geom, buffer, length_m, start_pt, end_pt,
-canonical_activity_id, activity_count, …)` and `activity_routes (activity_id,
-route_id, coverage, matched_at)`. A route is born when a new track matches another
-_unrouted_ track, so single runs don't litter the list; the older track is the
-canonical geometry. Auto-named from the nearest named/detected location plus length
-("Söderhallarna loop · 8.2 km"), renameable, mergeable.
+**Birth from a pair**: a track that matches no route is tested the same way against the
+other non-deleted, unrouted tracks of its type. The first that passes both tests makes a
+route whose geometry is the **older** run's simplified track; both runs are attached. A row
+that overlaps the track in time is the same session recorded by another source (Garmin and
+Strava), never a second run, so it is not a pairing candidate.
 
-Surfaces: `list_routes`, `get_route` (efforts over time: elapsed, avg HR, pace, and
-pace at HR — the low-HR progress chart), rename, merge, delete; "other runs on this
-route" on the activity page; a `route_id` filter on activity queries. Web `/routes`
-and `/routes/:id`, embedded in Android.
+Candidates come from a GiST bbox prefilter (the track's bbox expanded by 0.002°), then one
+`ST_Intersection` per candidate on simplified lines. Matching is idempotent: an activity
+already in `activity_routes` is skipped.
+
+**Where it runs**: the `track-analyse` queue, ten minutes after a track is written; and the
+`track-backfill` job, which after building missing tracks runs the same matching over every
+tracked activity without a route, oldest first. `POST /routes/match` / `match_routes` runs
+that pass on demand.
+
+**Naming**: the nearest named location within 500 m of the canonical track's start, else
+the first part of the nearest detected location's address, else "Route", followed by the
+length: "Söderhallarna · 8.2 km". Renameable.
+
+### Tables
+
+`routes (id, name, activity_type, geom, buffer, length_m, start_pt, end_pt,
+canonical_activity_id, …)` and `activity_routes (activity_id, route_id, coverage,
+matched_at)`; see [data storage](../data-storage.md). The run count is derived: attached,
+non-deleted activities, with rows of one session from several sources counted once. Route
+geometry is never shared or federated.
+
+### Efforts
+
+A route's runs, newest first, each with `elapsed_s` (end − start), `avg_hr` (the mean
+heart-rate sample over the run) and `pace_s_per_km`: from the mean `speed` samples when
+there are any, else elapsed time over the activity's recorded `data.distance`. Pace at
+heart rate (the low-HR progress chart) waits for phase 3's run features.
+
+### Surfaces
+
+- REST: `GET /routes`, `GET /routes/:id` (with the line and the efforts),
+  `PATCH /routes/:id` (rename), `DELETE /routes/:id` (activities are kept),
+  `POST /routes/:id/merge` (`source_route_id`'s runs move here, the source is deleted),
+  `POST /routes/match`; `GET /activities?route_id=` filters to a route's activities, and
+  `GET /activities/:id` carries `route: { id, name, activity_count }`.
+- MCP: `list_routes`, `get_route`, `update_route`, `delete_route`, `merge_routes`,
+  `match_routes`; `query_activities` takes `route_id`.
+- Web: `/routes` (name, type, length, run count, last run) and `/routes/:id` (editable
+  name, the line on a map, pace and heart-rate trend charts, the runs with links to their
+  activities, merge into another route of the same type, delete); the activity page shows
+  its route and run count. The Android app embeds both pages (More → Routes).
 
 ## Phase 3: run features and categories
 

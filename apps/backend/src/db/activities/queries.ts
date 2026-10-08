@@ -140,6 +140,7 @@ export const getActivities = async (
   dataFilters?: DataFilter[],
   deductionRuleId?: string,
   categoryMap?: Map<string, string>,
+  routeId?: string,
 ): Promise<MergedActivity[]> => {
   const types = Array.isArray(activityType) ? activityType : [activityType]
   const params: unknown[] = [types, start, end]
@@ -150,6 +151,11 @@ export const getActivities = async (
     params.push(deductionRuleId)
     const n = params.length
     filterClauses += `\n       AND (data->>'rule_id' = $${n} OR data->>'_enriched_by' = $${n} OR data->>'_retyped_by' = $${n})`
+  }
+
+  if (routeId) {
+    params.push(routeId)
+    filterClauses += `\n       AND id IN (SELECT activity_id FROM activity_routes WHERE route_id = $${params.length})`
   }
 
   const result = await query(

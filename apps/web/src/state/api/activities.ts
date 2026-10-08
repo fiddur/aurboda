@@ -189,14 +189,22 @@ export const resyncActivityDetail = async (activityId: string): Promise<ResyncAc
   return response.data
 }
 
+export interface TimedGpsPoint {
+  lat: number
+  lon: number
+  time: Date
+}
+
+export interface ActivityTrackPoints {
+  full_resolution: boolean
+  points: TimedGpsPoint[]
+}
+
 /**
  * The activity's stored GPS track as timestamped fixes, or null when it has none.
  * `start` is the activity's own start_time, the origin of the track's `t`.
  */
-export const fetchActivityTrack = async (
-  id: string,
-  start: Date,
-): Promise<{ lat: number; lon: number; time: Date }[] | null> => {
+export const fetchActivityTrack = async (id: string, start: Date): Promise<ActivityTrackPoints | null> => {
   const { token } = auth.value
   try {
     const response = await axios.get<ActivityTrackResponse>(
@@ -205,9 +213,29 @@ export const fetchActivityTrack = async (
     )
     const track = response.data.data
     if (!track) return null
-    return track.points.map((p) => ({ lat: p.lat, lon: p.lon, time: new Date(start.getTime() + p.t * 1000) }))
+    return {
+      full_resolution: track.full_resolution,
+      points: track.points.map((p) => ({
+        lat: p.lat,
+        lon: p.lon,
+        time: new Date(start.getTime() + p.t * 1000),
+      })),
+    }
   } catch (error) {
     if (axios.isAxiosError(error) && error.response?.status === 404) return null
     throw error
   }
+}
+
+/**
+ * A full-resolution track wins; a shape-only one has evenly spread synthetic
+ * times, so the window's raw locations win over it unless there are none.
+ */
+export const pickActivityPoints = async (
+  track: ActivityTrackPoints | null,
+  loadRaw: () => Promise<TimedGpsPoint[]>,
+): Promise<TimedGpsPoint[]> => {
+  if (track?.full_resolution) return track.points
+  const raw = await loadRaw()
+  return raw.length > 0 || !track ? raw : track.points
 }

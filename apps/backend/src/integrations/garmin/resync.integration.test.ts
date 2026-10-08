@@ -139,9 +139,10 @@ describe('Garmin resync integration', () => {
     await processActivityDetail(user, data, {
       activityId,
       activitySpan: { end: samples[samples.length - 1]!.time, start },
+      activityStart: start,
       deps: realDeps,
     })
-    await processActivityDetail(user, data, { activityId, deps: realDeps })
+    await processActivityDetail(user, data, { activityId, activityStart: start, deps: realDeps })
 
     const track = await getActivityTrack(user, activityId)
     expect(track).toMatchObject({ activity_id: activityId, full_resolution: true, source: 'garmin' })

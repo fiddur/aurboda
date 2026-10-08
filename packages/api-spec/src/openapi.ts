@@ -45,6 +45,15 @@ import {
 } from './schemas/outbound-sync.ts'
 import { periodSummaryResponseSchema } from './schemas/period-summary.ts'
 import { productivityResponseSchema } from './schemas/productivity.ts'
+import {
+  mergeRoutesBodySchema,
+  mergeRoutesResponseSchema,
+  routeDetailResponseSchema,
+  routeMatchResponseSchema,
+  routeResponseSchema,
+  routesResponseSchema,
+  updateRouteBodySchema,
+} from './schemas/routes.ts'
 import { updateSettingsInputSchema, userSettingsResponseSchema } from './schemas/settings.ts'
 import { latestSleepResponseSchema } from './schemas/sleep.ts'
 import {
@@ -198,6 +207,11 @@ const openApiDocument = createDocument({
             start: iso8601DateTimeSchema.meta({
               description: 'Start date/time',
             }),
+            route_id: z
+              .string()
+              .uuid()
+              .optional()
+              .meta({ description: 'Only activities matched to this route' }),
             types: z.string().optional().meta({ description: 'Comma-separated activity types' }),
           }),
         },
@@ -236,6 +250,131 @@ const openApiDocument = createDocument({
         security: [{ bearerAuth: [] }],
         summary: 'Get activity track',
         tags: ['Activities'],
+      },
+    },
+    '/routes': {
+      get: {
+        description:
+          'List recognised routes (courses run more than once), with run count and latest run, most recently run first.',
+        responses: {
+          200: {
+            content: { 'application/json': { schema: routesResponseSchema } },
+            description: 'Successful response',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'List routes',
+        tags: ['Routes'],
+      },
+    },
+    '/routes/match': {
+      post: {
+        description:
+          'Match every tracked activity without a route: attach it to a covering route of its type, or pair it with another unrouted track to create one.',
+        responses: {
+          200: {
+            content: { 'application/json': { schema: routeMatchResponseSchema } },
+            description: 'Successful response',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Match routes',
+        tags: ['Routes'],
+      },
+    },
+    '/routes/{id}': {
+      delete: {
+        description: 'Delete a route. Its activities are kept and become unrouted.',
+        requestParams: {
+          path: z.object({
+            id: z.string().uuid().meta({ description: 'Route ID' }),
+          }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: deleteResponseSchema } },
+            description: 'Successful response',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Route not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Delete route',
+        tags: ['Routes'],
+      },
+      get: {
+        description:
+          'A route with its line and its runs over time: elapsed time, average heart rate and pace per run, newest first.',
+        requestParams: {
+          path: z.object({
+            id: z.string().uuid().meta({ description: 'Route ID' }),
+          }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: routeDetailResponseSchema } },
+            description: 'Successful response',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Route not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get route',
+        tags: ['Routes'],
+      },
+      patch: {
+        description: 'Rename a route.',
+        requestBody: {
+          content: { 'application/json': { schema: updateRouteBodySchema } },
+        },
+        requestParams: {
+          path: z.object({
+            id: z.string().uuid().meta({ description: 'Route ID' }),
+          }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: routeResponseSchema } },
+            description: 'Successful response',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Route not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Update route',
+        tags: ['Routes'],
+      },
+    },
+    '/routes/{id}/merge': {
+      post: {
+        description: 'Move every run of another route onto this one and delete the other route.',
+        requestBody: {
+          content: { 'application/json': { schema: mergeRoutesBodySchema } },
+        },
+        requestParams: {
+          path: z.object({
+            id: z.string().uuid().meta({ description: 'Route ID' }),
+          }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: mergeRoutesResponseSchema } },
+            description: 'Successful response',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Route not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Merge routes',
+        tags: ['Routes'],
       },
     },
     '/tracks/backfill': {

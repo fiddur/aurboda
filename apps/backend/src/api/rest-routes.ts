@@ -63,6 +63,7 @@ import { createPublicBannerRouter } from '../routes/public-banner-router.ts'
 import { createPublicSharesRouter } from '../routes/public-shares-router.ts'
 import { createRawRecordsRouter } from '../routes/raw-records-router.ts'
 import { createReportsRouter } from '../routes/reports-router.ts'
+import { createRoutesRouter } from '../routes/routes-router.ts'
 import { createScreentimeCategoriesRouter } from '../routes/screentime-categories-router.ts'
 import { createSensitivityFlagsRouter } from '../routes/sensitivity-flags-router.ts'
 import { createSettingsRouter } from '../routes/settings-router.ts'
@@ -171,9 +172,14 @@ export const mountRestRouters = ({
       authMiddleware,
       syncProvider,
       activityNotifier,
-      async (user, activityId, garminActivityId, activitySpan) => {
+      async (user, activityId, garminActivityId, activitySpan, activityStart) => {
         const detail = await garmin.getActivityDetail(user, garminActivityId)
-        const points = await processActivityDetail(user, detail, { activityId, activitySpan, onTrackWritten })
+        const points = await processActivityDetail(user, detail, {
+          activityId,
+          activitySpan,
+          activityStart,
+          onTrackWritten,
+        })
         await markActivityDetailSynced(user, activityId)
         onActivityDetailSynced(user, activityId)
         return points
@@ -267,6 +273,7 @@ export const mountRestRouters = ({
   )
   httpd.use('/correlations', createCorrelationsRouter(authMiddleware, syncProvider))
   httpd.use('/tracks', createTracksRouter(authMiddleware))
+  httpd.use('/routes', createRoutesRouter(authMiddleware))
   httpd.use('/training-load', createTrainingLoadRouter(authMiddleware))
   httpd.use('/trends', createTrendsRouter(authMiddleware))
   httpd.use('/chart-data', createChartDataRouter(authMiddleware))

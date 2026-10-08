@@ -11,6 +11,7 @@ import {
   type ActivityNeighborsQuery,
   activityNeighborsQuerySchema,
   type ActivityNeighborsResponse,
+  type ActivityRouteSummary,
   type ActivityTrackResponse,
   type AddActivityBody,
   addActivityBodySchema,
@@ -37,6 +38,7 @@ import {
   getDeductionRule,
   getNearbyActivities,
   getOverlappingActivities,
+  getRouteForActivity,
   insertTimeSeries,
   type TimeSeriesPoint,
 } from '../db/index.ts'
@@ -67,6 +69,15 @@ import { type AnyMiddleware, type TypedRouter, typedRouter } from '../typed-rout
 import { validateBody, validateQuery } from '../validation.ts'
 
 type ActivityRow = Awaited<ReturnType<typeof getActivityById>> & {}
+
+/** The route of the first of `ids` that has one: a merged activity's sources may be routed individually. */
+const routeSummary = async (user: string, ids: string[]): Promise<ActivityRouteSummary | undefined> => {
+  for (const id of ids) {
+    const route = await getRouteForActivity(user, id)
+    if (route) return { activity_count: route.activity_count, id: route.id, name: route.name }
+  }
+  return undefined
+}
 
 const buildMergedResponse = async (
   user: string,
@@ -122,6 +133,7 @@ const buildMergedResponse = async (
   const commentLookupIds = overlapping.map((a) => a.id).filter((id): id is string => Boolean(id))
   const commentsMap = await getCommentsMap(user, 'activity', commentLookupIds)
   const comments = dedupeCommentsForIds(commentsMap, commentLookupIds)
+  const route = await routeSummary(user, [activity.id!, ...commentLookupIds])
 
   return {
     ...metrics,
@@ -133,6 +145,7 @@ const buildMergedResponse = async (
     merged_end_time: mergedEndTime,
     merged_start_time: mergedStartTime,
     override_target_ids: activity.override_target_ids,
+    route,
     source: activity.source,
     source_records: sourceRecords,
     start_time: activity.start_time.toISOString(),
@@ -149,6 +162,7 @@ export const createActivitiesRouter = (
     activityId: string,
     garminActivityId: number,
     activitySpan: ActivitySpan | null,
+    activityStart: Date,
   ) => Promise<number>,
 ): TypedRouter => {
   const router = typedRouter()
@@ -165,6 +179,7 @@ export const createActivitiesRouter = (
         exclude_types: excludeTypesParam,
         data_filter: dataFilterStr,
         deduction_rule_id: deductionRuleId,
+        route_id: routeId,
       } = req.query
       const user = req.user!
 
@@ -184,6 +199,7 @@ export const createActivitiesRouter = (
         syncProvider,
         parseDataFilter(dataFilterStr),
         deductionRuleId,
+        routeId,
       )
       res.json({ data: activities, success: true })
     },
@@ -481,6 +497,7 @@ export const createActivitiesRouter = (
     // Attach user notes/comments so the detail page's Notes row and edit-mode
     // notes textarea reflect the real note (#794).
     const commentsMap = await getCommentsMap(user, 'activity', [realId])
+    const route = activity.deleted_at ? undefined : await routeSummary(user, [realId])
 
     res.json({
       data: {
@@ -492,6 +509,7 @@ export const createActivitiesRouter = (
         end_time: activity.end_time?.toISOString(),
         id: activity.id,
         override_target_ids: activity.override_target_ids,
+        route,
         source: activity.source,
         start_time: activity.start_time.toISOString(),
         title: activity.title,
@@ -633,6 +651,7 @@ export const createActivitiesRouter = (
         garminSourceId,
         garminActivityId,
         garminSource.end_time ? { end: garminSource.end_time, start: garminSource.start_time } : null,
+        garminSource.start_time,
       )
       res.json({ points, success: true })
     },

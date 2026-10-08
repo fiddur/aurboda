@@ -233,6 +233,7 @@ export const syncActivityDetails = async (
       const pointCount = await processActivityDetail(user, detail, {
         activityId: activity.id,
         activitySpan,
+        activityStart: activity.start_time,
         onTrackWritten,
       })
       await markActivityDetailSynced(user, activity.id)

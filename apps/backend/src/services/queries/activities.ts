@@ -134,6 +134,7 @@ export async function queryActivities(
   sync?: SyncProvider,
   dataFilters?: DataFilter[],
   deductionRuleId?: string,
+  routeId?: string,
 ): Promise<ActivityResult[]> {
   // Fire-and-forget: trigger background sync so activity data is fresh for the next request
   if (sync) {
@@ -154,6 +155,7 @@ export async function queryActivities(
     dataFilters,
     deductionRuleId,
     categoryMap,
+    routeId,
   )
 
   // Determine which time-series we'll need based on the activity types present.

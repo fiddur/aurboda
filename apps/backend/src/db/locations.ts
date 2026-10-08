@@ -194,6 +194,26 @@ export const getNamedLocationById = async (user: string, id: string): Promise<Na
   return mapNamedLocationRow(result.rows[0])
 }
 
+/** The nearest named location within `distanceMeters` of the given coordinates. */
+export const findNearbyNamedLocation = async (
+  user: string,
+  lat: number,
+  lon: number,
+  distanceMeters: number,
+): Promise<NamedLocation | null> => {
+  const result = await query(
+    user,
+    `SELECT ${NAMED_LOCATION_COLS}
+     FROM named_locations
+     WHERE ST_DWithin(location, ST_MakePoint($1, $2)::geography, $3)
+     ORDER BY ST_Distance(location, ST_MakePoint($1, $2)::geography)
+     LIMIT 1`,
+    [lon, lat, distanceMeters],
+  )
+  if (result.rows.length === 0) return null
+  return mapNamedLocationRow(result.rows[0])
+}
+
 export const updateNamedLocation = async (
   user: string,
   id: string,

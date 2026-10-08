@@ -8,6 +8,7 @@ import {
   deleteTimeSeriesPoint,
   getDistinctMetrics,
   getLatestMetricValuesMulti,
+  getMetricMeansForWindows,
   getTimeSeries,
   getTimeSeriesBucketed,
   getTimeSeriesEntriesMultiMetric,
@@ -831,6 +832,27 @@ describe('Time Series Integration Tests', () => {
       const count = await deleteTimeSeriesMetric(user, 'weight')
 
       expect(count).toBe(0)
+    })
+  })
+
+  describe('getMetricMeansForWindows', () => {
+    test('averages each window and leaves an empty one undefined', async () => {
+      const user = getTestUser()
+      await insertTimeSeries(user, [
+        { metric: 'heart_rate', source: 'garmin', time: new Date('2024-01-15T10:00:00Z'), value: 120 },
+        { metric: 'heart_rate', source: 'garmin', time: new Date('2024-01-15T10:01:00Z'), value: 140 },
+        { metric: 'heart_rate', source: 'garmin', time: new Date('2024-01-15T12:00:00Z'), value: 100 },
+        { metric: 'speed', source: 'garmin', time: new Date('2024-01-15T10:00:30Z'), value: 3 },
+      ])
+
+      const means = await getMetricMeansForWindows(user, 'heart_rate', [
+        { end: new Date('2024-01-15T10:30:00Z'), start: new Date('2024-01-15T10:00:00Z') },
+        { end: new Date('2024-01-15T11:30:00Z'), start: new Date('2024-01-15T11:00:00Z') },
+        { end: new Date('2024-01-15T12:30:00Z'), start: new Date('2024-01-15T11:30:00Z') },
+      ])
+
+      expect(means).toEqual([130, undefined, 100])
+      expect(await getMetricMeansForWindows(user, 'heart_rate', [])).toEqual([])
     })
   })
 

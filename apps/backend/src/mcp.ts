@@ -45,6 +45,7 @@ import { registerNoteTools } from './mcp/note-tools.ts'
 import { registerNutrientRecommendationTools } from './mcp/nutrient-recommendation-tools.ts'
 import { registerQueryTools } from './mcp/query-tools.ts'
 import { registerReportTools } from './mcp/report-tools.ts'
+import { registerRouteTools } from './mcp/route-tools.ts'
 import { registerScreentimeCategoryTools } from './mcp/screentime-category-tools.ts'
 import { registerSensitivityTools } from './mcp/sensitivity-tools.ts'
 import { registerSettingsTools } from './mcp/settings-tools.ts'
@@ -121,6 +122,7 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
     registerImportTools(server, user, deps.centralDb)
   }
   registerReportTools(server, user)
+  registerRouteTools(server, user)
   registerSharedDashboardTools(server, user)
   registerFeedTools(server, user, {
     apiBaseUrl: deps.apiBaseUrl,
