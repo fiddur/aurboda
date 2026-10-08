@@ -65,6 +65,51 @@ describe('resolveSharedScalars', () => {
     expect(out).toEqual([{ key: 'heart_rate_avg', label: 'Avg HR', unit: 'bpm', value: 150 }])
   })
 
+  describe('summary-field fallback for distance/calories (#1026)', () => {
+    const summary = { calories: 512.4, distance: 10_234 }
+
+    test('the window series wins over the summary field', () => {
+      const stat = statFrom({ calories_active: { sum: 431.7 }, distance: { sum: 8231 } })
+      const out = resolveSharedScalars(window, ['distance', 'calories'], stat, summary)
+      expect(out).toEqual([
+        { key: 'distance', label: 'Distance', unit: 'km', value: 8.23 },
+        { key: 'calories', label: 'Calories', unit: 'kcal', value: 432 },
+      ])
+    })
+
+    test("falls back to the activity's summary fields when the window has no series", () => {
+      const out = resolveSharedScalars(window, ['distance', 'calories'], statFrom({}), summary)
+      expect(out).toEqual([
+        { key: 'distance', label: 'Distance', unit: 'km', value: 10.23 }, // metres → km, 2dp
+        { key: 'calories', label: 'Calories', unit: 'kcal', value: 512 },
+      ])
+    })
+
+    test('drops the key when neither the series nor the summary field has it', () => {
+      expect(resolveSharedScalars(window, ['distance', 'calories'], statFrom({}), {})).toEqual([])
+      expect(resolveSharedScalars(window, ['distance', 'calories'], statFrom({}))).toEqual([])
+    })
+
+    test.each([
+      ['non-numeric', '10234'],
+      ['negative', -5],
+      ['zero', 0],
+      ['non-finite', Number.POSITIVE_INFINITY],
+      ['NaN', Number.NaN],
+    ])('ignores a %s summary field', (_label, value) => {
+      const out = resolveSharedScalars(window, ['distance', 'calories'], statFrom({}), {
+        calories: value,
+        distance: value,
+      })
+      expect(out).toEqual([])
+    })
+
+    test('never applies the summary fallback to other metric scalars', () => {
+      const out = resolveSharedScalars(window, ['heart_rate_avg'], statFrom({}), { average_hr: 150 })
+      expect(out).toEqual([])
+    })
+  })
+
   test('preserves the requested order and only asks for what was requested', () => {
     const metricStat = vi.fn<MetricStat>((_m, _s) => 100)
     const out = resolveSharedScalars(window, ['calories', 'heart_rate_avg'], metricStat)

@@ -63,7 +63,7 @@ export const windowMetricStat = (result: QueryMetricsBucketedResult): MetricStat
  */
 export const resolveActivityScalars = async (
   user: string,
-  activity: { start_time: Date; end_time?: Date },
+  activity: { start_time: Date; end_time?: Date; data?: Record<string, unknown> },
   includedMetrics: string[],
 ): Promise<ScalarMetric[]> => {
   const start = activity.start_time
@@ -90,5 +90,10 @@ export const resolveActivityScalars = async (
     return base(metric, stat)
   }
 
-  return resolveSharedScalars({ endTime: activity.end_time, startTime: start }, includedMetrics, metricStat)
+  return resolveSharedScalars(
+    { endTime: activity.end_time, startTime: start },
+    includedMetrics,
+    metricStat,
+    activity.data,
+  )
 }

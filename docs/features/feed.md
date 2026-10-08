@@ -87,7 +87,12 @@ explicit metric selection that bounds what is shared:
 - **`included_metrics`** — the scalar summaries the user opted to share (e.g.
   `duration`, `distance`, `heart_rate_avg`, `heart_rate_max`, `hr_zone_minutes`,
   `calories`, `stress_avg`). This is the single source of truth for the human-readable
-  summary and the machine-readable scalars a remote Aurboda instance reads.
+  summary and the machine-readable scalars a remote Aurboda instance reads. Each scalar
+  aggregates its time-series over the activity window; `distance` and `calories` fall back
+  to the activity's own summary fields (`data.distance` in metres, `data.calories` in kcal)
+  when the window has no such series — Garmin and Strava store them only there (#1026).
+  The share dialog offers them on the same terms, and the preview, the delivered `Note`, the
+  owner card and the structured payload all go through the one resolver, so they agree.
 - **`series_metrics`** — a **separate, explicit opt-in** for high-resolution continuous
   series (e.g. per-5-second heart rate or stress). A per-sample trace is far more
   revealing than an average, so series are **off unless deliberately chosen**, even for

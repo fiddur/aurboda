@@ -75,6 +75,8 @@ export interface ResolvedFeedActivity {
   start_time: Date
   end_time?: Date
   title?: string
+  /** The anchor's source summary fields — the distance/calories scalar fallback. */
+  data?: Record<string, unknown>
 }
 
 /**
@@ -101,6 +103,7 @@ export const expandFeedActivityWindow = async (
   const window = await resolveActivityWindow(user, activity, true)
   return {
     activity_type: activity.activity_type,
+    data: activity.data,
     end_time: window.end_time,
     start_time: window.start_time,
     title: activity.title,
@@ -132,11 +135,7 @@ const resolveActivityPresentation = async (
   activity: ResolvedFeedActivity,
   opts: SerializeFeedPostOpts,
 ): Promise<Pick<FeedPost, 'content' | 'metrics' | 'structured'>> => {
-  const scalars = await resolveActivityScalars(
-    user,
-    { end_time: activity.end_time, start_time: activity.start_time },
-    record.included_metrics,
-  )
+  const scalars = await resolveActivityScalars(user, activity, record.included_metrics)
   const settings = opts.settings !== undefined ? opts.settings : await getSettings(user).catch(() => null)
   const content = feedPostContent(activity.title, activity.activity_type, scalars, {
     message: record.message ?? undefined,
@@ -323,11 +322,7 @@ export const previewActivityShare = async (
   selection: { included_metrics: string[]; message?: string },
 ): Promise<{ content: string; metrics: FeedPost['metrics'] }> => {
   const window = await expandFeedActivityWindow(user, activity)
-  const scalars = await resolveActivityScalars(
-    user,
-    { end_time: window.end_time, start_time: window.start_time },
-    selection.included_metrics,
-  )
+  const scalars = await resolveActivityScalars(user, window, selection.included_metrics)
   const settings = await getSettings(user).catch(() => null)
   const content = feedPostContent(window.title, window.activity_type, scalars, {
     message: normalizeFeedMessage(selection.message) ?? undefined,
