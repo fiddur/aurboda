@@ -58,7 +58,7 @@ takes a `route_id` to list a route's activities.
 | `list_routes`  | Every route with its activity type, length, run count and latest run, most recently run first                                             |
 | `get_route`    | One route with its line and its runs, newest first: elapsed seconds, average heart rate and pace (s/km) per run                           |
 | `update_route` | Rename a route                                                                                                                            |
-| `delete_route` | Delete a route; its activities are kept and become unrouted                                                                               |
+| `delete_route` | Delete a route; its runs are kept, stay attached to it and are not matched again                                                          |
 | `merge_routes` | Move every run of `source_route_id` onto the route `id` and delete the source                                                             |
 | `match_routes` | Match every tracked activity without a route (attach to a covering route, or pair two unrouted tracks into a new one); returns the counts |
 

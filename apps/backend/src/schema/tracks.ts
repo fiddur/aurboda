@@ -21,7 +21,8 @@ export const tracksTables: Record<string, string> = {
   `,
   // A recognised course. `buffer` (25 m) is stored at creation so candidate
   // matching does not re-buffer every route. The activity count is derived from
-  // activity_routes, never stored.
+  // activity_routes, never stored. Deleting a route only sets deleted_at: its
+  // activity_routes rows stay so its runs are never paired into a route again.
   routes: `
     CREATE TABLE IF NOT EXISTS routes (
       id                     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -34,11 +35,13 @@ export const tracksTables: Record<string, string> = {
       end_pt                 GEOGRAPHY(POINT, 4326) NOT NULL,
       canonical_activity_id  UUID REFERENCES activities(id) ON DELETE SET NULL,
       created_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at             TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      updated_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      deleted_at             TIMESTAMPTZ
     )
   `,
   routes_indexes: `
-    CREATE INDEX IF NOT EXISTS idx_routes_geom ON routes USING GIST (geom)
+    CREATE INDEX IF NOT EXISTS idx_routes_geom ON routes USING GIST (geom);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_routes_canonical ON routes (canonical_activity_id)
   `,
   activity_routes: `
     CREATE TABLE IF NOT EXISTS activity_routes (

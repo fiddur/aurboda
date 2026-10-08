@@ -36,7 +36,7 @@ export const registerRouteTools = (server: McpServer, user: string, ops: RouteOp
 
   server.tool(
     'delete_route',
-    'Delete a route. Its activities are kept and become unrouted (a later match_routes may pair them again).',
+    'Delete a route. Its runs stay attached to it and are not matched again; a later run of the same course does not revive it.',
     { id: routeId },
     async ({ id }) =>
       (await ops.remove(user, id)) ? jsonResponse({ success: true }) : errorResponse('Route not found'),

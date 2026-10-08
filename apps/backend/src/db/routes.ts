@@ -95,7 +95,8 @@ const ROUTE_SELECT = `
     SELECT COUNT(*)::int AS n, MAX(runs.start_time) AS last
     FROM (${ROUTE_RUNS}) runs
     WHERE runs.route_id = r.id
-  ) s ON true`
+  ) s ON true
+  WHERE r.deleted_at IS NULL`
 
 const mapRouteRow = (row: QueryResultRow): RouteRecord => ({
   activity_count: Number(row.activity_count),
@@ -121,7 +122,7 @@ export const listRoutes = async (user: string): Promise<RouteRecord[]> => {
 }
 
 export const getRouteById = async (user: string, id: string): Promise<RouteRecord | null> => {
-  const result = await query(user, `${ROUTE_SELECT} WHERE r.id = $1`, [id])
+  const result = await query(user, `${ROUTE_SELECT} AND r.id = $1`, [id])
   return result.rows[0] ? mapRouteRow(result.rows[0]) : null
 }
 
@@ -130,7 +131,7 @@ export const getRouteForActivity = async (user: string, activityId: string): Pro
   const result = await query(
     user,
     `${ROUTE_SELECT}
-     WHERE r.id = (
+     AND r.id = (
        SELECT ar.route_id FROM activity_routes ar
        JOIN activities a ON a.id = ar.activity_id AND a.deleted_at IS NULL
        WHERE ar.activity_id = $1
@@ -141,7 +142,11 @@ export const getRouteForActivity = async (user: string, activityId: string): Pro
 }
 
 export const getRouteGeometry = async (user: string, id: string): Promise<{ points: LatLon[] } | null> => {
-  const result = await query(user, `SELECT ST_AsGeoJSON(geom) AS geojson FROM routes WHERE id = $1`, [id])
+  const result = await query(
+    user,
+    `SELECT ST_AsGeoJSON(geom) AS geojson FROM routes WHERE id = $1 AND deleted_at IS NULL`,
+    [id],
+  )
   const row = result.rows[0]
   if (!row) return null
   const { coordinates } = JSON.parse(row.geojson as string) as { coordinates: [number, number][] }
@@ -166,7 +171,8 @@ export const findRouteCandidates = async (user: string, activityId: string): Pro
               ST_Length(ST_Intersection(r.geom, ST_Buffer(t.simplified::geography, $2)::geometry)::geography)
                 / NULLIF(ST_Length(r.geom::geography), 0) AS coverage_route
        FROM t
-       JOIN routes r ON r.activity_type = t.activity_type AND r.geom && ST_Expand(t.simplified, $3)
+       JOIN routes r ON r.activity_type = t.activity_type AND r.deleted_at IS NULL
+                     AND r.geom && ST_Expand(t.simplified, $3)
      ) c
      ORDER BY LEAST(c.coverage_track, c.coverage_route) DESC NULLS LAST, c.route_id`,
     [activityId, ROUTE_BUFFER_M, BBOX_EXPAND_DEG],
@@ -252,9 +258,12 @@ export const routeDirectionFractions = (
   activityId: string,
   routeId: string,
 ): Promise<number[]> =>
-  directionFractions(user, activityId, `SELECT geom AS line, buffer AS area FROM routes WHERE id = $3`, [
-    routeId,
-  ])
+  directionFractions(
+    user,
+    activityId,
+    `SELECT geom AS line, buffer AS area FROM routes WHERE id = $3 AND deleted_at IS NULL`,
+    [routeId],
+  )
 
 export const trackDirectionFractions = (
   user: string,
@@ -338,10 +347,6 @@ export const getTrackedActivity = async (
   return row ? { activity_id: row.activity_id as string, start_time: row.start_time as Date } : null
 }
 
-export const detachActivity = async (user: string, activityId: string): Promise<void> => {
-  await query(user, `DELETE FROM activity_routes WHERE activity_id = $1`, [activityId])
-}
-
 export const updateRoute = async (
   user: string,
   id: string,
@@ -349,25 +354,39 @@ export const updateRoute = async (
 ): Promise<RouteRecord | null> => {
   const result = await query(
     user,
-    `UPDATE routes SET name = $2, updated_at = NOW() WHERE id = $1 RETURNING id`,
+    `UPDATE routes SET name = $2, updated_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING id`,
     [id, name],
   )
   if (result.rows.length === 0) return null
   return getRouteById(user, id)
 }
 
+/**
+ * Soft delete: the route's activity_routes rows stay, so its runs count as routed
+ * and are never paired into a new route by the startup backfill.
+ */
 export const deleteRoute = async (user: string, id: string): Promise<boolean> => {
-  const result = await query(user, `DELETE FROM routes WHERE id = $1`, [id])
+  const result = await query(
+    user,
+    `UPDATE routes SET deleted_at = NOW(), updated_at = NOW() WHERE id = $1 AND deleted_at IS NULL`,
+    [id],
+  )
   return (result.rowCount ?? 0) > 0
 }
 
-/** Moves every activity of `sourceId` onto `targetId` and deletes the source; null when either is missing. */
+/**
+ * Moves every activity of `sourceId` onto `targetId` and deletes the source; null
+ * when either is missing or deleted, they are the same, or their types differ.
+ */
 export const mergeRoutes = async (user: string, sourceId: string, targetId: string): Promise<number | null> =>
   withUserTransaction(user, async (tx) => {
-    const found = await query(tx, `SELECT id FROM routes WHERE id = ANY($1::uuid[]) FOR UPDATE`, [
-      [sourceId, targetId],
-    ])
+    const found = await query(
+      tx,
+      `SELECT id, activity_type FROM routes WHERE id = ANY($1::uuid[]) AND deleted_at IS NULL FOR UPDATE`,
+      [[sourceId, targetId]],
+    )
     if (sourceId === targetId || found.rows.length !== 2) return null
+    if (found.rows[0]!.activity_type !== found.rows[1]!.activity_type) return null
     const moved = await query(tx, `UPDATE activity_routes SET route_id = $2 WHERE route_id = $1`, [
       sourceId,
       targetId,
@@ -384,6 +403,7 @@ export const listRouteEfforts = async (user: string, routeId: string): Promise<R
     `SELECT runs.activity_id, runs.start_time, runs.end_time, runs.title, runs.source, runs.coverage,
             CASE WHEN jsonb_typeof(runs.data->'distance') = 'number' THEN (runs.data->>'distance')::float8 END AS distance
      FROM (${ROUTE_RUNS}) runs
+     JOIN routes r ON r.id = runs.route_id AND r.deleted_at IS NULL
      WHERE runs.route_id = $1
      ORDER BY runs.start_time DESC`,
     [routeId],

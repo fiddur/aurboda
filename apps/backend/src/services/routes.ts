@@ -34,19 +34,21 @@ import { auditError } from './audit-log.ts'
 
 export const COVERAGE_THRESHOLD = 0.9
 const MIN_DIRECTION_SAMPLES = 4
-const FORWARD_SHARE = 0.8
+const REVERSED_SHARE = 0.8
 const NAMING_RADIUS_M = 500
 
 /**
- * Whether the projections of a track's samples onto a line run forward. A loop
- * started elsewhere on it wraps once (one decreasing step); a reversed run
- * decreases at nearly every step.
+ * Whether the projections of a track's samples onto a line are not clearly
+ * reversed. A reversed run decreases at nearly every step and is rejected. A loop
+ * started elsewhere wraps once, and an out-and-back, whose legs overlap, projects
+ * onto either leg at random, so both pass: mutual coverage already proves the
+ * same path, this only tells the two directions of a one-way course apart.
  */
-export const isForward = (fractions: number[]): boolean => {
+export const isNotReversed = (fractions: number[]): boolean => {
   if (fractions.length < MIN_DIRECTION_SAMPLES) return false
-  let increasing = 0
-  for (let i = 1; i < fractions.length; i++) if (fractions[i]! > fractions[i - 1]!) increasing++
-  return increasing >= FORWARD_SHARE * (fractions.length - 1)
+  let decreasing = 0
+  for (let i = 1; i < fractions.length; i++) if (fractions[i]! < fractions[i - 1]!) decreasing++
+  return decreasing < REVERSED_SHARE * (fractions.length - 1)
 }
 
 /** Keeps the name inside routes.name's VARCHAR(255) whatever the place is called. */
@@ -147,13 +149,13 @@ export const matchActivityRoute = async (
   if (!activity) return 'no_track'
 
   for (const candidate of (await deps.findRouteCandidates(user, activityId)).filter(covers)) {
-    if (!isForward(await deps.routeDirectionFractions(user, activityId, candidate.route_id))) continue
+    if (!isNotReversed(await deps.routeDirectionFractions(user, activityId, candidate.route_id))) continue
     await deps.attachActivityToRoute(user, activityId, candidate.route_id, coverageOf(candidate))
     return 'matched'
   }
 
   for (const other of (await deps.findUnroutedTrackCandidates(user, activityId)).filter(covers)) {
-    if (!isForward(await deps.trackDirectionFractions(user, activityId, other.activity_id))) continue
+    if (!isNotReversed(await deps.trackDirectionFractions(user, activityId, other.activity_id))) continue
     const otherIsOlder = other.start_time.getTime() <= activity.start_time.getTime()
     const [canonicalId, followerId] = otherIsOlder
       ? [other.activity_id, activityId]
@@ -268,13 +270,11 @@ export const getRouteDetail = async (
   return { ...serializeRoute(route), efforts, points: geometry?.points ?? [] }
 }
 
-/** What the REST routes and the MCP tools both do with routes. */
 export interface RouteOps {
   list: (user: string) => Promise<Route[]>
   detail: (user: string, id: string) => Promise<RouteDetail | null>
   rename: (user: string, id: string, name: string) => Promise<Route | null>
   remove: (user: string, id: string) => Promise<boolean>
-  /** Moves `sourceId`'s runs onto `targetId`; null when either route is missing or they are the same. */
   merge: (user: string, targetId: string, sourceId: string) => Promise<MergeRoutesResult | null>
   match: (user: string) => Promise<RouteMatchResult>
 }

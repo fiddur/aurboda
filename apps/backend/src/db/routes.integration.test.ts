@@ -8,7 +8,6 @@ import {
   attachActivityToRoute,
   createRouteFromTrack,
   deleteRoute,
-  detachActivity,
   findRouteCandidates,
   findUnroutedTrackCandidates,
   getRouteById,
@@ -89,6 +88,12 @@ const parallel = densify([
   [800, 200],
   [800, 1000],
 ])
+/** 1 km east and back the same way. */
+const outAndBack = densify([
+  [0, 0],
+  [1000, 0],
+  [0, 0],
+])
 
 let day = 0
 
@@ -126,8 +131,8 @@ describe('Routes integration', () => {
     day = 0
   })
 
-  const makeRoute = async (points: Xy[] = base) => {
-    const activityId = await addTrackedActivity(points)
+  const makeRoute = async (points: Xy[] = base, activityType?: string) => {
+    const activityId = await addTrackedActivity(points, { activityType })
     const routeId = await createRouteFromTrack(getTestUser(), { activity_id: activityId, name: 'Test route' })
     await attachActivityToRoute(getTestUser(), activityId, routeId!, 1)
     return { activityId, routeId: routeId! }
@@ -187,6 +192,13 @@ describe('Routes integration', () => {
         routeId,
       ])
       expect(rows.rows[0].ok).toBe(true)
+    })
+
+    test('a second route from the same canonical activity is rejected', async () => {
+      const { activityId } = await makeRoute()
+      await expect(
+        createRouteFromTrack(getTestUser(), { activity_id: activityId, name: 'Again' }),
+      ).rejects.toThrow()
     })
   })
 
@@ -327,15 +339,11 @@ describe('Routes integration', () => {
       expect(await listRouteEfforts(user, routeId)).toEqual([])
     })
 
-    test('detach, rename, merge and delete', async () => {
+    test('rename and merge', async () => {
       const user = getTestUser()
       const a = await makeRoute()
       const b = await makeRoute(jittered)
       const extra = await addTrackedActivity(detour)
-      await attachActivityToRoute(user, extra, b.routeId, 0.95)
-
-      await detachActivity(user, extra)
-      expect(await getRouteForActivity(user, extra)).toBeNull()
       await attachActivityToRoute(user, extra, b.routeId, 0.95)
 
       expect((await updateRoute(user, a.routeId, { name: 'Renamed' }))!.name).toBe('Renamed')
@@ -344,16 +352,51 @@ describe('Routes integration', () => {
       expect(await mergeRoutes(user, b.routeId, a.routeId)).toBe(2)
       expect(await getRouteById(user, b.routeId)).toBeNull()
       expect((await getRouteById(user, a.routeId))!.activity_count).toBe(3)
+      expect((await getRouteForActivity(user, extra))!.id).toBe(a.routeId)
       expect(await mergeRoutes(user, a.routeId, a.routeId)).toBeNull()
       expect(await mergeRoutes(user, b.routeId, a.routeId)).toBeNull()
 
       expect((await listRoutes(user)).map((r) => r.id)).toEqual([a.routeId])
       expect(await listUnroutedTrackedActivities(user)).toEqual([])
+    })
 
-      expect(await deleteRoute(user, a.routeId)).toBe(true)
-      expect(await deleteRoute(user, a.routeId)).toBe(false)
+    test('routes of different types or deleted routes do not merge', async () => {
+      const user = getTestUser()
+      const running = await makeRoute()
+      const walking = await makeRoute(jittered, 'walking')
+      expect(await mergeRoutes(user, walking.routeId, running.routeId)).toBeNull()
+      expect((await getRouteById(user, walking.routeId))!.activity_count).toBe(1)
+
+      const other = await makeRoute(detour)
+      await deleteRoute(user, other.routeId)
+      expect(await mergeRoutes(user, other.routeId, running.routeId)).toBeNull()
+      expect(await mergeRoutes(user, running.routeId, other.routeId)).toBeNull()
+      expect((await getRouteById(user, running.routeId))!.activity_count).toBe(1)
+    })
+
+    test('a deleted route is hidden, keeps its runs out of matching and is not revived', async () => {
+      const user = getTestUser()
+      const { activityId, routeId } = await makeRoute()
+      const second = await addTrackedActivity(jittered)
+      await attachActivityToRoute(user, second, routeId, 0.97)
+
+      expect(await deleteRoute(user, routeId)).toBe(true)
+      expect(await deleteRoute(user, routeId)).toBe(false)
+      expect(await getRouteById(user, routeId)).toBeNull()
+      expect(await getRouteGeometry(user, routeId)).toBeNull()
       expect(await listRoutes(user)).toEqual([])
-      expect((await listUnroutedTrackedActivities(user)).map((u) => u.activity_id)).toHaveLength(3)
+      expect(await listRouteEfforts(user, routeId)).toEqual([])
+      expect(await updateRoute(user, routeId, { name: 'x' })).toBeNull()
+      expect(await getRouteForActivity(user, activityId)).toBeNull()
+      expect(await getRouteForActivity(user, second)).toBeNull()
+      expect(await listUnroutedTrackedActivities(user)).toEqual([])
+      expect(await matchUnroutedTracks(user, defaultRouteMatchDeps)).toEqual({ created: 0, matched: 0 })
+
+      const later = await addTrackedActivity(detour)
+      expect(await findRouteCandidates(user, later)).toEqual([])
+      expect(await routeDirectionFractions(user, later, routeId)).toEqual([])
+      expect(await matchActivityRoute(user, later, defaultRouteMatchDeps)).toBe('unmatched')
+      expect(await listRoutes(user)).toEqual([])
     })
 
     test('getActivities filters to a route', async () => {
@@ -404,6 +447,20 @@ describe('Routes integration', () => {
 
       expect((await getRouteById(user, route!.id))!.activity_count).toBe(3)
       expect(await listRoutes(user)).toHaveLength(1)
+    })
+
+    test('an out-and-back course pairs with itself despite its overlapping legs', async () => {
+      const user = getTestUser()
+      // Both runs jittered: legs that coincide exactly collapse into one in ST_Intersection
+      // and halve the coverage, which no recorded track does.
+      const first = await addTrackedActivity(jitter(outAndBack))
+      day += 6
+      const second = await addTrackedActivity(jitter(outAndBack).map(([x, y]): Xy => [x + 3, y - 3]))
+
+      expect(await matchActivityRoute(user, second, defaultRouteMatchDeps)).toBe('created')
+      const route = await getRouteForActivity(user, first)
+      expect(route).toMatchObject({ activity_count: 2, canonical_activity_id: first })
+      expect((await getRouteForActivity(user, second))!.id).toBe(route!.id)
     })
 
     test('the backfill pass pairs history and is idempotent', async () => {

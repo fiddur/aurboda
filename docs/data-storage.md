@@ -194,9 +194,11 @@ CREATE TABLE routes (
     end_pt                 GEOGRAPHY(POINT, 4326) NOT NULL,
     canonical_activity_id  UUID REFERENCES activities(id) ON DELETE SET NULL,
     created_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at             TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    updated_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    deleted_at             TIMESTAMPTZ                             -- soft delete
 );
 CREATE INDEX idx_routes_geom ON routes USING GIST (geom);
+CREATE UNIQUE INDEX idx_routes_canonical ON routes (canonical_activity_id);
 
 CREATE TABLE activity_routes (
     activity_id  UUID PRIMARY KEY REFERENCES activities(id) ON DELETE CASCADE,
@@ -209,8 +211,9 @@ CREATE INDEX idx_activity_routes_route ON activity_routes (route_id);
 
 An activity is on at most one route. The run count is derived, never stored: attached,
 non-deleted activities, where rows of the same session from several sources (they overlap in
-time) count once. Deleting a route keeps its activities; merging moves the `activity_routes`
-rows and deletes the source route.
+time) count once. Deleting a route sets `deleted_at` and keeps its `activity_routes` rows, so
+its runs are never matched into a route again; merging moves the `activity_routes` rows and
+deletes the source route.
 
 #### `places` - Named Locations/Geofences
 

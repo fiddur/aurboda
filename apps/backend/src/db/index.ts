@@ -643,7 +643,6 @@ export {
   attachActivityToRoute,
   createRouteFromTrack,
   deleteRoute,
-  detachActivity,
   findRouteCandidates,
   findUnroutedTrackCandidates,
   getRouteById,

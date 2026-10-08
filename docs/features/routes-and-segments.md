@@ -119,9 +119,11 @@ highest lower coverage wins.
 **Direction matters**: reverse direction is a different route (uphill one way, downhill
 the other), and no direction flag is stored. After the coverage test, 24 points evenly
 spaced along T that fall inside R's buffer are projected onto R (`ST_LineLocatePoint`);
-the run is forward when at least 80 % of consecutive projections increase (at least four
-samples needed). A loop started elsewhere on it wraps once, which that tolerates; a
-reversed run decreases almost everywhere.
+the run is rejected as reversed when at least 80 % of consecutive projections decrease
+(and when fewer than four samples fall inside). A reversed run decreases almost everywhere.
+A loop started elsewhere on it wraps once and passes. An out-and-back course, whose legs
+overlap, projects onto either leg at random and so passes too; it has no meaningful reverse
+anyway, and the coverage test has already shown it is the same path.
 
 **Same activity type only**: a route carries the activity type of its canonical
 activity, and a track is matched only against routes of its own type.
@@ -151,7 +153,9 @@ length: "Söderhallarna · 8.2 km". Renameable.
 canonical_activity_id, …)` and `activity_routes (activity_id, route_id, coverage,
 matched_at)`; see [data storage](../data-storage.md). The run count is derived: attached,
 non-deleted activities, with rows of one session from several sources counted once. Route
-geometry is never shared or federated.
+geometry is never shared or federated. Deleting a route only sets its `deleted_at`: its
+`activity_routes` rows stay, so its runs count as routed and are never paired into a new
+route, and a later run of the same course does not revive it.
 
 ### Efforts
 
@@ -163,7 +167,7 @@ heart rate (the low-HR progress chart) waits for phase 3's run features.
 ### Surfaces
 
 - REST: `GET /routes`, `GET /routes/:id` (with the line and the efforts),
-  `PATCH /routes/:id` (rename), `DELETE /routes/:id` (activities are kept),
+  `PATCH /routes/:id` (rename), `DELETE /routes/:id` (runs are kept and not matched again),
   `POST /routes/:id/merge` (`source_route_id`'s runs move here, the source is deleted),
   `POST /routes/match`; `GET /activities?route_id=` filters to a route's activities, and
   `GET /activities/:id` carries `route: { id, name, activity_count }`.

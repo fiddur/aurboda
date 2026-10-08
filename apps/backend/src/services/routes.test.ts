@@ -6,7 +6,7 @@ import type { RouteRecord } from '../db/routes.ts'
 
 import {
   getRouteDetail,
-  isForward,
+  isNotReversed,
   matchActivityRoute,
   matchUnroutedTracks,
   paceSecondsPerKm,
@@ -18,26 +18,26 @@ import {
 const forward = Array.from({ length: 24 }, (_, i) => i / 23)
 const reversed = [...forward].reverse()
 
-describe('isForward', () => {
-  test('a forward run is forward', () => {
-    expect(isForward(forward)).toBe(true)
+describe('isNotReversed', () => {
+  test('a forward run is not reversed', () => {
+    expect(isNotReversed(forward)).toBe(true)
   })
 
-  test('a reversed run is not', () => {
-    expect(isForward(reversed)).toBe(false)
+  test('a reversed run is', () => {
+    expect(isNotReversed(reversed)).toBe(false)
   })
 
-  test('a loop started elsewhere wraps once and is still forward', () => {
-    expect(isForward([...forward.slice(12), ...forward.slice(0, 12)])).toBe(true)
+  test('a loop started elsewhere wraps once and is not reversed', () => {
+    expect(isNotReversed([...forward.slice(12), ...forward.slice(0, 12)])).toBe(true)
   })
 
-  test('too few samples is not forward', () => {
-    expect(isForward([0.1, 0.2, 0.3])).toBe(false)
-    expect(isForward([])).toBe(false)
+  test('too few samples counts as reversed', () => {
+    expect(isNotReversed([0.1, 0.2, 0.3])).toBe(false)
+    expect(isNotReversed([])).toBe(false)
   })
 
-  test('a run that goes back and forth is not forward', () => {
-    expect(isForward([0.1, 0.3, 0.2, 0.4, 0.3, 0.5, 0.4, 0.6])).toBe(false)
+  test("an out-and-back's alternating projections are not reversed", () => {
+    expect(isNotReversed([0.1, 0.3, 0.2, 0.4, 0.3, 0.5, 0.4, 0.6])).toBe(true)
   })
 })
 

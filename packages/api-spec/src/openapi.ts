@@ -284,7 +284,8 @@ const openApiDocument = createDocument({
     },
     '/routes/{id}': {
       delete: {
-        description: 'Delete a route. Its activities are kept and become unrouted.',
+        description:
+          'Delete a route. Its runs stay attached to it and are not matched again; a later run of the same course does not revive it.',
         requestParams: {
           path: z.object({
             id: z.string().uuid().meta({ description: 'Route ID' }),

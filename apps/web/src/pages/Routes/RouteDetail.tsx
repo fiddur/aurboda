@@ -167,7 +167,7 @@ function ManageRoute({ route }: { route: RouteDetailData }) {
       )}
       <ConfirmButton
         label="Delete Route"
-        confirmMessage={`Delete route "${route.name}"? Its activities are kept.`}
+        confirmMessage={`Delete route "${route.name}"? Its runs are kept and will not be matched into a route again.`}
         onConfirm={() => deleteMutation.mutate()}
         isPending={deleteMutation.isPending}
         pendingLabel="Deleting..."
