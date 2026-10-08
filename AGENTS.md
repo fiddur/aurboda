@@ -425,3 +425,4 @@ For typescript:
 
 - aurboda-backend is automatically deployed to https://aurboda.net/api on merge to `develop`.
 - aurboda-web is automatically deployed to https://aurboda.net/ on merge to `develop`.
+- Deploys overlap: the new version starts against the same databases before the old one stops, so schema changes must be expand-only — never drop or rename a column in the release that stops writing it (see `docs/docker.md`).

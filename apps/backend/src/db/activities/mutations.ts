@@ -147,8 +147,20 @@ export const insertOverride = async (
   return mapActivityRow({ ...committed.row, override_target_ids: committed.ids })
 }
 
-export const insertActivity = async (user: string, activity: Activity): Promise<string> => {
-  let insertedId: string
+export interface UpsertActivityResult {
+  /** Undefined when the conflicting row is soft-deleted, which is left untouched. */
+  id: string | undefined
+  changed: boolean
+}
+
+/**
+ * Upsert that reports whether it wrote anything. An identical re-upsert fails the
+ * `IS DISTINCT FROM` guard, so it neither rewrites the row nor counts as a change:
+ * deduction rules notify only on a change, so re-evaluating a settled window does not
+ * re-trigger evaluation.
+ */
+export const upsertActivity = async (user: string, activity: Activity): Promise<UpsertActivityResult> => {
+  let writtenId: string | undefined
   if (activity.external_id) {
     // Upsert by external_id (for sourced data like calendar events, Oura tags, lastfm)
     const result = await query(
@@ -162,6 +174,10 @@ export const insertActivity = async (user: string, activity: Activity): Promise<
          title = EXCLUDED.title,
          data = COALESCE(activities.data, '{}'::jsonb) || EXCLUDED.data
        WHERE activities.deleted_at IS NULL
+         AND (activities.activity_type, activities.start_time, activities.end_time, activities.title, activities.data)
+             IS DISTINCT FROM
+             (EXCLUDED.activity_type, EXCLUDED.start_time, EXCLUDED.end_time, EXCLUDED.title,
+              COALESCE(activities.data, '{}'::jsonb) || EXCLUDED.data)
        RETURNING id`,
       [
         activity.id,
@@ -174,7 +190,7 @@ export const insertActivity = async (user: string, activity: Activity): Promise<
         activity.data,
       ],
     )
-    insertedId = result.rows[0]?.id as string
+    writtenId = result.rows[0]?.id as string | undefined
   } else {
     // Upsert by type + time (for sync data without external_id)
     const result = await query(
@@ -186,6 +202,9 @@ export const insertActivity = async (user: string, activity: Activity): Promise<
          title = EXCLUDED.title,
          data = COALESCE(activities.data, '{}'::jsonb) || EXCLUDED.data
        WHERE activities.deleted_at IS NULL
+         AND (activities.end_time, activities.title, activities.data)
+             IS DISTINCT FROM
+             (EXCLUDED.end_time, EXCLUDED.title, COALESCE(activities.data, '{}'::jsonb) || EXCLUDED.data)
        RETURNING id`,
       [
         activity.id,
@@ -197,8 +216,10 @@ export const insertActivity = async (user: string, activity: Activity): Promise<
         activity.data,
       ],
     )
-    insertedId = result.rows[0]?.id as string
+    writtenId = result.rows[0]?.id as string | undefined
   }
+
+  if (!writtenId) return { changed: false, id: await findLiveConflictingId(user, activity) }
 
   // Materialize superseded_by so chart/trend queries exclude cross-source duplicates.
   // Skipped for activity types that don't participate in merging (see isSupersedable).
@@ -206,8 +227,28 @@ export const insertActivity = async (user: string, activity: Activity): Promise<
     await materializeSuperseded(user, activity.start_time)
   }
 
-  return insertedId
+  return { changed: true, id: writtenId }
 }
+
+const findLiveConflictingId = async (user: string, activity: Activity): Promise<string | undefined> => {
+  const result = activity.external_id
+    ? await query(
+        user,
+        `SELECT id FROM activities WHERE source = $1 AND external_id = $2 AND deleted_at IS NULL`,
+        [activity.source, activity.external_id],
+      )
+    : await query(
+        user,
+        `SELECT id FROM activities
+         WHERE source = $1 AND activity_type = $2 AND start_time = $3
+           AND external_id IS NULL AND deleted_at IS NULL`,
+        [activity.source, activity.activity_type, activity.start_time],
+      )
+  return result.rows[0]?.id as string | undefined
+}
+
+export const insertActivity = async (user: string, activity: Activity): Promise<string> =>
+  (await upsertActivity(user, activity)).id as string
 
 /**
  * Bulk insert / upsert a batch of activities. Returns the persisted

@@ -1,7 +1,13 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
-import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
-import { getDeductionRule, insertDeductionRule, updateDeductionRule } from './deduction-rules.ts'
+import { cleanTestDb, getTestDbClient, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
+import {
+  getDeductionRule,
+  insertDeductionRule,
+  insertDeductionRuleRun,
+  pruneDeductionRuleRuns,
+  updateDeductionRule,
+} from './deduction-rules.ts'
 
 const CONTAINER_TIMEOUT = 120_000
 
@@ -45,5 +51,33 @@ describe('deduction rules (integration)', () => {
 
     const cleared = await updateDeductionRule(user, inserted.id, { output_media_field: null })
     expect(cleared).not.toHaveProperty('output_media_field')
+  })
+
+  test('pruneDeductionRuleRuns deletes only runs older than the retention', async () => {
+    const user = getTestUser()
+    const rule = await insertDeductionRule(user, {
+      conditions: [{ activity_type: 'meditation', kind: 'activity' }],
+      name: 'Rest after meditation',
+      output_activity_type: 'rest',
+    })
+    const run = {
+      activities_created: 1,
+      duration_ms: 5,
+      rule_id: rule.id,
+      window_end: new Date('2026-09-18T00:00:00Z'),
+      window_start: new Date('2026-09-17T00:00:00Z'),
+    }
+    await insertDeductionRuleRun(user, run)
+    await insertDeductionRuleRun(user, run)
+    await getTestDbClient().query(
+      `UPDATE deduction_rule_runs SET evaluated_at = NOW() - INTERVAL '31 days'
+        WHERE id = (SELECT id FROM deduction_rule_runs LIMIT 1)`,
+    )
+
+    expect(await pruneDeductionRuleRuns(user, 30)).toBe(1)
+    const remaining = await getTestDbClient().query(
+      `SELECT evaluated_at > NOW() - INTERVAL '1 day' AS recent FROM deduction_rule_runs`,
+    )
+    expect(remaining.rows).toEqual([{ recent: true }])
   })
 })

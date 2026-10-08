@@ -25,6 +25,8 @@ export {
   updateActivityEndTimeByExternalId,
   updateActivityTypeByTagKey,
   updateScreentimeActivityCategoryPath,
+  upsertActivity,
+  type UpsertActivityResult,
 } from './mutations.ts'
 
 export {

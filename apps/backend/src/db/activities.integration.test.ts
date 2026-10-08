@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto'
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
+import type { Activity } from './types.ts'
+
 import { cleanTestDb, getTestDbClient, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import {
   adoptLegacyActivity,
@@ -24,6 +26,7 @@ import {
   markActivityDetailSynced,
   softDeleteActivityByExternalId,
   updateActivity,
+  upsertActivity,
 } from './activities/index.ts'
 
 // Increase timeout for container startup
@@ -139,6 +142,93 @@ describe('Activities Integration Tests', () => {
       // Should NOT need detail re-sync
       const needingDetail = await getActivitiesNeedingDetail(user)
       expect(needingDetail).toHaveLength(0)
+    })
+  })
+
+  describe('upsertActivity', () => {
+    const rowVersion = async (id: string): Promise<string> =>
+      (await getTestDbClient().query(`SELECT xmin::text AS v FROM activities WHERE id = $1`, [id])).rows[0]
+        .v as string
+
+    const byTime: Activity = {
+      activity_type: 'meditation',
+      data: { rule_id: 'rule-a', rule_name: 'TV' },
+      end_time: new Date('2024-01-15T21:00:00Z'),
+      source: 'deduction-rule',
+      start_time: new Date('2024-01-15T20:00:00Z'),
+      title: 'TV',
+    }
+
+    const byExternalId: Activity = {
+      activity_type: 'exercise',
+      data: { calories: 200 },
+      end_time: new Date('2024-01-15T11:00:00Z'),
+      external_id: 'garmin-1',
+      source: 'garmin',
+      start_time: new Date('2024-01-15T10:00:00Z'),
+      title: 'Run',
+    }
+
+    test.each([
+      ['type + start_time', byTime],
+      ['external_id', byExternalId],
+    ])('by %s: a first upsert inserts and reports a change', async (_, activity) => {
+      expect(await upsertActivity(getTestUser(), activity)).toEqual({ changed: true, id: expect.any(String) })
+    })
+
+    test.each([
+      ['type + start_time', byTime],
+      ['external_id', byExternalId],
+    ])('by %s: an identical re-upsert reports no change and leaves the row alone', async (_, activity) => {
+      const user = getTestUser()
+      const id = await insertActivity(user, activity)
+      const version = await rowVersion(id)
+
+      expect(await upsertActivity(user, { ...activity, id: randomUUID() })).toEqual({ changed: false, id })
+      expect(await rowVersion(id)).toBe(version)
+    })
+
+    test.each<[string, Partial<Activity>]>([
+      ['end_time', { end_time: new Date('2024-01-15T21:30:00Z') }],
+      ['title', { title: 'Television' }],
+      ['data', { data: { rule_id: 'rule-a', rule_name: 'TV', channel: 'svt' } }],
+    ])('a changed %s reports a change', async (_, change) => {
+      const user = getTestUser()
+      const id = await insertActivity(user, byTime)
+
+      expect(await upsertActivity(user, { ...byTime, ...change })).toEqual({ changed: true, id })
+      expect((await getActivityById(user, id))?.title).toBe(change.title ?? 'TV')
+    })
+
+    test('a data subset already present is no change, since data merges', async () => {
+      const user = getTestUser()
+      const id = await insertActivity(user, { ...byTime, data: { ...byTime.data, extra: 1 } })
+
+      expect(await upsertActivity(user, byTime)).toEqual({ changed: false, id })
+    })
+
+    test('a moved external_id activity reports a change', async () => {
+      const user = getTestUser()
+      const id = await insertActivity(user, byExternalId)
+      const moved = { ...byExternalId, start_time: new Date('2024-01-15T10:05:00Z') }
+
+      expect(await upsertActivity(user, moved)).toEqual({ changed: true, id })
+    })
+
+    test.each([
+      ['type + start_time', byTime],
+      ['external_id', byExternalId],
+    ])('by %s: a soft-deleted conflicting row stays deleted and yields no id', async (_, activity) => {
+      const user = getTestUser()
+      const id = await insertActivity(user, activity)
+      await deleteActivity(user, id)
+
+      expect(await upsertActivity(user, { ...activity, title: 'Changed' })).toEqual({
+        changed: false,
+        id: undefined,
+      })
+      expect(await insertActivity(user, activity)).toBeUndefined()
+      expect(await getActivityById(user, id)).toBeNull()
     })
   })
 

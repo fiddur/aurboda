@@ -13,6 +13,7 @@ import { mountRestRouters } from './api/rest-routes.ts'
 import { mountSyncRouter } from './api/sync-setup.ts'
 import { setupOuraWebhook, setupStravaWebhook } from './api/webhooks-setup.ts'
 import { createAuth } from './auth.ts'
+import { closeAllUserPools } from './db/connection.ts'
 import {
   createChallengePost,
   deleteRuleActivities,
@@ -40,6 +41,7 @@ import {
   markEnrichTransientFailure,
   migrateAllUsers,
   openTimelineChannel,
+  pruneDeductionRuleRuns,
   resolveOrCreateActivityType,
   markTimelineEntryReplyChecked,
   setTimelineEntryReplyInfo,
@@ -86,7 +88,7 @@ import { type AutoshareQueue, createAutoshareQueue } from './services/autoshare-
 import { evaluateAutoshareWindow } from './services/autoshare.ts'
 import { triggerCalorieComputation } from './services/calorie-computation.ts'
 import { createCalorieQueue, type CalorieQueue } from './services/calorie-queue.ts'
-import { getCentralDb, initializeCentralDb } from './services/central-db.ts'
+import { closeCentralDb, getCentralDb, initializeCentralDb } from './services/central-db.ts'
 import { createChallengeDiscovery, defaultChallengeDiscoveryDeps } from './services/challenge-discovery.ts'
 import { createChallengeResultsQueue } from './services/challenge-results-queue.ts'
 import { publishFinishedChallengeResults } from './services/challenge-results.ts'
@@ -118,6 +120,12 @@ import { installProcessGuards } from './services/process-guards.ts'
 import { defaultRouteMatchDeps, matchActivityRoute } from './services/routes.ts'
 import { safeFetchGet } from './services/safe-fetch.ts'
 import { initSentry, Sentry } from './services/sentry.ts'
+import {
+  closeHttpServer,
+  createShutdownHandler,
+  JOB_STOP_TIMEOUT_MS,
+  startUnrefTimer,
+} from './services/shutdown.ts'
 import { createSourceEnrichQueue, type SourceEnrichQueue } from './services/source-enrich-queue.ts'
 import { garminActivityExternalId } from './services/source-identity.ts'
 import { createStravaQueue, type StravaQueue } from './services/strava-queue.ts'
@@ -138,8 +146,6 @@ import {
   type TrackBackfillQueue,
 } from './services/track-queues.ts'
 import { createWebAuthnService } from './services/webauthn.ts'
-
-const SHUTDOWN_DRAIN_MS = 3000
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -162,6 +168,7 @@ const main = async () => {
   const postListenCallbacks: Array<() => Promise<void>> = []
 
   await initializeCentralDb()
+  console.info(`⏱️ Central DB ready ${process.uptime().toFixed(1)} s after process start`)
   const centralDb = getCentralDb()
 
   // Initialize Sentry as early as possible after centralDb is available.
@@ -403,7 +410,10 @@ const main = async () => {
   // row per user.
   postListenCallbacks.push(async () => {
     const { migrated, skipped, failed } = await migrateAllUsers(userDb)
-    console.info(`🗃️ Schema sweep done: ${migrated} migrated, ${skipped} already current, ${failed} failed`)
+    console.info(
+      `🗃️ Schema sweep done: ${migrated} migrated, ${skipped} already current, ${failed} failed ` +
+        `(${process.uptime().toFixed(1)} s after process start)`,
+    )
     if (trackBackfillQueue) {
       for (const user of await listUserNames(userDb)) await trackBackfillQueue.enqueue(user, 120)
     }
@@ -676,6 +686,7 @@ const main = async () => {
         getRetentionDays: () => centralDb.getAuditLogRetentionDays(),
         listUsers: () => listUserNames(userDb),
         prune: pruneAuditLog,
+        pruneDeductionRuleRuns,
       })
     } catch (error) {
       console.error('Failed to initialize audit log prune:', error)
@@ -921,7 +932,7 @@ const main = async () => {
 
   const port = Number(process.env.PORT ?? 80)
   const server = httpd.listen(port, () => {
-    console.info(`> Running on localhost:${port}`)
+    console.info(`> Running on localhost:${port} (${process.uptime().toFixed(1)} s after process start)`)
     for (const cb of postListenCallbacks) {
       cb().catch((error) => {
         console.error('⚠️ Post-listen task failed:', error)
@@ -930,55 +941,24 @@ const main = async () => {
     }
   })
 
-  const shutdown = async () => {
-    console.info('Shutting down...')
-    detectionTrigger.clearPendingDetections()
-    if (ouraWebhookManager) {
-      ouraWebhookManager.shutdown()
-    }
-    if (boss) {
-      await boss.stop()
-    }
-    await new Promise<void>((resolve, reject) => {
-      server.close((err) => {
-        if (err) reject(err)
-        else resolve()
-      })
-      // `server.close` waits for every connection to end. Drop idle keep-alive
-      // sockets straight away, then give in-flight requests a moment to finish
-      // before forcing the rest: `/timeline/stream` is an indefinite
-      // text/event-stream, so it never ends on its own and one open timeline tab
-      // would keep the callback above pending forever. Forcing everything at
-      // once instead would ECONNRESET a sync POST mid-response.
-      //
-      // This mostly helps local SIGINT and direct `node` runs. In the container
-      // `entrypoint.sh`'s trap kills the backend and exits PID 1 immediately, so
-      // Docker tears the process down before a graceful drain can finish either
-      // way.
-      server.closeIdleConnections()
-      setTimeout(() => server.closeAllConnections(), SHUTDOWN_DRAIN_MS).unref()
-    })
-    console.info('Server closed')
-    process.exit(0)
-  }
-
-  // Wrapped rather than passed directly: `shutdown` is async, so a rejecting
-  // `boss.stop()` or `server.close()` would skip its `process.exit(0)` and leave
-  // the process alive until Docker's SIGKILL timeout.
-  //
-  // Guarded against re-entry, which the drain above makes reachable: a second
-  // Ctrl-C during those 3 seconds would call `server.close()` on an
-  // already-closing server, get `ERR_SERVER_NOT_RUNNING`, and abort the drain
-  // with a failure exit code.
-  let shuttingDown = false
-  const onSignal = () => {
-    if (shuttingDown) return
-    shuttingDown = true
-    void shutdown().catch((error) => {
-      console.error('💥 Graceful shutdown failed:', error)
-      process.exit(1)
-    })
-  }
+  const onSignal = createShutdownHandler({
+    closeHttp: () => closeHttpServer(server),
+    closePools: async () => {
+      await Promise.all([closeAllUserPools(), closeCentralDb(), userDb.end()])
+    },
+    exit: (code) => process.exit(code),
+    log: (message) => console.info(message),
+    logError: (message, error) => console.error(message, ...(error === undefined ? [] : [error])),
+    now: () => Date.now(),
+    startTimer: startUnrefTimer,
+    stopJobs: async () => {
+      await boss?.stop({ graceful: true, timeout: JOB_STOP_TIMEOUT_MS })
+    },
+    stopTimers: () => {
+      detectionTrigger.clearPendingDetections()
+      ouraWebhookManager?.shutdown()
+    },
+  })
 
   process.on('SIGTERM', onSignal)
   process.on('SIGINT', onSignal)

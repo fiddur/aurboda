@@ -7,6 +7,9 @@ import { _setDbForUser, initializeSchema, schemaUpToDate } from './connection.ts
 import { createRolePool, type UserDb } from './pool.ts'
 
 const CONTAINER_TIMEOUT = 120_000
+// Each test creates a database and runs every CREATE statement: well over vitest's
+// 5 s default on a loaded runner.
+const SCHEMA_TIMEOUT = 60_000
 
 const pools: UserDb[] = []
 
@@ -40,16 +43,24 @@ describe('initializeSchema', () => {
     await stopTestDb()
   })
 
-  test('records the schema fingerprint on a fresh database, so the first migration skips', async () => {
-    const db = await freshUserDb('fresh')
-    await initializeSchema('fresh')
-    expect(await schemaUpToDate(db, schemaFingerprint())).toBe(true)
-  })
+  test(
+    'records the schema fingerprint on a fresh database, so the first migration skips',
+    async () => {
+      const db = await freshUserDb('fresh')
+      await initializeSchema('fresh')
+      expect(await schemaUpToDate(db, schemaFingerprint())).toBe(true)
+    },
+    SCHEMA_TIMEOUT,
+  )
 
-  test('records nothing on a database that already held tables', async () => {
-    const db = await freshUserDb('legacy')
-    await db.query(`CREATE TABLE hcdata (id SERIAL PRIMARY KEY, data JSONB)`)
-    await initializeSchema('legacy')
-    expect(await schemaUpToDate(db, schemaFingerprint())).toBe(false)
-  })
+  test(
+    'records nothing on a database that already held tables',
+    async () => {
+      const db = await freshUserDb('legacy')
+      await db.query(`CREATE TABLE hcdata (id SERIAL PRIMARY KEY, data JSONB)`)
+      await initializeSchema('legacy')
+      expect(await schemaUpToDate(db, schemaFingerprint())).toBe(false)
+    },
+    SCHEMA_TIMEOUT,
+  )
 })
