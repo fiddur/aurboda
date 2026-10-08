@@ -11,6 +11,7 @@ import {
   type ActivityNeighborsQuery,
   activityNeighborsQuerySchema,
   type ActivityNeighborsResponse,
+  type ActivityTrackResponse,
   type AddActivityBody,
   addActivityBodySchema,
   type AddActivityResponse,
@@ -31,6 +32,7 @@ import type { ActivityNotifier } from '../services/deduction-queue.ts'
 
 import {
   getActivityById,
+  getActivityTrack,
   getAllActivityTypeNames,
   getDeductionRule,
   getNearbyActivities,
@@ -60,6 +62,7 @@ import {
   resolveActivityWindow,
   type SyncProvider,
 } from '../services/queries/index.ts'
+import { serializeActivityTrack } from '../services/tracks.ts'
 import { type AnyMiddleware, type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody, validateQuery } from '../validation.ts'
 
@@ -515,10 +518,14 @@ export const createActivitiesRouter = (
       const window = await resolveActivityWindow(user, activity, isMerged)
       const [activityMetrics, fullDetail] = await Promise.all([
         computeActivityDetailMetrics(user, window),
-        getActivityFullDetail(user, window, {
-          includeGps: include_gps,
-          metrics: parseMetricsParam(metrics),
-        }),
+        getActivityFullDetail(
+          user,
+          { ...window, id },
+          {
+            includeGps: include_gps,
+            metrics: parseMetricsParam(metrics),
+          },
+        ),
       ])
 
       res.json({
@@ -537,6 +544,19 @@ export const createActivitiesRouter = (
         },
         success: true,
       })
+    },
+  )
+
+  router.get<{ id: string }, ActivityTrackResponse>(
+    '/activities/:id/track',
+    authMiddleware,
+    async (req, res) => {
+      const { id } = parseActivityId(req.params.id)
+      const track = await getActivityTrack(req.user!, id)
+      if (!track) {
+        return res.status(404).json({ error: 'No track for activity', success: false })
+      }
+      res.json({ data: serializeActivityTrack(track), success: true })
     },
   )
 

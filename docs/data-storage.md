@@ -152,6 +152,31 @@ CREATE INDEX idx_locations_geo ON locations USING GIST (location);
 
 Reads must filter `deleted_at IS NULL`: when an activity carries its own GPS track, passive tracking for the activity's span is soft-deleted rather than removed. See [GPS Precedence](./data-sources.md#gps-precedence).
 
+#### `activity_tracks` - One GPS Line per Activity (PostGIS)
+
+The full-resolution track of an activity, one row per activity and source. `locations` keeps its points as before; this is an additional copy as a line, which route and segment matching run on. See [Routes and segments](./features/routes-and-segments.md).
+
+```sql
+CREATE TABLE activity_tracks (
+    activity_id      UUID NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+    source           VARCHAR(50) NOT NULL,
+    geom             GEOMETRY(LINESTRINGZM, 4326) NOT NULL,  -- Z = altitude m (0 when unknown), M = seconds since activities.start_time
+    simplified       GEOMETRY(LINESTRING, 4326) NOT NULL,    -- ST_SimplifyPreserveTopology(ST_Force2D(geom), 0.00008), ~8 m
+    length_m         DOUBLE PRECISION NOT NULL,              -- ST_Length(ST_Force2D(geom)::geography)
+    point_count      INTEGER NOT NULL,
+    full_resolution  BOOLEAN NOT NULL DEFAULT true,          -- false for a Strava polyline backfill
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (activity_id, source)
+);
+
+CREATE INDEX idx_activity_tracks_simplified ON activity_tracks USING GIST (simplified);
+```
+
+Garmin writes a track when an activity's detail is synced, Strava when its streams are processed. A track needs at least two distinct fixes; `0,0` fixes are dropped and equal timestamps collapse to the first. The derived columns are computed in SQL from `geom` on every upsert.
+
+History is backfilled from `raw_records` without new API calls: Garmin from the stored activity detail (full resolution), Strava from the stored activity's `map.polyline` (a shape without timestamps, so M is spread evenly over `elapsed_time` and `full_resolution` is false). The backfill is incremental -- activities with a usable raw record and no track -- and runs per user in the `track-backfill` queue after each startup's schema sweep, or on demand through `POST /tracks/backfill` / the `backfill_activity_tracks` MCP tool.
+
 #### `places` - Named Locations/Geofences
 
 ```sql

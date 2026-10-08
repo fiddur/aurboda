@@ -70,4 +70,6 @@ So when an activity brings its own GPS track, locations from **passive** sources
 
 **Activity-track sources never supersede each other.** Garmin and Strava tracks of the same session describe the same route within GPS error, so overlaying two of them is cosmetic -- whereas letting them delete each other is not: Strava downsamples to 60-second intervals while Garmin keeps every sample, and neither integration revisits an activity once synced, so "last sync wins" would permanently demote a full-resolution track to a coarse one. Both are kept.
 
+Activity tracks (one line per activity and source in `activity_tracks`, see [Routes and segments](./features/routes-and-segments.md)) are stored separately and are not subject to precedence.
+
 Points are only ever soft-deleted (`locations.deleted_at`), never removed, but re-inserting them does not bring them back -- both insert paths use `ON CONFLICT DO NOTHING`. To restore a superseded track, clear `deleted_at` directly.

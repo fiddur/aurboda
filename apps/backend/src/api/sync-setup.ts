@@ -32,7 +32,11 @@ import {
   upsertUserSettings,
 } from '../db/index.ts'
 import { processActivityWatchEvents } from '../integrations/activitywatch/sync.ts'
-import { type DetailSyncedCallback, syncAllGarminData } from '../integrations/garmin/sync.ts'
+import {
+  type DetailSyncedCallback,
+  syncAllGarminData,
+  type TrackWrittenCallback,
+} from '../integrations/garmin/sync.ts'
 import { getGravlSyncStates, resetGravlSyncState, syncGravlWorkouts } from '../integrations/gravl/sync.ts'
 import { syncAllCalendars } from '../integrations/ical/sync.ts'
 import { syncLastFmData } from '../integrations/lastfm/sync.ts'
@@ -57,6 +61,7 @@ interface SyncSetupDeps {
   sourceEnrichQueue: SourceEnrichQueue | null
   activityNotifier: ActivityNotifier
   onActivityDetailSynced: DetailSyncedCallback
+  onTrackWritten: TrackWrittenCallback
 }
 
 export const mountSyncRouter = ({
@@ -71,6 +76,7 @@ export const mountSyncRouter = ({
   sourceEnrichQueue,
   activityNotifier,
   onActivityDetailSynced,
+  onTrackWritten,
 }: SyncSetupDeps): void => {
   const transformSyncStates = async (user: string, provider: string) => {
     const states = await getAllSyncStates(user, provider)
@@ -155,6 +161,7 @@ export const mountSyncRouter = ({
           const results = await syncAllGarminData(user, garmin, {
             ...options,
             onDetailSynced: onActivityDetailSynced,
+            onTrackWritten,
           })
           return results.map((r) => ({
             ...r,

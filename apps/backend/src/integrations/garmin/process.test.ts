@@ -6,6 +6,7 @@ import type { GarminProcessDeps } from './process.ts'
 import { activityTrackSources } from '../gps-precedence.ts'
 import {
   extractNumericValue,
+  extractTrackPoints,
   garminSleepLevelsToStages,
   processActivityDetail,
   processGarminData,
@@ -33,6 +34,7 @@ const mockDeps: GarminProcessDeps = {
   insertRawRecord: vi.fn().mockResolvedValue(undefined),
   insertTimeSeries: vi.fn().mockResolvedValue(undefined),
   softDeleteSupersededLocations: vi.fn().mockResolvedValue(0),
+  upsertActivityTrack: vi.fn().mockResolvedValue(undefined),
 }
 
 /** Helper: noon UTC for a given date string. */
@@ -1823,6 +1825,99 @@ describe('processActivityDetail', () => {
     expect(mockDeps.insertLocations).toHaveBeenCalledWith(user, [
       { lat: 57.65, lon: 12.62, source: 'garmin', time: new Date(1700000001000) },
       { lat: 57.66, lon: 12.63, source: 'garmin', time: new Date(1700000062000) },
+    ])
+  })
+
+  const gpsDetail: GarminActivityDetailResponse = {
+    activityDetailMetrics: [
+      { metrics: [1700000001000, 57.65, 12.62, 10.5] },
+      { metrics: [1700000002000, 57.6501, 12.6201, { parsedValue: 11, source: 'x' }] },
+      { metrics: [1700000003000, 0, 0, 12] },
+    ],
+    activityId: 33333,
+    metricDescriptors: [
+      { key: 'directTimestamp', metricsIndex: 0, unit: { key: 'gmt' } },
+      { key: 'directLatitude', metricsIndex: 1, unit: { key: 'dd' } },
+      { key: 'directLongitude', metricsIndex: 2, unit: { key: 'dd' } },
+      { key: 'directElevation', metricsIndex: 3, unit: { key: 'meter' } },
+    ],
+  }
+
+  test('writes a track with M from the activity start when given an activity id', async () => {
+    const onTrackWritten = vi.fn()
+    await processActivityDetail(user, gpsDetail, {
+      activityId: 'act-1',
+      activitySpan: { end: new Date(1700000600000), start: new Date(1700000000000) },
+      deps: mockDeps,
+      onTrackWritten,
+    })
+
+    expect(mockDeps.upsertActivityTrack).toHaveBeenCalledWith(user, {
+      activity_id: 'act-1',
+      ewkt: 'SRID=4326;LINESTRING ZM(12.62 57.65 10.5 1, 12.6201 57.6501 11 2)',
+      full_resolution: true,
+      source: 'garmin',
+    })
+    expect(onTrackWritten).toHaveBeenCalledWith(user, 'act-1')
+  })
+
+  test('uses the first sample as M origin without an activity span', async () => {
+    await processActivityDetail(user, gpsDetail, { activityId: 'act-1', deps: mockDeps })
+
+    expect(vi.mocked(mockDeps.upsertActivityTrack).mock.calls[0]![1].ewkt).toBe(
+      'SRID=4326;LINESTRING ZM(12.62 57.65 10.5 0, 12.6201 57.6501 11 1)',
+    )
+  })
+
+  test('writes no track without an activity id', async () => {
+    await processActivityDetail(user, gpsDetail, { deps: mockDeps })
+    expect(mockDeps.upsertActivityTrack).not.toHaveBeenCalled()
+  })
+})
+
+describe('extractTrackPoints', () => {
+  test('takes every sample with coordinates and elevation from the metrics', () => {
+    const detail: GarminActivityDetailResponse = {
+      activityDetailMetrics: [
+        { metrics: [1700000001000, 57.65, 12.62, 10.5] },
+        { metrics: [1700000002000, 57.66, 12.63, null] },
+        { metrics: [1700000003000, null, 12.64, 12] },
+      ],
+      activityId: 1,
+      metricDescriptors: [
+        { key: 'directTimestamp', metricsIndex: 0, unit: { key: 'gmt' } },
+        { key: 'directLatitude', metricsIndex: 1, unit: { key: 'dd' } },
+        { key: 'directLongitude', metricsIndex: 2, unit: { key: 'dd' } },
+        { key: 'directElevation', metricsIndex: 3, unit: { key: 'meter' } },
+      ],
+    }
+
+    expect(extractTrackPoints(detail)).toEqual([
+      { alt: 10.5, lat: 57.65, lon: 12.62, time: new Date(1700000001000) },
+      { alt: null, lat: 57.66, lon: 12.63, time: new Date(1700000002000) },
+    ])
+  })
+
+  test('falls back to geoPolylineDTO when the metrics carry no coordinates', () => {
+    const detail: GarminActivityDetailResponse = {
+      activityDetailMetrics: [{ metrics: [1700000001000, 72] }],
+      activityId: 2,
+      geoPolylineDTO: {
+        polyline: [
+          { altitude: 5, lat: 57.65, lon: 12.62, timestampGMT: 1700000001000 },
+          { lat: 57.66, lon: 12.63, timestampGMT: 1700000002000 },
+          { lat: 57.67, lon: 12.64, timestampGMT: null },
+        ],
+      },
+      metricDescriptors: [
+        { key: 'directTimestamp', metricsIndex: 0, unit: { key: 'gmt' } },
+        { key: 'directHeartRate', metricsIndex: 1, unit: { key: 'bpm' } },
+      ],
+    }
+
+    expect(extractTrackPoints(detail)).toEqual([
+      { alt: 5, lat: 57.65, lon: 12.62, time: new Date(1700000001000) },
+      { alt: null, lat: 57.66, lon: 12.63, time: new Date(1700000002000) },
     ])
   })
 })

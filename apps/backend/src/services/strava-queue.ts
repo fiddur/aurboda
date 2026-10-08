@@ -169,8 +169,9 @@ const createJobHandler = (deps: StravaQueueDeps, boss: PgBoss) => {
       }
     }
 
-    const pointCount = await processStravaActivity(user, detailResult.data, streams, deps.processDeps)
-    auditInfo(user, 'sync', `✅ Strava: processed activity ${activityId} (${pointCount} data points)`)
+    const result = await processStravaActivity(user, detailResult.data, streams, deps.processDeps)
+    auditInfo(user, 'sync', `✅ Strava: processed activity ${activityId} (${result.point_count} data points)`)
+    deps.processDeps.onActivityProcessed?.(user, result)
 
     await deps.updateSyncState(user, 'activity_details', { last_sync_time: new Date(), status: 'idle' })
   }

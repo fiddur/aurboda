@@ -1,19 +1,20 @@
 import { describe, expect, test, vi } from 'vitest'
 
 import type { StravaProcessDeps } from './process.ts'
-import type { StravaDetailedActivity, StravaStreamsResponse } from './types.ts'
+import type { StravaDetailedActivity, StravaStream, StravaStreamsResponse } from './types.ts'
 
 import { activityTrackSources } from '../gps-precedence.ts'
 import { processStravaActivity } from './process.ts'
 
 const createMockDeps = (): StravaProcessDeps => ({
   auditInfo: vi.fn(),
-  insertActivity: vi.fn(),
+  insertActivity: vi.fn(async () => 'act-1'),
   insertLocations: vi.fn(),
   insertRawRecord: vi.fn(),
   insertTimeSeries: vi.fn(),
   resolveOrCreateActivityType: vi.fn(async (_user: string, name: string) => name),
   softDeleteSupersededLocations: vi.fn(async () => 0),
+  upsertActivityTrack: vi.fn(async () => undefined),
 })
 
 const baseActivity: StravaDetailedActivity = {
@@ -51,7 +52,7 @@ const baseActivity: StravaDetailedActivity = {
 describe('processStravaActivity', () => {
   test('creates raw record, activity, and returns 0 with no streams', async () => {
     const deps = createMockDeps()
-    const count = await processStravaActivity('testuser', baseActivity, null, deps)
+    const result = await processStravaActivity('testuser', baseActivity, null, deps)
 
     expect(deps.insertRawRecord).toHaveBeenCalledWith(
       'testuser',
@@ -81,9 +82,16 @@ describe('processStravaActivity', () => {
       strava_activity_id: 12345,
     })
 
-    expect(count).toBe(0)
+    expect(result).toEqual({
+      activity_id: 'act-1',
+      activity_type: 'running',
+      end_time: new Date('2024-06-15T08:00:00Z'),
+      point_count: 0,
+      start_time: new Date('2024-06-15T07:00:00Z'),
+    })
     expect(deps.insertTimeSeries).not.toHaveBeenCalled()
     expect(deps.insertLocations).not.toHaveBeenCalled()
+    expect(deps.upsertActivityTrack).not.toHaveBeenCalled()
   })
 
   test('processes heart rate stream into time series', async () => {
@@ -105,7 +113,7 @@ describe('processStravaActivity', () => {
       },
     }
 
-    const count = await processStravaActivity('testuser', baseActivity, streams, deps)
+    const { point_count: count } = await processStravaActivity('testuser', baseActivity, streams, deps)
 
     expect(count).toBe(3)
     expect(deps.insertTimeSeries).toHaveBeenCalledWith(
@@ -167,6 +175,86 @@ describe('processStravaActivity', () => {
     expect(locations[0]).toMatchObject({ lat: 59.32, source: 'strava' })
   })
 
+  test('writes a full-resolution track from every stream sample and reports it', async () => {
+    const deps = { ...createMockDeps(), onTrackWritten: vi.fn() }
+    const latlngData: [number, number][] = []
+    const timeData: number[] = []
+    const altitudeData: number[] = []
+    for (let i = 0; i < 120; i++) {
+      latlngData.push([59.32 + i * 0.0001, 18.06 + i * 0.0001])
+      timeData.push(i)
+      altitudeData.push(10 + i)
+    }
+    const stream = (type: string, data: StravaStream['data']): StravaStream => ({
+      data,
+      original_size: data.length,
+      resolution: 'high',
+      series_type: 'time',
+      type,
+    })
+    const streams: StravaStreamsResponse = {
+      altitude: stream('altitude', altitudeData),
+      latlng: stream('latlng', latlngData),
+      time: stream('time', timeData),
+    }
+
+    await processStravaActivity('testuser', baseActivity, streams, deps)
+
+    expect(vi.mocked(deps.insertLocations).mock.calls[0][1]).toHaveLength(2)
+    expect(deps.upsertActivityTrack).toHaveBeenCalledTimes(1)
+    const input = vi.mocked(deps.upsertActivityTrack).mock.calls[0][1]
+    expect(input).toMatchObject({ activity_id: 'act-1', full_resolution: true, source: 'strava' })
+    expect(input.ewkt.startsWith('SRID=4326;LINESTRING ZM(18.06 59.32 10 0, 18.0601 59.3201 11 1,')).toBe(
+      true,
+    )
+    expect(input.ewkt.split(',')).toHaveLength(120)
+    expect(deps.onTrackWritten).toHaveBeenCalledWith('testuser', 'act-1')
+  })
+
+  test('writes no track when the activity row was not returned', async () => {
+    const deps = createMockDeps()
+    vi.mocked(deps.insertActivity).mockResolvedValue(undefined as unknown as string)
+    const streams: StravaStreamsResponse = {
+      latlng: {
+        data: [
+          [59.32, 18.06],
+          [59.33, 18.07],
+        ],
+        original_size: 2,
+        resolution: 'high',
+        series_type: 'time',
+        type: 'latlng',
+      },
+      time: { data: [0, 1], original_size: 2, resolution: 'high', series_type: 'time', type: 'time' },
+    }
+
+    await processStravaActivity('testuser', baseActivity, streams, deps)
+
+    expect(deps.upsertActivityTrack).not.toHaveBeenCalled()
+  })
+
+  test('writes velocity_smooth as speed', async () => {
+    const deps = createMockDeps()
+    const streams: StravaStreamsResponse = {
+      time: { data: [0, 1], original_size: 2, resolution: 'high', series_type: 'time', type: 'time' },
+      velocity_smooth: {
+        data: [0, 3.2],
+        original_size: 2,
+        resolution: 'high',
+        series_type: 'time',
+        type: 'velocity_smooth',
+      },
+    }
+
+    const { point_count } = await processStravaActivity('testuser', baseActivity, streams, deps)
+
+    expect(point_count).toBe(2)
+    expect(vi.mocked(deps.insertTimeSeries).mock.calls[0][1]).toEqual([
+      expect.objectContaining({ metric: 'speed', unit: 'm/s', value: 0 }),
+      expect.objectContaining({ metric: 'speed', unit: 'm/s', value: 3.2 }),
+    ])
+  })
+
   test('skips zero heartrate/cadence but keeps zero altitude/watts/temp', async () => {
     const deps = createMockDeps()
     const streams: StravaStreamsResponse = {
@@ -200,7 +288,7 @@ describe('processStravaActivity', () => {
       },
     }
 
-    const count = await processStravaActivity('testuser', baseActivity, streams, deps)
+    const { point_count: count } = await processStravaActivity('testuser', baseActivity, streams, deps)
     // heartrate: 1 (skips two zeros), altitude: 3 (keeps zeros), watts: 3 (keeps zeros)
     expect(count).toBe(7)
   })
@@ -238,7 +326,7 @@ describe('processStravaActivity', () => {
       },
     }
 
-    const count = await processStravaActivity('testuser', baseActivity, streams, deps)
+    const { point_count: count } = await processStravaActivity('testuser', baseActivity, streams, deps)
     expect(count).toBe(3)
 
     const points = vi.mocked(deps.insertTimeSeries).mock.calls[0][1]

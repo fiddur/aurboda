@@ -16,6 +16,7 @@ import { productivityTables } from './schema/productivity.ts'
 import { reportsTables } from './schema/reports.ts'
 import { socialTables } from './schema/social.ts'
 import { systemTables } from './schema/system.ts'
+import { tracksTables } from './schema/tracks.ts'
 
 export {
   aurbodaOnlyMetrics,
@@ -55,6 +56,7 @@ export const createTableStatements: Record<string, string> = {
   ...reportsTables,
   ...socialTables,
   ...systemTables,
+  ...tracksTables,
 }
 
 /**
@@ -66,6 +68,7 @@ export const createTableStatements: Record<string, string> = {
  *  - meals + food_items before meal_food_items (FK)
  *  - deduction_rules before deduction_rule_runs (FK)
  *  - tag_definitions before tags (FK)
+ *  - activities before activity_tracks (FK)
  */
 export const tableCreationOrder = [
   'raw_records',
@@ -82,6 +85,8 @@ export const tableCreationOrder = [
   'activity_override_targets',
   'activity_override_targets_indexes',
   'activity_override_targets_trigger',
+  'activity_tracks',
+  'activity_tracks_indexes',
   'meals',
   'meals_indexes',
   'meal_log_completed',

@@ -8,6 +8,7 @@ import { createActivitiesRouter } from './activities-router.ts'
 // functions the GET /activities/:id plain path calls need real behaviour.
 vi.mock('../db/index.ts', () => ({
   getActivityById: vi.fn(),
+  getActivityTrack: vi.fn(),
   getDeductionRule: vi.fn().mockResolvedValue(null),
   getOverlappingActivities: vi.fn().mockResolvedValue([]),
 }))
@@ -108,6 +109,59 @@ describe('GET /activities/:id', () => {
 
     expect(res.status).toBe(200)
     expect(res.body.data.comments).toEqual([])
+  })
+})
+
+describe('GET /activities/:id/track', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(queries.parseActivityId).mockImplementation((raw: string) => ({
+      id: raw.replace(/^merged:/, ''),
+      isMerged: raw.startsWith('merged:'),
+    }))
+  })
+
+  test('returns the track without its internal start time, for a merged id too', async () => {
+    vi.mocked(db.getActivityTrack).mockResolvedValue({
+      activity_id: ACTIVITY_ID,
+      full_resolution: true,
+      length_m: 1112,
+      point_count: 2,
+      points: [
+        { alt: 10, lat: 59, lon: 18, t: 0 },
+        { alt: 12, lat: 59.01, lon: 18, t: 60 },
+      ],
+      source: 'garmin',
+      start_time: new Date('2026-06-08T10:00:00Z'),
+    })
+
+    const res = await supertest(buildApp()).get(`/activities/merged:${ACTIVITY_ID}/track`)
+
+    expect(res.status).toBe(200)
+    expect(db.getActivityTrack).toHaveBeenCalledWith('tester', ACTIVITY_ID)
+    expect(res.body).toEqual({
+      data: {
+        activity_id: ACTIVITY_ID,
+        full_resolution: true,
+        length_m: 1112,
+        point_count: 2,
+        points: [
+          { alt: 10, lat: 59, lon: 18, t: 0 },
+          { alt: 12, lat: 59.01, lon: 18, t: 60 },
+        ],
+        source: 'garmin',
+      },
+      success: true,
+    })
+  })
+
+  test('404s when the activity has no track', async () => {
+    vi.mocked(db.getActivityTrack).mockResolvedValue(null)
+
+    const res = await supertest(buildApp()).get(`/activities/${ACTIVITY_ID}/track`)
+
+    expect(res.status).toBe(404)
+    expect(res.body).toEqual({ error: 'No track for activity', success: false })
   })
 })
 

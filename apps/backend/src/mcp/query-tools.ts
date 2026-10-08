@@ -16,7 +16,13 @@ import {
 } from '@aurboda/api-spec'
 import { z } from 'zod'
 
-import { getActivityById, getAllActivityTypeNames, getMediaPlayById, getMediaPlays } from '../db/index.ts'
+import {
+  getActivityById,
+  getActivityTrack,
+  getAllActivityTypeNames,
+  getMediaPlayById,
+  getMediaPlays,
+} from '../db/index.ts'
 import { getLatestSleep } from '../services/latest-sleep.ts'
 import { getCustomMetrics } from '../services/mutations.ts'
 import {
@@ -41,8 +47,10 @@ import {
   queryTags,
   resolveActivityWindow,
 } from '../services/queries/index.ts'
+import { serializeActivityTrack } from '../services/tracks.ts'
 import {
   errorResponse,
+  jsonResponse,
   type McpServer,
   metricDescription,
   type SyncProvider,
@@ -270,10 +278,14 @@ Source-agnostic: works for any activity that has time-series and/or GPS populate
       const window = await resolveActivityWindow(user, activity, isMerged)
       const [summary, fullDetail] = await Promise.all([
         computeActivityDetailMetrics(user, window),
-        getActivityFullDetail(user, window, {
-          includeGps: include_gps,
-          metrics: parseMetricsParam(metrics),
-        }),
+        getActivityFullDetail(
+          user,
+          { ...window, id },
+          {
+            includeGps: include_gps,
+            metrics: parseMetricsParam(metrics),
+          },
+        ),
       ])
 
       return tzJsonResponse(
@@ -293,6 +305,18 @@ Source-agnostic: works for any activity that has time-series and/or GPS populate
         },
         tz,
       )
+    },
+  )
+
+  server.tool(
+    'get_activity_track',
+    'Full-resolution GPS track of one activity: points with lat, lon, altitude (alt, metres) and t (seconds since the activity start), plus length_m and point_count. full_resolution is false for a shape-only track (a Strava polyline backfill), whose times are spread evenly and unfit for timing.',
+    { id: z.string().describe('Activity ID (a "merged:" prefix is accepted and stripped).') },
+    async ({ id: rawId }) => {
+      const { id } = parseActivityId(rawId)
+      const track = await getActivityTrack(user, id)
+      if (!track) return errorResponse('No track for activity')
+      return jsonResponse(serializeActivityTrack(track))
     },
   )
 

@@ -61,6 +61,7 @@ import {
   syncResponseSchema,
   syncStatusResponseSchema,
 } from './schemas/sync.ts'
+import { activityTrackResponseSchema, trackBackfillResponseSchema } from './schemas/tracks.ts'
 import {
   webauthnAuthOptionsBodySchema,
   webauthnAuthOptionsResponseSchema,
@@ -210,6 +211,45 @@ const openApiDocument = createDocument({
         },
         security: [{ bearerAuth: [] }],
         summary: 'Get activities',
+        tags: ['Activities'],
+      },
+    },
+    '/activities/{id}/track': {
+      get: {
+        description:
+          "Get an activity's full-resolution GPS track: points with altitude and seconds since the activity start.",
+        requestParams: {
+          path: z.object({
+            id: z.string().meta({ description: 'Activity ID (a merged:<id> prefix is accepted)' }),
+          }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: activityTrackResponseSchema } },
+            description: 'Successful response',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'No track for activity',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get activity track',
+        tags: ['Activities'],
+      },
+    },
+    '/tracks/backfill': {
+      post: {
+        description:
+          'Build missing activity tracks from stored raw records: Garmin activity details at full resolution, Strava polylines as shape-only tracks.',
+        responses: {
+          200: {
+            content: { 'application/json': { schema: trackBackfillResponseSchema } },
+            description: 'Successful response',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Backfill activity tracks',
         tags: ['Activities'],
       },
     },

@@ -9,7 +9,7 @@ import type { Client } from 'pg'
 
 import type { Auth } from '../auth.ts'
 import type { GarminClient } from '../integrations/garmin/client.ts'
-import type { DetailSyncedCallback } from '../integrations/garmin/sync.ts'
+import type { DetailSyncedCallback, TrackWrittenCallback } from '../integrations/garmin/sync.ts'
 import type { AutoshareDeps } from '../services/autoshare.ts'
 import type { CentralDb } from '../services/central-db.ts'
 import type { DiscoverChallenges } from '../services/challenge-discovery.ts'
@@ -68,6 +68,7 @@ import { createSensitivityFlagsRouter } from '../routes/sensitivity-flags-router
 import { createSettingsRouter } from '../routes/settings-router.ts'
 import { createShareHtmlRouter, createShareResolvers } from '../routes/share-html-router.ts'
 import { createSharedDashboardsRouter } from '../routes/shared-dashboards-router.ts'
+import { createTracksRouter } from '../routes/tracks-router.ts'
 import { createTrainingLoadRouter } from '../routes/training-load-router.ts'
 import { createTrendsRouter } from '../routes/trends-router.ts'
 import { createWebAuthnRouter } from '../routes/webauthn-router.ts'
@@ -97,6 +98,8 @@ interface RestRoutesDeps {
   garmin: GarminClient
   /** Fire-and-forget: re-federate the shares of an activity whose detail was (re)synced. */
   onActivityDetailSynced: DetailSyncedCallback
+  /** Fire-and-forget: queue post-processing for an activity whose GPS track was written. */
+  onTrackWritten: TrackWrittenCallback
   syncProvider: SyncProvider
   activityNotifier: ActivityNotifier
   engineDeps: DeductionEngineDeps
@@ -134,6 +137,7 @@ export const mountRestRouters = ({
   discoverChallenges,
   garmin,
   onActivityDetailSynced,
+  onTrackWritten,
   syncProvider,
   activityNotifier,
   engineDeps,
@@ -169,7 +173,7 @@ export const mountRestRouters = ({
       activityNotifier,
       async (user, activityId, garminActivityId, activitySpan) => {
         const detail = await garmin.getActivityDetail(user, garminActivityId)
-        const points = await processActivityDetail(user, detail, { activitySpan })
+        const points = await processActivityDetail(user, detail, { activityId, activitySpan, onTrackWritten })
         await markActivityDetailSynced(user, activityId)
         onActivityDetailSynced(user, activityId)
         return points
@@ -261,6 +265,7 @@ export const mountRestRouters = ({
     }),
   )
   httpd.use('/correlations', createCorrelationsRouter(authMiddleware, syncProvider))
+  httpd.use('/tracks', createTracksRouter(authMiddleware))
   httpd.use('/training-load', createTrainingLoadRouter(authMiddleware))
   httpd.use('/trends', createTrendsRouter(authMiddleware))
   httpd.use('/chart-data', createChartDataRouter(authMiddleware))
