@@ -277,6 +277,13 @@ export const getDbForUser = (user: string): Promise<UserDb> => {
   return db
 }
 
+/** Ends every cached user pool. A later `getDbForUser` builds a fresh one. */
+export const closeAllUserPools = async (): Promise<void> => {
+  const pools = [...dbByUser.values()]
+  dbByUser.clear()
+  await Promise.all(pools.map(async (db) => (await db).end()))
+}
+
 /**
  * A dedicated, unpooled connection to the user's database, for session state
  * a pooled connection must not carry (`LISTEN`). The caller connects and ends it.

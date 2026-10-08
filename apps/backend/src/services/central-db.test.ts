@@ -2,16 +2,31 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 import type { Queryable } from '../db/pool.ts'
 
-import { createCentralDb, type CentralDb, type SignupMode } from './central-db.ts'
+import {
+  closeCentralDb,
+  createCentralDb,
+  type CentralDb,
+  getCentralDb,
+  type SignupMode,
+} from './central-db.ts'
+
+const poolEnd = vi.hoisted(() => vi.fn())
 
 vi.mock('pg', () => {
   const mockQuery = vi.fn()
-  const MockClient = vi.fn(() => ({
-    connect: vi.fn(),
-    end: vi.fn(),
-    query: mockQuery,
-  }))
-  return { Client: MockClient, default: { Client: MockClient } }
+  const MockClient = vi.fn(function MockClient() {
+    return { connect: vi.fn(), end: vi.fn(), query: mockQuery }
+  })
+  const MockPool = vi.fn(function MockPool() {
+    return {
+      connect: vi
+        .fn()
+        .mockResolvedValue({ query: vi.fn().mockResolvedValue({ rows: [] }), release: vi.fn() }),
+      end: poolEnd,
+      on: vi.fn(),
+    }
+  })
+  return { Client: MockClient, default: { Client: MockClient, Pool: MockPool }, Pool: MockPool }
 })
 
 describe('central-db', () => {
@@ -649,5 +664,18 @@ describe('central-db', () => {
       )
       expect(mockClient.query).toHaveBeenCalledWith(expect.stringContaining('DELETE FROM oauth_tokens'))
     })
+  })
+})
+
+describe('closeCentralDb', () => {
+  test('is a no-op before the pool opens, then ends the pool once', async () => {
+    await closeCentralDb()
+    expect(poolEnd).not.toHaveBeenCalled()
+
+    await getCentralDb().getSignupMode()
+    await closeCentralDb()
+    await closeCentralDb()
+
+    expect(poolEnd).toHaveBeenCalledTimes(1)
   })
 })
