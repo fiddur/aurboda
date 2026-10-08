@@ -16,8 +16,8 @@ import {
   expandActivityTypes,
   getActivityById,
   getMediaPlays,
-  insertActivity as dbInsertActivity,
   insertDeductionRuleRun,
+  upsertActivity,
 } from '../db/index.ts'
 import { auditWarn } from './audit-log.ts'
 import { computeEnrichPatch } from './deduction-engine.ts'
@@ -377,8 +377,10 @@ export const createDefaultEngineDeps = (notifier?: ActivityNotifier): DeductionE
   getScrobbles,
   getScreentime,
   insertActivity: async (user, activity) => {
-    const id = await dbInsertActivity(user, activity)
-    if (notifier) {
+    // An unchanged re-upsert must not notify: the notification re-runs the other rules,
+    // whose own unchanged re-upserts would notify back, forever.
+    const { changed, id } = await upsertActivity(user, activity)
+    if (notifier && changed) {
       const ruleIdValue = activity.data?.rule_id
       const ruleId = typeof ruleIdValue === 'string' ? ruleIdValue : undefined
       notifier(

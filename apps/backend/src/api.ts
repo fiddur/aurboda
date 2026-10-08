@@ -40,6 +40,7 @@ import {
   markEnrichTransientFailure,
   migrateAllUsers,
   openTimelineChannel,
+  pruneDeductionRuleRuns,
   resolveOrCreateActivityType,
   markTimelineEntryReplyChecked,
   setTimelineEntryReplyInfo,
@@ -674,6 +675,7 @@ const main = async () => {
         getRetentionDays: () => centralDb.getAuditLogRetentionDays(),
         listUsers: () => listUserNames(userDb),
         prune: pruneAuditLog,
+        pruneDeductionRuleRuns,
       })
     } catch (error) {
       console.error('Failed to initialize audit log prune:', error)

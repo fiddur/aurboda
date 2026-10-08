@@ -202,6 +202,15 @@ export const deleteStaleRuleActivities = async (
   return result.rowCount ?? 0
 }
 
+export const pruneDeductionRuleRuns = async (user: string, retentionDays: number): Promise<number> => {
+  const result = await query(
+    user,
+    `DELETE FROM deduction_rule_runs WHERE evaluated_at < NOW() - INTERVAL '1 day' * $1`,
+    [retentionDays],
+  )
+  return result.rowCount ?? 0
+}
+
 export const insertDeductionRuleRun = async (
   user: string,
   run: {
