@@ -16,9 +16,11 @@ import type { ArticleBlock, ArticleContent, FeedVisibility, MetricType } from '@
 import { defaultArticleChartBucket } from '@aurboda/api-spec'
 
 import type { CorrelationBlockParams } from './article-block-data.ts'
+import type { NegativeCache } from './article-block-misses.ts'
 import type { ScatterSvgData } from './charts/scatter-svg.ts'
 
 import { getArticleChartSeriesData, getArticleCorrelationScatter } from './article-block-data.ts'
+import { articleBlockMisses, forgetArticleBlockMisses } from './article-block-misses.ts'
 import { articleBlockImageUrl, articleBlockLabel, blockWindow, isZeroDurationBucket } from './article.ts'
 
 /**
@@ -43,11 +45,13 @@ export interface BlockImageDataDeps {
     bucket: string,
   ) => Promise<unknown[]>
   correlationScatter: (user: string, params: CorrelationBlockParams) => Promise<ScatterSvgData | null>
+  misses: NegativeCache
 }
 
 const realDeps: BlockImageDataDeps = {
   chartSeries: getArticleChartSeriesData,
   correlationScatter: getArticleCorrelationScatter,
+  misses: articleBlockMisses,
 }
 
 /**
@@ -59,13 +63,18 @@ const realDeps: BlockImageDataDeps = {
  */
 export const renderableArticleBlocks = async (
   user: string,
+  postId: string,
   article: ArticleContent,
   deps: BlockImageDataDeps = realDeps,
 ): Promise<Set<number>> => {
   const renderable = new Set<number>()
   for (const [index, block] of article.blocks.entries()) {
     if (block.type === 'prose') continue
-    if (await blockImageRenders(user, block, article, deps)) renderable.add(index)
+    if (!(await blockImageRenders(user, block, article, deps))) continue
+    renderable.add(index)
+    // A miss remembered while the block was still empty would 404 the link
+    // this export is about to emit until the hour rolls over.
+    forgetArticleBlockMisses(deps.misses, user, postId, index)
   }
   return renderable
 }

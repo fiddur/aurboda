@@ -9,7 +9,7 @@ import type { Note } from '@fedify/fedify/vocab'
 import { Document, Image, Link, Mention } from '@fedify/fedify/vocab'
 import sanitizeHtml from 'sanitize-html'
 
-import type { FeedFollowingRecord, TimelineEntryInput } from '../../db/index.ts'
+import type { TimelineAuthor, TimelineEntryInput } from '../../db/index.ts'
 
 import { temporalInstantToDate } from './temporal-interop.ts'
 
@@ -71,8 +71,7 @@ export const sanitizeRemoteHtml = (html: string): string =>
  * (handle / name / avatar) comes from the cached `feed_following` row (no extra
  * network).
  */
-/** The author fields the timeline snapshot needs — a followee row, or a stranger-replier's fetched presentation. */
-export type TimelineAuthor = Pick<FeedFollowingRecord, 'actor_uri' | 'avatar_url' | 'display_name' | 'handle'>
+export type { TimelineAuthor }
 
 /**
  * The boost wrapper around a Note: an `Announce` by a followee of a THIRD-PARTY

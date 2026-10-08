@@ -2,6 +2,7 @@ import type { ArticleContent } from '@aurboda/api-spec'
 
 import { describe, expect, test } from 'vitest'
 
+import { articleBlockCacheKey, createNegativeCache } from './article-block-misses.ts'
 import { type BlockImageDataDeps, buildArticleMarkdown, renderableArticleBlocks } from './article-export.ts'
 
 const WINDOW = { end: '2026-07-02T00:00:00Z', start: '2026-07-01T00:00:00Z' }
@@ -146,8 +147,11 @@ describe('renderableArticleBlocks', () => {
     type: 'correlation',
   } as const
 
-  const deps = (points: number, scatter: boolean): BlockImageDataDeps => ({
+  const POST_ID = '11111111-1111-4111-8111-111111111111'
+
+  const deps = (points: number, scatter: boolean, misses = createNegativeCache()): BlockImageDataDeps => ({
     chartSeries: async () => Array.from({ length: points }, (_, i) => i),
+    misses,
     correlationScatter: async () =>
       scatter
         ? {
@@ -165,8 +169,35 @@ describe('renderableArticleBlocks', () => {
 
   test('keeps blocks whose data draws; drops sparse ones (chart < 2 points, scatter null)', async () => {
     const blocks: ArticleContent['blocks'] = [{ markdown: 'p', type: 'prose' }, CHART, CORR]
-    expect(await renderableArticleBlocks('u', article(blocks), deps(5, true))).toEqual(new Set([1, 2]))
-    expect(await renderableArticleBlocks('u', article(blocks), deps(1, false))).toEqual(new Set())
+    expect(await renderableArticleBlocks('u', POST_ID, article(blocks), deps(5, true))).toEqual(
+      new Set([1, 2]),
+    )
+    expect(await renderableArticleBlocks('u', POST_ID, article(blocks), deps(1, false))).toEqual(new Set())
+  })
+
+  test('forgets the remembered 404s of every block it finds drawable, and only those', async () => {
+    const misses = createNegativeCache()
+    const updated = new Date('2026-09-01T00:00:00Z')
+    const keys = [0, 1, 2].flatMap((index) =>
+      (['blockpng', 'blocksvg'] as const).map((kind) =>
+        articleBlockCacheKey(kind, 'u', POST_ID, index, updated),
+      ),
+    )
+    for (const key of keys) misses.add(key)
+    const otherPost = articleBlockCacheKey(
+      'blockpng',
+      'u',
+      '22222222-2222-4222-8222-222222222222',
+      1,
+      updated,
+    )
+    misses.add(otherPost)
+
+    const blocks: ArticleContent['blocks'] = [{ markdown: 'p', type: 'prose' }, CHART, CORR]
+    await renderableArticleBlocks('u', POST_ID, article(blocks), deps(5, false, misses))
+
+    expect(keys.map((key) => misses.has(key))).toEqual([true, true, false, false, true, true])
+    expect(misses.has(otherPost)).toBe(true)
   })
 
   test('drops a block with an unbounded window without fetching any data', async () => {
@@ -177,10 +208,11 @@ describe('renderableArticleBlocks', () => {
         return [1, 2, 3]
       },
       correlationScatter: async () => null,
+      misses: createNegativeCache(),
     }
     // No own window and no article default → unbounded → statically ineligible.
     const unbounded = { metric: 'heart_rate', type: 'chart' } as const
-    expect(await renderableArticleBlocks('u', article([unbounded]), spying)).toEqual(new Set())
+    expect(await renderableArticleBlocks('u', POST_ID, article([unbounded]), spying)).toEqual(new Set())
     expect(fetched).toBe(false)
   })
 })
