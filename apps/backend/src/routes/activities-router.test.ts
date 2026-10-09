@@ -110,6 +110,57 @@ describe('GET /activities/:id', () => {
     expect(res.status).toBe(200)
     expect(res.body.data.comments).toEqual([])
   })
+
+  describe('referenced_rules (#1219)', () => {
+    const RULES: Record<string, string> = {
+      'rule-created': 'Sauna from heat',
+      'rule-enriched': 'Tag the gym',
+      'rule-retyped': 'Yoga is yin',
+    }
+
+    beforeEach(() => {
+      vi.mocked(queries.getCommentsMap).mockResolvedValue(
+        new Map() as Awaited<ReturnType<typeof queries.getCommentsMap>>,
+      )
+      vi.mocked(db.getDeductionRule).mockImplementation(
+        async (_user, id) =>
+          (RULES[id] ? { id, name: RULES[id] } : null) as Awaited<ReturnType<typeof db.getDeductionRule>>,
+      )
+    })
+
+    test('names the rules behind rule_id, _enriched_by and _retyped_by', async () => {
+      vi.mocked(db.getActivityById).mockResolvedValue(
+        activityRow({
+          data: { _enriched_by: 'rule-enriched', _retyped_by: 'rule-retyped', rule_id: 'rule-created' },
+        }),
+      )
+
+      const res = await supertest(buildApp()).get(`/activities/${ACTIVITY_ID}`)
+
+      expect(res.status).toBe(200)
+      expect(res.body.referenced_rules).toEqual(RULES)
+    })
+
+    test('names them in the merged view too', async () => {
+      const activity = activityRow({ data: { _retyped_by: 'rule-retyped' } })
+      vi.mocked(db.getActivityById).mockResolvedValue(activity)
+      vi.mocked(db.getOverlappingActivities).mockResolvedValue([activity!])
+      vi.mocked(queries.dedupeCommentsForIds).mockReturnValue([])
+
+      const res = await supertest(buildApp()).get(`/activities/merged:${ACTIVITY_ID}`)
+
+      expect(res.status).toBe(200)
+      expect(res.body.referenced_rules).toEqual({ 'rule-retyped': 'Yoga is yin' })
+    })
+
+    test('leaves referenced_rules out when no rule is found', async () => {
+      vi.mocked(db.getActivityById).mockResolvedValue(activityRow({ data: { _retyped_by: 'gone' } }))
+
+      const res = await supertest(buildApp()).get(`/activities/${ACTIVITY_ID}`)
+
+      expect(res.body).not.toHaveProperty('referenced_rules')
+    })
+  })
 })
 
 describe('GET /activities/:id/track', () => {
