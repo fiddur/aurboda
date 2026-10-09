@@ -503,6 +503,15 @@ export const durationMinutesSchema = z.number().meta({ description: 'Duration in
 export const startDateTimeQuerySchema = iso8601DateTimeSchema.meta({ description: 'Start date/time' })
 export const endDateTimeQuerySchema = iso8601DateTimeSchema.meta({ description: 'End date/time' })
 
+/**
+ * A boolean flag that arrives as a query string over REST and as a real
+ * boolean over MCP. Not `z.coerce.boolean()`, which is `Boolean(value)` and so
+ * reads every non-empty string, `'false'` included, as true.
+ */
+export const queryBooleanSchema = z
+  .union([z.boolean(), z.enum(['true', 'false', '1', '0'])])
+  .transform((v) => v === true || v === 'true' || v === '1')
+
 export const timeRangeQuerySchema = z.object({
   end: endDateTimeQuerySchema,
   start: startDateTimeQuerySchema,

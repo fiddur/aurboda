@@ -13,6 +13,7 @@ import {
   baseResponseSchema,
   endDateTimeQuerySchema,
   iso8601DateTimeSchema,
+  queryBooleanSchema,
   startDateTimeQuerySchema,
 } from './common.ts'
 
@@ -44,7 +45,7 @@ export const queryRawRecordsQuerySchema = z
     external_id: z.string().optional().meta({ description: 'Filter by external_id (exact match)' }),
     start: startDateTimeQuerySchema.optional().meta({ description: 'Earliest recorded_at (inclusive)' }),
     end: endDateTimeQuerySchema.optional().meta({ description: 'Latest recorded_at (exclusive)' }),
-    include_data: z.coerce.boolean().optional().meta({
+    include_data: queryBooleanSchema.optional().meta({
       description:
         'Include the full JSON data payload. Default false — only top-level keys are returned, to keep responses small.',
     }),

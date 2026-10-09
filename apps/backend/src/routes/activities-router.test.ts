@@ -165,6 +165,49 @@ describe('GET /activities/:id/track', () => {
   })
 })
 
+describe('GET /activities/:id/full', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(queries.parseActivityId).mockReturnValue({ id: ACTIVITY_ID, isMerged: false })
+    vi.mocked(db.getActivityById).mockResolvedValue(activityRow())
+    vi.mocked(queries.resolveActivityWindow).mockResolvedValue({
+      data: {},
+      start_time: new Date('2026-06-08T10:00:00Z'),
+    } as unknown as Awaited<ReturnType<typeof queries.resolveActivityWindow>>)
+    vi.mocked(queries.computeActivityDetailMetrics).mockResolvedValue(
+      {} as Awaited<ReturnType<typeof queries.computeActivityDetailMetrics>>,
+    )
+    vi.mocked(queries.getActivityFullDetail).mockImplementation(
+      async (_user, _window, options) =>
+        (options.includeGps ? { gps: [{ lat: 59, lon: 18, time: '2026-06-08T10:00:00Z' }] } : {}) as Awaited<
+          ReturnType<typeof queries.getActivityFullDetail>
+        >,
+    )
+  })
+
+  test.each([['false'], ['0']])('include_gps=%s leaves the GPS trace out (#1239)', async (flag) => {
+    const res = await supertest(buildApp()).get(`/activities/${ACTIVITY_ID}/full?include_gps=${flag}`)
+
+    expect(res.status).toBe(200)
+    expect(res.body.data).not.toHaveProperty('gps')
+    expect(vi.mocked(queries.getActivityFullDetail).mock.calls[0][2]).toMatchObject({ includeGps: false })
+  })
+
+  test('includes the GPS trace by default', async () => {
+    const res = await supertest(buildApp()).get(`/activities/${ACTIVITY_ID}/full`)
+
+    expect(res.status).toBe(200)
+    expect(res.body.data.gps).toHaveLength(1)
+  })
+
+  test('400s on an include_gps value that is not a boolean', async () => {
+    const res = await supertest(buildApp()).get(`/activities/${ACTIVITY_ID}/full?include_gps=no`)
+
+    expect(res.status).toBe(400)
+    expect(queries.getActivityFullDetail).not.toHaveBeenCalled()
+  })
+})
+
 describe('POST /activities/:id/resync-detail', () => {
   const GARMIN_SOURCE_ID = '2f1c8a34-1f4e-4a2f-9d7c-6b1e5a0c3d21'
 
