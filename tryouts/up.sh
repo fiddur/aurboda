@@ -59,8 +59,35 @@ state_field() {
   ' "${STATE}" "$1"
 }
 
+# A dead daemon (the session-start hook's, or one lost to a VM restore) leaves
+# its pid file behind; once the pid is recycled the new dockerd refuses to start
+# or waits for a containerd that is never started.
+clear_stale_pid() {
+  local file="$1" expected="$2" pid
+  shift 2
+  pid="$(as_root cat "${file}" 2> /dev/null)" || return 0
+  [ "$(ps -p "${pid}" -o comm= 2> /dev/null || true)" = "${expected}" ] && return 0
+  as_root rm -f "${file}" "$@"
+  echo "🧹 removed stale ${file}"
+}
+
+# Docker's preview repository is exempt from the pull quota, so reading the
+# anonymous per-IP allowance there does not spend it. Prints the remaining
+# count, or nothing when it cannot tell.
+dockerhub_quota_remaining() {
+  local token
+  token="$(curl -fsS -m 10 'https://auth.docker.io/token?service=registry.docker.io&scope=repository:ratelimitpreview/test:pull' |
+    node -e 'let s = ""; process.stdin.on("data", (c) => (s += c)).on("end", () => { try { process.stdout.write(JSON.parse(s).token ?? "") } catch {} })')"
+  [ -n "${token}" ] || return 1
+  curl -fsSI -m 10 -H "Authorization: Bearer ${token}" \
+    https://registry-1.docker.io/v2/ratelimitpreview/test/manifests/latest |
+    tr -d '\r' | awk -F'[:;]' 'tolower($1) == "ratelimit-remaining" { gsub(/ /, "", $2); print $2 }'
+}
+
 if ! docker info > /dev/null 2>&1; then
   echo "🐳 no Docker daemon — starting dockerd"
+  clear_stale_pid /var/run/docker.pid dockerd /var/run/docker.sock
+  clear_stale_pid /var/run/docker/containerd/containerd.pid containerd
   as_root sh -c 'nohup dockerd > /tmp/dockerd.log 2>&1 &' || true
   WAITED=0
   while [ "${WAITED}" -lt 60 ] && ! docker info > /dev/null 2>&1; do
@@ -98,17 +125,45 @@ fi
 [ -n "${SESSION_SECRET}" ] || SESSION_SECRET="$(random_hex 16)"
 export PGPASSWORD SESSION_SECRET
 
+DOCKERHUB_LOGGED_IN=no
+if [ -n "${DOCKERHUB_USERNAME:-}" ] && [ -n "${DOCKERHUB_TOKEN:-}" ]; then
+  echo "🔑 docker login as ${DOCKERHUB_USERNAME}"
+  if ! printf '%s' "${DOCKERHUB_TOKEN}" | docker login --username "${DOCKERHUB_USERNAME}" --password-stdin > /dev/null; then
+    echo "❌ docker login failed for ${DOCKERHUB_USERNAME} — check DOCKERHUB_USERNAME/DOCKERHUB_TOKEN" >&2
+    exit 1
+  fi
+  DOCKERHUB_LOGGED_IN=yes
+fi
+
 if [ "${WAIT_IMAGE}" = yes ]; then
-  echo "⏳ waiting for ${IMAGE}:${AURBODA_TAG} on Docker Hub (up to 30 min)"
+  echo "⏳ waiting for ${IMAGE}:${AURBODA_TAG} on Docker Hub (every 60s, up to 30 min)"
   FOUND=no
-  for attempt in $(seq 1 90); do
+  QUOTA_EXHAUSTED=no
+  for attempt in $(seq 1 30); do
+    if [ "${DOCKERHUB_LOGGED_IN}" = no ]; then
+      if [ "$(dockerhub_quota_remaining 2> /dev/null || true)" = 0 ]; then
+        if [ "${QUOTA_EXHAUSTED}" = no ]; then
+          echo "⚠️  the anonymous Docker Hub quota for this egress IP is exhausted; not polling until it recovers"
+        fi
+        QUOTA_EXHAUSTED=yes
+        sleep 60
+        continue
+      fi
+      QUOTA_EXHAUSTED=no
+    fi
     if docker manifest inspect "${IMAGE}:${AURBODA_TAG}" > /dev/null 2>&1; then
-      echo "✅ image found after ~$(((attempt - 1) * 20))s"
+      echo "✅ image found after ~$(((attempt - 1) * 60))s"
       FOUND=yes
       break
     fi
-    sleep 20
+    sleep 60
   done
+  if [ "${FOUND}" != yes ] && [ "${QUOTA_EXHAUSTED}" = yes ]; then
+    echo "❌ gave up on ${IMAGE}:${AURBODA_TAG}: the anonymous Docker Hub quota is exhausted." >&2
+    echo "   It is per egress IP, shared with other cloud VMs, and rolls over within the hour." >&2
+    echo "   A DOCKERHUB_USERNAME/DOCKERHUB_TOKEN pair in the environment lifts it." >&2
+    exit 1
+  fi
   if [ "${FOUND}" != yes ]; then
     echo "❌ ${IMAGE}:${AURBODA_TAG} never appeared." >&2
     echo "   .github/workflows/docker.yml only builds when apps/backend, apps/web, packages," >&2

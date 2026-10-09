@@ -40,13 +40,20 @@ as_root chown "$(id -u):$(id -g)" "${TRYOUT_HOME}"
 cd "${TRYOUT_HOME}"
 [ -f package.json ] || npm init -y > /dev/null
 
+# Behind the cloud session's agent proxy, Node does not trust the proxy's CA
+# unless it is handed the bundle.
+if [ -f /root/.ccr/ca-bundle.crt ] && [ -z "${NODE_EXTRA_CA_CERTS:-}" ]; then
+  export NODE_EXTRA_CA_CERTS=/root/.ccr/ca-bundle.crt
+fi
+
 echo "📦 Installing puppeteer and its matched Chrome"
 PUPPETEER_CACHE_DIR="${TRYOUT_HOME}/chrome"
 export PUPPETEER_CACHE_DIR
-PUPPETEER_SKIP_DOWNLOAD=1 npm install --silent --no-fund --no-audit puppeteer
+PUPPETEER_SKIP_DOWNLOAD=1 npm install --no-fund --no-audit puppeteer
 
 # --install-deps pulls Chrome's shared libraries through apt, which needs root.
 as_root env PUPPETEER_CACHE_DIR="${PUPPETEER_CACHE_DIR}" PATH="${PATH}" \
+  NODE_EXTRA_CA_CERTS="${NODE_EXTRA_CA_CERTS:-}" \
   npx puppeteer browsers install chrome --install-deps
 as_root chown -R "$(id -u):$(id -g)" "${TRYOUT_HOME}"
 

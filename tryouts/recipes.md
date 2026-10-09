@@ -640,6 +640,64 @@ exercises both sides without seeding. Read the PNG back with the Read tool, or p
 
 ---
 
+## Media plays
+
+### Media plays and the play detail page (#1163, #1169)
+
+#### Fixtures
+
+- **MPRIS plays** go in through `POST /api/sync/media` with `{device_name, plays:[…]}` — the body
+  in `docs/media.md` works verbatim. The `id` is any 1–64-character string, so an id containing
+  `/`, spaces, `&` and `%` is a legal fixture for the lookup and the web route.
+- **Last.fm scrobbles have no push endpoint**; seed them straight into `raw_records`.
+  `external_id` is `<epoch ms>-<track>-<artist>` (what `integrations/lastfm/sync.ts` builds),
+  `recorded_at` is the scrobble time and `data` needs `track`, `artist`, `album`:
+
+  ```sh
+  psql aurboda_qsreddit_demo "insert into raw_records (source, record_type, external_id, recorded_at, data) values ('lastfm','scrobble','1758362400000-Thunderstruck-AC/DC','2026-09-20T10:00:00Z','{\"track\":\"Thunderstruck\",\"artist\":\"AC/DC\",\"album\":\"The Razors Edge\"}')"
+  ```
+
+  A scrobble is a **point play**: its range is one minute from `recorded_at`, so "During this
+  play" on a scrobble lists whatever overlaps that minute.
+
+- `yoga` is a seeded activity type (with `meditation`, `rest`, `nap`, `exercise` built in), so
+  `POST /api/activities` with `activity_type: "yoga"` needs no type setup.
+
+#### Oracles
+
+- **Lookup**: `GET /api/media/play?id=<encodeURIComponent(id)>` through nginx on `:8080` (the
+  `%2F` must reach the app inside the query string). Missing/empty `id` → 400 with the zod
+  message, unknown → 404 `{"error":"Media play not found"}`. The old `/api/media/plays/<id>`
+  answers Express's `Cannot GET` 404 since #1169.
+- **Detail page** `/detail/media/<encodeURIComponent(id)>`: `.entity-type-badge` "media",
+  `.entity-info h2` title, `.entity-subtitle` "artist · album", `.entity-fields .field-row`
+  (`.field-label` / `.field-value`), and the overlap list is `.source-records` > `h3` "During this
+  play" + `.source-record` rows (`.source-record-source` name, `.source-record-time`
+  `HH:mm – HH:mm`). An id containing `%` used to throw `URIError` in `EntityDetail` (double
+  decode); listen on `page.on('pageerror')` to catch a regression.
+- **The #1167 overlap fixture**: play 10:02–10:32; yoga 10:00–10:35 (started before), meditation
+  10:30–10:45, `rest` 09:30–**10:02** (touches the start, must be absent), `exercise`
+  **10:32**–11:00 (starts at the end, must be absent), a nap 08:00–09:00 (inside the 24 h fetch
+  window, must be absent). Correct output is exactly `Yoga 10:00 – 10:35`,
+  `Meditation 10:30 – 10:45`.
+- **Data page rows**: `/data?date=YYYY-MM-DD` renders one `a[href^="/detail/media/"]` per play
+  with the id `encodeURIComponent`ed (`AC%2FDC`, `100%25`), so the click-through can be asserted
+  by href.
+- `page.emulateTimezone('UTC')` keeps the `HH:mm` cells equal to the seeded UTC times.
+
+### Rule editor: uncontrolled threshold inputs (#1159, #1169)
+
+`/deduction-rules/<id>` renders one `.condition-card` per condition; the header holds
+`.condition-kind-select` and, when there is more than one condition, `.condition-remove-btn`. In
+a Media play card the two `input[type=number]` are **Min played (s)** then **Min ratio**, and both
+are `defaultValue` (uncontrolled), which is why keys matter. The stale-key oracle: create a rule
+with `[activity, media{min_played_secs:600}, media{min_played_secs:900}]`, click the second card's
+remove button, then read the number inputs of the remaining second card — the fix shows `900`;
+index keys showed `600`. The "Save Conditions" button (matched by text) then persists, and
+`GET /api/deduction-rules` (`{data:[…]}`) should carry only the 900 condition.
+
+---
+
 ## Challenges
 
 ### Endpoints
@@ -834,6 +892,15 @@ and a 300 ms token adapter, 3 concurrent `getAccessToken` calls → 1 POST and o
 `Gravl API 401 — Unauthorized` — which doubles as a scheduler oracle (`audit_log`
 `Auto-syncing Gravl workouts` + `Gravl sync failed` per tick, and `source-enrich` jobs going to
 `retry` with the 401 in `output`).
+
+**In the cloud that 401 does not happen** (#1151): the container's outbound HTTPS goes through
+the session proxy, whose CA the image does not trust, so the request fails in TLS. A
+`source-enrich` job goes to `retry` with `output.code = "SELF_SIGNED_CERT_IN_CHAIN"` and
+`output.config.url = "https://api.gravl.ai/api/v1/workouts/<id>"`, and `Gravl sync failed` audit
+rows carry the TLS message instead of `Unauthorized`. That still proves the code **attempted** the
+provider request — what a "no request is spent" claim needs its control to show — but it is not a
+401 and never reaches Gravl. For a real status-code path use the in-container
+`axios.create({ adapter })` probe above.
 
 ### Health Connect (#1080/#1081, #927)
 
@@ -1233,3 +1300,26 @@ the running pick ending soonest, Advance at once for an unknown URL, Suggest(fal
   under `/app/apps/backend/src/` and run it from `/app/apps/backend`.
 - **Before filing, read the PR's review follow-up issue.** It regularly already covers what a
   tryout is about to file.
+- **`up.sh` says `no Docker daemon after 60s`** and `/tmp/dockerd.log` ends in `containerd is
+still running … pid=N` or `failed to start daemon … process with PID N is still running`
+  (#1151, #1227, #1240). A dead daemon left its `containerd.pid` or `docker.pid` behind and the
+  pid was recycled. `up.sh` now clears both before starting dockerd; if it still happens,
+  `ps -p N -o comm=` shows a real daemon in that slot, and that is a different problem.
+- **Docker Hub answers `429`, or `ratelimit-remaining: 0`** (#1151, #1227). The anonymous quota is
+  100 manifest requests an hour per egress IP, shared by every cloud VM, and one boot needs about
+  four. Read it without spending it from the exempt preview repository (`up.sh --wait-image` does
+  this before each poll):
+
+  ```sh
+  T=$(curl -s "https://auth.docker.io/token?service=registry.docker.io&scope=repository:ratelimitpreview/test:pull" | jq -r .token)
+  curl -sI -H "Authorization: Bearer $T" https://registry-1.docker.io/v2/ratelimitpreview/test/manifests/latest | grep -i ratelimit-remaining
+  ```
+
+  At `0`, wait for the hour to roll over. A `DOCKERHUB_USERNAME`/`DOCKERHUB_TOKEN` pair makes
+  `up.sh` log in, which lifts it to a per-account limit.
+
+- **The Chrome download fails with `self-signed certificate in certificate chain`** (#1208).
+  Node does not trust the session proxy's CA; `setup-environment.sh` now passes
+  `NODE_EXTRA_CA_CERTS=/root/.ccr/ca-bundle.crt` when that file exists. When
+  `storage.googleapis.com` is off the allowlist, `TRYOUT_CHROME=/opt/pw-browsers/chromium` (the
+  image's Playwright build) drives fine with only `npm install puppeteer` in `/opt/tryout`.
