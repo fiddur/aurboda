@@ -10,7 +10,7 @@ import type { Client } from 'pg'
 import type { Auth } from '../auth.ts'
 import type { GarminClient } from '../integrations/garmin/client.ts'
 import type { DetailSyncedCallback, TrackWrittenCallback } from '../integrations/garmin/sync.ts'
-import type { AutoshareDeps } from '../services/autoshare.ts'
+import type { AutosharePreviewDeps } from '../mcp/autoshare-rule-tools.ts'
 import type { CentralDb } from '../services/central-db.ts'
 import type { DiscoverChallenges } from '../services/challenge-discovery.ts'
 import type { DeductionEngineDeps } from '../services/deduction-engine.ts'
@@ -119,10 +119,7 @@ interface RestRoutesDeps {
   /** Fire-and-forget: federate an `Update{Person}` after an avatar change. */
   onAvatarChanged: (user: string) => void
   /** Merge-group/window resolution behind the auto-share rule preview (#903). */
-  autosharePreviewDeps: Pick<
-    AutoshareDeps,
-    'listCandidates' | 'getGroup' | 'resolveWindow' | 'distanceMeters'
-  >
+  autosharePreviewDeps: AutosharePreviewDeps
 }
 
 export const mountRestRouters = ({

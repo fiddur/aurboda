@@ -130,6 +130,13 @@ const PATCH_COLUMNS = [
   'message',
 ] as const
 
+/**
+ * Patch a rule. A real off→on transition stamps `enabled_at`, the
+ * no-retroactive-sharing gate; re-sending `enabled: true` to a rule that is
+ * already on leaves it alone, so an unrelated edit can't skip whatever was
+ * ingested since the enable. Disabling keeps the stamp, so a disable/enable
+ * cycle moves the gate forward, never back.
+ */
 export const updateAutoshareRule = async (
   user: string,
   id: string,
@@ -143,9 +150,9 @@ export const updateAutoshareRule = async (
     params.push(value)
     sets.push(`${column} = $${params.length}`)
   }
-  // Flipping enabled ON stamps the no-retroactive-sharing gate; disabling leaves
-  // the old stamp in place, so a disable/enable cycle moves the gate forward, never back.
-  if (patch.enabled === true) sets.push('enabled_at = NOW()')
+  if (patch.enabled === true) {
+    sets.push('enabled_at = CASE WHEN enabled AND enabled_at IS NOT NULL THEN enabled_at ELSE NOW() END')
+  }
 
   const result = await query<AutoshareRuleRecord>(
     user,
@@ -192,21 +199,29 @@ export interface AutoshareCandidate {
  * the winner and the superseded row as two independent groups and publish two
  * posts for one physical session — filtering to winners (the same predicate the
  * chart/trend/deduction queries use) keeps one candidate per session.
+ *
+ * `endedAfter` drops activities that ended before it — the evaluator passes the
+ * earliest rule's `enabled_at`, since nothing that ended before every enable
+ * can pass the activity-time gate, and a first sync's wide window of history
+ * would otherwise cost a handful of queries per hopeless candidate.
  */
 export const listAutoshareCandidates = async (
   user: string,
   start: Date,
   end: Date,
+  endedAfter?: Date,
 ): Promise<AutoshareCandidate[]> => {
   const result = await query<AutoshareCandidate>(
     user,
     `SELECT id, activity_type, source, start_time, end_time, title, created_at,
-       (data->>'garmin_activity_id') IS NOT NULL AND (data->>'detail_synced') IS NULL AS detail_pending
+       (data->>'garmin_activity_id') IS NOT NULL
+         AND (data->>'detail_synced') IS DISTINCT FROM 'true' AS detail_pending
      FROM activities
      WHERE deleted_at IS NULL AND superseded_by IS NULL AND end_time IS NOT NULL
        AND start_time <= $2 AND end_time >= $1
+       AND ($3::timestamptz IS NULL OR end_time >= $3)
      ORDER BY start_time ASC`,
-    [start, end],
+    [start, end, endedAfter ?? null],
   )
   return result.rows
 }

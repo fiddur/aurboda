@@ -15,7 +15,9 @@ A per-user set of rules, each combining a **predicate** and a **share template**
   `message` for the created posts.
 - Rules are **created disabled**. Enabling is a separate, deliberate act — the UI states
   plainly that matching data will leave the instance without further confirmation — and
-  stamps `enabled_at`.
+  stamps `enabled_at`. Only a real off→on transition stamps it: re-sending
+  `enabled: true` to a rule that is already on (say, alongside another edit) keeps the
+  stamp, so nothing ingested in between is skipped.
 
 ## Evaluation & timing
 
@@ -30,12 +32,13 @@ A per-user set of rules, each combining a **predicate** and a **share template**
   post's scalars and window reflect the settled activity (synced activities are
   frequently merged, enriched, or re-synced shortly after first landing).
 - **Garmin-backed activities wait for their detail.** A group with a member carrying
-  `data.garmin_activity_id` but no `data.detail_synced` (GPS, per-second HR and
+  `data.garmin_activity_id` but no `data.detail_synced: true` (GPS, per-second HR and
   distance not fetched yet) is deferred and re-checked every 10 minutes, for up to
   **two hours** after the anchor was ingested; past that it is shared as is.
 - A deferred group **re-queues the window**: one new job per run, starting at the
-  earliest time any deferred group can settle. A group that already has a post is
-  skipped before either gate, so it never re-queues.
+  earliest time any deferred group can settle. A group that already has a post, or whose
+  anchor was ingested before every enabled rule's `enabled_at` (a history backfill), is
+  skipped before the settling wait, so it never re-queues.
 - A post whose activity gains its Garmin detail later (or whose detail is re-synced by
   hand) is **re-federated as an `Update`**, so remote servers pick up the new scalars
   and attachments — see [Feed](feed.md).
@@ -54,7 +57,9 @@ A per-user set of rules, each combining a **predicate** and a **share template**
   _ended_ after it. The ingest gate makes enabling affect new arrivals only; the
   activity-time gate keeps a first sync or full re-sync of a newly connected source —
   which ingests months of history as fresh rows — from mass-publishing that history.
-  A delayed sync of a workout done _after_ enabling still shares.
+  A delayed sync of a workout done _after_ enabling still shares. The candidate query
+  already leaves out activities that ended before the earliest `enabled_at`, so a
+  first sync's wide window costs one query rather than several per old activity.
 - **Bounded blast radius**: at most 5 posts per evaluation run (logged when hit) —
   federated deliveries can't be recalled, so even an unexpected window can only leak a
   handful of posts, never a firehose.

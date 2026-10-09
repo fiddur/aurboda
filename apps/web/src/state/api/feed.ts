@@ -145,7 +145,7 @@ export const fetchFollowing = async (): Promise<FollowingActor[]> => {
   return response.data.following
 }
 
-const apiErrorMessage = (error: unknown, fallback: string): string => {
+export const apiErrorMessage = (error: unknown, fallback: string): string => {
   if (axios.isAxiosError(error)) {
     const serverError = (error.response?.data as { error?: unknown } | undefined)?.error
     if (typeof serverError === 'string' && serverError.trim()) return serverError

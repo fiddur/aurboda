@@ -18,7 +18,8 @@ import {
 } from '@aurboda/api-spec'
 
 import type { AutoshareRuleRecord } from '../db/index.ts'
-import type { AutoshareDeps } from '../services/autoshare.ts'
+import type { AutoshareGroupMember } from '../services/autoshare-deps.ts'
+import type { AutosharePreviewDeps } from '../services/autoshare.ts'
 
 import {
   countAutosharePostsByRule,
@@ -28,11 +29,11 @@ import {
   updateAutoshareRule,
 } from '../db/index.ts'
 import { PREVIEW_SAMPLE_DAYS, previewAutoshareRule } from '../services/autoshare.ts'
+import { type AnyMiddleware, type TypedRouter, typedRouter } from '../typed-router.ts'
+import { validateBody } from '../validation.ts'
 
 /** A canonical UUID; a garbage id 404s instead of 500ing on the `uuid` cast. */
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-import { type AnyMiddleware, type TypedRouter, typedRouter } from '../typed-router.ts'
-import { validateBody } from '../validation.ts'
 
 /** Serialise a stored rule (Dates → ISO strings) for the API. */
 export const serializeAutoshareRule = (record: AutoshareRuleRecord): AutoshareRule => ({
@@ -73,7 +74,7 @@ export const autoshareRuleInputFromBody = (body: AddAutoshareRuleBody) => ({
 
 export const createAutoshareRulesRouter = (
   authMiddleware: AnyMiddleware,
-  previewDeps: Pick<AutoshareDeps, 'listCandidates' | 'getGroup' | 'resolveWindow' | 'distanceMeters'>,
+  previewDeps: AutosharePreviewDeps<AutoshareGroupMember>,
 ): TypedRouter => {
   const router = typedRouter()
 

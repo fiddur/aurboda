@@ -61,14 +61,19 @@ export const activityMatchesRule = (rule: AutoshareRuleRecord, subject: Autoshar
 const needsDistance = (rules: AutoshareRuleRecord[]): boolean =>
   rules.some((rule) => rule.min_distance_meters != null)
 
-export interface AutoshareDeps {
+/**
+ * `Member` is what `getGroup` hands back and the anchor-taking deps receive, so
+ * the production wiring can carry the activity row it already fetched through
+ * to `resolveWindow` and `onCreated` instead of looking it up again.
+ */
+export interface AutoshareDeps<Member extends AutoshareCandidate = AutoshareCandidate> {
   getEnabledRules: (user: string) => Promise<AutoshareRuleRecord[]>
-  /** Settled (bounded, non-deleted) activities overlapping the window. */
-  listCandidates: (user: string, start: Date, end: Date) => Promise<AutoshareCandidate[]>
+  /** Settled (bounded, non-deleted) activities overlapping the window, ended no earlier than `endedAfter`. */
+  listCandidates: (user: string, start: Date, end: Date, endedAfter?: Date) => Promise<AutoshareCandidate[]>
   /** The candidate's whole merge group, earliest-start first (its anchor at [0]). */
-  getGroup: (user: string, candidate: AutoshareCandidate) => Promise<AutoshareCandidate[]>
+  getGroup: (user: string, candidate: AutoshareCandidate) => Promise<Member[]>
   /** The anchor's merged-span window (what a manual share of it would cover). */
-  resolveWindow: (user: string, anchor: AutoshareCandidate) => Promise<ResolvedFeedActivity>
+  resolveWindow: (user: string, anchor: Member) => Promise<ResolvedFeedActivity>
   /** Existing feed posts referencing any of the given activity ids. */
   postIdsForActivities: (user: string, activityIds: string[]) => Promise<string[]>
   /** Activities whose post the user DELETED (never republish; survives the hard delete). */
@@ -76,12 +81,17 @@ export interface AutoshareDeps {
   /** Total distance (meters) over a window, or undefined when none recorded. */
   distanceMeters: (user: string, start: Date, end: Date) => Promise<number | undefined>
   /** Create the feed post from the rule's template (the shared manual-share path). */
-  createPost: (user: string, anchor: AutoshareCandidate, rule: AutoshareRuleRecord) => Promise<FeedPostRecord>
+  createPost: (user: string, anchor: Member, rule: AutoshareRuleRecord) => Promise<FeedPostRecord>
   /** Fan the created post out to followers (fire-and-forget, like a manual share). */
-  onCreated: (user: string, post: FeedPostRecord, anchor: AutoshareCandidate) => void
+  onCreated: (user: string, post: FeedPostRecord, anchor: Member) => void
   /** Evaluate the window again no sooner than `notBefore` (some group in it was not settled yet). */
   requeue?: (user: string, start: Date, end: Date, notBefore: Date) => Promise<void>
 }
+
+export type AutosharePreviewDeps<Member extends AutoshareCandidate = AutoshareCandidate> = Pick<
+  AutoshareDeps<Member>,
+  'listCandidates' | 'getGroup' | 'resolveWindow' | 'distanceMeters'
+>
 
 /**
  * How long after its newest member was ingested a merge group counts as
@@ -126,17 +136,18 @@ export const MAX_POSTS_PER_RUN = 5
  * Idempotent: re-running over the same window creates nothing new (dedupe).
  */
 // eslint-disable-next-line complexity -- the guard ladder IS the feature; each step is one safety property
-export const evaluateAutoshareWindow = async (
+export const evaluateAutoshareWindow = async <Member extends AutoshareCandidate>(
   user: string,
   start: Date,
   end: Date,
-  deps: AutoshareDeps,
+  deps: AutoshareDeps<Member>,
   now: Date = new Date(),
 ): Promise<number> => {
   const rules = await deps.getEnabledRules(user)
-  if (rules.length === 0) return 0
+  const enableTimes = rules.flatMap((rule) => (rule.enabled_at == null ? [] : [rule.enabled_at.getTime()]))
+  if (enableTimes.length === 0) return 0
 
-  const candidates = await deps.listCandidates(user, start, end)
+  const candidates = await deps.listCandidates(user, start, end, new Date(Math.min(...enableTimes)))
   if (candidates.length === 0) return 0
 
   const processedAnchors = new Set<string>()
@@ -149,6 +160,14 @@ export const evaluateAutoshareWindow = async (
     if (anchor == null) continue
     if (processedAnchors.has(anchor.id)) continue
     processedAnchors.add(anchor.id)
+
+    // New-arrivals-only, gate 1: the anchor row was ingested after the enable.
+    // Checked before the settling wait, or a backfilled group that can never
+    // share would re-queue the window until its detail-sync wait ran out.
+    const ingestEligible = rules.filter(
+      (rule) => rule.enabled_at != null && anchor.created_at.getTime() >= rule.enabled_at.getTime(),
+    )
+    if (ingestEligible.length === 0) continue
 
     // Hard dedupe: any existing post referencing ANY group member — or a
     // deletion suppression for one — blocks the group forever.
@@ -164,12 +183,6 @@ export const evaluateAutoshareWindow = async (
       if (requeueAt == null || notBefore < requeueAt) requeueAt = notBefore
       continue
     }
-
-    // New-arrivals-only, gate 1: the anchor row was ingested after the enable.
-    const ingestEligible = rules.filter(
-      (rule) => rule.enabled_at != null && anchor.created_at.getTime() >= rule.enabled_at.getTime(),
-    )
-    if (ingestEligible.length === 0) continue
 
     const window = await deps.resolveWindow(user, anchor)
     if (window.end_time == null) continue
@@ -219,10 +232,10 @@ export const PREVIEW_SAMPLE_DAYS = 30
  * rule's predicate — regardless of shared status or `enabled_at` (the point is
  * to show the rule's reach before enabling it). Creates nothing.
  */
-export const previewAutoshareRule = async (
+export const previewAutoshareRule = async <Member extends AutoshareCandidate>(
   user: string,
   rule: AutoshareRuleRecord,
-  deps: Pick<AutoshareDeps, 'listCandidates' | 'getGroup' | 'resolveWindow' | 'distanceMeters'>,
+  deps: AutosharePreviewDeps<Member>,
   now: Date,
   sampleDays: number = PREVIEW_SAMPLE_DAYS,
 ): Promise<number> => {
@@ -231,14 +244,14 @@ export const previewAutoshareRule = async (
   const processedAnchors = new Set<string>()
   let matched = 0
   for (const candidate of candidates) {
+    // A merge group is same-type, so the candidate's type is its anchor's.
+    if (rule.activity_types.length > 0 && !rule.activity_types.includes(candidate.activity_type)) continue
     const group = await deps.getGroup(user, candidate)
     const anchor = group[0]
     if (anchor == null) continue
     if (processedAnchors.has(anchor.id)) continue
     processedAnchors.add(anchor.id)
 
-    // Cheap pre-filters before resolving windows/distance.
-    if (rule.activity_types.length > 0 && !rule.activity_types.includes(anchor.activity_type)) continue
     if (rule.source != null && rule.source !== anchor.source) continue
 
     const window = await deps.resolveWindow(user, anchor)

@@ -47,7 +47,7 @@ const harness = (over: Partial<FeedRefreshDeps> = {}) => {
     },
     getActivity: async (_user, id) => activity(id),
     getGroup: async (_user, a) => [a, activity('a2')],
-    postIdsForActivities: async (_user, ids) => {
+    activityPostIds: async (_user, ids) => {
       queriedIds.push(ids)
       return ['p1', 'p2']
     },
@@ -73,14 +73,6 @@ describe('refreshFeedPostsForActivity', () => {
     const h = harness({ getGroup: async () => [] })
     await refreshFeedPostsForActivity('u', 'a1', h.deps)
     expect(h.queriedIds).toEqual([['a1']])
-  })
-
-  test('only activity posts are re-delivered', async () => {
-    const h = harness({
-      touchPost: async (_user, id) => post(id, { kind: id === 'p1' ? 'article' : 'activity' }),
-    })
-    expect(await refreshFeedPostsForActivity('u', 'a1', h.deps)).toBe(1)
-    expect(h.delivered).toEqual(['p2'])
   })
 
   test('a missing activity refreshes nothing', async () => {

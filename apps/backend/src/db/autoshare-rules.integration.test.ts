@@ -64,6 +64,22 @@ describe('Auto-share rules integration', () => {
     expect(disabled?.enabled_at).toEqual(enabled?.enabled_at)
   })
 
+  test('re-sending enabled: true to an enabled rule keeps its enabled_at (#1031)', async () => {
+    const user = getTestUser()
+    const created = await insertAutoshareRule(user, ruleInput())
+    const enabled = await updateAutoshareRule(user, created.id, { enabled: true })
+    await query(user, `UPDATE autoshare_rules SET enabled_at = '2026-08-01T00:00:00Z' WHERE id = $1`, [
+      created.id,
+    ])
+    const again = await updateAutoshareRule(user, created.id, { enabled: true, visibility: 'public' })
+    expect(again?.enabled_at).toEqual(new Date('2026-08-01T00:00:00Z'))
+    expect(again?.visibility).toBe('public')
+
+    await updateAutoshareRule(user, created.id, { enabled: false })
+    const reenabled = await updateAutoshareRule(user, created.id, { enabled: true })
+    expect(reenabled?.enabled_at?.getTime()).toBeGreaterThanOrEqual(enabled!.enabled_at!.getTime())
+  })
+
   test('patches predicate/template fields; null clears the nullable ones', async () => {
     const user = getTestUser()
     const created = await insertAutoshareRule(user, ruleInput())
@@ -130,6 +146,8 @@ describe('Auto-share rules integration', () => {
     expect(await listFeedPostIdsByActivityIds(user, [a1, a2])).toEqual([post.id])
     expect(await listFeedPostIdsByActivityIds(user, [a1])).toEqual([])
     expect(await listFeedPostIdsByActivityIds(user, [])).toEqual([])
+    expect(await listFeedPostIdsByActivityIds(user, [a1, a2], 'activity')).toEqual([post.id])
+    expect(await listFeedPostIdsByActivityIds(user, [a1, a2], 'article')).toEqual([])
   })
 
   test('deleting an activity post records a suppression that survives the hard delete', async () => {
@@ -201,6 +219,28 @@ describe('Auto-share rules integration', () => {
     expect(times[inWindow]).toBeInstanceOf(Date)
   })
 
+  test('candidates: endedAfter drops activities that ended before it', async () => {
+    const user = getTestUser()
+    const early = await insertActivity(user, {
+      activity_type: 'running',
+      end_time: new Date('2026-08-01T08:30:00Z'),
+      source: 'garmin',
+      start_time: new Date('2026-08-01T08:00:00Z'),
+    })
+    const late = await insertActivity(user, {
+      activity_type: 'running',
+      end_time: new Date('2026-08-01T10:30:00Z'),
+      source: 'garmin',
+      start_time: new Date('2026-08-01T10:00:00Z'),
+    })
+    const start = new Date('2026-08-01T00:00:00Z')
+    const end = new Date('2026-08-01T23:59:59Z')
+    expect((await listAutoshareCandidates(user, start, end)).map((c) => c.id)).toEqual([early, late])
+    expect(
+      (await listAutoshareCandidates(user, start, end, new Date('2026-08-01T09:00:00Z'))).map((c) => c.id),
+    ).toEqual([late])
+  })
+
   test('candidates: detail_pending marks Garmin-backed rows whose detail has not synced', async () => {
     const user = getTestUser()
     const insertRun = (hour: number, data: Record<string, unknown> | undefined) =>
@@ -214,6 +254,7 @@ describe('Auto-share rules integration', () => {
     const pending = await insertRun(6, { garmin_activity_id: 101 })
     const synced = await insertRun(8, { detail_synced: true, garmin_activity_id: 102 })
     const plain = await insertRun(10, undefined)
+    const explicitlyUnsynced = await insertRun(12, { detail_synced: false, garmin_activity_id: 103 })
 
     const candidates = await listAutoshareCandidates(
       user,
@@ -224,6 +265,7 @@ describe('Auto-share rules integration', () => {
       [pending, true],
       [synced, false],
       [plain, false],
+      [explicitlyUnsynced, true],
     ])
   })
 })

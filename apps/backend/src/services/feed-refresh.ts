@@ -17,7 +17,8 @@ export interface FeedRefreshDeps {
   getActivity: (user: string, id: string) => Promise<Activity | null>
   /** The activity's merge group (empty when it stands alone). */
   getGroup: (user: string, activity: Activity) => Promise<Activity[]>
-  postIdsForActivities: (user: string, activityIds: string[]) => Promise<string[]>
+  /** Ids of the ACTIVITY posts referencing any of the activities — only those carry its detail. */
+  activityPostIds: (user: string, activityIds: string[]) => Promise<string[]>
   touchPost: (user: string, id: string) => Promise<FeedPostRecord | null>
   deliverUpdated: (user: string, post: FeedPostRecord) => void
 }
@@ -33,11 +34,11 @@ export const refreshFeedPostsForActivity = async (
   const group = await deps.getGroup(user, activity)
   const members = group.length > 0 ? group : [activity]
   const ids = members.map((member) => member.id).filter((id): id is string => id != null)
-  const postIds = await deps.postIdsForActivities(user, ids)
+  const postIds = await deps.activityPostIds(user, ids)
   let refreshed = 0
   for (const postId of postIds) {
     const post = await deps.touchPost(user, postId)
-    if (post?.kind !== 'activity') continue
+    if (post == null) continue
     deps.deliverUpdated(user, post)
     refreshed++
   }
@@ -51,6 +52,6 @@ export const createFeedRefreshDeps = (
   deliverUpdated,
   getActivity: getActivityById,
   getGroup: getOverlappingActivities,
-  postIdsForActivities: listFeedPostIdsByActivityIds,
+  activityPostIds: (user, activityIds) => listFeedPostIdsByActivityIds(user, activityIds, 'activity'),
   touchPost: touchFeedPost,
 })
