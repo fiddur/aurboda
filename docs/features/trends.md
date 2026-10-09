@@ -37,7 +37,7 @@ Tracks the smoothed value of any numeric metric (weight, HRV, sleep score, steps
 Every metric is either a **level** or an **amount**:
 
 - A **level** (weight, waist, resting HR) is a state you measure now and then. A day without a sample means "not measured", so it is left out of the EMA and does not drag the line toward zero.
-- An **amount** (steps, calories, a dose) is something that adds up. A day without a sample means zero, so it enters the EMA as 0 and the line falls toward zero when nothing is logged.
+- An **amount** (steps, calories, a dose) is something that adds up. A day without a sample means zero, so it enters the EMA as 0 and the line falls toward zero when nothing is logged. That includes the days before the metric's first-ever sample, so a newly started amount metric reads low for a few half-lives (activity-type trends behave the same).
 
 Built-in amount metrics are steps, distance, floors climbed, calories (active, basal, total), the HR-zone seconds and TRIMP (training and activity impulse); every other built-in metric is a level. Custom metrics choose their kind in their definition (**Kind**: Level -- average, or Amount -- sum; `aggregation: 'avg' | 'sum'` in the API and the `add_custom_metric` / `update_custom_metric` MCP tools). Custom metrics default to Level. The kind also decides whether bucketed bar charts total a custom metric per bucket.
 

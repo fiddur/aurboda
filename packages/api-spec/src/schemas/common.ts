@@ -253,10 +253,6 @@ export const metricUnits: Record<MetricType, string> = {
   performance_condition: 'score',
 }
 
-/**
- * Aggregation type for metrics: 'sum' for amounts (cumulative totals), 'avg' for levels (instantaneous values).
- * Determines how values are combined in time buckets and how trends treat days without samples.
- */
 export const metricAggregationSchema = z.enum(['avg', 'sum']).meta({
   description:
     "Metric kind. 'sum' for amounts (a dose, steps): a day without samples counts as 0 in trends and bar charts total the day. 'avg' for levels (weight, HR): missing days are skipped.",

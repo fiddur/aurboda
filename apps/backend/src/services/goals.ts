@@ -1,5 +1,6 @@
 import {
   cumulativeMetrics,
+  type CustomMetricDefinition,
   isCalendarBasedUnit,
   metricUnits,
   parseDuration,
@@ -94,10 +95,14 @@ const computeMetricGoalProgress = async (
 /**
  * Compute progress for a trend goal (EMA value).
  */
-const computeTrendGoalProgress = async (user: string, goal: TrendGoal): Promise<TrendGoalProgress> => {
+const computeTrendGoalProgress = async (
+  user: string,
+  goal: TrendGoal,
+  customMetrics: CustomMetricDefinition[],
+): Promise<TrendGoalProgress> => {
   const trend = await getTrend(user, {
     aggregation: goal.aggregation,
-    custom_metrics: await getCustomMetrics(user),
+    custom_metrics: customMetrics,
     display_period: goal.display_period,
     half_life_days: goal.half_life_days,
     lookback_days: 90,
@@ -125,10 +130,12 @@ export const getGoalsProgress = async (user: string): Promise<GoalProgress[]> =>
     return []
   }
 
+  const customMetrics = goals.some((goal) => goal.goal_type === 'trend') ? await getCustomMetrics(user) : []
+
   return Promise.all(
     goals.map((goal) =>
       goal.goal_type === 'trend'
-        ? computeTrendGoalProgress(user, goal)
+        ? computeTrendGoalProgress(user, goal, customMetrics)
         : computeMetricGoalProgress(user, goal),
     ),
   )
