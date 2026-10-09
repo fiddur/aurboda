@@ -14,7 +14,7 @@ import type { BiologicalSex } from '@aurboda/api-spec'
 import type { TimeSeriesPoint, UserSettings } from '../db/types.ts'
 
 import { localMidnightToUtc } from '../db/health-connect.ts'
-import { enqueueOutboundSync, getUserSettings, upsertUserSettings } from '../db/index.ts'
+import { enqueueOutboundSyncInsertsIfChanged, getUserSettings, upsertUserSettings } from '../db/index.ts'
 import {
   deleteTimeSeriesBySource,
   getMetricTimeRange,
@@ -62,8 +62,9 @@ const getLatestMetricValue = async (
  * are queued to avoid flooding the outbound queue with thousands of old data
  * points that would starve more important entries (exercises, weight, etc.).
  *
- * For normal incremental computation (triggered by new HR data), all new
- * calorie points are queued regardless of their timestamp.
+ * For normal incremental computation (triggered by new HR data), every
+ * recomputed minute is offered regardless of its timestamp, but only minutes
+ * that are new or whose value changed since they were last queued get a row.
  */
 export const enqueueCalorieSync = async (
   user: string,
@@ -75,12 +76,12 @@ export const enqueueCalorieSync = async (
     const hcRecordType = metricToHealthConnectType.calories_active
     if (!hcRecordType) return
 
-    for (const p of points) {
-      await enqueueOutboundSync(user, {
+    await enqueueOutboundSyncInsertsIfChanged(
+      user,
+      'time_series',
+      hcRecordType,
+      points.map((p) => ({
         entity_id: `calories_active|${p.time.toISOString()}`,
-        entity_type: 'time_series',
-        hc_record_type: hcRecordType,
-        operation: 'insert',
         payload: {
           end_time: p.end_time.toISOString(),
           metric: 'calories_active',
@@ -88,8 +89,8 @@ export const enqueueCalorieSync = async (
           unit: 'kcal',
           value: p.kcal_active,
         },
-      })
-    }
+      })),
+    )
   } catch (err) {
     auditError(user, 'data', 'Failed to enqueue calorie outbound sync', { error: String(err) })
   }
