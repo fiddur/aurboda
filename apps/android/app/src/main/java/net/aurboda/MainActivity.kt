@@ -69,6 +69,7 @@ import net.aurboda.update.checkForUpdate
 import net.aurboda.update.downloadUpdate
 import net.aurboda.update.getExistingDownloadState
 import net.aurboda.update.installApk
+import net.aurboda.widget.challengeWidgetUrls
 import net.aurboda.allRecordTypes
 import net.aurboda.writableRecordTypes
 import java.io.File
@@ -183,7 +184,7 @@ class MainActivity : ComponentActivity() {
     deepLinkFrom(
       intent?.getStringExtra(EXTRA_OPEN_TAB),
       intent?.getStringExtra(EXTRA_MORE_PATH),
-      net.aurboda.widget.challengeWidgetUrls(this),
+      challengeWidgetUrls(this),
     )
 }
 
@@ -229,10 +230,7 @@ fun AurbodaApp(
   initialMorePath: String? = null,
   deepLinkEvent: DeepLinkEvent? = null,
 ) {
-  // A widget/notification deep link into a More web page opens it on first
-  // composition; tapping More later returns to the hub (AppState.selectTab).
   val appState = rememberAppState(initialTab = initialTab, initialMorePath = initialMorePath)
-  // ...and one that arrives while the app is running (onNewIntent) navigates in place.
   LaunchedEffect(deepLinkEvent) { deepLinkEvent?.let { appState.open(it.link) } }
   val context = LocalContext.current
   val scope = rememberCoroutineScope()

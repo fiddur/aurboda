@@ -1,7 +1,6 @@
 package net.aurboda
 
 import androidx.test.core.app.ApplicationProvider
-import net.aurboda.ui.screens.MoreDestination
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test

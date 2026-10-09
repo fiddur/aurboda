@@ -1,5 +1,6 @@
 package net.aurboda.ui.screens
 
+import net.aurboda.MoreDestination
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
