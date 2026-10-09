@@ -165,9 +165,11 @@ export const groupSessions = (
     .map(([key, { value, sessions: members }]): ActivitySessionGroup => {
       const durations = members.flatMap((s) => (s.duration === undefined ? [] : [s.duration]))
       const maxHrs = members.flatMap((s) => (s.max_hr === undefined ? [] : [s.max_hr]))
-      const avgHrMedian = median(members.flatMap((s) => (s.avg_hr === undefined ? [] : [s.avg_hr])))
+      const avgHrs = members.flatMap((s) => (s.avg_hr === undefined ? [] : [s.avg_hr]))
+      const avgHrMedian = median(avgHrs)
       const pooled = pooledHr.get(key)
       return {
+        avg_hr_count: avgHrs.length,
         avg_hr_median: avgHrMedian === undefined ? undefined : round1(avgHrMedian),
         count: members.length,
         duration_max: durations.length > 0 ? Math.max(...durations) : undefined,

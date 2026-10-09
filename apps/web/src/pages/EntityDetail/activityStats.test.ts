@@ -134,7 +134,7 @@ describe('buildMetricRows: typical Avg HR', () => {
       activity,
       sleepMinutes: undefined,
       totalCalories: undefined,
-      typicalAvgHr: { count: 12, field: 'Session name', label: 'Yin yoga', median: 117.6 },
+      typicalAvgHr: { count: 12, field_label: 'Session name', median: 117.6, value: 'Yin yoga' },
     }).find((r) => r.label === 'Avg HR')
     expect(row).toEqual({
       label: 'Avg HR',
@@ -148,7 +148,7 @@ describe('buildMetricRows: typical Avg HR', () => {
       activity,
       sleepMinutes: undefined,
       totalCalories: undefined,
-      typicalAvgHr: { count: 3, field: 'Session name', label: 'Flow', median: 125 },
+      typicalAvgHr: { count: 3, field_label: 'Session name', median: 125, value: 'Flow' },
     }).find((r) => r.label === 'Avg HR')
     expect(row?.value).toBe('125 bpm · typically 125 (3 Flow)')
   })
@@ -156,6 +156,7 @@ describe('buildMetricRows: typical Avg HR', () => {
 
 describe('typicalAvgHr', () => {
   const group = (overrides: Partial<ActivitySessionGroup>): ActivitySessionGroup => ({
+    avg_hr_count: 5,
     count: 5,
     first_start_time: '2026-01-01T10:00:00Z',
     last_start_time: '2026-10-01T10:00:00Z',
@@ -170,23 +171,37 @@ describe('typicalAvgHr', () => {
     sessions: [],
   })
 
-  test('the median and count of the group with the same value', () => {
+  test('the median of the group with the same value, and how many sessions with HR it is from', () => {
     const data = sessions([
-      group({ avg_hr_median: 90, value: 'Flow' }),
-      group({ avg_hr_median: 80, count: 4 }),
+      group({ avg_hr_count: 5, avg_hr_median: 90, value: 'Flow' }),
+      group({ avg_hr_count: 4, avg_hr_median: 80, count: 6 }),
     ])
     expect(typicalAvgHr(data, 'session_name', 'Yin')).toEqual({ count: 4, median: 80 })
   })
 
   test('matches a non-string group value by its string form', () => {
-    const data = sessions([group({ avg_hr_median: 80, value: 2 })], 'level')
+    const data = sessions([group({ avg_hr_count: 5, avg_hr_median: 80, value: 2 })], 'level')
     expect(typicalAvgHr(data, 'level', '2')).toEqual({ count: 5, median: 80 })
   })
 
   test('nothing for a group of fewer than three sessions', () => {
-    expect(typicalAvgHr(sessions([group({ avg_hr_median: 80, count: 2 })]), 'session_name', 'Yin')).toBe(
-      undefined,
-    )
+    expect(
+      typicalAvgHr(
+        sessions([group({ avg_hr_count: 2, avg_hr_median: 80, count: 2 })]),
+        'session_name',
+        'Yin',
+      ),
+    ).toBe(undefined)
+  })
+
+  test('nothing when fewer than three of the sessions have an Avg HR (#1228)', () => {
+    expect(
+      typicalAvgHr(
+        sessions([group({ avg_hr_count: 1, avg_hr_median: 118, count: 3 })]),
+        'session_name',
+        'Yin',
+      ),
+    ).toBeUndefined()
   })
 
   test('nothing for a group without a median', () => {

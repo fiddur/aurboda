@@ -428,8 +428,8 @@ const ActivityDetailContent = ({
                 totalCalories,
                 typicalAvgHr: typical && {
                   ...typical,
-                  field: fieldLabel(groupValue.field),
-                  label: groupValue.value,
+                  field_label: fieldLabel(groupValue.field),
+                  value: groupValue.value,
                 },
               })}
               location={hasEndTime ? { end: displayEnd, start: displayStart } : undefined}

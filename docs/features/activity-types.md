@@ -65,8 +65,9 @@ On an activity's detail page:
 - **Summary table**: the type's data fields, time, duration, location, then the source's
   summary metrics (HR, calories with the active part, steps when walked, Body Battery before and
   after, elevation, power). When the activity has a categorical value shared by at least three
-  sessions, Avg HR adds what is typical for it, e.g. `125 bpm · typically 118 (12 Yin yoga)`: the
-  median of those sessions' average heart rates, from the first categorical field with a value
+  sessions that have an Avg HR, Avg HR adds what is typical for it, e.g.
+  `125 bpm · typically 118 (12 Yin yoga)`: the median of those sessions' average heart rates and
+  how many there are (the group's `avg_hr_count`), from the first categorical field with a value
   (`GET /activity-types/:name/sessions?group_by=<field>`). An empty categorical field shows as a
   row with **Set…**, which opens the editor on that field; a deleted activity leaves such rows
   out. When editing, a categorical text field suggests the values already used on the type
