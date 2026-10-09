@@ -1378,6 +1378,7 @@ describe('updateCustomMetric', () => {
 
     const result = await updateCustomMetric('testuser', 'mood', { minValue: null })
 
+    expect(db.updateCustomMetricDefinition).toHaveBeenCalledWith('testuser', 'mood', { min_value: null })
     expect(result.success).toBe(true)
     expect(result.data?.min_value).toBeUndefined()
     expect(result.data?.max_value).toBe(10)
@@ -1392,6 +1393,7 @@ describe('updateCustomMetric', () => {
 
     const result = await updateCustomMetric('testuser', 'mood', { maxValue: null })
 
+    expect(db.updateCustomMetricDefinition).toHaveBeenCalledWith('testuser', 'mood', { max_value: null })
     expect(result.success).toBe(true)
     expect(result.data?.max_value).toBeUndefined()
     expect(result.data?.min_value).toBe(1)

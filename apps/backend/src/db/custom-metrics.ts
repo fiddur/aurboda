@@ -48,15 +48,15 @@ export const insertCustomMetricDefinition = async (
   )
 }
 
+export type CustomMetricDefinitionUpdates = Partial<
+  Pick<CustomMetricDefinition, 'unit' | 'description' | 'include_in_daily_summary' | 'aggregation'>
+> & { max_value?: number | null; min_value?: number | null }
+
+/** `undefined` leaves a field as it is; `null` clears min_value/max_value. */
 export const updateCustomMetricDefinition = async (
   user: string,
   name: string,
-  updates: Partial<
-    Pick<
-      CustomMetricDefinition,
-      'unit' | 'description' | 'min_value' | 'max_value' | 'include_in_daily_summary' | 'aggregation'
-    >
-  >,
+  updates: CustomMetricDefinitionUpdates,
 ): Promise<CustomMetricDefinition | null> => {
   const setClauses: string[] = []
   const values: unknown[] = []

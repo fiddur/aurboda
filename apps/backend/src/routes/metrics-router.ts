@@ -156,7 +156,12 @@ export const createMetricsRouter = (
     async (req, res) => {
       const { name } = req.params
       const user = req.user!
-      const result = await updateCustomMetric(user, name, req.body)
+      const { max_value, min_value, ...rest } = req.body
+      const result = await updateCustomMetric(user, name, {
+        ...rest,
+        ...(max_value !== undefined ? { maxValue: max_value } : {}),
+        ...(min_value !== undefined ? { minValue: min_value } : {}),
+      })
       if (!result.success) {
         return res.status(404).json({ error: result.error, success: false })
       }
