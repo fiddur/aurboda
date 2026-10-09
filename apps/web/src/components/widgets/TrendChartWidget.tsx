@@ -87,8 +87,9 @@ export function TrendChartWidget({ config, origin }: TrendChartWidgetProps) {
     half_life_days = 15,
     lookback_days = 90,
     display_period = 'monthly',
-    aggregation = 'count',
+    aggregation = source_type === 'metric' ? 'mean' : 'count',
     breakdown_fields,
+    missing_days,
   } = config
 
   const trendQuery = useQuery({
@@ -101,6 +102,7 @@ export function TrendChartWidget({ config, origin }: TrendChartWidgetProps) {
         pattern,
         source_type,
         ...(breakdown_fields?.length ? { breakdown_fields } : {}),
+        ...(missing_days ? { missing_days } : {}),
       }),
     queryKey: [
       'trend',
@@ -111,6 +113,7 @@ export function TrendChartWidget({ config, origin }: TrendChartWidgetProps) {
       display_period,
       aggregation,
       breakdown_fields,
+      missing_days,
     ],
     ...HEAVY_QUERY_OPTIONS,
     staleTime: 5 * 60 * 1000,
@@ -142,6 +145,7 @@ export function TrendChartWidget({ config, origin }: TrendChartWidgetProps) {
     display_period,
     half_life_days,
     lookback_days,
+    missing_days,
     pattern,
     source_type,
     activity_type_id: config.tag_definition_id,

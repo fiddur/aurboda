@@ -1150,6 +1150,10 @@ export const migrateSchema = async (user: string, opts?: { force?: boolean }) =>
       db,
       `ALTER TABLE custom_metrics ADD COLUMN IF NOT EXISTS include_in_daily_summary BOOLEAN NOT NULL DEFAULT FALSE`,
     )
+    await query(
+      db,
+      `ALTER TABLE custom_metrics ADD COLUMN IF NOT EXISTS aggregation VARCHAR(10) NOT NULL DEFAULT 'avg'`,
+    )
   }
   if (existingTableNames.has('productivity')) {
     await query(db, `ALTER TABLE productivity ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`)
@@ -1654,8 +1658,110 @@ export const migrateSchema = async (user: string, opts?: { force?: boolean }) =>
     })
   }
 
+  const metricTrendCountApplied = await query(
+    db,
+    `SELECT 1 FROM schema_migrations WHERE name = 'metric_trend_count_to_mean'`,
+  )
+  if (metricTrendCountApplied.rows.length === 0) {
+    await withTransaction(db, async (tx) => {
+      await rewriteMetricTrendCountToMean(tx)
+      await query(
+        tx,
+        `INSERT INTO schema_migrations (name) VALUES ('metric_trend_count_to_mean') ON CONFLICT DO NOTHING`,
+      )
+    })
+  }
+
   // Last, and only on success: a sweep that threw must run again next time.
   await recordSchemaFingerprint(db, fingerprint)
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+
+const isMetricTrendCountWidget = (
+  widget: unknown,
+): widget is Record<string, unknown> & {
+  config: Record<string, unknown>
+} =>
+  isRecord(widget) &&
+  widget.type === 'trend_chart' &&
+  isRecord(widget.config) &&
+  widget.config.source_type === 'metric' &&
+  widget.config.aggregation === 'count'
+
+/**
+ * `count` on a metric trend used to render as `mean`; this turns stored trend_chart widgets into what
+ * they displayed. Returns the config unchanged (same reference) when no widget needs it.
+ * @internal Exported for testing.
+ */
+export const _rewriteMetricTrendCountInDashboard = (config: unknown): unknown => {
+  if (!isRecord(config) || !Array.isArray(config.sections)) return config
+  const hasMatch = config.sections.some(
+    (section) =>
+      isRecord(section) && Array.isArray(section.widgets) && section.widgets.some(isMetricTrendCountWidget),
+  )
+  if (!hasMatch) return config
+  return {
+    ...config,
+    sections: config.sections.map((section) =>
+      isRecord(section) && Array.isArray(section.widgets)
+        ? {
+            ...section,
+            widgets: section.widgets.map((widget) =>
+              isMetricTrendCountWidget(widget)
+                ? { ...widget, config: { ...widget.config, aggregation: 'mean' } }
+                : widget,
+            ),
+          }
+        : section,
+    ),
+  }
+}
+
+/**
+ * Until #1252, `count` on a metric trend silently meant `mean`, and the Chart page saved `count` by
+ * default. Rewrites stored metric trend goals and trend_chart widgets (home dashboard and shared
+ * dashboards) from `count` to `mean`. Bar charts are left alone: `count` is a real bucket stat there.
+ * Idempotent. Returns the number of rows rewritten.
+ * @internal Exported for testing.
+ */
+export const rewriteMetricTrendCountToMean = async (db: Queryable): Promise<number> => {
+  const goals = await query(
+    db,
+    `UPDATE goals SET aggregation = 'mean', updated_at = NOW()
+      WHERE goal_type = 'trend' AND source_type = 'metric' AND aggregation = 'count'`,
+  )
+  let rewritten = goals.rowCount ?? 0
+
+  const settings = await query<{ dashboard: unknown; id: string }>(
+    db,
+    `SELECT id, settings->'dashboard' AS dashboard FROM user_settings WHERE settings ? 'dashboard'`,
+  )
+  for (const row of settings.rows) {
+    const dashboard = _rewriteMetricTrendCountInDashboard(row.dashboard)
+    if (dashboard === row.dashboard) continue
+    await query(
+      db,
+      `UPDATE user_settings SET settings = jsonb_set(settings, '{dashboard}', $1::jsonb), updated_at = NOW()
+        WHERE id = $2`,
+      [JSON.stringify(dashboard), row.id],
+    )
+    rewritten++
+  }
+
+  const shared = await query<{ config: unknown; id: string }>(db, `SELECT id, config FROM shared_dashboards`)
+  for (const row of shared.rows) {
+    const config = _rewriteMetricTrendCountInDashboard(row.config)
+    if (config === row.config) continue
+    await query(db, `UPDATE shared_dashboards SET config = $1::jsonb, updated_at = NOW() WHERE id = $2`, [
+      JSON.stringify(config),
+      row.id,
+    ])
+    rewritten++
+  }
+
+  return rewritten
 }
 
 /**

@@ -80,10 +80,9 @@ export type MetricGoal = z.infer<typeof metricGoalSchema>
 
 export const trendGoalSchema = z
   .object({
-    aggregation: z
-      .enum(['count', 'sum', 'mean'])
-      .default('count')
-      .meta({ description: 'How to aggregate source data' }),
+    aggregation: z.enum(['count', 'sum', 'mean']).optional().meta({
+      description: 'How to aggregate source data. Defaults to count for activity types and mean for metrics.',
+    }),
     display_period: trendDisplayPeriodSchema
       .default('monthly')
       .meta({ description: 'Display period for the trend value' }),

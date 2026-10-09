@@ -587,6 +587,7 @@ export { deleteGoal, getGoals, insertGoal, replaceGoals } from './goals.ts'
 
 export {
   bulkInsertCustomMetricDefinitions,
+  type CustomMetricDefinitionUpdates,
   deleteCustomMetricDefinition,
   getCustomMetricByName,
   getCustomMetricDefinitions,

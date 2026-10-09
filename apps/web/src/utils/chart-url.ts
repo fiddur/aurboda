@@ -9,7 +9,7 @@ export interface ChartOrigin {
   widget_id: string
 }
 
-export function buildChartUrl(params: {
+interface ChartUrlParams {
   aggregation?: string
   bucket_size?: string
   chart_type: 'trend' | 'bar'
@@ -20,8 +20,21 @@ export function buildChartUrl(params: {
   source_type: string
   activity_type_id?: string
   breakdown_fields?: string[]
+  missing_days?: string
   origin?: ChartOrigin
-}): string {
+}
+
+function setModeParams(qs: URLSearchParams, params: ChartUrlParams) {
+  if (params.chart_type === 'trend') {
+    if (params.display_period) qs.set('display_period', params.display_period)
+    if (params.half_life_days) qs.set('half_life_days', String(params.half_life_days))
+    if (params.missing_days && params.source_type === 'metric') qs.set('missing_days', params.missing_days)
+  } else if (params.bucket_size) {
+    qs.set('bucket_size', params.bucket_size)
+  }
+}
+
+export function buildChartUrl(params: ChartUrlParams): string {
   const qs = new URLSearchParams()
   qs.set('source_type', params.source_type)
   if (params.pattern) qs.set('pattern', params.pattern)
@@ -30,14 +43,9 @@ export function buildChartUrl(params: {
   if (params.lookback_days) qs.set('lookback_days', String(params.lookback_days))
   qs.set('chart_type', params.chart_type)
 
-  if (params.chart_type === 'trend') {
-    if (params.display_period) qs.set('display_period', params.display_period)
-    if (params.half_life_days) qs.set('half_life_days', String(params.half_life_days))
-  } else {
-    if (params.bucket_size) qs.set('bucket_size', params.bucket_size)
-  }
+  setModeParams(qs, params)
 
-  if (params.aggregation && params.aggregation !== 'count') {
+  if (params.aggregation && (params.aggregation !== 'count' || params.source_type === 'metric')) {
     qs.set('aggregation', params.aggregation)
   }
 

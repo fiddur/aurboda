@@ -1,7 +1,7 @@
 /**
  * Reads/writes config via query params so charts are shareable/bookmarkable:
  *   /chart?source_type=activity_type&pattern=coffee&lookback_days=90&display_period=monthly&half_life_days=15
- *   /chart?source_type=metric&pattern=weight&lookback_days=180&aggregation=mean
+ *   /chart?source_type=metric&pattern=weight&lookback_days=180&aggregation=sum&missing_days=zero
  *   /chart?source_type=activity_type&pattern=coffee&chart_type=bar&bucket_size=1d&lookback_days=30
  */
 import type {
@@ -10,6 +10,7 @@ import type {
   DashboardWidget,
   SectionType,
   TrendGoal,
+  TrendMissingDays,
 } from '@aurboda/api-spec'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -80,6 +81,8 @@ const BUCKET_SIZE_OPTIONS: { label: string; value: BucketSize }[] = [
   { label: 'Monthly', value: '1M' },
 ]
 
+type MissingDaysChoice = '' | TrendMissingDays
+
 interface ChartState {
   aggregation: 'count' | 'mean' | 'sum'
   breakdown_fields: string[]
@@ -88,24 +91,30 @@ interface ChartState {
   display_period: TrendDisplayPeriod
   half_life_days: number
   lookback_days: number
+  missing_days: MissingDaysChoice
   pattern: string
   source_type: SourceType
   activity_type_id: string
 }
 
+const defaultAggregation = (source_type: SourceType): ChartState['aggregation'] =>
+  source_type === 'metric' ? 'mean' : 'count'
+
 const LEGACY_CATEGORY_SOURCE = 'productivity_category'
 
 function parseQuery(query: Record<string, string>): ChartState {
+  const source_type: SourceType = query.source_type === 'metric' ? 'metric' : 'activity_type'
   return {
-    aggregation: (query.aggregation ?? 'count') as 'count' | 'mean' | 'sum',
+    aggregation: (query.aggregation ?? defaultAggregation(source_type)) as 'count' | 'mean' | 'sum',
     breakdown_fields: query.breakdown_fields ? query.breakdown_fields.split(',').filter(Boolean) : [],
     bucket_size: (query.bucket_size ?? '1d') as BucketSize,
     chart_type: (query.chart_type ?? 'trend') as ChartType,
     display_period: (query.display_period ?? 'monthly') as TrendDisplayPeriod,
     half_life_days: Number(query.half_life_days) || 15,
     lookback_days: Number(query.lookback_days) || 90,
+    missing_days: query.missing_days === 'zero' || query.missing_days === 'skip' ? query.missing_days : '',
     pattern: query.source_type === LEGACY_CATEGORY_SOURCE ? '' : (query.pattern ?? ''),
-    source_type: query.source_type === 'metric' ? 'metric' : 'activity_type',
+    source_type,
     activity_type_id: query.activity_type_id ?? '',
   }
 }
@@ -121,13 +130,11 @@ function syncUrl(state: ChartState, origin: ChartOrigin | null) {
   if (state.chart_type === 'trend') {
     params.set('display_period', state.display_period)
     params.set('half_life_days', String(state.half_life_days))
+    if (state.source_type === 'metric' && state.missing_days) params.set('missing_days', state.missing_days)
   } else {
     params.set('bucket_size', state.bucket_size)
   }
-  if (
-    (state.source_type === 'metric' || state.source_type === 'activity_type') &&
-    state.aggregation !== 'count'
-  ) {
+  if (state.aggregation !== 'count' || state.source_type === 'metric') {
     params.set('aggregation', state.aggregation)
   }
   if (state.breakdown_fields.length > 0) {
@@ -173,7 +180,13 @@ function SourcePicker({
           value={state.source_type}
           onChange={(e) => {
             const source_type = (e.target as HTMLSelectElement).value as SourceType
-            onUpdate({ source_type, pattern: '', activity_type_id: '' })
+            onUpdate({
+              activity_type_id: '',
+              aggregation: defaultAggregation(source_type),
+              missing_days: '',
+              pattern: '',
+              source_type,
+            })
           }}
         >
           <option value="activity_type">Activity Type</option>
@@ -335,9 +348,34 @@ function ChartControls({
                 onUpdate({ aggregation: (e.target as HTMLSelectElement).value as 'count' | 'mean' | 'sum' })
               }
             >
-              {state.source_type === 'metric' && <option value="mean">Average</option>}
-              <option value="sum">Sum (hours)</option>
-              <option value="count">Count</option>
+              {state.source_type === 'metric' ? (
+                <>
+                  <option value="mean">Average</option>
+                  <option value="sum">Sum</option>
+                  <option value="count">Count</option>
+                </>
+              ) : (
+                <>
+                  <option value="sum">Sum (hours)</option>
+                  <option value="count">Count</option>
+                </>
+              )}
+            </select>
+          </label>
+        )}
+
+        {state.source_type === 'metric' && state.chart_type === 'trend' && (
+          <label>
+            Missing days
+            <select
+              value={state.missing_days}
+              onChange={(e) =>
+                onUpdate({ missing_days: (e.target as HTMLSelectElement).value as MissingDaysChoice })
+              }
+            >
+              <option value="">Auto (by metric kind)</option>
+              <option value="zero">Count as zero</option>
+              <option value="skip">Skip</option>
             </select>
           </label>
         )}
@@ -568,6 +606,7 @@ function buildWidgetFromState(
       display_period: state.display_period,
       half_life_days: state.half_life_days,
       lookback_days: state.lookback_days,
+      ...(state.source_type === 'metric' && state.missing_days ? { missing_days: state.missing_days } : {}),
       pattern: state.pattern,
       source_type: state.source_type,
       ...(state.activity_type_id ? { tag_definition_id: state.activity_type_id } : {}),
@@ -983,6 +1022,9 @@ export function Chart() {
             display_period: state.display_period,
             half_life_days: state.half_life_days,
             lookback_days: state.lookback_days,
+            ...(state.source_type === 'metric' && state.missing_days
+              ? { missing_days: state.missing_days }
+              : {}),
             pattern: state.pattern,
             source_type: state.source_type,
             ...(state.activity_type_id ? { activity_type_id: state.activity_type_id } : {}),
