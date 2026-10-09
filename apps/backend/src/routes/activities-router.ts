@@ -68,6 +68,24 @@ import { validateBody, validateQuery } from '../validation.ts'
 
 type ActivityRow = Awaited<ReturnType<typeof getActivityById>> & {}
 
+const RULE_REFERENCE_KEYS = ['rule_id', '_enriched_by', '_retyped_by'] as const
+
+/** Names of the deduction rules an activity's data points at, keyed by rule id. */
+const resolveReferencedRules = async (
+  user: string,
+  data: Record<string, unknown> | undefined,
+): Promise<Record<string, string> | undefined> => {
+  const ruleIds = new Set(
+    RULE_REFERENCE_KEYS.map((key) => data?.[key]).filter((id): id is string => typeof id === 'string'),
+  )
+  const referenced: Record<string, string> = {}
+  for (const ruleId of ruleIds) {
+    const rule = await getDeductionRule(user, ruleId)
+    if (rule) referenced[ruleId] = rule.name
+  }
+  return Object.keys(referenced).length > 0 ? referenced : undefined
+}
+
 const buildMergedResponse = async (
   user: string,
   activity: NonNullable<ActivityRow>,
@@ -461,21 +479,11 @@ export const createActivitiesRouter = (
 
     if (isMerged && !activity.deleted_at) {
       const data = await buildMergedResponse(user, activity, activityMetrics)
-      return res.json({ data, success: true })
-    }
-
-    const referencedRules: Record<string, string> = {}
-    const activityData = activity.data
-    if (activityData) {
-      const ruleIds = [
-        typeof activityData._enriched_by === 'string' ? activityData._enriched_by : undefined,
-        typeof activityData.rule_id === 'string' ? activityData.rule_id : undefined,
-      ].filter((id): id is string => id !== undefined)
-
-      for (const ruleId of ruleIds) {
-        const rule = await getDeductionRule(user, ruleId)
-        if (rule) referencedRules[ruleId] = rule.name
-      }
+      return res.json({
+        data,
+        referenced_rules: await resolveReferencedRules(user, data.data),
+        success: true,
+      })
     }
 
     // Attach user notes/comments so the detail page's Notes row and edit-mode
@@ -496,7 +504,7 @@ export const createActivitiesRouter = (
         start_time: activity.start_time.toISOString(),
         title: activity.title,
       },
-      referenced_rules: Object.keys(referencedRules).length > 0 ? referencedRules : undefined,
+      referenced_rules: await resolveReferencedRules(user, activity.data),
       success: true,
     })
   })

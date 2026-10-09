@@ -10,7 +10,8 @@ import { addAutoshareRuleBodySchema, updateAutoshareRuleBodySchema } from '@aurb
 import { z } from 'zod'
 
 import type { AutoshareRuleRecord } from '../db/index.ts'
-import type { AutoshareDeps } from '../services/autoshare.ts'
+import type { AutoshareGroupMember } from '../services/autoshare-deps.ts'
+import type { AutosharePreviewDeps as PreviewDeps } from '../services/autoshare.ts'
 
 import {
   countAutosharePostsByRule,
@@ -23,10 +24,7 @@ import { autoshareRuleInputFromBody, serializeAutoshareRule } from '../routes/au
 import { PREVIEW_SAMPLE_DAYS, previewAutoshareRule } from '../services/autoshare.ts'
 import { errorResponse, jsonResponse, type McpServer } from './helpers.ts'
 
-export type AutosharePreviewDeps = Pick<
-  AutoshareDeps,
-  'listCandidates' | 'getGroup' | 'resolveWindow' | 'distanceMeters'
->
+export type AutosharePreviewDeps = PreviewDeps<AutoshareGroupMember>
 
 export const registerAutoshareRuleTools = (
   server: McpServer,

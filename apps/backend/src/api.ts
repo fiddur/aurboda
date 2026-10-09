@@ -42,6 +42,7 @@ import {
   migrateAllUsers,
   openTimelineChannel,
   pruneDeductionRuleRuns,
+  pruneSyncedOutboundSync,
   resolveOrCreateActivityType,
   markTimelineEntryReplyChecked,
   setTimelineEntryReplyInfo,
@@ -685,6 +686,7 @@ const main = async () => {
         listUsers: () => listUserNames(userDb),
         prune: pruneAuditLog,
         pruneDeductionRuleRuns,
+        pruneSyncedOutboundSync,
       })
     } catch (error) {
       console.error('Failed to initialize audit log prune:', error)

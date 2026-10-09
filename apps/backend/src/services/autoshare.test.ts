@@ -232,6 +232,23 @@ describe('evaluateAutoshareWindow', () => {
     expect(distanceCalls).toBe(0)
   })
 
+  test('lists only candidates that ended after the earliest enable', async () => {
+    const listed: (Date | undefined)[] = []
+    const h = harness({
+      getEnabledRules: async () => [
+        rule({ enabled_at: new Date(T0.getTime() + 2 * HOUR), id: 'later' }),
+        rule({ enabled_at: T0, id: 'earlier' }),
+        rule({ enabled_at: null, id: 'never' }),
+      ],
+      listCandidates: async (_user, _start, _end, endedAfter) => {
+        listed.push(endedAfter)
+        return []
+      },
+    })
+    await evaluateAutoshareWindow('u', T0, new Date(T0.getTime() + 3 * HOUR), h.deps)
+    expect(listed).toEqual([T0])
+  })
+
   test('no enabled rules → nothing is even listed', async () => {
     let listed = false
     const h = harness({
@@ -335,6 +352,22 @@ describe('evaluateAutoshareWindow: settling', () => {
     ])
   })
 
+  test('a group ingested before every enable neither waits nor re-queues, and skips the dedupe queries', async () => {
+    let dedupeQueries = 0
+    const h = withRequeue({
+      getEnabledRules: async () => [rule({ enabled_at: new Date(ingested.getTime() + MINUTE) })],
+      listCandidates: async () => [candidate('a1', { created_at: ingested, detail_pending: true })],
+      postIdsForActivities: async () => {
+        dedupeQueries++
+        return []
+      },
+    })
+    const now = new Date(ingested.getTime() + 2 * MINUTE)
+    expect(await evaluateAutoshareWindow('u', T0, windowEnd, h.deps, now)).toBe(0)
+    expect(h.requeued).toEqual([])
+    expect(dedupeQueries).toBe(0)
+  })
+
   test('without a requeue dep a deferral is just a skip', async () => {
     const h = harness({ listCandidates: async () => [candidate('a1', { created_at: ingested })] })
     const now = new Date(ingested.getTime() + MINUTE)
@@ -357,5 +390,21 @@ describe('previewAutoshareRule', () => {
       new Date(T0.getTime() + 3 * HOUR),
     )
     expect(count).toBe(1)
+  })
+
+  test('skips other activity types before resolving their group', async () => {
+    const grouped: string[] = []
+    const h = harness({
+      getGroup: async (_user, c) => {
+        grouped.push(c.id)
+        return [c]
+      },
+      listCandidates: async (_user, _start, _end, endedAfter) => {
+        expect(endedAfter).toBeUndefined()
+        return [candidate('a1'), candidate('a2', { activity_type: 'yoga' })]
+      },
+    })
+    expect(await previewAutoshareRule('u', rule(), h.deps, new Date(T0.getTime() + 3 * HOUR))).toBe(1)
+    expect(grouped).toEqual(['a1'])
   })
 })

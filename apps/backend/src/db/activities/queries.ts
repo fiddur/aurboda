@@ -293,7 +293,7 @@ export const getActivitiesNeedingDetail = async (
   user: string,
   { forceAll = false, limit = 10 }: { forceAll?: boolean; limit?: number } = {},
 ): Promise<Activity[]> => {
-  const detailFilter = forceAll ? '' : "AND (a.data->>'detail_synced') IS NULL"
+  const detailFilter = forceAll ? '' : "AND (a.data->>'detail_synced') IS DISTINCT FROM 'true'"
   const result = await query(
     user,
     `SELECT ${ACTIVITY_COLUMNS_ALIAS}

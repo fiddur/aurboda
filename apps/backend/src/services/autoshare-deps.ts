@@ -23,15 +23,21 @@ import {
 import { expandFeedActivityWindow } from './feed.ts'
 import { queryMetricsBucketed } from './queries/index.ts'
 
-/** Map a full activity row (+ known ingest times) back to the evaluator's candidate shape. */
-const toCandidate = (
+/** A merge-group member: the evaluator's candidate shape plus the full row it was read from. */
+export interface AutoshareGroupMember extends AutoshareCandidate {
+  activity: Activity
+}
+
+/** Map a full activity row (+ known ingest times) to a group member. */
+const toMember = (
   activity: Activity,
   fallback: AutoshareCandidate,
   ingestTimes: Record<string, Date>,
-): AutoshareCandidate => ({
+): AutoshareGroupMember => ({
+  activity,
   activity_type: activity.activity_type,
   created_at: (activity.id != null ? ingestTimes[activity.id] : undefined) ?? fallback.created_at,
-  detail_pending: activity.data?.garmin_activity_id != null && activity.data.detail_synced == null,
+  detail_pending: activity.data?.garmin_activity_id != null && activity.data.detail_synced !== true,
   end_time: activity.end_time ?? fallback.end_time,
   id: activity.id ?? fallback.id,
   source: activity.source ?? null,
@@ -58,7 +64,7 @@ const windowDistanceMeters = async (user: string, start: Date, end: Date): Promi
 /** Build the production `AutoshareDeps`; `deliverCreated` is `FeedDeliver.created` from `api.ts`. */
 export const createAutoshareDeps = (
   deliverCreated: (user: string, post: FeedPostRecord, activity: Activity) => void,
-): AutoshareDeps => ({
+): AutoshareDeps<AutoshareGroupMember> => ({
   createPost: (user, anchor, rule) =>
     createFeedPost(user, {
       activity_id: anchor.id,
@@ -79,24 +85,11 @@ export const createAutoshareDeps = (
     const members = group.length > 0 ? group : [activity]
     const ids = members.map((member) => member.id).filter((id): id is string => id != null)
     const ingestTimes = await getActivityIngestTimes(user, ids)
-    return members.map((member) => toCandidate(member, candidate, ingestTimes))
+    return members.map((member) => toMember(member, candidate, ingestTimes))
   },
   listCandidates: listAutoshareCandidates,
   suppressedActivityIds: listAutoshareSuppressedIds,
-  onCreated: (user, post, anchor) => {
-    // Fan out with the REAL activity row (the deliver impl resolves the merged
-    // span itself, like the manual share path). Best-effort.
-    void getActivityById(user, anchor.id)
-      .then((activity) => {
-        if (activity != null) deliverCreated(user, post, activity)
-      })
-      .catch((err: unknown) => console.warn(`⚠️ auto-share delivery lookup failed for ${user}:`, err))
-  },
+  onCreated: (user, post, anchor) => deliverCreated(user, post, anchor.activity),
   postIdsForActivities: listFeedPostIdsByActivityIds,
-  resolveWindow: async (user, anchor) => {
-    const activity = await getActivityById(user, anchor.id)
-    // Vanished since grouping: return an open window so the evaluator skips it.
-    if (activity == null) return { activity_type: anchor.activity_type, start_time: anchor.start_time }
-    return expandFeedActivityWindow(user, activity)
-  },
+  resolveWindow: (user, anchor) => expandFeedActivityWindow(user, anchor.activity),
 })

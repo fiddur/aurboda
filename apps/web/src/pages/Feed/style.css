@@ -365,6 +365,10 @@
   margin: 0;
 }
 
+.autoshare-preview-error {
+  color: #991b1b;
+}
+
 /* "auto-shared" marker on posts created by a rule. */
 .feed-post-via-rule {
   font-size: 0.8rem;

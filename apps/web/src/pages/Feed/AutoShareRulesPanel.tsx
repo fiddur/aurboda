@@ -56,16 +56,18 @@ function RuleRow({ rule, postCount }: { rule: AutoshareRule; postCount: number }
     onSuccess: invalidate,
   })
 
-  const onToggle = () => {
+  // Cancelling in `onClick` keeps the browser from flipping the checkbox at all;
+  // in `onChange` it would already show the declined state.
+  const onToggleClick = (e: MouseEvent) => {
     if (
-      rule.enabled ||
-      window.confirm(
+      !rule.enabled &&
+      !window.confirm(
         `Enable "${rule.name}"?\n\nFrom now on, newly synced activities matching it are ` +
           `AUTOMATICALLY published to your federated feed (${rule.visibility}) with the ` +
           `selected metrics — without asking again. Nothing already synced is shared.`,
       )
     ) {
-      toggle.mutate()
+      e.preventDefault()
     }
   }
 
@@ -80,7 +82,13 @@ function RuleRow({ rule, postCount }: { rule: AutoshareRule; postCount: number }
       </div>
       <div class="autoshare-rule-actions">
         <label class="autoshare-rule-toggle">
-          <input type="checkbox" checked={rule.enabled} onChange={onToggle} disabled={toggle.isPending} />
+          <input
+            type="checkbox"
+            checked={rule.enabled}
+            onClick={onToggleClick}
+            onChange={() => toggle.mutate()}
+            disabled={toggle.isPending}
+          />
           {rule.enabled ? 'On' : 'Off'}
         </label>
         <button
@@ -108,6 +116,7 @@ function CreateRuleForm({ onDone }: { onDone: () => void }) {
   const [visibility, setVisibility] = useState<FeedVisibility>('followers')
   const [message, setMessage] = useState('')
   const [preview, setPreview] = useState<{ would_match: number; sample_days: number } | null>(null)
+  const [previewError, setPreviewError] = useState<string | null>(null)
 
   const body = (): AddAutoshareRuleBody => ({
     activity_types: activityType ? [activityType] : [],
@@ -124,8 +133,14 @@ function CreateRuleForm({ onDone }: { onDone: () => void }) {
 
   const previewMutation = useMutation({
     mutationFn: () => previewAutoshareRule(body()),
-    onSuccess: (result) =>
-      setPreview({ sample_days: result.sample_days ?? 30, would_match: result.would_match ?? 0 }),
+    onError: (err) => {
+      setPreview(null)
+      setPreviewError(err.message)
+    },
+    onSuccess: (result) => {
+      setPreviewError(null)
+      setPreview({ sample_days: result.sample_days ?? 30, would_match: result.would_match ?? 0 })
+    },
   })
   const createMutation = useMutation({
     mutationFn: () => addAutoshareRule(body()),
@@ -171,7 +186,7 @@ function CreateRuleForm({ onDone }: { onDone: () => void }) {
           Min distance (km)
           <input
             type="number"
-            min="0"
+            min="0.1"
             step="0.1"
             value={minKm}
             onInput={(e) => setMinKm((e.target as HTMLInputElement).value)}
@@ -255,6 +270,7 @@ function CreateRuleForm({ onDone }: { onDone: () => void }) {
           {preview.sample_days} days.
         </p>
       )}
+      {previewError && <p class="autoshare-preview-result autoshare-preview-error">{previewError}</p>}
     </form>
   )
 }

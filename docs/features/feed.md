@@ -604,7 +604,9 @@ id-convention path — reliable even when a typed consumer drops the in-band ext
    so a broken enrichment path is diagnosable instead of looking identical to a Mastodon post
    (#996).
 3. **Store + render.** The payload is stored on `timeline_entry.structured` (JSONB, NULL for
-   non-Aurboda posts; a redelivery that can't re-fetch keeps the last-known value). The web
+   non-Aurboda posts; a redelivery that can't re-fetch keeps the last-known value — except
+   an article's, which is dropped so the card falls back to the fresh `content` rather
+   than showing the pre-edit title and prose (#973)). The web
    timeline card renders, per `structured.kind`: for an **activity** post the native
    activity card — title, personal message, the activity's date, a Strava-style **stat
    grid** from the typed scalars, one **combined multi-metric chart** (per-metric toggles,
@@ -944,8 +946,9 @@ content plus the author's cached handle / display name / avatar, indexed on
 `structured` JSONB column carries the native Aurboda payload (`FeedStructuredPost`: an
 activity's typed metrics + inline series, or an article's title + resolved blocks) fetched
 during enrichment — NULL for non-Aurboda posts. On a
-re-delivery whose enrichment failed, the upsert `COALESCE`s so the last-known `structured`
-is preserved rather than wiped. A nullable `images` JSONB column holds the delivered
+re-delivery whose enrichment failed, the upsert keeps the last-known `structured` rather
+than wiping a working chart — unless it is an article, whose stale title and prose would
+hide the edited `content`, so it is cleared (the same rule applies to boost cards). A nullable `images` JSONB column holds the delivered
 image attachments (`TimelineImage[]`: url + optional media type / alt / size), rendered as
 the fallback when a post has no native structured chart. Four nullable columns
 (`boost_of_uri`, `boosted_by_actor_uri`, `boosted_by_handle`, `boosted_by_display_name`) turn

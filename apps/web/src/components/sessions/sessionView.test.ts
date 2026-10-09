@@ -32,6 +32,7 @@ const group = (
   value: ActivitySessionGroup['value'],
   extra: Partial<ActivitySessionGroup> = {},
 ): ActivitySessionGroup => ({
+  avg_hr_count: 0,
   count: 1,
   first_start_time: '2026-09-01T07:00:00.000Z',
   last_start_time: '2026-09-01T07:00:00.000Z',

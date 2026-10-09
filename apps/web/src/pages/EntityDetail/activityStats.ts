@@ -79,17 +79,17 @@ export const typicalAvgHr = (
 ): { median: number; count: number } | undefined => {
   if (sessions?.group_by !== field) return undefined
   const group = sessions.groups?.find((g) => g.value !== null && String(g.value) === value)
-  if (!group || group.count < MIN_TYPICAL_SESSIONS || group.avg_hr_median === undefined) return undefined
-  return { count: group.count, median: group.avg_hr_median }
+  if (!group || group.avg_hr_count < MIN_TYPICAL_SESSIONS || group.avg_hr_median === undefined) {
+    return undefined
+  }
+  return { count: group.avg_hr_count, median: group.avg_hr_median }
 }
 
 export interface TypicalAvgHr {
   median: number
   count: number
-  /** The categorical value the sessions share. */
-  label: string
-  /** Label of the field that holds it. */
-  field: string
+  value: string
+  field_label: string
 }
 
 const avgHrRow = (avgHr: number, typical: TypicalAvgHr | undefined): ActivityStatRow => {
@@ -97,8 +97,8 @@ const avgHrRow = (avgHr: number, typical: TypicalAvgHr | undefined): ActivitySta
   if (!typical) return { label: 'Avg HR', value: own }
   return {
     label: 'Avg HR',
-    title: `Median average heart rate over ${typical.count} sessions with the same ${typical.field}`,
-    value: `${own} · typically ${Math.round(typical.median)} (${typical.count} ${typical.label})`,
+    title: `Median average heart rate over ${typical.count} sessions with the same ${typical.field_label}`,
+    value: `${own} · typically ${Math.round(typical.median)} (${typical.count} ${typical.value})`,
   }
 }
 

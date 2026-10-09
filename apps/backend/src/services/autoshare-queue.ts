@@ -14,6 +14,7 @@
  * window is recovered by the next sync's overlapping notification.
  */
 
+import type { AutoshareDeps } from './autoshare.ts'
 import type { Job, PgBoss } from './pg-boss.ts'
 
 import { auditError } from './audit-log.ts'
@@ -26,7 +27,7 @@ export interface AutoshareJobData {
   window_end: string
 }
 
-export type AutoshareRequeue = (user: string, start: Date, end: Date, notBefore: Date) => Promise<void>
+export type AutoshareRequeue = NonNullable<AutoshareDeps['requeue']>
 
 export interface AutoshareQueueDeps {
   evaluateWindow: (user: string, start: Date, end: Date, requeue: AutoshareRequeue) => Promise<number>

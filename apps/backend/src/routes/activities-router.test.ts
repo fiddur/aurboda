@@ -110,6 +110,57 @@ describe('GET /activities/:id', () => {
     expect(res.status).toBe(200)
     expect(res.body.data.comments).toEqual([])
   })
+
+  describe('referenced_rules (#1219)', () => {
+    const RULES: Record<string, string> = {
+      'rule-created': 'Sauna from heat',
+      'rule-enriched': 'Tag the gym',
+      'rule-retyped': 'Yoga is yin',
+    }
+
+    beforeEach(() => {
+      vi.mocked(queries.getCommentsMap).mockResolvedValue(
+        new Map() as Awaited<ReturnType<typeof queries.getCommentsMap>>,
+      )
+      vi.mocked(db.getDeductionRule).mockImplementation(
+        async (_user, id) =>
+          (RULES[id] ? { id, name: RULES[id] } : null) as Awaited<ReturnType<typeof db.getDeductionRule>>,
+      )
+    })
+
+    test('names the rules behind rule_id, _enriched_by and _retyped_by', async () => {
+      vi.mocked(db.getActivityById).mockResolvedValue(
+        activityRow({
+          data: { _enriched_by: 'rule-enriched', _retyped_by: 'rule-retyped', rule_id: 'rule-created' },
+        }),
+      )
+
+      const res = await supertest(buildApp()).get(`/activities/${ACTIVITY_ID}`)
+
+      expect(res.status).toBe(200)
+      expect(res.body.referenced_rules).toEqual(RULES)
+    })
+
+    test('names them in the merged view too', async () => {
+      const activity = activityRow({ data: { _retyped_by: 'rule-retyped' } })
+      vi.mocked(db.getActivityById).mockResolvedValue(activity)
+      vi.mocked(db.getOverlappingActivities).mockResolvedValue([activity!])
+      vi.mocked(queries.dedupeCommentsForIds).mockReturnValue([])
+
+      const res = await supertest(buildApp()).get(`/activities/merged:${ACTIVITY_ID}`)
+
+      expect(res.status).toBe(200)
+      expect(res.body.referenced_rules).toEqual({ 'rule-retyped': 'Yoga is yin' })
+    })
+
+    test('leaves referenced_rules out when no rule is found', async () => {
+      vi.mocked(db.getActivityById).mockResolvedValue(activityRow({ data: { _retyped_by: 'gone' } }))
+
+      const res = await supertest(buildApp()).get(`/activities/${ACTIVITY_ID}`)
+
+      expect(res.body).not.toHaveProperty('referenced_rules')
+    })
+  })
 })
 
 describe('GET /activities/:id/track', () => {
@@ -162,6 +213,49 @@ describe('GET /activities/:id/track', () => {
 
     expect(res.status).toBe(404)
     expect(res.body).toEqual({ error: 'No track for activity', success: false })
+  })
+})
+
+describe('GET /activities/:id/full', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(queries.parseActivityId).mockReturnValue({ id: ACTIVITY_ID, isMerged: false })
+    vi.mocked(db.getActivityById).mockResolvedValue(activityRow())
+    vi.mocked(queries.resolveActivityWindow).mockResolvedValue({
+      data: {},
+      start_time: new Date('2026-06-08T10:00:00Z'),
+    } as unknown as Awaited<ReturnType<typeof queries.resolveActivityWindow>>)
+    vi.mocked(queries.computeActivityDetailMetrics).mockResolvedValue(
+      {} as Awaited<ReturnType<typeof queries.computeActivityDetailMetrics>>,
+    )
+    vi.mocked(queries.getActivityFullDetail).mockImplementation(
+      async (_user, _window, options) =>
+        (options.includeGps ? { gps: [{ lat: 59, lon: 18, time: '2026-06-08T10:00:00Z' }] } : {}) as Awaited<
+          ReturnType<typeof queries.getActivityFullDetail>
+        >,
+    )
+  })
+
+  test.each([['false'], ['0']])('include_gps=%s leaves the GPS trace out (#1239)', async (flag) => {
+    const res = await supertest(buildApp()).get(`/activities/${ACTIVITY_ID}/full?include_gps=${flag}`)
+
+    expect(res.status).toBe(200)
+    expect(res.body.data).not.toHaveProperty('gps')
+    expect(vi.mocked(queries.getActivityFullDetail).mock.calls[0][2]).toMatchObject({ includeGps: false })
+  })
+
+  test('includes the GPS trace by default', async () => {
+    const res = await supertest(buildApp()).get(`/activities/${ACTIVITY_ID}/full`)
+
+    expect(res.status).toBe(200)
+    expect(res.body.data.gps).toHaveLength(1)
+  })
+
+  test('400s on an include_gps value that is not a boolean', async () => {
+    const res = await supertest(buildApp()).get(`/activities/${ACTIVITY_ID}/full?include_gps=no`)
+
+    expect(res.status).toBe(400)
+    expect(queries.getActivityFullDetail).not.toHaveBeenCalled()
   })
 })
 

@@ -482,15 +482,19 @@ export const findCoveringSharedSeriesWindow = async (
 /**
  * Ids of the feed posts referencing ANY of the given activities (#903's hard
  * dedupe): an activity/merge-group with an existing post — manual or
- * auto-created — is never auto-shared again.
+ * auto-created — is never auto-shared again. `kind` narrows it to posts of
+ * that kind.
  */
 export const listFeedPostIdsByActivityIds = async (
   user: string,
   activityIds: string[],
+  kind?: FeedPostKind,
 ): Promise<string[]> => {
   if (activityIds.length === 0) return []
-  const result = await query<{ id: string }>(user, `SELECT id FROM feed_posts WHERE activity_id = ANY($1)`, [
-    activityIds,
-  ])
+  const result = await query<{ id: string }>(
+    user,
+    `SELECT id FROM feed_posts WHERE activity_id = ANY($1) AND ($2::text IS NULL OR kind = $2)`,
+    [activityIds, kind ?? null],
+  )
   return result.rows.map((row) => row.id)
 }

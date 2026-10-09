@@ -10,6 +10,7 @@ import {
   latSchema,
   lonSchema,
   metricTypeSchema,
+  queryBooleanSchema,
   timeRangeQuerySchema,
 } from './common.ts'
 import { commentSchema } from './notes.ts'
@@ -454,8 +455,9 @@ export const ALL_METRICS_SENTINEL = 'all'
  */
 export const activityFullDetailQuerySchema = z
   .object({
-    include_gps: z.coerce.boolean().optional().default(true).meta({
-      description: 'Include GPS trace if any locations exist for the activity time range. Default: true.',
+    include_gps: queryBooleanSchema.optional().default(true).meta({
+      description:
+        "Include GPS trace if any locations exist for the activity time range: 'true'/'1' or 'false'/'0'. Default: true.",
     }),
     metrics: z
       .string()
