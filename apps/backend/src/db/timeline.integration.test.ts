@@ -205,6 +205,18 @@ describe('Timeline store integration', () => {
     expect(edited.structured).toEqual(structured)
   })
 
+  test('an article re-delivery without structured drops the stale article, so content shows (#973)', async () => {
+    const user = getTestUser()
+    const article = { blocks: [], kind: 'article' as const, title: 'Old title' }
+    await upsertTimelineEntry(user, entry(1, { structured: article }))
+    const edited = await upsertTimelineEntry(user, entry(1, { content: '<p>New title</p>' }))
+    expect(edited.content).toBe('<p>New title</p>')
+    expect(edited.structured).toBeNull()
+
+    const fresh = { ...article, title: 'New title' }
+    expect((await upsertTimelineEntry(user, entry(1, { structured: fresh }))).structured).toEqual(fresh)
+  })
+
   test('lists newest-first and keyset-paginates by (published_at, id)', async () => {
     const user = getTestUser()
     for (const n of [1, 2, 3, 4, 5]) await upsertTimelineEntry(user, entry(n))
@@ -629,6 +641,34 @@ describe('Timeline store integration', () => {
       expect(byObject[ANNOUNCE].published_at).toEqual(new Date('2026-07-01T12:00:00Z'))
       expect(byObject[NOTE].content).toBe('<p>post 1</p>')
       expect(byObject[`${ANNOUNCE}-2`].content).toBe('<p>post 1</p>')
+    })
+
+    test('updateBoostCardsOf keeps a card’s chart but drops a stale article on a failed enrich (#973)', async () => {
+      const user = getTestUser()
+      const ALICE_URI = 'https://mastodon.example/users/alice'
+      const activity = {
+        activityType: 'exercise',
+        kind: 'activity' as const,
+        metrics: [],
+        series: [],
+        startTime: '2026-07-01T08:00:00.000Z',
+      }
+      await upsertTimelineEntry(user, boostOfAlice({ structured: activity }))
+      await upsertTimelineEntry(
+        user,
+        boostOfAlice({
+          boost_of_uri: 'https://mastodon.example/notes/2',
+          object_uri: `${ANNOUNCE}-2`,
+          structured: { blocks: [], kind: 'article', title: 'Old title' },
+        }),
+      )
+      const edit = { content: '<p>edited</p>', images: null, structured: null, url: null }
+      await updateBoostCardsOf(user, 'https://mastodon.example/notes/1', ALICE_URI, edit)
+      await updateBoostCardsOf(user, 'https://mastodon.example/notes/2', ALICE_URI, edit)
+
+      const byObject = Object.fromEntries((await listTimelineEntries(user, 10)).map((e) => [e.object_uri, e]))
+      expect(byObject[ANNOUNCE].structured).toEqual(activity)
+      expect(byObject[`${ANNOUNCE}-2`].structured).toBeNull()
     })
 
     test('updateTimelineActorPresentation refreshes an actor as author AND as booster (#1057)', async () => {
