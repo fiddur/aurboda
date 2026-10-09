@@ -67,4 +67,55 @@ describe('buildChartUrl', () => {
     expect(p.get('section_id')).toBe('sec-1')
     expect(p.get('widget_id')).toBe('w-1')
   })
+
+  test('carries missing_days for metric trends', () => {
+    const p = params(
+      buildChartUrl({
+        aggregation: 'sum',
+        chart_type: 'trend',
+        missing_days: 'zero',
+        pattern: 'ibuprofen_mg',
+        source_type: 'metric',
+      }),
+    )
+    expect(p.get('missing_days')).toBe('zero')
+    expect(p.get('aggregation')).toBe('sum')
+  })
+
+  test('omits missing_days when absent, for bar charts and for other sources', () => {
+    const absent = params(buildChartUrl({ chart_type: 'trend', pattern: 'weight', source_type: 'metric' }))
+    expect(absent.has('missing_days')).toBe(false)
+
+    const bar = params(
+      buildChartUrl({ chart_type: 'bar', missing_days: 'skip', pattern: 'weight', source_type: 'metric' }),
+    )
+    expect(bar.has('missing_days')).toBe(false)
+
+    const activity = params(
+      buildChartUrl({
+        chart_type: 'trend',
+        missing_days: 'skip',
+        pattern: 'coffee',
+        source_type: 'activity_type',
+      }),
+    )
+    expect(activity.has('missing_days')).toBe(false)
+  })
+
+  test('keeps count for metrics, whose default is mean', () => {
+    const metric = params(
+      buildChartUrl({ aggregation: 'count', chart_type: 'trend', pattern: 'weight', source_type: 'metric' }),
+    )
+    expect(metric.get('aggregation')).toBe('count')
+
+    const activity = params(
+      buildChartUrl({
+        aggregation: 'count',
+        chart_type: 'trend',
+        pattern: 'coffee',
+        source_type: 'activity_type',
+      }),
+    )
+    expect(activity.has('aggregation')).toBe(false)
+  })
 })

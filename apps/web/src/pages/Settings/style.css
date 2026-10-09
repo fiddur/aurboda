@@ -368,7 +368,8 @@
   color: #6b7280;
 }
 
-.custom-metric-range {
+.custom-metric-range,
+.custom-metric-kind {
   font-size: 0.8rem;
   color: #9ca3af;
 }

@@ -26,10 +26,22 @@ The trend value represents occurrences per display period (e.g., "3.5 per month"
 
 ### Metrics
 
-Tracks the smoothed value of any numeric metric (weight, HRV, sleep score, steps, etc.). Two aggregation modes:
+Tracks the smoothed value of any numeric metric (weight, HRV, sleep score, steps, etc.). Three aggregation modes:
 
-- **Average**: Shows the typical daily value, smoothed. Useful for things like weight or resting heart rate where you want to see the central tendency.
-- **Sum**: Shows the total per display period, smoothed. Useful for things like steps where you want to see "steps per week."
+- **Average**: Shows the typical daily value, smoothed. Useful for things like weight or resting heart rate where you want to see the central tendency. The unit is the metric's own (e.g. "kg"). This is the default for metric trends.
+- **Sum**: Shows the total per display period, smoothed. Useful for things like steps or a dose where you want to see "steps per week" or "mg per month."
+- **Count**: Shows how many samples were logged per display period, smoothed -- "doses per month." Days without samples always count as zero.
+
+#### Metric kind
+
+Every metric is either a **level** or an **amount**:
+
+- A **level** (weight, waist, resting HR) is a state you measure now and then. A day without a sample means "not measured", so it is left out of the EMA and does not drag the line toward zero.
+- An **amount** (steps, calories, a dose) is something that adds up. A day without a sample means zero, so it enters the EMA as 0 and the line falls toward zero when nothing is logged.
+
+Built-in amount metrics are steps, distance, floors climbed, calories (active, basal, total), the HR-zone seconds and TRIMP (training and activity impulse); every other built-in metric is a level. Custom metrics choose their kind in their definition (**Kind**: Level -- average, or Amount -- sum; `aggregation: 'avg' | 'sum'` in the API and the `add_custom_metric` / `update_custom_metric` MCP tools). Custom metrics default to Level. The kind also decides whether bucketed bar charts total a custom metric per bucket.
+
+The **Missing days** option overrides the kind for one trend: **Auto (by metric kind)**, **Count as zero** or **Skip** (`missing_days: 'zero' | 'skip'` in the API, the `get_trend` MCP tool, chart URLs and dashboard trend widgets). The trend result echoes the value it used as `missing_days`.
 
 ### Screentime Categories
 
@@ -41,15 +53,16 @@ The trend value is shown as "hours per day" (or per week/month).
 
 When adding or editing a trend, you can configure:
 
-| Option          | Choices                                                      | What it does                                                               |
-| --------------- | ------------------------------------------------------------ | -------------------------------------------------------------------------- |
-| **Name**        | Free text                                                    | Display name for the trend card. Defaults to the pattern if blank.         |
-| **Source type** | Tag, Metric, Screentime Category                             | What data to trend.                                                        |
-| **Pattern**     | Tag picker (multi-select), Metric picker, or Category picker | What to match. Tags support regex with multiple selections joined by `\|`. |
-| **Half-life**   | 7 (Quick), 15 (Responsive), 30 (Stable)                      | How quickly old data fades. See table above.                               |
-| **Lookback**    | 30 days to 5 years, or All time                              | How far back the chart extends.                                            |
-| **Display as**  | Per day, Per week, Per month                                 | Rate normalization. Same data, different scale.                            |
-| **Aggregation** | Average, Sum (metrics only)                                  | Whether to average or total daily metric values.                           |
+| Option           | Choices                                                          | What it does                                                                               |
+| ---------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| **Name**         | Free text                                                        | Display name for the trend card. Defaults to the pattern if blank.                         |
+| **Source type**  | Tag, Metric, Screentime Category                                 | What data to trend.                                                                        |
+| **Pattern**      | Tag picker (multi-select), Metric picker, or Category picker     | What to match. Tags support regex with multiple selections joined by `\|`.                 |
+| **Half-life**    | 7 (Quick), 15 (Responsive), 30 (Stable)                          | How quickly old data fades. See table above.                                               |
+| **Lookback**     | 30 days to 5 years, or All time                                  | How far back the chart extends.                                                            |
+| **Display as**   | Per day, Per week, Per month                                     | Rate normalization. Same data, different scale.                                            |
+| **Aggregation**  | Metrics: Average, Sum, Count. Activity types: Sum (hours), Count | Whether to average, total or count daily values.                                           |
+| **Missing days** | Auto (by metric kind), Count as zero, Skip (metric trends only)  | Whether a day without samples counts as 0 or is left out. See [Metric kind](#metric-kind). |
 
 ## The Trends Page
 
@@ -107,6 +120,6 @@ The more historical data you have, the more useful long lookback periods become.
 ## Known Limitations
 
 - Saved trends are stored in **browser local storage**, not on the server. Switching browsers or devices gives you the defaults.
-- For tags and screentime categories, days with no matching data count as zero, which pulls the trend line down. For metrics, missing days are excluded from the average (they don't dilute the value).
+- For tags and screentime categories, days with no matching data count as zero, which pulls the trend line down. For metrics it depends on the [metric kind](#metric-kind): amounts count missing days as zero, levels leave them out, and the Missing days option overrides either.
 - The EMA computation window is capped at 90 days for performance, even with longer lookback periods. This means each point on the chart looks at most 90 days into the past, though the chart itself can display years of history.
 - Dashboard trend widgets currently only support tags and metrics, not screentime categories.

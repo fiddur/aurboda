@@ -1,5 +1,6 @@
 import type {
   TrendDisplayPeriod,
+  TrendMissingDays,
   TrendQuery,
   TrendResponse,
   TrendResult,
@@ -20,6 +21,7 @@ export interface FetchTrendParams {
   aggregation?: 'count' | 'sum' | 'mean'
   activity_type_id?: string
   breakdown_fields?: string[]
+  missing_days?: TrendMissingDays
 }
 
 export const fetchTrend = async (params: FetchTrendParams): Promise<TrendResult> => {
@@ -35,6 +37,7 @@ export const fetchTrend = async (params: FetchTrendParams): Promise<TrendResult>
   if (params.lookback_days) query.lookback_days = params.lookback_days.toString()
   if (params.activity_type_id) query.tag_definition_id = params.activity_type_id
   if (params.breakdown_fields?.length) query.breakdown_fields = params.breakdown_fields.join(',')
+  if (params.missing_days) query.missing_days = params.missing_days
 
   const response = await axios.get<TrendResponse>(`${API_URL}/trends`, {
     headers: { Authorization: `Bearer ${token}` },
