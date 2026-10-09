@@ -43,6 +43,8 @@ Built-in amount metrics are steps, distance, floors climbed, calories (active, b
 
 The **Missing days** option overrides the kind for one trend: **Auto (by metric kind)**, **Count as zero** or **Skip** (`missing_days: 'zero' | 'skip'` in the API, the `get_trend` MCP tool, chart URLs and dashboard trend widgets). The trend result echoes the value it used as `missing_days`.
 
+Before Count was real for metrics, a metric trend saved with **Count** rendered as **Average** (and the Chart page saved Count by default). Existing metric trend goals and dashboard trend widgets saved as Count were therefore rewritten to Average by a one-off migration, so they keep showing what they showed before.
+
 ### Screentime Categories
 
 Tracks hours spent in a screentime category per day, summed from its screen time activity spans. Includes all subcategories -- trending "Work" includes time in "Work > Programming", "Work > Meetings", etc.

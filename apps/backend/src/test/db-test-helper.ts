@@ -132,6 +132,7 @@ export const cleanTestDb = async (): Promise<void> => {
     'screentime_categories',
     'import_jobs',
     'custom_metrics',
+    'goals',
   ]
 
   for (const table of tables) {
