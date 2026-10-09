@@ -131,6 +131,7 @@ export const cleanTestDb = async (): Promise<void> => {
     'outbound_sync_queue',
     'screentime_categories',
     'import_jobs',
+    'custom_metrics',
   ]
 
   for (const table of tables) {

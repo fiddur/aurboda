@@ -22,6 +22,10 @@ vi.mock('./trends', () => ({
   getTrend: vi.fn(),
 }))
 
+vi.mock('./custom-metrics', () => ({
+  getCustomMetrics: vi.fn(async () => [{ aggregation: 'sum', name: 'ibuprofen_mg', unit: 'mg' }]),
+}))
+
 /** Stands in for the DB: the per-day values of `perDay` whose UTC day falls in `[start's day, end's day]`. */
 const fakeDailyValues =
   (perDay: Record<string, number>) =>
@@ -251,6 +255,7 @@ describe('getGoalsProgress', () => {
 
     expect(trends.getTrend).toHaveBeenCalledWith('testuser', {
       aggregation: 'count',
+      custom_metrics: [{ aggregation: 'sum', name: 'ibuprofen_mg', unit: 'mg' }],
       display_period: 'monthly',
       half_life_days: 30,
       lookback_days: 90,

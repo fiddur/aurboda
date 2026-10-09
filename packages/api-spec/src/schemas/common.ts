@@ -253,8 +253,24 @@ export const metricUnits: Record<MetricType, string> = {
   performance_condition: 'score',
 }
 
+/**
+ * Aggregation type for metrics: 'sum' for amounts (cumulative totals), 'avg' for levels (instantaneous values).
+ * Determines how values are combined in time buckets and how trends treat days without samples.
+ */
+export const metricAggregationSchema = z.enum(['avg', 'sum']).meta({
+  description:
+    "Metric kind. 'sum' for amounts (a dose, steps): a day without samples counts as 0 in trends and bar charts total the day. 'avg' for levels (weight, HR): missing days are skipped.",
+  id: 'MetricAggregation',
+})
+
+export type MetricAggregation = z.infer<typeof metricAggregationSchema>
+
 export const customMetricDefinitionSchema = z
   .object({
+    aggregation: metricAggregationSchema.optional().meta({
+      description:
+        "'sum' for amounts (a dose, steps): a day without samples counts as 0 in trends and bar charts total the day. 'avg' (default) for levels (weight, HR): missing days are skipped.",
+    }),
     description: z.string().optional().meta({ description: 'Human-readable description' }),
     include_in_daily_summary: z.boolean().optional().meta({
       description:
@@ -367,12 +383,6 @@ export const isValidMetricOrCustom = (
   customMetrics: CustomMetricDefinition[] = [],
 ): boolean => isValidMetric(metric) || customMetrics.some((m) => m.name === metric)
 
-/**
- * Aggregation type for metrics: 'sum' for cumulative totals, 'avg' for instantaneous values.
- * Determines how values are combined in time buckets.
- */
-export type MetricAggregation = 'avg' | 'sum'
-
 export const sumMetrics: MetricType[] = [
   'steps',
   'distance',
@@ -390,8 +400,14 @@ export const sumMetrics: MetricType[] = [
   'activity_impulse',
 ]
 
-export const getMetricAggregation = (metric: string): MetricAggregation =>
-  (sumMetrics as string[]).includes(metric) ? 'sum' : 'avg'
+export const getMetricAggregation = (
+  metric: string,
+  customMetrics: CustomMetricDefinition[] = [],
+): MetricAggregation => {
+  if ((sumMetrics as string[]).includes(metric)) return 'sum'
+  if (isValidMetric(metric)) return 'avg'
+  return customMetrics.find((m) => m.name === metric)?.aggregation ?? 'avg'
+}
 
 /**
  * Cumulative metrics that are summed over a day and can have duplicate sources.

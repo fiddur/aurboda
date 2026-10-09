@@ -7,9 +7,12 @@
 import {
   type CustomMetricDefinition,
   displayPeriodMultipliers,
+  getMetricAggregation,
+  getMetricUnit,
   type MetricType,
   type TrendDisplayPeriod,
   type TrendHistoryPoint,
+  type TrendMissingDays,
   type TrendResult,
   type TrendSourceType,
 } from '@aurboda/api-spec'
@@ -31,14 +34,22 @@ export interface GetTrendInput {
   display_period?: TrendDisplayPeriod
   half_life_days?: number
   lookback_days?: number
+  missing_days?: TrendMissingDays
   pattern: string
   source_type: TrendSourceType
   /** @deprecated Use activity_type_id instead */
   tag_definition_id?: string
 }
 
+const metricDailyValueSql: Record<'count' | 'mean' | 'sum', string> = {
+  count: 'COUNT(*)',
+  mean: 'AVG(value)',
+  sum: 'SUM(value)',
+}
+
 /**
- * For metrics, we use the mean value per day weighted by EMA.
+ * With 'zero', a day without samples enters the EMA as 0 and keeps its weight in the denominator;
+ * with 'skip', it is left out of both, so the EMA is the weighted mean over sampled days only.
  */
 const calculateMetricTrend = async (
   user: string,
@@ -46,11 +57,20 @@ const calculateMetricTrend = async (
   halfLifeDays: number,
   lookbackDays: number,
   displayPeriod: TrendDisplayPeriod,
-  aggregation: 'mean' | 'sum',
+  aggregation: 'count' | 'mean' | 'sum',
+  missingDays: TrendMissingDays,
 ): Promise<{ currentValue: number; history: TrendHistoryPoint[] }> => {
-  const multiplier = aggregation === 'sum' ? displayPeriodMultipliers[displayPeriod] : 1
+  const multiplier = aggregation === 'mean' ? 1 : displayPeriodMultipliers[displayPeriod]
   const warmupDays = lookbackDays + 3 * halfLifeDays
   const sources = getSourceFilter(metric)
+  const weight = 'EXP(-$3::float * (dv.day - dv2.day)::float / $5::float)'
+  const emaSql =
+    missingDays === 'zero'
+      ? `$4::float * SUM(COALESCE(dv2.daily_value, 0) * ${weight}) /
+        NULLIF(SUM(${weight}), 0)`
+      : `$4::float * SUM(dv2.daily_value * ${weight}) /
+        NULLIF(SUM(CASE WHEN dv2.daily_value IS NOT NULL THEN ${weight} ELSE 0 END), 0)`
+  const emaValueSql = missingDays === 'zero' ? 'COALESCE(ema_value, 0) AS ema_value' : 'ema_value'
 
   const result = await query(
     user,
@@ -70,7 +90,7 @@ const calculateMetricTrend = async (
       LEFT JOIN (
         SELECT
           date_trunc('day', time AT TIME ZONE 'UTC')::date as day,
-          ${aggregation === 'sum' ? 'SUM(value)' : 'AVG(value)'} as daily_value
+          ${metricDailyValueSql[aggregation]} as daily_value
         FROM time_series
         WHERE metric = $1
           AND time > CURRENT_DATE - INTERVAL '1 day' * ($6::integer + 1)
@@ -81,8 +101,7 @@ const calculateMetricTrend = async (
     ema_calc AS (
       SELECT
         dv.day,
-        $4::float * SUM(dv2.daily_value * EXP(-$3::float * (dv.day - dv2.day)::float / $5::float)) /
-        NULLIF(SUM(CASE WHEN dv2.daily_value IS NOT NULL THEN EXP(-$3::float * (dv.day - dv2.day)::float / $5::float) ELSE 0 END), 0) as ema_value
+        ${emaSql} as ema_value
       FROM daily_values dv
       CROSS JOIN LATERAL (
         SELECT day, daily_value
@@ -91,7 +110,7 @@ const calculateMetricTrend = async (
       ) dv2
       GROUP BY dv.day
     )
-    SELECT day, ema_value
+    SELECT day, ${emaValueSql}
     FROM ema_calc
     WHERE day >= CURRENT_DATE - INTERVAL '1 day' * $2::integer
     ORDER BY day
@@ -501,6 +520,16 @@ const getActivityTypeTrend = async (
   }
 }
 
+const metricDisplayUnit = (
+  aggregation: 'count' | 'mean' | 'sum',
+  unit: string | undefined,
+  displayPeriod: TrendDisplayPeriod,
+): string => {
+  if (aggregation === 'mean') return unit ?? ''
+  if (aggregation === 'sum' && unit) return `${unit} ${displayUnits[displayPeriod]}`
+  return displayUnits[displayPeriod]
+}
+
 export const getTrend = async (user: string, input: GetTrendInput): Promise<TrendResult> => {
   const {
     aggregation = 'count',
@@ -555,7 +584,12 @@ export const getTrend = async (user: string, input: GetTrendInput): Promise<Tren
       source_type: sourceType,
     }
   } else {
-    const metricAggregation = aggregation === 'count' ? 'mean' : aggregation
+    const customMetrics = input.custom_metrics ?? []
+    const metricAggregation = input.aggregation ?? 'mean'
+    const missingDays: TrendMissingDays =
+      metricAggregation === 'count'
+        ? 'zero'
+        : (input.missing_days ?? (getMetricAggregation(pattern, customMetrics) === 'sum' ? 'zero' : 'skip'))
 
     const { currentValue, history } = await calculateMetricTrend(
       user,
@@ -564,16 +598,22 @@ export const getTrend = async (user: string, input: GetTrendInput): Promise<Tren
       lookbackDays,
       displayPeriod,
       metricAggregation,
+      missingDays,
     )
 
     return {
       aggregation: metricAggregation,
       current_value: currentValue,
       display_period: displayPeriod,
-      display_unit: metricAggregation === 'sum' ? displayUnits[displayPeriod] : '',
+      display_unit: metricDisplayUnit(
+        metricAggregation,
+        getMetricUnit(pattern, customMetrics),
+        displayPeriod,
+      ),
       half_life_days: halfLifeDays,
       history,
       lookback_days: lookbackDays,
+      missing_days: missingDays,
       pattern,
       source_type: sourceType,
     }

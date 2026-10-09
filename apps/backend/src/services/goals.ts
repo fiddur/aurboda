@@ -12,6 +12,7 @@ import {
 } from '@aurboda/api-spec'
 
 import { getDailyAggregates, getDailyAggregateValues, getHrZoneSecs, getRawDailySum } from '../db/index.ts'
+import { getCustomMetrics } from './custom-metrics.ts'
 import { getEffectiveGoals, getEffectiveHrZones } from './settings.ts'
 import { getTrend } from './trends.ts'
 
@@ -96,6 +97,7 @@ const computeMetricGoalProgress = async (
 const computeTrendGoalProgress = async (user: string, goal: TrendGoal): Promise<TrendGoalProgress> => {
   const trend = await getTrend(user, {
     aggregation: goal.aggregation,
+    custom_metrics: await getCustomMetrics(user),
     display_period: goal.display_period,
     half_life_days: goal.half_life_days,
     lookback_days: 90,

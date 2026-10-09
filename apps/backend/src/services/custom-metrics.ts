@@ -1,4 +1,4 @@
-import type { CustomMetricDefinition } from '@aurboda/api-spec'
+import type { CustomMetricDefinition, MetricAggregation } from '@aurboda/api-spec'
 
 import {
   deleteCustomMetricDefinition,
@@ -25,6 +25,7 @@ export interface DeleteCustomMetricResult {
 }
 
 export interface UpdateCustomMetricInput {
+  aggregation?: MetricAggregation
   unit?: string
   description?: string
   minValue?: number | null
@@ -103,7 +104,7 @@ export async function updateCustomMetric(
   const dbUpdates: Partial<
     Pick<
       CustomMetricDefinition,
-      'unit' | 'description' | 'min_value' | 'max_value' | 'include_in_daily_summary'
+      'unit' | 'description' | 'min_value' | 'max_value' | 'include_in_daily_summary' | 'aggregation'
     >
   > = {}
 
@@ -118,6 +119,7 @@ export async function updateCustomMetric(
   if (updates.include_in_daily_summary !== undefined) {
     dbUpdates.include_in_daily_summary = updates.include_in_daily_summary
   }
+  if (updates.aggregation !== undefined) dbUpdates.aggregation = updates.aggregation
 
   const updated = await updateCustomMetricDefinition(user, name, dbUpdates)
   if (!updated) {

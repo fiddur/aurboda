@@ -15,6 +15,8 @@ Examples:
 - Tag trend: "How many painkillers per month?" -> pattern: "pain_killer", sourceType: "tag"
 - Metric trend: "What's my average weight trend?" -> pattern: "weight", sourceType: "metric"
 
+missing_days (metric only): 'zero' counts days without samples as 0, 'skip' leaves them out; defaults to the metric kind (zero for amounts like steps or a custom metric with aggregation 'sum', skip for levels like weight).
+
 Common half-life values:
 - 7 days (quick): Responds to changes within a week
 - 15 days (responsive): Balanced, good default
@@ -26,6 +28,7 @@ Common half-life values:
       display_period,
       half_life_days,
       lookback_days,
+      missing_days,
       pattern,
       source_type,
       tag_definition_id,
@@ -40,6 +43,7 @@ Common half-life values:
           display_period,
           half_life_days,
           lookback_days,
+          missing_days,
           pattern: pattern ?? '',
           source_type,
           tag_definition_id,
