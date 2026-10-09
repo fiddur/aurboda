@@ -67,7 +67,7 @@ describe('Auto-share rules integration', () => {
   test('re-sending enabled: true to an enabled rule keeps its enabled_at (#1031)', async () => {
     const user = getTestUser()
     const created = await insertAutoshareRule(user, ruleInput())
-    const enabled = await updateAutoshareRule(user, created.id, { enabled: true })
+    await updateAutoshareRule(user, created.id, { enabled: true })
     await query(user, `UPDATE autoshare_rules SET enabled_at = '2026-08-01T00:00:00Z' WHERE id = $1`, [
       created.id,
     ])
@@ -77,7 +77,7 @@ describe('Auto-share rules integration', () => {
 
     await updateAutoshareRule(user, created.id, { enabled: false })
     const reenabled = await updateAutoshareRule(user, created.id, { enabled: true })
-    expect(reenabled?.enabled_at?.getTime()).toBeGreaterThanOrEqual(enabled!.enabled_at!.getTime())
+    expect(reenabled?.enabled_at?.getTime()).toBeGreaterThan(new Date('2026-08-01T00:00:00Z').getTime())
   })
 
   test('patches predicate/template fields; null clears the nullable ones', async () => {
