@@ -118,4 +118,33 @@ describe('POST /activity-types', () => {
       expect.objectContaining({ aliases: ['bastu'], name: 'sauna' }),
     )
   })
+
+  test('passes parent_type and show_on_timeline through and answers with them (#1220)', async () => {
+    vi.mocked(service.addActivityTypeDefinition).mockImplementation(async (_user, input) => ({
+      data: {
+        aliases: [input.name],
+        color: '#6b7280',
+        display_category: input.display_category,
+        display_name: input.display_name,
+        is_builtin: false,
+        name: input.name,
+        parent_type: input.parent_type,
+        show_on_timeline: input.show_on_timeline ?? true,
+      },
+      success: true,
+    }))
+    const body = {
+      display_category: 'exercise',
+      display_name: 'Yin Yoga',
+      name: 'yoga_yin',
+      parent_type: 'yoga',
+      show_on_timeline: false,
+    }
+
+    const res = await supertest(buildApp()).post('/activity-types').send(body)
+
+    expect(res.status).toBe(201)
+    expect(service.addActivityTypeDefinition).toHaveBeenCalledWith('tester', body)
+    expect(res.body.data).toMatchObject({ parent_type: 'yoga', show_on_timeline: false })
+  })
 })
