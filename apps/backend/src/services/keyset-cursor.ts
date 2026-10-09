@@ -31,7 +31,30 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
  * page predicates, so anything else must decode to "no cursor" rather than reach
  * the SQL layer.
  */
-const TS_RE = /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(\.\d{1,6})?(Z|[+-]\d{2}(:?\d{2})?)$/
+const TS_RE = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})(\.\d{1,6})?(Z|[+-](\d{2})(:?(\d{2}))?)$/
+
+/**
+ * The shape alone admits `2026-13-45 99:99:99+00`, which Postgres rejects as out
+ * of range — a 500 instead of a first page. `Date.UTC` rolls an impossible day
+ * over (Feb 30 → Mar 2), so a calendar date is valid only when it reads back
+ * unchanged.
+ */
+const isValidTs = (raw: string): boolean => {
+  const m = TS_RE.exec(raw)
+  if (m == null) return false
+  const [year, month, day, hour, minute, second] = m.slice(1, 7).map(Number)
+  const date = new Date(Date.UTC(year, month - 1, day))
+  return (
+    date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day &&
+    hour < 24 &&
+    minute < 60 &&
+    second < 60 &&
+    Number(m[9] ?? 0) < 16 &&
+    Number(m[11] ?? 0) < 60
+  )
+}
 
 /**
  * A cursor issued BEFORE the µs-precision change: `<epoch-ms>:<uuid>`. Clients
@@ -61,7 +84,7 @@ export const decodeKeysetCursor = (cursor: string | undefined): KeysetCursor | u
   // Validate the id is a UUID: it's cast to `uuid` in the page queries, so a
   // crafted `12345:not-a-uuid` cursor would otherwise 500 instead of paging.
   if (!UUID_RE.test(id)) return undefined
-  if (TS_RE.test(raw)) return { id, ts: raw }
+  if (isValidTs(raw)) return { id, ts: raw }
   const ts = legacyMsToTs(raw)
   return ts === undefined ? undefined : { id, ts }
 }

@@ -230,29 +230,24 @@ export const updateBoostCardsOf = async (
  * inbound `Update{Person}` (#1057). Only presentation columns move: which post a
  * row is, and who delivered it, are untouched. The booster line carries no
  * avatar, so only the two text columns exist to refresh there.
- *
- * The two counts stay separate: one row can be refreshed on both statements (a
- * self-boost card, authored and boosted by the same actor), so their sum is not
- * a row count.
  */
 export const updateTimelineActorPresentation = async (
   user: string,
   actorUri: string,
   presentation: CachedActorPresentation,
-): Promise<{ authors: number; boosters: number }> => {
-  const author = await query(
+): Promise<void> => {
+  await query(
     user,
     `UPDATE timeline_entry SET handle = $2, display_name = $3, avatar_url = $4
      WHERE actor_uri = $1`,
     [actorUri, presentation.handle, presentation.display_name, presentation.avatar_url],
   )
-  const booster = await query(
+  await query(
     user,
     `UPDATE timeline_entry SET boosted_by_handle = $2, boosted_by_display_name = $3
      WHERE boosted_by_actor_uri = $1`,
     [actorUri, presentation.handle, presentation.display_name],
   )
-  return { authors: author.rowCount ?? 0, boosters: booster.rowCount ?? 0 }
 }
 
 /**
@@ -308,11 +303,15 @@ export const escapeLike = (s: string): string => s.replaceAll(/[%_\\]/g, (c) => 
  * and when it answers a post that IS in this timeline — a followee continuing
  * their own thread, or two followees talking to each other, which is what
  * Mastodon's home shows. Only replies to posts outside the timeline are hidden.
+ * A post that is in the timeline only as a boost card counts: the card's
+ * `object_uri` is the Announce id, so it is matched on `boost_of_uri`.
  */
-export const timelineReplyFilterSql = (showReplies: string, prefix: string): string =>
+const timelineReplyFilterSql = (showReplies: string, prefix: string): string =>
   `(${showReplies}::boolean OR in_reply_to_uri IS NULL OR boost_of_uri IS NOT NULL
       OR mentions_me OR in_reply_to_uri LIKE ${prefix}
-      OR EXISTS (SELECT 1 FROM timeline_entry p WHERE p.object_uri = timeline_entry.in_reply_to_uri))`
+      OR EXISTS (SELECT 1 FROM timeline_entry p
+                 WHERE p.object_uri = timeline_entry.in_reply_to_uri
+                    OR p.boost_of_uri = timeline_entry.in_reply_to_uri))`
 
 /** The LIKE pattern matching the reader's own post objects, or a never-matching one. */
 const ownObjectPattern = (replies?: TimelineReplyFilter): string =>

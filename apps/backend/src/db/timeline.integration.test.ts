@@ -335,6 +335,30 @@ describe('Timeline store integration', () => {
     ])
   })
 
+  test('a reply to a post that is in the timeline only as a boost card stays visible (#1114)', async () => {
+    const user = getTestUser()
+    const filter = { own_object_prefix: `https://aurboda.example/users/${user}/feed/`, show_replies: false }
+    const announced = 'https://elsewhere.example/notes/77'
+    await upsertTimelineEntry(
+      user,
+      entry(1, {
+        actor_uri: 'https://elsewhere.example/users/carol',
+        boost_of_uri: announced,
+        boosted_by_actor_uri: 'https://remote.example/users/bob',
+        object_uri: 'https://remote.example/users/bob/statuses/9/activity',
+      }),
+    )
+    const reply = await upsertTimelineEntry(user, entry(2, { in_reply_to_uri: announced }))
+    await upsertTimelineEntry(user, entry(3, { in_reply_to_uri: 'https://elsewhere.example/notes/78' }))
+
+    const filtered = await listTimelineEntries(user, 10, undefined, filter)
+    expect(filtered.map((r) => r.object_uri)).toEqual([
+      'https://mastodon.example/notes/2',
+      'https://remote.example/users/bob/statuses/9/activity',
+    ])
+    expect(await isTimelineEntryVisible(user, reply.id, filter)).toBe(true)
+  })
+
   test('a mentioned post stays visible with replies hidden; getTimelineEntryById resolves (#1060)', async () => {
     const user = getTestUser()
     const ownPrefix = `https://aurboda.example/users/${user}/feed/`
@@ -614,26 +638,22 @@ describe('Timeline store integration', () => {
       await upsertTimelineEntry(user, boostOfAlice())
 
       // Bob boosted; he is nobody's author here, so only the boost line moves.
-      expect(
-        await updateTimelineActorPresentation(user, BOB, {
-          avatar_url: null,
-          display_name: 'Bob Renamed',
-          handle: '@bob@remote.example',
-        }),
-      ).toEqual({ authors: 0, boosters: 1 })
+      await updateTimelineActorPresentation(user, BOB, {
+        avatar_url: null,
+        display_name: 'Bob Renamed',
+        handle: '@bob@remote.example',
+      })
       const afterBob = await listTimelineEntries(user, 10)
       expect(afterBob.find((e) => e.object_uri === ANNOUNCE)?.boosted_by_display_name).toBe('Bob Renamed')
       expect(afterBob.map((e) => e.display_name)).toEqual(['Alice', 'Alice'])
 
       // Alice authored both rows (a boost card renders HER post), so both
       // bylines move — and the booster's line is left alone.
-      expect(
-        await updateTimelineActorPresentation(user, alice, {
-          avatar_url: 'https://mastodon.example/avatars/alice2.png',
-          display_name: 'Alice Renamed',
-          handle: '@alice@mastodon.example',
-        }),
-      ).toEqual({ authors: 2, boosters: 0 })
+      await updateTimelineActorPresentation(user, alice, {
+        avatar_url: 'https://mastodon.example/avatars/alice2.png',
+        display_name: 'Alice Renamed',
+        handle: '@alice@mastodon.example',
+      })
       const afterAlice = await listTimelineEntries(user, 10)
       expect(afterAlice.map((e) => e.display_name)).toEqual(['Alice Renamed', 'Alice Renamed'])
       expect(afterAlice.find((e) => e.object_uri === ANNOUNCE)?.boosted_by_display_name).toBe('Bob Renamed')
