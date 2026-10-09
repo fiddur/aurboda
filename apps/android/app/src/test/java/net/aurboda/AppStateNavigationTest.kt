@@ -135,4 +135,47 @@ class AppStateNavigationTest {
         assertNull(deepLinkFrom(null, "/goals"))
         assertNull(deepLinkFrom("bogus", null))
     }
+
+    @Test
+    fun `deepLinkFrom keeps site paths and drops protocol-relative ones`() {
+        assertEquals(
+            DeepLink(MainTab.More, "/u/fiddur/august-steppers"),
+            deepLinkFrom(MainActivity.TAB_MORE, "/u/fiddur/august-steppers"),
+        )
+        assertEquals(DeepLink(MainTab.More, null), deepLinkFrom(MainActivity.TAB_MORE, "//evil.example/x"))
+    }
+
+    @Test
+    fun `deepLinkFrom keeps an absolute URL only when a widget configured it`() {
+        val allowed = setOf("https://peer.example/u/anna/walk/", "http://plain.example/u/bo/run")
+
+        assertEquals(
+            DeepLink(MainTab.More, null),
+            deepLinkFrom(MainActivity.TAB_MORE, "https://evil.example/u/a/b", allowed),
+        )
+        assertEquals(
+            DeepLink(MainTab.More, "https://peer.example/u/anna/walk"),
+            deepLinkFrom(MainActivity.TAB_MORE, "https://peer.example/u/anna/walk", allowed),
+        )
+        assertEquals(
+            DeepLink(MainTab.More, "http://plain.example/u/bo/run/"),
+            deepLinkFrom(MainActivity.TAB_MORE, "http://plain.example/u/bo/run/", allowed),
+        )
+        assertEquals(
+            DeepLink(MainTab.More, null),
+            deepLinkFrom(MainActivity.TAB_MORE, "http://evil.example/u/a/b", allowed),
+        )
+        assertEquals(
+            DeepLink(MainTab.More, null),
+            deepLinkFrom(MainActivity.TAB_MORE, "https://peer.example/u/a/b"),
+        )
+    }
+
+    @Test
+    fun `deepLinkFrom drops other schemes`() {
+        val allowed = setOf("javascript:alert(1)", "file:///data/x")
+        assertEquals(DeepLink(MainTab.More, null), deepLinkFrom(MainActivity.TAB_MORE, "javascript:alert(1)", allowed))
+        assertEquals(DeepLink(MainTab.More, null), deepLinkFrom(MainActivity.TAB_MORE, "file:///data/x", allowed))
+        assertEquals(DeepLink(MainTab.More, null), deepLinkFrom(MainActivity.TAB_MORE, "goals"))
+    }
 }

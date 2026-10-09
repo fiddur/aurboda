@@ -124,7 +124,10 @@ The web app supports an **embed mode** (`apps/web/src/embed.ts`):
   receives it. Older WebViews without document-start-script support fall back to
   `addJavascriptInterface`; that is safe because the feed sanitiser strips
   `<iframe>`/`<script>` and external navigation opens in the browser. Keep that
-  invariant: never allow-list `<iframe>` into the feed sanitiser.
+  invariant: never allow-list `<iframe>` into the feed sanitiser. Either way the
+  bridge is installed only when the loaded page is on the signed-in server's
+  origin (`EmbeddedWebScreen`); a page from another instance (a remote challenge)
+  gets no `window.AurbodaNative` at all.
 
 ### External links
 
@@ -200,3 +203,7 @@ app is running arrives in `onNewIntent` and navigates the running app to the sam
 place (`AppState.open`). `MoreDestination.Web` accepts either a site path or an
 absolute URL (`embeddedPageUrl`), so a joined challenge hosted elsewhere opens
 embedded too — its own in-page links open in the browser as any external link.
+Because the activity is exported, any app can send these extras, so `deepLinkFrom`
+keeps a `more_path` only when it is a site path (`/…`, not `//…`) or an http(s)
+URL of a challenge the user configured a widget for (`challengeWidgetUrls`);
+anything else opens the More hub.

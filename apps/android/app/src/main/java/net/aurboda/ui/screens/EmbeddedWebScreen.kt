@@ -41,12 +41,10 @@ import org.json.JSONObject
  * The web app reads [getAuth] at startup to share the native app's bearer token
  * instead of prompting for a second login (see apps/web/src/embed.ts).
  *
- * Security: added via `addJavascriptInterface`, [getAuth] is reachable from
- * every frame the WebView loads, including cross-origin iframes. That is
- * acceptable because the feed sanitiser strips `<iframe>`/`<script>` and
- * external navigation is punted to the browser, so no untrusted origin renders
- * here. The preferred path ([installAuthBridge] via `WebViewCompat`) avoids the
- * cross-origin exposure by scoping injection to the trusted origin.
+ * Security: [getAuth] is reachable from every frame of the WebView. It is only
+ * added for a page on the signed-in server's origin, where the feed sanitiser
+ * strips `<iframe>`/`<script>` and external links open in the browser; a
+ * third-party page (a challenge on another instance) never gets it.
  */
 private class AuthBridge(private val authJson: String) {
     @JavascriptInterface
@@ -76,15 +74,13 @@ private fun installViewportFix(webView: WebView, origin: String?) {
 
 /**
  * Install the auth bridge (`window.AurbodaNative.getAuth()`) the embedded web
- * app reads at startup.
+ * app reads at startup. Called only when the page is on the signed-in server's
+ * origin; a third-party page (a challenge on another instance) gets no bridge.
  *
- * Preferred path: a document-start script scoped to [origin] via `WebViewCompat`
- * so the token reaches only the trusted origin's frames (a cross-origin iframe
- * never receives it) and is present before the page's own scripts run. Falls
- * back to `addJavascriptInterface` when the WebView lacks document-start-script
- * support or [origin] is unknown; that path injects into all frames, which is
- * safe because the feed sanitiser strips `<iframe>`/`<script>` and external
- * navigation opens in the browser.
+ * Preferred path: a document-start script scoped to [origin] via `WebViewCompat`,
+ * present before the page's own scripts run. Falls back to
+ * `addJavascriptInterface` (all frames, see [AuthBridge]) when the WebView lacks
+ * document-start-script support.
  */
 private fun installAuthBridge(webView: WebView, authJson: String, origin: String?) {
     if (origin != null && WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
@@ -101,12 +97,13 @@ private fun installAuthBridge(webView: WebView, authJson: String, origin: String
  * Hosts a page of the web app inside a WebView so native and web share one
  * implementation. The native app supplies navigation, the web app renders in
  * embed mode (chrome hidden). Auth is shared through an origin-scoped bridge
- * ([installAuthBridge]); links to other domains open in the external browser,
- * same-origin links stay in the WebView.
+ * ([installAuthBridge]), installed only when [url] is on [baseUrl]'s origin;
+ * links to other domains open in the external browser, same-origin links stay
+ * in the WebView.
  *
  * @param url the web page to load (already carrying `?embed=1`)
  * @param baseUrl the server origin, used to decide which links are external and
- *   to scope the auth bridge to the trusted origin
+ *   whether [url] is trusted with the auth bridge
  */
 @Suppress("ASSIGNED_VALUE_IS_NEVER_READ") // Compose state vars trigger false "assigned but never read" warnings
 @SuppressLint("SetJavaScriptEnabled")
@@ -127,6 +124,8 @@ fun EmbeddedWebScreen(
     val authJson = remember(username, authToken) {
         JSONObject().put("user", username).put("token", authToken).toString()
     }
+    val baseOrigin = originOf(baseUrl)
+    val trusted = baseOrigin != null && originOf(url) == baseOrigin
 
     // Let the WebView consume the system back gesture to walk its own history
     // before the back press falls through to leaving the screen.
@@ -159,7 +158,7 @@ fun EmbeddedWebScreen(
                     if (WebViewFeature.isFeatureSupported(WebViewFeature.ALGORITHMIC_DARKENING)) {
                         WebSettingsCompat.setAlgorithmicDarkeningAllowed(settings, true)
                     }
-                    installAuthBridge(this, authJson, originOf(baseUrl))
+                    if (trusted) installAuthBridge(this, authJson, baseOrigin)
                     webViewClient = object : WebViewClient() {
                         override fun shouldOverrideUrlLoading(
                             view: WebView,

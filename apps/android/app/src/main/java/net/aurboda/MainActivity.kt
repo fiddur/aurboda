@@ -180,7 +180,11 @@ class MainActivity : ComponentActivity() {
   }
 
   private fun deepLinkFrom(intent: Intent?): DeepLink? =
-    deepLinkFrom(intent?.getStringExtra(EXTRA_OPEN_TAB), intent?.getStringExtra(EXTRA_MORE_PATH))
+    deepLinkFrom(
+      intent?.getStringExtra(EXTRA_OPEN_TAB),
+      intent?.getStringExtra(EXTRA_MORE_PATH),
+      net.aurboda.widget.challengeWidgetUrls(this),
+    )
 }
 
 /** A deep link that arrived at a running activity; [seq] makes every arrival distinct. */

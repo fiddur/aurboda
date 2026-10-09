@@ -24,13 +24,18 @@ enum class MainTab {
 
 /**
  * Where a widget or notification tap asks the app to go: a tab, and for the More
- * tab optionally the web page to push (a site path like "/goals", or an absolute
- * URL for a page on another instance).
+ * tab optionally the web page to push (a site path like "/goals", or the absolute
+ * URL of a challenge on another instance that the user configured a widget for).
  */
 data class DeepLink(val tab: MainTab, val morePath: String? = null)
 
-/** Decode the [MainActivity.EXTRA_OPEN_TAB] / [MainActivity.EXTRA_MORE_PATH] extras; null when there is no link. */
-fun deepLinkFrom(openTab: String?, morePath: String?): DeepLink? {
+/**
+ * Decode the [MainActivity.EXTRA_OPEN_TAB] / [MainActivity.EXTRA_MORE_PATH] extras; null when there is no link.
+ *
+ * The activity is exported, so any app can send these. A More path is kept only when it is a site path or an
+ * http(s) URL in [allowedAbsoluteUrls]; anything else opens the More hub instead.
+ */
+fun deepLinkFrom(openTab: String?, morePath: String?, allowedAbsoluteUrls: Set<String> = emptySet()): DeepLink? {
     val tab =
         when (openTab) {
             MainActivity.TAB_ADD -> MainTab.Add
@@ -38,7 +43,15 @@ fun deepLinkFrom(openTab: String?, morePath: String?): DeepLink? {
             MainActivity.TAB_MORE -> MainTab.More
             else -> return null
         }
-    return DeepLink(tab, if (tab == MainTab.More) morePath else null)
+    val path = morePath?.takeIf { tab == MainTab.More && isAllowedMorePath(it, allowedAbsoluteUrls) }
+    return DeepLink(tab, path)
+}
+
+private fun isAllowedMorePath(path: String, allowedAbsoluteUrls: Set<String>): Boolean {
+    if (path.startsWith("/")) return !path.startsWith("//")
+    if (!path.startsWith("http://") && !path.startsWith("https://")) return false
+    val normalized = path.trimEnd('/')
+    return allowedAbsoluteUrls.any { it.trimEnd('/') == normalized }
 }
 
 class AppState(

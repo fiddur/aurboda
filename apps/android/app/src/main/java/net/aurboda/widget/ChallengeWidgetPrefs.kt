@@ -1,5 +1,7 @@
 package net.aurboda.widget
 
+import android.appwidget.AppWidgetManager
+import android.content.ComponentName
 import android.content.Context
 
 private const val PREFS_NAME = "challenge_widget"
@@ -27,3 +29,12 @@ fun clearChallengeWidgetConfig(context: Context, appWidgetIds: IntArray) {
     for (id in appWidgetIds) editor.remove("url_$id").remove("name_$id")
     editor.apply()
 }
+
+/** The challenge URLs of every placed challenge widget; empty if the widget manager cannot be queried. */
+fun challengeWidgetUrls(context: Context): Set<String> =
+    runCatching {
+        AppWidgetManager.getInstance(context)
+            .getAppWidgetIds(ComponentName(context, ChallengeWidgetProvider::class.java))
+            .mapNotNull { loadChallengeWidgetConfig(context, it)?.url }
+            .toSet()
+    }.getOrDefault(emptySet())
