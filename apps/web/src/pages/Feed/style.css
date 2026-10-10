@@ -355,6 +355,20 @@
   flex: 1 1 160px;
 }
 
+.autoshare-condition-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.autoshare-condition-row > input,
+.autoshare-condition-row > select {
+  flex: 1 1 120px;
+  min-width: 0;
+}
+
 .autoshare-create-actions {
   display: flex;
   gap: 0.5rem;

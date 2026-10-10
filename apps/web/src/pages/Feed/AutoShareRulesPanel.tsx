@@ -7,7 +7,13 @@
  * activities in the last 30 days would have matched, BEFORE anything is on.
  * Enabling only affects activities that arrive afterwards — never history.
  */
-import type { AddAutoshareRuleBody, AutoshareRule, FeedVisibility, MetricType } from '@aurboda/api-spec'
+import type {
+  AddAutoshareRuleBody,
+  AutoshareRule,
+  DataFieldDefinition,
+  FeedVisibility,
+  MetricType,
+} from '@aurboda/api-spec'
 
 import { feedPostMessageMaxLength } from '@aurboda/api-spec'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -15,14 +21,29 @@ import { useState } from 'preact/hooks'
 
 import { ActivityTypePicker } from '../../components/ActivityTypePicker'
 import { DEFAULT_SUMMARY, SERIES_METRICS, SUMMARY_METRICS } from '../../components/feed-metrics'
+import { fieldLabel } from '../../components/sessions/sessionView'
 import { FEED_VISIBILITY_OPTIONS, VisibilitySelector } from '../../components/VisibilitySelector'
 import {
+  type ActivityTypeDefinition,
   addAutoshareRule,
   deleteAutoshareRule,
+  fetchActivityTypeDefinitions,
   listAutoshareRules,
   previewAutoshareRule,
   updateAutoshareRule,
 } from '../../state/api'
+import { KnownValues } from '../EntityDetail/SchemaDataFields'
+import {
+  DATA_FILTER_OPERATOR_LABELS,
+  DATA_FILTER_OPERATORS,
+  type DataFilterOperator,
+  type DataFilterRow,
+  dataFilterRowComplete,
+  newDataFilterRow,
+  operatorTakesValue,
+  rowToDataFilter,
+  ruleSummary,
+} from './autoshare-rule-text'
 
 const toggleKey = <T extends string>(set: Set<T>, key: T): Set<T> => {
   const next = new Set(set)
@@ -31,18 +52,98 @@ const toggleKey = <T extends string>(set: Set<T>, key: T): Set<T> => {
   return next
 }
 
-/** One human line summarising what a rule matches and publishes. */
-const ruleSummary = (rule: AutoshareRule): string => {
-  const predicate: string[] = []
-  predicate.push(rule.activity_types.length > 0 ? rule.activity_types.join('/') : 'any activity')
-  if (rule.min_duration_seconds) predicate.push(`≥ ${Math.round(rule.min_duration_seconds / 60)} min`)
-  if (rule.max_duration_seconds) predicate.push(`≤ ${Math.round(rule.max_duration_seconds / 60)} min`)
-  if (rule.min_distance_meters) predicate.push(`≥ ${rule.min_distance_meters / 1000} km`)
-  if (rule.source) predicate.push(`from ${rule.source}`)
-  return `${predicate.join(', ')} → ${rule.visibility}`
+const useActivityTypeDefinitions = () =>
+  useQuery({
+    queryFn: fetchActivityTypeDefinitions,
+    queryKey: ['activityTypeDefinitions'],
+    staleTime: 5 * 60_000,
+  }).data ?? []
+
+const schemaFieldsOf = (definitions: ActivityTypeDefinition[], activityType: string): DataFieldDefinition[] =>
+  definitions.find((definition) => definition.name === activityType)?.data_schema?.fields ?? []
+
+function DataConditionRow({
+  activityType,
+  index,
+  row,
+  schemaFields,
+  onChange,
+  onRemove,
+}: {
+  activityType: string
+  index: number
+  row: DataFilterRow
+  schemaFields: DataFieldDefinition[]
+  onChange: (row: DataFilterRow) => void
+  onRemove: () => void
+}) {
+  const listId = `autoshare-known-values-${index}`
+  const knownField = schemaFields.some((field) => field.name === row.field)
+  const offerValues = activityType !== '' && knownField && operatorTakesValue(row.operator)
+  return (
+    <div class="autoshare-condition-row">
+      {schemaFields.length > 0 ? (
+        <select
+          aria-label="Data field"
+          value={row.field}
+          onChange={(e) => onChange({ ...row, field: (e.target as HTMLSelectElement).value })}
+        >
+          {!knownField && <option value={row.field}>{row.field || 'Choose a field'}</option>}
+          {schemaFields.map((field) => (
+            <option key={field.name} value={field.name}>
+              {fieldLabel(field)}
+            </option>
+          ))}
+        </select>
+      ) : (
+        <input
+          type="text"
+          aria-label="Data field"
+          placeholder="field, e.g. session_name"
+          value={row.field}
+          onInput={(e) => onChange({ ...row, field: (e.target as HTMLInputElement).value })}
+        />
+      )}
+      <select
+        aria-label="Condition"
+        value={row.operator}
+        onChange={(e) =>
+          onChange({ ...row, operator: (e.target as HTMLSelectElement).value as DataFilterOperator })
+        }
+      >
+        {DATA_FILTER_OPERATORS.map((operator) => (
+          <option key={operator} value={operator}>
+            {DATA_FILTER_OPERATOR_LABELS[operator]}
+          </option>
+        ))}
+      </select>
+      {operatorTakesValue(row.operator) && (
+        <input
+          type="text"
+          aria-label="Value"
+          placeholder="Value"
+          list={offerValues ? listId : undefined}
+          value={row.value}
+          onInput={(e) => onChange({ ...row, value: (e.target as HTMLInputElement).value })}
+        />
+      )}
+      {offerValues && <KnownValues id={listId} activityType={activityType} field={row.field} />}
+      <button type="button" class="btn-secondary" onClick={onRemove} title="Remove condition">
+        Remove
+      </button>
+    </div>
+  )
 }
 
 function RuleRow({ rule, postCount }: { rule: AutoshareRule; postCount: number }) {
+  const definitions = useActivityTypeDefinitions()
+  const labelFor = (field: string): string | undefined => {
+    for (const activityType of rule.activity_types) {
+      const known = schemaFieldsOf(definitions, activityType).find((candidate) => candidate.name === field)
+      if (known) return fieldLabel(known)
+    }
+    return undefined
+  }
   const queryClient = useQueryClient()
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['autoshare-rules'] })
   const toggle = useMutation({
@@ -76,7 +177,7 @@ function RuleRow({ rule, postCount }: { rule: AutoshareRule; postCount: number }
       <div class="autoshare-rule-main">
         <span class="autoshare-rule-name">{rule.name}</span>
         <span class="autoshare-rule-meta">
-          {ruleSummary(rule)}
+          {ruleSummary(rule, labelFor)}
           {postCount > 0 && ` · ${postCount} post${postCount === 1 ? '' : 's'} auto-shared`}
         </span>
       </div>
@@ -115,11 +216,18 @@ function CreateRuleForm({ onDone }: { onDone: () => void }) {
   const [includeMap, setIncludeMap] = useState(false)
   const [visibility, setVisibility] = useState<FeedVisibility>('followers')
   const [message, setMessage] = useState('')
+  const [conditions, setConditions] = useState<DataFilterRow[]>([])
   const [preview, setPreview] = useState<{ would_match: number; sample_days: number } | null>(null)
   const [previewError, setPreviewError] = useState<string | null>(null)
 
+  const schemaFields = schemaFieldsOf(useActivityTypeDefinitions(), activityType)
+  const updateCondition = (index: number, row: DataFilterRow) =>
+    setConditions((rows) => rows.map((current, i) => (i === index ? row : current)))
+  const conditionsComplete = conditions.every(dataFilterRowComplete)
+
   const body = (): AddAutoshareRuleBody => ({
     activity_types: activityType ? [activityType] : [],
+    data_filters: conditions.map(rowToDataFilter),
     name: name.trim() || 'Unnamed rule',
     include_chart: series.has('heart_rate'),
     include_map: includeMap,
@@ -148,7 +256,7 @@ function CreateRuleForm({ onDone }: { onDone: () => void }) {
     onSuccess: onDone,
   })
 
-  const canSubmit = name.trim() !== '' && summary.size > 0 && !createMutation.isPending
+  const canSubmit = name.trim() !== '' && summary.size > 0 && conditionsComplete && !createMutation.isPending
 
   return (
     <form
@@ -193,6 +301,28 @@ function CreateRuleForm({ onDone }: { onDone: () => void }) {
           />
         </label>
       </div>
+
+      <fieldset class="share-dialog-group">
+        <legend>Data conditions (all must hold)</legend>
+        {conditions.map((row, index) => (
+          <DataConditionRow
+            key={index}
+            activityType={activityType}
+            index={index}
+            row={row}
+            schemaFields={schemaFields}
+            onChange={(updated) => updateCondition(index, updated)}
+            onRemove={() => setConditions((rows) => rows.filter((_, i) => i !== index))}
+          />
+        ))}
+        <button
+          type="button"
+          class="btn-secondary"
+          onClick={() => setConditions((rows) => [...rows, newDataFilterRow(schemaFields[0]?.name)])}
+        >
+          Add condition
+        </button>
+      </fieldset>
 
       <fieldset class="share-dialog-group">
         <legend>Summary metrics to publish</legend>
@@ -256,7 +386,7 @@ function CreateRuleForm({ onDone }: { onDone: () => void }) {
           type="button"
           class="btn-secondary"
           onClick={() => previewMutation.mutate()}
-          disabled={previewMutation.isPending}
+          disabled={previewMutation.isPending || !conditionsComplete}
         >
           {previewMutation.isPending ? 'Previewing…' : 'Preview'}
         </button>

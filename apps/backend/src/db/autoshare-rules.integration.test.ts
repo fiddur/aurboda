@@ -21,6 +21,7 @@ const CONTAINER_TIMEOUT = 120_000
 
 const ruleInput = (over: Partial<AutoshareRuleInput> = {}): AutoshareRuleInput => ({
   activity_types: ['running'],
+  data_filters: [],
   include_chart: false,
   include_map: true,
   included_metrics: ['duration', 'distance'],
@@ -93,6 +94,39 @@ describe('Auto-share rules integration', () => {
     expect(updated?.min_distance_meters).toBe(3000)
     expect(updated?.min_duration_seconds).toBeNull()
     expect(updated?.visibility).toBe('public')
+  })
+
+  test('data_filters round-trip through insert, list and patch', async () => {
+    const user = getTestUser()
+    const plain = await insertAutoshareRule(user, ruleInput())
+    expect(plain.data_filters).toEqual([])
+
+    const filters = [
+      { field: 'session_name', operator: 'exists' as const },
+      { field: 'style', operator: 'eq' as const, value: 'yin' },
+      { field: 'laps', operator: 'neq' as const, value: 3 },
+    ]
+    const created = await insertAutoshareRule(user, ruleInput({ data_filters: filters, name: 'Named yoga' }))
+    expect(created.data_filters).toEqual(filters)
+    expect((await getAutoshareRules(user)).find((r) => r.id === created.id)?.data_filters).toEqual(filters)
+
+    const replaced = [{ field: 'session_name', operator: 'not_exists' as const }]
+    const patched = await updateAutoshareRule(user, created.id, { data_filters: replaced })
+    expect(patched?.data_filters).toEqual(replaced)
+    const untouched = await updateAutoshareRule(user, created.id, { name: 'Renamed' })
+    expect(untouched?.data_filters).toEqual(replaced)
+    const cleared = await updateAutoshareRule(user, created.id, { data_filters: [] })
+    expect(cleared?.data_filters).toEqual([])
+  })
+
+  test('the data_filters column defaults to an empty list for rows written without it', async () => {
+    const user = getTestUser()
+    const result = await query<{ id: string }>(
+      user,
+      `INSERT INTO autoshare_rules (name) VALUES ('Legacy') RETURNING id`,
+    )
+    const legacy = (await getAutoshareRules(user)).find((r) => r.id === result.rows[0].id)
+    expect(legacy?.data_filters).toEqual([])
   })
 
   test('deletes a rule; posts it created keep their marker and count', async () => {
@@ -267,5 +301,22 @@ describe('Auto-share rules integration', () => {
       [plain, false],
       [explicitlyUnsynced, true],
     ])
+  })
+
+  test('candidates carry the activity data', async () => {
+    const user = getTestUser()
+    const named = await insertActivity(user, {
+      activity_type: 'yoga',
+      data: { session_name: 'Yin yoga' },
+      end_time: new Date('2026-08-01T08:30:00Z'),
+      source: 'aurboda',
+      start_time: new Date('2026-08-01T08:00:00Z'),
+    })
+    const candidates = await listAutoshareCandidates(
+      user,
+      new Date('2026-08-01T00:00:00Z'),
+      new Date('2026-08-01T23:59:59Z'),
+    )
+    expect(candidates.find((c) => c.id === named)?.data).toEqual({ session_name: 'Yin yoga' })
   })
 })

@@ -235,6 +235,9 @@ export const socialTables: Record<string, string> = {
       updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `,
+  autoshare_rules_data_filters: `
+    ALTER TABLE autoshare_rules ADD COLUMN IF NOT EXISTS data_filters JSONB NOT NULL DEFAULT '[]'
+  `,
   // `idx_feed_posts_series` is a GIN index over the shared-series set — the hot
   // path for the public series endpoint's `metric = ANY(series_metrics)` check.
   feed_posts_indexes: `

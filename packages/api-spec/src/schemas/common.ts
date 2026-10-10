@@ -111,6 +111,8 @@ export type BuiltinActivityType = (typeof builtinActivityTypes)[number]
 /** @deprecated Use builtinActivityTypes. Kept for backward compatibility. */
 export const activityTypes = builtinActivityTypes
 
+export const dataFieldNameSchema = z.string().regex(/^[a-z][a-z0-9_]*$/)
+
 /** Validated against the activity_type_definitions table at runtime. */
 export const activityTypeSchema = z
   .string()
