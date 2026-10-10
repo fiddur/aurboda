@@ -195,6 +195,8 @@ export interface AutoshareCandidate {
   /** A Garmin-backed row whose detail (GPS, per-second HR, distance) has not been synced yet. */
   detail_pending: boolean
   data: Record<string, unknown> | null
+  /** The row that replaced this one (an edit's override row), when it was replaced. */
+  superseded_by: string | null
 }
 
 /**
@@ -219,7 +221,7 @@ export const listAutoshareCandidates = async (
 ): Promise<AutoshareCandidate[]> => {
   const result = await query<AutoshareCandidate>(
     user,
-    `SELECT id, activity_type, source, start_time, end_time, title, created_at, data,
+    `SELECT id, activity_type, source, start_time, end_time, title, created_at, data, superseded_by,
        (data->>'garmin_activity_id') IS NOT NULL
          AND (data->>'detail_synced') IS DISTINCT FROM 'true' AS detail_pending
      FROM activities

@@ -19,7 +19,9 @@ A per-user set of rules, each combining a **predicate** and a **share template**
   through their string form), and `neq` is its negation, so a missing field is "not
   equal". Conditions are checked against the merge group's **combined data**: each key
   takes the first non-blank value walking the members anchor first, so a field set on
-  an override row (editing a synced activity can create one) counts for the group.
+  an override row (editing a synced activity can create one) counts for the group. A
+  member replaced by another member — the synced row behind an edit's override — is
+  left out, so a value you corrected or cleared never comes back from the original.
 - **Share template** — exactly the fields of a manual share: `included_metrics`,
   `series_metrics`, `include_chart`/`include_map`, `visibility`, and an optional fixed
   `message` for the created posts.

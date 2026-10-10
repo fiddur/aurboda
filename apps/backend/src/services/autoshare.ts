@@ -73,11 +73,15 @@ export const dataFiltersMatch = (filters: AutoshareDataFilter[], data: Record<st
 /**
  * The data a merge group shares as one: each key takes the first non-blank value
  * walking the members anchor first — an edit of a synced activity can land on an
- * override row, which then carries the field the anchor lacks.
+ * override row, which then carries the field the anchor lacks. A member replaced by
+ * another member (the synced row behind an edit's override) contributes nothing, so
+ * its stale value can never outrank the edit.
  */
 export const groupData = (group: AutoshareCandidate[]): Record<string, unknown> => {
+  const ids = new Set(group.map((member) => member.id))
   const combined: Record<string, unknown> = {}
   for (const member of group) {
+    if (member.superseded_by != null && ids.has(member.superseded_by)) continue
     for (const [key, value] of Object.entries(member.data ?? {})) {
       if (isBlank(combined[key]) && !isBlank(value)) combined[key] = value
     }

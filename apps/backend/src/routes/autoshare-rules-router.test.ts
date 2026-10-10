@@ -53,6 +53,7 @@ const yogaMember = (id: string, data: Record<string, unknown> | null): Autoshare
   created_at: T0,
   data,
   detail_pending: false,
+  superseded_by: null,
   end_time: new Date(T0.getTime() + 3_600_000),
   id,
   source: 'aurboda',

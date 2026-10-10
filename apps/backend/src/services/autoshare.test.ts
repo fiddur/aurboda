@@ -65,6 +65,7 @@ const candidate = (id: string, over: Partial<AutoshareCandidate> = {}): Autoshar
   created_at: new Date(T0.getTime() + HOUR),
   data: null,
   detail_pending: false,
+  superseded_by: null,
   end_time: new Date(T0.getTime() + 2 * HOUR),
   id,
   source: 'garmin',
@@ -135,6 +136,22 @@ describe('groupData', () => {
       candidate('third', { data: { session_name: 'Morning', teacher: 'Ann' } }),
     ]
     expect(groupData(group)).toEqual({ session_name: 'Evening', style: 'yin', teacher: 'Ann' })
+  })
+
+  test('a member replaced by another member of the group never outranks it', () => {
+    const synced = candidate('synced', {
+      data: { session_name: 'Yin yoga', style: 'yin' },
+      superseded_by: 'override',
+    })
+    const override = candidate('override', { data: { session_name: 'Hatha', teacher: 'Ann' } })
+    expect(groupData([synced, override])).toEqual({ session_name: 'Hatha', teacher: 'Ann' })
+    const cleared = candidate('override', { data: { session_name: '' } })
+    expect(groupData([synced, cleared])).toEqual({})
+  })
+
+  test('a member replaced by a row outside the group still counts', () => {
+    const synced = candidate('synced', { data: { session_name: 'Yin yoga' }, superseded_by: 'elsewhere' })
+    expect(groupData([synced])).toEqual({ session_name: 'Yin yoga' })
   })
 
   test('members without data contribute nothing', () => {

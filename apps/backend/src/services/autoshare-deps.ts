@@ -41,6 +41,7 @@ const toMember = (
   detail_pending: activity.data?.garmin_activity_id != null && activity.data.detail_synced !== true,
   end_time: activity.end_time ?? fallback.end_time,
   id: activity.id ?? fallback.id,
+  superseded_by: activity.superseded_by ?? null,
   source: activity.source ?? null,
   start_time: activity.start_time,
   title: activity.title ?? null,
