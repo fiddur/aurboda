@@ -39,6 +39,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 export const serializeAutoshareRule = (record: AutoshareRuleRecord): AutoshareRule => ({
   activity_types: record.activity_types,
   created_at: record.created_at.toISOString(),
+  data_filters: record.data_filters,
   enabled: record.enabled,
   enabled_at: record.enabled_at?.toISOString() ?? null,
   id: record.id,
@@ -59,6 +60,7 @@ export const serializeAutoshareRule = (record: AutoshareRuleRecord): AutoshareRu
 /** Map an add/preview body to the rule input shape (shared with the MCP tools). */
 export const autoshareRuleInputFromBody = (body: AddAutoshareRuleBody) => ({
   activity_types: body.activity_types,
+  data_filters: body.data_filters,
   include_chart: body.include_chart,
   include_map: body.include_map,
   included_metrics: body.included_metrics,

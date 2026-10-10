@@ -9,7 +9,19 @@ A per-user set of rules, each combining a **predicate** and a **share template**
 
 - **Predicate**: activity types (one or more; empty matches any), min/max duration
   (over the **merged span**), min distance (from the `distance` metric over the span),
-  and source (e.g. `garmin`).
+  source (e.g. `garmin`), and **data conditions** on the activity's structured `data`
+  (`data_filters`, up to 16, all must hold) — e.g. "yoga sessions that have a session
+  name". Each condition is a field (a data key such as `session_name`) and one of
+  `exists` (has a value), `eq` (is), `neq` (is not) or `not_exists` (has no value);
+  `eq`/`neq` need a `value`. A **blank** value — missing, `null`, or a string that is
+  empty after trimming — counts as missing, so `exists` means the field has a value.
+  `eq` compares the trimmed string forms case-sensitively (numbers and booleans compare
+  through their string form), and `neq` is its negation, so a missing field is "not
+  equal". Conditions are checked against the merge group's **combined data**: each key
+  takes the first non-blank value walking the members anchor first, so a field set on
+  an override row (editing a synced activity can create one) counts for the group. A
+  member replaced by another member — the synced row behind an edit's override — is
+  left out, so a value you corrected or cleared never comes back from the original.
 - **Share template** — exactly the fields of a manual share: `included_metrics`,
   `series_metrics`, `include_chart`/`include_map`, `visibility`, and an optional fixed
   `message` for the created posts.
@@ -63,6 +75,10 @@ A per-user set of rules, each combining a **predicate** and a **share template**
 - **Bounded blast radius**: at most 5 posts per evaluation run (logged when hit) —
   federated deliveries can't be recalled, so even an unexpected window can only leak a
   handful of posts, never a firehose.
+- **Naming a session later shares it then.** An activity that did not match a data
+  condition when it settled (say, a yoga session without a `session_name`) is shared
+  once you name it: the edit is a mutation like any other and queues an evaluation of
+  its window. The never-retroactive gates, the dedupe and the per-run cap still apply.
 - The **first matching rule** (in creation order) wins; distance is only resolved when
   some eligible rule constrains it.
 - Auto-created posts are ordinary feed posts: they federate through the same delivery
@@ -73,7 +89,9 @@ A per-user set of rules, each combining a **predicate** and a **share template**
 
 - **Web**: the "Auto-share rules" panel on the Feed page — list with enable toggles
   (with an explicit confirmation of what will be published), post counts per rule,
-  and a create form with a **Preview** ("would have matched N activities in the last
+  and a create form (with a **Data conditions** list: field, "has a value" / "is" /
+  "is not" / "has no value", and a value suggested from the type's known values) and a
+  **Preview** ("would have matched N activities in the last
   30 days" — regardless of shared status, so the number shows the rule's true reach).
 - **REST**: `GET/POST /autoshare-rules`, `PATCH/DELETE /autoshare-rules/:id`,
   `POST /autoshare-rules/preview`.

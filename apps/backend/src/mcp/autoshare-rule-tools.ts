@@ -43,7 +43,7 @@ export const registerAutoshareRuleTools = (
 
   server.tool(
     'add_autoshare_rule',
-    'Create an auto-share rule (e.g. "share runs longer than 15 minutes"). The rule is created DISABLED — enable it with update_autoshare_rule once the user has confirmed what it will publish. Auto-created posts share the listed metrics/series at the given visibility, exactly like a manual share.',
+    'Create an auto-share rule (e.g. "share runs longer than 15 minutes", or with data_filters "share yoga sessions that have a session name"). The rule is created DISABLED — enable it with update_autoshare_rule once the user has confirmed what it will publish. Auto-created posts share the listed metrics/series at the given visibility, exactly like a manual share.',
     { ...addAutoshareRuleBodySchema.shape },
     async (body) => {
       const record = await insertAutoshareRule(user, autoshareRuleInputFromBody(body))

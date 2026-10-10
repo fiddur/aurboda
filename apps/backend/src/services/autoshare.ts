@@ -31,6 +31,8 @@
  * Dependencies are injected so the whole decision tree is unit-testable
  * without a database; `createAutoshareDeps` wires the real ones.
  */
+import type { AutoshareDataFilter } from '@aurboda/api-spec'
+
 import type { AutoshareCandidate, AutoshareRuleRecord, FeedPostRecord } from '../db/index.ts'
 import type { ResolvedFeedActivity } from './feed.ts'
 
@@ -42,6 +44,49 @@ export interface AutoshareSubject {
   durationSeconds: number
   /** Total distance over the merged span, or undefined when unknown/absent. */
   distanceMeters: number | undefined
+  /** The merge group's combined data ({@link groupData}). */
+  data: Record<string, unknown>
+}
+
+const isBlank = (value: unknown): boolean =>
+  value == null || (typeof value === 'string' && value.trim() === '')
+
+const filterHolds = (filter: AutoshareDataFilter, data: Record<string, unknown>): boolean => {
+  const value = data[filter.field]
+  const equal = (): boolean => !isBlank(value) && String(value).trim() === String(filter.value).trim()
+  switch (filter.operator) {
+    case 'eq':
+      return equal()
+    case 'exists':
+      return !isBlank(value)
+    case 'neq':
+      return !equal()
+    case 'not_exists':
+      return isBlank(value)
+  }
+}
+
+/** Every filter holds, with a blank value (null, missing, whitespace-only string) counting as missing. */
+export const dataFiltersMatch = (filters: AutoshareDataFilter[], data: Record<string, unknown>): boolean =>
+  filters.every((filter) => filterHolds(filter, data))
+
+/**
+ * The data a merge group shares as one: each key takes the first non-blank value
+ * walking the members anchor first — an edit of a synced activity can land on an
+ * override row, which then carries the field the anchor lacks. A member replaced by
+ * another member (the synced row behind an edit's override) contributes nothing, so
+ * its stale value can never outrank the edit.
+ */
+export const groupData = (group: AutoshareCandidate[]): Record<string, unknown> => {
+  const ids = new Set(group.map((member) => member.id))
+  const combined: Record<string, unknown> = {}
+  for (const member of group) {
+    if (member.superseded_by != null && ids.has(member.superseded_by)) continue
+    for (const [key, value] of Object.entries(member.data ?? {})) {
+      if (isBlank(combined[key]) && !isBlank(value)) combined[key] = value
+    }
+  }
+  return combined
 }
 
 /** Pure predicate: does a settled activity match a rule? */
@@ -54,7 +99,7 @@ export const activityMatchesRule = (rule: AutoshareRuleRecord, subject: Autoshar
     if (subject.distanceMeters === undefined) return false
     if (subject.distanceMeters < rule.min_distance_meters) return false
   }
-  return true
+  return dataFiltersMatch(rule.data_filters, subject.data)
 }
 
 /** Whether any rule needs the (comparatively expensive) distance resolution. */
@@ -204,6 +249,7 @@ export const evaluateAutoshareWindow = async <Member extends AutoshareCandidate>
 
     const subject: AutoshareSubject = {
       activityType: anchor.activity_type,
+      data: groupData(group),
       distanceMeters: distance,
       durationSeconds,
       source: anchor.source,
@@ -263,6 +309,7 @@ export const previewAutoshareRule = async <Member extends AutoshareCandidate>(
         : undefined
     const subject: AutoshareSubject = {
       activityType: anchor.activity_type,
+      data: groupData(group),
       distanceMeters: distance,
       durationSeconds,
       source: anchor.source,

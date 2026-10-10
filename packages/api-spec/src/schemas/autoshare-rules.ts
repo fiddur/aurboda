@@ -2,24 +2,45 @@
  * Auto-share rules: "share runs longer than 15 minutes automatically."
  *
  * A rule combines a **predicate** over a settled activity (type set, min/max
- * duration, min distance, source) with a **share template** — exactly the
- * fields of a manual share. Rules are **off by default**: auto-publishing
+ * duration, min distance, source, data conditions) with a **share template** —
+ * exactly the fields of a manual share. Rules are **off by default**: auto-publishing
  * physiological/location data is sensitive, so enabling one is a deliberate
  * act, and enabling only affects activities that arrive AFTER the enable
  * (`enabled_at` gates evaluation; nothing is shared retroactively).
  */
 import { z } from 'zod'
 
-import { baseResponseSchema, iso8601DateTimeSchema, metricTypeSchema } from './common.ts'
+import { baseResponseSchema, dataFieldNameSchema, iso8601DateTimeSchema, metricTypeSchema } from './common.ts'
+import { dataFilterSchema } from './deduction-rules.ts'
 import { feedPostMessageMaxLength, feedVisibilitySchema } from './feed.ts'
 
 const scalarMetricKeySchema = z.string().min(1).max(64)
+
+export const autoshareDataFilterSchema = dataFilterSchema
+  .extend({
+    field: dataFieldNameSchema.meta({ description: 'Activity data field key, e.g. `session_name`' }),
+  })
+  .refine((filter) => (filter.operator !== 'eq' && filter.operator !== 'neq') || filter.value !== undefined, {
+    message: 'value is required for the eq and neq operators',
+    path: ['value'],
+  })
+  .meta({ id: 'AutoshareDataFilter' })
+
+export type AutoshareDataFilter = z.infer<typeof autoshareDataFilterSchema>
+
+const dataFiltersDescription =
+  'Conditions on the activity data fields, all must hold. A blank value counts as missing, so exists means the field has a value.'
 
 /** The predicate + share-template fields shared by the rule, its add body, and its preview body. */
 const autoshareRuleFields = {
   activity_types: z.array(z.string().min(1).max(64)).max(32).default([]).meta({
     description: 'Activity types the rule matches (e.g. `running`); empty matches any type',
   }),
+  data_filters: z
+    .array(autoshareDataFilterSchema)
+    .max(16)
+    .default([])
+    .meta({ description: dataFiltersDescription }),
   include_chart: z
     .boolean()
     .default(false)
@@ -70,6 +91,7 @@ export const autoshareRuleSchema = z
   .object({
     ...autoshareRuleFields,
     created_at: iso8601DateTimeSchema.meta({ description: 'Creation timestamp (ISO 8601)' }),
+    data_filters: z.array(autoshareDataFilterSchema).meta({ description: dataFiltersDescription }),
     // On read, stored keys are plain strings (like FeedPost.series_metrics) —
     // the WRITE bodies validate them against the metric-type enum.
     series_metrics: z
@@ -99,6 +121,11 @@ export type AddAutoshareRuleBody = z.infer<typeof addAutoshareRuleBodySchema>
 export const updateAutoshareRuleBodySchema = z
   .object({
     activity_types: autoshareRuleFields.activity_types.removeDefault().optional(),
+    data_filters: z
+      .array(autoshareDataFilterSchema)
+      .max(16)
+      .optional()
+      .meta({ description: `${dataFiltersDescription} Replaces the whole list.` }),
     enabled: z.boolean().optional().meta({ description: 'Enable/disable the rule' }),
     include_chart: z.boolean().optional(),
     include_map: z.boolean().optional(),
