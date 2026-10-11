@@ -26,6 +26,7 @@ export const previewDeductionRule = async (body: {
   mode?: DeductionRuleMode
   output_data?: Record<string, unknown>
   output_media_field?: OutputMediaField
+  output_title_field?: string
 }): Promise<{ would_affect: number; sample_days: number }> => {
   const { token } = auth.value
   const response = await axios.post<{ success: boolean; would_affect: number; sample_days: number }>(
@@ -47,6 +48,7 @@ export const createDeductionRule = async (body: {
   mode?: DeductionRuleMode
   output_data?: Record<string, unknown>
   output_media_field?: OutputMediaField
+  output_title_field?: string
 }): Promise<DeductionRule> => {
   const { token } = auth.value
   const response = await axios.post<{ success: boolean; data: DeductionRule }>(
@@ -70,6 +72,7 @@ export const updateDeductionRule = async (
     mode: DeductionRuleMode
     output_data: Record<string, unknown> | null
     output_media_field: OutputMediaField | null
+    output_title_field: string | null
   }>,
 ): Promise<DeductionRule> => {
   const { token } = auth.value
