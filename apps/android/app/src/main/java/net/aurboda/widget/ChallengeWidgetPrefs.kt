@@ -35,6 +35,7 @@ fun challengeWidgetUrls(context: Context): Set<String> =
     runCatching {
         AppWidgetManager.getInstance(context)
             .getAppWidgetIds(ComponentName(context, ChallengeWidgetProvider::class.java))
-            .mapNotNull { loadChallengeWidgetConfig(context, it)?.url }
+            .map { loadChallengeWidgetConfig(context, it)?.url }
+            .filterNotNull()
             .toSet()
     }.getOrDefault(emptySet())
