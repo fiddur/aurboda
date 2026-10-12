@@ -68,7 +68,7 @@ import { validateBody, validateQuery } from '../validation.ts'
 
 type ActivityRow = Awaited<ReturnType<typeof getActivityById>> & {}
 
-const RULE_REFERENCE_KEYS = ['rule_id', '_enriched_by', '_retyped_by'] as const
+const RULE_REFERENCE_KEYS = ['rule_id', '_enriched_by', '_retyped_by', '_titled_by'] as const
 
 /** Names of the deduction rules an activity's data points at, keyed by rule id. */
 const resolveReferencedRules = async (

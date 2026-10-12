@@ -1,9 +1,12 @@
 import { z } from 'zod'
 
-import { activityTypeSchema, createDataResponseSchema, iso8601DateTimeSchema } from './common.ts'
+import {
+  activityTypeSchema,
+  createDataResponseSchema,
+  dataFieldNameSchema,
+  iso8601DateTimeSchema,
+} from './common.ts'
 import { hrZoneSecsSchema } from './settings.ts'
-
-const dataFieldNameSchema = z.string().regex(/^[a-z][a-z0-9_]*$/)
 
 export const valueDistributionSchema = z
   .object({

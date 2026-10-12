@@ -43,7 +43,7 @@ export const registerAutoshareRuleTools = (
 
   server.tool(
     'add_autoshare_rule',
-    'Create an auto-share rule (e.g. "share runs longer than 15 minutes"). The rule is created DISABLED — enable it with update_autoshare_rule once the user has confirmed what it will publish. Auto-created posts share the listed metrics/series at the given visibility, exactly like a manual share.',
+    'Create an auto-share rule (e.g. "share runs longer than 15 minutes", or with data_filters "share yoga sessions that have a session name"). The rule is created DISABLED — enable it with update_autoshare_rule once the user has confirmed what it will publish. Auto-created posts share the listed metrics/series at the given visibility, exactly like a manual share.',
     { ...addAutoshareRuleBodySchema.shape },
     async (body) => {
       const record = await insertAutoshareRule(user, autoshareRuleInputFromBody(body))
@@ -53,7 +53,7 @@ export const registerAutoshareRuleTools = (
 
   server.tool(
     'update_autoshare_rule',
-    'Update an auto-share rule. `enabled: true` activates it — from then on, NEWLY-ingested matching activities are automatically published to the feed (never retroactively).',
+    "Update an auto-share rule. `enabled: true` activates it — from then on, NEWLY-ingested matching activities that ended within the rule's max_age_hours are automatically published to the feed (never retroactively).",
     { id: z.string().uuid().describe('Rule ID'), ...updateAutoshareRuleBodySchema.shape },
     async ({ id, ...body }) => {
       const record = await updateAutoshareRule(user, id, body)
@@ -75,7 +75,7 @@ export const registerAutoshareRuleTools = (
 
   server.tool(
     'preview_autoshare_rule',
-    'Dry-run an auto-share rule: how many activities (merge groups) in the last 30 days WOULD have matched its predicate. Creates and changes nothing — use before enabling.',
+    'Dry-run an auto-share rule: how many activities (merge groups) in the last 30 days WOULD have matched its predicate, ignoring max_age_hours. Creates and changes nothing — use before enabling.',
     { ...addAutoshareRuleBodySchema.shape },
     async (body) => {
       const tempRule: AutoshareRuleRecord = {

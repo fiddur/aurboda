@@ -25,6 +25,34 @@ export const activitiesTables: Record<string, string> = {
     ALTER TABLE activities ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   `,
 
+  // When the row last CHANGED; NULL for a row untouched since ingest, so a
+  // row's change time is COALESCE(updated_at, created_at). The WHEN guard keeps
+  // an identical re-upsert from counting as a change. Drives re-federating a
+  // shared activity's posts after it changes.
+  activities_updated_at: `
+    ALTER TABLE activities ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ;
+
+    CREATE OR REPLACE FUNCTION touch_activity_updated_at() RETURNS TRIGGER AS $$
+    BEGIN
+      NEW.updated_at := NOW();
+      RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql;
+
+    DO $$ BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM information_schema.triggers
+         WHERE event_object_table = 'activities'
+           AND trigger_name = 'activities_touch_updated_at'
+      ) THEN
+        CREATE TRIGGER activities_touch_updated_at
+          BEFORE UPDATE ON activities
+          FOR EACH ROW WHEN (OLD IS DISTINCT FROM NEW)
+          EXECUTE FUNCTION touch_activity_updated_at();
+      END IF;
+    END $$
+  `,
+
   activities_indexes: `
     CREATE UNIQUE INDEX IF NOT EXISTS idx_activities_ext_id ON activities (source, external_id) WHERE external_id IS NOT NULL;
     CREATE UNIQUE INDEX IF NOT EXISTS idx_activities_type_time ON activities (source, activity_type, start_time) WHERE external_id IS NULL;
@@ -259,6 +287,7 @@ export const activitiesTables: Record<string, string> = {
       mode                  VARCHAR(10) NOT NULL DEFAULT 'create',
       output_data           JSONB,
       output_media_field    JSONB,
+      output_title_field    TEXT,
       created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )

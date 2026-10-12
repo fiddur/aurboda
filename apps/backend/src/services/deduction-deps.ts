@@ -15,12 +15,14 @@ import {
   deleteStaleRuleActivities,
   expandActivityTypes,
   getActivityById,
+  getActivityTypeDefinition,
   getMediaPlays,
   insertDeductionRuleRun,
   upsertActivity,
 } from '../db/index.ts'
 import { auditWarn } from './audit-log.ts'
 import { computeEnrichPatch } from './deduction-engine.ts'
+import { activityTypeTitleNames, ruleTitleChange } from './deduction-title.ts'
 import { getPlaceVisits } from './locations.ts'
 import { updateActivity } from './mutations.ts'
 import { categoryPathMatchSql } from './screentime-sql.ts'
@@ -357,6 +359,74 @@ const retypeActivity = async (
   return result.success
 }
 
+/**
+ * Reads the winning row (an override when one exists) and writes through the same update path as
+ * a manual edit, so a synced activity gets an override whose title a re-sync leaves alone.
+ */
+const retitleActivities = async (
+  user: string,
+  activityType: string,
+  ranges: TimeRange[],
+  field: string,
+  ruleId: string,
+  dryRun = false,
+  notifier?: ActivityNotifier,
+): Promise<string[]> => {
+  if (ranges.length === 0) return []
+  const definition = await getActivityTypeDefinition(user, activityType)
+  const typeNames = activityTypeTitleNames(activityType, definition?.display_name)
+
+  const seen = new Set<string>()
+  const changedIds: string[] = []
+  for (const range of ranges) {
+    const result = await query(
+      user,
+      `SELECT id, title, data FROM activities
+       WHERE activity_type = $1
+         AND deleted_at IS NULL
+         AND superseded_by IS NULL
+         AND start_time < $3
+         AND (end_time > $2 OR end_time IS NULL)
+       ORDER BY start_time`,
+      [activityType, range.start, range.end],
+    )
+
+    for (const row of result.rows) {
+      const id = row.id as string
+      if (seen.has(id)) continue
+      seen.add(id)
+
+      const change = ruleTitleChange(
+        { data: row.data as Record<string, unknown> | null, title: row.title as string | null },
+        field,
+        ruleId,
+        typeNames,
+      )
+      if (!change) continue
+      if (dryRun) {
+        changedIds.push(id)
+        continue
+      }
+
+      const updated = await updateActivity(
+        user,
+        id,
+        change,
+        notifier && ((u, type, start, end) => notifier(u, type, start, end, ruleId)),
+      )
+      if (updated.success) {
+        changedIds.push(id)
+      } else {
+        auditWarn(user, 'deduction', `Rule could not retitle activity ${id}`, {
+          error: updated.error,
+          rule_id: ruleId,
+        })
+      }
+    }
+  }
+  return changedIds
+}
+
 const getEarliestActivityTime = async (user: string): Promise<Date | null> => {
   const result = await query(
     user,
@@ -394,5 +464,7 @@ export const createDefaultEngineDeps = (notifier?: ActivityNotifier): DeductionE
     return id
   },
   insertRuleRun: insertDeductionRuleRun,
+  retitleActivities: (user, activityType, ranges, field, ruleId, dryRun) =>
+    retitleActivities(user, activityType, ranges, field, ruleId, dryRun, notifier),
   retypeActivity: (user, id, change) => retypeActivity(user, id, change, notifier),
 })

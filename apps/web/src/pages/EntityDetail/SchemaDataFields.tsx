@@ -9,7 +9,15 @@ import { fetchActivityFieldValues } from '../../state/api'
 const offersKnownValues = (field: DataFieldDefinition) =>
   field.type === 'string' && Boolean(field.is_categorical) && !field.enum_values
 
-const KnownValues = ({ id, activityType, field }: { id: string; activityType: string; field: string }) => {
+export const KnownValues = ({
+  id,
+  activityType,
+  field,
+}: {
+  id: string
+  activityType: string
+  field: string
+}) => {
   const { data } = useQuery({
     queryFn: () => fetchActivityFieldValues(activityType, field),
     queryKey: ['activity-field-values', activityType, field],

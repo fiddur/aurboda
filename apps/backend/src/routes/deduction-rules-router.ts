@@ -59,6 +59,7 @@ export const createDeductionRulesRouter = (
         mode,
         output_data,
         output_media_field,
+        output_title_field,
       } = req.body
 
       if (!(await activityTypeExists(user, output_activity_type))) {
@@ -80,6 +81,7 @@ export const createDeductionRulesRouter = (
         output_data: output_data as Record<string, unknown> | undefined,
         output_media_field,
         output_title,
+        output_title_field,
         priority,
       })
 
@@ -127,6 +129,7 @@ export const createDeductionRulesRouter = (
         output_data: req.body.output_data as Record<string, unknown> | undefined,
         output_media_field: req.body.output_media_field,
         output_title: req.body.output_title,
+        output_title_field: req.body.output_title_field,
         priority: req.body.priority ?? 0,
       }
 

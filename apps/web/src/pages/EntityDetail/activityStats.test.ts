@@ -240,8 +240,15 @@ describe('buildFieldRows', () => {
   test('declared values in schema order, an empty categorical field to fill in, and rule links', () => {
     const rows = buildFieldRows(
       schema,
-      { _enriched_by: 'rule-1234567890', partner: '  ', props: true, session_name: 'Flow', weight: 4 },
-      { 'rule-1234567890': 'Morning yoga' },
+      {
+        _enriched_by: 'rule-1234567890',
+        _titled_by: 'rule-abcdef1234',
+        partner: '  ',
+        props: true,
+        session_name: 'Flow',
+        weight: 4,
+      },
+      { 'rule-1234567890': 'Morning yoga', 'rule-abcdef1234': 'Yoga title from session' },
     )
     expect(rows).toEqual([
       { label: 'Session name', value: 'Flow' },
@@ -249,6 +256,7 @@ describe('buildFieldRows', () => {
       { label: 'Weight', value: '4 kg' },
       { label: 'Partner', missingField: 'partner', value: '' },
       { href: '/deduction-rules/rule-1234567890', label: 'Enriched by', value: 'Morning yoga' },
+      { href: '/deduction-rules/rule-abcdef1234', label: 'Titled by', value: 'Yoga title from session' },
     ])
   })
 
@@ -273,6 +281,8 @@ describe('sourceDataEntries', () => {
         stages: Array.from({ length: 40 }, (_, i) => i),
         startTime: '2026-10-07T10:05:01Z',
         steps: 0,
+        _titled_by: 'rule-1234567890',
+        _titled_value: 'Flow',
       },
       { fields: [{ name: 'session_name', type: 'string' }] },
     )

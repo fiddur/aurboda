@@ -10,6 +10,8 @@ import type { ArticleContent, ChallengeShare, FeedPostKind, FeedVisibility } fro
  * series lookup re-checks `deleted_at`, so a removed activity simply stops
  * resolving rather than cascading a delete.
  */
+import type { AutoshareCandidate } from './autoshare-rules.ts'
+
 import { query } from './connection.ts'
 
 export interface FeedPostRecord {
@@ -497,4 +499,45 @@ export const listFeedPostIdsByActivityIds = async (
     [activityIds, kind ?? null],
   )
   return result.rows.map((row) => row.id)
+}
+
+/**
+ * The activities an activity post references that overlap the window, in the
+ * auto-share candidate shape: what a changed-share refresh looks at, bounded by
+ * the posts rather than the window's whole history. Superseded rows are kept —
+ * a post may reference the synced row an override replaced.
+ */
+export const listSharedActivities = async (
+  user: string,
+  start: Date,
+  end: Date,
+): Promise<AutoshareCandidate[]> => {
+  const result = await query<AutoshareCandidate>(
+    user,
+    `SELECT a.id, a.activity_type, a.source, a.start_time, a.end_time, a.title, a.created_at, a.data,
+       a.superseded_by,
+       (a.data->>'garmin_activity_id') IS NOT NULL
+         AND (a.data->>'detail_synced') IS DISTINCT FROM 'true' AS detail_pending
+     FROM activities a
+     WHERE a.deleted_at IS NULL AND a.end_time IS NOT NULL
+       AND a.start_time <= $2 AND a.end_time >= $1
+       AND EXISTS (SELECT 1 FROM feed_posts p WHERE p.activity_id = a.id AND p.kind = 'activity')
+     ORDER BY a.start_time ASC`,
+    [start, end],
+  )
+  return result.rows
+}
+
+/** The activity posts referencing any of the activities, with their version (`updated_at`). */
+export const listActivityPostVersions = async (
+  user: string,
+  activityIds: string[],
+): Promise<{ id: string; updated_at: Date }[]> => {
+  if (activityIds.length === 0) return []
+  const result = await query<{ id: string; updated_at: Date }>(
+    user,
+    `SELECT id, updated_at FROM feed_posts WHERE activity_id = ANY($1) AND kind = 'activity'`,
+    [activityIds],
+  )
+  return result.rows
 }

@@ -29,7 +29,7 @@ const escapeHtml = (s: string): string =>
   s.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;')
 
 /** Prettify a snake_case metric key into a label (`hr_zone_minutes` → `Hr zone minutes`). */
-const prettifyKey = (key: string): string => {
+export const prettifyKey = (key: string): string => {
   const spaced = key.replaceAll('_', ' ')
   return spaced.charAt(0).toUpperCase() + spaced.slice(1)
 }

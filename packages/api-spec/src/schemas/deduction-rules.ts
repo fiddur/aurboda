@@ -1,7 +1,12 @@
 /** Rules that automatically create activities from data conditions. */
 import { z } from 'zod'
 
-import { activityTypeSchema, baseResponseSchema, createDataArrayResponseSchema } from './common.ts'
+import {
+  activityTypeSchema,
+  baseResponseSchema,
+  createDataArrayResponseSchema,
+  dataFieldNameSchema,
+} from './common.ts'
 
 /**
  * Condition kinds for deduction rules.
@@ -157,6 +162,11 @@ export const outputMediaFieldSchema = z
 
 export type OutputMediaField = z.infer<typeof outputMediaFieldSchema>
 
+const outputTitleFieldDescription =
+  'Enrich mode only: copy this data field (e.g. "session_name") into the title of each enriched activity. Replaces a blank title, the type name, or a title the rule wrote itself; a title typed by hand is kept.'
+
+const outputTitleFieldSchema = dataFieldNameSchema.meta({ description: outputTitleFieldDescription })
+
 export const deductionRuleModeSchema = z.enum(['create', 'enrich', 'retype']).meta({
   id: 'DeductionRuleMode',
   description:
@@ -193,6 +203,7 @@ export const deductionRuleSchema = z
         'Static data fields to set on created activities; enrich and retype only fill missing fields',
     }),
     output_media_field: outputMediaFieldSchema.optional(),
+    output_title_field: outputTitleFieldSchema.optional(),
     output_title: z.string().optional().meta({
       description:
         'Optional title for created activities; in retype mode, replaces the retyped activity title',
@@ -236,6 +247,7 @@ export const addDeductionRuleBodySchema = z
       description: 'Static data fields for created activities; enrich and retype only fill missing fields',
     }),
     output_media_field: outputMediaFieldSchema.optional(),
+    output_title_field: outputTitleFieldSchema.optional(),
     output_title: z.string().optional().meta({
       description:
         'Optional title for created activities; in retype mode, replaces the retyped activity title',
@@ -275,6 +287,10 @@ export const updateDeductionRuleBodySchema = z
       .nullable()
       .optional()
       .meta({ description: 'New play-title enrichment (null to clear)' }),
+    output_title_field: dataFieldNameSchema
+      .nullable()
+      .optional()
+      .meta({ description: `${outputTitleFieldDescription} Null to clear.` }),
     output_title: z.string().nullable().optional().meta({ description: 'New title (null to remove)' }),
     priority: z.number().int().min(0).max(2).optional().meta({ description: 'New priority' }),
   })

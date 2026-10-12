@@ -14,6 +14,7 @@ import { insertTimeSeries } from '../db/time-series.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import { resolveStructuredContent } from './feed-structured.ts'
 import { expandFeedActivityWindow, getFeedPage, resolveFeedActivity, serializeFeedPost } from './feed.ts'
+import { updateActivity } from './mutations.ts'
 
 const CONTAINER_TIMEOUT = 120_000
 
@@ -85,6 +86,22 @@ describe('feed service', () => {
       const resolved = await resolveFeedActivity(user, anchorId)
       expect(resolved?.start_time.toISOString()).toBe(ANCHOR_START.toISOString())
       expect(resolved?.end_time?.toISOString()).toBe(ANCHOR_END.toISOString())
+    })
+
+    test('headlines a synced anchor with the title of the override that replaced it', async () => {
+      const user = getTestUser()
+      const anchorId = await insertActivity(user, {
+        activity_type: 'yoga',
+        end_time: ANCHOR_END,
+        external_id: 'garmin-yoga-1',
+        source: 'garmin',
+        start_time: ANCHOR_START,
+        title: 'Yoga',
+      })
+      expect((await updateActivity(user, anchorId, { title: 'Heart-Opening Yin Yoga' })).success).toBe(true)
+
+      const resolved = await resolveFeedActivity(user, anchorId)
+      expect(resolved?.title).toBe('Heart-Opening Yin Yoga')
     })
 
     test('returns null for a missing/deleted activity', async () => {
