@@ -1848,6 +1848,7 @@ describe('processActivityDetail', () => {
     await processActivityDetail(user, gpsDetail, {
       activityId: 'act-1',
       activitySpan: { end: new Date(1700000600000), start: new Date(1700000000000) },
+      activityStart: new Date(1700000000000),
       deps: mockDeps,
       onTrackWritten,
     })
@@ -1861,12 +1862,48 @@ describe('processActivityDetail', () => {
     expect(onTrackWritten).toHaveBeenCalledWith(user, 'act-1')
   })
 
-  test('uses the first sample as M origin without an activity span', async () => {
-    await processActivityDetail(user, gpsDetail, { activityId: 'act-1', deps: mockDeps })
+  test('takes the M origin from the activity start, not the span', async () => {
+    await processActivityDetail(user, gpsDetail, {
+      activityId: 'act-1',
+      activityStart: new Date(1700000000000),
+      deps: mockDeps,
+    })
 
     expect(vi.mocked(mockDeps.upsertActivityTrack).mock.calls[0]![1].ewkt).toBe(
-      'SRID=4326;LINESTRING ZM(12.62 57.65 10.5 0, 12.6201 57.6501 11 1)',
+      'SRID=4326;LINESTRING ZM(12.62 57.65 10.5 1, 12.6201 57.6501 11 2)',
     )
+  })
+
+  test('writes a track from the polyline when the detail has no metrics', async () => {
+    const onTrackWritten = vi.fn()
+    const detail: GarminActivityDetailResponse = {
+      activityDetailMetrics: [],
+      activityId: 77777,
+      geoPolylineDTO: {
+        polyline: [
+          { lat: 57.65, lon: 12.62, timestampGMT: 1700000001000 },
+          { lat: 57.66, lon: 12.63, timestampGMT: 1700000062000 },
+        ],
+      },
+      metricDescriptors: [],
+    }
+
+    const points = await processActivityDetail(user, detail, {
+      activityId: 'act-2',
+      activityStart: new Date(1700000000000),
+      deps: mockDeps,
+      onTrackWritten,
+    })
+
+    expect(points).toBe(0)
+    expect(mockDeps.insertRawRecord).not.toHaveBeenCalled()
+    expect(mockDeps.upsertActivityTrack).toHaveBeenCalledWith(user, {
+      activity_id: 'act-2',
+      ewkt: 'SRID=4326;LINESTRING ZM(12.62 57.65 0 1, 12.63 57.66 0 62)',
+      full_resolution: true,
+      source: 'garmin',
+    })
+    expect(onTrackWritten).toHaveBeenCalledWith(user, 'act-2')
   })
 
   test('writes no track without an activity id', async () => {

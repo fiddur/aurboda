@@ -88,8 +88,10 @@ export interface ProcessActivityDetailOptions {
    * the downsampled track covers.
    */
   activitySpan?: ActivitySpan | null
-  /** The activity row the detail belongs to; without it no track is written. */
+  /** The activity row the detail belongs to; without it and its start no track is written. */
   activityId?: string
+  /** The activity's start_time: the M origin of the written track. */
+  activityStart?: Date
   onTrackWritten?: (user: string, activityId: string) => void
   deps?: GarminProcessDeps
 }
@@ -858,10 +860,10 @@ const writeTrack = async (
   user: string,
   data: GarminActivityDetailResponse,
   activityId: string,
-  originFallback: Date,
-  { activitySpan, deps = defaultDeps, onTrackWritten }: ProcessActivityDetailOptions,
+  activityStart: Date,
+  { deps = defaultDeps, onTrackWritten }: ProcessActivityDetailOptions,
 ): Promise<void> => {
-  const track = buildTrack(extractTrackPoints(data), activitySpan?.start ?? originFallback)
+  const track = buildTrack(extractTrackPoints(data), activityStart)
   if (!track) return
   await deps.upsertActivityTrack(user, {
     activity_id: activityId,
@@ -872,12 +874,11 @@ const writeTrack = async (
   onTrackWritten?.(user, activityId)
 }
 
-export const processActivityDetail = async (
+const processDetailMetrics = async (
   user: string,
   data: GarminActivityDetailResponse,
-  options: ProcessActivityDetailOptions = {},
+  { activitySpan, deps = defaultDeps }: ProcessActivityDetailOptions,
 ): Promise<number> => {
-  const { activityId, activitySpan, deps = defaultDeps } = options
   if (!data.activityDetailMetrics?.length) return 0
 
   const indexMap = buildMetricIndexMap(data.metricDescriptors)
@@ -918,7 +919,17 @@ export const processActivityDetail = async (
     }
   }
 
-  if (activityId) await writeTrack(user, data, activityId, new Date(firstTs), options)
-
   return points.length
+}
+
+/** A detail with a polyline and no metrics still writes a track. */
+export const processActivityDetail = async (
+  user: string,
+  data: GarminActivityDetailResponse,
+  options: ProcessActivityDetailOptions = {},
+): Promise<number> => {
+  const pointCount = await processDetailMetrics(user, data, options)
+  const { activityId, activityStart } = options
+  if (activityId && activityStart) await writeTrack(user, data, activityId, activityStart, options)
+  return pointCount
 }

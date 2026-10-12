@@ -53,7 +53,7 @@ export const processStravaActivity = async (
   activity: StravaDetailedActivity,
   streams: StravaStreamsResponse | null,
   deps: StravaProcessDeps,
-): Promise<StravaProcessResult> => {
+): Promise<StravaProcessResult | null> => {
   const externalId = `strava-activity-${activity.id}`
   const startTime = new Date(activity.start_date)
   const endTime = new Date(startTime.getTime() + activity.elapsed_time * 1000)
@@ -95,10 +95,12 @@ export const processStravaActivity = async (
       const timeOffsets = timeStream.data as number[]
       pointCount += await processTimeSeriesStreams(user, startTime, timeOffsets, streams, deps)
       await processGpsStream(user, { end: endTime, start: startTime }, timeOffsets, streams, deps)
-      // insertActivity yields no id when the row was soft-deleted; nothing to attach a track to.
       if (activityId) await writeStravaTrack(user, activityId, startTime, timeOffsets, streams, deps)
     }
   }
+
+  // insertActivity yields no id when the upsert hit a soft-deleted row.
+  if (!activityId) return null
 
   return {
     activity_id: activityId,

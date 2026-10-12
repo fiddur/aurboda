@@ -66,6 +66,8 @@ const MealDetail = lazyPage(() => import('./pages/Meals/MealDetail.jsx'), 'MealD
 const MealTypeMeta = lazyPage(() => import('./pages/MealTypeMeta/index.jsx'), 'MealTypeMeta')
 const MetricMeta = lazyPage(() => import('./pages/MetricMeta/index.jsx'), 'MetricMeta')
 const Places = lazyPage(() => import('./pages/Places/index.jsx'), 'Places')
+const RoutesPage = lazyPage(() => import('./pages/Routes/index.jsx'), 'Routes')
+const RouteDetailPage = lazyPage(() => import('./pages/Routes/RouteDetail.jsx'), 'RouteDetail')
 const Privacy = lazyPage(() => import('./pages/Privacy/index.jsx'), 'Privacy')
 const PublicResource = lazyPage(() => import('./pages/PublicDashboard/index.jsx'), 'PublicResource')
 const PublicProfile = lazyPage(() => import('./pages/PublicProfile/index.jsx'), 'PublicProfile')
@@ -131,6 +133,8 @@ function AppShell() {
             <Route path="/correlations" component={Correlations} />
             <Route path="/chart" component={Chart} />
             <Route path="/places" component={Places} />
+            <Route path="/routes/:id" component={RouteDetailPage} />
+            <Route path="/routes" component={RoutesPage} />
             <Route path="/data-sources" component={DataSources} />
             <Route path="/data-sources/aurboda" component={AurbodaSource} />
             <Route path="/data-sources/android-app" component={AndroidAppSource} />

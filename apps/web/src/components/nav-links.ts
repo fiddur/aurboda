@@ -28,6 +28,7 @@ export const isSharingActive = (url: string): boolean =>
 export const NAV_LINKS_SECONDARY = [
   { href: '/correlations', label: 'Analyze', icon: '🔬' },
   { href: '/places', label: 'Places', icon: '📍' },
+  { href: '/routes', label: 'Routes', icon: '🗺' },
   { href: '/activity-types', label: 'Types', icon: '🏷' },
   { href: '/deduction-rules', label: 'Rules', icon: '🔗' },
 ]

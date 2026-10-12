@@ -121,6 +121,20 @@ describe('Activity tracks integration', () => {
       expect(await getActivityTrack(user, id)).toBeNull()
     })
 
+    test('is not served for a soft-deleted activity', async () => {
+      const user = getTestUser()
+      const id = await addActivity('garmin', 'garmin-1', {})
+      await upsertActivityTrack(user, {
+        activity_id: id,
+        ewkt: twoPoint,
+        full_resolution: true,
+        source: 'garmin',
+      })
+      await query(user, `UPDATE activities SET deleted_at = NOW() WHERE id = $1`, [id])
+
+      expect(await getActivityTrack(user, id)).toBeNull()
+    })
+
     test('prefers a full-resolution track, then the one with more points', async () => {
       const user = getTestUser()
       const id = await addActivity('garmin', 'garmin-1', {})

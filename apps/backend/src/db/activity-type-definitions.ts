@@ -422,6 +422,14 @@ const mergeInTransaction = async (
   )
   deduction_rules_updated += conditionsResult.rowCount ?? 0
 
+  // Routes carry the type of their runs and reference the definition, so they move
+  // with the activities; left behind they would block the delete and, for a
+  // built-in source, stop matching the retyped runs.
+  await query(tx, `UPDATE routes SET activity_type = $1, updated_at = NOW() WHERE activity_type = $2`, [
+    targetName,
+    sourceName,
+  ])
+
   await query(tx, `DELETE FROM activity_type_definitions WHERE name = $1 AND is_builtin = false`, [
     sourceName,
   ])

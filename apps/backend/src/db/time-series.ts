@@ -716,6 +716,32 @@ export const getHrZoneSecsForWindows = async (
   return secs
 }
 
+/** Mean of the `metric` samples in each `[start, end]` window, index-aligned; undefined where a window has none. */
+export const getMetricMeansForWindows = async (
+  user: string,
+  metric: string,
+  windows: { start: Date; end: Date }[],
+): Promise<(number | undefined)[]> => {
+  if (windows.length === 0) return []
+
+  const sources = getSourceFilter(metric)
+  const params: unknown[] = [windows.map((w) => w.start), windows.map((w) => w.end), metric]
+  if (sources) params.push(sources)
+
+  const result = await queryWindowSamples(
+    user,
+    `SELECT w.i::int AS i, AVG(ts.value)::float8 AS mean
+       FROM unnest($1::timestamptz[], $2::timestamptz[]) WITH ORDINALITY AS w(s, e, i)
+       ${samplesPerWindow(`metric = $3 AND time >= w.s AND time <= w.e AND deleted_at IS NULL${sources ? ' AND source = ANY($4)' : ''}`)}
+      GROUP BY 1`,
+    params,
+  )
+
+  const means: (number | undefined)[] = windows.map(() => undefined)
+  for (const row of result.rows) means[(row.i as number) - 1] = Number(row.mean)
+  return means
+}
+
 /**
  * Histogram of the positive `metric` samples in each `[start, end]` window, rounded to whole units
  * (value → sample count), index-aligned with `windows` and empty where a window has none. It is

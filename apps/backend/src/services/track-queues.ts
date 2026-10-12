@@ -1,14 +1,14 @@
 /**
  * Activity-track queues (#1231).
  *
- * `track-analyse` gets one job per written track and is where route matching,
- * run features and segment matching hang later; it starts after the same kind
+ * `track-analyse` gets one job per written track and runs route matching (run
+ * features and segment matching hang there later); it starts after the same kind
  * of stabilisation delay auto-share uses, since a track is often rewritten by a
  * re-sync shortly after it lands. `track-backfill` builds tracks for history
- * from stored raw records, one job per user.
+ * from stored raw records and matches routes for them, one job per user.
  */
 import type { PgBoss } from './pg-boss.ts'
-import type { TrackBackfillDeps, TrackBackfillResult } from './track-backfill.ts'
+import type { TrackBackfillJobDeps, TrackBackfillResult } from './track-backfill.ts'
 
 import { auditError, auditInfo } from './audit-log.ts'
 import { backfillUserTracks } from './track-backfill.ts'
@@ -42,13 +42,17 @@ export interface TrackBackfillQueue {
 
 export const runTrackBackfillJob = async (
   job: TrackBackfillJobData,
-  deps: TrackBackfillDeps,
-): Promise<TrackBackfillResult> => {
+  deps: TrackBackfillJobDeps,
+): Promise<TrackBackfillResult & { routes: { matched: number; created: number } }> => {
   const result = await backfillUserTracks(job.user, deps)
   if (result.garmin + result.strava + result.skipped > 0) {
     auditInfo(job.user, 'data', '🛤️ Activity track backfill done', { ...result })
   }
-  return result
+  const routes = await deps.matchRoutes(job.user)
+  if (routes.matched + routes.created > 0) {
+    auditInfo(job.user, 'data', '🗺️ Route matching done', { ...routes })
+  }
+  return { ...result, routes }
 }
 
 /* v8 ignore start -- requires real pg-boss instance */
@@ -90,7 +94,7 @@ export const createTrackAnalyseQueue = async (
 
 export const createTrackBackfillQueue = async (
   boss: PgBoss,
-  deps: TrackBackfillDeps,
+  deps: TrackBackfillJobDeps,
 ): Promise<TrackBackfillQueue> => {
   await boss.createQueue(TRACK_BACKFILL_QUEUE, { policy: 'stately' })
 
@@ -101,7 +105,7 @@ export const createTrackBackfillQueue = async (
       if (!job) return
       const result = await runTrackBackfillJob(job.data, deps)
       console.info(
-        `🛤️ track backfill for ${job.data.user}: ${result.garmin} garmin, ${result.strava} strava, ${result.skipped} skipped`,
+        `🛤️ track backfill for ${job.data.user}: ${result.garmin} garmin, ${result.strava} strava, ${result.skipped} skipped; routes: ${result.routes.matched} matched, ${result.routes.created} created`,
       )
     },
   )

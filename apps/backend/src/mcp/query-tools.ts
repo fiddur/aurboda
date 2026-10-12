@@ -1,4 +1,5 @@
 import {
+  activitiesQuerySchema,
   activityFieldValuesQuerySchema,
   activityNeighborsQuerySchema,
   activitySessionsQuerySchema,
@@ -191,9 +192,10 @@ Use cases:
         .describe(
           'Filter by JSONB data field values. Format: "field:value" (comma-separated). Use "(none)" for null/empty.',
         ),
+      route_id: activitiesQuerySchema.shape.route_id,
       tz: tzSchema,
     },
-    async ({ data_filter, end, start, types, tz }) => {
+    async ({ data_filter, end, route_id, start, types, tz }) => {
       const requestedTypes = types ?? (await getAllActivityTypeNames(user))
       const activities = await queryActivities(
         user,
@@ -202,6 +204,8 @@ Use cases:
         new Date(end),
         sync,
         parseDataFilter(data_filter),
+        undefined,
+        route_id,
       )
       return tzJsonResponse({ data: activities, success: true }, tz)
     },
