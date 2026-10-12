@@ -7,13 +7,15 @@
  * reflect the settled activity. The evaluator re-queues a window (`startAfter`
  * at a Date) when a group in it is not settled yet. Evaluation itself is
  * idempotent (hard dedupe in `evaluateAutoshareWindow`), so overlapping
- * windows and repeat jobs are safe.
+ * windows and repeat jobs are safe. The same window also re-federates the
+ * shares whose activity changed (`refreshChangedSharesInWindow`).
  *
  * No inline fallback on a failed enqueue (unlike the calorie queue): running
  * the evaluation instantly would defeat the stabilisation delay, and a missed
  * window is recovered by the next sync's overlapping notification.
  */
 
+import type { AutoshareDeps } from './autoshare.ts'
 import type { Job, PgBoss } from './pg-boss.ts'
 
 import { auditError } from './audit-log.ts'
@@ -26,10 +28,12 @@ export interface AutoshareJobData {
   window_end: string
 }
 
-export type AutoshareRequeue = (user: string, start: Date, end: Date, notBefore: Date) => Promise<void>
+export type AutoshareRequeue = NonNullable<AutoshareDeps['requeue']>
 
 export interface AutoshareQueueDeps {
   evaluateWindow: (user: string, start: Date, end: Date, requeue: AutoshareRequeue) => Promise<number>
+  /** Re-federate the window's shares whose activity changed since; runs whether or not any rule is enabled. */
+  refreshWindow?: (user: string, start: Date, end: Date, requeue: AutoshareRequeue) => Promise<number>
 }
 
 export interface AutoshareQueue {
@@ -91,6 +95,13 @@ export const createAutoshareQueue = async (
           if (created > 0) console.info(`📣 auto-shared ${created} post(s) for ${user}`)
         } catch (err) {
           auditError(user, 'data', 'Auto-share evaluation job failed', { error: String(err) })
+        }
+        if (deps.refreshWindow == null) continue
+        try {
+          const refreshed = await deps.refreshWindow(user, window.start, window.end, requeue)
+          if (refreshed > 0) console.info(`📣 re-federated ${refreshed} changed share(s) for ${user}`)
+        } catch (err) {
+          auditError(user, 'data', 'Changed-share refresh job failed', { error: String(err) })
         }
       }
     },

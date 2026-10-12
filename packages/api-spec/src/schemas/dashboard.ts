@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 import { baseResponseSchema } from './common.ts'
+import { trendMissingDaysSchema } from './trends.ts'
 
 export const builtinDashboardMetrics = [
   'hrv_7day',
@@ -94,6 +95,7 @@ export const trendChartConfigSchema = z
       .meta({ description: 'Display period for rate' }),
     half_life_days: z.number().int().positive().optional().meta({ description: 'EMA half-life in days' }),
     lookback_days: z.number().int().positive().optional().meta({ description: 'Days of data to analyze' }),
+    missing_days: trendMissingDaysSchema.optional(),
     pattern: z.string().min(1).meta({ description: 'Tag pattern (regex) or metric name' }),
     source_type: z.enum(['tag', 'metric', 'activity_type']).meta({ description: 'Data source type' }),
     tag_definition_id: z

@@ -301,6 +301,12 @@ describe('validateOutputMediaField', () => {
     expect(mergeRuleUpdate(existing, { mode: 'create' })).toEqual({ ...existing, mode: 'create' })
     expect(mergeRuleUpdate(existing, { output_media_field: null }).output_media_field).toBeNull()
   })
+
+  test('mergeRuleUpdate keeps or clears output_title_field', () => {
+    const existing = { conditions: [media], mode: 'enrich', output_title_field: 'session_name' }
+    expect(mergeRuleUpdate(existing, { mode: 'create' }).output_title_field).toBe('session_name')
+    expect(mergeRuleUpdate(existing, { output_title_field: null }).output_title_field).toBeNull()
+  })
 })
 
 describe('validateRuleShape', () => {
@@ -323,6 +329,21 @@ describe('validateRuleShape', () => {
 
   test('rejects a retype rule with two activity conditions', () => {
     expect(validateRuleShape({ conditions: [activity, activity], mode: 'retype' })).toMatch(/exactly one/)
+  })
+
+  test('accepts output_title_field in enrich mode without a media condition', () => {
+    expect(
+      validateRuleShape({ conditions: [activity], mode: 'enrich', output_title_field: 'session_name' }),
+    ).toBeNull()
+  })
+
+  test.each([
+    ['create', undefined],
+    ['retype', 'retype'],
+  ])('rejects output_title_field in %s mode', (_label, mode) => {
+    expect(validateRuleShape({ conditions: [activity], mode, output_title_field: 'session_name' })).toMatch(
+      /output_title_field requires mode "enrich"/,
+    )
   })
 
   test('still checks output_media_field', () => {

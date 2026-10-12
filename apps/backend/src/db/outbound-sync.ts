@@ -79,6 +79,100 @@ export const enqueueOutboundSync = async (user: string, input: EnqueueOutboundSy
   return result.rows[0].id as string
 }
 
+export interface OutboundSyncInsertItem {
+  entity_id: string
+  payload: Record<string, unknown>
+}
+
+/**
+ * Bulk insert path for per-minute series that are recomputed over and over:
+ * an item whose latest queue row (pending or synced) already carries the same
+ * payload is skipped, a pending insert is updated in place (as
+ * `enqueueOutboundSync` does), and only the rest get a new row. Payloads are
+ * compared as JSONB, so numbers compare by value. Resolves to the number of
+ * items queued or updated.
+ */
+export const enqueueOutboundSyncInsertsIfChanged = async (
+  user: string,
+  entityType: string,
+  hcRecordType: string,
+  items: OutboundSyncInsertItem[],
+): Promise<number> => {
+  if (items.length === 0) return 0
+
+  const unchanged = await query(
+    user,
+    `SELECT i.entity_id
+     FROM jsonb_to_recordset($2::jsonb) AS i(entity_id text, payload jsonb)
+     JOIN LATERAL (
+       SELECT q.status, q.payload
+       FROM outbound_sync_queue q
+       WHERE q.entity_type = $1 AND q.entity_id = i.entity_id
+       ORDER BY q.created_at DESC
+       LIMIT 1
+     ) latest ON true
+     WHERE latest.status IN ('pending', 'synced') AND latest.payload = i.payload`,
+    [entityType, JSON.stringify(items)],
+  )
+  const unchangedIds = new Set(unchanged.rows.map((row) => row.entity_id as string))
+  const changed = items.filter((item) => !unchangedIds.has(item.entity_id))
+  if (changed.length === 0) return 0
+
+  const updated = await query(
+    user,
+    `UPDATE outbound_sync_queue q
+     SET payload = i.payload, hc_record_type = $3
+     FROM jsonb_to_recordset($2::jsonb) AS i(entity_id text, payload jsonb)
+     WHERE q.entity_type = $1 AND q.entity_id = i.entity_id
+       AND q.status = 'pending' AND q.operation = 'insert'
+     RETURNING q.entity_id`,
+    [entityType, JSON.stringify(changed), hcRecordType],
+  )
+  const updatedIds = new Set(updated.rows.map((row) => row.entity_id as string))
+  const fresh = changed.filter((item) => !updatedIds.has(item.entity_id))
+
+  if (fresh.length > 0) {
+    await query(
+      user,
+      `INSERT INTO outbound_sync_queue (entity_type, entity_id, operation, hc_record_type, payload)
+       SELECT $1, i.entity_id, 'insert', $3, i.payload
+       FROM jsonb_to_recordset($2::jsonb) AS i(entity_id text, payload jsonb)`,
+      [entityType, JSON.stringify(fresh), hcRecordType],
+    )
+  }
+
+  return changed.length
+}
+
+/**
+ * Deletes `synced` rows older than the retention; pending and failed rows are
+ * never touched. An activity's newest row carrying an `hc_record_id` is kept
+ * whatever its age, because `findHcRecordId` reads it to delete or replace the
+ * Health Connect record when the activity changes later. Time-series records
+ * are written with a stable `clientRecordId` and are never looked up that way.
+ */
+export const pruneSyncedOutboundSync = async (user: string, retentionDays: number): Promise<number> => {
+  const result = await query(
+    user,
+    `DELETE FROM outbound_sync_queue q
+     WHERE q.status = 'synced'
+       AND COALESCE(q.synced_at, q.created_at) < NOW() - INTERVAL '1 day' * $1
+       AND NOT (
+         q.entity_type = 'activity'
+         AND q.hc_record_id IS NOT NULL
+         AND NOT EXISTS (
+           SELECT 1 FROM outbound_sync_queue newer
+           WHERE newer.entity_type = q.entity_type
+             AND newer.entity_id = q.entity_id
+             AND newer.hc_record_id IS NOT NULL
+             AND newer.synced_at > q.synced_at
+         )
+       )`,
+    [retentionDays],
+  )
+  return result.rowCount ?? 0
+}
+
 /**
  * Ordered newest-first so recent user actions (exercises, weight entries) are
  * synced immediately instead of being starved by bulk historical data.

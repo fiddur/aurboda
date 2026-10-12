@@ -323,7 +323,7 @@ this section is the difference.
   `bash -c` whose `PATH` was fixed when the session launched, so nothing an
   environment setup script exports, and no `/etc/profile.d` file, ever reaches it.
   What does reach it is `CLAUDE_ENV_FILE`, which every tool shell sources:
-  `.claude/hooks/session-start.sh` runs at every session start, installs Node 25
+  `.claude/hooks/session-start.sh` runs at session start and resume, installs Node 25
   into `/opt/node25` if it is not there (from `nodejs.org`, checksum verified) with
   the pinned pnpm, and writes the `PATH` line to that file. Run `node --version`
   first anyway. Anything but `v25` means the hook did not run — a clone from before

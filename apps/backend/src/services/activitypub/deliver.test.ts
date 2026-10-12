@@ -263,6 +263,12 @@ describe('article delivery', () => {
     expect(await countAttachments(object)).toBe(1)
   })
 
+  test('an article Note carries `updated`, so Mastodon applies an edit (#1226)', async () => {
+    const ctx = await contextFor()
+    const object = buildArticleNote(ctx, 'fiddur', deliverableArticle('public'), `${ORIGIN}/api`)
+    expect(object.updated?.epochMilliseconds).toBe(new Date('2026-07-04T09:00:00Z').getTime())
+  })
+
   test('a followers-only article addresses followers, never Public', async () => {
     const ctx = await contextFor()
     const object = buildArticleNote(ctx, 'fiddur', deliverableArticle('followers'), `${ORIGIN}/api`)
@@ -321,6 +327,14 @@ describe('buildChallengeNote / buildChallengeNoteCreate', () => {
     expect([...create.ccIds]).toEqual([])
     const object = await create.getObject()
     expect(object).toBeInstanceOf(Note)
+  })
+
+  test('carries `updated`, so Mastodon applies an edit (#1226)', async () => {
+    const ctx = await contextFor()
+    const edited = { ...deliverableChallenge('public'), updated_at: new Date('2026-08-02T10:00:00Z') }
+    expect(buildChallengeNote(ctx, 'fiddur', edited).updated?.epochMilliseconds).toBe(
+      edited.updated_at.getTime(),
+    )
   })
 
   test('an invitation carries no Mention tags', async () => {
@@ -527,6 +541,12 @@ describe('buildReplyNote / buildReplyNoteCreate', () => {
     // Unlisted: followers in `to`, Public in `cc` — plus the mentioned author.
     expect(hrefs([...note.toIds])).toEqual([`${ORIGIN}/users/fiddur/followers`])
     expect(hrefs([...note.ccIds])).toContain(TARGET_ACTOR)
+  })
+
+  test('carries `updated`, so Mastodon applies an edit (#1226)', async () => {
+    const ctx = await contextFor()
+    const edited = deliverableReply('unlisted', { updated_at: new Date('2026-09-02T10:00:00Z') })
+    expect(buildReplyNote(ctx, 'fiddur', edited).updated?.epochMilliseconds).toBe(edited.updated_at.getTime())
   })
 
   test('tags the replied-to author with a Mention naming their handle', async () => {

@@ -150,7 +150,7 @@ export const getActivities = async (
   if (deductionRuleId) {
     params.push(deductionRuleId)
     const n = params.length
-    filterClauses += `\n       AND (data->>'rule_id' = $${n} OR data->>'_enriched_by' = $${n} OR data->>'_retyped_by' = $${n})`
+    filterClauses += `\n       AND (data->>'rule_id' = $${n} OR data->>'_enriched_by' = $${n} OR data->>'_retyped_by' = $${n} OR data->>'_titled_by' = $${n})`
   }
 
   if (routeId) {
@@ -299,7 +299,7 @@ export const getActivitiesNeedingDetail = async (
   user: string,
   { forceAll = false, limit = 10 }: { forceAll?: boolean; limit?: number } = {},
 ): Promise<Activity[]> => {
-  const detailFilter = forceAll ? '' : "AND (a.data->>'detail_synced') IS NULL"
+  const detailFilter = forceAll ? '' : "AND (a.data->>'detail_synced') IS DISTINCT FROM 'true'"
   const result = await query(
     user,
     `SELECT ${ACTIVITY_COLUMNS_ALIAS}

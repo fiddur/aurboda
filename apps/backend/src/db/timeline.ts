@@ -87,6 +87,15 @@ export interface TimelinePageRow extends TimelineEntryRecord {
   cursor_ts: string
 }
 
+/**
+ * The structured payload after a refresh that may have failed to re-fetch it
+ * (`incoming` NULL): the last-known one, unless that is an article (#973).
+ */
+const KEEP_STRUCTURED_SQL = (incoming: string, current: string): string =>
+  `CASE WHEN ${incoming} IS NOT NULL THEN ${incoming}
+        WHEN ${current}->>'kind' = 'article' THEN NULL
+        ELSE ${current} END`
+
 const TIMELINE_COLUMNS =
   'id, object_uri, actor_uri, handle, display_name, avatar_url, content, url, published_at, received_at, in_reply_to_uri, mentions_me, structured, images, boost_of_uri, boosted_by_actor_uri, boosted_by_handle, boosted_by_display_name'
 
@@ -123,8 +132,10 @@ export const upsertTimelineEntry = async (
                    reply_checked_at = NOW(),
                    -- Keep the last-known structured payload if a refresh/edit
                    -- couldn't re-fetch it (transient enrich failure), rather
-                   -- than wiping a working chart.
-                   structured = COALESCE(EXCLUDED.structured, timeline_entry.structured),
+                   -- than wiping a working chart -- except an article's: the
+                   -- card renders its structured title+prose INSTEAD of
+                   -- content, so a stale one would hide the edit (#973).
+                   structured = ${KEEP_STRUCTURED_SQL('EXCLUDED.structured', 'timeline_entry.structured')},
                    -- images always arrives as a concrete array from the ingest
                    -- path, so this COALESCE never actually preserves a prior value
                    -- (an edit that drops attachments clears them) -- it is defensive
@@ -199,7 +210,7 @@ export interface BoostCardEdit {
  * Apply an author's edit to every boost card of their Note, returning how many
  * changed. Keyed on the card's author as well as the Note, so only the actor the
  * card was built for can rewrite it. `published_at` stays: a card sorts at boost
- * time. `structured` is COALESCEd so a transient enrich failure keeps the chart.
+ * time. A transient enrich failure keeps the chart, as on the direct entry.
  */
 export const updateBoostCardsOf = async (
   user: string,
@@ -210,7 +221,7 @@ export const updateBoostCardsOf = async (
   const result = await query(
     user,
     `UPDATE timeline_entry
-     SET content = $3, url = $4, images = $5, structured = COALESCE($6, structured)
+     SET content = $3, url = $4, images = $5, structured = ${KEEP_STRUCTURED_SQL('$6::jsonb', 'structured')}
      WHERE boost_of_uri = $1 AND actor_uri = $2`,
     [
       noteUri,
@@ -230,29 +241,24 @@ export const updateBoostCardsOf = async (
  * inbound `Update{Person}` (#1057). Only presentation columns move: which post a
  * row is, and who delivered it, are untouched. The booster line carries no
  * avatar, so only the two text columns exist to refresh there.
- *
- * The two counts stay separate: one row can be refreshed on both statements (a
- * self-boost card, authored and boosted by the same actor), so their sum is not
- * a row count.
  */
 export const updateTimelineActorPresentation = async (
   user: string,
   actorUri: string,
   presentation: CachedActorPresentation,
-): Promise<{ authors: number; boosters: number }> => {
-  const author = await query(
+): Promise<void> => {
+  await query(
     user,
     `UPDATE timeline_entry SET handle = $2, display_name = $3, avatar_url = $4
      WHERE actor_uri = $1`,
     [actorUri, presentation.handle, presentation.display_name, presentation.avatar_url],
   )
-  const booster = await query(
+  await query(
     user,
     `UPDATE timeline_entry SET boosted_by_handle = $2, boosted_by_display_name = $3
      WHERE boosted_by_actor_uri = $1`,
     [actorUri, presentation.handle, presentation.display_name],
   )
-  return { authors: author.rowCount ?? 0, boosters: booster.rowCount ?? 0 }
 }
 
 /**
@@ -308,11 +314,15 @@ export const escapeLike = (s: string): string => s.replaceAll(/[%_\\]/g, (c) => 
  * and when it answers a post that IS in this timeline — a followee continuing
  * their own thread, or two followees talking to each other, which is what
  * Mastodon's home shows. Only replies to posts outside the timeline are hidden.
+ * A post that is in the timeline only as a boost card counts: the card's
+ * `object_uri` is the Announce id, so it is matched on `boost_of_uri`.
  */
-export const timelineReplyFilterSql = (showReplies: string, prefix: string): string =>
+const timelineReplyFilterSql = (showReplies: string, prefix: string): string =>
   `(${showReplies}::boolean OR in_reply_to_uri IS NULL OR boost_of_uri IS NOT NULL
       OR mentions_me OR in_reply_to_uri LIKE ${prefix}
-      OR EXISTS (SELECT 1 FROM timeline_entry p WHERE p.object_uri = timeline_entry.in_reply_to_uri))`
+      OR EXISTS (SELECT 1 FROM timeline_entry p
+                 WHERE p.object_uri = timeline_entry.in_reply_to_uri
+                    OR p.boost_of_uri = timeline_entry.in_reply_to_uri))`
 
 /** The LIKE pattern matching the reader's own post objects, or a never-matching one. */
 const ownObjectPattern = (replies?: TimelineReplyFilter): string =>

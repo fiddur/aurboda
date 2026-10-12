@@ -42,6 +42,7 @@ import {
   migrateAllUsers,
   openTimelineChannel,
   pruneDeductionRuleRuns,
+  pruneSyncedOutboundSync,
   resolveOrCreateActivityType,
   markTimelineEntryReplyChecked,
   setTimelineEntryReplyInfo,
@@ -103,7 +104,12 @@ import {
 import { createDetectionTrigger, type DetectionTrigger } from './services/detection-trigger.ts'
 import { runDetectionForUser } from './services/detection-worker.ts'
 import { createReactionActions } from './services/feed-reactions.ts'
-import { createFeedRefreshDeps, refreshFeedPostsForActivity } from './services/feed-refresh.ts'
+import {
+  createFeedRefreshDeps,
+  createFeedRefreshWindowDeps,
+  refreshChangedSharesInWindow,
+  refreshFeedPostsForActivity,
+} from './services/feed-refresh.ts'
 import { expandFeedActivityWindow, resolveFeedActivity } from './services/feed.ts'
 import {
   approveFollower,
@@ -572,11 +578,14 @@ const main = async () => {
   // feedDeliver.created fan-out a manual share fires. The deps double as the
   // preview deps for the REST router and MCP tools.
   const autoshareDeps = createAutoshareDeps(feedDeliver.created)
+  const feedRefreshWindowDeps = createFeedRefreshWindowDeps(feedDeliver.updated)
   if (boss) {
     try {
       autoshareQueue = await createAutoshareQueue(boss, {
         evaluateWindow: (user, start, end, requeue) =>
           evaluateAutoshareWindow(user, start, end, { ...autoshareDeps, requeue }),
+        refreshWindow: (user, start, end, requeue) =>
+          refreshChangedSharesInWindow(user, start, end, { ...feedRefreshWindowDeps, requeue }),
       })
     } catch (error) {
       console.error('Failed to initialize auto-share queue:', error)
@@ -687,6 +696,7 @@ const main = async () => {
         listUsers: () => listUserNames(userDb),
         prune: pruneAuditLog,
         pruneDeductionRuleRuns,
+        pruneSyncedOutboundSync,
       })
     } catch (error) {
       console.error('Failed to initialize audit log prune:', error)

@@ -84,6 +84,8 @@ Each call is authoritative for the day(s) it touches: it deletes any prior aurbo
 
 Per-minute `calories_active` rows (HR-derived only — minutes that fell back to the BMR floor have no active row) are queued for outbound sync to Health Connect as `ActiveCaloriesBurnedRecord`, so other phone apps see the same active-calorie estimate Aurboda uses. `calories_total` is not synced back — Health Connect derives its own total from `Active + Basal`.
 
+A recompute offers every minute it touched, but a minute whose latest queue row (pending or synced) already carries the same payload is not queued again — only new and changed minutes get a row ([#1241](https://github.com/fiddur/aurboda/issues/1241)). The daily prune job (`services/audit-log-prune-queue.ts`) deletes `synced` queue rows older than 14 days (pending and failed rows stay, as does each activity's newest row with a Health Connect record id, which a later delete or update of that activity needs), so the sync history only reaches back two weeks.
+
 ## Migration
 
 After deploy, run a full recompute via the MCP tool `recalculate_calories` (or `POST /api/metrics/recalculate-calories` with empty body). It walks every day with HR data, deletes prior `aurboda` / `aurboda_gap_fill` rows for both metrics, and writes the new per-minute series. Older days without HR data are left untouched.

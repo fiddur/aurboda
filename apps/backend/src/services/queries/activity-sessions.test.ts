@@ -191,6 +191,7 @@ describe('groupSessions', () => {
 
     expect(groups.map((g) => g.value)).toEqual(['Flow', 'Yin', null])
     expect(groups[0]).toEqual({
+      avg_hr_count: 3,
       avg_hr_median: 115,
       count: 3,
       duration_max: 30,
@@ -207,6 +208,17 @@ describe('groupSessions', () => {
     expect(groups[1]).toMatchObject({ count: 1, duration_median: 40, hr: undefined, hr_zone_secs: undefined })
     expect(groups[1]!.max_hr).toBeUndefined()
     expect(groups[2]).toMatchObject({ count: 1, session_ids: ['5'], value: null })
+  })
+
+  test('avg_hr_count counts only the sessions that have an average HR (#1228)', () => {
+    const [flow] = groupSessions(
+      sessions.map((s) => (s.id === '1' || s.id === '2' ? { ...s, avg_hr: undefined } : s)),
+      'session_name',
+      new Map(),
+    )
+    expect(flow).toMatchObject({ avg_hr_count: 1, avg_hr_median: 115, count: 3 })
+    const nullGroup = groupSessions(sessions, 'session_name', new Map()).at(-1)
+    expect(nullGroup).toMatchObject({ avg_hr_count: 0, avg_hr_median: undefined })
   })
 
   test('even counts take the mean of the middle two', () => {

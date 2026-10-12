@@ -81,6 +81,7 @@ export const tableCreationOrder = [
   'activity_type_definitions_seed',
   'activities',
   'activities_created_at',
+  'activities_updated_at',
   'activities_indexes',
   'activity_override_targets',
   'activity_override_targets_indexes',
@@ -163,6 +164,8 @@ export const tableCreationOrder = [
   'feed_posts_autoshare_column',
   'feed_posts_reply_columns',
   'autoshare_rules',
+  'autoshare_rules_data_filters',
+  'autoshare_rules_max_age_hours',
   'autoshare_suppressions',
   'feed_posts_indexes',
   'feed_posts_keyset_index',
@@ -219,7 +222,7 @@ export {
  * data fixes that are not expressed in `createTableStatements`. DDL changes are
  * picked up automatically by the fingerprint below.
  */
-export const MIGRATION_REVISION = 4
+export const MIGRATION_REVISION = 5
 
 /**
  * Hash the inputs a migration is derived from. Split out from

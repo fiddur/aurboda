@@ -4,6 +4,7 @@ import {
   baseResponseSchema,
   customMetricDefinitionSchema,
   iso8601DateTimeSchema,
+  metricAggregationSchema,
   metricTypeSchema,
   timeRangeQuerySchema,
 } from './common.ts'
@@ -131,6 +132,9 @@ export type AddCustomMetricBody = z.infer<typeof addCustomMetricBodySchema>
 /** All fields are optional; null clears minValue/maxValue. */
 export const updateCustomMetricBodySchema = z
   .object({
+    aggregation: metricAggregationSchema.optional().meta({
+      description: "Metric kind: 'sum' for amounts (missing days count as 0), 'avg' for levels",
+    }),
     description: z.string().optional().meta({ description: 'Human-readable description' }),
     include_in_daily_summary: z.boolean().optional().meta({
       description:

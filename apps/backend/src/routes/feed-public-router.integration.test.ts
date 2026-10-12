@@ -202,9 +202,14 @@ describe('GET /public/:username/posts', () => {
     const id = await seedPost(user, 'public')
     const { request, close } = startApp()
     try {
-      const res = await request.get(`/public/${user}/posts`).query({ cursor: 'garbage-cursor' })
-      expect(res.status).toBe(200)
-      expect(res.body.posts.map((p: { id: string }) => p.id)).toEqual([id])
+      const outOfRange = Buffer.from('2026-13-45 99:99:99+00:11111111-2222-4333-8444-555555555555').toString(
+        'base64url',
+      )
+      for (const cursor of ['garbage-cursor', outOfRange]) {
+        const res = await request.get(`/public/${user}/posts`).query({ cursor })
+        expect(res.status).toBe(200)
+        expect(res.body.posts.map((p: { id: string }) => p.id)).toEqual([id])
+      }
     } finally {
       await close()
     }

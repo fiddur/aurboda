@@ -315,12 +315,12 @@ describe('extractNoteImages', () => {
 
 describe('noteMentionsActor', () => {
   const ME = 'https://aurboda.example/users/freja'
-  const noteWithTags = (tags: unknown[]) =>
+  const noteWithTags = (tags: Link[]) =>
     new Note({
       content: '<p>hi</p>',
       id: new URL('https://mastodon.example/statuses/1'),
       published: published('2026-07-01T08:00:00Z'),
-      tags: tags as never[],
+      tags,
     })
 
   test('true for a Mention of the timeline owner', async () => {

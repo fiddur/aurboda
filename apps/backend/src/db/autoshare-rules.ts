@@ -7,7 +7,7 @@
  * and evaluation only ever considers activities INGESTED after that stamp — so
  * enabling a rule never retroactively shares history.
  */
-import type { FeedVisibility } from '@aurboda/api-spec'
+import type { AutoshareDataFilter, FeedVisibility } from '@aurboda/api-spec'
 
 import { query } from './connection.ts'
 
@@ -22,6 +22,8 @@ export interface AutoshareRuleRecord {
   max_duration_seconds: number | null
   min_distance_meters: number | null
   source: string | null
+  data_filters: AutoshareDataFilter[]
+  max_age_hours: number
   included_metrics: string[]
   series_metrics: string[]
   include_chart: boolean
@@ -40,6 +42,8 @@ export interface AutoshareRuleInput {
   max_duration_seconds?: number | null
   min_distance_meters?: number | null
   source?: string | null
+  data_filters: AutoshareDataFilter[]
+  max_age_hours: number
   included_metrics: string[]
   series_metrics: string[]
   include_chart: boolean
@@ -56,6 +60,8 @@ export interface AutoshareRulePatch {
   max_duration_seconds?: number | null
   min_distance_meters?: number | null
   source?: string | null
+  data_filters?: AutoshareDataFilter[]
+  max_age_hours?: number
   included_metrics?: string[]
   series_metrics?: string[]
   include_chart?: boolean
@@ -65,7 +71,7 @@ export interface AutoshareRulePatch {
 }
 
 const COLS =
-  'id, name, enabled, enabled_at, activity_types, min_duration_seconds, max_duration_seconds, min_distance_meters, source, included_metrics, series_metrics, include_chart, include_map, visibility, message, created_at, updated_at'
+  'id, name, enabled, enabled_at, activity_types, min_duration_seconds, max_duration_seconds, min_distance_meters, source, data_filters, max_age_hours, included_metrics, series_metrics, include_chart, include_map, visibility, message, created_at, updated_at'
 
 export const getAutoshareRules = async (user: string): Promise<AutoshareRuleRecord[]> => {
   const result = await query<AutoshareRuleRecord>(
@@ -92,8 +98,8 @@ export const insertAutoshareRule = async (
     user,
     `INSERT INTO autoshare_rules
        (name, activity_types, min_duration_seconds, max_duration_seconds, min_distance_meters, source,
-        included_metrics, series_metrics, include_chart, include_map, visibility, message)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+        data_filters, max_age_hours, included_metrics, series_metrics, include_chart, include_map, visibility, message)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
      RETURNING ${COLS}`,
     [
       input.name,
@@ -102,6 +108,8 @@ export const insertAutoshareRule = async (
       input.max_duration_seconds ?? null,
       input.min_distance_meters ?? null,
       input.source ?? null,
+      JSON.stringify(input.data_filters),
+      input.max_age_hours,
       input.included_metrics,
       input.series_metrics,
       input.include_chart,
@@ -122,6 +130,8 @@ const PATCH_COLUMNS = [
   'max_duration_seconds',
   'min_distance_meters',
   'source',
+  'data_filters',
+  'max_age_hours',
   'included_metrics',
   'series_metrics',
   'include_chart',
@@ -130,6 +140,13 @@ const PATCH_COLUMNS = [
   'message',
 ] as const
 
+/**
+ * Patch a rule. A real off→on transition stamps `enabled_at`, the
+ * no-retroactive-sharing gate; re-sending `enabled: true` to a rule that is
+ * already on leaves it alone, so an unrelated edit can't skip whatever was
+ * ingested since the enable. Disabling keeps the stamp, so a disable/enable
+ * cycle moves the gate forward, never back.
+ */
 export const updateAutoshareRule = async (
   user: string,
   id: string,
@@ -140,12 +157,12 @@ export const updateAutoshareRule = async (
   for (const column of PATCH_COLUMNS) {
     const value = patch[column]
     if (value === undefined) continue
-    params.push(value)
+    params.push(column === 'data_filters' ? JSON.stringify(value) : value)
     sets.push(`${column} = $${params.length}`)
   }
-  // Flipping enabled ON stamps the no-retroactive-sharing gate; disabling leaves
-  // the old stamp in place, so a disable/enable cycle moves the gate forward, never back.
-  if (patch.enabled === true) sets.push('enabled_at = NOW()')
+  if (patch.enabled === true) {
+    sets.push('enabled_at = CASE WHEN enabled AND enabled_at IS NOT NULL THEN enabled_at ELSE NOW() END')
+  }
 
   const result = await query<AutoshareRuleRecord>(
     user,
@@ -182,6 +199,9 @@ export interface AutoshareCandidate {
   created_at: Date
   /** A Garmin-backed row whose detail (GPS, per-second HR, distance) has not been synced yet. */
   detail_pending: boolean
+  data: Record<string, unknown> | null
+  /** The row that replaced this one (an edit's override row), when it was replaced. */
+  superseded_by: string | null
 }
 
 /**
@@ -192,21 +212,29 @@ export interface AutoshareCandidate {
  * the winner and the superseded row as two independent groups and publish two
  * posts for one physical session — filtering to winners (the same predicate the
  * chart/trend/deduction queries use) keeps one candidate per session.
+ *
+ * `endedAfter` drops activities that ended before it — the evaluator passes the
+ * earliest rule's `enabled_at`, since nothing that ended before every enable
+ * can pass the activity-time gate, and a first sync's wide window of history
+ * would otherwise cost a handful of queries per hopeless candidate.
  */
 export const listAutoshareCandidates = async (
   user: string,
   start: Date,
   end: Date,
+  endedAfter?: Date,
 ): Promise<AutoshareCandidate[]> => {
   const result = await query<AutoshareCandidate>(
     user,
-    `SELECT id, activity_type, source, start_time, end_time, title, created_at,
-       (data->>'garmin_activity_id') IS NOT NULL AND (data->>'detail_synced') IS NULL AS detail_pending
+    `SELECT id, activity_type, source, start_time, end_time, title, created_at, data, superseded_by,
+       (data->>'garmin_activity_id') IS NOT NULL
+         AND (data->>'detail_synced') IS DISTINCT FROM 'true' AS detail_pending
      FROM activities
      WHERE deleted_at IS NULL AND superseded_by IS NULL AND end_time IS NOT NULL
        AND start_time <= $2 AND end_time >= $1
+       AND ($3::timestamptz IS NULL OR end_time >= $3)
      ORDER BY start_time ASC`,
-    [start, end],
+    [start, end, endedAfter ?? null],
   )
   return result.rows
 }
@@ -220,6 +248,17 @@ export const getActivityIngestTimes = async (user: string, ids: string[]): Promi
     [ids],
   )
   return Object.fromEntries(result.rows.map((row) => [row.id, row.created_at]))
+}
+
+/** When the newest of the rows last changed (`updated_at`, else its ingest), or null for none. */
+export const getActivitiesChangedAt = async (user: string, ids: string[]): Promise<Date | null> => {
+  if (ids.length === 0) return null
+  const result = await query<{ changed_at: Date | null }>(
+    user,
+    `SELECT MAX(COALESCE(updated_at, created_at)) AS changed_at FROM activities WHERE id = ANY($1)`,
+    [ids],
+  )
+  return result.rows[0]?.changed_at ?? null
 }
 
 /**

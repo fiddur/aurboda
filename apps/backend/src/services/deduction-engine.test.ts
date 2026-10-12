@@ -11,6 +11,7 @@ import {
   intersectTimeRanges,
   mergeRangesWithGap,
 } from './deduction-engine.ts'
+import { ruleTitleChange } from './deduction-title.ts'
 
 const d = (h: number, m = 0) =>
   new Date(`2024-01-15T${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00Z`)
@@ -28,6 +29,7 @@ const makeDeps = (): DeductionEngineDeps => ({
   getScreentime: vi.fn().mockResolvedValue([]),
   insertActivity: vi.fn().mockResolvedValue(undefined),
   insertRuleRun: vi.fn().mockResolvedValue(undefined),
+  retitleActivities: vi.fn().mockResolvedValue([]),
   retypeActivity: vi.fn().mockResolvedValue(true),
 })
 
@@ -870,6 +872,140 @@ describe('media conditions and play-title enrichment', () => {
 
     expect(would_affect).toBe(1)
     expect(deps.enrichActivities).not.toHaveBeenCalled()
+  })
+
+  describe('output_title_field', () => {
+    interface TitledStoredActivity extends StoredActivity {
+      title?: string
+    }
+
+    /** Mirrors the DB-backed retitleActivities over the same in-memory list. */
+    const inMemoryRetitle =
+      (activities: TitledStoredActivity[]): DeductionEngineDeps['retitleActivities'] =>
+      async (_user, _type, ranges, field, ruleId, dryRun = false) => {
+        const ids: string[] = []
+        for (const activity of activities) {
+          if (!ranges.some((r) => r.start < activity.span.end && r.end > activity.span.start)) continue
+          const change = ruleTitleChange(activity, field, ruleId, ['Yoga'])
+          if (!change) continue
+          if (!dryRun) {
+            activity.title = change.title
+            activity.data = { ...activity.data, ...change.data }
+          }
+          ids.push(activity.id)
+        }
+        return ids
+      }
+
+    const titled = (data: Record<string, unknown> = {}): TitledStoredActivity[] => [
+      { data, id: 'a1', span: yogaSpan, title: 'Yoga' },
+    ]
+
+    test('the title step runs only when output_title_field is set', async () => {
+      vi.mocked(deps.getMediaPlays).mockResolvedValue([play()])
+      deps.enrichActivities = vi.fn(inMemoryEnrich(stored()))
+
+      await evaluateRule(user, yogaRule(), window, deps)
+
+      expect(deps.retitleActivities).not.toHaveBeenCalled()
+    })
+
+    test('titles the activity from the field the same pass wrote', async () => {
+      vi.mocked(deps.getMediaPlays).mockResolvedValue([play()])
+      const activities = titled()
+      deps.enrichActivities = vi.fn(inMemoryEnrich(activities))
+      deps.retitleActivities = vi.fn(inMemoryRetitle(activities))
+
+      const { affected_ids } = await evaluateRule(
+        user,
+        yogaRule({ output_title_field: 'session_name' }),
+        window,
+        deps,
+      )
+
+      expect(affected_ids).toEqual(['a1'])
+      expect(activities[0].title).toBe('Yin Yoga for Healthy Hips with Meagan')
+      expect(deps.retitleActivities).toHaveBeenCalledWith(
+        user,
+        'yoga',
+        [{ end: d(10, 32), start: d(10, 2) }],
+        'session_name',
+        'rule-1',
+        false,
+      )
+    })
+
+    test('affected ids are the union of both steps', async () => {
+      vi.mocked(deps.getMediaPlays).mockResolvedValue([play()])
+      vi.mocked(deps.enrichActivities).mockResolvedValue(['a1', 'a2'])
+      vi.mocked(deps.retitleActivities).mockResolvedValue(['a2', 'a3'])
+
+      const { affected_ids, would_affect } = await evaluateRule(
+        user,
+        yogaRule({ output_title_field: 'session_name' }),
+        window,
+        deps,
+      )
+
+      expect(affected_ids).toEqual(['a1', 'a2', 'a3'])
+      expect(would_affect).toBe(3)
+    })
+
+    test('works on a rule with nothing but the title field', async () => {
+      const activities = titled({ session_name: 'Hips' })
+      deps.enrichActivities = vi.fn(inMemoryEnrich(activities))
+      deps.retitleActivities = vi.fn(inMemoryRetitle(activities))
+      const rule = yogaRule({
+        conditions: [{ activity_type: 'yoga', kind: 'activity' }],
+        output_media_field: undefined,
+        output_title_field: 'session_name',
+      })
+
+      const { affected_ids } = await evaluateRule(user, rule, window, deps)
+
+      expect(affected_ids).toEqual(['a1'])
+      expect(activities[0]).toMatchObject({ data: { session_name: 'Hips' }, title: 'Hips' })
+    })
+
+    test('dry-run counts titles without writing and does not double-count', async () => {
+      const activities = titled({ session_name: 'Hips' })
+      deps.retitleActivities = vi.fn(inMemoryRetitle(activities))
+      const rule = yogaRule({
+        conditions: [{ activity_type: 'yoga', kind: 'activity' }],
+        output_data: { style: 'yin' },
+        output_media_field: undefined,
+        output_title_field: 'session_name',
+      })
+
+      const { affected_ids, would_affect } = await evaluateRule(user, rule, window, deps, true)
+
+      expect(would_affect).toBe(1)
+      expect(affected_ids).toEqual([])
+      expect(activities[0].title).toBe('Yoga')
+      expect(deps.enrichActivities).not.toHaveBeenCalled()
+      expect(deps.retitleActivities).toHaveBeenCalledWith(
+        user,
+        'yoga',
+        [yogaSpan],
+        'session_name',
+        'rule-1',
+        true,
+      )
+    })
+
+    test('dry-run of a title-only rule counts only the activities that would be retitled', async () => {
+      vi.mocked(deps.getActivities).mockResolvedValue([yogaSpan, { end: d(12, 30), start: d(12) }])
+      vi.mocked(deps.retitleActivities).mockResolvedValue([])
+      const rule = yogaRule({
+        conditions: [{ activity_type: 'yoga', kind: 'activity' }],
+        output_media_field: undefined,
+        output_title_field: 'session_name',
+      })
+
+      const { would_affect } = await evaluateRule(user, rule, window, deps, true)
+
+      expect(would_affect).toBe(0)
+    })
   })
 })
 

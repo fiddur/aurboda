@@ -47,6 +47,30 @@ describe('keyset cursor', () => {
     ).toBeUndefined()
   })
 
+  test('a well-shaped but out-of-range timestamp decodes to undefined, not a Postgres error (#1114)', () => {
+    for (const ts of [
+      '2026-13-45 99:99:99+00',
+      '2026-02-30 00:00:00+00',
+      '2026-08-20 24:00:00+00',
+      '2026-08-20 09:60:00+00',
+      '2026-08-20 09:00:60+00',
+      '2026-08-20 09:00:00+99',
+      '0000-01-01 00:00:00+00',
+    ]) {
+      expect(decodeKeysetCursor(encodeKeysetCursor(ts, UUID)), ts).toBeUndefined()
+    }
+  })
+
+  test('accepts every valid offset form Postgres or ISO produce', () => {
+    for (const ts of [
+      '2028-02-29 23:59:59.999999+00',
+      '2026-08-20T09:00:00+05:30',
+      '2026-08-20 09:00:00-0330',
+    ]) {
+      expect(decodeKeysetCursor(encodeKeysetCursor(ts, UUID))).toEqual({ id: UUID, ts })
+    }
+  })
+
   test('a legacy ms value outside the Date range decodes to undefined, not an Invalid Date (#1023)', () => {
     // `Number.isSafeInteger` admits it, but `new Date(ms)` is Invalid — which
     // node-postgres would render as an unparsable timestamp and 500 on.

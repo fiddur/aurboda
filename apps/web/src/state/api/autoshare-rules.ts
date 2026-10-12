@@ -11,6 +11,7 @@ import axios from 'axios'
 
 import { API_URL } from '../../config'
 import { auth } from '../auth'
+import { apiErrorMessage } from './feed'
 
 const headers = () => ({ Authorization: `Bearer ${auth.value.token}` })
 
@@ -49,10 +50,14 @@ export const deleteAutoshareRule = async (id: string): Promise<void> => {
 export const previewAutoshareRule = async (
   body: AddAutoshareRuleBody,
 ): Promise<PreviewAutoshareRuleResponse> => {
-  const response = await axios.post<PreviewAutoshareRuleResponse>(
-    `${API_URL}/autoshare-rules/preview`,
-    body,
-    { headers: headers() },
-  )
-  return response.data
+  try {
+    const response = await axios.post<PreviewAutoshareRuleResponse>(
+      `${API_URL}/autoshare-rules/preview`,
+      body,
+      { headers: headers() },
+    )
+    return response.data
+  } catch (error) {
+    throw new Error(apiErrorMessage(error, 'Couldn’t preview the rule. Please try again.'))
+  }
 }

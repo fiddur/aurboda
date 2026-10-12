@@ -5,10 +5,12 @@ import { query } from './connection.ts'
 import {
   ackOutboundSync,
   enqueueOutboundSync,
+  enqueueOutboundSyncInsertsIfChanged,
   failOutboundSync,
   findHcRecordId,
   getOutboundSyncHistory,
   getPendingOutboundSync,
+  pruneSyncedOutboundSync,
   reportSyncFailure,
   requeueOutboundSync,
 } from './outbound-sync.ts'
@@ -138,6 +140,171 @@ describe('Outbound Sync Queue Integration Tests', () => {
       expect(pending).toHaveLength(1)
       expect(pending[0].id).toBe(firstId)
       expect((pending[0].payload as { value: number }).value).toBe(1.7)
+    })
+  })
+
+  describe('enqueueOutboundSyncInsertsIfChanged', () => {
+    const minute = (iso: string, value: number) => ({
+      entity_id: `calories_active|${iso}`,
+      payload: { end_time: iso.replace(':00.000Z', ':59.000Z'), metric: 'calories_active', value },
+    })
+    const enqueue = (user: string, items: ReturnType<typeof minute>[]) =>
+      enqueueOutboundSyncInsertsIfChanged(user, 'time_series', 'ActiveCaloriesBurnedRecord', items)
+    const countRows = async (user: string) =>
+      (await query(user, `SELECT COUNT(*)::int AS n FROM outbound_sync_queue`, [])).rows[0].n as number
+    const ackAll = async (user: string) => {
+      const { entries } = await getPendingOutboundSync(user)
+      for (const entry of entries) await ackOutboundSync(user, entry.id, `hc-${entry.entity_id}`)
+    }
+
+    test('does not re-queue minutes already synced with the same value', async () => {
+      const user = getTestUser()
+      const points = [minute('2026-10-01T10:00:00.000Z', 1.5), minute('2026-10-01T10:01:00.000Z', 2)]
+
+      expect(await enqueue(user, points)).toBe(2)
+      await ackAll(user)
+      expect(await enqueue(user, points)).toBe(0)
+      expect(
+        await enqueue(user, [
+          minute('2026-10-01T10:00:00.000Z', 1.5),
+          minute('2026-10-01T10:01:00.000Z', 2.0),
+        ]),
+      ).toBe(0)
+
+      expect(await countRows(user)).toBe(2)
+      expect((await getPendingOutboundSync(user)).total_pending).toBe(0)
+    })
+
+    test('queues one new row for a synced minute whose value changed', async () => {
+      const user = getTestUser()
+      await enqueue(user, [minute('2026-10-01T10:00:00.000Z', 1.5), minute('2026-10-01T10:01:00.000Z', 2)])
+      await ackAll(user)
+
+      expect(
+        await enqueue(user, [
+          minute('2026-10-01T10:00:00.000Z', 1.75),
+          minute('2026-10-01T10:01:00.000Z', 2),
+        ]),
+      ).toBe(1)
+
+      const { entries } = await getPendingOutboundSync(user)
+      expect(entries).toHaveLength(1)
+      expect(entries[0].entity_id).toBe('calories_active|2026-10-01T10:00:00.000Z')
+      expect(entries[0].payload.value).toBe(1.75)
+      expect(await countRows(user)).toBe(3)
+    })
+
+    test('updates a pending insert in place and skips an identical one', async () => {
+      const user = getTestUser()
+      await enqueue(user, [minute('2026-10-01T10:00:00.000Z', 1.5)])
+
+      expect(await enqueue(user, [minute('2026-10-01T10:00:00.000Z', 1.5)])).toBe(0)
+      expect(await enqueue(user, [minute('2026-10-01T10:00:00.000Z', 3)])).toBe(1)
+
+      const { entries } = await getPendingOutboundSync(user)
+      expect(entries).toHaveLength(1)
+      expect(entries[0].payload.value).toBe(3)
+      expect(await countRows(user)).toBe(1)
+    })
+
+    test('re-queues a minute whose latest row failed', async () => {
+      const user = getTestUser()
+      await enqueue(user, [minute('2026-10-01T10:00:00.000Z', 1.5)])
+      const { entries } = await getPendingOutboundSync(user)
+      await failOutboundSync(user, entries[0].id)
+
+      expect(await enqueue(user, [minute('2026-10-01T10:00:00.000Z', 1.5)])).toBe(1)
+      expect((await getPendingOutboundSync(user)).total_pending).toBe(1)
+    })
+  })
+
+  describe('pruneSyncedOutboundSync', () => {
+    const insertRow = async (
+      user: string,
+      row: {
+        entity_type: string
+        entity_id: string
+        status: string
+        age_days: number
+        hc_record_id?: string
+      },
+    ) => {
+      await query(
+        user,
+        `INSERT INTO outbound_sync_queue
+           (entity_type, entity_id, operation, hc_record_type, payload, status, hc_record_id, created_at, synced_at)
+         VALUES ($1, $2, 'insert', 'ActiveCaloriesBurnedRecord', '{}', $3::text, $4,
+                 NOW() - INTERVAL '1 day' * $5,
+                 CASE WHEN $3::text = 'synced' THEN NOW() - INTERVAL '1 day' * $5 END)`,
+        [row.entity_type, row.entity_id, row.status, row.hc_record_id ?? null, row.age_days],
+      )
+    }
+    const remaining = async (user: string) =>
+      (
+        await query(
+          user,
+          `SELECT entity_id, status, hc_record_id FROM outbound_sync_queue ORDER BY entity_id, created_at`,
+          [],
+        )
+      ).rows.map((row) => `${row.entity_id}:${row.status}:${row.hc_record_id ?? '-'}`)
+
+    test('deletes only synced rows older than the retention', async () => {
+      const user = getTestUser()
+      await insertRow(user, {
+        age_days: 20,
+        entity_id: 'a-old-synced',
+        entity_type: 'time_series',
+        hc_record_id: 'hc-1',
+        status: 'synced',
+      })
+      await insertRow(user, {
+        age_days: 5,
+        entity_id: 'b-recent-synced',
+        entity_type: 'time_series',
+        status: 'synced',
+      })
+      await insertRow(user, {
+        age_days: 20,
+        entity_id: 'c-old-pending',
+        entity_type: 'time_series',
+        status: 'pending',
+      })
+      await insertRow(user, {
+        age_days: 20,
+        entity_id: 'd-old-failed',
+        entity_type: 'time_series',
+        status: 'failed',
+      })
+
+      expect(await pruneSyncedOutboundSync(user, 14)).toBe(1)
+      expect(await remaining(user)).toEqual([
+        'b-recent-synced:synced:-',
+        'c-old-pending:pending:-',
+        'd-old-failed:failed:-',
+      ])
+    })
+
+    test("keeps an activity's newest HC record id however old, so it can still be deleted in Health Connect", async () => {
+      const user = getTestUser()
+      await insertRow(user, {
+        age_days: 40,
+        entity_id: 'act-1',
+        entity_type: 'activity',
+        hc_record_id: 'hc-old',
+        status: 'synced',
+      })
+      await insertRow(user, {
+        age_days: 30,
+        entity_id: 'act-1',
+        entity_type: 'activity',
+        hc_record_id: 'hc-new',
+        status: 'synced',
+      })
+      await insertRow(user, { age_days: 30, entity_id: 'act-2', entity_type: 'activity', status: 'synced' })
+
+      expect(await pruneSyncedOutboundSync(user, 14)).toBe(2)
+      expect(await remaining(user)).toEqual(['act-1:synced:hc-new'])
+      expect(await findHcRecordId(user, 'activity', 'act-1')).toBe('hc-new')
     })
   })
 

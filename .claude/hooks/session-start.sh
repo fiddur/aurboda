@@ -31,7 +31,8 @@ fi
 
 export PATH="${PREFIX}/bin:${PATH}"
 if [ -n "${CLAUDE_ENV_FILE:-}" ]; then
-  echo "export PATH=\"${PREFIX}/bin:\$PATH\"" >> "${CLAUDE_ENV_FILE}"
+  path_line="export PATH=\"${PREFIX}/bin:\$PATH\""
+  grep -qxF "${path_line}" "${CLAUDE_ENV_FILE}" 2>/dev/null || echo "${path_line}" >> "${CLAUDE_ENV_FILE}"
 fi
 
 PNPM_VERSION="$(node -p "require('./package.json').packageManager.split('@')[1]")"
@@ -40,9 +41,27 @@ if [ "$(pnpm --version 2>/dev/null || true)" != "${PNPM_VERSION}" ]; then
   npm install --global --silent "pnpm@${PNPM_VERSION}"
 fi
 
+as_root() {
+  if [ "$(id -u)" -eq 0 ]; then "$@"; else sudo "$@"; fi
+}
+
+# A dockerd that died, or a VM restored from a snapshot, leaves its pid files
+# behind; once the pid is recycled the next dockerd refuses to start or waits
+# for a containerd that is never started.
+clear_stale_pid() {
+  local file="$1" expected="$2"
+  shift 2
+  [ -f "${file}" ] || return 0
+  [ "$(ps -p "$(cat "${file}")" -o comm= 2>/dev/null || true)" = "${expected}" ] && return 0
+  as_root rm -f "${file}" "$@"
+  echo "🧹 removed stale ${file}"
+}
+
 # Backend integration tests use testcontainers (postgis/postgis). The VM has
 # dockerd installed but not running; start it in the background if it is not.
 if command -v dockerd >/dev/null && ! docker ps >/dev/null 2>&1; then
+  clear_stale_pid /var/run/docker.pid dockerd /var/run/docker.sock
+  clear_stale_pid /var/run/docker/containerd/containerd.pid containerd
   echo "🐳 Starting dockerd"
   nohup dockerd > /tmp/dockerd.log 2>&1 &
   for _ in $(seq 1 20); do

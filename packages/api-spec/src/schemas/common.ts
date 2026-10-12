@@ -111,6 +111,8 @@ export type BuiltinActivityType = (typeof builtinActivityTypes)[number]
 /** @deprecated Use builtinActivityTypes. Kept for backward compatibility. */
 export const activityTypes = builtinActivityTypes
 
+export const dataFieldNameSchema = z.string().regex(/^[a-z][a-z0-9_]*$/)
+
 /** Validated against the activity_type_definitions table at runtime. */
 export const activityTypeSchema = z
   .string()
@@ -253,8 +255,20 @@ export const metricUnits: Record<MetricType, string> = {
   performance_condition: 'score',
 }
 
+export const metricAggregationSchema = z.enum(['avg', 'sum']).meta({
+  description:
+    "Metric kind. 'sum' for amounts (a dose, steps): a day without samples counts as 0 in trends and bar charts total the day. 'avg' for levels (weight, HR): missing days are skipped.",
+  id: 'MetricAggregation',
+})
+
+export type MetricAggregation = z.infer<typeof metricAggregationSchema>
+
 export const customMetricDefinitionSchema = z
   .object({
+    aggregation: metricAggregationSchema.optional().meta({
+      description:
+        "'sum' for amounts (a dose, steps): a day without samples counts as 0 in trends and bar charts total the day. 'avg' (default) for levels (weight, HR): missing days are skipped.",
+    }),
     description: z.string().optional().meta({ description: 'Human-readable description' }),
     include_in_daily_summary: z.boolean().optional().meta({
       description:
@@ -367,12 +381,6 @@ export const isValidMetricOrCustom = (
   customMetrics: CustomMetricDefinition[] = [],
 ): boolean => isValidMetric(metric) || customMetrics.some((m) => m.name === metric)
 
-/**
- * Aggregation type for metrics: 'sum' for cumulative totals, 'avg' for instantaneous values.
- * Determines how values are combined in time buckets.
- */
-export type MetricAggregation = 'avg' | 'sum'
-
 export const sumMetrics: MetricType[] = [
   'steps',
   'distance',
@@ -390,8 +398,14 @@ export const sumMetrics: MetricType[] = [
   'activity_impulse',
 ]
 
-export const getMetricAggregation = (metric: string): MetricAggregation =>
-  (sumMetrics as string[]).includes(metric) ? 'sum' : 'avg'
+export const getMetricAggregation = (
+  metric: string,
+  customMetrics: CustomMetricDefinition[] = [],
+): MetricAggregation => {
+  if ((sumMetrics as string[]).includes(metric)) return 'sum'
+  if (isValidMetric(metric)) return 'avg'
+  return customMetrics.find((m) => m.name === metric)?.aggregation ?? 'avg'
+}
 
 /**
  * Cumulative metrics that are summed over a day and can have duplicate sources.
@@ -502,6 +516,15 @@ export const durationMinutesSchema = z.number().meta({ description: 'Duration in
 
 export const startDateTimeQuerySchema = iso8601DateTimeSchema.meta({ description: 'Start date/time' })
 export const endDateTimeQuerySchema = iso8601DateTimeSchema.meta({ description: 'End date/time' })
+
+/**
+ * A boolean flag that arrives as a query string over REST and as a real
+ * boolean over MCP. Not `z.coerce.boolean()`, which is `Boolean(value)` and so
+ * reads every non-empty string, `'false'` included, as true.
+ */
+export const queryBooleanSchema = z
+  .union([z.boolean(), z.enum(['true', 'false', '1', '0'])])
+  .transform((v) => v === true || v === 'true' || v === '1')
 
 export const timeRangeQuerySchema = z.object({
   end: endDateTimeQuerySchema,

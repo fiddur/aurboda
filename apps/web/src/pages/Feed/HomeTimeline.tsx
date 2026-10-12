@@ -185,7 +185,7 @@ function ShowRepliesToggle() {
       // `exact`: the timeline pages themselves must refetch, but the expanded
       // reply threads under TIMELINE_KEY must not — each is a live fetch of a
       // remote origin's `replies` collection (#1062).
-      void queryClient.invalidateQueries({ exact: true, queryKey: ['feed', 'timeline'] })
+      void queryClient.invalidateQueries({ exact: true, queryKey: TIMELINE_KEY })
     },
   })
   const show = mutation.isPending

@@ -310,7 +310,7 @@ export async function queryMetricsBucketed(
       max: row.max,
       min: row.min,
     }
-    if (getMetricAggregation(row.metric) === 'sum') {
+    if (getMetricAggregation(row.metric, options.customMetrics ?? []) === 'sum') {
       stats.sum = row.sum
     }
     bucketEntry.metrics[row.metric] = stats

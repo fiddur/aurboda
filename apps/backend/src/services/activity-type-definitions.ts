@@ -1,4 +1,8 @@
-import type { ActivityTypeDefinition, DataSchemaDefinition } from '@aurboda/api-spec'
+import type {
+  ActivityTypeDefinition,
+  AddActivityTypeDefinitionBody,
+  DataSchemaDefinition,
+} from '@aurboda/api-spec'
 
 import { builtinActivityTypes } from '@aurboda/api-spec'
 
@@ -23,15 +27,7 @@ export const listActivityTypeDefinitions = async (user: string): Promise<Activit
 
 export const addActivityTypeDefinition = async (
   user: string,
-  input: {
-    name: string
-    display_name: string
-    display_category: string
-    color?: string
-    icon?: string
-    aliases?: string[]
-    data_schema?: DataSchemaDefinition
-  },
+  input: AddActivityTypeDefinitionBody,
 ): Promise<ActivityTypeDefinitionResult> => {
   // Block names that conflict with built-in types
   if ((builtinActivityTypes as readonly string[]).includes(input.name)) {

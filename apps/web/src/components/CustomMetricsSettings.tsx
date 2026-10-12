@@ -1,3 +1,5 @@
+import type { MetricAggregation } from '@aurboda/api-spec'
+
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'preact/hooks'
 
@@ -8,6 +10,7 @@ import {
   updateCustomMetric,
   type CustomMetricDefinition,
 } from '../state/api'
+import { METRIC_KIND_OPTIONS, metricKindLabel } from '../utils/metric-kind'
 import { ConfirmButton } from './ConfirmButton'
 import { SettingsSection } from './SettingsSection'
 
@@ -25,10 +28,12 @@ const CustomMetricRow = ({
   const [description, setDescription] = useState(metric.description ?? '')
   const [minValue, setMinValue] = useState(metric.min_value?.toString() ?? '')
   const [maxValue, setMaxValue] = useState(metric.max_value?.toString() ?? '')
+  const [aggregation, setAggregation] = useState<MetricAggregation>(metric.aggregation ?? 'avg')
 
   const updateMutation = useMutation({
     mutationFn: () =>
       updateCustomMetric(metric.name, {
+        aggregation,
         description: description || undefined,
         max_value: maxValue ? parseFloat(maxValue) : null,
         min_value: minValue ? parseFloat(minValue) : null,
@@ -84,6 +89,20 @@ const CustomMetricRow = ({
               class="custom-metric-input"
             />
           </div>
+          <div class="custom-metric-edit-row">
+            <select
+              value={aggregation}
+              onChange={(e) => setAggregation((e.target as HTMLSelectElement).value as MetricAggregation)}
+              class="custom-metric-input wide"
+              aria-label="Kind"
+            >
+              {METRIC_KIND_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
         <div class="custom-metric-actions">
           <button
@@ -107,6 +126,7 @@ const CustomMetricRow = ({
       <div class="custom-metric-fields">
         <span class="custom-metric-name">{metric.name}</span>
         <span class="custom-metric-unit">{metric.unit}</span>
+        <span class="custom-metric-kind">{metricKindLabel(metric.aggregation)}</span>
         {metric.description && <span class="custom-metric-desc">{metric.description}</span>}
         {(metric.min_value !== undefined || metric.max_value !== undefined) && (
           <span class="custom-metric-range">
@@ -138,6 +158,7 @@ export function CustomMetricsSettings() {
   const [newDescription, setNewDescription] = useState('')
   const [newMinValue, setNewMinValue] = useState('')
   const [newMaxValue, setNewMaxValue] = useState('')
+  const [newAggregation, setNewAggregation] = useState<MetricAggregation>('avg')
 
   const { data: metrics } = useQuery({
     queryFn: fetchCustomMetrics,
@@ -152,6 +173,7 @@ export function CustomMetricsSettings() {
   const addMutation = useMutation({
     mutationFn: () =>
       addCustomMetric({
+        aggregation: newAggregation,
         ...(newDescription ? { description: newDescription } : {}),
         ...(newMaxValue ? { max_value: parseFloat(newMaxValue) } : {}),
         ...(newMinValue ? { min_value: parseFloat(newMinValue) } : {}),
@@ -164,6 +186,7 @@ export function CustomMetricsSettings() {
       setNewDescription('')
       setNewMinValue('')
       setNewMaxValue('')
+      setNewAggregation('avg')
       invalidate()
     },
   })
@@ -225,6 +248,20 @@ export function CustomMetricsSettings() {
             placeholder="Max value (optional)"
             class="custom-metric-input"
           />
+        </div>
+        <div class="custom-metric-add-row">
+          <select
+            value={newAggregation}
+            onChange={(e) => setNewAggregation((e.target as HTMLSelectElement).value as MetricAggregation)}
+            class="custom-metric-input wide"
+            aria-label="Kind"
+          >
+            {METRIC_KIND_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
         </div>
         {addMutation.isError && <p class="custom-metric-error">{(addMutation.error as Error).message}</p>}
         <button

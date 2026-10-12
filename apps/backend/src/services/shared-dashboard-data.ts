@@ -117,11 +117,12 @@ const resolveTrendChart = async (
 ): Promise<WidgetData> => {
   const customMetrics = await getCustomMetrics(user)
   const result = await getTrend(user, {
-    aggregation: config.aggregation ?? 'count',
+    aggregation: config.aggregation,
     custom_metrics: customMetrics,
     display_period: config.display_period ?? 'monthly',
     half_life_days: config.half_life_days ?? 15,
     lookback_days: config.lookback_days ?? 90,
+    missing_days: config.missing_days,
     pattern: config.pattern,
     source_type: config.source_type,
     ...(config.breakdown_fields?.length ? { breakdown_fields: config.breakdown_fields } : {}),

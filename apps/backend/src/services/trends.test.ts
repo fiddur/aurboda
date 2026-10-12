@@ -88,7 +88,7 @@ describe('getTrend', () => {
     expect(result.source_type).toBe('metric')
     expect(result.pattern).toBe('weight')
     expect(result.aggregation).toBe('mean')
-    expect(result.display_unit).toBe('') // No unit for mean aggregation
+    expect(result.display_unit).toBe('kg')
     expect(result.current_value).toBe(71.5)
   })
 
@@ -183,7 +183,138 @@ describe('getTrend', () => {
     })
 
     expect(result.aggregation).toBe('sum')
-    expect(result.display_unit).toBe('per day')
+    expect(result.display_unit).toBe('count per day')
+  })
+
+  describe('metric missing days', () => {
+    const metricSql = () => vi.mocked(db.query).mock.calls[0][1] as string
+    const ibuprofen = { aggregation: 'sum' as const, name: 'ibuprofen_mg', unit: 'mg' }
+
+    beforeEach(() => {
+      vi.mocked(db.query).mockResolvedValue({ rows: [] } as never)
+    })
+
+    test('a level metric skips missing days by default', async () => {
+      const result = await getTrend('testuser', {
+        aggregation: 'mean',
+        pattern: 'weight',
+        source_type: 'metric',
+      })
+
+      expect(metricSql()).not.toContain('COALESCE(dv2.daily_value, 0)')
+      expect(metricSql()).toContain('CASE WHEN dv2.daily_value IS NOT NULL')
+      expect(result.missing_days).toBe('skip')
+    })
+
+    test('a built-in amount metric zero-fills missing days by default', async () => {
+      const result = await getTrend('testuser', {
+        aggregation: 'sum',
+        pattern: 'steps',
+        source_type: 'metric',
+      })
+
+      expect(metricSql()).toContain('COALESCE(dv2.daily_value, 0)')
+      expect(metricSql()).not.toContain('CASE WHEN dv2.daily_value IS NOT NULL')
+      expect(result.missing_days).toBe('zero')
+    })
+
+    test('a custom amount metric zero-fills missing days by default', async () => {
+      const result = await getTrend('testuser', {
+        aggregation: 'sum',
+        custom_metrics: [ibuprofen],
+        display_period: 'monthly',
+        pattern: 'ibuprofen_mg',
+        source_type: 'metric',
+      })
+
+      expect(metricSql()).toContain('COALESCE(dv2.daily_value, 0)')
+      expect(result.missing_days).toBe('zero')
+      expect(result.display_unit).toBe('mg per month')
+    })
+
+    test('a custom metric without a kind is a level metric', async () => {
+      const result = await getTrend('testuser', {
+        aggregation: 'sum',
+        custom_metrics: [{ name: 'mood', unit: 'score' }],
+        pattern: 'mood',
+        source_type: 'metric',
+      })
+
+      expect(metricSql()).not.toContain('COALESCE(dv2.daily_value, 0)')
+      expect(result.missing_days).toBe('skip')
+    })
+
+    test('missing_days overrides the metric kind', async () => {
+      const zero = await getTrend('testuser', {
+        aggregation: 'mean',
+        missing_days: 'zero',
+        pattern: 'weight',
+        source_type: 'metric',
+      })
+      expect(metricSql()).toContain('COALESCE(dv2.daily_value, 0)')
+      expect(zero.missing_days).toBe('zero')
+
+      vi.mocked(db.query).mockClear()
+      const skip = await getTrend('testuser', {
+        aggregation: 'sum',
+        custom_metrics: [ibuprofen],
+        missing_days: 'skip',
+        pattern: 'ibuprofen_mg',
+        source_type: 'metric',
+      })
+      expect(metricSql()).not.toContain('COALESCE(dv2.daily_value, 0)')
+      expect(skip.missing_days).toBe('skip')
+    })
+
+    test('count counts samples per day, always zero-filled', async () => {
+      const result = await getTrend('testuser', {
+        aggregation: 'count',
+        display_period: 'weekly',
+        missing_days: 'skip',
+        pattern: 'weight',
+        source_type: 'metric',
+      })
+
+      expect(metricSql()).toContain('COUNT(*)')
+      expect(metricSql()).toContain('COALESCE(dv2.daily_value, 0)')
+      expect(vi.mocked(db.query).mock.calls[0][2]?.[3]).toBe(7)
+      expect(result.aggregation).toBe('count')
+      expect(result.missing_days).toBe('zero')
+      expect(result.display_unit).toBe('per week')
+    })
+
+    test('a metric trend without aggregation is a mean', async () => {
+      const result = await getTrend('testuser', { pattern: 'weight', source_type: 'metric' })
+
+      expect(metricSql()).toContain('AVG(value)')
+      expect(result.aggregation).toBe('mean')
+    })
+
+    test('display_unit falls back when the unit is unknown', async () => {
+      const sum = await getTrend('testuser', {
+        aggregation: 'sum',
+        pattern: 'unknown_metric',
+        source_type: 'metric',
+      })
+      expect(sum.display_unit).toBe('per month')
+
+      const mean = await getTrend('testuser', {
+        aggregation: 'mean',
+        pattern: 'unknown_metric',
+        source_type: 'metric',
+      })
+      expect(mean.display_unit).toBe('')
+    })
+
+    test('activity type trends carry no missing_days', async () => {
+      const result = await getTrend('testuser', {
+        aggregation: 'sum',
+        pattern: 'running',
+        source_type: 'activity_type',
+      })
+
+      expect(result.missing_days).toBeUndefined()
+    })
   })
 
   test('returns breakdown trend with per-series EMA histories', async () => {

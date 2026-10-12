@@ -20,6 +20,10 @@
  *   connected source (which ingests months of history as fresh rows) from
  *   mass-publishing that history. A delayed sync of a workout done after
  *   enabling still shares — the case that matters.
+ * - **Recent activities only**: a rule shares an activity only when it ended
+ *   at most the rule's `max_age_hours` before the evaluation, so a history
+ *   update that makes old activities newly match (an enrich run, a re-sync, an
+ *   import) can never publish them.
  * - **Bounded blast radius**: at most {@link MAX_POSTS_PER_RUN} posts per
  *   evaluation run — federated deliveries can't be recalled, so even a bug or
  *   an unexpectedly wide window can only leak a handful of posts, visibly
@@ -31,6 +35,8 @@
  * Dependencies are injected so the whole decision tree is unit-testable
  * without a database; `createAutoshareDeps` wires the real ones.
  */
+import type { AutoshareDataFilter } from '@aurboda/api-spec'
+
 import type { AutoshareCandidate, AutoshareRuleRecord, FeedPostRecord } from '../db/index.ts'
 import type { ResolvedFeedActivity } from './feed.ts'
 
@@ -42,6 +48,49 @@ export interface AutoshareSubject {
   durationSeconds: number
   /** Total distance over the merged span, or undefined when unknown/absent. */
   distanceMeters: number | undefined
+  /** The merge group's combined data ({@link groupData}). */
+  data: Record<string, unknown>
+}
+
+const isBlank = (value: unknown): boolean =>
+  value == null || (typeof value === 'string' && value.trim() === '')
+
+const filterHolds = (filter: AutoshareDataFilter, data: Record<string, unknown>): boolean => {
+  const value = data[filter.field]
+  const equal = (): boolean => !isBlank(value) && String(value).trim() === String(filter.value).trim()
+  switch (filter.operator) {
+    case 'eq':
+      return equal()
+    case 'exists':
+      return !isBlank(value)
+    case 'neq':
+      return !equal()
+    case 'not_exists':
+      return isBlank(value)
+  }
+}
+
+/** Every filter holds, with a blank value (null, missing, whitespace-only string) counting as missing. */
+export const dataFiltersMatch = (filters: AutoshareDataFilter[], data: Record<string, unknown>): boolean =>
+  filters.every((filter) => filterHolds(filter, data))
+
+/**
+ * The data a merge group shares as one: each key takes the first non-blank value
+ * walking the members anchor first — an edit of a synced activity can land on an
+ * override row, which then carries the field the anchor lacks. A member replaced by
+ * another member (the synced row behind an edit's override) contributes nothing, so
+ * its stale value can never outrank the edit.
+ */
+export const groupData = (group: AutoshareCandidate[]): Record<string, unknown> => {
+  const ids = new Set(group.map((member) => member.id))
+  const combined: Record<string, unknown> = {}
+  for (const member of group) {
+    if (member.superseded_by != null && ids.has(member.superseded_by)) continue
+    for (const [key, value] of Object.entries(member.data ?? {})) {
+      if (isBlank(combined[key]) && !isBlank(value)) combined[key] = value
+    }
+  }
+  return combined
 }
 
 /** Pure predicate: does a settled activity match a rule? */
@@ -54,21 +103,26 @@ export const activityMatchesRule = (rule: AutoshareRuleRecord, subject: Autoshar
     if (subject.distanceMeters === undefined) return false
     if (subject.distanceMeters < rule.min_distance_meters) return false
   }
-  return true
+  return dataFiltersMatch(rule.data_filters, subject.data)
 }
 
 /** Whether any rule needs the (comparatively expensive) distance resolution. */
 const needsDistance = (rules: AutoshareRuleRecord[]): boolean =>
   rules.some((rule) => rule.min_distance_meters != null)
 
-export interface AutoshareDeps {
+/**
+ * `Member` is what `getGroup` hands back and the anchor-taking deps receive, so
+ * the production wiring can carry the activity row it already fetched through
+ * to `resolveWindow` and `onCreated` instead of looking it up again.
+ */
+export interface AutoshareDeps<Member extends AutoshareCandidate = AutoshareCandidate> {
   getEnabledRules: (user: string) => Promise<AutoshareRuleRecord[]>
-  /** Settled (bounded, non-deleted) activities overlapping the window. */
-  listCandidates: (user: string, start: Date, end: Date) => Promise<AutoshareCandidate[]>
+  /** Settled (bounded, non-deleted) activities overlapping the window, ended no earlier than `endedAfter`. */
+  listCandidates: (user: string, start: Date, end: Date, endedAfter?: Date) => Promise<AutoshareCandidate[]>
   /** The candidate's whole merge group, earliest-start first (its anchor at [0]). */
-  getGroup: (user: string, candidate: AutoshareCandidate) => Promise<AutoshareCandidate[]>
+  getGroup: (user: string, candidate: AutoshareCandidate) => Promise<Member[]>
   /** The anchor's merged-span window (what a manual share of it would cover). */
-  resolveWindow: (user: string, anchor: AutoshareCandidate) => Promise<ResolvedFeedActivity>
+  resolveWindow: (user: string, anchor: Member) => Promise<ResolvedFeedActivity>
   /** Existing feed posts referencing any of the given activity ids. */
   postIdsForActivities: (user: string, activityIds: string[]) => Promise<string[]>
   /** Activities whose post the user DELETED (never republish; survives the hard delete). */
@@ -76,12 +130,17 @@ export interface AutoshareDeps {
   /** Total distance (meters) over a window, or undefined when none recorded. */
   distanceMeters: (user: string, start: Date, end: Date) => Promise<number | undefined>
   /** Create the feed post from the rule's template (the shared manual-share path). */
-  createPost: (user: string, anchor: AutoshareCandidate, rule: AutoshareRuleRecord) => Promise<FeedPostRecord>
+  createPost: (user: string, anchor: Member, rule: AutoshareRuleRecord) => Promise<FeedPostRecord>
   /** Fan the created post out to followers (fire-and-forget, like a manual share). */
-  onCreated: (user: string, post: FeedPostRecord, anchor: AutoshareCandidate) => void
+  onCreated: (user: string, post: FeedPostRecord, anchor: Member) => void
   /** Evaluate the window again no sooner than `notBefore` (some group in it was not settled yet). */
   requeue?: (user: string, start: Date, end: Date, notBefore: Date) => Promise<void>
 }
+
+export type AutosharePreviewDeps<Member extends AutoshareCandidate = AutoshareCandidate> = Pick<
+  AutoshareDeps<Member>,
+  'listCandidates' | 'getGroup' | 'resolveWindow' | 'distanceMeters'
+>
 
 /**
  * How long after its newest member was ingested a merge group counts as
@@ -113,6 +172,16 @@ export const groupNotBefore = (
 }
 
 /**
+ * The earliest end time a rule shares: after its enable (no retroactive
+ * sharing) and within its max age (no history updates). Null for a rule that
+ * was never enabled.
+ */
+export const ruleEndedAfter = (rule: AutoshareRuleRecord, now: Date): Date | null => {
+  if (rule.enabled_at == null) return null
+  return new Date(Math.max(rule.enabled_at.getTime(), now.getTime() - rule.max_age_hours * 3_600_000))
+}
+
+/**
  * Cap on posts created per evaluation run. Deliveries can't be recalled, so a
  * surprisingly wide window (first sync of a new source, a manual full re-sync)
  * must never turn into a firehose; the skip is logged. Groups beyond the cap
@@ -126,17 +195,23 @@ export const MAX_POSTS_PER_RUN = 5
  * Idempotent: re-running over the same window creates nothing new (dedupe).
  */
 // eslint-disable-next-line complexity -- the guard ladder IS the feature; each step is one safety property
-export const evaluateAutoshareWindow = async (
+export const evaluateAutoshareWindow = async <Member extends AutoshareCandidate>(
   user: string,
   start: Date,
   end: Date,
-  deps: AutoshareDeps,
+  deps: AutoshareDeps<Member>,
   now: Date = new Date(),
 ): Promise<number> => {
   const rules = await deps.getEnabledRules(user)
-  if (rules.length === 0) return 0
+  const cutoffs = new Map(
+    rules.flatMap((rule) => {
+      const cutoff = ruleEndedAfter(rule, now)
+      return cutoff == null ? [] : [[rule, cutoff.getTime()] as const]
+    }),
+  )
+  if (cutoffs.size === 0) return 0
 
-  const candidates = await deps.listCandidates(user, start, end)
+  const candidates = await deps.listCandidates(user, start, end, new Date(Math.min(...cutoffs.values())))
   if (candidates.length === 0) return 0
 
   const processedAnchors = new Set<string>()
@@ -149,6 +224,14 @@ export const evaluateAutoshareWindow = async (
     if (anchor == null) continue
     if (processedAnchors.has(anchor.id)) continue
     processedAnchors.add(anchor.id)
+
+    // New-arrivals-only, gate 1: the anchor row was ingested after the enable.
+    // Checked before the settling wait, or a backfilled group that can never
+    // share would re-queue the window until its detail-sync wait ran out.
+    const ingestEligible = rules.filter(
+      (rule) => rule.enabled_at != null && anchor.created_at.getTime() >= rule.enabled_at.getTime(),
+    )
+    if (ingestEligible.length === 0) continue
 
     // Hard dedupe: any existing post referencing ANY group member — or a
     // deletion suppression for one — blocks the group forever.
@@ -165,23 +248,20 @@ export const evaluateAutoshareWindow = async (
       continue
     }
 
-    // New-arrivals-only, gate 1: the anchor row was ingested after the enable.
-    const ingestEligible = rules.filter(
-      (rule) => rule.enabled_at != null && anchor.created_at.getTime() >= rule.enabled_at.getTime(),
-    )
-    if (ingestEligible.length === 0) continue
-
     const window = await deps.resolveWindow(user, anchor)
     if (window.end_time == null) continue
     const windowEnd = window.end_time
 
-    // New-arrivals-only, gate 2: the activity itself ended after the enable —
-    // a first sync/backfill ingests months of history as FRESH rows, which
-    // passes gate 1; this keeps that history off the feed. A delayed sync of a
-    // workout done after enabling still shares.
-    const eligibleRules = ingestEligible.filter(
-      (rule) => rule.enabled_at != null && windowEnd.getTime() >= rule.enabled_at.getTime(),
-    )
+    // New-arrivals-only, gate 2, and the max age: the activity itself ended
+    // after the enable — a first sync/backfill ingests months of history as
+    // FRESH rows, which passes gate 1; this keeps that history off the feed —
+    // and within the rule's max age, so a history update that makes old
+    // activities newly match never publishes them. A delayed sync of a workout
+    // done after enabling still shares while it is within the max age.
+    const eligibleRules = ingestEligible.filter((rule) => {
+      const cutoff = cutoffs.get(rule)
+      return cutoff != null && windowEnd.getTime() >= cutoff
+    })
     if (eligibleRules.length === 0) continue
 
     const durationSeconds = Math.round((windowEnd.getTime() - window.start_time.getTime()) / 1000)
@@ -191,6 +271,7 @@ export const evaluateAutoshareWindow = async (
 
     const subject: AutoshareSubject = {
       activityType: anchor.activity_type,
+      data: groupData(group),
       distanceMeters: distance,
       durationSeconds,
       source: anchor.source,
@@ -216,13 +297,14 @@ export const PREVIEW_SAMPLE_DAYS = 30
 
 /**
  * Preview: how many merge groups in the last `sampleDays` WOULD match the
- * rule's predicate — regardless of shared status or `enabled_at` (the point is
- * to show the rule's reach before enabling it). Creates nothing.
+ * rule's predicate — regardless of shared status, `enabled_at` or
+ * `max_age_hours` (the point is to show the rule's reach before enabling it).
+ * Creates nothing.
  */
-export const previewAutoshareRule = async (
+export const previewAutoshareRule = async <Member extends AutoshareCandidate>(
   user: string,
   rule: AutoshareRuleRecord,
-  deps: Pick<AutoshareDeps, 'listCandidates' | 'getGroup' | 'resolveWindow' | 'distanceMeters'>,
+  deps: AutosharePreviewDeps<Member>,
   now: Date,
   sampleDays: number = PREVIEW_SAMPLE_DAYS,
 ): Promise<number> => {
@@ -231,14 +313,14 @@ export const previewAutoshareRule = async (
   const processedAnchors = new Set<string>()
   let matched = 0
   for (const candidate of candidates) {
+    // A merge group is same-type, so the candidate's type is its anchor's.
+    if (rule.activity_types.length > 0 && !rule.activity_types.includes(candidate.activity_type)) continue
     const group = await deps.getGroup(user, candidate)
     const anchor = group[0]
     if (anchor == null) continue
     if (processedAnchors.has(anchor.id)) continue
     processedAnchors.add(anchor.id)
 
-    // Cheap pre-filters before resolving windows/distance.
-    if (rule.activity_types.length > 0 && !rule.activity_types.includes(anchor.activity_type)) continue
     if (rule.source != null && rule.source !== anchor.source) continue
 
     const window = await deps.resolveWindow(user, anchor)
@@ -250,6 +332,7 @@ export const previewAutoshareRule = async (
         : undefined
     const subject: AutoshareSubject = {
       activityType: anchor.activity_type,
+      data: groupData(group),
       distanceMeters: distance,
       durationSeconds,
       source: anchor.source,

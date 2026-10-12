@@ -410,8 +410,6 @@ const reply = async (
     message,
     visibility: body.visibility,
   })
-  // The delivery reuses the inbox resolved above instead of looking the same
-  // actor up again.
   deliver?.createdReply(user, record, authorInbox)
   return { ok: true, post: await serializeFeedPost(user, record) }
 }

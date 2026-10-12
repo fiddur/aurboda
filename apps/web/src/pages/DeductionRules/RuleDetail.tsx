@@ -8,7 +8,7 @@ import { formatISO } from 'date-fns'
 import { useLocation, useRoute } from 'preact-iso'
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
 
-import type { DeductionRule, DeductionRuleCondition, OutputMediaField } from '../../state/api'
+import type { DeductionRule, DeductionRuleCondition } from '../../state/api'
 
 import { ActivityTypePicker } from '../../components/ActivityTypePicker'
 import { ConditionBuilder } from '../../components/ConditionBuilder'
@@ -22,6 +22,15 @@ import {
   updateDeductionRule,
 } from '../../state/api'
 import { auth } from '../../state/auth'
+import {
+  defaultFields,
+  fieldsToBuildBody,
+  modeChangeBody,
+  type RuleFormFields,
+  ruleToFields,
+  toOutputMediaField,
+  toOutputTitleField,
+} from './ruleForm'
 import './style.css'
 
 function TextField({
@@ -135,66 +144,6 @@ function OutputDataEditor({
   )
 }
 
-interface RuleFormFields {
-  conditions: DeductionRuleCondition[]
-  enabled: boolean
-  mediaField: string
-  mediaStripPattern: string
-  mergeGapMinutes: string
-  mode: DeductionRuleMode
-  name: string
-  outputData: Record<string, unknown>
-  outputTitle: string
-  outputType: string
-  priority: number
-}
-
-const defaultFields: RuleFormFields = {
-  conditions: [{ kind: 'activity' }],
-  enabled: true,
-  mediaField: '',
-  mediaStripPattern: '',
-  mergeGapMinutes: '',
-  mode: 'create',
-  name: '',
-  outputData: {},
-  outputTitle: '',
-  outputType: '',
-  priority: 1,
-}
-
-const ruleToFields = (rule: DeductionRule): RuleFormFields => ({
-  conditions: rule.conditions,
-  enabled: rule.enabled,
-  mediaField: rule.output_media_field?.field ?? '',
-  mediaStripPattern: rule.output_media_field?.strip_pattern ?? '',
-  mergeGapMinutes: rule.merge_gap_seconds ? String(rule.merge_gap_seconds / 60) : '',
-  mode: rule.mode ?? 'create',
-  name: rule.name,
-  outputData: rule.output_data ?? {},
-  outputTitle: rule.output_title ?? '',
-  outputType: rule.output_activity_type,
-  priority: rule.priority,
-})
-
-const toOutputMediaField = (f: RuleFormFields): OutputMediaField | undefined =>
-  f.mode === 'enrich' && f.mediaField
-    ? { field: f.mediaField, ...(f.mediaStripPattern ? { strip_pattern: f.mediaStripPattern } : {}) }
-    : undefined
-
-const fieldsToBuildBody = (f: RuleFormFields) => ({
-  conditions: f.conditions,
-  enabled: f.enabled,
-  merge_gap_seconds: f.mergeGapMinutes ? Number(f.mergeGapMinutes) * 60 : undefined,
-  mode: f.mode !== 'create' ? f.mode : undefined,
-  name: f.name,
-  output_activity_type: f.outputType,
-  output_data: Object.keys(f.outputData).length > 0 ? f.outputData : undefined,
-  output_media_field: toOutputMediaField(f),
-  output_title: f.outputTitle || undefined,
-  priority: f.priority,
-})
-
 // eslint-disable-next-line complexity -- unified form handling create + edit modes
 function RuleForm({ id, rule }: { id?: string; rule?: DeductionRule }) {
   const isNew = !rule
@@ -281,6 +230,12 @@ function RuleForm({ id, rule }: { id?: string; rule?: DeductionRule }) {
     }
   }
 
+  const saveTitleField = () => {
+    if (isNew) return
+    const next = toOutputTitleField(fields) ?? null
+    if (next !== (rule?.output_title_field ?? null)) autoSave({ output_title_field: next })
+  }
+
   const canSubmit = Boolean(fields.name && fields.outputType)
 
   return (
@@ -314,11 +269,7 @@ function RuleForm({ id, rule }: { id?: string; rule?: DeductionRule }) {
               onChange={(e) => {
                 const v = (e.target as HTMLSelectElement).value as DeductionRuleMode
                 updateField('mode', v)
-                autoSave(
-                  v !== 'enrich' && rule?.output_media_field
-                    ? { mode: v, output_media_field: null }
-                    : { mode: v },
-                )
+                autoSave(modeChangeBody(v, rule))
               }}
               class="rule-field-select"
             >
@@ -369,6 +320,17 @@ function RuleForm({ id, rule }: { id?: string; rule?: DeductionRule }) {
                 onBlur={saveMediaField}
                 placeholder="e.g. \s*—\s*True Naked Yoga$"
               />
+              <TextField
+                label="Copy data field into title"
+                value={fields.titleField}
+                onChange={(v) => updateField('titleField', v)}
+                onBlur={saveTitleField}
+                placeholder="e.g. session_name"
+              />
+              <p class="rule-field-hint">
+                Replaces a blank title, the type name, or a title this rule wrote; a title typed by hand is
+                kept.
+              </p>
             </>
           )}
 

@@ -37,6 +37,7 @@ export const metricsTables: Record<string, string> = {
       min_value                DOUBLE PRECISION,
       max_value                DOUBLE PRECISION,
       include_in_daily_summary BOOLEAN NOT NULL DEFAULT FALSE,
+      aggregation              VARCHAR(10) NOT NULL DEFAULT 'avg',
       created_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at               TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )

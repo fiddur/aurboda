@@ -1,9 +1,12 @@
 import { z } from 'zod'
 
-import { activityTypeSchema, createDataResponseSchema, iso8601DateTimeSchema } from './common.ts'
+import {
+  activityTypeSchema,
+  createDataResponseSchema,
+  dataFieldNameSchema,
+  iso8601DateTimeSchema,
+} from './common.ts'
 import { hrZoneSecsSchema } from './settings.ts'
-
-const dataFieldNameSchema = z.string().regex(/^[a-z][a-z0-9_]*$/)
 
 export const valueDistributionSchema = z
   .object({
@@ -54,6 +57,9 @@ export const activitySessionGroupSchema = z
       .number()
       .optional()
       .meta({ description: 'Median of the average heart rates of the sessions' }),
+    avg_hr_count: z.number().int().meta({
+      description: 'Number of sessions with an average heart rate: the sample size of avg_hr_median',
+    }),
     count: z.number().int().meta({ description: 'Number of sessions in the group' }),
     duration_max: z.number().optional().meta({ description: 'Longest session (minutes)' }),
     duration_median: z.number().optional().meta({ description: 'Median session length (minutes)' }),

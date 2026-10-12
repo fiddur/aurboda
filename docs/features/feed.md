@@ -158,8 +158,20 @@ A post whose activity gains its **Garmin detail** after it was shared (GPS, per-
 HR, distance — the detail sync often lands minutes after a Health Connect session) is
 re-delivered as an `Update{Note}` with a bumped `updated_at`, so followers get the
 settled scalars and the attachments that now have data. A manual detail re-sync of the
-activity does the same; a full Garmin re-sync does not (it only refreshes posts whose
-activity had no detail before).
+activity does the same. This immediate refresh only covers posts whose activity had no
+detail before; any other re-sync that actually changes the row (a full Garmin re-sync
+included) is re-delivered by the window pass described next.
+
+More generally, a shared activity that **changes** after it was shared — a new title or
+data (an enrich rule, a re-sync with different values, an edit), a merge with another
+source's row — is re-delivered the same way once the change has settled (the auto-share
+stabilisation delay, 10 minutes). Every activity row records when it last changed
+(`activities.updated_at`, set by a trigger only on a real change, so an identical
+re-sync counts as nothing), and the auto-share queue's pass over each mutation window
+looks at the shared activities in it (the ones an activity post references, superseded
+rows included) and re-delivers every activity post whose version (`updated_at`) is
+older than its merge group's newest change. This covers manual shares too, has no age limit, and runs
+whether or not any auto-share rule is enabled.
 
 The `Note` is Mastodon-compatible: a structured HTML `content` — the bold title
 headline, the author's personal message (if any), a line saying when the **activity**
@@ -168,6 +180,11 @@ share time for timeline ordering), and the shared scalar summaries one per line 
 plus a `name` headline, addressed per the post's visibility
 (`public` → AS2 Public + followers; `unlisted` → followers + Public in `cc`; `followers`
 → followers only).
+The title headline is the shared activity's title; when that row has since been replaced
+(`superseded_by`, e.g. a synced Garmin row an aurboda override now stands in for), it is the
+replacing row's title, so renaming the activity — by hand or by a
+[deduction rule](deduction-rules.md#copying-a-data-field-into-the-title-output_title_field) —
+renames the post.
 
 **QuantPub extension (#896).** An activity share's `Note` is dual-typed
 `["Note", "quant:Exercise"]` and carries the typed [QuantPub](../fep/quantpub.md)
@@ -604,7 +621,9 @@ id-convention path — reliable even when a typed consumer drops the in-band ext
    so a broken enrichment path is diagnosable instead of looking identical to a Mastodon post
    (#996).
 3. **Store + render.** The payload is stored on `timeline_entry.structured` (JSONB, NULL for
-   non-Aurboda posts; a redelivery that can't re-fetch keeps the last-known value). The web
+   non-Aurboda posts; a redelivery that can't re-fetch keeps the last-known value — except
+   an article's, which is dropped so the card falls back to the fresh `content` rather
+   than showing the pre-edit title and prose (#973)). The web
    timeline card renders, per `structured.kind`: for an **activity** post the native
    activity card — title, personal message, the activity's date, a Strava-style **stat
    grid** from the typed scalars, one **combined multi-metric chart** (per-metric toggles,
@@ -944,8 +963,9 @@ content plus the author's cached handle / display name / avatar, indexed on
 `structured` JSONB column carries the native Aurboda payload (`FeedStructuredPost`: an
 activity's typed metrics + inline series, or an article's title + resolved blocks) fetched
 during enrichment — NULL for non-Aurboda posts. On a
-re-delivery whose enrichment failed, the upsert `COALESCE`s so the last-known `structured`
-is preserved rather than wiped. A nullable `images` JSONB column holds the delivered
+re-delivery whose enrichment failed, the upsert keeps the last-known `structured` rather
+than wiping a working chart — unless it is an article, whose stale title and prose would
+hide the edited `content`, so it is cleared (the same rule applies to boost cards). A nullable `images` JSONB column holds the delivered
 image attachments (`TimelineImage[]`: url + optional media type / alt / size), rendered as
 the fallback when a post has no native structured chart. Four nullable columns
 (`boost_of_uri`, `boosted_by_actor_uri`, `boosted_by_handle`, `boosted_by_display_name`) turn

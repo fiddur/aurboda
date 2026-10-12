@@ -442,6 +442,7 @@ export const buildArticleNote = (
     name: post.article.title,
     published: dateToTemporalInstant(post.created_at),
     tos: to,
+    updated: dateToTemporalInstant(post.updated_at),
     url: noteId,
   })
 }
@@ -610,6 +611,7 @@ export const buildChallengeNote = (ctx: Context<void>, user: string, post: Deliv
     published: dateToTemporalInstant(post.created_at),
     tags: mentions.map((m) => new Mention({ href: m.actorUri, name: m.handle })),
     tos: to,
+    updated: dateToTemporalInstant(post.updated_at),
     url: noteId,
   })
 }
@@ -826,6 +828,7 @@ export const buildReplyNote = (ctx: Context<void>, user: string, post: Deliverab
     replyTarget: new URL(post.in_reply_to_uri),
     tags: mentions.map((m) => new Mention({ href: m.actorUri, name: m.handle })),
     tos: to,
+    updated: dateToTemporalInstant(post.updated_at),
     url: noteId,
   })
 }

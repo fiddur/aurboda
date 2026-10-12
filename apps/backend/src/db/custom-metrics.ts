@@ -2,12 +2,13 @@ import type { CustomMetricDefinition } from '@aurboda/api-spec'
 
 import { query } from './connection.ts'
 
-const COLUMNS = 'name, unit, description, min_value, max_value, include_in_daily_summary'
+const COLUMNS = 'name, unit, description, min_value, max_value, include_in_daily_summary, aggregation'
 
 const mapRow = (row: Record<string, unknown>): CustomMetricDefinition => ({
   name: row.name as string,
   unit: row.unit as string,
   include_in_daily_summary: (row.include_in_daily_summary as boolean | null) ?? false,
+  aggregation: row.aggregation === 'sum' ? 'sum' : 'avg',
   ...(row.description != null ? { description: row.description as string } : {}),
   ...(row.min_value != null ? { min_value: row.min_value as number } : {}),
   ...(row.max_value != null ? { max_value: row.max_value as number } : {}),
@@ -33,8 +34,8 @@ export const insertCustomMetricDefinition = async (
 ): Promise<void> => {
   await query(
     user,
-    `INSERT INTO custom_metrics (name, unit, description, min_value, max_value, include_in_daily_summary)
-     VALUES ($1, $2, $3, $4, $5, $6)`,
+    `INSERT INTO custom_metrics (name, unit, description, min_value, max_value, include_in_daily_summary, aggregation)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
     [
       definition.name,
       definition.unit,
@@ -42,19 +43,20 @@ export const insertCustomMetricDefinition = async (
       definition.min_value ?? null,
       definition.max_value ?? null,
       definition.include_in_daily_summary ?? false,
+      definition.aggregation ?? 'avg',
     ],
   )
 }
 
+export type CustomMetricDefinitionUpdates = Partial<
+  Pick<CustomMetricDefinition, 'unit' | 'description' | 'include_in_daily_summary' | 'aggregation'>
+> & { max_value?: number | null; min_value?: number | null }
+
+/** `undefined` leaves a field as it is; `null` clears min_value/max_value. */
 export const updateCustomMetricDefinition = async (
   user: string,
   name: string,
-  updates: Partial<
-    Pick<
-      CustomMetricDefinition,
-      'unit' | 'description' | 'min_value' | 'max_value' | 'include_in_daily_summary'
-    >
-  >,
+  updates: CustomMetricDefinitionUpdates,
 ): Promise<CustomMetricDefinition | null> => {
   const setClauses: string[] = []
   const values: unknown[] = []
@@ -79,6 +81,10 @@ export const updateCustomMetricDefinition = async (
   if (updates.include_in_daily_summary !== undefined) {
     setClauses.push(`include_in_daily_summary = $${paramIndex++}`)
     values.push(updates.include_in_daily_summary)
+  }
+  if (updates.aggregation !== undefined) {
+    setClauses.push(`aggregation = $${paramIndex++}`)
+    values.push(updates.aggregation)
   }
 
   if (setClauses.length === 0) return getCustomMetricByName(user, name)
@@ -157,8 +163,8 @@ export const bulkInsertCustomMetricDefinitions = async (
   for (const def of definitions) {
     await query(
       user,
-      `INSERT INTO custom_metrics (name, unit, description, min_value, max_value, include_in_daily_summary)
-       VALUES ($1, $2, $3, $4, $5, $6)
+      `INSERT INTO custom_metrics (name, unit, description, min_value, max_value, include_in_daily_summary, aggregation)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
        ON CONFLICT (name) DO NOTHING`,
       [
         def.name,
@@ -167,6 +173,7 @@ export const bulkInsertCustomMetricDefinitions = async (
         def.min_value ?? null,
         def.max_value ?? null,
         def.include_in_daily_summary ?? false,
+        def.aggregation ?? 'avg',
       ],
     )
   }

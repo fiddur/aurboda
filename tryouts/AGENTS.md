@@ -33,13 +33,17 @@ stops.
 - `--fresh` — `docker compose down -v` first, so the stack comes up on an empty database with
   new secrets. **A tryout should almost always use it**: leftovers from a previous PR's fixtures
   are how a tryout convinces itself of something that is not true.
-- `--wait-image` — poll `docker manifest inspect` for the tag every 20 s for up to 30 minutes,
-  because the merge usually lands before CI has pushed the image.
+- `--wait-image` — poll `docker manifest inspect` for the tag every 60 s for up to 30 minutes,
+  because the merge usually lands before CI has pushed the image. It is quota-aware: before each
+  poll it reads the anonymous Docker Hub allowance from Docker's exempt preview endpoint, and
+  while that reads `0` it waits instead of spending a manifest request.
 
 Knobs, all by environment: `AURBODA_TAG` (**required** — the merge commit's short sha, or
 `develop`), `TRYOUT_DIR` (default `/tmp/tryout`), `TRYOUT_PORT` (default `8080`), `TRYOUT_HOME`
 (default `/opt/tryout`), `TRYOUT_CHROME` (a browser to use instead of the installed one),
-`DEMO_USER` (default `qsreddit_demo` — the recipes assume that name).
+`DEMO_USER` (default `qsreddit_demo` — the recipes assume that name), `DOCKERHUB_USERNAME` and
+`DOCKERHUB_TOKEN` (optional; when both are set `up.sh` runs `docker login`, which lifts the
+anonymous per-IP quota).
 
 ```sh
 AURBODA_TAG=1a2b3c4 tryouts/up.sh --fresh --wait-image
@@ -53,7 +57,15 @@ is deliberate: a tryout never needs the Node 25 or the `node_modules` that
 
 **Docker.** The VM has `dockerd` installed but usually not running; `up.sh` starts it. `docker
 ps` is the check. The rig itself reaches `registry-1.docker.io`, `auth.docker.io` and
-`production.cloudflare.docker.com`; without those there is no image and no tryout.
+`production.cloudflare.docker.com`; without those there is no image and no tryout. Before
+starting the daemon `up.sh` clears a stale `docker.pid` or `containerd.pid` left by a dead daemon,
+which would otherwise stop the new one from coming up. The anonymous Docker Hub pull quota is per
+egress IP, and that IP is shared across cloud VMs, so another session may already have spent it.
+
+**Browser.** When `/root/.ccr/ca-bundle.crt` exists, `setup-environment.sh` hands it to Node as
+`NODE_EXTRA_CA_CERTS`, so the Chrome download trusts the session proxy. When that download is off
+the allowlist, the image's own Playwright build at `/opt/pw-browsers/chromium` works as
+`TRYOUT_CHROME`.
 
 ### What lands in `$TRYOUT_DIR`
 

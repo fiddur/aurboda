@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 import * as db from '../db/index.ts'
+import * as customMetrics from './custom-metrics.ts'
 import { getGoalsProgress, getWidgetGoalsProgress } from './goals.ts'
 import * as settings from './settings.ts'
 import * as trends from './trends.ts'
@@ -20,6 +21,10 @@ vi.mock('./settings', () => ({
 
 vi.mock('./trends', () => ({
   getTrend: vi.fn(),
+}))
+
+vi.mock('./custom-metrics', () => ({
+  getCustomMetrics: vi.fn(async () => [{ aggregation: 'sum', name: 'ibuprofen_mg', unit: 'mg' }]),
 }))
 
 /** Stands in for the DB: the per-day values of `perDay` whose UTC day falls in `[start's day, end's day]`. */
@@ -251,6 +256,7 @@ describe('getGoalsProgress', () => {
 
     expect(trends.getTrend).toHaveBeenCalledWith('testuser', {
       aggregation: 'count',
+      custom_metrics: [{ aggregation: 'sum', name: 'ibuprofen_mg', unit: 'mg' }],
       display_period: 'monthly',
       half_life_days: 30,
       lookback_days: 90,
@@ -261,6 +267,54 @@ describe('getGoalsProgress', () => {
     // Should not touch the db directly for trend goals
     expect(db.getDailyAggregateValues).not.toHaveBeenCalled()
     expect(db.getDailyAggregates).not.toHaveBeenCalled()
+  })
+
+  test('a trend goal without aggregation lets getTrend pick the per-source default, fetching custom metrics once', async () => {
+    vi.mocked(settings.getEffectiveGoals).mockResolvedValue([
+      {
+        display_period: 'daily',
+        goal_type: 'trend',
+        half_life_days: 15,
+        id: 'goal-trend-metric',
+        max: 400,
+        pattern: 'ibuprofen_mg',
+        source_type: 'metric',
+      },
+      {
+        display_period: 'monthly',
+        goal_type: 'trend',
+        half_life_days: 15,
+        id: 'goal-trend-activity',
+        max: 10,
+        pattern: 'coffee',
+        source_type: 'activity_type',
+      },
+    ])
+    vi.mocked(trends.getTrend).mockResolvedValue({
+      aggregation: 'sum',
+      current_value: 120,
+      display_period: 'daily',
+      display_unit: 'mg per day',
+      half_life_days: 15,
+      history: [],
+      lookback_days: 90,
+      pattern: 'ibuprofen_mg',
+      source_type: 'metric',
+    })
+
+    const result = await getGoalsProgress('testuser')
+
+    expect(result).toHaveLength(2)
+    expect(trends.getTrend).toHaveBeenCalledWith(
+      'testuser',
+      expect.objectContaining({
+        aggregation: undefined,
+        custom_metrics: [{ aggregation: 'sum', name: 'ibuprofen_mg', unit: 'mg' }],
+        pattern: 'ibuprofen_mg',
+        source_type: 'metric',
+      }),
+    )
+    expect(customMetrics.getCustomMetrics).toHaveBeenCalledTimes(1)
   })
 
   test('uses getDailyAggregates for non-cumulative metrics', async () => {

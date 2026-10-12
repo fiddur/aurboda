@@ -37,6 +37,15 @@ export const displayPeriodMultipliers: Record<TrendDisplayPeriod, number> = {
   weekly: 7,
 }
 
+export const trendMissingDaysSchema = z.enum(['zero', 'skip']).meta({
+  description:
+    "How a metric trend treats days without samples. 'zero' counts them as 0 (amounts: a dose, steps); 'skip' leaves them out (levels: weight, HR). Defaults to 'zero' for sum-kind metrics and 'skip' for avg-kind ones. Metric source only.",
+  example: 'zero',
+  id: 'TrendMissingDays',
+})
+
+export type TrendMissingDays = z.infer<typeof trendMissingDaysSchema>
+
 export const halfLifePresets = {
   /** 7 days - responds to changes within a week */
   quick: 7,
@@ -48,10 +57,10 @@ export const halfLifePresets = {
 
 export const getTrendQuerySchema = z
   .object({
-    aggregation: z
-      .enum(['count', 'sum', 'mean'])
-      .default('count')
-      .meta({ description: 'Aggregation method: count for activity types, mean for metrics' }),
+    aggregation: z.enum(['count', 'sum', 'mean']).optional().meta({
+      description:
+        'Aggregation method. count: occurrences / samples per period; sum: total (hours for activity types); mean: average (metrics). Defaults to count for activity types, mean for metrics.',
+    }),
     display_period: trendDisplayPeriodSchema
       .default('monthly')
       .meta({ description: 'Period to normalize the rate to (daily, weekly, monthly)' }),
@@ -84,6 +93,7 @@ export const getTrendQuerySchema = z
       description:
         'Data fields to break down by (for activity_type source). Produces per-series EMA histories.',
     }),
+    missing_days: trendMissingDaysSchema.optional(),
   })
   .meta({ id: 'GetTrendQuery' })
 
@@ -100,7 +110,9 @@ export type TrendHistoryPoint = z.infer<typeof trendHistoryPointSchema>
 
 export const trendResultSchema = z
   .object({
-    aggregation: z.enum(['count', 'sum', 'mean']).meta({ description: 'Aggregation method used' }),
+    aggregation: z
+      .enum(['count', 'sum', 'mean'])
+      .meta({ description: 'Aggregation method used. count: occurrences / samples per period' }),
     current_value: z.number().meta({ description: 'Current trend value' }),
     display_period: trendDisplayPeriodSchema.meta({ description: 'Period the value is normalized to' }),
     display_unit: z.string().meta({ description: 'Human-readable unit (e.g., "per month")' }),
@@ -115,6 +127,9 @@ export const trendResultSchema = z
       .optional()
       .meta({ description: 'Per-series EMA trend histories keyed by series name' }),
     lookback_days: z.number().meta({ description: 'Days of data included' }),
+    missing_days: trendMissingDaysSchema
+      .optional()
+      .meta({ description: 'How days without samples were treated (metric source only)' }),
     pattern: z.string().meta({ description: 'Pattern used for matching' }),
     source_type: trendSourceTypeSchema.meta({ description: 'Source type queried' }),
   })
@@ -133,7 +148,10 @@ export type TrendResponse = z.infer<typeof trendResponseSchema>
 /** Numeric fields are strings here (as Express passes them) and parsed in the handler. */
 export const trendQuerySchema = z
   .object({
-    aggregation: z.enum(['count', 'sum', 'mean']).optional(),
+    aggregation: z.enum(['count', 'sum', 'mean']).optional().meta({
+      description:
+        'count: occurrences / samples per period; sum: total; mean: average. Defaults to count for activity types, mean for metrics.',
+    }),
     display_period: trendDisplayPeriodSchema.optional(),
     half_life_days: z.string().optional().meta({ description: 'EMA half-life in days', example: '15' }),
     lookback_days: z.string().optional().meta({ description: 'Days of historical data', example: '90' }),
@@ -157,6 +175,7 @@ export const trendQuerySchema = z
       .string()
       .optional()
       .meta({ description: 'Comma-separated data fields to break down by' }),
+    missing_days: trendMissingDaysSchema.optional(),
   })
   .meta({ id: 'TrendQuery' })
 

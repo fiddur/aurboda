@@ -18,7 +18,8 @@ import {
 } from '@aurboda/api-spec'
 
 import type { AutoshareRuleRecord } from '../db/index.ts'
-import type { AutoshareDeps } from '../services/autoshare.ts'
+import type { AutoshareGroupMember } from '../services/autoshare-deps.ts'
+import type { AutosharePreviewDeps } from '../services/autoshare.ts'
 
 import {
   countAutosharePostsByRule,
@@ -28,19 +29,21 @@ import {
   updateAutoshareRule,
 } from '../db/index.ts'
 import { PREVIEW_SAMPLE_DAYS, previewAutoshareRule } from '../services/autoshare.ts'
+import { type AnyMiddleware, type TypedRouter, typedRouter } from '../typed-router.ts'
+import { validateBody } from '../validation.ts'
 
 /** A canonical UUID; a garbage id 404s instead of 500ing on the `uuid` cast. */
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-import { type AnyMiddleware, type TypedRouter, typedRouter } from '../typed-router.ts'
-import { validateBody } from '../validation.ts'
 
 /** Serialise a stored rule (Dates → ISO strings) for the API. */
 export const serializeAutoshareRule = (record: AutoshareRuleRecord): AutoshareRule => ({
   activity_types: record.activity_types,
   created_at: record.created_at.toISOString(),
+  data_filters: record.data_filters,
   enabled: record.enabled,
   enabled_at: record.enabled_at?.toISOString() ?? null,
   id: record.id,
+  max_age_hours: record.max_age_hours,
   include_chart: record.include_chart,
   include_map: record.include_map,
   included_metrics: record.included_metrics,
@@ -58,9 +61,11 @@ export const serializeAutoshareRule = (record: AutoshareRuleRecord): AutoshareRu
 /** Map an add/preview body to the rule input shape (shared with the MCP tools). */
 export const autoshareRuleInputFromBody = (body: AddAutoshareRuleBody) => ({
   activity_types: body.activity_types,
+  data_filters: body.data_filters,
   include_chart: body.include_chart,
   include_map: body.include_map,
   included_metrics: body.included_metrics,
+  max_age_hours: body.max_age_hours,
   max_duration_seconds: body.max_duration_seconds ?? null,
   message: body.message ?? null,
   min_distance_meters: body.min_distance_meters ?? null,
@@ -73,7 +78,7 @@ export const autoshareRuleInputFromBody = (body: AddAutoshareRuleBody) => ({
 
 export const createAutoshareRulesRouter = (
   authMiddleware: AnyMiddleware,
-  previewDeps: Pick<AutoshareDeps, 'listCandidates' | 'getGroup' | 'resolveWindow' | 'distanceMeters'>,
+  previewDeps: AutosharePreviewDeps<AutoshareGroupMember>,
 ): TypedRouter => {
   const router = typedRouter()
 
@@ -96,7 +101,8 @@ export const createAutoshareRulesRouter = (
 
   // Dry run over the last 30 days: validates the SAME body as create, builds a
   // transient rule (never inserted), and counts matching merge groups —
-  // regardless of shared status, since the point is to show the rule's reach.
+  // regardless of shared status and max age, since the point is to show the
+  // rule's reach.
   router.post<Record<string, never>, PreviewAutoshareRuleResponse, AddAutoshareRuleBody>(
     '/preview',
     authMiddleware,
