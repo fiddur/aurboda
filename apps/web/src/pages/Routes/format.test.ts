@@ -2,7 +2,7 @@ import type { RouteEffort } from '@aurboda/api-spec'
 
 import { describe, expect, it } from 'vitest'
 
-import { effortSeries, formatElapsed } from './format'
+import { effortSeries, formatElapsed, typeDisplayName } from './format'
 
 describe('formatElapsed', () => {
   it('formats minutes and hours', () => {
@@ -36,5 +36,14 @@ describe('effortSeries', () => {
 
   it('charts average heart rate', () => {
     expect(effortSeries(efforts, 'avg_hr').map((p) => p.value)).toEqual([155, 150])
+  })
+})
+
+describe('typeDisplayName', () => {
+  it('resolves a known type and falls back to the raw name', () => {
+    const defs = [{ display_name: 'Running', name: 'running' }]
+    expect(typeDisplayName('running', defs)).toBe('Running')
+    expect(typeDisplayName('trail_running', defs)).toBe('trail_running')
+    expect(typeDisplayName('running', [])).toBe('running')
   })
 })

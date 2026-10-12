@@ -12,6 +12,7 @@ import { SaveStatusIndicator, useSaveStatus } from '../../components/SaveStatusI
 import { deleteRoute, fetchRoute, fetchRoutes, mergeRoutes, updateRoute } from '../../state/api'
 import { auth } from '../../state/auth'
 import { formatDistance, formatPace } from '../EntityDetail/format-utils'
+import { ActivityTypeName } from './ActivityTypeName'
 import { effortSeries, formatElapsed } from './format'
 import './style.css'
 
@@ -216,8 +217,8 @@ export function RouteDetail() {
       <div class="page-header">
         <NameEditor route={route} />
         <p class="page-subtitle">
-          {route.activity_type} · {formatDistance(route.length_m)} · {route.activity_count}{' '}
-          {route.activity_count === 1 ? 'run' : 'runs'}
+          <ActivityTypeName name={route.activity_type} /> · {formatDistance(route.length_m)} ·{' '}
+          {route.activity_count} {route.activity_count === 1 ? 'run' : 'runs'}
         </p>
         <a href="/routes" class="route-back-link">
           Back to routes

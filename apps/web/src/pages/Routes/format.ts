@@ -30,3 +30,9 @@ export const effortSeries = (
       ]
     })
     .reverse()
+
+/** The type's display name, or the raw name while definitions are loading or for an unknown type. */
+export const typeDisplayName = (
+  name: string,
+  definitions: { name: string; display_name: string }[],
+): string => definitions.find((d) => d.name === name)?.display_name ?? name

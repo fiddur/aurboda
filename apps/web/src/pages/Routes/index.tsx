@@ -4,6 +4,7 @@ import { format } from 'date-fns'
 import { fetchRoutes } from '../../state/api'
 import { auth } from '../../state/auth'
 import { formatDistance } from '../EntityDetail/format-utils'
+import { ActivityTypeName } from './ActivityTypeName'
 import './style.css'
 
 export function Routes() {
@@ -41,7 +42,9 @@ export function Routes() {
           {routes.map((route) => (
             <a key={route.id} href={`/routes/${route.id}`} class="route-row">
               <span class="route-name">{route.name}</span>
-              <span class="route-type">{route.activity_type}</span>
+              <span class="route-type">
+                <ActivityTypeName name={route.activity_type} />
+              </span>
               <span class="route-length">{formatDistance(route.length_m)}</span>
               <span class="route-count">
                 {route.activity_count} {route.activity_count === 1 ? 'run' : 'runs'}
