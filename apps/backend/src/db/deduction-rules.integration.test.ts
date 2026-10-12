@@ -53,6 +53,36 @@ describe('deduction rules (integration)', () => {
     expect(cleared).not.toHaveProperty('output_media_field')
   })
 
+  test('output_title_field round-trips and can be cleared', async () => {
+    const user = getTestUser()
+
+    const inserted = await insertDeductionRule(user, {
+      conditions: [
+        {
+          activity_type: 'yoga',
+          data_filters: [{ field: 'session_name', operator: 'exists' }],
+          kind: 'activity',
+        },
+      ],
+      mode: 'enrich',
+      name: 'Yoga title from session',
+      output_activity_type: 'yoga',
+      output_title_field: 'session_name',
+    })
+
+    expect(inserted.output_title_field).toBe('session_name')
+    expect((await getDeductionRule(user, inserted.id))?.output_title_field).toBe('session_name')
+
+    const renamed = await updateDeductionRule(user, inserted.id, { output_title_field: 'video_title' })
+    expect(renamed?.output_title_field).toBe('video_title')
+
+    const untouched = await updateDeductionRule(user, inserted.id, { name: 'Renamed' })
+    expect(untouched?.output_title_field).toBe('video_title')
+
+    const cleared = await updateDeductionRule(user, inserted.id, { output_title_field: null })
+    expect(cleared).not.toHaveProperty('output_title_field')
+  })
+
   test('pruneDeductionRuleRuns deletes only runs older than the retention', async () => {
     const user = getTestUser()
     const rule = await insertDeductionRule(user, {

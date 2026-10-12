@@ -1226,6 +1226,7 @@ export const migrateSchema = async (user: string, opts?: { force?: boolean }) =>
     )
     await query(db, `ALTER TABLE deduction_rules ADD COLUMN IF NOT EXISTS output_data JSONB`)
     await query(db, `ALTER TABLE deduction_rules ADD COLUMN IF NOT EXISTS output_media_field JSONB`)
+    await query(db, `ALTER TABLE deduction_rules ADD COLUMN IF NOT EXISTS output_title_field TEXT`)
 
     // Migrate kind='tag' conditions to kind='activity' (tags absorbed into activities)
     await query(

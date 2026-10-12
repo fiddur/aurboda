@@ -147,6 +147,7 @@ const RULE_KEYS: [key: string, label: string][] = [
   ['rule_id', 'Created by rule'],
   ['_enriched_by', 'Enriched by'],
   ['_retyped_by', 'Retyped by'],
+  ['_titled_by', 'Titled by'],
 ]
 
 const isBlank = (v: unknown) => v === undefined || v === null || (typeof v === 'string' && v.trim() === '')
@@ -199,6 +200,7 @@ const SHOWN_DATA_KEYS = new Set([
   'startTime',
   'steps',
   'vo2_max',
+  '_titled_value',
   ...RULE_KEYS.map(([key]) => key),
 ])
 

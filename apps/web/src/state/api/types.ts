@@ -79,6 +79,7 @@ export interface DeductionRule {
   mode?: DeductionRuleMode
   output_data?: Record<string, unknown>
   output_media_field?: OutputMediaField
+  output_title_field?: string
   created_at?: string
 }
 

@@ -259,6 +259,7 @@ export const activitiesTables: Record<string, string> = {
       mode                  VARCHAR(10) NOT NULL DEFAULT 'create',
       output_data           JSONB,
       output_media_field    JSONB,
+      output_title_field    TEXT,
       created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )

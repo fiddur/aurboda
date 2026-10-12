@@ -52,7 +52,8 @@ A matching play covers `started_at`–`ended_at`; a Last.fm play (no end) covers
 
 With `mode: "enrich"`, a rule creates nothing: it patches data onto existing activities of `output_activity_type`
 that overlap the matched ranges. `output_data` keys are only filled when missing, and `data._enriched_by` records
-the rule id.
+the rule id. Data is written in place on the matched rows; [`output_title_field`](#copying-a-data-field-into-the-title-output_title_field)
+can also set their title.
 
 ### Copying a play title (`output_media_field`)
 
@@ -78,6 +79,46 @@ In enrich mode, a rule with at least one `media` condition can copy the title of
   not compile.
 
 See [Media plays](../media.md) for a full example.
+
+### Copying a data field into the title (`output_title_field`)
+
+In enrich mode, `output_title_field` names a data field whose value becomes the title of each activity the rule
+enriches — for example the `session_name` an `output_media_field` rule writes, so a Garmin yoga session titled
+"Yoga" becomes "Heart-Opening Yin Yoga with Jade":
+
+```json
+{
+  "name": "Yoga title from session",
+  "mode": "enrich",
+  "conditions": [
+    {
+      "kind": "activity",
+      "activity_type": "yoga",
+      "data_filters": [{ "field": "session_name", "operator": "exists" }]
+    }
+  ],
+  "output_activity_type": "yoga",
+  "output_title_field": "session_name"
+}
+```
+
+- The rule only replaces a title nobody chose: a blank one, the type's name (its display name or prettified key,
+  case-insensitive), or the title the rule wrote itself (`data._titled_by` is the rule and `data._titled_value` is
+  still the current title). So the title **follows the field** as it changes, until someone types another title —
+  then that title is kept for good.
+- The value is trimmed; a missing, blank or non-string field never clears or blanks a title.
+- The title is written through the same update path as a manual edit, after the rule's data enrichment (so a field
+  filled in the same pass is used). A synced activity (Garmin, Health Connect, …) therefore gets an aurboda override
+  carrying the title, and a re-sync of the source row — which resets the source row's own title — leaves it alone.
+  The override takes the synced row's data at that moment; later enrichment writes onto both rows.
+- It may stand alone, or join `output_data` / `output_media_field` in one rule; a rule with only
+  `output_title_field` changes nothing but titles.
+- Like any rule it runs when the rule is created or updated and then on new mutations (a synced or enriched
+  activity); to re-run it over all history, use the evaluate endpoint (`POST /deduction-rules/evaluate`, MCP
+  `evaluate_deduction_rules`).
+- A preview counts the larger of the activities whose data and whose title would change, from the data stored now.
+- The API rejects `output_title_field` outside enrich mode; switching a rule's mode away from enrich in the web UI
+  clears it. Feed posts of a retitled activity show the new title (see [Feed](feed.md)).
 
 ## Retype Mode
 

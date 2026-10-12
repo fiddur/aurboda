@@ -91,11 +91,19 @@ export const normalizeFeedMessage = (message?: string): string | null | undefine
   return trimmed === '' ? null : trimmed
 }
 
+/** A post anchored on a row that was since replaced (e.g. a synced row an override supersedes) shows the replacement's title. */
+const headlineTitle = async (user: string, activity: Activity): Promise<string | undefined> => {
+  if (!activity.superseded_by) return activity.title
+  const winner = await getActivityById(user, activity.superseded_by)
+  return winner?.title ?? activity.title
+}
+
 /**
  * Expand an already-fetched activity to its merged span (no refetch). Used on the
  * share path, where the handler already loaded the anchor for its 404 check.
  * A plain (non-overlapping) activity passes through with its own window.
  */
+
 export const expandFeedActivityWindow = async (
   user: string,
   activity: Activity,
@@ -106,7 +114,7 @@ export const expandFeedActivityWindow = async (
     data: activity.data,
     end_time: window.end_time,
     start_time: window.start_time,
-    title: activity.title,
+    title: await headlineTitle(user, activity),
   }
 }
 

@@ -5,6 +5,7 @@
  * 3. Optional merge_gap coalesces nearby ranges
  * 4. In 'create' mode: resulting ranges become activities with source 'deduction-rule'
  * 5. In 'enrich' mode: matching target activities have output_data merged into their data
+ *    (and, with output_title_field, that data field into their title)
  *    In 'retype' mode: the activities of the rule's single 'activity' condition that overlap the
  *    result change type to output_activity_type
  * 6. Rules are evaluated in priority order for chaining support
@@ -113,6 +114,15 @@ export interface DeductionEngineDeps {
   ) => Promise<void>
   getEarliestActivityTime: (user: string) => Promise<Date | null>
   retypeActivity: (user: string, id: string, change: RetypeChange) => Promise<boolean>
+  /** Ids of the activities whose title the rule changed, or with dryRun would change. */
+  retitleActivities: (
+    user: string,
+    activityType: string,
+    ranges: TimeRange[],
+    field: string,
+    ruleId: string,
+    dryRun?: boolean,
+  ) => Promise<string[]>
 }
 
 /**
@@ -375,6 +385,60 @@ const retype = async (
   return { affected_ids: retypedIds, would_affect: retypedIds.length }
 }
 
+const countEnrichable = async (
+  user: string,
+  rule: DeductionRule,
+  matched: TimeRange[],
+  window: EvaluationWindow,
+  deps: DeductionEngineDeps,
+  dataFor: ((span: TimeRange) => Record<string, unknown>) | undefined,
+): Promise<number> => {
+  if (!dataFor && Object.keys(rule.output_data ?? {}).length === 0) return 0
+  const targetRanges = await deps.getActivities(user, rule.output_activity_type, window)
+  if (dataFor) return targetRanges.filter((target) => Object.keys(dataFor(target)).length > 0).length
+  return intersectTimeRanges(matched, targetRanges).length
+}
+
+/**
+ * The title step runs after the data enrichment, so it reads a field written in the same pass.
+ * A dry run cannot see that data yet; it counts the larger of the two steps, since the data
+ * step only counts and the same activity is often in both.
+ */
+const enrich = async (
+  user: string,
+  rule: DeductionRule,
+  matched: TimeRange[],
+  window: EvaluationWindow,
+  deps: DeductionEngineDeps,
+  dryRun: boolean,
+): Promise<EvaluateRuleResult> => {
+  const dataFor = await buildMediaDataFor(user, rule, matched, window, deps)
+  const titleField = rule.output_title_field
+  const retitle = (dry: boolean) =>
+    titleField
+      ? deps.retitleActivities(user, rule.output_activity_type, matched, titleField, rule.id, dry)
+      : Promise.resolve([])
+
+  if (dryRun) {
+    const enrichable = await countEnrichable(user, rule, matched, window, deps, dataFor)
+    const retitled = (await retitle(true)).length
+    return { affected_ids: [], would_affect: Math.max(enrichable, retitled) }
+  }
+
+  const enrichedIds = await deps.enrichActivities(
+    user,
+    rule.output_activity_type,
+    matched,
+    rule.output_data ?? {},
+    rule.id,
+    dataFor && rule.output_media_field
+      ? { dataFor, overwriteKeys: [rule.output_media_field.field] }
+      : undefined,
+  )
+  const affected = [...new Set([...enrichedIds, ...(await retitle(false))])]
+  return { affected_ids: affected, would_affect: affected.length }
+}
+
 /**
  * When dryRun is true, returns the count of activities that would be affected without making changes.
  */
@@ -391,29 +455,7 @@ export const evaluateRule = async (
 
   if (rule.mode === 'retype') return retype(user, rule, result, window, deps, dryRun)
 
-  if (rule.mode === 'enrich') {
-    const dataFor = await buildMediaDataFor(user, rule, result, window, deps)
-    if (dryRun) {
-      const targetRanges = await deps.getActivities(user, rule.output_activity_type, window)
-      if (dataFor) {
-        const withValue = targetRanges.filter((target) => Object.keys(dataFor(target)).length > 0)
-        return { affected_ids: [], would_affect: withValue.length }
-      }
-      const overlapping = intersectTimeRanges(result, targetRanges)
-      return { affected_ids: [], would_affect: overlapping.length }
-    }
-    const enrichedIds = await deps.enrichActivities(
-      user,
-      rule.output_activity_type,
-      result,
-      rule.output_data ?? {},
-      rule.id,
-      dataFor && rule.output_media_field
-        ? { dataFor, overwriteKeys: [rule.output_media_field.field] }
-        : undefined,
-    )
-    return { affected_ids: enrichedIds, would_affect: enrichedIds.length }
-  }
+  if (rule.mode === 'enrich') return enrich(user, rule, result, window, deps, dryRun)
 
   // Create mode (default)
   if (dryRun) {

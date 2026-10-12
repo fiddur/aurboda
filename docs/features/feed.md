@@ -168,6 +168,11 @@ share time for timeline ordering), and the shared scalar summaries one per line 
 plus a `name` headline, addressed per the post's visibility
 (`public` → AS2 Public + followers; `unlisted` → followers + Public in `cc`; `followers`
 → followers only).
+The title headline is the shared activity's title; when that row has since been replaced
+(`superseded_by`, e.g. a synced Garmin row an aurboda override now stands in for), it is the
+replacing row's title, so renaming the activity — by hand or by a
+[deduction rule](deduction-rules.md#copying-a-data-field-into-the-title-output_title_field) —
+renames the post.
 
 **QuantPub extension (#896).** An activity share's `Note` is dual-typed
 `["Note", "quant:Exercise"]` and carries the typed [QuantPub](../fep/quantpub.md)
