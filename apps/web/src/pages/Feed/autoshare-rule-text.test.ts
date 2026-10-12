@@ -82,6 +82,7 @@ describe('ruleSummary', () => {
     include_chart: false,
     include_map: false,
     included_metrics: [],
+    max_age_hours: 24,
     name: 'Named yoga',
     series_metrics: [],
     updated_at: '2026-08-01T00:00:00Z',
@@ -91,9 +92,9 @@ describe('ruleSummary', () => {
 
   it('lists the predicate and the visibility', () => {
     expect(ruleSummary(rule({ min_duration_seconds: 900, source: 'garmin' }))).toBe(
-      'yoga, ≥ 15 min, from garmin → followers',
+      'yoga, ≥ 15 min, from garmin, ended within 24 h → followers',
     )
-    expect(ruleSummary(rule({ activity_types: [] }))).toBe('any activity → followers')
+    expect(ruleSummary(rule({ activity_types: [] }))).toBe('any activity, ended within 24 h → followers')
   })
 
   it('appends each data condition, with labels when known', () => {
@@ -103,9 +104,13 @@ describe('ruleSummary', () => {
         { field: 'style', operator: 'eq', value: 'yin' },
       ],
     })
-    expect(ruleSummary(filtered)).toBe('yoga, session name set, style is yin → followers')
+    expect(ruleSummary(filtered)).toBe('yoga, session name set, style is yin, ended within 24 h → followers')
     expect(ruleSummary(filtered, (field) => (field === 'style' ? 'Yoga style' : undefined))).toBe(
-      'yoga, session name set, Yoga style is yin → followers',
+      'yoga, session name set, Yoga style is yin, ended within 24 h → followers',
     )
+  })
+
+  it('states the max age', () => {
+    expect(ruleSummary(rule({ max_age_hours: 72 }))).toBe('yoga, ended within 72 h → followers')
   })
 })

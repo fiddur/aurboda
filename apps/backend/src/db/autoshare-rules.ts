@@ -23,6 +23,7 @@ export interface AutoshareRuleRecord {
   min_distance_meters: number | null
   source: string | null
   data_filters: AutoshareDataFilter[]
+  max_age_hours: number
   included_metrics: string[]
   series_metrics: string[]
   include_chart: boolean
@@ -42,6 +43,7 @@ export interface AutoshareRuleInput {
   min_distance_meters?: number | null
   source?: string | null
   data_filters: AutoshareDataFilter[]
+  max_age_hours: number
   included_metrics: string[]
   series_metrics: string[]
   include_chart: boolean
@@ -59,6 +61,7 @@ export interface AutoshareRulePatch {
   min_distance_meters?: number | null
   source?: string | null
   data_filters?: AutoshareDataFilter[]
+  max_age_hours?: number
   included_metrics?: string[]
   series_metrics?: string[]
   include_chart?: boolean
@@ -68,7 +71,7 @@ export interface AutoshareRulePatch {
 }
 
 const COLS =
-  'id, name, enabled, enabled_at, activity_types, min_duration_seconds, max_duration_seconds, min_distance_meters, source, data_filters, included_metrics, series_metrics, include_chart, include_map, visibility, message, created_at, updated_at'
+  'id, name, enabled, enabled_at, activity_types, min_duration_seconds, max_duration_seconds, min_distance_meters, source, data_filters, max_age_hours, included_metrics, series_metrics, include_chart, include_map, visibility, message, created_at, updated_at'
 
 export const getAutoshareRules = async (user: string): Promise<AutoshareRuleRecord[]> => {
   const result = await query<AutoshareRuleRecord>(
@@ -95,8 +98,8 @@ export const insertAutoshareRule = async (
     user,
     `INSERT INTO autoshare_rules
        (name, activity_types, min_duration_seconds, max_duration_seconds, min_distance_meters, source,
-        data_filters, included_metrics, series_metrics, include_chart, include_map, visibility, message)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+        data_filters, max_age_hours, included_metrics, series_metrics, include_chart, include_map, visibility, message)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
      RETURNING ${COLS}`,
     [
       input.name,
@@ -106,6 +109,7 @@ export const insertAutoshareRule = async (
       input.min_distance_meters ?? null,
       input.source ?? null,
       JSON.stringify(input.data_filters),
+      input.max_age_hours,
       input.included_metrics,
       input.series_metrics,
       input.include_chart,
@@ -127,6 +131,7 @@ const PATCH_COLUMNS = [
   'min_distance_meters',
   'source',
   'data_filters',
+  'max_age_hours',
   'included_metrics',
   'series_metrics',
   'include_chart',
@@ -243,6 +248,17 @@ export const getActivityIngestTimes = async (user: string, ids: string[]): Promi
     [ids],
   )
   return Object.fromEntries(result.rows.map((row) => [row.id, row.created_at]))
+}
+
+/** When the newest of the rows last changed (`updated_at`, else its ingest), or null for none. */
+export const getActivitiesChangedAt = async (user: string, ids: string[]): Promise<Date | null> => {
+  if (ids.length === 0) return null
+  const result = await query<{ changed_at: Date | null }>(
+    user,
+    `SELECT MAX(COALESCE(updated_at, created_at)) AS changed_at FROM activities WHERE id = ANY($1)`,
+    [ids],
+  )
+  return result.rows[0]?.changed_at ?? null
 }
 
 /**

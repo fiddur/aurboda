@@ -47,6 +47,20 @@ const toMember = (
   title: activity.title ?? null,
 })
 
+/** The candidate's merge group, earliest-start first; empty when it was deleted since listing. */
+export const getAutoshareGroup = async (
+  user: string,
+  candidate: AutoshareCandidate,
+): Promise<AutoshareGroupMember[]> => {
+  const activity = await getActivityById(user, candidate.id)
+  if (activity == null) return []
+  const group = await getOverlappingActivities(user, activity)
+  const members = group.length > 0 ? group : [activity]
+  const ids = members.map((member) => member.id).filter((id): id is string => id != null)
+  const ingestTimes = await getActivityIngestTimes(user, ids)
+  return members.map((member) => toMember(member, candidate, ingestTimes))
+}
+
 /** Total distance (meters) over a window from the `distance` metric, or undefined when none. */
 const windowDistanceMeters = async (user: string, start: Date, end: Date): Promise<number | undefined> => {
   const seconds = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / 1000))
@@ -80,15 +94,7 @@ export const createAutoshareDeps = (
     }),
   distanceMeters: windowDistanceMeters,
   getEnabledRules: getEnabledAutoshareRules,
-  getGroup: async (user, candidate) => {
-    const activity = await getActivityById(user, candidate.id)
-    if (activity == null) return [] // deleted since listing — the evaluator skips
-    const group = await getOverlappingActivities(user, activity)
-    const members = group.length > 0 ? group : [activity]
-    const ids = members.map((member) => member.id).filter((id): id is string => id != null)
-    const ingestTimes = await getActivityIngestTimes(user, ids)
-    return members.map((member) => toMember(member, candidate, ingestTimes))
-  },
+  getGroup: getAutoshareGroup,
   listCandidates: listAutoshareCandidates,
   suppressedActivityIds: listAutoshareSuppressedIds,
   onCreated: (user, post, anchor) => deliverCreated(user, post, anchor.activity),

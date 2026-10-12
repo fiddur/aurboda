@@ -35,6 +35,7 @@ const record = (over: Partial<AutoshareRuleRecord> = {}): AutoshareRuleRecord =>
   include_chart: false,
   include_map: false,
   included_metrics: [],
+  max_age_hours: 24,
   max_duration_seconds: null,
   message: null,
   min_distance_meters: null,
@@ -152,5 +153,41 @@ describe('POST /autoshare-rules/preview data_filters', () => {
       .post('/preview')
       .send({ activity_types: ['yoga'], name: 'All yoga' })
     expect(without.body.would_match).toBe(2)
+  })
+})
+
+describe('autoshare rule max_age_hours', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(db.insertAutoshareRule).mockImplementation(async (_user, input) => record(input))
+  })
+
+  test('defaults to 24 hours on create', async () => {
+    const res = await supertest(buildApp()).post('/').send({ name: 'Anything' })
+    expect(res.status).toBe(200)
+    expect(vi.mocked(db.insertAutoshareRule).mock.calls[0]?.[1].max_age_hours).toBe(24)
+    expect(res.body.rule.max_age_hours).toBe(24)
+  })
+
+  test('passes a given value to the insert', async () => {
+    const res = await supertest(buildApp()).post('/').send({ max_age_hours: 72, name: 'Three days' })
+    expect(res.status).toBe(200)
+    expect(vi.mocked(db.insertAutoshareRule).mock.calls[0]?.[1].max_age_hours).toBe(72)
+  })
+
+  test.each([0, -1, 1.5, 8761])('rejects %s on create', async (value) => {
+    const res = await supertest(buildApp()).post('/').send({ max_age_hours: value, name: 'Bad' })
+    expect(res.status).toBe(400)
+    expect(db.insertAutoshareRule).not.toHaveBeenCalled()
+  })
+
+  test('is optional on update, and validated when given', async () => {
+    vi.mocked(db.updateAutoshareRule).mockResolvedValue(record({ max_age_hours: 48 }))
+    const res = await supertest(buildApp()).patch(`/${RULE_ID}`).send({ max_age_hours: 48 })
+    expect(res.status).toBe(200)
+    expect(vi.mocked(db.updateAutoshareRule).mock.calls[0]?.[2]).toEqual({ max_age_hours: 48 })
+
+    const bad = await supertest(buildApp()).patch(`/${RULE_ID}`).send({ max_age_hours: 0 })
+    expect(bad.status).toBe(400)
   })
 })

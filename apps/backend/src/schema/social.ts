@@ -238,6 +238,9 @@ export const socialTables: Record<string, string> = {
   autoshare_rules_data_filters: `
     ALTER TABLE autoshare_rules ADD COLUMN IF NOT EXISTS data_filters JSONB NOT NULL DEFAULT '[]'
   `,
+  autoshare_rules_max_age_hours: `
+    ALTER TABLE autoshare_rules ADD COLUMN IF NOT EXISTS max_age_hours INTEGER NOT NULL DEFAULT 24
+  `,
   // `idx_feed_posts_series` is a GIN index over the shared-series set — the hot
   // path for the public series endpoint's `metric = ANY(series_metrics)` check.
   feed_posts_indexes: `

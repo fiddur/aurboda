@@ -31,6 +31,9 @@ export type AutoshareDataFilter = z.infer<typeof autoshareDataFilterSchema>
 const dataFiltersDescription =
   'Conditions on the activity data fields, all must hold. A blank value counts as missing, so exists means the field has a value.'
 
+const maxAgeHoursDescription =
+  'Share only activities that ended at most this many hours before the rule looks at them; protects against history updates and imports publishing old activities'
+
 /** The predicate + share-template fields shared by the rule, its add body, and its preview body. */
 const autoshareRuleFields = {
   activity_types: z.array(z.string().min(1).max(64)).max(32).default([]).meta({
@@ -54,6 +57,7 @@ const autoshareRuleFields = {
     .max(64)
     .default([])
     .meta({ description: 'Scalar-summary metric keys the auto-created post shares' }),
+  max_age_hours: z.number().int().min(1).max(8760).default(24).meta({ description: maxAgeHoursDescription }),
   max_duration_seconds: z
     .number()
     .int()
@@ -92,6 +96,7 @@ export const autoshareRuleSchema = z
     ...autoshareRuleFields,
     created_at: iso8601DateTimeSchema.meta({ description: 'Creation timestamp (ISO 8601)' }),
     data_filters: z.array(autoshareDataFilterSchema).meta({ description: dataFiltersDescription }),
+    max_age_hours: z.number().int().meta({ description: maxAgeHoursDescription }),
     // On read, stored keys are plain strings (like FeedPost.series_metrics) —
     // the WRITE bodies validate them against the metric-type enum.
     series_metrics: z
@@ -130,6 +135,7 @@ export const updateAutoshareRuleBodySchema = z
     include_chart: z.boolean().optional(),
     include_map: z.boolean().optional(),
     included_metrics: z.array(scalarMetricKeySchema).max(64).optional(),
+    max_age_hours: autoshareRuleFields.max_age_hours.removeDefault().optional(),
     max_duration_seconds: z.number().int().positive().nullable().optional(),
     message: z.string().max(feedPostMessageMaxLength).nullable().optional(),
     min_distance_meters: z.number().positive().nullable().optional(),
@@ -162,8 +168,9 @@ export type AutoshareRuleResponse = z.infer<typeof autoshareRuleResponseSchema>
 
 /**
  * Response for the rule preview: how many settled activities in the sample
- * window WOULD have matched the predicate (regardless of shared status) —
- * shown before enabling, so the user knows what a rule reaches.
+ * window WOULD have matched the predicate (regardless of shared status and
+ * `max_age_hours`) — shown before enabling, so the user knows what a rule
+ * reaches.
  */
 export const previewAutoshareRuleResponseSchema = baseResponseSchema
   .extend({
