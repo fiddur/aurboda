@@ -11,11 +11,13 @@ import {
   groupData,
   MAX_POSTS_PER_RUN,
   previewAutoshareRule,
+  ruleEndedAfter,
   STABILISATION_SECONDS,
 } from './autoshare.ts'
 
 const T0 = new Date('2026-08-01T00:00:00Z')
 const HOUR = 3_600_000
+const NOW = new Date(T0.getTime() + 3 * HOUR)
 
 const rule = (over: Partial<AutoshareRuleRecord> = {}): AutoshareRuleRecord => ({
   activity_types: ['running'],
@@ -27,6 +29,7 @@ const rule = (over: Partial<AutoshareRuleRecord> = {}): AutoshareRuleRecord => (
   include_chart: false,
   include_map: false,
   included_metrics: ['duration', 'distance'],
+  max_age_hours: 24,
   max_duration_seconds: null,
   message: null,
   min_distance_meters: null,
@@ -246,14 +249,14 @@ const harness = (over: Partial<AutoshareDeps> = {}): Harness => {
 describe('evaluateAutoshareWindow', () => {
   test('shares a matching settled activity once, with delivery', async () => {
     const h = harness()
-    expect(await evaluateAutoshareWindow('u', T0, new Date(T0.getTime() + 3 * HOUR), h.deps)).toBe(1)
+    expect(await evaluateAutoshareWindow('u', T0, new Date(T0.getTime() + 3 * HOUR), h.deps, NOW)).toBe(1)
     expect(h.createdPosts).toEqual([{ anchorId: 'a1', ruleId: 'rule-1' }])
     expect(h.delivered).toEqual(['post-a1'])
   })
 
   test('hard dedupe: any existing post referencing the group blocks it forever', async () => {
     const h = harness({ postIdsForActivities: async () => ['existing-post'] })
-    expect(await evaluateAutoshareWindow('u', T0, new Date(T0.getTime() + 3 * HOUR), h.deps)).toBe(0)
+    expect(await evaluateAutoshareWindow('u', T0, new Date(T0.getTime() + 3 * HOUR), h.deps, NOW)).toBe(0)
     expect(h.createdPosts).toEqual([])
   })
 
@@ -264,7 +267,7 @@ describe('evaluateAutoshareWindow', () => {
       getGroup: async () => members,
       listCandidates: async () => [candidate('a1'), candidate('a2')],
     })
-    expect(await evaluateAutoshareWindow('u', T0, new Date(T0.getTime() + 3 * HOUR), h.deps)).toBe(1)
+    expect(await evaluateAutoshareWindow('u', T0, new Date(T0.getTime() + 3 * HOUR), h.deps, NOW)).toBe(1)
     expect(h.createdPosts).toEqual([{ anchorId: 'anchor', ruleId: 'rule-1' }])
   })
 
@@ -272,7 +275,7 @@ describe('evaluateAutoshareWindow', () => {
     const h = harness({
       getEnabledRules: async () => [rule({ enabled_at: new Date(T0.getTime() + 2 * HOUR) })],
     })
-    expect(await evaluateAutoshareWindow('u', T0, new Date(T0.getTime() + 3 * HOUR), h.deps)).toBe(0)
+    expect(await evaluateAutoshareWindow('u', T0, new Date(T0.getTime() + 3 * HOUR), h.deps, NOW)).toBe(0)
   })
 
   test('never retroactive: freshly INGESTED history whose activity ENDED before the enable is skipped', async () => {
@@ -286,12 +289,12 @@ describe('evaluateAutoshareWindow', () => {
         candidate('old-workout', { created_at: new Date(T0.getTime() + 11 * HOUR) }),
       ],
     })
-    expect(await evaluateAutoshareWindow('u', T0, new Date(T0.getTime() + 12 * HOUR), h.deps)).toBe(0)
+    expect(await evaluateAutoshareWindow('u', T0, new Date(T0.getTime() + 12 * HOUR), h.deps, NOW)).toBe(0)
   })
 
   test('a deleted share never comes back: suppressed activities block the group', async () => {
     const h = harness({ suppressedActivityIds: async () => ['a1'] })
-    expect(await evaluateAutoshareWindow('u', T0, new Date(T0.getTime() + 3 * HOUR), h.deps)).toBe(0)
+    expect(await evaluateAutoshareWindow('u', T0, new Date(T0.getTime() + 3 * HOUR), h.deps, NOW)).toBe(0)
     expect(h.createdPosts).toEqual([])
   })
 
@@ -308,7 +311,7 @@ describe('evaluateAutoshareWindow', () => {
       getEnabledRules: async () => [rule({ enabled_at: enable, min_duration_seconds: null })],
       listCandidates: async () => many,
     })
-    expect(await evaluateAutoshareWindow('u', T0, new Date(T0.getTime() + 3 * HOUR), h.deps)).toBe(
+    expect(await evaluateAutoshareWindow('u', T0, new Date(T0.getTime() + 3 * HOUR), h.deps, NOW)).toBe(
       MAX_POSTS_PER_RUN,
     )
     expect(h.createdPosts).toHaveLength(MAX_POSTS_PER_RUN)
@@ -316,7 +319,7 @@ describe('evaluateAutoshareWindow', () => {
 
   test('a rule with a null enabled_at never matches (defensive)', async () => {
     const h = harness({ getEnabledRules: async () => [rule({ enabled_at: null })] })
-    expect(await evaluateAutoshareWindow('u', T0, new Date(T0.getTime() + 3 * HOUR), h.deps)).toBe(0)
+    expect(await evaluateAutoshareWindow('u', T0, new Date(T0.getTime() + 3 * HOUR), h.deps, NOW)).toBe(0)
   })
 
   test('skips open-ended windows and vanished (empty-group) candidates', async () => {
@@ -326,10 +329,12 @@ describe('evaluateAutoshareWindow', () => {
         start_time: anchor.start_time,
       }),
     })
-    expect(await evaluateAutoshareWindow('u', T0, new Date(T0.getTime() + 3 * HOUR), open.deps)).toBe(0)
+    expect(await evaluateAutoshareWindow('u', T0, new Date(T0.getTime() + 3 * HOUR), open.deps, NOW)).toBe(0)
 
     const vanished = harness({ getGroup: async () => [] })
-    expect(await evaluateAutoshareWindow('u', T0, new Date(T0.getTime() + 3 * HOUR), vanished.deps)).toBe(0)
+    expect(
+      await evaluateAutoshareWindow('u', T0, new Date(T0.getTime() + 3 * HOUR), vanished.deps, NOW),
+    ).toBe(0)
   })
 
   test('first matching rule wins; distance is only resolved when some rule needs it', async () => {
@@ -341,7 +346,7 @@ describe('evaluateAutoshareWindow', () => {
       },
       getEnabledRules: async () => [rule({ id: 'r-a' }), rule({ id: 'r-b' })],
     })
-    await evaluateAutoshareWindow('u', T0, new Date(T0.getTime() + 3 * HOUR), h.deps)
+    await evaluateAutoshareWindow('u', T0, new Date(T0.getTime() + 3 * HOUR), h.deps, NOW)
     expect(h.createdPosts).toEqual([{ anchorId: 'a1', ruleId: 'r-a' }])
     expect(distanceCalls).toBe(0)
   })
@@ -359,7 +364,7 @@ describe('evaluateAutoshareWindow', () => {
         return []
       },
     })
-    await evaluateAutoshareWindow('u', T0, new Date(T0.getTime() + 3 * HOUR), h.deps)
+    await evaluateAutoshareWindow('u', T0, new Date(T0.getTime() + 3 * HOUR), h.deps, NOW)
     expect(listed).toEqual([T0])
   })
 
@@ -372,8 +377,110 @@ describe('evaluateAutoshareWindow', () => {
         return []
       },
     })
-    expect(await evaluateAutoshareWindow('u', T0, T0, h.deps)).toBe(0)
+    expect(await evaluateAutoshareWindow('u', T0, T0, h.deps, NOW)).toBe(0)
     expect(listed).toBe(false)
+  })
+})
+
+describe('ruleEndedAfter', () => {
+  test('is the enable time while the max age reaches further back', () => {
+    expect(ruleEndedAfter(rule(), new Date(T0.getTime() + 10 * HOUR))).toEqual(T0)
+  })
+
+  test('is now minus the max age once the enable is older than that', () => {
+    const now = new Date(T0.getTime() + 100 * HOUR)
+    expect(ruleEndedAfter(rule(), now)).toEqual(new Date(now.getTime() - 24 * HOUR))
+    expect(ruleEndedAfter(rule({ max_age_hours: 48 }), now)).toEqual(new Date(now.getTime() - 48 * HOUR))
+  })
+
+  test('is null for a rule that was never enabled', () => {
+    expect(ruleEndedAfter(rule({ enabled_at: null }), NOW)).toBeNull()
+  })
+})
+
+describe('evaluateAutoshareWindow: max age', () => {
+  const ended = (hoursAgo: number, now: Date) => {
+    const end = new Date(now.getTime() - hoursAgo * HOUR)
+    return candidate('a1', {
+      created_at: new Date(now.getTime() - HOUR),
+      end_time: end,
+      start_time: new Date(end.getTime() - HOUR),
+    })
+  }
+  const now = new Date(T0.getTime() + 200 * HOUR)
+  const windowStart = new Date(now.getTime() - 48 * HOUR)
+
+  test('with the default 24 h, an activity that ended 23 h ago shares and one that ended 25 h ago does not', async () => {
+    const recent = harness({ listCandidates: async () => [ended(23, now)] })
+    expect(await evaluateAutoshareWindow('u', windowStart, now, recent.deps, now)).toBe(1)
+
+    const old = harness({ listCandidates: async () => [ended(25, now)] })
+    expect(await evaluateAutoshareWindow('u', windowStart, now, old.deps, now)).toBe(0)
+    expect(old.createdPosts).toEqual([])
+  })
+
+  test('each rule applies its own max age', async () => {
+    const h = harness({
+      getEnabledRules: async () => [
+        rule({ id: 'short', max_age_hours: 6 }),
+        rule({ id: 'long', max_age_hours: 48 }),
+      ],
+      listCandidates: async () => [ended(30, now)],
+    })
+    expect(await evaluateAutoshareWindow('u', windowStart, now, h.deps, now)).toBe(1)
+    expect(h.createdPosts).toEqual([{ anchorId: 'a1', ruleId: 'long' }])
+
+    const tooOld = harness({
+      getEnabledRules: async () => [
+        rule({ id: 'short', max_age_hours: 6 }),
+        rule({ id: 'long', max_age_hours: 48 }),
+      ],
+      listCandidates: async () => [ended(50, now)],
+    })
+    expect(await evaluateAutoshareWindow('u', windowStart, now, tooOld.deps, now)).toBe(0)
+  })
+
+  test('a rule whose max age is too small does not take the match from one whose max age covers it', async () => {
+    const h = harness({
+      getEnabledRules: async () => [rule({ id: 'first', max_age_hours: 1 }), rule({ id: 'second' })],
+      listCandidates: async () => [ended(3, now)],
+    })
+    expect(await evaluateAutoshareWindow('u', windowStart, now, h.deps, now)).toBe(1)
+    expect(h.createdPosts).toEqual([{ anchorId: 'a1', ruleId: 'second' }])
+  })
+
+  test('lists candidates that ended after the earliest per-rule cutoff', async () => {
+    const listed: (Date | undefined)[] = []
+    const h = harness({
+      getEnabledRules: async () => [
+        rule({ id: 'day' }),
+        rule({ id: 'week', max_age_hours: 168 }),
+        rule({ enabled_at: new Date(now.getTime() - 2 * HOUR), id: 'fresh', max_age_hours: 8760 }),
+      ],
+      listCandidates: async (_user, _start, _end, endedAfter) => {
+        listed.push(endedAfter)
+        return []
+      },
+    })
+    await evaluateAutoshareWindow('u', windowStart, now, h.deps, now)
+    expect(listed).toEqual([new Date(now.getTime() - 168 * HOUR)])
+  })
+
+  test('an unsettled group that is still recent re-queues as before', async () => {
+    const requeued: Date[] = []
+    const young = candidate('a1', {
+      created_at: new Date(now.getTime() - 60_000),
+      end_time: new Date(now.getTime() - HOUR),
+      start_time: new Date(now.getTime() - 2 * HOUR),
+    })
+    const h = harness({
+      listCandidates: async () => [young],
+      requeue: async (_user, _start, _end, notBefore) => {
+        requeued.push(notBefore)
+      },
+    })
+    expect(await evaluateAutoshareWindow('u', windowStart, now, h.deps, now)).toBe(0)
+    expect(requeued).toEqual([new Date(young.created_at.getTime() + STABILISATION_SECONDS * 1000)])
   })
 })
 
@@ -389,7 +496,7 @@ describe('evaluateAutoshareWindow: data filters', () => {
       ],
       listCandidates: async () => [yoga('override')],
     })
-    expect(await evaluateAutoshareWindow('u', T0, windowEnd, h.deps)).toBe(1)
+    expect(await evaluateAutoshareWindow('u', T0, windowEnd, h.deps, NOW)).toBe(1)
     expect(h.createdPosts).toEqual([{ anchorId: 'garmin-row', ruleId: 'rule-1' }])
   })
 
@@ -399,12 +506,12 @@ describe('evaluateAutoshareWindow: data filters', () => {
       getEnabledRules: async () => [yogaRule],
       listCandidates: async () => [yoga('a1', { data })],
     })
-    expect(await evaluateAutoshareWindow('u', T0, windowEnd, h.deps)).toBe(0)
+    expect(await evaluateAutoshareWindow('u', T0, windowEnd, h.deps, NOW)).toBe(0)
     expect(h.createdPosts).toEqual([])
 
     data = { session_name: 'Evening flow', style: 'yin' }
     const renamedAt = new Date(T0.getTime() + 5 * HOUR)
-    expect(await evaluateAutoshareWindow('u', T0, renamedAt, h.deps)).toBe(1)
+    expect(await evaluateAutoshareWindow('u', T0, renamedAt, h.deps, NOW)).toBe(1)
     expect(h.createdPosts).toEqual([{ anchorId: 'a1', ruleId: 'rule-1' }])
   })
 
@@ -415,13 +522,13 @@ describe('evaluateAutoshareWindow: data filters', () => {
       listCandidates: async () => [yoga('a1', { data: named })],
       postIdsForActivities: async () => ['manual-post'],
     })
-    expect(await evaluateAutoshareWindow('u', T0, windowEnd, shared.deps)).toBe(0)
+    expect(await evaluateAutoshareWindow('u', T0, windowEnd, shared.deps, NOW)).toBe(0)
 
     const beforeEnable = harness({
       getEnabledRules: async () => [{ ...yogaRule, enabled_at: new Date(T0.getTime() + 2 * HOUR) }],
       listCandidates: async () => [yoga('a1', { data: named })],
     })
-    expect(await evaluateAutoshareWindow('u', T0, windowEnd, beforeEnable.deps)).toBe(0)
+    expect(await evaluateAutoshareWindow('u', T0, windowEnd, beforeEnable.deps, NOW)).toBe(0)
   })
 })
 

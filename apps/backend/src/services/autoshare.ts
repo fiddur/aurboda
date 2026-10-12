@@ -20,6 +20,10 @@
  *   connected source (which ingests months of history as fresh rows) from
  *   mass-publishing that history. A delayed sync of a workout done after
  *   enabling still shares — the case that matters.
+ * - **Recent activities only**: a rule shares an activity only when it ended
+ *   at most the rule's `max_age_hours` before the evaluation, so a history
+ *   update that makes old activities newly match (an enrich run, a re-sync, an
+ *   import) can never publish them.
  * - **Bounded blast radius**: at most {@link MAX_POSTS_PER_RUN} posts per
  *   evaluation run — federated deliveries can't be recalled, so even a bug or
  *   an unexpectedly wide window can only leak a handful of posts, visibly
@@ -168,6 +172,16 @@ export const groupNotBefore = (
 }
 
 /**
+ * The earliest end time a rule shares: after its enable (no retroactive
+ * sharing) and within its max age (no history updates). Null for a rule that
+ * was never enabled.
+ */
+export const ruleEndedAfter = (rule: AutoshareRuleRecord, now: Date): Date | null => {
+  if (rule.enabled_at == null) return null
+  return new Date(Math.max(rule.enabled_at.getTime(), now.getTime() - rule.max_age_hours * 3_600_000))
+}
+
+/**
  * Cap on posts created per evaluation run. Deliveries can't be recalled, so a
  * surprisingly wide window (first sync of a new source, a manual full re-sync)
  * must never turn into a firehose; the skip is logged. Groups beyond the cap
@@ -189,10 +203,15 @@ export const evaluateAutoshareWindow = async <Member extends AutoshareCandidate>
   now: Date = new Date(),
 ): Promise<number> => {
   const rules = await deps.getEnabledRules(user)
-  const enableTimes = rules.flatMap((rule) => (rule.enabled_at == null ? [] : [rule.enabled_at.getTime()]))
-  if (enableTimes.length === 0) return 0
+  const cutoffs = new Map(
+    rules.flatMap((rule) => {
+      const cutoff = ruleEndedAfter(rule, now)
+      return cutoff == null ? [] : [[rule, cutoff.getTime()] as const]
+    }),
+  )
+  if (cutoffs.size === 0) return 0
 
-  const candidates = await deps.listCandidates(user, start, end, new Date(Math.min(...enableTimes)))
+  const candidates = await deps.listCandidates(user, start, end, new Date(Math.min(...cutoffs.values())))
   if (candidates.length === 0) return 0
 
   const processedAnchors = new Set<string>()
@@ -233,13 +252,16 @@ export const evaluateAutoshareWindow = async <Member extends AutoshareCandidate>
     if (window.end_time == null) continue
     const windowEnd = window.end_time
 
-    // New-arrivals-only, gate 2: the activity itself ended after the enable —
-    // a first sync/backfill ingests months of history as FRESH rows, which
-    // passes gate 1; this keeps that history off the feed. A delayed sync of a
-    // workout done after enabling still shares.
-    const eligibleRules = ingestEligible.filter(
-      (rule) => rule.enabled_at != null && windowEnd.getTime() >= rule.enabled_at.getTime(),
-    )
+    // New-arrivals-only, gate 2, and the max age: the activity itself ended
+    // after the enable — a first sync/backfill ingests months of history as
+    // FRESH rows, which passes gate 1; this keeps that history off the feed —
+    // and within the rule's max age, so a history update that makes old
+    // activities newly match never publishes them. A delayed sync of a workout
+    // done after enabling still shares while it is within the max age.
+    const eligibleRules = ingestEligible.filter((rule) => {
+      const cutoff = cutoffs.get(rule)
+      return cutoff != null && windowEnd.getTime() >= cutoff
+    })
     if (eligibleRules.length === 0) continue
 
     const durationSeconds = Math.round((windowEnd.getTime() - window.start_time.getTime()) / 1000)
@@ -275,8 +297,9 @@ export const PREVIEW_SAMPLE_DAYS = 30
 
 /**
  * Preview: how many merge groups in the last `sampleDays` WOULD match the
- * rule's predicate — regardless of shared status or `enabled_at` (the point is
- * to show the rule's reach before enabling it). Creates nothing.
+ * rule's predicate — regardless of shared status, `enabled_at` or
+ * `max_age_hours` (the point is to show the rule's reach before enabling it).
+ * Creates nothing.
  */
 export const previewAutoshareRule = async <Member extends AutoshareCandidate>(
   user: string,

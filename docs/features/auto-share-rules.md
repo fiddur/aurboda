@@ -22,6 +22,12 @@ A per-user set of rules, each combining a **predicate** and a **share template**
   an override row (editing a synced activity can create one) counts for the group. A
   member replaced by another member — the synced row behind an edit's override — is
   left out, so a value you corrected or cleared never comes back from the original.
+- **Max age** (`max_age_hours`, default 24, 1 to 8760): a rule shares an activity only
+  when it _ended_ at most this many hours before the rule looks at it. A history update
+  that makes old activities newly match — an enrich rule run over history that adds
+  `session_name`, a re-sync, an import — therefore never publishes them. The flip side:
+  an activity whose phone sync is delayed past the max age is not shared either. Rules
+  created before the field existed have 24.
 - **Share template** — exactly the fields of a manual share: `included_metrics`,
   `series_metrics`, `include_chart`/`include_map`, `visibility`, and an optional fixed
   `message` for the created posts.
@@ -54,6 +60,12 @@ A per-user set of rules, each combining a **predicate** and a **share template**
 - A post whose activity gains its Garmin detail later (or whose detail is re-synced by
   hand) is **re-federated as an `Update`**, so remote servers pick up the new scalars
   and attachments — see [Feed](feed.md).
+- **A shared activity that changes later is re-federated** as an `Update` too: a new
+  title or data, a merge, a re-sync with different values. The same evaluation pass
+  compares each activity post's version with the newest change in its merge group
+  (`activities.updated_at`, set only on a real change) and, once that change is 10
+  minutes old, re-delivers the post. This applies to **manual shares** as well, has
+  **no age limit**, and runs whether or not any rule is enabled.
 - **Merge-group aware**: matching and the created post both use the group's **anchor**
   (earliest start) and its merged span — the same window a manual share of the merged
   activity covers.
@@ -69,9 +81,13 @@ A per-user set of rules, each combining a **predicate** and a **share template**
   _ended_ after it. The ingest gate makes enabling affect new arrivals only; the
   activity-time gate keeps a first sync or full re-sync of a newly connected source —
   which ingests months of history as fresh rows — from mass-publishing that history.
-  A delayed sync of a workout done _after_ enabling still shares. The candidate query
-  already leaves out activities that ended before the earliest `enabled_at`, so a
-  first sync's wide window costs one query rather than several per old activity.
+  A delayed sync of a workout done _after_ enabling still shares, as long as it is
+  within the rule's max age.
+- **Recent activities only**: on top of the two gates, the activity must have ended
+  within the rule's `max_age_hours` of the evaluation. A rule's cutoff is the later of
+  its `enabled_at` and _now − max age_; the candidate query already leaves out
+  activities that ended before the earliest cutoff over the enabled rules, so a first
+  sync's wide window costs one query rather than several per old activity.
 - **Bounded blast radius**: at most 5 posts per evaluation run (logged when hit) —
   federated deliveries can't be recalled, so even an unexpected window can only leak a
   handful of posts, never a firehose.
@@ -92,7 +108,10 @@ A per-user set of rules, each combining a **predicate** and a **share template**
   and a create form (with a **Data conditions** list: field, "has a value" / "is" /
   "is not" / "has no value", and a value suggested from the type's known values) and a
   **Preview** ("would have matched N activities in the last
-  30 days" — regardless of shared status, so the number shows the rule's true reach).
+  30 days" — regardless of shared status, `enabled_at` and the max age, so the number
+  shows the predicate's true reach). The form's "Only activities that ended within …
+  hours" field sets the max age (default 24), and the rule list states it ("ended
+  within 24 h").
 - **REST**: `GET/POST /autoshare-rules`, `PATCH/DELETE /autoshare-rules/:id`,
   `POST /autoshare-rules/preview`.
 - **MCP** (parity): `list_autoshare_rules`, `add_autoshare_rule`,

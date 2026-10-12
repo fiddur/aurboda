@@ -205,12 +205,15 @@ function RuleRow({ rule, postCount }: { rule: AutoshareRule; postCount: number }
   )
 }
 
+const DEFAULT_MAX_AGE_HOURS = 24
+
 // eslint-disable-next-line complexity -- one form, one field per predicate/template knob
 function CreateRuleForm({ onDone }: { onDone: () => void }) {
   const [name, setName] = useState('')
   const [activityType, setActivityType] = useState('')
   const [minMinutes, setMinMinutes] = useState('')
   const [minKm, setMinKm] = useState('')
+  const [maxAgeHours, setMaxAgeHours] = useState(String(DEFAULT_MAX_AGE_HOURS))
   const [summary, setSummary] = useState<Set<string>>(() => new Set(DEFAULT_SUMMARY))
   const [series, setSeries] = useState<Set<MetricType>>(() => new Set())
   const [includeMap, setIncludeMap] = useState(false)
@@ -232,6 +235,7 @@ function CreateRuleForm({ onDone }: { onDone: () => void }) {
     include_chart: series.has('heart_rate'),
     include_map: includeMap,
     included_metrics: SUMMARY_METRICS.map((m) => m.key).filter((k) => summary.has(k)),
+    max_age_hours: maxAgeHours.trim() === '' ? DEFAULT_MAX_AGE_HOURS : Number(maxAgeHours),
     ...(message.trim() === '' ? {} : { message: message.trim() }),
     ...(minKm.trim() === '' ? {} : { min_distance_meters: Number(minKm) * 1000 }),
     ...(minMinutes.trim() === '' ? {} : { min_duration_seconds: Number(minMinutes) * 60 }),
@@ -298,6 +302,17 @@ function CreateRuleForm({ onDone }: { onDone: () => void }) {
             step="0.1"
             value={minKm}
             onInput={(e) => setMinKm((e.target as HTMLInputElement).value)}
+          />
+        </label>
+        <label>
+          Only activities that ended within (hours)
+          <input
+            type="number"
+            min="1"
+            max="8760"
+            step="1"
+            value={maxAgeHours}
+            onInput={(e) => setMaxAgeHours((e.target as HTMLInputElement).value)}
           />
         </label>
       </div>

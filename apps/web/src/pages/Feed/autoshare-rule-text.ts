@@ -60,5 +60,6 @@ export const ruleSummary = (
   if (rule.min_distance_meters) predicate.push(`≥ ${rule.min_distance_meters / 1000} km`)
   if (rule.source) predicate.push(`from ${rule.source}`)
   for (const filter of rule.data_filters) predicate.push(dataFilterSummary(filter, labelFor(filter.field)))
+  predicate.push(`ended within ${rule.max_age_hours} h`)
   return `${predicate.join(', ')} → ${rule.visibility}`
 }
