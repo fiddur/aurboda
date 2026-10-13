@@ -254,12 +254,16 @@ export const getProductivityBucketed = async (
 /** Returns only id, activity, and title to minimize memory usage. */
 export const getAllProductivityForCategorization = async (
   user: string,
-): Promise<Array<{ id: string; activity: string; title?: string }>> => {
-  const result = await query(user, `SELECT id, activity, title FROM productivity WHERE deleted_at IS NULL`)
+): Promise<Array<{ id: string; activity: string; title?: string; resolved_category: string[] | null }>> => {
+  const result = await query(
+    user,
+    `SELECT id, activity, title, resolved_category FROM productivity WHERE deleted_at IS NULL`,
+  )
 
   return result.rows.map((row) => ({
     activity: row.activity,
     id: row.id,
+    resolved_category: row.resolved_category ?? null,
     title: row.title || undefined,
   }))
 }

@@ -69,8 +69,8 @@ export const retypeLegacyScreentime = async (user: string): Promise<RetypeLegacy
                        WHERE b.id <> a.id AND b.source = a.source AND b.start_time = a.start_time
                          AND b.activity_type = c.activity_type_name AND b.deleted_at IS NULL)`,
     )
-    // The NOT EXISTS guard keeps a row that would collide with a soft-deleted
-    // twin on idx_activities_type_time (which ignores deleted_at) as `screentime`.
+    // Defensive only: v1 spans always carry an external_id. The guard exists because
+    // idx_activities_type_time ignores deleted_at, so a soft-deleted twin would still collide.
     const retype = await query(
       tx,
       `${CATEGORY_TYPES_CTE}

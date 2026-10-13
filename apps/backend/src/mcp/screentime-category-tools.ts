@@ -9,6 +9,7 @@ import {
   modifyCategory,
   recategorizeAll,
   removeCategory,
+  toRecategorizeResponseFields,
 } from '../services/screentime-categories.ts'
 import { errorResponse, jsonResponse, type McpServer } from './helpers.ts'
 
@@ -91,11 +92,11 @@ export const registerScreentimeCategoryTools = (server: McpServer, user: string)
 
   server.tool(
     'recategorize_screentime',
-    'Force recategorization of all screentime records against current category rules. Use after bulk rule changes.',
+    'Force recategorization of all screentime records against current category rules, then rebuild the screentime activities from them. Use after bulk rule changes.',
     {},
     async () => {
-      const count = await recategorizeAll(user)
-      return jsonResponse({ records_updated: count, success: true })
+      const result = await recategorizeAll(user)
+      return jsonResponse({ ...toRecategorizeResponseFields(result), success: true })
     },
   )
 }

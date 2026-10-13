@@ -16,7 +16,28 @@ import { isScreentimeActivity } from '@aurboda/api-spec'
 import type { ProductivityRecord, ScreentimeCategory } from '../db/index.ts'
 import type { Activity } from '../db/types.ts'
 
-import { getScoreForCategory } from './screentime-categories.ts'
+/**
+ * Resolve the effective score for a category path by walking up parents.
+ */
+export const getScoreForCategory = (
+  categoryPath: string[],
+  allCategories: ScreentimeCategory[],
+): number | undefined => {
+  const exact = allCategories.find(
+    (c) => c.name.length === categoryPath.length && c.name.every((n, i) => n === categoryPath[i]),
+  )
+  if (exact?.score != null) return exact.score
+
+  for (let depth = categoryPath.length - 1; depth > 0; depth--) {
+    const parentPath = categoryPath.slice(0, depth)
+    const parent = allCategories.find(
+      (c) => c.name.length === parentPath.length && c.name.every((n, i) => n === parentPath[i]),
+    )
+    if (parent?.score != null) return parent.score
+  }
+
+  return undefined
+}
 
 const MERGE_GAP_MS = 2 * 60 * 1000 // Mirrors productivityMerge.ts
 const MIN_SPAN_MS = 60_000 // Skip spans shorter than 1 minute
