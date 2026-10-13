@@ -98,3 +98,14 @@ Webhooks are a **system-level** feature, not per-user. Once the admin enables we
 ### Disabling
 
 When the admin disables webhooks, all remote subscriptions are deleted from Oura and local tracking records are cleaned up.
+
+## Disconnecting
+
+To disconnect Oura:
+
+- **Settings:** Click "Disconnect" in the Oura Ring data source page
+- **REST:** `POST /api/auth/oura/disconnect`
+
+This revokes the authorization at Oura (best effort: a grant that is already dead, such as after a lapsed Oura subscription, is still removed locally), deletes the stored OAuth token, deletes the user's Oura sync state rows so nothing is retried or shown as failing, and deletes the user's Oura user-ID mapping so webhook events pushed for that user are ignored. The scheduled sync skips users without an Oura grant. Data already imported from Oura is kept.
+
+Webhook subscriptions themselves are application-level and stay in place for the other connected users (see [Per-User Behavior](#per-user-behavior)).

@@ -527,7 +527,7 @@ export {
   updateReport,
 } from './reports.ts'
 
-export { getOAuthToken, upsertOAuthToken } from './oauth.ts'
+export { deleteOAuthToken, getOAuthToken, upsertOAuthToken } from './oauth.ts'
 
 export { getAllSyncStates, getSyncState, resetSyncState, upsertSyncState } from './sync-state.ts'
 

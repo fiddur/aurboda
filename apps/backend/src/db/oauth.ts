@@ -37,3 +37,8 @@ export const getOAuthToken = async (user: string, provider: string): Promise<OAu
     scopes: row.scopes,
   }
 }
+
+export const deleteOAuthToken = async (user: string, provider: string): Promise<boolean> => {
+  const result = await query(user, `DELETE FROM oauth_tokens WHERE provider = $1`, [provider])
+  return (result.rowCount ?? 0) > 0
+}

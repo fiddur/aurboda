@@ -3,9 +3,10 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 import * as dbIndex from '../db/index.ts'
 
 // Partial mock: keep the real exports (other sync integrations reference them
-// at module load) and override only getSyncState.
+// at module load) and override only what the providers read.
 vi.mock('../db/index.ts', async (importOriginal) => ({
   ...(await importOriginal<typeof dbIndex>()),
+  getOAuthToken: vi.fn(),
   getSyncState: vi.fn(),
 }))
 
@@ -54,6 +55,7 @@ import { syncGravlWorkouts } from '../integrations/gravl/sync.ts'
 import { syncLastFmData } from '../integrations/lastfm/sync.ts'
 import { syncOuraDataType } from '../integrations/oura/sync.ts'
 import { syncRescueTimeData } from '../integrations/rescuetime/sync.ts'
+import { auditError, auditInfo } from './audit-log.ts'
 import { getSettings } from './settings.ts'
 import { createSyncProvider, resolveSyncInterval } from './sync-provider.ts'
 
@@ -215,6 +217,18 @@ describe('createSyncProvider › syncOuraIfNeeded', () => {
     vi.clearAllMocks()
     vi.mocked(getSettings).mockResolvedValue({} as never)
     vi.mocked(dbIndex.getSyncState).mockResolvedValue({ last_sync_time: lastSync } as never)
+    vi.mocked(dbIndex.getOAuthToken).mockResolvedValue({ access_token: 'token', provider: 'oura' })
+  })
+
+  test('skips a user with no Oura grant without syncing or auditing', async () => {
+    vi.mocked(dbIndex.getOAuthToken).mockResolvedValue(null)
+    const provider = createSyncProvider({ oura })
+
+    await provider.syncOuraIfNeeded('alice', 'tags')
+
+    expect(syncOuraDataType).not.toHaveBeenCalled()
+    expect(auditError).not.toHaveBeenCalled()
+    expect(auditInfo).not.toHaveBeenCalled()
   })
 
   test('triggers deduction over the synced window after a successful sync with new records', async () => {

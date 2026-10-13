@@ -33,6 +33,16 @@ export const getOuraConnectUrl = async (): Promise<string> => {
   return response.data.url
 }
 
+export const disconnectOura = async (): Promise<{ success: boolean }> => {
+  const { token } = auth.value
+  const response = await axios.post(
+    `${API_URL}/auth/oura/disconnect`,
+    {},
+    { headers: { Authorization: `Bearer ${token}` } },
+  )
+  return response.data
+}
+
 export const syncOura = async (fullResync?: boolean): Promise<OuraSyncResponse> => {
   const { token } = auth.value
   const response = await axios.post<OuraSyncResponse>(

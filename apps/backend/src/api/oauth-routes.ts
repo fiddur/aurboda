@@ -10,7 +10,7 @@ type OuraClient = ReturnType<typeof ouraClient>
 import type { CentralDb } from '../services/central-db.ts'
 import type { AnyMiddleware } from '../typed-router.ts'
 
-import { upsertOAuthToken } from '../db/index.ts'
+import { resetSyncState, upsertOAuthToken } from '../db/index.ts'
 import { auditError } from '../services/audit-log.ts'
 
 interface OAuthRoutesDeps {
@@ -34,6 +34,19 @@ export const registerOAuthRoutes = ({
 }: OAuthRoutesDeps): void => {
   httpd.get('/auth/oura/connect', authMiddleware, oura.getAuthorizeUrl)
   httpd.get('/auth/ouracb', oura.authCb)
+
+  httpd.post('/auth/oura/disconnect', authMiddleware, async (req, res) => {
+    const user = req.user!
+    try {
+      await oura.disconnect(user)
+      await resetSyncState(user, 'oura')
+      await centralDb.deleteOuraUserMappingsByUsername(user)
+      res.json({ success: true })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Disconnect failed'
+      res.status(500).json({ error: message, success: false })
+    }
+  })
 
   // Garmin Connect (login with credentials, tokens-only stored)
   httpd.post('/auth/garmin/login', authMiddleware, async (req, res) => {
