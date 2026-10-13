@@ -398,6 +398,27 @@ describe('central-db', () => {
     })
   })
 
+  describe('deleteOuraUserMappingsByUsername', () => {
+    test('deletes every mapping for the username and returns the count', async () => {
+      mockClient.query.mockResolvedValue({ rowCount: 2 })
+
+      const result = await centralDb.deleteOuraUserMappingsByUsername('testuser')
+
+      expect(result).toBe(2)
+      expect(mockClient.query).toHaveBeenCalledWith('DELETE FROM oura_user_mappings WHERE username = $1', [
+        'testuser',
+      ])
+    })
+
+    test('returns 0 when the user has no mapping', async () => {
+      mockClient.query.mockResolvedValue({ rowCount: 0 })
+
+      const result = await centralDb.deleteOuraUserMappingsByUsername('unknown')
+
+      expect(result).toBe(0)
+    })
+  })
+
   describe('upsertOuraWebhookSubscription', () => {
     test('inserts webhook subscription', async () => {
       mockClient.query.mockResolvedValue({ rows: [] })

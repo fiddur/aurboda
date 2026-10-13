@@ -270,7 +270,6 @@ export const findActivityByExternalId = async (
 }
 
 /**
- * The tombstone lookup: the soft-deleted activity for a provider identity, if any.
  * Callers use it to tell "we deliberately removed this" from "we have never seen
  * this" — `findActivityByExternalId` returns null for both.
  */

@@ -7,7 +7,7 @@ import type { ouraClient } from '../integrations/oura/client.ts'
 import type { ActivityNotifier } from './deduction-queue.ts'
 import type { SyncProvider } from './queries/index.ts'
 
-import { getSyncState } from '../db/index.ts'
+import { getOAuthToken, getSyncState } from '../db/index.ts'
 import {
   type DetailSyncedCallback,
   type TrackWrittenCallback,
@@ -279,6 +279,7 @@ export function createSyncProvider(config: SyncProviderConfig): SyncProvider {
       'syncOuraIfNeeded',
       async (user: string, dataType: 'tags' | 'sessions'): Promise<void> => {
         if (!config.oura) return
+        if (!(await getOAuthToken(user, 'oura'))) return
 
         try {
           const ouraDataType: OuraDataType = dataType

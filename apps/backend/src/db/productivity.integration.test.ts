@@ -319,15 +319,18 @@ describe('Productivity Integration Tests', () => {
   })
 
   describe('getAllProductivityForCategorization', () => {
-    test('returns only id, activity, and title', async () => {
+    test('returns id, activity, title and resolved_category', async () => {
       const user = getTestUser()
-      await insertProductivity(user, [makeRecord({ activity: 'vscode', title: 'main.ts' })])
+      await insertProductivity(user, [
+        makeRecord({ activity: 'vscode', resolved_category: ['Work', 'Programming'], title: 'main.ts' }),
+      ])
 
       const records = await getAllProductivityForCategorization(user)
       expect(records).toHaveLength(1)
       expect(records[0]).toHaveProperty('id')
       expect(records[0]).toHaveProperty('activity', 'vscode')
       expect(records[0]).toHaveProperty('title', 'main.ts')
+      expect(records[0]).toHaveProperty('resolved_category', ['Work', 'Programming'])
     })
 
     test('excludes soft-deleted records', async () => {

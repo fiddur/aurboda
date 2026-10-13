@@ -124,6 +124,7 @@ export interface CentralDb
   upsertOuraUserMapping: (ouraUserId: string, username: string) => Promise<void>
   getUsernameByOuraUserId: (ouraUserId: string) => Promise<string | null>
   deleteOuraUserMapping: (ouraUserId: string) => Promise<boolean>
+  deleteOuraUserMappingsByUsername: (username: string) => Promise<number>
   upsertOuraWebhookSubscription: (
     sub: Omit<OuraWebhookSubscription, 'created_at' | 'updated_at'>,
   ) => Promise<void>
@@ -312,6 +313,12 @@ export const createCentralDb = (deps: CentralDbDeps): CentralDb => {
         ouraUserId,
       ])
       return (result.rowCount ?? 0) > 0
+    },
+
+    deleteOuraUserMappingsByUsername: async (username: string): Promise<number> => {
+      const client = await getClient()
+      const result = await client.query('DELETE FROM oura_user_mappings WHERE username = $1', [username])
+      return result.rowCount ?? 0
     },
 
     deleteOuraWebhookSubscription: async (ouraSubscriptionId: string): Promise<boolean> => {

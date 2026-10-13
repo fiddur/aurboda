@@ -3,7 +3,13 @@ import type { ProviderSyncStatus, UserSettingsResponse } from '@aurboda/api-spec
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useState } from 'preact/hooks'
 
-import { fetchOuraSyncStatus, fetchUserSettings, getOuraConnectUrl, syncOura } from '../../state/api'
+import {
+  disconnectOura,
+  fetchOuraSyncStatus,
+  fetchUserSettings,
+  getOuraConnectUrl,
+  syncOura,
+} from '../../state/api'
 import { auth } from '../../state/auth'
 import {
   type DataTypeItem,
@@ -26,6 +32,9 @@ const DATA_TYPES: DataTypeItem[] = [
   { label: 'Oura tags (mood, symptoms, etc.)' },
 ]
 
+const DISCONNECT_CONFIRMATION =
+  'Disconnect Oura Ring? Aurboda forgets the authorization and stops syncing; you will need to connect again to resume. Data already synced is kept.'
+
 function OuraConnection({
   userSettings,
   syncStates,
@@ -40,6 +49,7 @@ function OuraConnection({
 
   const [ouraSyncStatus, setOuraSyncStatus] = useState<'idle' | 'syncing' | 'done' | 'error'>('idle')
   const [ouraSyncMessage, setOuraSyncMessage] = useState<string>('')
+  const [disconnecting, setDisconnecting] = useState(false)
 
   const handleConnectOura = useCallback(async () => {
     try {
@@ -71,6 +81,21 @@ function OuraConnection({
     }
   }, [queryClient])
 
+  const handleDisconnect = useCallback(async () => {
+    if (!confirm(DISCONNECT_CONFIRMATION)) return
+    setDisconnecting(true)
+    try {
+      await disconnectOura()
+      await queryClient.invalidateQueries({ queryKey: ['userSettings'] })
+      await queryClient.invalidateQueries({ queryKey: ['ouraSyncStatus'] })
+    } catch (err) {
+      setOuraSyncStatus('error')
+      setOuraSyncMessage(err instanceof Error ? err.message : 'Disconnect failed')
+    } finally {
+      setDisconnecting(false)
+    }
+  }, [queryClient])
+
   return (
     <>
       <StatusBanner
@@ -95,6 +120,14 @@ function OuraConnection({
               onClick={handleOuraFullResync}
             >
               {ouraSyncStatus === 'syncing' ? 'Syncing...' : 'Full Re-sync'}
+            </button>
+            <button
+              type="button"
+              class="connect-button disconnect-button"
+              disabled={disconnecting}
+              onClick={handleDisconnect}
+            >
+              {disconnecting ? 'Disconnecting...' : 'Disconnect'}
             </button>
             {ouraSyncMessage && <span class={`oura-sync-message ${ouraSyncStatus}`}>{ouraSyncMessage}</span>}
           </div>

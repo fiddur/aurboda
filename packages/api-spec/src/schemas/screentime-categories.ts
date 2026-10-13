@@ -181,6 +181,21 @@ export type MoveScreentimeCategoryResponse = z.infer<typeof moveScreentimeCatego
 export const recategorizeScreentimeResponseSchema = baseResponseSchema
   .extend({
     records_updated: z.number().int().optional().meta({ description: 'Number of records recategorized' }),
+    spans_deduplicated: z
+      .number()
+      .int()
+      .optional()
+      .meta({ description: 'Legacy v1 screentime activities soft-deleted because a v2 twin existed' }),
+    spans_removed: z
+      .number()
+      .int()
+      .optional()
+      .meta({ description: 'Screentime activities soft-deleted because no record produces them any more' }),
+    spans_upserted: z
+      .number()
+      .int()
+      .optional()
+      .meta({ description: 'Screentime activities rebuilt from the recategorized records' }),
   })
   .meta({ id: 'RecategorizeScreentimeResponse' })
 

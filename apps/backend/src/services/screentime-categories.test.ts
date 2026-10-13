@@ -1,14 +1,31 @@
-import { describe, expect, test } from 'vitest'
+import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 import type { ScreentimeCategory } from '../db/types.ts'
 
 import {
+  batchUpdateResolvedCategory,
+  getAllProductivityForCategorization,
+  getScreentimeCategories,
+} from '../db/index.ts'
+import { rebuildScreentimeSpans } from './rebuild-screentime-spans.ts'
+import { getScoreForCategory } from './screentime-activities.ts'
+import {
   compileRules,
   convertAwCategories,
   getColorForCategory,
-  getScoreForCategory,
+  recategorizeAll,
   resolveCategory,
 } from './screentime-categories.ts'
+
+vi.mock('../db/index.ts', () => ({
+  batchUpdateResolvedCategory: vi.fn(),
+  getAllProductivityForCategorization: vi.fn(),
+  getScreentimeCategories: vi.fn(),
+}))
+
+vi.mock('./rebuild-screentime-spans.ts', () => ({
+  rebuildScreentimeSpans: vi.fn(),
+}))
 
 const makeCategory = (
   partial: Partial<ScreentimeCategory> & Pick<ScreentimeCategory, 'name'>,
@@ -286,5 +303,53 @@ describe('convertAwCategories', () => {
 
     const result = convertAwCategories(awCategories)
     expect(result[0].rule_type).toBe('none')
+  })
+})
+
+describe('recategorizeAll', () => {
+  const spans = { deduplicated: 1, removed: 2, upserted: 3 }
+
+  beforeEach(() => {
+    vi.mocked(getScreentimeCategories).mockReset().mockResolvedValue(sampleCategories)
+    vi.mocked(batchUpdateResolvedCategory).mockReset().mockResolvedValue(undefined)
+    vi.mocked(rebuildScreentimeSpans).mockReset().mockResolvedValue(spans)
+  })
+
+  test('rebuilds spans when a record changed category', async () => {
+    vi.mocked(getAllProductivityForCategorization).mockResolvedValue([
+      { activity: 'vscode', id: 'r1', resolved_category: ['Work', 'Programming'] },
+      { activity: 'Steam', id: 'r2', resolved_category: ['Work'] },
+    ])
+
+    const result = await recategorizeAll('user')
+
+    expect(result).toEqual({ records_updated: 2, spans })
+    expect(rebuildScreentimeSpans).toHaveBeenCalledWith('user')
+    expect(batchUpdateResolvedCategory).toHaveBeenCalledWith('user', [
+      { id: 'r1', resolved_category: ['Work', 'Programming'] },
+      { id: 'r2', resolved_category: ['Media', 'Games'] },
+    ])
+  })
+
+  test('skips the rebuild when every record resolves to what it already had', async () => {
+    vi.mocked(getAllProductivityForCategorization).mockResolvedValue([
+      { activity: 'vscode', id: 'r1', resolved_category: ['Work', 'Programming'] },
+      { activity: 'unknown-app', id: 'r2', resolved_category: null },
+    ])
+
+    const result = await recategorizeAll('user')
+
+    expect(result).toEqual({ records_updated: 2 })
+    expect(rebuildScreentimeSpans).not.toHaveBeenCalled()
+    expect(batchUpdateResolvedCategory).toHaveBeenCalledTimes(1)
+  })
+
+  test('rebuilds anyway when asked to, even with nothing to recategorize', async () => {
+    vi.mocked(getAllProductivityForCategorization).mockResolvedValue([])
+
+    const result = await recategorizeAll('user', { rebuildSpans: true })
+
+    expect(result).toEqual({ records_updated: 0, spans })
+    expect(rebuildScreentimeSpans).toHaveBeenCalledWith('user')
   })
 })
