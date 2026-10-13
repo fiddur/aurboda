@@ -343,4 +343,13 @@ describe('recategorizeAll', () => {
     expect(rebuildScreentimeSpans).not.toHaveBeenCalled()
     expect(batchUpdateResolvedCategory).toHaveBeenCalledTimes(1)
   })
+
+  test('rebuilds anyway when asked to, even with nothing to recategorize', async () => {
+    vi.mocked(getAllProductivityForCategorization).mockResolvedValue([])
+
+    const result = await recategorizeAll('user', { rebuildSpans: true })
+
+    expect(result).toEqual({ records_updated: 0, spans })
+    expect(rebuildScreentimeSpans).toHaveBeenCalledWith('user')
+  })
 })

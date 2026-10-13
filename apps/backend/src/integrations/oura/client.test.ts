@@ -41,12 +41,17 @@ describe('ouraClient.disconnect', () => {
 
   test('still deletes the stored grant when the revoke fails', async () => {
     vi.mocked(getOAuthToken).mockResolvedValue({ access_token: 'dead-token', provider: 'oura' })
-    mockedAxios.post = vi.fn().mockRejectedValue(new Error('Request failed with status code 403'))
+    mockedAxios.post = vi
+      .fn()
+      .mockRejectedValue(new Error('403 from https://api.ouraring.com/oauth/revoke?access_token=dead-token'))
 
     await expect(client.disconnect('alice')).resolves.toBeUndefined()
 
     expect(deleteOAuthToken).toHaveBeenCalledWith('alice', 'oura')
-    expect(console.warn).toHaveBeenCalledWith(expect.not.stringContaining('dead-token'), expect.anything())
+    expect(console.warn).toHaveBeenCalledWith(
+      expect.not.stringContaining('dead-token'),
+      expect.not.stringContaining('dead-token'),
+    )
   })
 
   test('does nothing when the user has no Oura grant', async () => {

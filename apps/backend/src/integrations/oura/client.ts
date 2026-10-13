@@ -10,6 +10,7 @@ import {
   schemaInitialized,
   upsertOAuthToken,
 } from '../../db/index.ts'
+import { redactSecret } from '../garmin/client.ts'
 
 /** Oura tag record used during sync processing (mapped to activities). */
 export interface OuraTagWithComment {
@@ -158,7 +159,7 @@ export const ouraClient = (
         } catch (error) {
           console.warn(
             `Oura token revoke failed for ${user}, deleting local grant anyway:`,
-            error instanceof Error ? error.message : error,
+            redactSecret(error instanceof Error ? error.message : String(error), token.access_token),
           )
         }
       }

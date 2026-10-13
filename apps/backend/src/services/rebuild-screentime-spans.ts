@@ -35,15 +35,18 @@ const v2ExternalId = (alias: string) =>
 const V1_EXTERNAL_ID = v1ExternalId('a')
 const V2_EXTERNAL_ID = v2ExternalId('a')
 
+// A top-level category whose name already is its slug (`games`) gives both identities the
+// same string, so a v2 row would match the v1 predicate; such rows are left alone.
+
 const foldV1Spans = (user: string): Promise<number> =>
   withUserTransaction(user, async (tx) => {
     const dedup = await query(
       tx,
       `UPDATE activities a SET deleted_at = NOW()
         WHERE a.deleted_at IS NULL AND a.source = ANY($1::text[])
-          AND a.external_id = ${V1_EXTERNAL_ID}
+          AND a.external_id = ${V1_EXTERNAL_ID} AND a.external_id <> ${V2_EXTERNAL_ID}
           AND EXISTS (SELECT 1 FROM activities b
-                       WHERE b.deleted_at IS NULL AND b.source = a.source
+                       WHERE b.id <> a.id AND b.deleted_at IS NULL AND b.source = a.source
                          AND b.external_id = ${V2_EXTERNAL_ID})`,
       [SCREENTIME_SOURCES],
     )
@@ -54,7 +57,7 @@ const foldV1Spans = (user: string): Promise<number> =>
       tx,
       `UPDATE activities a SET external_id = ${V2_EXTERNAL_ID}
         WHERE a.deleted_at IS NULL AND a.source = ANY($1::text[])
-          AND a.external_id = ${V1_EXTERNAL_ID}
+          AND a.external_id = ${V1_EXTERNAL_ID} AND a.external_id <> ${V2_EXTERNAL_ID}
           AND NOT EXISTS (SELECT 1 FROM activities b
                            WHERE b.source = a.source AND b.external_id = ${V2_EXTERNAL_ID})
           AND NOT EXISTS (SELECT 1 FROM activities c
@@ -121,7 +124,7 @@ const removeStaleSpans = async (user: string, keepIds: string[], cutoff: Date): 
   return result.rowCount ?? 0
 }
 
-export const rebuildScreentimeSpans = async (
+const rebuild = async (
   user: string,
   { now = () => new Date() }: { now?: () => Date } = {},
 ): Promise<RebuildScreentimeSpansResult> => {
@@ -152,4 +155,26 @@ export const rebuildScreentimeSpans = async (
   }
 
   return { deduplicated, removed, upserted }
+}
+
+const inFlight = new Map<string, Promise<unknown>>()
+
+/**
+ * Rebuilds run one at a time per user: a second rebuild started while one is
+ * still sweeping would otherwise have its upserts swept as stale by the first.
+ */
+export const rebuildScreentimeSpans = (
+  user: string,
+  options: { now?: () => Date } = {},
+): Promise<RebuildScreentimeSpansResult> => {
+  const previous = inFlight.get(user) ?? Promise.resolve()
+  const run = previous.then(
+    () => rebuild(user, options),
+    () => rebuild(user, options),
+  )
+  inFlight.set(user, run)
+  void run.finally(() => {
+    if (inFlight.get(user) === run) inFlight.delete(user)
+  })
+  return run
 }

@@ -286,6 +286,38 @@ describe('rebuildScreentimeSpans', () => {
     expect((await getRow(rescuetimeRunId)).deleted_at).toBeNull()
   })
 
+  test('leaves a span alone whose category path already is its slug', async () => {
+    const user = getTestUser()
+    const games = await insertScreentimeCategory(user, {
+      name: ['games'],
+      rule_regex: 'steam',
+      rule_type: 'regex',
+    })
+    await ensureAllCategoriesHaveTypes(user, [games])
+    expect(games.activity_type_name).toBe('games')
+    await insertProductivity(user, records('steam', ['games']))
+
+    expect(await rebuildScreentimeSpans(user)).toEqual({ deduplicated: 0, removed: 0, upserted: 1 })
+    const [first] = await liveSpans()
+    expect(await rebuildScreentimeSpans(user)).toEqual({ deduplicated: 0, removed: 0, upserted: 1 })
+
+    expect(await liveSpans()).toEqual([first])
+  })
+
+  test('runs concurrent rebuilds one after the other', async () => {
+    const user = getTestUser()
+    await makeCategories(user)
+    await insertProductivity(user, records('vim', ['Work', 'Dev']))
+
+    const results = await Promise.all([rebuildScreentimeSpans(user), rebuildScreentimeSpans(user)])
+
+    expect(results).toEqual([
+      { deduplicated: 0, removed: 0, upserted: 1 },
+      { deduplicated: 0, removed: 0, upserted: 1 },
+    ])
+    expect(await liveSpans()).toHaveLength(1)
+  })
+
   test('keeps a span created after the record snapshot, for the next rebuild', async () => {
     const user = getTestUser()
     const { dev } = await makeCategories(user)

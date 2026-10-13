@@ -116,7 +116,7 @@ const listChunks = (window: { start: Date; end: Date }): { start: Date; end: Dat
  * and fetch detail for every real workout. Neither `hasNextPage` nor the
  * date filter is trusted (#1139), so a workout may be listed more than once
  * or outside its chunk; it is handled the first time only, and a page that
- * brings nothing unseen ends the chunk. Throws on API failure.
+ * repeats the previous one ends the chunk. Throws on API failure.
  */
 const processWindow = async (
   user: string,
@@ -128,14 +128,19 @@ const processWindow = async (
 ): Promise<void> => {
   const handled = new Set<string>()
   for (const chunk of listChunks(window)) {
+    let previousPage = ''
     for (let page = 1; ; page++) {
       const listed = await client.listWorkouts(token, { endDate: chunk.end, page, startDate: chunk.start })
-      // A page with nothing unseen also ends the chunk: it is either empty or a repeat,
-      // and a list that ignored the page number must not page until the 429.
-      const unseen = listed.items.filter((summary) => !handled.has(summary.id.toLowerCase()))
-      if (unseen.length === 0) break
-      for (const summary of unseen) {
-        handled.add(summary.id.toLowerCase())
+      // A page identical to the one before it also ends the chunk, so a list that
+      // ignored the page number cannot page until the 429. A page that merely repeats
+      // workouts handled in an earlier chunk does not: the next page may be new.
+      const pageKey = listed.items.map((summary) => summary.id.toLowerCase()).join(',')
+      if (listed.items.length === 0 || pageKey === previousPage) break
+      previousPage = pageKey
+      for (const summary of listed.items) {
+        const key = summary.id.toLowerCase()
+        if (handled.has(key)) continue
+        handled.add(key)
         if (isExternalWorkout(summary)) {
           await deps.removeExternalWorkout(user, summary.id)
           continue

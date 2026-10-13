@@ -95,7 +95,7 @@ export const registerScreentimeCategoryTools = (server: McpServer, user: string)
     'Force recategorization of all screentime records against current category rules, then rebuild the screentime activities from them. Use after bulk rule changes.',
     {},
     async () => {
-      const result = await recategorizeAll(user)
+      const result = await recategorizeAll(user, { rebuildSpans: true })
       return jsonResponse({ ...toRecategorizeResponseFields(result), success: true })
     },
   )

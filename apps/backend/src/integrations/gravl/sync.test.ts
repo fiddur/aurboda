@@ -201,7 +201,7 @@ describe('syncGravlWorkouts', () => {
     expect(client.listWorkouts).toHaveBeenLastCalledWith('gat', expect.objectContaining({ page: 3 }))
   })
 
-  it('handles a workout listed in more than one chunk once, and ends a chunk whose first page is all repeats', async () => {
+  it('handles a workout listed in more than one chunk once', async () => {
     const client = makeClient({
       listWorkouts: listing([
         summary('a'),
@@ -213,7 +213,7 @@ describe('syncGravlWorkouts', () => {
 
     const result = await syncGravlWorkouts('alice', client, {}, deps)
 
-    expect(client.listWorkouts).toHaveBeenCalledTimes(4)
+    expect(client.listWorkouts).toHaveBeenCalledTimes(6)
     expect(client.getWorkout).toHaveBeenCalledTimes(1)
     expect(deps.processWorkout).toHaveBeenCalledTimes(1)
     expect(deps.removeExternalWorkout).toHaveBeenCalledTimes(1)
@@ -221,7 +221,25 @@ describe('syncGravlWorkouts', () => {
     expect(result.workouts_processed).toBe(1)
   })
 
-  it('stops paging a chunk when a page repeats what was already handled', async () => {
+  it('still requests the next page when the first page of a chunk only repeats an earlier chunk', async () => {
+    const client = makeClient({
+      listWorkouts: vi.fn(async (_token: string, params: { page?: number; startDate?: Date }) => {
+        const secondChunk = params.startDate!.getTime() > new Date('2026-06-10T00:00:00Z').getTime()
+        if (!secondChunk) return page(params.page === 1 ? [summary('a'), summary('b')] : [])
+        if (params.page === 1) return page([summary('a'), summary('b')])
+        if (params.page === 2) return page([summary('c')])
+        return page([])
+      }),
+    })
+    const deps = makeDeps(null)
+
+    const result = await syncGravlWorkouts('alice', client, {}, deps)
+
+    expect(result.workouts_processed).toBe(3)
+    expect(client.getWorkout).toHaveBeenCalledTimes(3)
+  })
+
+  it('stops paging a chunk when a page repeats the previous one', async () => {
     const client = makeClient({
       listWorkouts: vi.fn().mockResolvedValue(page([summary('a'), summary('b')], true)),
     })

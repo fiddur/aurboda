@@ -165,7 +165,7 @@ export const createScreentimeCategoriesRouter = (authMiddleware: RequestHandler)
     async (req, res) => {
       const user = req.user!
 
-      const result = await recategorizeAll(user)
+      const result = await recategorizeAll(user, { rebuildSpans: true })
       res.json({ ...toRecategorizeResponseFields(result), success: true })
     },
   )

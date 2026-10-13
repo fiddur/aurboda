@@ -183,12 +183,24 @@ export interface RecategorizeResult {
   spans?: RebuildScreentimeSpansResult
 }
 
-export const recategorizeAll = async (user: string): Promise<RecategorizeResult> => {
+/**
+ * `rebuildSpans` forces the span rebuild even when no record changes category:
+ * the explicit recategorize call, and edits to a category's exclusion or score,
+ * change what the spans look like without changing what the records resolve to.
+ */
+export const recategorizeAll = async (
+  user: string,
+  { rebuildSpans = false }: { rebuildSpans?: boolean } = {},
+): Promise<RecategorizeResult> => {
   const categories = await getScreentimeCategories(user)
   const compiledRules = compileRules(categories)
 
   const records = await getAllProductivityForCategorization(user)
-  if (records.length === 0) return { records_updated: 0 }
+  if (records.length === 0) {
+    return rebuildSpans
+      ? { records_updated: 0, spans: await rebuildScreentimeSpans(user) }
+      : { records_updated: 0 }
+  }
 
   let updated = 0
   let changed = 0
@@ -205,7 +217,7 @@ export const recategorizeAll = async (user: string): Promise<RecategorizeResult>
     updated += updates.length
   }
 
-  if (changed === 0) return { records_updated: updated }
+  if (changed === 0 && !rebuildSpans) return { records_updated: updated }
   return { records_updated: updated, spans: await rebuildScreentimeSpans(user) }
 }
 
@@ -259,6 +271,23 @@ export const createCategory = async (user: string, input: ScreentimeCategoryInpu
   return result
 }
 
+/**
+ * Rules and name change what the records resolve to; exclusion and score only
+ * change the spans built from them, so those force the rebuild. Null when the
+ * edit touches neither.
+ */
+const recategorizationAfterEdit = (
+  input: Partial<ScreentimeCategoryInput>,
+): { rebuildSpans: boolean } | null => {
+  const resolutionChanged =
+    input.rule_type !== undefined ||
+    input.rule_regex !== undefined ||
+    input.ignore_case !== undefined ||
+    input.name !== undefined
+  const spansChanged = input.exclude_from_screentime !== undefined || input.score !== undefined
+  return resolutionChanged || spansChanged ? { rebuildSpans: spansChanged } : null
+}
+
 export const modifyCategory = async (user: string, id: string, input: Partial<ScreentimeCategoryInput>) => {
   // Snapshot the pre-update row AND its descendants so a name change can
   // (a) cascade the prefix shift to descendant rows and (b) propagate path
@@ -294,14 +323,9 @@ export const modifyCategory = async (user: string, id: string, input: Partial<Sc
     }
   }
 
-  // Recategorize if rules or name changed (any of these affect resolution)
-  if (
-    input.rule_type !== undefined ||
-    input.rule_regex !== undefined ||
-    input.ignore_case !== undefined ||
-    input.name !== undefined
-  ) {
-    recategorizeAll(user).catch((err) => {
+  const recategorize = recategorizationAfterEdit(input)
+  if (recategorize) {
+    recategorizeAll(user, recategorize).catch((err) => {
       auditError(user, 'data', 'Recategorization failed', { error: String(err) })
     })
   }
@@ -356,11 +380,9 @@ export const upsertCategory = async (user: string, id: string, input: Screentime
     }
   }
 
-  if (input.rule_type === 'regex' && input.rule_regex) {
-    recategorizeAll(user).catch((err) => {
-      auditError(user, 'data', 'Recategorization failed', { error: String(err) })
-    })
-  }
+  recategorizeAll(user, { rebuildSpans: true }).catch((err) => {
+    auditError(user, 'data', 'Recategorization failed', { error: String(err) })
+  })
 
   return result
 }
