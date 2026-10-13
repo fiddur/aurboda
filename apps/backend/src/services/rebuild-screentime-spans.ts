@@ -102,28 +102,33 @@ const reviveProducedSpans = async (user: string, externalIds: string[]): Promise
 
 // Derived per-category types outlive a deleted category, so they are matched by their
 // type definition too; otherwise an orphaned span would double-count its records' time.
-const removeStaleSpans = async (user: string, keepIds: string[]): Promise<number> => {
+// A span created after the cutoff came from a sync that landed after the record
+// snapshot; the snapshot never saw its records, so it is left to the next rebuild.
+const removeStaleSpans = async (user: string, keepIds: string[], cutoff: Date): Promise<number> => {
   const result = await query(
     user,
     `UPDATE activities SET deleted_at = NOW()
       WHERE deleted_at IS NULL AND source = ANY($1::text[])
-        AND external_id IS NOT NULL
+        AND external_id IS NOT NULL AND created_at < $3
         AND (activity_type = 'screentime'
              OR activity_type IN (SELECT activity_type_name FROM screentime_categories
                                    WHERE activity_type_name IS NOT NULL)
              OR activity_type IN (SELECT name FROM activity_type_definitions
                                    WHERE display_category = 'productivity' AND NOT is_builtin))
         AND NOT EXISTS (SELECT 1 FROM unnest($2::uuid[]) k(id) WHERE k.id = activities.id)`,
-    [SCREENTIME_SOURCES, keepIds],
+    [SCREENTIME_SOURCES, keepIds, cutoff],
   )
   return result.rowCount ?? 0
 }
 
-export const rebuildScreentimeSpans = async (user: string): Promise<RebuildScreentimeSpansResult> => {
+export const rebuildScreentimeSpans = async (
+  user: string,
+  { now = () => new Date() }: { now?: () => Date } = {},
+): Promise<RebuildScreentimeSpansResult> => {
   const categories = await getScreentimeCategories(user)
-  if (categories.length === 0) return { deduplicated: 0, removed: 0, upserted: 0 }
   await ensureAllCategoriesHaveTypes(user, categories)
 
+  const cutoff = now()
   const records = await loadCategorizedRecords(user)
   const activities = spansToActivities(buildScreentimeActivitySpans(records, categories))
 
@@ -139,7 +144,7 @@ export const rebuildScreentimeSpans = async (user: string): Promise<RebuildScree
     for (const key of inserted) keepIds.push(key.id)
   }
 
-  const removed = await removeStaleSpans(user, keepIds)
+  const removed = await removeStaleSpans(user, keepIds, cutoff)
   const upserted = keepIds.length
 
   if (deduplicated > 0 || removed > 0 || upserted > 0) {

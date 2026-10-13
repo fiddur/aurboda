@@ -390,9 +390,10 @@ export const softDeleteActivityByExternalId = async (
 }
 
 /**
- * Undo the retraction of an empty import (`data.sets = []`, see
- * `retractEmptyGravlImport`). Any other tombstone — a row the user deleted, a
- * Health Connect session without `sets` — stays deleted.
+ * Undo the retraction of an empty import (`data.sets = []` and no Health
+ * Connect `metadata`, the same footprint `retractEmptyGravlImport` matches).
+ * Any other tombstone — a row the user deleted, a Health Connect session —
+ * stays deleted.
  */
 export const restoreEmptyImportTombstone = async (
   user: string,
@@ -402,7 +403,8 @@ export const restoreEmptyImportTombstone = async (
   const result = await query(
     user,
     `UPDATE activities SET deleted_at = NULL
-     WHERE source = $1 AND external_id = $2 AND deleted_at IS NOT NULL AND data->'sets' = '[]'::jsonb
+     WHERE source = $1 AND external_id = $2 AND deleted_at IS NOT NULL
+       AND data->'sets' = '[]'::jsonb AND NOT (data ? 'metadata')
      RETURNING id`,
     [source, externalId],
   )

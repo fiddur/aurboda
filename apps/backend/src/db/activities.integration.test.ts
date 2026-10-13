@@ -1506,11 +1506,17 @@ describe('Activities Integration Tests', () => {
       const user = getTestUser()
       await tombstoned(user, 'gravl-workout-full', { sets: [{ exercise: 'Bench Press' }] })
       await tombstoned(user, 'gravl-workout-hc', { metadata: { dataOrigin: 'com.liteup.getgains' } })
+      await tombstoned(user, 'gravl-workout-hc-legacy', {
+        metadata: { dataOrigin: 'com.liteup.getgains' },
+        sets: [],
+      })
 
       expect(await restoreEmptyImportTombstone(user, 'gravl', 'gravl-workout-full')).toBe(false)
       expect(await restoreEmptyImportTombstone(user, 'gravl', 'gravl-workout-hc')).toBe(false)
+      expect(await restoreEmptyImportTombstone(user, 'gravl', 'gravl-workout-hc-legacy')).toBe(false)
       expect(await findActivityByExternalId(user, 'gravl', 'gravl-workout-full')).toBeNull()
       expect(await findActivityByExternalId(user, 'gravl', 'gravl-workout-hc')).toBeNull()
+      expect(await findActivityByExternalId(user, 'gravl', 'gravl-workout-hc-legacy')).toBeNull()
     })
 
     test('returns false when nothing matches', async () => {

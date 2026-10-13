@@ -88,8 +88,9 @@ function OuraConnection({
       await disconnectOura()
       await queryClient.invalidateQueries({ queryKey: ['userSettings'] })
       await queryClient.invalidateQueries({ queryKey: ['ouraSyncStatus'] })
-    } catch {
-      // Silently handle
+    } catch (err) {
+      setOuraSyncStatus('error')
+      setOuraSyncMessage(err instanceof Error ? err.message : 'Disconnect failed')
     } finally {
       setDisconnecting(false)
     }

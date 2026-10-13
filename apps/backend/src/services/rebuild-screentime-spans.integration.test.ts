@@ -286,10 +286,31 @@ describe('rebuildScreentimeSpans', () => {
     expect((await getRow(rescuetimeRunId)).deleted_at).toBeNull()
   })
 
-  test('does nothing without categories', async () => {
+  test('keeps a span created after the record snapshot, for the next rebuild', async () => {
     const user = getTestUser()
-    await insertProductivity(user, records('vim', ['Work', 'Dev']))
+    const { dev } = await makeCategories(user)
+    const slug = dev.activity_type_name
+    if (!slug) throw new Error('category has no activity type')
+    const lateId = await insertActivity(user, span(slug, `activitywatch_${START_MS}_${slug}`, 'Work > Dev'))
 
-    expect(await rebuildScreentimeSpans(user)).toEqual({ deduplicated: 0, removed: 0, upserted: 0 })
+    const result = await rebuildScreentimeSpans(user, { now: () => new Date(Date.now() - 60_000) })
+
+    expect(result).toEqual({ deduplicated: 0, removed: 0, upserted: 0 })
+    expect((await getRow(lateId)).deleted_at).toBeNull()
+  })
+
+  test('removes every span once the last category is gone', async () => {
+    const user = getTestUser()
+    const { dev, games } = await makeCategories(user)
+    await insertProductivity(user, records('vim', ['Work', 'Dev']))
+    expect(await rebuildScreentimeSpans(user)).toEqual({ deduplicated: 0, removed: 0, upserted: 1 })
+    await deleteScreentimeCategoryWithChildren(user, dev.id)
+    await deleteScreentimeCategoryWithChildren(user, games.id)
+
+    expect(await recategorizeAll(user)).toEqual({
+      records_updated: 3,
+      spans: { deduplicated: 0, removed: 1, upserted: 0 },
+    })
+    expect(await liveSpans()).toEqual([])
   })
 })
