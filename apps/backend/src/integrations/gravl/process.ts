@@ -19,7 +19,7 @@
  * A workout with no logged set (started and abandoned in Gravl) is not
  * imported either: it carries nothing Aurboda lacks, and its empty row would
  * outrank the watch original the same way. The empty row an earlier run
- * imported for one is removed.
+ * imported for one is removed, and restored once the workout gains sets.
  */
 
 import type { Activity, RawRecord } from '../../db/types.ts'
@@ -31,6 +31,7 @@ import {
   insertActivity,
   insertRawRecord,
   materializeSuperseded,
+  restoreEmptyImportTombstone,
   softDeleteActivityByExternalId,
 } from '../../db/index.ts'
 import { upsertSyncedNote } from '../../db/notes.ts'
@@ -68,6 +69,7 @@ export interface GravlProcessDeps {
   insertActivity: typeof insertActivity
   insertRawRecord: typeof insertRawRecord
   materializeSuperseded: typeof materializeSuperseded
+  restoreEmptyImportTombstone: typeof restoreEmptyImportTombstone
   softDeleteActivityByExternalId: typeof softDeleteActivityByExternalId
   upsertSyncedNote: typeof upsertSyncedNote
 }
@@ -79,6 +81,7 @@ const defaultDeps: GravlProcessDeps = {
   insertActivity,
   insertRawRecord,
   materializeSuperseded,
+  restoreEmptyImportTombstone,
   softDeleteActivityByExternalId,
   upsertSyncedNote,
 }
@@ -209,7 +212,8 @@ export const buildGravlRawRecord = (detail: GravlWorkoutDetail): RawRecord => ({
  * `created`: nothing existed for the workout; `removed`: an External
  * round-trip whose Health Connect copy was removed, or a set-less workout
  * whose empty import was retracted; `skipped`: an External or set-less
- * workout with no row of ours to remove.
+ * workout with no live row of ours, a workout whose row is tombstoned (for
+ * any reason), or a rate-limit hold (enrichment).
  */
 export type GravlProcessOutcome = 'enriched' | 'updated' | 'created' | 'removed' | 'skipped'
 
@@ -256,12 +260,14 @@ export const removeExternalGravlWorkout = async (
 
 /**
  * An empty `data.sets` is the footprint of the import. A Health Connect
- * session stored under the Gravl identity has no `sets` key: it is a session
- * the user did start, with real timing and HR, and is kept.
+ * session stored under the Gravl identity is a session the user did start,
+ * with real timing and HR, and is kept: it has no `sets` key, or, if an
+ * import before #1099 merged `sets: []` into it, it still carries the Health
+ * Connect `data.metadata`.
  */
 const isImportedWithoutSets = (activity: Activity): boolean => {
   const sets = activity.data?.sets
-  return Array.isArray(sets) && sets.length === 0
+  return Array.isArray(sets) && sets.length === 0 && activity.data?.metadata === undefined
 }
 
 /** Drop the empty row an earlier run imported for a workout with no logged set. */
@@ -287,7 +293,9 @@ export const retractEmptyGravlImport = async (
  * Store one Gravl workout. Claims the Health Connect copy of the session
  * (matched on Gravl's own `clientRecordId`) before upserting, so an existing
  * session is enriched in place and a new one created only when Health Connect
- * never delivered it.
+ * never delivered it. A retracted empty import is restored first, since the
+ * workout now has sets; any other tombstone blocks the write and the workout
+ * is reported `skipped`.
  */
 export const processGravlWorkout = async (
   user: string,
@@ -299,6 +307,8 @@ export const processGravlWorkout = async (
 
   const activity = buildGravlActivity(detail)
   const externalId = activity.external_id!
+
+  const restored = await deps.restoreEmptyImportTombstone(user, 'gravl', externalId)
 
   await deps.insertRawRecord(user, buildGravlRawRecord(detail))
 
@@ -317,17 +327,17 @@ export const processGravlWorkout = async (
   const existing = await deps.findActivityByExternalId(user, 'gravl', externalId)
 
   const id = (await deps.insertActivity(user, activity)) ?? existing?.id
-  if (id) {
-    await deps.upsertSyncedNote(
-      user,
-      'activity',
-      id,
-      'gravl',
-      formatGravlSetsNote(detail),
-      activity.start_time,
-      activity.end_time,
-    )
-  }
+  if (!id) return 'skipped'
+  if (restored) await deps.materializeSuperseded(user, activity.start_time)
+  await deps.upsertSyncedNote(
+    user,
+    'activity',
+    id,
+    'gravl',
+    formatGravlSetsNote(detail),
+    activity.start_time,
+    activity.end_time,
+  )
 
   if (!existing) return 'created'
   return Array.isArray(existing.data?.sets) ? 'updated' : 'enriched'

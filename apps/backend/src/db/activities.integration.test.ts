@@ -24,6 +24,7 @@ import {
   insertActivity,
   insertOverride,
   markActivityDetailSynced,
+  restoreEmptyImportTombstone,
   softDeleteActivityByExternalId,
   updateActivity,
   upsertActivity,
@@ -1475,6 +1476,46 @@ describe('Activities Integration Tests', () => {
       const tombstone = await getActivityById(user, id, true)
       expect(tombstone).toMatchObject({ activity_type: 'strength_training', title: 'External round-trip' })
       expect(tombstone?.deleted_at).toBeInstanceOf(Date)
+    })
+  })
+
+  describe('restoreEmptyImportTombstone', () => {
+    const tombstoned = async (user: string, externalId: string, data: Record<string, unknown>) => {
+      const id = await insertActivity(user, {
+        activity_type: 'strength_training',
+        data,
+        external_id: externalId,
+        source: 'gravl',
+        start_time: new Date('2026-09-08T07:04:51Z'),
+        title: 'Gravl workout',
+      })
+      await softDeleteActivityByExternalId(user, 'gravl', externalId)
+      return id
+    }
+
+    test('restores the retracted empty import of a set-less workout', async () => {
+      const user = getTestUser()
+      const id = await tombstoned(user, 'gravl-workout-empty', { sets: [], workout_type: 'today' })
+
+      expect(await restoreEmptyImportTombstone(user, 'gravl', 'gravl-workout-empty')).toBe(true)
+      expect(await findActivityByExternalId(user, 'gravl', 'gravl-workout-empty')).toMatchObject({ id })
+      expect(await restoreEmptyImportTombstone(user, 'gravl', 'gravl-workout-empty')).toBe(false)
+    })
+
+    test('leaves any other tombstone deleted', async () => {
+      const user = getTestUser()
+      await tombstoned(user, 'gravl-workout-full', { sets: [{ exercise: 'Bench Press' }] })
+      await tombstoned(user, 'gravl-workout-hc', { metadata: { dataOrigin: 'com.liteup.getgains' } })
+
+      expect(await restoreEmptyImportTombstone(user, 'gravl', 'gravl-workout-full')).toBe(false)
+      expect(await restoreEmptyImportTombstone(user, 'gravl', 'gravl-workout-hc')).toBe(false)
+      expect(await findActivityByExternalId(user, 'gravl', 'gravl-workout-full')).toBeNull()
+      expect(await findActivityByExternalId(user, 'gravl', 'gravl-workout-hc')).toBeNull()
+    })
+
+    test('returns false when nothing matches', async () => {
+      const user = getTestUser()
+      expect(await restoreEmptyImportTombstone(user, 'gravl', 'gravl-workout-unknown')).toBe(false)
     })
   })
 

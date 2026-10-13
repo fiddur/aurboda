@@ -226,7 +226,8 @@ export const syncGravlWorkouts = async (
  * queue can retry; returns 'removed' when the workout turned out to be an
  * external round-trip or set-less and our row for it was dropped, and 'skipped'
  * either while a rate-limit hold is in force (the next poll re-covers the
- * workout) or when the row is already tombstoned.
+ * workout) or when the row is tombstoned for any reason other than being the
+ * empty import of a set-less workout.
  */
 export const enrichGravlWorkout = async (
   user: string,
@@ -242,9 +243,19 @@ export const enrichGravlWorkout = async (
     deps.auditInfo(user, 'sync', 'Gravl enrichment skipped - rate limited', { workout_id: workoutId })
     return 'skipped'
   }
-  // The row was already removed (an external round-trip or an empty import),
-  // and the tombstone blocks re-insert, so the detail request would buy nothing.
-  if (await deps.findDeletedActivityByExternalId(user, 'gravl', gravlWorkoutExternalId(workoutId))) {
+  // A tombstone blocks re-insert, so for a row we deliberately removed (an
+  // External round-trip's copy, a Health Connect session the user deleted)
+  // the detail request would buy nothing. The empty import of a set-less
+  // workout is the exception: the user may have logged its sets since, and
+  // processing restores the row when they have.
+  const tombstone = await deps.findDeletedActivityByExternalId(
+    user,
+    'gravl',
+    gravlWorkoutExternalId(workoutId),
+  )
+  const sets = tombstone?.data?.sets
+  if (tombstone && !(Array.isArray(sets) && sets.length === 0)) {
+    deps.auditInfo(user, 'sync', 'Gravl enrichment skipped - row is tombstoned', { workout_id: workoutId })
     return 'skipped'
   }
   const token = await client.getAccessToken(user)

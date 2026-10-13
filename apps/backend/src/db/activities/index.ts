@@ -20,6 +20,7 @@ export {
   markActivityDetailSynced,
   migrateExerciseTypes,
   restoreActivity,
+  restoreEmptyImportTombstone,
   softDeleteActivityByExternalId,
   updateActivity,
   updateActivityEndTimeByExternalId,

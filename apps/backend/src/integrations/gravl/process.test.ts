@@ -8,6 +8,7 @@ vi.mock('../../db/index.ts', () => ({
   insertActivity: vi.fn(),
   insertRawRecord: vi.fn(),
   materializeSuperseded: vi.fn(),
+  restoreEmptyImportTombstone: vi.fn(),
   softDeleteActivityByExternalId: vi.fn(),
 }))
 vi.mock('../../db/notes.ts', () => ({ upsertSyncedNote: vi.fn() }))
@@ -128,6 +129,7 @@ describe('processGravlWorkout', () => {
     insertActivity: vi.fn().mockResolvedValue('act-1'),
     insertRawRecord: vi.fn(),
     materializeSuperseded: vi.fn(),
+    restoreEmptyImportTombstone: vi.fn().mockResolvedValue(false),
     softDeleteActivityByExternalId: vi.fn(),
     upsertSyncedNote: vi.fn(),
   })
@@ -204,6 +206,16 @@ describe('processGravlWorkout', () => {
     expect(deps.insertActivity).not.toHaveBeenCalled()
   })
 
+  it('leaves a Health Connect session an old import merged empty sets into alone', async () => {
+    const deps = makeDeps({
+      data: { metadata: { dataOrigin: 'com.liteup.getgains' }, sets: [] },
+      id: 'act-hc',
+    })
+    expect(await retractEmptyGravlImport('alice', WORKOUT_ID, deps)).toBe('skipped')
+    expect(deps.softDeleteActivityByExternalId).not.toHaveBeenCalled()
+    expect(deps.materializeSuperseded).not.toHaveBeenCalled()
+  })
+
   it('leaves a row that already carries sets alone', async () => {
     const deps = makeDeps({ data: { sets: [{ exercise: 'Bench Press' }] }, id: 'act-full' })
     expect(await retractEmptyGravlImport('alice', WORKOUT_ID, deps)).toBe('skipped')
@@ -254,6 +266,48 @@ describe('processGravlWorkout', () => {
   it('reports a re-processed Gravl row as updated, not enriched', async () => {
     const deps = makeDeps({ data: { sets: [] }, id: 'act-1' })
     expect(await processGravlWorkout('alice', detail(), deps)).toBe('updated')
+  })
+
+  it('restores a retracted empty import once the workout has sets, then upserts it', async () => {
+    const deps = makeDeps({ data: { sets: [] }, id: 'act-9' })
+    vi.mocked(deps.restoreEmptyImportTombstone).mockResolvedValue(true)
+
+    expect(await processGravlWorkout('alice', detail(), deps)).toBe('updated')
+
+    expect(deps.restoreEmptyImportTombstone).toHaveBeenCalledWith(
+      'alice',
+      'gravl',
+      'gravl-workout-97248067-7947-4715-8fc9-d0048369a0d0',
+    )
+    expect(vi.mocked(deps.restoreEmptyImportTombstone).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(deps.findActivityByExternalId).mock.invocationCallOrder[0],
+    )
+    expect(deps.insertActivity).toHaveBeenCalled()
+    expect(deps.materializeSuperseded).toHaveBeenCalledWith('alice', new Date('2026-09-03T05:16:12Z'))
+    expect(deps.upsertSyncedNote).toHaveBeenCalledWith(
+      'alice',
+      'activity',
+      'act-1',
+      'gravl',
+      expect.stringContaining('Bench Press'),
+      new Date('2026-09-03T05:16:12Z'),
+      new Date('2026-09-03T05:45:12Z'),
+    )
+  })
+
+  it('reports skipped without a note when another tombstone blocks the write', async () => {
+    const deps = makeDeps(null)
+    vi.mocked(deps.insertActivity).mockResolvedValue(undefined as unknown as string)
+
+    expect(await processGravlWorkout('alice', detail(), deps)).toBe('skipped')
+    expect(deps.upsertSyncedNote).not.toHaveBeenCalled()
+    expect(deps.materializeSuperseded).not.toHaveBeenCalled()
+  })
+
+  it('does not re-materialize supersession when nothing was restored', async () => {
+    const deps = makeDeps(null)
+    expect(await processGravlWorkout('alice', detail(), deps)).toBe('created')
+    expect(deps.materializeSuperseded).not.toHaveBeenCalled()
   })
 
   it('treats external workouts by type, not by name, whatever the casing', () => {

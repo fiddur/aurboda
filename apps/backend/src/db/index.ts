@@ -168,6 +168,7 @@ export {
   materializeSuperseded,
   mergeOverlappingActivities,
   restoreActivity,
+  restoreEmptyImportTombstone,
   updateActivity,
   updateActivityEndTimeByExternalId,
   updateActivityTypeByTagKey,

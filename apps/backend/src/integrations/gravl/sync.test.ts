@@ -13,6 +13,7 @@ vi.mock('../../db/index.ts', () => ({
   insertActivity: vi.fn(),
   insertRawRecord: vi.fn(),
   materializeSuperseded: vi.fn(),
+  restoreEmptyImportTombstone: vi.fn(),
   softDeleteActivityByExternalId: vi.fn(),
   upsertSyncState: vi.fn(),
 }))
@@ -362,6 +363,24 @@ describe('enrichGravlWorkout', () => {
     expect(client.getAccessToken).not.toHaveBeenCalled()
     expect(client.getWorkout).not.toHaveBeenCalled()
     expect(deps.processWorkout).not.toHaveBeenCalled()
+    expect(deps.auditInfo).toHaveBeenCalledWith(
+      'alice',
+      'sync',
+      'Gravl enrichment skipped - row is tombstoned',
+      {
+        workout_id: 'a',
+      },
+    )
+  })
+
+  it('fetches a workout whose tombstone is a retracted empty import, since it may have sets now', async () => {
+    const client = makeClient()
+    const deps = enrichDeps(null, vi.fn().mockResolvedValue('updated'))
+    deps.findDeletedActivityByExternalId.mockResolvedValue({ data: { sets: [] }, id: 'act-1' })
+    expect(await enrichGravlWorkout('alice', client, 'a', deps)).toBe('updated')
+    expect(client.getWorkout).toHaveBeenCalledWith('gat', 'a')
+    expect(deps.processWorkout).toHaveBeenCalledWith('alice', expect.objectContaining({ id: 'a' }))
+    expect(deps.auditInfo).not.toHaveBeenCalled()
   })
 
   it('fetches the detail as usual when no tombstone exists', async () => {
