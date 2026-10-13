@@ -7,16 +7,21 @@
  * Windows: 90 days on the first run or a full resync; otherwise from two days
  * before the last successful sync, because Gravl workouts get edited after the
  * fact (a forgotten set, a corrected weight). Re-processing is idempotent.
+ * The window is listed in 30-day chunks, each paged until a page comes back
+ * empty: Gravl's list has been seen to report `hasNextPage: false` while the
+ * window still held workouts, and to return workouts outside `StartDate`
+ * (#1139). Each workout is handled once per run however often it is listed.
  *
  * Rate limits: 100 requests per 15 minutes per app + user. One run costs
- * ~1 list page plus one detail fetch per workout, so it fits comfortably;
- * on a 429 the state records `retry_after` and `last_sync_time` is NOT
- * advanced, so the next run re-covers the same window.
+ * a couple of list pages per chunk (the last one empty) plus one detail fetch
+ * per workout, so it fits comfortably; on a 429 the state records
+ * `retry_after` and `last_sync_time` is NOT advanced, so the next run
+ * re-covers the same window.
  */
 
 import type { GravlSyncResult } from '@aurboda/api-spec'
 
-import { addMinutes, addSeconds, isFuture, subDays } from 'date-fns'
+import { addHours, addMinutes, addSeconds, isFuture, min, subDays } from 'date-fns'
 
 import type { SyncState } from '../../db/types.ts'
 import type { GravlClient } from './client.ts'
@@ -47,6 +52,9 @@ export const GRAVL_DATA_TYPE = 'workouts'
 export const DEFAULT_SYNC_HISTORY_DAYS = 90
 /** Days re-fetched before the last sync to pick up edited workouts. */
 const OVERLAP_DAYS = 2
+
+/** Longest date range asked of Gravl's list in one go. */
+const LIST_CHUNK_DAYS = 30
 
 /** Hold when Gravl sends no Retry-After (minutes). */
 const RATE_LIMIT_FALLBACK_MINUTES = 5
@@ -94,7 +102,22 @@ const countOutcome = (counts: SyncCounts, outcome: GravlProcessOutcome): void =>
   else if (outcome === 'created') counts.activities_created++
 }
 
-/** Page through the window, fetching detail for every real workout. Throws on API failure. */
+const listChunks = (window: { start: Date; end: Date }): { start: Date; end: Date }[] => {
+  const chunks: { start: Date; end: Date }[] = []
+  // Fixed 24-hour days, so the chunk boundaries do not move with DST.
+  for (let start = window.start; start < window.end; start = addHours(start, 24 * LIST_CHUNK_DAYS)) {
+    chunks.push({ end: min([addHours(start, 24 * LIST_CHUNK_DAYS), window.end]), start })
+  }
+  return chunks
+}
+
+/**
+ * List the window oldest chunk first, paging each chunk until an empty page,
+ * and fetch detail for every real workout. Neither `hasNextPage` nor the
+ * date filter is trusted (#1139), so a workout may be listed more than once
+ * or outside its chunk; it is handled the first time only, and a page that
+ * brings nothing unseen ends the chunk. Throws on API failure.
+ */
 const processWindow = async (
   user: string,
   client: GravlClient,
@@ -103,24 +126,28 @@ const processWindow = async (
   deps: Pick<GravlSyncDeps, 'processWorkout' | 'removeExternalWorkout' | 'retractEmptyImport'>,
   counts: SyncCounts,
 ): Promise<void> => {
-  let page = 1
-  let hasNext = true
-  while (hasNext) {
-    const listed = await client.listWorkouts(token, { endDate: window.end, page, startDate: window.start })
-    for (const summary of listed.items) {
-      if (isExternalWorkout(summary)) {
-        await deps.removeExternalWorkout(user, summary.id)
-        continue
+  const handled = new Set<string>()
+  for (const chunk of listChunks(window)) {
+    for (let page = 1; ; page++) {
+      const listed = await client.listWorkouts(token, { endDate: chunk.end, page, startDate: chunk.start })
+      // A page with nothing unseen also ends the chunk: it is either empty or a repeat,
+      // and a list that ignored the page number must not page until the 429.
+      const unseen = listed.items.filter((summary) => !handled.has(summary.id.toLowerCase()))
+      if (unseen.length === 0) break
+      for (const summary of unseen) {
+        handled.add(summary.id.toLowerCase())
+        if (isExternalWorkout(summary)) {
+          await deps.removeExternalWorkout(user, summary.id)
+          continue
+        }
+        if (!isStrengthWorkout(summary)) {
+          await deps.retractEmptyImport(user, summary.id)
+          continue
+        }
+        const detail = await client.getWorkout(token, summary.id)
+        countOutcome(counts, await deps.processWorkout(user, detail))
       }
-      if (!isStrengthWorkout(summary)) {
-        await deps.retractEmptyImport(user, summary.id)
-        continue
-      }
-      const detail = await client.getWorkout(token, summary.id)
-      countOutcome(counts, await deps.processWorkout(user, detail))
     }
-    hasNext = listed.hasNextPage && listed.items.length > 0
-    page++
   }
 }
 

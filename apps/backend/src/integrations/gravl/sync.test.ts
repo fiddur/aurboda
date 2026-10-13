@@ -56,20 +56,20 @@ const page = (items: GravlWorkoutSummary[], hasNextPage = false) => ({
   totalPages: 1,
 })
 
+/** Every chunk lists `items` on page 1 and nothing after, as Gravl does when it ignores `StartDate`. */
+const listing = (items: GravlWorkoutSummary[]) =>
+  vi.fn(async (_token: string, params: { page?: number }) => page(params.page === 1 ? items : []))
+
 const makeClient = (overrides: Partial<GravlClient> = {}): GravlClient =>
   ({
     getAccessToken: vi.fn().mockResolvedValue('gat'),
     getWorkout: vi.fn(async (_token: string, id: string) => detailOf(id)),
-    listWorkouts: vi
-      .fn()
-      .mockResolvedValue(
-        page([
-          summary('a'),
-          summary('ext', 'external'),
-          { ...summary('empty'), exerciseCount: 0 },
-          summary('b'),
-        ]),
-      ),
+    listWorkouts: listing([
+      summary('a'),
+      summary('ext', 'external'),
+      { ...summary('empty'), exerciseCount: 0 },
+      summary('b'),
+    ]),
     ...overrides,
   }) as unknown as GravlClient
 
@@ -105,11 +105,13 @@ describe('syncGravlWorkouts', () => {
       workouts_processed: 2,
     })
     expect(client.listWorkouts).toHaveBeenCalledWith('gat', {
-      endDate: NOW,
+      endDate: new Date('2026-07-05T10:00:00Z'),
       page: 1,
       startDate: new Date('2026-06-05T10:00:00Z'),
     })
     expect(client.getWorkout).toHaveBeenCalledTimes(2)
+    expect(deps.removeExternalWorkout).toHaveBeenCalledTimes(1)
+    expect(deps.retractEmptyImport).toHaveBeenCalledTimes(1)
     expect(client.getWorkout).not.toHaveBeenCalledWith('gat', 'ext')
     expect(deps.removeExternalWorkout).toHaveBeenCalledWith('alice', 'ext')
     expect(client.getWorkout).not.toHaveBeenCalledWith('gat', 'empty')
@@ -129,7 +131,8 @@ describe('syncGravlWorkouts', () => {
       listWorkouts: vi
         .fn()
         .mockResolvedValueOnce(page([summary('a')], true))
-        .mockResolvedValueOnce(page([summary('b')], false)),
+        .mockResolvedValueOnce(page([summary('b')], false))
+        .mockResolvedValueOnce(page([])),
     })
     const deps = makeDeps({
       data_type: 'workouts',
@@ -147,6 +150,91 @@ describe('syncGravlWorkouts', () => {
       startDate: new Date('2026-08-30T10:00:00Z'),
     })
     expect(client.listWorkouts).toHaveBeenNthCalledWith(2, 'gat', expect.objectContaining({ page: 2 }))
+  })
+
+  it('lists a long window in 30-day chunks, oldest first, each paged until an empty page', async () => {
+    const client = makeClient({
+      listWorkouts: vi
+        .fn()
+        .mockResolvedValueOnce(page([summary('a')]))
+        .mockResolvedValueOnce(page([]))
+        .mockResolvedValueOnce(page([summary('b')]))
+        .mockResolvedValueOnce(page([]))
+        .mockResolvedValueOnce(page([summary('c')]))
+        .mockResolvedValueOnce(page([])),
+    })
+    const deps = makeDeps(null)
+
+    const result = await syncGravlWorkouts('alice', client, {}, deps)
+
+    expect(result.workouts_processed).toBe(3)
+    expect(vi.mocked(client.listWorkouts).mock.calls.map(([, params]) => params)).toEqual([
+      { endDate: new Date('2026-07-05T10:00:00Z'), page: 1, startDate: new Date('2026-06-05T10:00:00Z') },
+      { endDate: new Date('2026-07-05T10:00:00Z'), page: 2, startDate: new Date('2026-06-05T10:00:00Z') },
+      { endDate: new Date('2026-08-04T10:00:00Z'), page: 1, startDate: new Date('2026-07-05T10:00:00Z') },
+      { endDate: new Date('2026-08-04T10:00:00Z'), page: 2, startDate: new Date('2026-07-05T10:00:00Z') },
+      { endDate: NOW, page: 1, startDate: new Date('2026-08-04T10:00:00Z') },
+      { endDate: NOW, page: 2, startDate: new Date('2026-08-04T10:00:00Z') },
+    ])
+  })
+
+  it('keeps paging past hasNextPage: false until a page comes back empty', async () => {
+    const client = makeClient({
+      listWorkouts: vi
+        .fn()
+        .mockResolvedValueOnce(page([summary('a')], false))
+        .mockResolvedValueOnce(page([summary('b')], false))
+        .mockResolvedValueOnce(page([], true)),
+    })
+    const deps = makeDeps({
+      data_type: 'workouts',
+      last_sync_time: new Date('2026-09-01T10:00:00Z'),
+      provider: 'gravl',
+      status: 'idle',
+    })
+
+    const result = await syncGravlWorkouts('alice', client, {}, deps)
+
+    expect(result.workouts_processed).toBe(2)
+    expect(client.listWorkouts).toHaveBeenCalledTimes(3)
+    expect(client.listWorkouts).toHaveBeenLastCalledWith('gat', expect.objectContaining({ page: 3 }))
+  })
+
+  it('handles a workout listed in more than one chunk once, and ends a chunk whose first page is all repeats', async () => {
+    const client = makeClient({
+      listWorkouts: listing([
+        summary('a'),
+        summary('ext', 'external'),
+        { ...summary('empty'), exerciseCount: 0 },
+      ]),
+    })
+    const deps = makeDeps(null)
+
+    const result = await syncGravlWorkouts('alice', client, {}, deps)
+
+    expect(client.listWorkouts).toHaveBeenCalledTimes(4)
+    expect(client.getWorkout).toHaveBeenCalledTimes(1)
+    expect(deps.processWorkout).toHaveBeenCalledTimes(1)
+    expect(deps.removeExternalWorkout).toHaveBeenCalledTimes(1)
+    expect(deps.retractEmptyImport).toHaveBeenCalledTimes(1)
+    expect(result.workouts_processed).toBe(1)
+  })
+
+  it('stops paging a chunk when a page repeats what was already handled', async () => {
+    const client = makeClient({
+      listWorkouts: vi.fn().mockResolvedValue(page([summary('a'), summary('b')], true)),
+    })
+    const deps = makeDeps({
+      data_type: 'workouts',
+      last_sync_time: new Date('2026-09-01T10:00:00Z'),
+      provider: 'gravl',
+      status: 'idle',
+    })
+
+    const result = await syncGravlWorkouts('alice', client, {}, deps)
+
+    expect(result.workouts_processed).toBe(2)
+    expect(client.listWorkouts).toHaveBeenCalledTimes(2)
   })
 
   it('honours an explicit full resync start date', async () => {

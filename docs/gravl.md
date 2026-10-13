@@ -82,9 +82,11 @@ Then **Sync Now**, or wait for the background poll.
 
 A run lists workouts in a window, removes Aurboda's own copy of the `External` ones and the empty import of those without a logged set, fetches each real workout's detail (the list has no sets) and stores it. The window is 90 days on the first run or a full resync, otherwise from **two days before the last successful sync** — Gravl workouts get edited after the fact, and re-processing is idempotent.
 
+The window is listed in 30-day chunks, oldest first, and each chunk is paged until a page comes back empty: Gravl's `hasNextPage` and `StartDate` have both been seen to under-deliver, ending the listing early or returning workouts outside the requested dates ([#1139](https://github.com/fiddur/aurboda/issues/1139)). A workout listed more than once in a run is handled once. A full resync therefore costs a few list requests more.
+
 Removals of both kinds are reported in the audit log only; they do not change the three counters. Rows stored before this cleanup existed are cleared by the normal window as long as they fall inside it (two days before the last sync); older ones need a full resync — `POST /api/sync/gravl` with `"full_resync": true` (90 days, or from `start_date`).
 
-**Rate limits:** 100 requests per 15 minutes per app + user. A run costs one list page plus one detail request per workout. On a 429 the sync state records Gravl's `Retry-After` (or a 5-minute hold when the header is missing); later runs and Health Connect-triggered enrichments are skipped until it passes, and `last_sync_time` is not advanced so the same window is re-covered.
+**Rate limits:** 100 requests per 15 minutes per app + user. A run costs a couple of list pages per 30-day chunk (the last one empty) plus one detail request per workout. On a 429 the sync state records Gravl's `Retry-After` (or a 5-minute hold when the header is missing); later runs and Health Connect-triggered enrichments are skipped until it passes, and `last_sync_time` is not advanced so the same window is re-covered.
 
 ### Triggered by Health Connect
 
