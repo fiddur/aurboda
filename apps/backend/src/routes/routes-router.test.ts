@@ -48,7 +48,18 @@ describe('routes router', () => {
     const { app, ops } = buildApp()
     const res = await supertest(app).get('/routes')
     expect(res.body).toEqual({ data: [route], success: true })
-    expect(ops.list).toHaveBeenCalledWith('tester')
+    expect(ops.list).toHaveBeenCalledWith('tester', { sort: 'last_run' })
+  })
+
+  test('GET / passes the type filter and sort order, and rejects an unknown sort', async () => {
+    const { app, ops } = buildApp()
+    const res = await supertest(app).get('/routes?activity_type=running&sort=runs')
+    expect(res.status).toBe(200)
+    expect(ops.list).toHaveBeenCalledWith('tester', { activity_type: 'running', sort: 'runs' })
+
+    const bad = buildApp()
+    expect((await supertest(bad.app).get('/routes?sort=fastest')).status).toBe(400)
+    expect(bad.ops.list).not.toHaveBeenCalled()
   })
 
   test('GET /:id returns the detail, 404s for an unknown or malformed id', async () => {

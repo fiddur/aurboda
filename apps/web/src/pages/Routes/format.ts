@@ -1,4 +1,4 @@
-import type { RouteEffort } from '@aurboda/api-spec'
+import { type RouteEffort, type RoutesQuery, type RouteSort, routeSortOrders } from '@aurboda/api-spec'
 
 /** Elapsed seconds as `"H:MM:SS"`, or `"M:SS"` under an hour. */
 export const formatElapsed = (seconds: number): string => {
@@ -36,3 +36,21 @@ export const typeDisplayName = (
   name: string,
   definitions: { name: string; display_name: string }[],
 ): string => definitions.find((d) => d.name === name)?.display_name ?? name
+
+const isRouteSort = (value: string | undefined): value is RouteSort =>
+  routeSortOrders.some((order) => order === value)
+
+/** The route list's filter and order from the page URL's `type` and `sort`; unknown sorts are ignored. */
+export const routesQueryFromParams = (params: Record<string, string>): Partial<RoutesQuery> => ({
+  ...(params.type ? { activity_type: params.type } : {}),
+  ...(isRouteSort(params.sort) && params.sort !== 'last_run' ? { sort: params.sort } : {}),
+})
+
+/** The page URL's query string for a filter and order, `''` for the defaults. */
+export const searchFromRoutesQuery = (query: Partial<RoutesQuery>): string => {
+  const params = new URLSearchParams()
+  if (query.activity_type) params.set('type', query.activity_type)
+  if (query.sort && query.sort !== 'last_run') params.set('sort', query.sort)
+  const search = params.toString()
+  return search ? `?${search}` : ''
+}

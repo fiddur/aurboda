@@ -1,4 +1,4 @@
-import { mergeRoutesBodySchema, tzSchema, updateRouteBodySchema } from '@aurboda/api-spec'
+import { mergeRoutesBodySchema, routesQuerySchema, tzSchema, updateRouteBodySchema } from '@aurboda/api-spec'
 import { z } from 'zod'
 
 import { defaultRouteOps, type RouteOps } from '../services/routes.ts'
@@ -9,9 +9,10 @@ const routeId = z.string().uuid().describe('Route ID')
 export const registerRouteTools = (server: McpServer, user: string, ops: RouteOps = defaultRouteOps) => {
   server.tool(
     'list_routes',
-    'Recognised routes: courses run more than once, matched by GPS track (25 m buffer, 90 % coverage both ways, same direction, same activity type). Each has a name, activity type, length, run count and latest run, most recently run first.',
-    { tz: tzSchema },
-    async ({ tz }) => tzJsonResponse({ data: await ops.list(user), success: true }, tz),
+    'Recognised routes: courses run more than once, matched by GPS track (25 m buffer, 90 % coverage both ways, same direction, same activity type). Each has a name, activity type, length, run count and latest run. activity_type keeps only routes of that type or its descendant types; sort orders by latest run (last_run, default), run count (runs), length or alphabetical by name.',
+    { ...routesQuerySchema.shape, tz: tzSchema },
+    async ({ activity_type, sort, tz }) =>
+      tzJsonResponse({ data: await ops.list(user, { activity_type, sort }), success: true }, tz),
   )
 
   server.tool(
