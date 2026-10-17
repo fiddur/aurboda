@@ -8,6 +8,8 @@ import {
   type RouteDetailResponse,
   type RouteMatchResponse,
   type RouteResponse,
+  type RoutesQuery,
+  routesQuerySchema,
   type RoutesResponse,
   type UpdateRouteBody,
   updateRouteBodySchema,
@@ -16,7 +18,7 @@ import { z } from 'zod'
 
 import { defaultRouteOps, type RouteOps } from '../services/routes.ts'
 import { type TypedRouter, typedRouter } from '../typed-router.ts'
-import { validateBody } from '../validation.ts'
+import { validateBody, validateQuery } from '../validation.ts'
 
 const isUuid = (id: string): boolean => z.string().uuid().safeParse(id).success
 
@@ -28,9 +30,14 @@ export const createRoutesRouter = (
 ): TypedRouter => {
   const router = typedRouter()
 
-  router.get<Record<string, never>, RoutesResponse>('/', authMiddleware, async (req, res) => {
-    res.json({ data: await ops.list(req.user!), success: true })
-  })
+  router.get<Record<string, never>, RoutesResponse, unknown, RoutesQuery>(
+    '/',
+    authMiddleware,
+    validateQuery(routesQuerySchema),
+    async (req, res) => {
+      res.json({ data: await ops.list(req.user!, req.query), success: true })
+    },
+  )
 
   router.post<Record<string, never>, RouteMatchResponse>('/match', authMiddleware, async (req, res) => {
     res.json({ data: await ops.match(req.user!), success: true })

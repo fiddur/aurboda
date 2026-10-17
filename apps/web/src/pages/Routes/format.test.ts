@@ -2,7 +2,13 @@ import type { RouteEffort } from '@aurboda/api-spec'
 
 import { describe, expect, it } from 'vitest'
 
-import { effortSeries, formatElapsed, typeDisplayName } from './format'
+import {
+  effortSeries,
+  formatElapsed,
+  routesQueryFromParams,
+  searchFromRoutesQuery,
+  typeDisplayName,
+} from './format'
 
 describe('formatElapsed', () => {
   it('formats minutes and hours', () => {
@@ -45,5 +51,34 @@ describe('typeDisplayName', () => {
     expect(typeDisplayName('running', defs)).toBe('Running')
     expect(typeDisplayName('trail_running', defs)).toBe('trail_running')
     expect(typeDisplayName('running', [])).toBe('running')
+  })
+})
+
+describe('routesQueryFromParams', () => {
+  it('reads the type and a known sort, leaving defaults out', () => {
+    expect(routesQueryFromParams({})).toEqual({})
+    expect(routesQueryFromParams({ sort: 'runs', type: 'running' })).toEqual({
+      activity_type: 'running',
+      sort: 'runs',
+    })
+    expect(routesQueryFromParams({ sort: 'last_run' })).toEqual({})
+    expect(routesQueryFromParams({ sort: 'fastest', type: '' })).toEqual({})
+  })
+})
+
+describe('searchFromRoutesQuery', () => {
+  it('writes only the non-default params', () => {
+    expect(searchFromRoutesQuery({})).toBe('')
+    expect(searchFromRoutesQuery({ sort: 'last_run' })).toBe('')
+    expect(searchFromRoutesQuery({ activity_type: 'trail_running', sort: 'name' })).toBe(
+      '?type=trail_running&sort=name',
+    )
+    expect(searchFromRoutesQuery({ sort: 'length' })).toBe('?sort=length')
+  })
+
+  it('round-trips through routesQueryFromParams', () => {
+    const query = { activity_type: 'running', sort: 'runs' } as const
+    const params = Object.fromEntries(new URLSearchParams(searchFromRoutesQuery(query)))
+    expect(routesQueryFromParams(params)).toEqual(query)
   })
 })

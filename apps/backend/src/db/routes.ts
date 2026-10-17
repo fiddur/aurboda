@@ -1,3 +1,4 @@
+import type { RouteSort } from '@aurboda/api-spec'
 import type { QueryResultRow } from 'pg'
 
 import { query, withUserTransaction } from './connection.ts'
@@ -112,11 +113,25 @@ const mapRouteRow = (row: QueryResultRow): RouteRecord => ({
   updated_at: row.updated_at as Date,
 })
 
-export const listRoutes = async (user: string): Promise<RouteRecord[]> => {
+const ROUTE_ORDER_BY: Record<RouteSort, string> = {
+  last_run: 's.last DESC NULLS LAST',
+  length: 'r.length_m DESC',
+  name: 'LOWER(r.name) ASC',
+  runs: 'COALESCE(s.n, 0) DESC, s.last DESC NULLS LAST',
+}
+
+export const listRoutes = async (
+  user: string,
+  options: { activityTypes?: string[]; sort?: RouteSort } = {},
+): Promise<RouteRecord[]> => {
+  const { activityTypes, sort = 'last_run' } = options
+  if (activityTypes?.length === 0) return []
   const result = await query(
     user,
     `${ROUTE_SELECT}
-     ORDER BY s.last DESC NULLS LAST, r.created_at DESC`,
+     ${activityTypes ? 'AND r.activity_type = ANY($1::text[])' : ''}
+     ORDER BY ${ROUTE_ORDER_BY[sort]}, r.created_at DESC, r.id`,
+    activityTypes ? [activityTypes] : [],
   )
   return result.rows.map(mapRouteRow)
 }

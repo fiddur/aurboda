@@ -60,8 +60,14 @@ describe('route MCP tools', () => {
       data: { created: 1, matched: 2 },
       success: true,
     })
-    expect(ops.list).toHaveBeenCalledWith('alice')
+    expect(ops.list).toHaveBeenCalledWith('alice', { activity_type: undefined, sort: undefined })
     expect(ops.match).toHaveBeenCalledWith('alice')
+  })
+
+  test('list_routes passes the type filter and sort order', async () => {
+    const { call, ops } = setup()
+    await call('list_routes', { activity_type: 'running', sort: 'length', tz: 'UTC' })
+    expect(ops.list).toHaveBeenCalledWith('alice', { activity_type: 'running', sort: 'length' })
   })
 
   test('get_route reports an unknown route', async () => {

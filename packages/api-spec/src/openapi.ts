@@ -51,6 +51,7 @@ import {
   routeDetailResponseSchema,
   routeMatchResponseSchema,
   routeResponseSchema,
+  routesQuerySchema,
   routesResponseSchema,
   updateRouteBodySchema,
 } from './schemas/routes.ts'
@@ -255,7 +256,8 @@ const openApiDocument = createDocument({
     '/routes': {
       get: {
         description:
-          'List recognised routes (courses run more than once), with run count and latest run, most recently run first.',
+          'List recognised routes (courses run more than once), with run count and latest run. Optionally only one activity type (and its descendant types); ordered by latest run (default), run count, length or name.',
+        requestParams: { query: routesQuerySchema },
         responses: {
           200: {
             content: { 'application/json': { schema: routesResponseSchema } },

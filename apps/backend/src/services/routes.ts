@@ -1,4 +1,11 @@
-import type { MergeRoutesResult, Route, RouteDetail, RouteEffort, RouteMatchResult } from '@aurboda/api-spec'
+import type {
+  MergeRoutesResult,
+  Route,
+  RouteDetail,
+  RouteEffort,
+  RouteMatchResult,
+  RoutesQuery,
+} from '@aurboda/api-spec'
 
 import type {
   LatLon,
@@ -9,6 +16,7 @@ import type {
   TrackPairCandidate,
 } from '../db/routes.ts'
 
+import { expandActivityTypes } from '../db/activity-type-definitions.ts'
 import { findNearbyDetectedLocation, findNearbyNamedLocation } from '../db/locations.ts'
 import {
   attachActivityToRoute,
@@ -271,7 +279,7 @@ export const getRouteDetail = async (
 }
 
 export interface RouteOps {
-  list: (user: string) => Promise<Route[]>
+  list: (user: string, query: RoutesQuery) => Promise<Route[]>
   detail: (user: string, id: string) => Promise<RouteDetail | null>
   rename: (user: string, id: string, name: string) => Promise<Route | null>
   remove: (user: string, id: string) => Promise<boolean>
@@ -281,7 +289,10 @@ export interface RouteOps {
 
 export const defaultRouteOps: RouteOps = {
   detail: (user, id) => getRouteDetail(user, id, defaultRouteDetailDeps),
-  list: async (user) => (await listRoutes(user)).map(serializeRoute),
+  list: async (user, { activity_type, sort }) => {
+    const activityTypes = activity_type ? await expandActivityTypes(user, [activity_type]) : undefined
+    return (await listRoutes(user, { activityTypes, sort })).map(serializeRoute)
+  },
   match: (user) => matchUnroutedTracks(user, defaultRouteMatchDeps),
   merge: async (user, targetId, sourceId) => {
     const moved = await mergeRoutes(user, sourceId, targetId)

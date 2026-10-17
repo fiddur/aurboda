@@ -1,8 +1,16 @@
+import type { RouteSort } from '@aurboda/api-spec'
+
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
-import { defaultRouteMatchDeps, matchActivityRoute, matchUnroutedTracks } from '../services/routes.ts'
+import {
+  defaultRouteMatchDeps,
+  defaultRouteOps,
+  matchActivityRoute,
+  matchUnroutedTracks,
+} from '../services/routes.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import { getActivities, insertActivity } from './activities/index.ts'
+import { insertActivityTypeDefinition } from './activity-type-definitions.ts'
 import { query } from './connection.ts'
 import {
   attachActivityToRoute,
@@ -87,6 +95,11 @@ const parallel = densify([
   [0, 200],
   [800, 200],
   [800, 1000],
+])
+/** 500 m north, away from the other courses. */
+const shortLine = densify([
+  [-2000, 0],
+  [-2000, 500],
 ])
 /** 1 km east and back the same way. */
 const outAndBack = densify([
@@ -422,6 +435,62 @@ describe('Routes integration', () => {
       const older = await makeRoute()
       const newer = await makeRoute(parallel)
       expect((await listRoutes(user)).map((r) => r.id)).toEqual([newer.routeId, older.routeId])
+    })
+
+    const makeSortableRoutes = async () => {
+      const user = getTestUser()
+      const a = await makeRoute(base)
+      const b = await makeRoute(parallel)
+      await attachActivityToRoute(user, await addTrackedActivity(parallel), b.routeId, 1)
+      await attachActivityToRoute(user, await addTrackedActivity(jittered), a.routeId, 1)
+      await attachActivityToRoute(user, await addTrackedActivity(jittered), a.routeId, 1)
+      const c = await makeRoute(shortLine, 'walking')
+      await updateRoute(user, a.routeId, { name: 'charlie' })
+      await updateRoute(user, b.routeId, { name: 'alpha' })
+      await updateRoute(user, c.routeId, { name: 'Bravo' })
+      return { a: a.routeId, b: b.routeId, c: c.routeId }
+    }
+
+    test('orders routes by latest run, run count, length or name', async () => {
+      const user = getTestUser()
+      const { a, b, c } = await makeSortableRoutes()
+      const ids = async (sort?: RouteSort) => (await listRoutes(user, { sort })).map((r) => r.id)
+      expect(await ids()).toEqual([c, a, b])
+      expect(await ids('last_run')).toEqual([c, a, b])
+      expect(await ids('runs')).toEqual([a, b, c])
+      expect(await ids('length')).toEqual([a, b, c])
+      expect(await ids('name')).toEqual([b, c, a])
+    })
+
+    test('filters routes to the given activity types', async () => {
+      const user = getTestUser()
+      const { a, b, c } = await makeSortableRoutes()
+      const ids = async (activityTypes: string[]) =>
+        (await listRoutes(user, { activityTypes, sort: 'name' })).map((r) => r.id)
+      expect(await ids(['running'])).toEqual([b, a])
+      expect(await ids(['walking'])).toEqual([c])
+      expect(await ids(['running', 'walking'])).toEqual([b, c, a])
+      expect(await ids(['cycling'])).toEqual([])
+      expect(await ids([])).toEqual([])
+    })
+
+    test('defaultRouteOps.list filters to the type and its descendant types', async () => {
+      const user = getTestUser()
+      await insertActivityTypeDefinition(user, {
+        display_category: 'exercise',
+        display_name: 'Trail running',
+        name: 'trail_running',
+        parent_type: 'running',
+      })
+      const road = await makeRoute(base)
+      const trail = await makeRoute(parallel, 'trail_running')
+      await makeRoute(shortLine, 'walking')
+      const ids = async (activity_type?: string) =>
+        (await defaultRouteOps.list(user, { activity_type, sort: 'last_run' })).map((r) => r.id)
+      expect(await ids('running')).toEqual([trail.routeId, road.routeId])
+      expect(await ids('trail_running')).toEqual([trail.routeId])
+      expect(await ids('no_such_type')).toEqual([])
+      expect(await ids()).toHaveLength(3)
     })
   })
 

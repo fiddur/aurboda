@@ -166,14 +166,16 @@ heart rate (the low-HR progress chart) waits for phase 3's run features.
 
 ### Surfaces
 
-- REST: `GET /routes`, `GET /routes/:id` (with the line and the efforts),
+- REST: `GET /routes` (`activity_type` keeps that type and its descendant types; `sort` is
+  `last_run` (default), `runs`, `length` or `name`), `GET /routes/:id` (with the line and the efforts),
   `PATCH /routes/:id` (rename), `DELETE /routes/:id` (runs are kept and not matched again),
   `POST /routes/:id/merge` (`source_route_id`'s runs move here, the source is deleted),
   `POST /routes/match`; `GET /activities?route_id=` filters to a route's activities, and
   `GET /activities/:id` carries `route: { id, name, activity_count }`.
-- MCP: `list_routes`, `get_route`, `update_route`, `delete_route`, `merge_routes`,
+- MCP: `list_routes` (same `activity_type` and `sort`), `get_route`, `update_route`, `delete_route`, `merge_routes`,
   `match_routes`; `query_activities` takes `route_id`.
-- Web: `/routes` (name, type, length, run count, last run) and `/routes/:id` (editable
+- Web: `/routes` (name, type, length, run count, last run; a type filter and a sort order,
+  kept in the URL as `?type=&sort=`) and `/routes/:id` (editable
   name, the line on a map, pace and heart-rate trend charts, the runs with links to their
   activities, merge into another route of the same type, delete); the activity page shows
   its route and run count. The Android app embeds both pages (More → Routes).

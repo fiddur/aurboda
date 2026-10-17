@@ -120,7 +120,7 @@ function ManageRoute({ route }: { route: RouteDetailData }) {
   const queryClient = useQueryClient()
   const [targetId, setTargetId] = useState('')
 
-  const { data: routes = [] } = useQuery({ queryFn: fetchRoutes, queryKey: ['routes'] })
+  const { data: routes = [] } = useQuery({ queryFn: () => fetchRoutes(), queryKey: ['routes'] })
   const targets = routes.filter((r) => r.id !== route.id && r.activity_type === route.activity_type)
 
   const mergeMutation = useMutation({

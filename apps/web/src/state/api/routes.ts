@@ -5,6 +5,7 @@ import type {
   RouteDetail,
   RouteDetailResponse,
   RouteResponse,
+  RoutesQuery,
   RoutesResponse,
 } from '@aurboda/api-spec'
 
@@ -15,8 +16,9 @@ import { auth } from '../auth'
 
 const headers = () => ({ Authorization: `Bearer ${auth.value.token}` })
 
-export const fetchRoutes = async (): Promise<Route[]> => {
-  const response = await axios.get<RoutesResponse>(`${API_URL}/routes`, { headers: headers() })
+export const fetchRoutes = async (query: Partial<RoutesQuery> = {}): Promise<Route[]> => {
+  const params = Object.fromEntries(Object.entries(query).filter(([, value]) => value !== undefined))
+  const response = await axios.get<RoutesResponse>(`${API_URL}/routes`, { headers: headers(), params })
   return response.data.data ?? []
 }
 
