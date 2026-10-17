@@ -14,7 +14,7 @@ import './style.css'
 const SORT_LABELS: Record<RouteSort, string> = {
   last_run: 'Latest run',
   length: 'Longest',
-  name: 'Name',
+  alphabetical: 'Name',
   runs: 'Most runs',
 }
 

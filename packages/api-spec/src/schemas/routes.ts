@@ -71,11 +71,11 @@ export const routeDetailSchema = routeSchema
 
 export type RouteDetail = z.infer<typeof routeDetailSchema>
 
-export const routeSortOrders = ['last_run', 'runs', 'length', 'name'] as const
+export const routeSortOrders = ['last_run', 'runs', 'length', 'alphabetical'] as const
 
 export const routeSortSchema = z.enum(routeSortOrders).meta({
   description:
-    'Route list order. last_run: most recently run first; runs: most run first; length: longest first; name: alphabetical',
+    'Route list order. last_run: most recently run first; runs: most run first; length: longest first; alphabetical: by name',
   id: 'RouteSort',
 })
 
@@ -89,7 +89,7 @@ export const routesQuerySchema = z
       .meta({ description: 'Only routes of this activity type or its descendant types' }),
     sort: routeSortSchema.optional().default('last_run').meta({
       description:
-        'last_run (default): most recently run first; runs: most run first; length: longest first; name: alphabetical',
+        'last_run (default): most recently run first; runs: most run first; length: longest first; alphabetical: by name',
     }),
   })
   .meta({ description: 'Filter and order for the route list', id: 'RoutesQuery' })

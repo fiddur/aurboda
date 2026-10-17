@@ -459,14 +459,14 @@ describe('Routes integration', () => {
       expect(await ids('last_run')).toEqual([c, a, b])
       expect(await ids('runs')).toEqual([a, b, c])
       expect(await ids('length')).toEqual([a, b, c])
-      expect(await ids('name')).toEqual([b, c, a])
+      expect(await ids('alphabetical')).toEqual([b, c, a])
     })
 
     test('filters routes to the given activity types', async () => {
       const user = getTestUser()
       const { a, b, c } = await makeSortableRoutes()
       const ids = async (activityTypes: string[]) =>
-        (await listRoutes(user, { activityTypes, sort: 'name' })).map((r) => r.id)
+        (await listRoutes(user, { activityTypes, sort: 'alphabetical' })).map((r) => r.id)
       expect(await ids(['running'])).toEqual([b, a])
       expect(await ids(['walking'])).toEqual([c])
       expect(await ids(['running', 'walking'])).toEqual([b, c, a])

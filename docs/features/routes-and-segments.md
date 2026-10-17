@@ -167,7 +167,7 @@ heart rate (the low-HR progress chart) waits for phase 3's run features.
 ### Surfaces
 
 - REST: `GET /routes` (`activity_type` keeps that type and its descendant types; `sort` is
-  `last_run` (default), `runs`, `length` or `name`), `GET /routes/:id` (with the line and the efforts),
+  `last_run` (default), `runs`, `length` or `alphabetical`), `GET /routes/:id` (with the line and the efforts),
   `PATCH /routes/:id` (rename), `DELETE /routes/:id` (runs are kept and not matched again),
   `POST /routes/:id/merge` (`source_route_id`'s runs move here, the source is deleted),
   `POST /routes/match`; `GET /activities?route_id=` filters to a route's activities, and

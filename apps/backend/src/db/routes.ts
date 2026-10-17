@@ -116,7 +116,7 @@ const mapRouteRow = (row: QueryResultRow): RouteRecord => ({
 const ROUTE_ORDER_BY: Record<RouteSort, string> = {
   last_run: 's.last DESC NULLS LAST',
   length: 'r.length_m DESC',
-  name: 'LOWER(r.name) ASC',
+  alphabetical: 'LOWER(r.name) ASC',
   runs: 'COALESCE(s.n, 0) DESC, s.last DESC NULLS LAST',
 }
 

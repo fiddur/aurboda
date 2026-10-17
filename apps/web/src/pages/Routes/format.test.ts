@@ -70,8 +70,8 @@ describe('searchFromRoutesQuery', () => {
   it('writes only the non-default params', () => {
     expect(searchFromRoutesQuery({})).toBe('')
     expect(searchFromRoutesQuery({ sort: 'last_run' })).toBe('')
-    expect(searchFromRoutesQuery({ activity_type: 'trail_running', sort: 'name' })).toBe(
-      '?type=trail_running&sort=name',
+    expect(searchFromRoutesQuery({ activity_type: 'trail_running', sort: 'alphabetical' })).toBe(
+      '?type=trail_running&sort=alphabetical',
     )
     expect(searchFromRoutesQuery({ sort: 'length' })).toBe('?sort=length')
   })
