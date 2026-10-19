@@ -68,9 +68,11 @@ In enrich mode, a rule with at least one `media` condition can copy the title of
   therefore give the longest one's title.
 - `strip_pattern` is a JavaScript regular expression (flags `giu`, at most 200 characters); every match is
   removed, then whitespace is collapsed and trimmed. An empty result writes nothing.
-- The field is filled when missing, and **overwritten when the rule wrote it before** (`_enriched_by` is this
-  rule), so re-evaluating after editing the pattern updates old values. A value set by anyone else is never
-  overwritten. Unchanged values are not rewritten.
+- The field is filled when missing, and **overwritten only while it still holds the value this rule wrote**
+  (`_enriched_by` is this rule and `_enriched_values` records what it wrote), so re-evaluating after editing the
+  pattern updates old values. A value set by anyone else, or edited by hand after the rule wrote it, is never
+  overwritten. Unchanged values are not rewritten. An activity enriched before `_enriched_values` existed has no
+  record: the rule adopts the field when it already holds what the rule would write, and otherwise keeps it.
 - `_enriched_by` holds a single rule id: the last rule that enriched the activity. If another enrich rule later
   touches the same activity, this rule no longer recognises the value as its own and falls back to fill-only there —
   it never overwrites a value it did not write. To refresh such a value, clear the field on the activity and

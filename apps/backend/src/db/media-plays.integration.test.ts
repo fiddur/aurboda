@@ -4,6 +4,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import { createDefaultEngineDeps } from '../services/deduction-deps.ts'
 import { evaluateRule } from '../services/deduction-engine.ts'
+import { updateActivity } from '../services/mutations.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import { getActivityById, insertActivity } from './index.ts'
 import { getMediaPlayById, getMediaPlays, storeMediaPlays } from './media-plays.ts'
@@ -166,5 +167,11 @@ describe('media plays (integration)', () => {
       session_name: 'Yin Yoga for Healthy Hips with Meagan',
     })
     expect((await evaluateRule(user, rule, window, deps)).affected_ids).toEqual([])
+
+    const typed = 'Yin Yoga for Healthy Hips with Meagan | Part 2'
+    const edit = await updateActivity(user, activityId, { data: { session_name: typed } })
+    expect(edit.success).toBe(true)
+    await evaluateRule(user, rule, window, deps)
+    expect((await getActivityById(user, edit.id!))?.data?.session_name).toBe(typed)
   })
 })

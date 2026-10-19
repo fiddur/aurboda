@@ -796,6 +796,7 @@ describe('media conditions and play-title enrichment', () => {
     expect(affected_ids).toEqual(['a1'])
     expect(activities[0].data).toEqual({
       _enriched_by: 'rule-1',
+      _enriched_values: { session_name: 'Yin Yoga for Healthy Hips with Meagan' },
       session_name: 'Yin Yoga for Healthy Hips with Meagan',
     })
   })
@@ -1130,15 +1131,50 @@ describe('computeEnrichPatch', () => {
 
   test('returns null when nothing changes', () => {
     expect(computeEnrichPatch({ a: 1 }, { a: 2 }, 'r')).toBeNull()
-    expect(computeEnrichPatch({ _enriched_by: 'r', a: 1 }, { a: 1 }, 'r', ['a'])).toBeNull()
+    expect(
+      computeEnrichPatch({ _enriched_by: 'r', _enriched_values: { a: 1 }, a: 1 }, { a: 1 }, 'r', ['a']),
+    ).toBeNull()
   })
 
-  test('overwrite keys are replaced only when the rule owns the enrichment', () => {
-    expect(computeEnrichPatch({ _enriched_by: 'r', a: 1 }, { a: 2 }, 'r', ['a'])).toEqual({
+  test('a filled overwrite key records the value the rule wrote', () => {
+    expect(computeEnrichPatch({}, { a: 1, b: 2 }, 'r', ['a'])).toEqual({
       _enriched_by: 'r',
-      a: 2,
+      _enriched_values: { a: 1 },
+      a: 1,
+      b: 2,
     })
-    expect(computeEnrichPatch({ _enriched_by: 'other', a: 1 }, { a: 2 }, 'r', ['a'])).toBeNull()
+  })
+
+  test('an overwrite key still holding the rule’s value is replaced', () => {
+    expect(
+      computeEnrichPatch({ _enriched_by: 'r', _enriched_values: { a: 1 }, a: 1 }, { a: 2 }, 'r', ['a']),
+    ).toEqual({ _enriched_by: 'r', _enriched_values: { a: 2 }, a: 2 })
+  })
+
+  test('an overwrite key edited since the rule wrote it is kept', () => {
+    expect(
+      computeEnrichPatch({ _enriched_by: 'r', _enriched_values: { a: 1 }, a: 'typed' }, { a: 2 }, 'r', ['a']),
+    ).toBeNull()
+  })
+
+  test('without a record, a matching value is adopted and a differing one is kept', () => {
+    expect(computeEnrichPatch({ _enriched_by: 'r', a: 1 }, { a: 1 }, 'r', ['a'])).toEqual({
+      _enriched_by: 'r',
+      _enriched_values: { a: 1 },
+    })
+    expect(computeEnrichPatch({ _enriched_by: 'r', a: 'typed' }, { a: 2 }, 'r', ['a'])).toBeNull()
+  })
+
+  test('overwrite keys are never replaced when another rule owns the enrichment', () => {
+    expect(
+      computeEnrichPatch({ _enriched_by: 'other', _enriched_values: { a: 1 }, a: 1 }, { a: 2 }, 'r', ['a']),
+    ).toBeNull()
+  })
+
+  test('taking over from another rule drops its record', () => {
+    expect(
+      computeEnrichPatch({ _enriched_by: 'other', _enriched_values: { a: 1 }, a: 1 }, { b: 2 }, 'r', ['a']),
+    ).toEqual({ _enriched_by: 'r', _enriched_values: {}, b: 2 })
   })
 
   test('static keys are never overwritten, even when owned', () => {
