@@ -280,11 +280,25 @@ const resolveConditions = async (
   return result
 }
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+
+type EnrichAction = 'fill' | 'replace' | 'adopt' | 'skip'
+
+const enrichAction = (current: unknown, value: unknown, owned: boolean, written: unknown): EnrichAction => {
+  if (current === undefined || current === null) return 'fill'
+  if (!owned) return 'skip'
+  if (current === value) return 'adopt'
+  return written === current ? 'replace' : 'skip'
+}
+
 /**
  * The patch enrichment writes onto one activity, or null when nothing changes. Keys are only
- * filled when missing, except `overwriteKeys`, which are also replaced when this rule wrote the
- * activity's enrichment before — so re-running an edited rule updates its own values but never
- * a value someone else set.
+ * filled when missing, except `overwriteKeys`, which are also replaced while they still hold the
+ * value this rule wrote (`_enriched_values`) — so re-running an edited rule updates its own
+ * values but never one someone else set or edited by hand. A row enriched before
+ * `_enriched_values` existed has no record: the rule adopts a key whose value already equals
+ * what it would write, and otherwise treats the value as edited.
  */
 export const computeEnrichPatch = (
   existing: Record<string, unknown>,
@@ -293,17 +307,21 @@ export const computeEnrichPatch = (
   overwriteKeys: string[] = [],
 ): Record<string, unknown> | null => {
   const ownedByRule = existing._enriched_by === ruleId
+  const written = ownedByRule && isRecord(existing._enriched_values) ? existing._enriched_values : {}
   const patch: Record<string, unknown> = {}
+  const values: Record<string, unknown> = { ...written }
   for (const [key, value] of Object.entries(data)) {
-    const current = existing[key]
-    if (current === undefined || current === null) {
-      patch[key] = value
-    } else if (ownedByRule && overwriteKeys.includes(key) && current !== value) {
-      patch[key] = value
-    }
+    const tracked = overwriteKeys.includes(key)
+    const action = enrichAction(existing[key], value, ownedByRule && tracked, written[key])
+    if (action === 'fill' || action === 'replace') patch[key] = value
+    if (tracked && action !== 'skip') values[key] = value
   }
-  if (Object.keys(patch).length === 0) return null
+  const valuesChanged = Object.entries(values).some(([key, value]) => written[key] !== value)
+  if (Object.keys(patch).length === 0 && !valuesChanged) return null
   patch._enriched_by = ruleId
+  // Taking over from another rule drops its record, so its values never count as this rule's.
+  if (valuesChanged || (!ownedByRule && existing._enriched_values !== undefined))
+    {patch._enriched_values = values}
   return patch
 }
 

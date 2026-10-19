@@ -200,6 +200,7 @@ const SHOWN_DATA_KEYS = new Set([
   'startTime',
   'steps',
   'vo2_max',
+  '_enriched_values',
   '_titled_value',
   ...RULE_KEYS.map(([key]) => key),
 ])
