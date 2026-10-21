@@ -20,10 +20,12 @@ const buildApp = ({
   centralDb = {},
   login = vi.fn(),
   oura = {},
+  verifyMfa = vi.fn(),
 }: {
   centralDb?: Record<string, unknown>
-  login?: () => Promise<never>
+  login?: (...args: string[]) => Promise<unknown>
   oura?: Record<string, unknown>
+  verifyMfa?: (...args: string[]) => Promise<unknown>
 } = {}) => {
   const httpd = express()
   httpd.use(express.json())
@@ -35,7 +37,7 @@ const buildApp = ({
     authMiddleware: ((_req: express.Request, _res: express.Response, next: express.NextFunction) =>
       next()) as never,
     centralDb: centralDb as never,
-    garmin: { login } as never,
+    garmin: { login, verifyMfa } as never,
     gravl: { authCb: vi.fn(), getAuthorizeUrl: vi.fn() } as never,
     httpd,
     oura: { authCb: vi.fn(), getAuthorizeUrl: vi.fn(), ...oura } as never,
@@ -67,6 +69,28 @@ describe('POST /auth/garmin/login', () => {
       expect(logged).not.toContain(form)
     }
     expect(res.body.error).toContain('[REDACTED]')
+  })
+})
+
+describe('Garmin login input', () => {
+  test('trims the email but sends the password exactly as typed', async () => {
+    const login = vi.fn().mockResolvedValue({ success: true })
+    const app = buildApp({ login })
+
+    const res = await supertest(app).post('/auth/garmin/login').send({ email: ' a@b.c ', password: ' pw ' })
+
+    expect(res.status).toBe(200)
+    expect(login).toHaveBeenCalledWith('alice', 'a@b.c', ' pw ')
+  })
+
+  test('trims the MFA code', async () => {
+    const verifyMfa = vi.fn().mockResolvedValue({ success: true })
+    const app = buildApp({ verifyMfa })
+
+    const res = await supertest(app).post('/auth/garmin/mfa').send({ mfa_code: '123456 ' })
+
+    expect(res.status).toBe(200)
+    expect(verifyMfa).toHaveBeenCalledWith('alice', '123456')
   })
 })
 

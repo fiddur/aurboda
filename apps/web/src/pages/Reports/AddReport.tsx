@@ -58,8 +58,9 @@ export function AddReport() {
   })
 
   const existingTypes = [...new Set((existingReports ?? []).map((r) => r.report_type))].sort()
+  const typedType = reportType.trim()
   const filteredTypes = existingTypes.filter(
-    (t) => reportType && t.toLowerCase().includes(reportType.toLowerCase()) && t !== reportType,
+    (t) => typedType && t.toLowerCase().includes(typedType.toLowerCase()) && t !== typedType,
   )
 
   const updateEntry = useCallback((key: number, field: keyof EntryDraft, value: string) => {
@@ -95,7 +96,7 @@ export function AddReport() {
         })),
         ...(location ? { location } : {}),
         ...(notes ? { notes } : {}),
-        report_type: reportType,
+        report_type: reportType.trim(),
       })
     },
     onError: (err: Error) => setError(err.message),

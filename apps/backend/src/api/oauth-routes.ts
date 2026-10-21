@@ -51,7 +51,8 @@ export const registerOAuthRoutes = ({
   // Garmin Connect (login with credentials, tokens-only stored)
   httpd.post('/auth/garmin/login', authMiddleware, async (req, res) => {
     const user = req.user!
-    const { email, password } = req.body ?? {}
+    const { email: rawEmail, password } = req.body ?? {}
+    const email = typeof rawEmail === 'string' ? rawEmail.trim() : rawEmail
 
     if (!email || !password) {
       res.status(400).json({ error: 'Email and password are required', success: false })
@@ -75,7 +76,8 @@ export const registerOAuthRoutes = ({
 
   httpd.post('/auth/garmin/mfa', authMiddleware, async (req, res) => {
     const user = req.user!
-    const { mfa_code } = req.body ?? {}
+    const { mfa_code: rawMfaCode } = req.body ?? {}
+    const mfa_code = typeof rawMfaCode === 'string' ? rawMfaCode.trim() : rawMfaCode
 
     if (!mfa_code) {
       res.status(400).json({ error: 'MFA code is required', success: false })

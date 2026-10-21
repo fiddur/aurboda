@@ -1,5 +1,6 @@
 import type { NextFunction, Request, Response } from 'express'
 
+import { addActivityBodySchema } from '@aurboda/api-spec'
 import { describe, expect, test, vi } from 'vitest'
 import { z } from 'zod'
 
@@ -42,6 +43,34 @@ describe('validateBody', () => {
 
     expect(next).toHaveBeenCalled()
     expect(req.body).toEqual({ name: 'test' })
+  })
+
+  test('trims surrounding whitespace from string values before parsing', () => {
+    const req = createMockReq({
+      body: {
+        activity_type: 'running ',
+        start_time: ' 2024-03-15T10:30:00Z',
+        title: ' Morning  run ',
+      },
+    })
+    const res = createMockRes()
+    const next = vi.fn() as unknown as NextFunction
+
+    validateBody(addActivityBodySchema)(req, res, next)
+
+    expect(next).toHaveBeenCalled()
+    expect(req.body).toEqual(expect.objectContaining({ activity_type: 'running', title: 'Morning  run' }))
+  })
+
+  test('keeps a password exactly as sent', () => {
+    const req = createMockReq({ body: { password: ' pass word ', username: ' fredrik ' } })
+    const res = createMockRes()
+    const next = vi.fn() as unknown as NextFunction
+
+    validateBody(z.object({ password: z.string(), username: z.string() }))(req, res, next)
+
+    expect(next).toHaveBeenCalled()
+    expect(req.body).toEqual({ password: ' pass word ', username: 'fredrik' })
   })
 
   test('returns 400 on invalid body', () => {
@@ -95,6 +124,17 @@ describe('validateQuery', () => {
     validateQuery(schema)(req, res, next)
 
     expect(next).toHaveBeenCalled()
+  })
+
+  test('trims surrounding whitespace from query values', () => {
+    const req = createMockReq({ query: { q: ' oat milk ' } as unknown as Request['query'] })
+    const res = createMockRes()
+    const next = vi.fn() as unknown as NextFunction
+
+    validateQuery(z.object({ q: z.string() }))(req, res, next)
+
+    expect(next).toHaveBeenCalled()
+    expect(req.query).toEqual({ q: 'oat milk' })
   })
 
   test('returns 400 on invalid query', () => {

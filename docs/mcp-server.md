@@ -193,6 +193,19 @@ Once connected, you can ask Claude questions like:
 - "Note that I felt dizzy around 11:40 this morning"
 - "What did I comment on yesterday?"
 
+## Input conventions
+
+String values are trimmed of leading and trailing whitespace before validation, in MCP tool arguments as
+well as in REST request bodies and query strings, at any depth (inside `data` records and arrays too).
+Whitespace inside a value is kept, and a value that is only whitespace becomes empty, so a required field
+still rejects it. Phone keyboards append a space after an autocompleted word: `"yoga "` reaches the tool
+as `"yoga"`.
+
+These keys keep their value exactly as sent, wherever they appear: passwords (`password`,
+`current_password`, `new_password`), regular expressions and patterns (`pattern`, `regex`, `rule_regex`,
+`strip_pattern`, `message_pattern`, `outcome_pattern`), markdown (`content`, `markdown`) and the WebAuthn
+`response_json`.
+
 ## Error Handling
 
 The MCP server returns standard JSON-RPC error responses:
