@@ -726,7 +726,8 @@ const main = async () => {
   // so the per-instance well-known memo is shared too.
   const discoverChallenges = createChallengeDiscovery(defaultChallengeDiscoveryDeps(webHost))
 
-  // Mount MCP server BEFORE body-parser (MCP SDK needs raw body)
+  // Mounted before the global body parser: the MCP router parses its own body
+  // so it can trim tool-call arguments and keep JSON-RPC parse errors.
   // Stateless mode — no session tracking needed (tools only, no subscriptions)
   httpd.use(
     '/mcp',

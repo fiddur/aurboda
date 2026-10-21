@@ -3,6 +3,7 @@ import type { ParamsDictionary } from 'express-serve-static-core'
 import type { z } from 'zod'
 
 import { auditWarn } from './services/audit-log.ts'
+import { trimStrings } from './trim-input.ts'
 
 /**
  * Returns 400 with detailed validation errors on failure.
@@ -15,7 +16,7 @@ export const validateBody =
   // oxlint-disable-next-line typescript/no-explicit-any -- query/params unconstrained
   <T extends z.ZodTypeAny>(schema: T): RequestHandler<ParamsDictionary, any, z.infer<T>, any> =>
     (req, res, next) => {
-      const result = schema.safeParse(req.body)
+      const result = schema.safeParse(trimStrings(req.body))
       if (!result.success) {
         const fieldErrors = result.error.flatten().fieldErrors
         if (req.user) {
@@ -44,7 +45,7 @@ export const validateQuery =
   // oxlint-disable-next-line typescript/no-explicit-any -- params/body unconstrained
   <T extends z.ZodTypeAny>(schema: T): RequestHandler<ParamsDictionary, any, any, z.infer<T>> =>
     (req, res, next) => {
-      const result = schema.safeParse(req.query)
+      const result = schema.safeParse(trimStrings(req.query))
       if (!result.success) {
         const fieldErrors = result.error.flatten().fieldErrors
         if (req.user) {

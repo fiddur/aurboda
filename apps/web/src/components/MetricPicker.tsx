@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'preact/hooks'
 
 import { fetchCustomMetrics, type CustomMetricDefinition } from '../state/api'
 import { builtinDashboardMetricOptions, getMetricDisplayName } from '../utils/metricLabels'
+import { matchMetricEntries } from './picker-match'
 import './MetricPicker.css'
 
 interface MetricEntry {
@@ -69,11 +70,7 @@ export function MetricPicker({
 
   const entries = buildEntries(builtinOnly ? [] : (customMetrics ?? []))
 
-  const filtered = entries.filter(
-    (entry) =>
-      entry.label.toLowerCase().includes(inputValue.toLowerCase()) ||
-      entry.value.toLowerCase().includes(inputValue.toLowerCase()),
-  )
+  const filtered = matchMetricEntries(entries, inputValue)
 
   const builtinEntries = filtered.filter((e) => e.group === 'builtin')
   const customEntries = filtered.filter((e) => e.group === 'custom')

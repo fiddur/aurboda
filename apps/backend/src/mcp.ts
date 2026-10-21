@@ -7,7 +7,7 @@
  */
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
-import { type Request, type Response, Router } from 'express'
+import { type ErrorRequestHandler, json, type Request, type Response, Router } from 'express'
 
 import type { Auth } from './auth.ts'
 import type { GarminClient } from './integrations/garmin/client.ts'
@@ -55,8 +55,29 @@ import { registerTrainingLoadTools } from './mcp/training-load-tools.ts'
 import { registerTrendTools } from './mcp/trend-tools.ts'
 import { createDefaultEngineDeps } from './services/deduction-deps.ts'
 import { isOAuthAccessToken, validateAccessToken } from './services/oauth.ts'
+import { trimStrings } from './trim-input.ts'
 
 type OuraClientType = ReturnType<typeof ouraClient>
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+
+const trimToolCallMessage = (message: unknown): unknown => {
+  if (!isRecord(message) || message.method !== 'tools/call' || !isRecord(message.params)) return message
+  if (!('arguments' in message.params)) return message
+  return { ...message, params: { ...message.params, arguments: trimStrings(message.params.arguments) } }
+}
+
+export const trimToolCallArguments = (body: unknown): unknown =>
+  Array.isArray(body) ? body.map(trimToolCallMessage) : trimToolCallMessage(body)
+
+const jsonRpcParseError: ErrorRequestHandler = (err, _req, res, next) => {
+  if (!(err instanceof SyntaxError)) {
+    next(err)
+    return
+  }
+  res.status(400).json({ error: { code: -32700, message: 'Parse error' }, id: null, jsonrpc: '2.0' })
+}
 
 interface McpDeps {
   apiBaseUrl?: string
@@ -167,7 +188,7 @@ export function createMcpRouter(auth: Auth, deps: McpDeps = {}): Router {
     }
   }
 
-  router.post('/', async (req: Request, res: Response) => {
+  router.post('/', json({ limit: '10mb' }), async (req: Request, res: Response) => {
     const user = await getAuthenticatedUser(req)
     if (!user) {
       res.status(401).json({ error: 'Unauthorized' })
@@ -180,9 +201,15 @@ export function createMcpRouter(auth: Auth, deps: McpDeps = {}): Router {
     })
 
     await server.connect(transport)
-    await transport.handleRequest(req, res)
+    await transport.handleRequest(
+      req,
+      res,
+      req.body === undefined ? undefined : trimToolCallArguments(req.body),
+    )
     await server.close()
   })
+
+  router.use(jsonRpcParseError)
 
   // GET /mcp - Not used in stateless mode (no SSE notifications)
   router.get('/', (_req: Request, res: Response) => {

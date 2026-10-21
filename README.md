@@ -265,6 +265,9 @@ Replace `:latest` with `:develop` in docker-compose.yml to use development build
 
 Interactive API documentation is available at https://aurboda.net/apispec (develop branch version).
 
+String input to the REST API and the MCP tools is trimmed of surrounding whitespace, except passwords,
+patterns and markdown; see [Input conventions](docs/mcp-server.md#input-conventions).
+
 ---
 
 ## Development
