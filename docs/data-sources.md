@@ -31,7 +31,7 @@ Aurboda aggregates health, productivity, and location data from multiple sources
 **Pull-based sources** (Oura, Garmin, Strava, RescueTime, Last.fm, Calendars, Gravl) support:
 
 - **Manual sync** via REST API (`POST /api/sync/{provider}`) or MCP tool (`sync_{provider}`)
-- **Background polling**: a scheduler ticks every 5 minutes and syncs whatever is older than its poll interval. The interval is a user setting, `sync_intervals`, keyed by provider (`gravl`, `garmin`, `oura`, `rescuetime`, `lastfm`, `calendar`) with `default` as the fallback; the server default is 30 minutes. Set it per source on that source's page under Data Sources, or the default on the Data Sources page. Five minutes is the smallest interval, 24 hours the largest.
+- **Background polling**: a scheduler ticks every 5 minutes and syncs whatever is older than its poll interval. The interval is a user setting, `sync_intervals`, keyed by provider (`gravl`, `garmin`, `oura`, `rescuetime`, `lastfm`, `calendar`) with `default` as the fallback; the server default is 30 minutes. Set it per source on that source's page under Data Sources, or the default on the Data Sources page. Five minutes is the smallest interval, 24 hours the largest. Sources the user has not connected are skipped without any audit entry or sync state.
 - **Auto-sync before queries** with the same interval, so a query never reads data staler than the user's setting even if the scheduler is off (no job queue)
 - **Full resync** option to re-fetch historical data
 - **Sync state tracking** per provider with rate limit handling
