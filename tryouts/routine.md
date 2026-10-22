@@ -12,8 +12,7 @@ trigger, which boots the same image with the scripts in this folder.
 
 This file is what to type into the routine's settings, and the instructions to paste into it.
 
-**The post-merge half has run in the cloud; the release half has not.** Fix what its first run
-shows and correct this file in the same PR.
+**Both halves have run in the cloud.** Fix what a run shows and correct this file in the same PR.
 
 [← back to the tryout brief](./AGENTS.md)
 
@@ -155,10 +154,10 @@ means it died mid-run.
 
 ### Environment
 
-As for the post-merge routine, plus **`aurboda.net` on the network allowlist**: leg B reads
-production's public `/api/version` (one unauthenticated GET, not the MCP connector) to learn
-which image production runs. Set `DOCKERHUB_USERNAME` / `DOCKERHUB_TOKEN` as environment secrets
-if the anonymous pull quota keeps biting: the release tryout pulls **two** images.
+As for the post-merge routine; nothing beyond it, since the previous release is derived from
+git rather than read from production. Set `DOCKERHUB_USERNAME` / `DOCKERHUB_TOKEN` as
+environment secrets if the anonymous pull quota keeps biting: the release tryout pulls **two**
+images.
 
 ### Instructions
 
@@ -200,11 +199,14 @@ bearer token the rig writes.
    (`--first-parent` matters: a feature-branch commit was never built. `cut -c1-7` matters:
    CI tags with 7 characters and `%h` prints 8 in this repository.) Name IMAGE_SHA in the
    review whenever it differs from SHORT_SHA, with "nothing image-relevant between them".
-   Then learn what production runs, which is the previous release for leg B:
-   PREV_SHA=$(curl -fsS https://aurboda.net/api/version | node -e 'let s="";process.stdin.on("data",c=>s+=c).on("end",()=>process.stdout.write(JSON.parse(s).build_sha.slice(0,7)))')
-   If that read fails, leg B is "not run" (say so in the review); fall back to
-   `fiddur/aurboda:latest` only if Docker Hub shows the tag pushed after the previous release PR
-   merged, never blindly — before the first release from main that tag is months old.
+   Then derive the previous release for leg B from git, never from production or from
+   `:latest`: `main`'s tip is the previous release PR's merge commit, whose second parent is the
+   `develop` tip it released, and the image that release shipped is the last first-parent commit
+   from there that touched an image path — the same rule and the same path list as IMAGE_SHA:
+   PREV_HEAD=$(git rev-parse origin/main^2 2>/dev/null || git rev-parse origin/main)
+   PREV_SHA=$(git log --first-parent -1 --format=%H "$PREV_HEAD" -- apps/backend apps/web packages pnpm-lock.yaml Dockerfile nginx.conf entrypoint.sh .github/workflows/docker.yml | cut -c1-7)
+   (The `|| git rev-parse origin/main` is for a `main` whose tip is not a merge commit; then its
+   own history is walked.) If either command fails, leg B is "not run" — say so in the review.
 6. `docker ps`. If there is no daemon, `up.sh` starts one; the repository's tryouts/AGENTS.md says
    how, and a failure there is a stop, not something to work around.
 7. `tryouts/setup-environment.sh` (a fast no-op if the environment already has the browser).
@@ -225,12 +227,14 @@ LEG A — fresh database.
    "200 OK" and "the page rendered" are neither.
 
 LEG B — upgrade from the previous release.
-10. Skip to step 12 if PREV_SHA is unset, or equals IMAGE_SHA (nothing to upgrade). Otherwise
-    boot the previous release fresh (--fresh tears the leg A stack down itself):
+10. Skip to step 12 if PREV_SHA is unset, or equals IMAGE_SHA (nothing image-relevant since the
+    previous release, so nothing to upgrade). Otherwise boot the previous release fresh (--fresh
+    tears the leg A stack down itself):
     AURBODA_TAG=$PREV_SHA tryouts/up.sh --fresh
-    That is the image production runs. Seed it through the recipes: the demo user, a handful of
-    activities of different types, a tag, a post on the feed, a challenge. Note the ids and the
-    counts you created.
+    That is the image the previous release shipped, and what a deployment following `:latest`
+    runs before this merge. Seed it through the recipes: the demo user, a handful of activities
+    of different types, a tag, a post on the feed, a challenge. Note the ids and the counts you
+    created.
 11. tryouts/down.sh (no --purge, the volume must survive), then
     AURBODA_TAG=$IMAGE_SHA tryouts/up.sh
     without --fresh, so the release image starts on the previous release's database.
