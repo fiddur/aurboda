@@ -207,3 +207,18 @@ Because the activity is exported, any app can send these extras, so `deepLinkFro
 keeps a `more_path` only when it is a site path (`/…`, not `//…`) or an http(s)
 URL of a challenge the user configured a widget for (`challengeWidgetUrls`);
 anything else opens the More hub.
+
+## Update channels
+
+The app checks `BuildConfig.VERSION_JSON_URL` for a newer build (`checkForUpdate` in
+`MainActivity.kt`). CI bakes the URL in per branch (`.github/workflows/android.yml`):
+
+| Built from | Release | `VERSION_JSON_URL` |
+|---|---|---|
+| `main` | `v1.0.<versionCode>`, marked latest | `releases/latest/download/version.json` |
+| `develop` | pre-release on the fixed tag `beta` | `releases/download/beta/version.json` |
+
+A stable install therefore only ever updates to the next main release; a beta install
+(APK from the `beta` pre-release) follows develop. Local builds default to the beta
+channel. The tag is `beta`, not `develop`: a tag named like a branch shadows the branch in
+git ref resolution (`git fetch origin develop` would fetch the tag). `versionCode` is `git rev-list --count HEAD`, monotonic within each channel.

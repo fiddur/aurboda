@@ -1,0 +1,24 @@
+name: Release PR
+
+# Opens or refreshes the develop → main release PR (scripts/release-pr.sh).
+# Run it from the Actions tab. Note: a PR created with the default GITHUB_TOKEN
+# does not trigger CI; set the RELEASE_PR_TOKEN secret (a fine-grained PAT with
+# pull-requests: write) or run the script locally for a PR whose checks run.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  release-pr:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Open or refresh the release PR
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PR_TOKEN || secrets.GITHUB_TOKEN }}
+        run: scripts/release-pr.sh
