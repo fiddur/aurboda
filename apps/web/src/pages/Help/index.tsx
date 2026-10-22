@@ -207,7 +207,7 @@ export function Help() {
             links={[
               {
                 text: 'Download Android APK',
-                url: 'https://github.com/fiddur/aurboda/releases/download/latest/aurboda.apk',
+                url: 'https://github.com/fiddur/aurboda/releases/latest/download/aurboda.apk',
               },
             ]}
           />
@@ -245,7 +245,7 @@ export function Help() {
             links={[
               {
                 text: 'Download Android APK',
-                url: 'https://github.com/fiddur/aurboda/releases/download/latest/aurboda.apk',
+                url: 'https://github.com/fiddur/aurboda/releases/latest/download/aurboda.apk',
               },
             ]}
           />
@@ -370,7 +370,7 @@ export function Help() {
               },
               {
                 text: 'Download Aurboda APK',
-                url: 'https://github.com/fiddur/aurboda/releases/download/latest/aurboda.apk',
+                url: 'https://github.com/fiddur/aurboda/releases/latest/download/aurboda.apk',
               },
             ]}
           />

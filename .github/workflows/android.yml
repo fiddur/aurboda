@@ -1,9 +1,15 @@
 name: Build Android APK
 
+# develop → pre-release on the fixed tag `beta` (beta channel; not `develop`,
+#           a tag named like a branch shadows it in git ref resolution)
+# main    → release v1.0.<versionCode>, marked latest (stable channel)
+# The APK built on each branch follows its own channel, see
+# VERSION_JSON_URL in apps/android/app/build.gradle.kts.
 on:
   push:
     branches:
       - develop
+      - main
     paths:
       - 'apps/android/**'
       - '.github/workflows/android.yml'
@@ -29,6 +35,22 @@ jobs:
           VERSION_CODE=$(git rev-list --count HEAD)
           echo "VERSION_CODE=$VERSION_CODE" >> $GITHUB_OUTPUT
           echo "Calculated version code: $VERSION_CODE"
+
+      - name: Pick release channel
+        id: channel
+        run: |
+          REPO_URL="https://github.com/${{ github.repository }}"
+          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            echo "name=stable" >> $GITHUB_OUTPUT
+            echo "tag=v1.0.${{ steps.version.outputs.VERSION_CODE }}" >> $GITHUB_OUTPUT
+            echo "version_json_url=$REPO_URL/releases/latest/download/version.json" >> $GITHUB_OUTPUT
+            echo "download_url=$REPO_URL/releases/latest/download/aurboda.apk" >> $GITHUB_OUTPUT
+          else
+            echo "name=beta" >> $GITHUB_OUTPUT
+            echo "tag=beta" >> $GITHUB_OUTPUT
+            echo "version_json_url=$REPO_URL/releases/download/beta/version.json" >> $GITHUB_OUTPUT
+            echo "download_url=$REPO_URL/releases/download/beta/aurboda.apk" >> $GITHUB_OUTPUT
+          fi
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -78,6 +100,7 @@ jobs:
       - name: Build release APK
         env:
           VERSION_CODE: ${{ steps.version.outputs.VERSION_CODE }}
+          VERSION_JSON_URL: ${{ steps.channel.outputs.version_json_url }}
         run: ./gradlew assembleRelease
 
       - name: Upload release APK
@@ -99,40 +122,72 @@ jobs:
           retention-days: 7
 
       - name: Prepare APK for release
-        if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+        if: github.event_name == 'push'
         run: cp app/build/outputs/apk/release/app-release.apk app/build/outputs/apk/release/aurboda.apk
 
       - name: Generate version.json
-        if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+        if: github.event_name == 'push'
         run: |
           cat > app/build/outputs/apk/release/version.json << EOF
           {
             "versionCode": ${{ steps.version.outputs.VERSION_CODE }},
             "versionName": "1.0.${{ steps.version.outputs.VERSION_CODE }}",
-            "downloadUrl": "https://github.com/${{ github.repository }}/releases/latest/download/aurboda.apk",
-            "releaseNotes": "Built from commit ${{ github.sha }}"
+            "downloadUrl": "${{ steps.channel.outputs.download_url }}",
+            "releaseNotes": "Built from commit ${{ github.sha }} (${{ steps.channel.outputs.name }})"
           }
           EOF
 
-      - name: Update latest release
-        if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+      - name: Publish development pre-release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cd ${{ github.workspace }}
-          # Delete existing latest release if it exists
-          gh release delete latest --yes || true
-          # Delete the tag locally and remotely
-          git tag -d latest || true
-          git push origin :refs/tags/latest || true
-          # Create new release with the APK and version.json
-          gh release create latest \
+          # One moving pre-release on the fixed tag `beta`. Being a pre-release
+          # it is never what releases/latest resolves to, so stable installs
+          # (channel = releases/latest) do not see it. --target pins the tag to
+          # the commit that was built (gh would otherwise use the default branch).
+          gh release delete beta --yes || true
+          git tag -d beta || true
+          git push origin :refs/tags/beta || true
+          gh release create beta \
+            --target "${{ github.sha }}" \
+            --prerelease \
             --title "Latest Development Build" \
-            --notes "Automatically updated on each push to develop.
+            --notes "Automatically updated on each push to develop. Beta channel: installs from this APK keep following develop.
 
-          **Download:** [aurboda.apk](https://github.com/${{ github.repository }}/releases/latest/download/aurboda.apk)
+          **Download:** [aurboda.apk](${{ steps.channel.outputs.download_url }})
 
           Built from commit: ${{ github.sha }}
           Version code: ${{ steps.version.outputs.VERSION_CODE }}" \
             apps/android/app/build/outputs/apk/release/aurboda.apk \
             apps/android/app/build/outputs/apk/release/version.json
+
+      - name: Publish stable release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd ${{ github.workspace }}
+          # Re-running a failed job must not trip over a half-made release.
+          gh release delete "${{ steps.channel.outputs.tag }}" --yes --cleanup-tag || true
+          # --target: the default branch is develop, so without it the v1.0.N tag
+          # would be created at develop's tip instead of this main commit.
+          gh release create "${{ steps.channel.outputs.tag }}" \
+            --target "${{ github.sha }}" \
+            --latest \
+            --title "Aurboda 1.0.${{ steps.version.outputs.VERSION_CODE }}" \
+            --notes "Stable release from main. Installs from this APK follow releases/latest.
+
+          **Download:** [aurboda.apk](${{ steps.channel.outputs.download_url }})
+
+          Built from commit: ${{ github.sha }}
+          Version code: ${{ steps.version.outputs.VERSION_CODE }}" \
+            apps/android/app/build/outputs/apk/release/aurboda.apk \
+            apps/android/app/build/outputs/apk/release/version.json
+          # Before stable/beta channels existed, the develop build lived on a
+          # release named `latest`. Remove it once a real stable release exists so
+          # releases/latest resolves to this one. (Download links use the
+          # releases/latest/download/... form, which does not depend on a tag
+          # named `latest`.)
+          gh release delete latest --yes --cleanup-tag || true
