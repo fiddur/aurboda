@@ -12,10 +12,8 @@ trigger, which boots the same image with the scripts in this folder.
 
 This file is what to type into the routine's settings, and the instructions to paste into it.
 
-**The post-merge half has run in the cloud; the release half has not.** The environment half in particular — whether
-Chrome's download passes the network level, whether `dockerd` starts, whether the registry hosts
-are allowed — is unverified until the first tryout actually fires. Fix what the first run shows
-and correct this file in the same PR.
+**The post-merge half has run in the cloud; the release half has not.** Fix what its first run
+shows and correct this file in the same PR.
 
 [← back to the tryout brief](./AGENTS.md)
 
@@ -149,15 +147,18 @@ uses (copy its connector setup; nothing else — the API had auto-attached every
 account, the production Aurboda one included, and they were all removed). Then enable it.
 
 `scripts/release-pr.sh` puts the `release-tryout` label on when it opens the PR and again on
-every refresh, so a moved head is re-tried. The label protocol mirrors the review routine's:
-`release-tryout` → `reviewing` while the run owns the PR → neither when done. A PR with the
-label still on after forty minutes means the routine never fired; `reviewing` for longer than an
-hour means it died mid-run.
+every refresh, so a moved head is re-tried. The label protocol mirrors the review routine's but
+with its own ownership marker, so the two runs can never strip each other's: `release-tryout` →
+`release-trying` while the run owns the PR → neither when done. A PR with `release-tryout` still
+on after forty minutes means the routine never fired; `release-trying` for longer than two hours
+means it died mid-run.
 
 ### Environment
 
-As for the post-merge routine. Set `DOCKERHUB_USERNAME` / `DOCKERHUB_TOKEN` as environment
-secrets if the anonymous pull quota keeps biting: the release tryout pulls **two** images.
+As for the post-merge routine, plus **`aurboda.net` on the network allowlist**: leg B reads
+production's public `/api/version` (one unauthenticated GET, not the MCP connector) to learn
+which image production runs. Set `DOCKERHUB_USERNAME` / `DOCKERHUB_TOKEN` as environment secrets
+if the anonymous pull quota keeps biting: the release tryout pulls **two** images.
 
 ### Instructions
 
@@ -182,8 +183,9 @@ bearer token the rig writes.
 2. `pull_request_read` with method `get`. Stop and do nothing unless all of these hold: base is
    `main`, head is `develop`, state is open, not merged, and the label `release-tryout` is on it.
 3. Take the PR: `issue_write` (method `update`) with its labels minus `release-tryout` plus
-   `reviewing`. HEAD_SHA is the PR's head sha, SHORT_SHA its first 7 characters. Everything you
-   post names SHORT_SHA; a review on an older head is stale by definition.
+   `release-trying` (never `reviewing`, that is the review routine's marker). HEAD_SHA is the
+   PR's head sha, SHORT_SHA its first 7 characters. Everything you post names SHORT_SHA; a
+   review on an older head is stale by definition.
 4. Read the body: the "Changes" list is every PR merged to develop since the last release, the
    "Release gate" checklist is what you will tick. For each listed PR, `pull_request_read`
    (`get`) its body for the promised behaviour and read the post-merge tryout's comment on it
@@ -191,12 +193,23 @@ bearer token the rig writes.
    filed a `tryout-finding` for, is what this run must try hardest to exercise.
 5. Check out the head for the recipes at the released version:
    git fetch origin main develop && git checkout --detach HEAD_SHA
+   Then resolve the image. CI only builds an image when a merge touches an image path, so the
+   head's own tag often does not exist; the release image is the last first-parent commit that
+   touched one of those paths:
+   IMAGE_SHA=$(git log --first-parent -1 --format=%h HEAD_SHA -- apps/backend apps/web packages pnpm-lock.yaml Dockerfile nginx.conf entrypoint.sh .github/workflows/docker.yml)
+   (`--first-parent` matters: a feature-branch commit was never built.) Name IMAGE_SHA in the
+   review whenever it differs from SHORT_SHA, with "nothing image-relevant between them".
+   Then learn what production runs, which is the previous release for leg B:
+   PREV_SHA=$(curl -fsS https://aurboda.net/api/version | node -e 'let s="";process.stdin.on("data",c=>s+=c).on("end",()=>process.stdout.write(JSON.parse(s).build_sha.slice(0,7)))')
+   If that read fails, leg B is "not run" (say so in the review); fall back to
+   `fiddur/aurboda:latest` only if Docker Hub shows the tag pushed after the previous release PR
+   merged, never blindly — before the first release from main that tag is months old.
 6. `docker ps`. If there is no daemon, `up.sh` starts one; the repository's tryouts/AGENTS.md says
    how, and a failure there is a stop, not something to work around.
 7. `tryouts/setup-environment.sh` (a fast no-op if the environment already has the browser).
 
 LEG A — fresh database.
-8. AURBODA_TAG=$SHORT_SHA tryouts/up.sh --fresh --wait-image
+8. AURBODA_TAG=$IMAGE_SHA tryouts/up.sh --fresh --wait-image
    The develop push built this tag; --wait-image polls up to 30 minutes in case it is still
    building. If it never appears, or the stack will not boot after two attempts, post the review
    as `🛑 Changes required` with the tail of `docker compose -p aurboda-tryout-cloud logs`,
@@ -211,21 +224,21 @@ LEG A — fresh database.
    "200 OK" and "the page rendered" are neither.
 
 LEG B — upgrade from the previous release.
-10. tryouts/down.sh (no --purge) and then boot the previous release fresh:
-    AURBODA_TAG=latest tryouts/up.sh --fresh
-    `fiddur/aurboda:latest` is what main last built, i.e. what production runs. Seed it through
-    the recipes: the demo user, a handful of activities of different types, a tag, a post on the
-    feed, a challenge. Note the ids and the counts you created.
+10. Skip to step 12 if PREV_SHA is unset, or equals IMAGE_SHA (nothing to upgrade). Otherwise
+    tryouts/down.sh (no --purge) and then boot the previous release fresh:
+    AURBODA_TAG=$PREV_SHA tryouts/up.sh --fresh
+    That is the image production runs. Seed it through the recipes: the demo user, a handful of
+    activities of different types, a tag, a post on the feed, a challenge. Note the ids and the
+    counts you created.
 11. tryouts/down.sh (no --purge, the volume must survive), then
-    AURBODA_TAG=$SHORT_SHA tryouts/up.sh
+    AURBODA_TAG=$IMAGE_SHA tryouts/up.sh
     without --fresh, so the release image starts on the previous release's database.
-    Verify: the container log shows the schema sweep finished with 0 failed and names the
-    migrations it ran; every seeded id is still readable through the API with the same values;
-    the timeline page shows the seeded activities; the feed shows the post. A migration error, a
-    lost or changed row, or a 500 on any seeded entity is a release-block finding.
-    If `:latest` cannot be pulled or does not boot (there is no release from main yet, or the
-    tag is older than the schema the recipes assume), say so in the review and mark the leg as
-    not run; before the first release from main that is acceptable, afterwards it blocks.
+    Verify: the container log's `🗃️ Schema sweep done` line reports the seeded user as migrated
+    (or already current) with 0 failed, and there is no `⚠️ Schema migration failed` line;
+    every seeded id is still readable through the API with the same values; the timeline page
+    shows the seeded activities; the feed shows the post. A migration error, a lost or changed
+    row, or a 500 on any seeded entity is a release-block finding. If the previous image does
+    not boot, say so and mark the leg as not run.
 
 FINDINGS AND THE GATE.
 12. File findings as issues exactly as `tryouts/AGENTS.md` describes — one issue per distinct
@@ -238,14 +251,15 @@ FINDINGS AND THE GATE.
     Leave the merge box alone; a human ticks it.
 14. Post ONE review with `pull_request_review_write` (method `create`, event `COMMENT`) on
     HEAD_SHA whose body starts with `✅ Approved` (no `release-block` findings, both legs ran or
-    leg B was acceptably skipped) or `🛑 Changes required` (anything else), followed by:
+    leg B was skipped for a stated reason) or `🛑 Changes required` (anything else), followed by:
+    - the image: IMAGE_SHA, and PREV_SHA for leg B,
     - leg A: what you verified, with the evidence quoted, area by area and PR by PR,
-    - leg B: the migrations that ran, the seeded ids checked, and what differed,
+    - leg B: the sweep line, the seeded ids checked, and what differed,
     - what you could not drive and why,
     - links to every issue you filed, blockers first.
     That review is the only artifact of this session a human will ever see, so write it for
     somebody who was not here.
-15. `issue_write` (method `update`) with the labels minus `reviewing`.
+15. `issue_write` (method `update`) with the labels minus `release-trying`.
 
 Then `tryouts/down.sh --purge`, and stop. Never merge, commit, push, or open a pull request.
 ```
