@@ -342,7 +342,7 @@ scripts/release-pr.sh        # opens or refreshes the PR, body = merged PRs sinc
 
 (Also available as the "Release PR" workflow in the Actions tab.) Merging it pushes
 `fiddur/aurboda:latest` and publishes the stable Android release `v1.0.<versionCode>`;
-`develop` keeps feeding the `develop` image and the `develop` Android pre-release.
+`develop` keeps feeding the `develop` image and the `beta` Android pre-release.
 
 ## Architecture
 

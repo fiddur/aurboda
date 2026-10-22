@@ -30,10 +30,10 @@ val versionCodeFromEnv = System.getenv("VERSION_CODE")?.toIntOrNull() ?: 1
 
 // Update channel: where the app looks for a newer build (see .github/workflows/android.yml).
 // CI sets it per branch — main builds follow releases/latest (stable), develop builds follow
-// the `develop` pre-release. Local builds default to the develop channel.
+// the `beta` pre-release. Local builds default to the beta channel.
 val versionJsonUrlFromEnv =
   System.getenv("VERSION_JSON_URL")
-    ?: "https://github.com/fiddur/aurboda/releases/download/develop/version.json"
+    ?: "https://github.com/fiddur/aurboda/releases/download/beta/version.json"
 
 android {
   namespace = "net.aurboda"

@@ -216,8 +216,9 @@ The app checks `BuildConfig.VERSION_JSON_URL` for a newer build (`checkForUpdate
 | Built from | Release | `VERSION_JSON_URL` |
 |---|---|---|
 | `main` | `v1.0.<versionCode>`, marked latest | `releases/latest/download/version.json` |
-| `develop` | pre-release on the fixed tag `develop` | `releases/download/develop/version.json` |
+| `develop` | pre-release on the fixed tag `beta` | `releases/download/beta/version.json` |
 
 A stable install therefore only ever updates to the next main release; a beta install
-(APK from the `develop` pre-release) follows develop. Local builds default to the develop
-channel. `versionCode` is `git rev-list --count HEAD`, monotonic within each channel.
+(APK from the `beta` pre-release) follows develop. Local builds default to the beta
+channel. The tag is `beta`, not `develop`: a tag named like a branch shadows the branch in
+git ref resolution (`git fetch origin develop` would fetch the tag). `versionCode` is `git rev-list --count HEAD`, monotonic within each channel.

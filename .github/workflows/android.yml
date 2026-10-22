@@ -1,6 +1,7 @@
 name: Build Android APK
 
-# develop → pre-release on the fixed tag `develop` (beta channel)
+# develop → pre-release on the fixed tag `beta` (beta channel; not `develop`,
+#           a tag named like a branch shadows it in git ref resolution)
 # main    → release v1.0.<versionCode>, marked latest (stable channel)
 # The APK built on each branch follows its own channel, see
 # VERSION_JSON_URL in apps/android/app/build.gradle.kts.
@@ -45,10 +46,10 @@ jobs:
             echo "version_json_url=$REPO_URL/releases/latest/download/version.json" >> $GITHUB_OUTPUT
             echo "download_url=$REPO_URL/releases/latest/download/aurboda.apk" >> $GITHUB_OUTPUT
           else
-            echo "name=develop" >> $GITHUB_OUTPUT
-            echo "tag=develop" >> $GITHUB_OUTPUT
-            echo "version_json_url=$REPO_URL/releases/download/develop/version.json" >> $GITHUB_OUTPUT
-            echo "download_url=$REPO_URL/releases/download/develop/aurboda.apk" >> $GITHUB_OUTPUT
+            echo "name=beta" >> $GITHUB_OUTPUT
+            echo "tag=beta" >> $GITHUB_OUTPUT
+            echo "version_json_url=$REPO_URL/releases/download/beta/version.json" >> $GITHUB_OUTPUT
+            echo "download_url=$REPO_URL/releases/download/beta/aurboda.apk" >> $GITHUB_OUTPUT
           fi
 
       - name: Set up JDK 17
@@ -142,13 +143,15 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cd ${{ github.workspace }}
-          # One moving pre-release on the fixed tag `develop`. Being a pre-release
+          # One moving pre-release on the fixed tag `beta`. Being a pre-release
           # it is never what releases/latest resolves to, so stable installs
-          # (channel = releases/latest) do not see it.
-          gh release delete develop --yes || true
-          git tag -d develop || true
-          git push origin :refs/tags/develop || true
-          gh release create develop \
+          # (channel = releases/latest) do not see it. --target pins the tag to
+          # the commit that was built (gh would otherwise use the default branch).
+          gh release delete beta --yes || true
+          git tag -d beta || true
+          git push origin :refs/tags/beta || true
+          gh release create beta \
+            --target "${{ github.sha }}" \
             --prerelease \
             --title "Latest Development Build" \
             --notes "Automatically updated on each push to develop. Beta channel: installs from this APK keep following develop.
@@ -166,7 +169,10 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cd ${{ github.workspace }}
+          # --target: the default branch is develop, so without it the v1.0.N tag
+          # would be created at develop's tip instead of this main commit.
           gh release create "${{ steps.channel.outputs.tag }}" \
+            --target "${{ github.sha }}" \
             --latest \
             --title "Aurboda 1.0.${{ steps.version.outputs.VERSION_CODE }}" \
             --notes "Stable release from main. Installs from this APK follow releases/latest.
