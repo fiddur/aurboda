@@ -194,6 +194,16 @@ describe('garminClient', () => {
       )
     })
 
+    it('throws when the stored token was cleared by a disconnect', async () => {
+      vi.mocked(deps.getOAuthToken).mockResolvedValue({ access_token: '', provider: 'garmin' })
+
+      const client = garminClient(deps)
+      await expect(client.getHeartRate(testUser, new Date())).rejects.toThrow(
+        'User has no Garmin session. Please connect Garmin first.',
+      )
+      expect(mockGarminConnect.loadToken).not.toHaveBeenCalled()
+    })
+
     it('loads stored tokens into GarminConnect', async () => {
       const client = garminClient(deps)
       await client.getHeartRate(testUser, new Date('2024-06-15'))

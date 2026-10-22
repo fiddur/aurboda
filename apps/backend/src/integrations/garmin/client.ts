@@ -209,7 +209,8 @@ export const garminClient = (deps: GarminClientDeps = defaultDeps) => {
    */
   const restoreSession = async (user: string): Promise<InstanceType<typeof GarminConnect>> => {
     const stored = await deps.getOAuthToken(user, 'garmin')
-    if (!stored) throw new Error('User has no Garmin session. Please connect Garmin first.')
+    if (!stored || !stored.access_token)
+      {throw new Error('User has no Garmin session. Please connect Garmin first.')}
 
     const tokens: IGarminTokens = JSON.parse(stored.access_token)
     const gc = new GarminConnect({ username: '', password: '' })
